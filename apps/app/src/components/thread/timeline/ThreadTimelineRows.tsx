@@ -1336,7 +1336,7 @@ function leadingIconForWorkRow(
     case "approval":
       return "Lock";
     case "question":
-      return "MessageQuestion";
+      return "CircleQuestion";
     default:
       return undefined;
   }

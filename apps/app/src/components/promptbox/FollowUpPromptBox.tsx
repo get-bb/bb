@@ -9,6 +9,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type {
   PromptTextMention,
   ThreadRuntimeDisplayStatus,
@@ -163,6 +164,8 @@ export interface FollowUpPromptBoxProps {
   stack: ReactNode | null;
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
+  /** Moves the one live composer into an inline queue-editor slot. */
+  composerTarget?: HTMLElement | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
   /**
@@ -235,6 +238,7 @@ function FollowUpPromptBoxWithComposer({
   stack,
   activePromptMode,
   composer,
+  composerTarget,
   environmentSummary,
   contextWindowUsage,
   execution,
@@ -269,6 +273,8 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
+  const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
+  const [composerPortalHost] = useState(() => document.createElement("div"));
   // Scope Cmd+Shift+C to the focused pane's primary composer. Every mounted
   // composer registers this handler — including side-chat composers that stay
   // mounted while hidden — so gating on both the focused pane and "primary"
@@ -289,6 +295,24 @@ function FollowUpPromptBoxWithComposer({
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
+  useLayoutEffect(() => {
+    const destination = composerTarget ?? bottomComposerAnchorRef.current;
+    if (!destination) return;
+
+    // The portal container never changes. Moving its DOM node preserves the
+    // live editor instance (including selection, history, and local state)
+    // while changing where it appears.
+    destination.append(composerPortalHost);
+    if (composerTarget) {
+      promptBoxRef.current?.focusEnd();
+    }
+  }, [composerPortalHost, composerTarget]);
+  useLayoutEffect(
+    () => () => {
+      composerPortalHost.remove();
+    },
+    [composerPortalHost],
+  );
   const compactConfig = useMemo(
     () =>
       isCompactViewport
@@ -500,6 +524,83 @@ function FollowUpPromptBoxWithComposer({
           FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT - stackHeight,
         );
 
+  const composerElement = (
+    <div
+      ref={composerInteractionRef}
+      className="relative z-20"
+      data-follow-up-composer=""
+      data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      onFocusCapture={handleComposerFocus}
+    >
+      <PromptBoxWithScrollAnchor
+        id={id}
+        promptBoxRef={promptBoxRef}
+        voice={voice}
+        minHeight={elasticTextareaMinHeight}
+        value={composer.message}
+        mentionRanges={composer.mentionRanges}
+        onChange={composer.onChangeMessage}
+        onSubmit={composer.onSubmit}
+        scrollToBottomOnSubmit={submitMode.kind !== "queue"}
+        history={composer.history}
+        focusEndKey={focusEndKey}
+        placeholder={composer.promptPlaceholder}
+        containerCompactPlaceholder={composer.compactPromptPlaceholder}
+        heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
+        mentionMenuPlacement="top"
+        submission={{
+          onStop: onStopRuntime,
+          isSubmitting: composer.isFollowUpSubmitting || isStopping,
+          disabled: !canSubmit || composer.isFollowUpSubmitting,
+          onModifierSubmit,
+          title: canQueueFollowUp
+            ? "Queue follow-up (Enter)"
+            : isStopping
+              ? "Stopping run..."
+              : isLoadingExecutionOptions
+                ? "Loading models..."
+                : isLoadingPendingInteractions
+                  ? "Checking pending interactions..."
+                  : isProvisioning
+                    ? "Provisioning..."
+                    : isUnavailable
+                      ? "Unavailable"
+                      : "Submit (Enter)",
+          isRunning: canStopRuntime,
+        }}
+        typeahead={typeahead}
+        attachments={attachments}
+        promptActions={promptActions}
+        compact={compactConfig}
+        zenMode={{
+          layout: "thread",
+          storageKey: null,
+          resetKey: `${zenModeResetKey}:${
+            isCompactViewport ? "mobile" : "desktop"
+          }`,
+          resetOnSubmit: true,
+        }}
+        footerStart={footerStart}
+      />
+      {!isMobilePromptBoxCompact ? (
+        <div
+          data-follow-up-composer-footer=""
+          className="mt-1 flex min-h-6 max-h-6 items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+            {environmentSummary}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {permissionControl}
+            {contextWindowUsage ? (
+              <ThreadContextWindowIndicator usage={contextWindowUsage} />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       <ThreadTimelineScrollToBottomButton
@@ -514,81 +615,8 @@ function FollowUpPromptBoxWithComposer({
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        <div
-          ref={composerInteractionRef}
-          data-follow-up-composer=""
-          data-follow-up-composer-expanded={
-            isInteractionExpanded ? "" : undefined
-          }
-          onFocusCapture={handleComposerFocus}
-        >
-          <PromptBoxWithScrollAnchor
-            id={id}
-            promptBoxRef={promptBoxRef}
-            voice={voice}
-            minHeight={elasticTextareaMinHeight}
-            value={composer.message}
-            mentionRanges={composer.mentionRanges}
-            onChange={composer.onChangeMessage}
-            onSubmit={composer.onSubmit}
-            scrollToBottomOnSubmit={submitMode.kind !== "queue"}
-            history={composer.history}
-            focusEndKey={focusEndKey}
-            placeholder={composer.promptPlaceholder}
-            containerCompactPlaceholder={composer.compactPromptPlaceholder}
-            heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
-            mentionMenuPlacement="top"
-            submission={{
-              onStop: onStopRuntime,
-              isSubmitting: composer.isFollowUpSubmitting || isStopping,
-              disabled: !canSubmit || composer.isFollowUpSubmitting,
-              onModifierSubmit,
-              title: canQueueFollowUp
-                ? "Queue follow-up (Enter)"
-                : isStopping
-                  ? "Stopping run..."
-                  : isLoadingExecutionOptions
-                    ? "Loading models..."
-                    : isLoadingPendingInteractions
-                      ? "Checking pending interactions..."
-                      : isProvisioning
-                        ? "Provisioning..."
-                        : isUnavailable
-                          ? "Unavailable"
-                          : "Submit (Enter)",
-              isRunning: canStopRuntime,
-            }}
-            typeahead={typeahead}
-            attachments={attachments}
-            promptActions={promptActions}
-            compact={compactConfig}
-            zenMode={{
-              layout: "thread",
-              storageKey: null,
-              resetKey: `${zenModeResetKey}:${
-                isCompactViewport ? "mobile" : "desktop"
-              }`,
-              resetOnSubmit: true,
-            }}
-            footerStart={footerStart}
-          />
-          {!isMobilePromptBoxCompact ? (
-            <div
-              data-follow-up-composer-footer=""
-              className="mt-1 flex min-h-6 max-h-6 items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {environmentSummary}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {permissionControl}
-                {contextWindowUsage ? (
-                  <ThreadContextWindowIndicator usage={contextWindowUsage} />
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
+        {createPortal(composerElement, composerPortalHost)}
       </div>
     </>
   );

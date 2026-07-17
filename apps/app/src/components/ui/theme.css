@@ -54,6 +54,7 @@
   --color-surface-recessed: var(--surface-recessed);
   --color-surface-recessed-solid: var(--surface-recessed-solid);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
@@ -390,6 +391,7 @@
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -441,8 +443,16 @@
      tracks custom palettes instead of stranding a fixed swatch. Mix in oklab, not
      oklch: in the polar space the achromatic canvas drags the manilla hue toward
      0° and the result comes out salmon — oklab carries the hue through. */
-  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 76%);
-  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 60%);
+  --sidebar-search-match: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 76%
+  );
+  --sidebar-search-match-border: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 60%
+  );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
@@ -587,6 +597,7 @@
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -635,8 +646,16 @@
   --sidebar-border: color-mix(in oklch, var(--ink) 18.1%, var(--canvas));
   /* Search-match highlight: see the light block (oklab mix, same hue caveat).
      Mixed with the (dark) canvas so the manilla reads as a muted tan. */
-  --sidebar-search-match: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 80%);
-  --sidebar-search-match-border: color-mix(in oklab, oklch(0.8 0.13 88), var(--canvas) 67%);
+  --sidebar-search-match: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 80%
+  );
+  --sidebar-search-match-border: color-mix(
+    in oklab,
+    oklch(0.8 0.13 88),
+    var(--canvas) 67%
+  );
   --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;

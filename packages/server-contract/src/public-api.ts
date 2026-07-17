@@ -182,6 +182,7 @@ import type {
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
+  UpdateQueuedMessageRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
@@ -202,6 +203,7 @@ import {
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
+  updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -889,6 +891,15 @@ export const publicApiRoutes = {
         createQueuedMessageRequestSchema,
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
+    }),
+    updateQueuedMessage: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId",
+      method: "patch",
+      request: jsonRequest<
+        PathThreadAndQueuedMessage,
+        UpdateQueuedMessageRequest
+      >(updateQueuedMessageRequestSchema),
+      response: jsonResponse<ThreadQueuedMessage>(),
     }),
     /**
      * Send a previously queued message in the requested mode, then delete the

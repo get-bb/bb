@@ -983,6 +983,33 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("sends the queued message version when updating its content", async () => {
+    const queue = createFetchQueue([{ body: { id: "qmsg_123" } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.queuedMessages.update({
+      threadId: "thr_123",
+      queuedMessageId: "qmsg_123",
+      expectedUpdatedAt: 42,
+      input: [{ type: "text", text: "Edited", mentions: [] }],
+    });
+
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({
+        expectedUpdatedAt: 42,
+        input: [{ type: "text", text: "Edited", mentions: [] }],
+      }),
+      method: "PATCH",
+      url: "http://bb.test/api/v1/threads/thr_123/queued-messages/qmsg_123",
+    });
+  });
+
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {

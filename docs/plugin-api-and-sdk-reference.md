@@ -695,7 +695,7 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `resolve` | `{ threadId, interactionId, resolution }`       | resolves with a `PendingInteractionResolution`. |
 | `respond` | `{ threadId, interactionId, value: JsonValue }` | submits a JSON response.                        |
 
-#### `threads.queuedMessages` — 6
+#### `threads.queuedMessages` — 7
 
 | Method             | Arguments                                                       | Purpose                              |
 | ------------------ | --------------------------------------------------------------- | ------------------------------------ |
@@ -705,6 +705,7 @@ These are also full-trust administrative APIs when reached through a plugin.
 | `reorder`          | `{ threadId, queuedMessageId, ...ReorderQueuedMessageRequest }` | reorders one.                        |
 | `send`             | `{ threadId, queuedMessageId, ...SendQueuedMessageRequest }`    | sends one immediately.               |
 | `setGroupBoundary` | `{ threadId, ...SetQueuedMessageGroupBoundaryRequest }`         | changes queue grouping.              |
+| `update`           | `{ threadId, queuedMessageId, ...UpdateQueuedMessageRequest }`  | updates a queued message in place.   |
 
 #### `threads.tabs` — 2
 

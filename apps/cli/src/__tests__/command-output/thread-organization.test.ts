@@ -54,6 +54,77 @@ describe("bb thread organization commands", () => {
     });
   });
 
+  it("updates a queued message in place", async () => {
+    const list = vi.fn(async () => [
+      { id: "queued-1", updatedAt: 42 },
+      { id: "queued-2", updatedAt: 43 },
+    ]);
+    const update = vi.fn(async () => ({ id: "queued-1" }));
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "queue",
+        "update",
+        "thread-1",
+        "queued-1",
+        "revised task",
+        "--file",
+        "/tmp/spec.md",
+        "--file",
+        "/tmp/data.json",
+        "--image",
+        "/tmp/mock.png",
+        "--image",
+        "/tmp/detail.png",
+      ],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({ param: { id: "thread-1" } });
+    expect(update).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: {
+        expectedUpdatedAt: 42,
+        input: [
+          { type: "text", text: "revised task", mentions: [] },
+          { type: "localFile", path: "/tmp/spec.md" },
+          { type: "localFile", path: "/tmp/data.json" },
+          { type: "localImage", path: "/tmp/mock.png" },
+          { type: "localImage", path: "/tmp/detail.png" },
+        ],
+      },
+    });
+    expect(list.mock.invocationCallOrder[0]).toBeLessThan(
+      update.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("rejects an update when the queued message is absent", async () => {
+    const list = vi.fn(async () => [{ id: "queued-2", updatedAt: 43 }]);
+    const update = vi.fn();
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await expect(
+      runCommand(
+        ["thread", "queue", "update", "thread-1", "queued-1", "revised"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Queued message queued-1 not found on thread thread-1.",
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("reorders pinned threads with explicit neighbors", async () => {
     const reorder = vi.fn(async () => []);
     stubServerApi({ "v1.threads.:id.pin-order.$patch": reorder });

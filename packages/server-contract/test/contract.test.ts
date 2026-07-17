@@ -30,6 +30,7 @@ import {
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
+  updateQueuedMessageRequestSchema,
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
@@ -754,6 +755,17 @@ describe("server-contract canonical schemas", () => {
       mode: "auto",
     });
     expect(() => sendQueuedMessageRequestSchema.parse({})).toThrow();
+    expect(
+      updateQueuedMessageRequestSchema.parse({
+        expectedUpdatedAt: 42,
+        input: [{ type: "text", text: "Edited queued message" }],
+      }),
+    ).toMatchObject({ expectedUpdatedAt: 42 });
+    expect(() =>
+      updateQueuedMessageRequestSchema.parse({
+        input: [{ type: "text", text: "Edited queued message" }],
+      }),
+    ).toThrow();
     expect(
       reorderQueuedMessageRequestSchema.parse({
         previousQueuedMessageId: null,

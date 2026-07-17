@@ -150,6 +150,7 @@ Queued messages:
 
   bb thread queue list <thread-id>
   bb thread queue create <thread-id> <message>
+  bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>

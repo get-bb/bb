@@ -221,7 +221,7 @@ export function Blockquotes() {
     <StoryCard>
       <StoryRow
         label="mixed: quoted + plain"
-        hint="quoted and plain rows both render as one truncated line"
+        hint="drawer rows stay one line; drag the header up to inspect the workspace treatment"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={mixedMessages} />
@@ -274,7 +274,7 @@ export function Blockquotes() {
       </StoryRow>
       <StoryRow
         label="quote + attachment"
-        hint="attachment count still shows under the quoted block"
+        hint="the attachment icon remains visible beside the quoted preview"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteWithAttachment} />
@@ -412,14 +412,17 @@ export function Overview() {
           />
         </ResponsivePromptStage>
       </StoryRow>
-      <StoryRow label="multiple messages" hint="drag the row icon to reorder">
+      <StoryRow
+        label="multiple messages"
+        hint="hover for the grip and row menu; drag the header up for the workspace"
+      >
         <ResponsivePromptStage>
           <ReorderableQueuedMessagesList />
         </ResponsivePromptStage>
       </StoryRow>
       <StoryRow
         label="overflowing queue"
-        hint="height-capped list shows top/bottom fades while scrolling"
+        hint="nine messages scroll in the drawer and expand into the pull-up workspace"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList
@@ -438,7 +441,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="with attachments"
-        hint="attachment counts shown alongside text"
+        hint="FileAttachment icon; multiple files add a compact numeric count"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList
@@ -543,7 +546,7 @@ export function GroupedSendDivider() {
       </StoryRow>
       <StoryRow
         label="multiple messages"
-        hint="hover the divider and drag it down to group; drag a row's grip to reorder"
+        hint="hover the divider and drag its simple grip to move the grouping boundary"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={groupedMessages} />

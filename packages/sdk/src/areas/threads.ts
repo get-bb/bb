@@ -50,6 +50,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
+  UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -109,6 +110,7 @@ export type ThreadPinOrderResult = ThreadListResponse;
 export type ThreadPromptHistoryResult = PromptHistoryResponse;
 export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
+export type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageDeleteResult = { ok: true };
 export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
@@ -184,6 +186,9 @@ export interface ThreadQueuedMessageArgs {
 export interface ThreadQueuedMessageCreateArgs extends CreateQueuedMessageRequest {
   threadId: string;
 }
+
+export interface ThreadQueuedMessageUpdateArgs
+  extends ThreadQueuedMessageTargetArgs, UpdateQueuedMessageRequest {}
 
 export interface ThreadQueuedMessageTargetArgs {
   queuedMessageId: string;
@@ -370,6 +375,9 @@ export interface ThreadQueuedMessagesArea {
   setGroupBoundary(
     args: ThreadQueuedMessageGroupBoundaryArgs,
   ): Promise<ThreadQueuedMessageGroupBoundaryResult>;
+  update(
+    args: ThreadQueuedMessageUpdateArgs,
+  ): Promise<ThreadQueuedMessageUpdateResult>;
 }
 
 export interface ThreadTabsArea {
@@ -773,6 +781,17 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               input.expectedGroupedPrefixQueuedMessageIds,
             groupBoundaryQueuedMessageId: input.groupBoundaryQueuedMessageId,
           },
+        }),
+      );
+    },
+    async update(input) {
+      const { queuedMessageId, threadId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][
+          ":queuedMessageId"
+        ].$patch({
+          param: { id: threadId, queuedMessageId },
+          json,
         }),
       );
     },

@@ -14,6 +14,7 @@ import type {
   ThreadResponse,
   TimelineConversationAttachments,
   TimelineRow,
+  UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
@@ -82,6 +83,22 @@ interface CreateQueuedMessageRequestWithThreadId extends CreateQueuedMessageRequ
 interface CreateQueuedMessageTransactionArgs {
   queryClient: QueryClient;
   request: CreateQueuedMessageRequestWithThreadId;
+}
+
+interface UpdateQueuedMessageRequestWithThreadId extends UpdateQueuedMessageRequest {
+  id: string;
+  queuedMessageId: string;
+}
+
+interface UpdateQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: UpdateQueuedMessageRequestWithThreadId;
+}
+
+interface RollbackUpdateQueuedMessageTransactionArgs {
+  queryClient: QueryClient;
+  request: UpdateQueuedMessageRequestWithThreadId;
+  transaction: UpdateQueuedMessageTransaction | undefined;
 }
 
 interface RemoveQueuedMessageRequest {
@@ -240,6 +257,11 @@ export interface ReorderQueuedMessageTransaction {
 export interface CreateQueuedMessageTransaction {
   optimisticQueuedMessageId: string;
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
+}
+
+export interface UpdateQueuedMessageTransaction {
+  optimisticUpdatedAt: number | null;
+  previousQueuedMessage: ThreadQueuedMessage | undefined;
 }
 
 export interface RemoveQueuedMessageTransaction {
@@ -867,6 +889,81 @@ export function applyQueuedMessageCreateResult({
     queryClient,
     threadId,
     buildQueuedPromptHistoryEntry(queuedMessage),
+  );
+  invalidateThreadQueueQueries({ queryClient, threadId });
+}
+
+export async function beginUpdateQueuedMessageTransaction({
+  queryClient,
+  request,
+}: UpdateQueuedMessageTransactionArgs): Promise<UpdateQueuedMessageTransaction> {
+  const queryKey = threadQueuedMessagesQueryKey(request.id);
+  await queryClient.cancelQueries({ queryKey });
+  const previousQueuedMessage = queryClient
+    .getQueryData<ThreadQueuedMessageListResponse>(queryKey)
+    ?.find((queuedMessage) => queuedMessage.id === request.queuedMessageId);
+  const optimisticUpdatedAt = previousQueuedMessage
+    ? Math.max(Date.now(), previousQueuedMessage.updatedAt + 1)
+    : null;
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    queryKey,
+    (currentQueuedMessages) =>
+      currentQueuedMessages?.map((queuedMessage) =>
+        queuedMessage.id === request.queuedMessageId
+          ? {
+              ...queuedMessage,
+              content: request.input,
+              updatedAt: optimisticUpdatedAt ?? queuedMessage.updatedAt,
+            }
+          : queuedMessage,
+      ),
+  );
+  return { optimisticUpdatedAt, previousQueuedMessage };
+}
+
+export function rollbackUpdateQueuedMessageTransaction({
+  queryClient,
+  request,
+  transaction,
+}: RollbackUpdateQueuedMessageTransactionArgs): void {
+  const previousQueuedMessage = transaction?.previousQueuedMessage;
+  const optimisticUpdatedAt = transaction?.optimisticUpdatedAt;
+  if (
+    previousQueuedMessage !== undefined &&
+    optimisticUpdatedAt !== null &&
+    optimisticUpdatedAt !== undefined
+  ) {
+    queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+      threadQueuedMessagesQueryKey(request.id),
+      (currentQueuedMessages) =>
+        currentQueuedMessages?.map((queuedMessage) =>
+          queuedMessage.id === request.queuedMessageId &&
+          queuedMessage.updatedAt === optimisticUpdatedAt
+            ? {
+                ...queuedMessage,
+                content: previousQueuedMessage.content,
+                updatedAt: previousQueuedMessage.updatedAt,
+              }
+            : queuedMessage,
+        ),
+    );
+  }
+  invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+}
+
+export function applyQueuedMessageUpdateResult({
+  queryClient,
+  queuedMessage,
+  threadId,
+}: Omit<QueuedMessageSuccessArgs, "transaction">): void {
+  queryClient.setQueryData<ThreadQueuedMessageListResponse>(
+    threadQueuedMessagesQueryKey(threadId),
+    (currentQueuedMessages) =>
+      currentQueuedMessages?.map((currentQueuedMessage) =>
+        currentQueuedMessage.id === queuedMessage.id
+          ? queuedMessage
+          : currentQueuedMessage,
+      ) ?? [queuedMessage],
   );
   invalidateThreadQueueQueries({ queryClient, threadId });
 }

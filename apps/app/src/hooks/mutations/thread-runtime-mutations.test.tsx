@@ -175,12 +175,10 @@ describe("thread runtime mutations", () => {
       });
     });
 
-    expect(
-      sdk.threads.queuedMessages.setGroupBoundary,
-    ).toHaveBeenCalledWith({
-        expectedGroupedPrefixQueuedMessageIds: ["qmsg-1", "qmsg-2"],
-        groupBoundaryQueuedMessageId: "qmsg-2",
-        threadId: "thread-1",
-      });
+    expect(sdk.threads.queuedMessages.setGroupBoundary).toHaveBeenCalledWith({
+      expectedGroupedPrefixQueuedMessageIds: ["qmsg-1", "qmsg-2"],
+      groupBoundaryQueuedMessageId: "qmsg-2",
+      threadId: "thread-1",
+    });
   });
 });

@@ -381,6 +381,18 @@ describe("ThreadRow", () => {
     expect(container.textContent).toBe("Review foo.test.ts.");
   });
 
+  it("uses the circle-question glyph when the thread needs user input", () => {
+    renderThreadRow({
+      thread: createThread({ hasPendingInteraction: true }),
+    });
+
+    expect(
+      screen
+        .getByLabelText("Thread needs user input")
+        .getAttribute("data-icon"),
+    ).toBe("CircleQuestion");
+  });
+
   it("keeps the parent-thread disclosure caret visible on mobile", () => {
     renderThreadRow({
       thread: createThread({ title: "Parent thread" }),

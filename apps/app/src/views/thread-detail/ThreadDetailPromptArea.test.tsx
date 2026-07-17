@@ -6,10 +6,17 @@ import type {
   ThreadTimelineModelFallback,
   ThreadWithRuntime,
 } from "@bb/domain";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
+import { BbHttpError } from "@/lib/sdk";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
@@ -33,8 +40,10 @@ const mocks = vi.hoisted(() => ({
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
+  toastError: vi.fn(),
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
+  updateQueuedMessageMutateAsync: vi.fn(),
   useThreadDefaultExecutionOptions: vi.fn(),
   useThreadCreationOptions: vi.fn(),
   useThreadPromptHistory: vi.fn(),
@@ -51,11 +60,24 @@ vi.mock("react-router-dom", async (importOriginal) => {
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
+    attachments,
     composer,
     execution,
+    executionReadOnly,
+    permission,
+    permissionReadOnly,
     stack,
   }: {
-    composer: { submitMode: { kind: string; reason?: string } } | null;
+    attachments: {
+      items: readonly unknown[];
+      onAttachFiles: (files: File[]) => void | Promise<void>;
+    };
+    composer: {
+      message: string;
+      onChangeMessage: (message: string, mentions: []) => void;
+      onSubmit: () => void;
+      submitMode: { kind: string; reason?: string };
+    } | null;
     execution: {
       footerAction?: {
         label: string;
@@ -64,7 +86,12 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       model: {
         active?: { model: string } | null;
       };
+      reasoning: { value: string };
+      serviceTier?: { value?: string };
     };
+    executionReadOnly?: boolean;
+    permission: { value?: string };
+    permissionReadOnly?: boolean;
     stack: ReactNode;
   }) => (
     <div data-testid="follow-up-prompt-box">
@@ -72,6 +99,42 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
       <div data-testid="selected-model">{execution.model.active?.model}</div>
+      <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
+      <div data-testid="selected-service-tier">
+        {execution.serviceTier?.value}
+      </div>
+      <div data-testid="selected-permission">{permission.value}</div>
+      <div data-testid="execution-read-only">
+        {executionReadOnly ? "true" : "false"}
+      </div>
+      <div data-testid="permission-read-only">
+        {permissionReadOnly ? "true" : "false"}
+      </div>
+      <div data-testid="attachment-count">{attachments.items.length}</div>
+      {composer ? (
+        <>
+          <input
+            aria-label="Composer message"
+            value={composer.message}
+            onChange={(event) =>
+              composer.onChangeMessage(event.currentTarget.value, [])
+            }
+          />
+          <button type="button" onClick={composer.onSubmit}>
+            Submit composer
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void attachments.onAttachFiles([
+                new File(["queued"], "queued.txt", { type: "text/plain" }),
+              ])
+            }
+          >
+            Attach file
+          </button>
+        </>
+      ) : null}
       {execution.footerAction ? (
         <button type="button" onClick={execution.footerAction.onClick}>
           {execution.footerAction.label}
@@ -88,10 +151,40 @@ vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
 
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   QueuedMessagesList: ({
+    inlineEditor,
     queuedMessages,
+    onEdit,
   }: {
+    inlineEditor?: { onDismiss: () => void };
     queuedMessages: readonly ThreadQueuedMessage[];
-  }) => <div data-testid="queued-message-count">{queuedMessages.length}</div>,
+    onEdit: (request: {
+      queuedMessageId: string;
+      queuedMessageIndex: number;
+    }) => void;
+  }) => (
+    <div>
+      <div data-testid="queued-message-count">{queuedMessages.length}</div>
+      {queuedMessages.map((message, index) => (
+        <button
+          key={message.id}
+          type="button"
+          onClick={() =>
+            onEdit({
+              queuedMessageId: message.id,
+              queuedMessageIndex: index,
+            })
+          }
+        >
+          Edit queued message {index + 1}
+        </button>
+      ))}
+      {inlineEditor ? (
+        <button type="button" onClick={inlineEditor.onDismiss}>
+          Cancel queued edit
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
@@ -126,7 +219,7 @@ vi.mock(
 );
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: vi.fn() },
+  appToast: { error: mocks.toastError },
 }));
 
 vi.mock("@/hooks/useCommandSuggestions", () => ({
@@ -224,6 +317,10 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     mutate: mocks.stopThreadMutate,
     variables: null,
   }),
+  useUpdateThreadQueuedMessage: () => ({
+    isPending: false,
+    mutateAsync: mocks.updateQueuedMessageMutateAsync,
+  }),
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
@@ -260,7 +357,9 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   },
 }));
 
-function makeQueuedMessage(): ThreadQueuedMessage {
+function makeQueuedMessage(
+  overrides: Partial<ThreadQueuedMessage> = {},
+): ThreadQueuedMessage {
   return {
     id: "qmsg_1",
     content: [{ type: "text", text: "Already queued", mentions: [] }],
@@ -271,6 +370,7 @@ function makeQueuedMessage(): ThreadQueuedMessage {
     groupWithNext: false,
     createdAt: 1,
     updatedAt: 1,
+    ...overrides,
   };
 }
 
@@ -295,12 +395,12 @@ interface RenderPromptAreaOptions {
   thread?: ThreadWithRuntime;
 }
 
-function renderPromptArea({
+function buildPromptAreaElement({
   modelFallback = null,
   pendingInteractionsInitialLoading = false,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
-  return render(
+  return (
     <ThreadDetailPromptArea
       activeBackgroundCommands={[]}
       activePromptMode={null}
@@ -330,13 +430,29 @@ function renderPromptArea({
       thread={thread}
       workspaceChangedFilesSection={null}
       workspaceStatusPending={false}
-    />,
+    />
   );
+}
+
+function renderPromptArea(options: RenderPromptAreaOptions = {}) {
+  return render(buildPromptAreaElement(options));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
+  mocks.promptDraft.text = "";
   mocks.queuedMessages = [];
+  mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
   mocks.useThreadPromptHistory.mockClear();
@@ -374,6 +490,239 @@ describe("ThreadDetailPromptArea", () => {
       }),
     );
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
+  });
+
+  it("updates an inline-edited queue item without touching the bottom draft", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "readonly",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Keep this bottom draft";
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("Already queued");
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Composer message" }),
+      { target: { value: "Edited queued message" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() => {
+      expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        expectedUpdatedAt: 1,
+        id: "thr_1",
+        input: [{ type: "text", text: "Edited queued message", mentions: [] }],
+        queuedMessageId: "qmsg_1",
+      });
+    });
+    expect(mocks.deleteQueuedMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+    expect(mocks.promptDraft.text).toBe("Keep this bottom draft");
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Composer message",
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Keep this bottom draft");
+    });
+  });
+
+  it("shows the queued execution values as read-only while editing", () => {
+    mocks.defaultExecutionOptions = {
+      model: "bottom-model",
+      permissionMode: "readonly",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.queuedMessages = [
+      makeQueuedMessage({
+        model: "queued-model",
+        permissionMode: "full",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      }),
+    ];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    expect(screen.getByTestId("selected-model").textContent).toBe(
+      "queued-model",
+    );
+    expect(screen.getByTestId("selected-reasoning").textContent).toBe("high");
+    expect(screen.getByTestId("selected-service-tier").textContent).toBe(
+      "fast",
+    );
+    expect(screen.getByTestId("selected-permission").textContent).toBe("full");
+    expect(screen.getByTestId("execution-read-only").textContent).toBe("true");
+    expect(screen.getByTestId("permission-read-only").textContent).toBe("true");
+    expect(
+      screen.queryByRole("button", { name: "Handoff to new thread" }),
+    ).toBeNull();
+  });
+
+  it("dismisses an inline edit when its thread changes or its live row disappears", async () => {
+    mocks.promptDraft.text = "Untouched bottom draft";
+    mocks.queuedMessages = [makeQueuedMessage()];
+    const view = renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    view.rerender(
+      buildPromptAreaElement({ thread: makeThread({ id: "thr_2" }) }),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Composer message",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untouched bottom draft"),
+    );
+
+    view.rerender(buildPromptAreaElement());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    mocks.queuedMessages = [];
+    view.rerender(buildPromptAreaElement());
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Composer message",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untouched bottom draft"),
+    );
+    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not attach a delayed queued upload to a later edit or the bottom draft", async () => {
+    const upload = deferred<{
+      mimeType: string;
+      name: string;
+      path: string;
+      sizeBytes: number;
+      type: "localFile";
+    }>();
+    mocks.uploadPromptAttachmentMutateAsync.mockReturnValueOnce(upload.promise);
+    mocks.queuedMessages = [makeQueuedMessage({ id: "qmsg_1" })];
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    upload.resolve({
+      mimeType: "text/plain",
+      name: "queued.txt",
+      path: "thread-storage/uploads/queued.txt",
+      sizeBytes: 6,
+      type: "localFile",
+    });
+
+    await waitFor(() =>
+      expect(mocks.uploadPromptAttachmentMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.getByTestId("attachment-count").textContent).toBe("0");
+    expect(mocks.promptDraft.addAttachment).not.toHaveBeenCalled();
+  });
+
+  it("keeps a delayed bottom upload owned by the bottom draft", async () => {
+    const upload = deferred<{
+      mimeType: string;
+      name: string;
+      path: string;
+      sizeBytes: number;
+      type: "localFile";
+    }>();
+    const uploaded = {
+      mimeType: "text/plain",
+      name: "queued.txt",
+      path: "thread-storage/uploads/queued.txt",
+      sizeBytes: 6,
+      type: "localFile" as const,
+    };
+    mocks.uploadPromptAttachmentMutateAsync.mockReturnValueOnce(upload.promise);
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    upload.resolve(uploaded);
+
+    await waitFor(() =>
+      expect(mocks.promptDraft.addAttachment).toHaveBeenCalledWith(uploaded),
+    );
+    expect(screen.getByTestId("attachment-count").textContent).toBe("0");
+  });
+
+  it("dismisses a missing queued message but keeps a stale edit recoverable", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
+      new BbHttpError({
+        body: null,
+        code: "invalid_request",
+        status: 409,
+        message: "Queued message changed",
+      }),
+    );
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith("Queued message changed"),
+    );
+    expect(
+      screen.getByRole("button", { name: "Cancel queued edit" }),
+    ).toBeTruthy();
+
+    mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
+      new BbHttpError({
+        body: null,
+        code: "invalid_request",
+        status: 404,
+        message: "Queued message not found",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Cancel queued edit" }),
+      ).toBeNull(),
+    );
   });
 
   it("blocks submit while pending interactions are initially unknown", () => {

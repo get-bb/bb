@@ -19,6 +19,7 @@ import {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  updateQueuedThreadMessage,
 } from "../../src/data/queued-thread-messages.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
@@ -105,6 +106,144 @@ describe("queued thread messages", () => {
     });
 
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(2);
+  });
+
+  it("updates queued message content without changing its identity or position", () => {
+    const { db, thread } = setup();
+    const first = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    const second = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    setQueuedThreadMessageGroupBoundary({
+      db,
+      expectedGroupedPrefixQueuedMessageIds: [first.id, second.id],
+      groupBoundaryQueuedMessageId: second.id,
+      notifier: noopNotifier,
+      threadId: thread.id,
+    });
+    const before = getQueuedThreadMessage(db, first.id);
+
+    const result = updateQueuedThreadMessage(db, noopNotifier, {
+      content: textInput("edited in place"),
+      expectedUpdatedAt: before?.updatedAt ?? -1,
+      id: first.id,
+      threadId: thread.id,
+    });
+
+    expect(result.kind).toBe("updated");
+    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual(
+      [first.id, second.id],
+    );
+    expect(getQueuedThreadMessage(db, first.id)).toMatchObject({
+      content: JSON.stringify(textInput("edited in place")),
+      createdAt: before?.createdAt,
+      groupWithNext: true,
+      id: first.id,
+      model: before?.model,
+      permissionMode: before?.permissionMode,
+      reasoningLevel: before?.reasoningLevel,
+      serviceTier: before?.serviceTier,
+      sortKey: before?.sortKey,
+    });
+  });
+
+  it("rejects a second update based on the same queued message version", () => {
+    const { db, thread } = setup();
+    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: textInput("first edit"),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      }).kind,
+    ).toBe("updated");
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: textInput("stale edit"),
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      }),
+    ).toEqual({ kind: "stale" });
+    expect(getQueuedThreadMessage(db, queuedMessage.id)?.content).toBe(
+      JSON.stringify(textInput("first edit")),
+    );
+  });
+
+  it("advances updatedAt when an update occurs within the same millisecond", () => {
+    const fixedNow = Date.now();
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(fixedNow);
+    try {
+      const { db, thread } = setup();
+      const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: thread.id,
+        content: defaultInput,
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        content: altInput,
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({
+        kind: "updated",
+        queuedMessage: { updatedAt: fixedNow + 1 },
+      });
+    } finally {
+      dateNow.mockRestore();
+    }
+  });
+
+  it("does not update a queued message that is already claimed for sending", () => {
+    const { db, thread } = setup();
+    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
+
+    expect(
+      updateQueuedThreadMessage(db, noopNotifier, {
+        content: altInput,
+        expectedUpdatedAt: queuedMessage.updatedAt,
+        id: queuedMessage.id,
+        threadId: thread.id,
+      }),
+    ).toEqual({ kind: "claimed" });
+    expect(getQueuedThreadMessage(db, queuedMessage.id)?.content).toBe(
+      JSON.stringify(defaultInput),
+    );
   });
 
   it("deletes a queued message", () => {

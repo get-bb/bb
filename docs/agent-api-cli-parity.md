@@ -35,6 +35,12 @@ Queued-message SDK methods are:
 ```ts
 await bb.threads.queuedMessages.list({ threadId });
 await bb.threads.queuedMessages.create({ threadId, input, model });
+await bb.threads.queuedMessages.update({
+  threadId,
+  queuedMessageId,
+  expectedUpdatedAt,
+  input,
+});
 await bb.threads.queuedMessages.send({
   threadId,
   queuedMessageId,
@@ -60,6 +66,7 @@ Equivalent CLI commands:
 ```text
 bb thread queue list <thread-id>
 bb thread queue create <thread-id> <message> [--model <model>]
+bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
 bb thread queue send <thread-id> <message-id> [--mode auto|steer]
 bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>] [--group-boundary <id>]
 bb thread queue group <thread-id> <boundary-message-id> --prefix <comma-separated-ids>

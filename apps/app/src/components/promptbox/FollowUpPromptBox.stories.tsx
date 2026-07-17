@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Environment,
   PermissionMode,
@@ -32,7 +32,11 @@ import {
 } from "@/components/promptbox/PromptBoxInternal";
 import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  type QueuedMessageEditRequest,
+  type QueuedMessageInlineEditor,
+} from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import {
   formatWorkspaceCheckoutDisplay,
@@ -55,6 +59,8 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { promptDraftToInput, type PromptDraftState } from "@/lib/prompt-draft";
+import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -501,16 +507,10 @@ const environmentGoneContextBannerElement: ReactNode = (
   />
 );
 
-const queuedMessages: readonly ThreadQueuedMessage[] = [
-  {
-    id: "q_1",
-    content: [
-      {
-        type: "text",
-        text: "Also check the timeline error overlay.",
-        mentions: [],
-      },
-    ],
+function makeStoryQueuedMessage(id: string, text: string): ThreadQueuedMessage {
+  return {
+    id,
+    content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",
     permissionMode: "workspace-write",
@@ -518,40 +518,25 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
     groupWithNext: false,
     createdAt: 0,
     updatedAt: 0,
-  },
-  {
-    id: "q_2",
-    content: [
-      {
-        type: "text",
-        text: "And confirm the new env summary renders without the branch button on unmanaged environments.",
-        mentions: [],
-      },
-    ],
-    model: "gpt-5.5",
-    reasoningLevel: "medium",
-    permissionMode: "workspace-write",
-    serviceTier: "default",
-    groupWithNext: false,
-    createdAt: 0,
-    updatedAt: 0,
-  },
-];
+  };
+}
 
-const queuedMessagesElement: ReactNode = (
-  <QueuedMessagesList
-    queuedMessages={queuedMessages}
-    sendDisabled={false}
-    actionDisabled={false}
-    processingMessageId={null}
-    processingAction={null}
-    onSendImmediately={noop}
-    onReorder={noop}
-    onSetGroupBoundary={noop}
-    onEdit={noop}
-    onDelete={noop}
-  />
-);
+const queuedMessages: readonly ThreadQueuedMessage[] = [
+  makeStoryQueuedMessage("q_1", "Also check the timeline error overlay."),
+  makeStoryQueuedMessage(
+    "q_2",
+    "Confirm the environment summary renders without the branch button on unmanaged environments.",
+  ),
+  makeStoryQueuedMessage(
+    "q_3",
+    "Edit this queued prompt in the expanded workspace and keep the same real composer.",
+  ),
+  makeStoryQueuedMessage("q_4", "Compare the queue in light and dark themes."),
+  makeStoryQueuedMessage("q_5", "Verify keyboard reordering from each grip."),
+  makeStoryQueuedMessage("q_6", "Run the prompt-box typecheck."),
+  makeStoryQueuedMessage("q_7", "Review the drawer at a narrow width."),
+  makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
+];
 
 // ---------------------------------------------------------------------------
 // Per-row component
@@ -569,6 +554,7 @@ interface RowConfig {
   environmentSummary?: ReactNode | null;
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
+  queuedMessages?: readonly ThreadQueuedMessage[];
   zenModeResetKey?: string;
   hideComposer?: boolean;
   /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
@@ -619,6 +605,7 @@ function Row({
   environmentSummary = localEnvironmentSummary,
   contextWindowUsage = null,
   stack = null,
+  queuedMessages: initialQueuedMessages,
   zenModeResetKey = "thr_demo",
   hideComposer = false,
   execution = baseExecution,
@@ -629,13 +616,120 @@ function Row({
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] =
     useState<PromptTextMention[]>(initialMentions);
+  const [storyQueuedMessages, setStoryQueuedMessages] = useState(
+    initialQueuedMessages ?? [],
+  );
+  const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] = useState<{
+    draft: PromptDraftState;
+    queuedMessageId: string;
+    queuedMessageIndex: number;
+  } | null>(null);
+  const [composerTarget, setComposerTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
   const handleChangeMessage = (
     nextMessage: string,
     nextMentions: PromptTextMention[],
   ) => {
+    if (inlineEditingQueuedMessage) {
+      setInlineEditingQueuedMessage((current) =>
+        current
+          ? {
+              ...current,
+              draft: {
+                ...current.draft,
+                mentions: nextMentions,
+                text: nextMessage,
+              },
+            }
+          : current,
+      );
+      return;
+    }
     setMessage(nextMessage);
     setMentionRanges(nextMentions);
   };
+  const dismissInlineEditor = useCallback(() => {
+    setComposerTarget(null);
+    setInlineEditingQueuedMessage(null);
+  }, []);
+  const handleEditQueuedMessage = useCallback(
+    ({ queuedMessageId, queuedMessageIndex }: QueuedMessageEditRequest) => {
+      const queuedMessage = storyQueuedMessages.find(
+        (candidate) => candidate.id === queuedMessageId,
+      );
+      if (!queuedMessage) return;
+      setInlineEditingQueuedMessage({
+        draft: queuedInputToDraft(queuedMessage.content),
+        queuedMessageId,
+        queuedMessageIndex,
+      });
+    },
+    [storyQueuedMessages],
+  );
+  const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(
+    () =>
+      inlineEditingQueuedMessage
+        ? {
+            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+            queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
+            ready: true,
+            onComposerTargetChange: setComposerTarget,
+            onDismiss: dismissInlineEditor,
+          }
+        : undefined,
+    [dismissInlineEditor, inlineEditingQueuedMessage],
+  );
+  const activeDraft = inlineEditingQueuedMessage?.draft ?? {
+    text: message,
+    mentions: mentionRanges,
+    attachments: [],
+  };
+  const handleSubmit = useCallback(() => {
+    if (!inlineEditingQueuedMessage) return;
+    const input = promptDraftToInput(inlineEditingQueuedMessage.draft);
+    if (input.length === 0) return;
+    setStoryQueuedMessages((current) =>
+      current.map((queuedMessage) =>
+        queuedMessage.id === inlineEditingQueuedMessage.queuedMessageId
+          ? { ...queuedMessage, content: input, updatedAt: Date.now() }
+          : queuedMessage,
+      ),
+    );
+    dismissInlineEditor();
+  }, [dismissInlineEditor, inlineEditingQueuedMessage]);
+  const queueElement =
+    initialQueuedMessages === undefined ? null : (
+      <QueuedMessagesList
+        queuedMessages={storyQueuedMessages}
+        inlineEditor={inlineEditor}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={(id) =>
+          setStoryQueuedMessages((current) =>
+            current.filter((message) => message.id !== id),
+          )
+        }
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={handleEditQueuedMessage}
+        onDelete={(id) =>
+          setStoryQueuedMessages((current) =>
+            current.filter((message) => message.id !== id),
+          )
+        }
+      />
+    );
+  const resolvedStack = queueElement ? (
+    <>
+      {stack}
+      {queueElement}
+    </>
+  ) : (
+    stack
+  );
   const resolvedPlaceholder =
     promptPlaceholder ??
     getFollowUpPromptPlaceholder(threadRuntimeDisplayStatus);
@@ -646,33 +740,34 @@ function Row({
     <PromptStage>
       <FollowUpPromptBox
         attachments={attachmentsBase}
-        stack={stack}
+        stack={resolvedStack}
         composer={
           hideComposer
             ? null
             : {
                 history: {
-                  currentDraft: {
-                    text: message,
-                    mentions: mentionRanges,
-                    attachments: [],
-                  },
-                  entries: historyEntries,
+                  currentDraft: activeDraft,
+                  entries: inlineEditingQueuedMessage ? [] : historyEntries,
                   onSelectEntry: noop,
                 },
                 isFollowUpSubmitting,
-                message,
-                mentionRanges,
+                message: activeDraft.text,
+                mentionRanges: activeDraft.mentions,
                 onChangeMessage: handleChangeMessage,
-                onModifierSubmit: noop,
-                onSubmit: noop,
+                onModifierSubmit: handleSubmit,
+                onSubmit: handleSubmit,
                 compactPromptPlaceholder: resolvedCompactPlaceholder,
                 promptPlaceholder: resolvedPlaceholder,
-                canModifierSubmit: submitMode.kind === "queue",
-                submitMode,
+                canModifierSubmit: inlineEditingQueuedMessage
+                  ? true
+                  : submitMode.kind === "queue",
+                submitMode: inlineEditingQueuedMessage
+                  ? { kind: "ready" }
+                  : submitMode,
                 threadRuntimeDisplayStatus,
               }
         }
+        composerTarget={composerTarget}
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
         execution={execution}
@@ -694,12 +789,8 @@ function StackedCardsWithPillsRow() {
       threadRuntimeDisplayStatus="active"
       initialMessage={stackedCardsWithPillsMessage}
       initialMentions={stackedCardsWithPillsMentions}
-      stack={
-        <>
-          {contextBannerElement}
-          {queuedMessagesElement}
-        </>
-      }
+      stack={contextBannerElement}
+      queuedMessages={queuedMessages}
       contextWindowUsage={usage}
     />
   );
@@ -815,12 +906,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="with queued messages"
-        hint="queued cards stack above the prompt input"
+        hint="drag the queue header up; Edit moves this real composer inline"
       >
         <Row
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
-          stack={queuedMessagesElement}
+          queuedMessages={queuedMessages}
           contextWindowUsage={usage}
         />
       </StoryRow>
@@ -870,12 +961,8 @@ export function Overview() {
         <Row
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
-          stack={
-            <>
-              {contextBannerElement}
-              {queuedMessagesElement}
-            </>
-          }
+          stack={contextBannerElement}
+          queuedMessages={queuedMessages}
           contextWindowUsage={usage}
         />
       </StoryRow>
@@ -926,6 +1013,24 @@ export function StackedCardsWithPills() {
         hint="banner + queued messages above a composer seeded with mention pills"
       >
         <StackedCardsWithPillsRow />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function QueuedWorkspace() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="eight queued follow-ups"
+        hint="drag the header up, reorder by the grip, then choose Edit from a row menu"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessages}
+          contextWindowUsage={usage}
+        />
       </StoryRow>
     </StoryCard>
   );
