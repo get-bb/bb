@@ -533,6 +533,18 @@ thread the sandbox blocks loopback network, so `bb` CLI calls (including
 plugin commands) fail there; agent flows that need the CLI want
 workspace-write.
 
+**Multi-machine rule: `run` executes on the server, so a path argument names
+a file on the INVOKING machine, not on `run`'s filesystem.** Never open a
+`ctx.cwd`-relative or user-supplied path with `node:fs` — on an enrolled
+remote machine that silently reads or writes the wrong host's disk. Instead
+resolve the invoking host (`ctx.threadId` → `bb.sdk.threads.get` →
+`environmentId` → `bb.sdk.environments.get(...).hostId`, with an explicit
+`--machine`-style flag as the no-thread escape hatch; `undefined` targets the
+server's own host) and do all such file I/O through `bb.sdk.files` with that
+`hostId`. Reference implementations: the docs plugin's pull/push sync and the
+tasks plugin's attachment commands. `node:fs` remains correct for genuinely
+server-local data such as files under the plugin's own data directory.
+
 ### bb.ui.requestInput — replace the composer with a blocking plugin form
 
 Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },

@@ -112,7 +112,9 @@ and the `bb tasks` command. Common agent operations are:
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
 Delegated threads are attached automatically; use `bb tasks attach` only when
-work started outside Tasks.
+work started outside Tasks. File paths in tasks commands resolve on the
+invoking machine (the thread's machine inside an agent thread, otherwise the
+server's); pass `--machine <id-or-name>` to target another enrolled machine.
 
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
