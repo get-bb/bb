@@ -15,6 +15,13 @@ This release brings split views to everyone and redesigns queued messages in the
 - Sidebar sections are unified and drag-reorderable, with drag-to-pin; archived threads moved into Settings.
 - Usage limits now show which account email each provider is signed in with, and Cursor usage limits are now supported.
 
+### Experiments
+
+- New Tasks plugin: Linear-style task tracking with agent dispatch — assign agents to tasks, follow their progress in comments, and attach files and GitHub PRs.
+- Official plugins are now bundled with the app and update alongside it.
+- New Workflows plugin renders live multi-agent workflow runs in chat, across providers.
+- Docs gained table editing, easier file management, and a pull/push-based CLI.
+
 ### Fixes and polish
 
 - Fixed Claude model fallbacks not being surfaced immediately.
@@ -24,13 +31,6 @@ This release brings split views to everyone and redesigns queued messages in the
 - Fixed a performance issue with animations.
 - Improved bb Connect reliability.
 - Worktree setup now runs with your resolved shell PATH.
-
-### Experiments
-
-- New Tasks plugin: Linear-style task tracking with agent dispatch — assign agents to tasks, follow their progress in comments, and attach files and GitHub PRs.
-- Official plugins are now bundled with the app and update alongside it.
-- New Workflows plugin renders live multi-agent workflow runs in chat, across providers.
-- Docs gained table editing, easier file management, and a pull/push-based CLI.
 
 ## 0.0.30
 
