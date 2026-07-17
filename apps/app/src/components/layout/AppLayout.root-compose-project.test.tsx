@@ -91,7 +91,7 @@ vi.mock("@/hooks/useQuickCreateProject", () => ({
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
     data: {
-      folders: [],
+      sections: [],
       personalProject: {
         id: "proj_personal",
         kind: "personal",

@@ -1,17 +1,17 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
-  buildFolderThreadList,
+  buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
 } from "./projectThreadGroups";
 import {
-  collectFolderThreadDndLookup,
+  collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,
-  resolveFolderThreadDropDecision,
-  resolveFolderThreadDropTarget,
-  resolveFolderThreadSectionOverId,
-  resolveProjectedFolderThreadDropTarget,
-} from "./useFolderThreadDnd";
+  resolveSectionThreadDropDecision,
+  resolveSectionThreadDropTarget,
+  resolveSectionThreadSectionOverId,
+  resolveProjectedSectionThreadDropTarget,
+} from "./useSectionThreadDnd";
 
 function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   return {
@@ -21,7 +21,7 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -58,16 +58,16 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
 }
 
 function createLookup() {
-  return collectFolderThreadDndLookup(
-    buildFolderThreadList(
+  return collectSectionThreadDndLookup(
+    buildSectionThreadList(
       [
-        createThread({ id: "in-a", folderId: "a" }),
+        createThread({ id: "in-a", sectionId: "a" }),
         createThread({ id: "loose", createdAt: 2 }),
       ],
       undefined,
       [
-        { id: "a", name: "Folder A" },
-        { id: "b", name: "Empty Folder B" },
+        { id: "a", name: "Section A" },
+        { id: "b", name: "Empty Section B" },
       ],
     ),
     CHRONOLOGICAL_CONTAINER_ID,
@@ -77,23 +77,23 @@ function createLookup() {
 function createLookupWithPinnedThread(
   overrides: Partial<ThreadListEntry> = {},
 ) {
-  return collectFolderThreadDndLookup(
-    buildFolderThreadList(
+  return collectSectionThreadDndLookup(
+    buildSectionThreadList(
       [
-        createThread({ id: "in-a", folderId: "a" }),
+        createThread({ id: "in-a", sectionId: "a" }),
         createThread({ id: "loose", createdAt: 2 }),
       ],
       undefined,
       [
-        { id: "a", name: "Folder A" },
-        { id: "b", name: "Empty Folder B" },
+        { id: "a", name: "Section A" },
+        { id: "b", name: "Empty Section B" },
       ],
     ),
     CHRONOLOGICAL_CONTAINER_ID,
     [
       createThread({
         id: "pinned-1",
-        folderId: "a",
+        sectionId: "a",
         pinnedAt: 10,
         ...overrides,
       }),
@@ -102,98 +102,100 @@ function createLookupWithPinnedThread(
   );
 }
 
-describe("folder thread drop targets", () => {
-  it("moves a loose thread onto an empty folder header", () => {
+describe("section thread drop targets", () => {
+  it("moves a loose thread onto an empty section header", () => {
     const lookup = createLookup();
-    const folderBKey = lookup.folderParentKeyBySectionId.get("folder:b");
+    const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
 
-    expect(folderBKey).toBeDefined();
+    expect(sectionBKey).toBeDefined();
     expect(
-      resolveFolderThreadDropTarget(lookup, "loose", folderBKey ?? null),
+      resolveSectionThreadDropTarget(lookup, "loose", sectionBKey ?? null),
     ).toEqual({
       activeId: "loose",
       fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
-      toParentKey: folderBKey,
+      toParentKey: sectionBKey,
     });
   });
 
-  it("accepts an empty folder section itself as a target", () => {
+  it("accepts an empty section section itself as a target", () => {
     const lookup = createLookup();
-    const folderBKey = lookup.folderParentKeyBySectionId.get("folder:b");
+    const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
 
-    expect(resolveFolderThreadDropTarget(lookup, "loose", "folder:b")).toEqual({
+    expect(
+      resolveSectionThreadDropTarget(lookup, "loose", "section:b"),
+    ).toEqual({
       activeId: "loose",
       fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
-      toParentKey: folderBKey,
+      toParentKey: sectionBKey,
     });
   });
 
-  it("moves a folder thread back to the loose Threads section", () => {
+  it("moves a section thread back to the loose Threads section", () => {
     const lookup = createLookup();
-    const folderAKey = lookup.folderParentKeyBySectionId.get("folder:a");
+    const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
-    expect(resolveFolderThreadDropTarget(lookup, "in-a", "threads")).toEqual({
+    expect(resolveSectionThreadDropTarget(lookup, "in-a", "threads")).toEqual({
       activeId: "in-a",
-      fromParentKey: folderAKey,
+      fromParentKey: sectionAKey,
       toParentKey: CHRONOLOGICAL_CONTAINER_ID,
     });
   });
 
   it("preserves a projected destination through self-collision", () => {
     const lookup = createLookup();
-    const folderBKey = lookup.folderParentKeyBySectionId.get("folder:b");
+    const sectionBKey = lookup.sectionParentKeyBySectionId.get("section:b");
 
-    expect(folderBKey).toBeDefined();
+    expect(sectionBKey).toBeDefined();
     expect(
-      resolveProjectedFolderThreadDropTarget(
+      resolveProjectedSectionThreadDropTarget(
         lookup,
         "loose",
-        folderBKey ?? null,
+        sectionBKey ?? null,
       ),
     ).toEqual({
       activeId: "loose",
       fromParentKey: CHRONOLOGICAL_CONTAINER_ID,
-      toParentKey: folderBKey,
+      toParentKey: sectionBKey,
     });
   });
 
   it("rejects same-parent and non-thread moves", () => {
     const lookup = createLookup();
-    const folderAKey = lookup.folderParentKeyBySectionId.get("folder:a");
+    const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
     expect(
-      resolveFolderThreadDropTarget(lookup, "in-a", folderAKey ?? null),
+      resolveSectionThreadDropTarget(lookup, "in-a", sectionAKey ?? null),
     ).toBeNull();
     expect(
-      resolveFolderThreadDropTarget(
+      resolveSectionThreadDropTarget(
         lookup,
-        folderAKey ?? "folder:a",
+        sectionAKey ?? "section:a",
         "threads",
       ),
     ).toBeNull();
   });
 });
 
-describe("folder thread section drop targets", () => {
-  it("resolves a folder section", () => {
+describe("section thread section drop targets", () => {
+  it("resolves a section section", () => {
     const lookup = createLookup();
-    const folderAKey = lookup.folderParentKeyBySectionId.get("folder:a");
+    const sectionAKey = lookup.sectionParentKeyBySectionId.get("section:a");
 
-    expect(folderAKey).toBeDefined();
+    expect(sectionAKey).toBeDefined();
     expect(
-      resolveFolderThreadSectionOverId(lookup, folderAKey ?? "folder:a"),
-    ).toBe("folder:a");
+      resolveSectionThreadSectionOverId(lookup, sectionAKey ?? "section:a"),
+    ).toBe("section:a");
   });
 
-  it("resolves a thread inside a folder", () => {
-    expect(resolveFolderThreadSectionOverId(createLookup(), "in-a")).toBe(
-      "folder:a",
+  it("resolves a thread inside a section", () => {
+    expect(resolveSectionThreadSectionOverId(createLookup(), "in-a")).toBe(
+      "section:a",
     );
   });
 
   it("resolves the chronological container to the Threads section", () => {
     expect(
-      resolveFolderThreadSectionOverId(
+      resolveSectionThreadSectionOverId(
         createLookup(),
         CHRONOLOGICAL_CONTAINER_ID,
       ),
@@ -201,16 +203,16 @@ describe("folder thread section drop targets", () => {
   });
 
   it("preserves another top-level section id", () => {
-    expect(resolveFolderThreadSectionOverId(createLookup(), "pinned")).toBe(
+    expect(resolveSectionThreadSectionOverId(createLookup(), "pinned")).toBe(
       "pinned",
     );
   });
 });
 
-describe("folder thread pin drop decisions", () => {
+describe("section thread pin drop decisions", () => {
   it("pins an unpinned thread dropped on the Pinned container", () => {
     expect(
-      resolveFolderThreadDropDecision(
+      resolveSectionThreadDropDecision(
         createLookupWithPinnedThread(),
         "loose",
         "pinned",
@@ -220,7 +222,7 @@ describe("folder thread pin drop decisions", () => {
 
   it("preserves a projected Pinned destination through self-collision", () => {
     expect(
-      resolveFolderThreadDropDecision(
+      resolveSectionThreadDropDecision(
         createLookupWithPinnedThread(),
         "loose",
         "loose",
@@ -231,7 +233,7 @@ describe("folder thread pin drop decisions", () => {
 
   it("unpins a pinned thread into Threads and clears its section", () => {
     expect(
-      resolveFolderThreadDropDecision(
+      resolveSectionThreadDropDecision(
         createLookupWithPinnedThread(),
         "pinned-1",
         "threads",
@@ -239,29 +241,29 @@ describe("folder thread pin drop decisions", () => {
     ).toEqual({
       kind: "unpin",
       activeId: "pinned-1",
-      folderId: null,
+      sectionId: null,
       move: true,
     });
   });
 
   it("unpins a pinned thread into a section without a redundant move", () => {
     expect(
-      resolveFolderThreadDropDecision(
+      resolveSectionThreadDropDecision(
         createLookupWithPinnedThread(),
         "pinned-1",
-        "folder:a",
+        "section:a",
       ),
     ).toEqual({
       kind: "unpin",
       activeId: "pinned-1",
-      folderId: "a",
+      sectionId: "a",
       move: false,
     });
   });
 
   it("keeps reorder-within-Pinned as a pinned reorder", () => {
     expect(
-      resolveFolderThreadDropDecision(
+      resolveSectionThreadDropDecision(
         createLookupWithPinnedThread(),
         "pinned-1",
         "pinned-2",

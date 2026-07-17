@@ -13,16 +13,16 @@ describe("bb thread organization commands", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
-  it("creates a named thread folder", async () => {
+  it("creates a named thread section", async () => {
     const create = vi.fn(async () => ({
-      id: "folder-review",
+      id: "section-review",
       name: "Review",
       createdAt: 1,
       updatedAt: 1,
     }));
-    stubServerApi({ "v1.thread-folders.$post": create });
+    stubServerApi({ "v1.thread-sections.$post": create });
 
-    await runCommand(["thread", "folder", "create", "Review"], register);
+    await runCommand(["thread", "section", "create", "Review"], register);
 
     expect(create).toHaveBeenCalledWith({ json: { name: "Review" } });
   });

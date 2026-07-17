@@ -81,18 +81,18 @@ export function Overview() {
         </Stage>
       </StoryRow>
       <StoryRow
-        label="organized by folder"
-        hint="title + folder (when Organize by = Folders) instead of project"
+        label="organized by section"
+        hint="title + section (when Organize by = Sections) instead of project"
       >
         <Stage>
           <ThreadSearchResultRow
-            id="row-folder"
+            id="row-section"
             isActive={false}
             matches={[]}
             onActive={noop}
             onSelect={noop}
             projectName="bb"
-            folderLabel="Infra › CI"
+            sectionLabel="Infra › CI"
             thread={recentThread}
           />
         </Stage>

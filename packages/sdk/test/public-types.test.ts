@@ -24,7 +24,7 @@ import type {
   TerminalListResult as RootTerminalListResult,
   ThemeCatalogResult as RootThemeCatalog,
   ThemeSetInput as RootThemeSetInput,
-  ThreadFolderListResult as RootThreadFolderList,
+  ThreadSectionListResult as RootThreadSectionList,
   ThreadSpawnResult as RootThreadSpawn,
 } from "@bb/sdk";
 import type {
@@ -51,7 +51,7 @@ import type {
   TerminalListResult as BrowserTerminalListResult,
   ThemeCatalogResult as BrowserThemeCatalog,
   ThemeSetInput as BrowserThemeSetInput,
-  ThreadFolderListResult as BrowserThreadFolderList,
+  ThreadSectionListResult as BrowserThreadSectionList,
   ThreadSpawnResult as BrowserThreadSpawn,
 } from "@bb/sdk/browser";
 import type {
@@ -78,7 +78,7 @@ import type {
   TerminalListResult as CoreTerminalListResult,
   ThemeCatalogResult as CoreThemeCatalog,
   ThemeSetInput as CoreThemeSetInput,
-  ThreadFolderListResult as CoreThreadFolderList,
+  ThreadSectionListResult as CoreThreadSectionList,
   ThreadSpawnResult as CoreThreadSpawn,
 } from "@bb/sdk/core";
 import type {
@@ -105,7 +105,7 @@ import type {
   TerminalListResult as NodeTerminalListResult,
   ThemeCatalogResult as NodeThemeCatalog,
   ThemeSetInput as NodeThemeSetInput,
-  ThreadFolderListResult as NodeThreadFolderList,
+  ThreadSectionListResult as NodeThreadSectionList,
   ThreadSpawnResult as NodeThreadSpawn,
 } from "@bb/sdk/node";
 
@@ -132,7 +132,7 @@ interface RootSurface {
   terminalList: RootTerminalListResult;
   themeCatalog: RootThemeCatalog;
   themeSetInput: RootThemeSetInput;
-  threadFolderList: RootThreadFolderList;
+  threadSectionList: RootThreadSectionList;
   threadSpawn: RootThreadSpawn;
 }
 
@@ -159,7 +159,7 @@ interface BrowserSurface {
   terminalList: BrowserTerminalListResult;
   themeCatalog: BrowserThemeCatalog;
   themeSetInput: BrowserThemeSetInput;
-  threadFolderList: BrowserThreadFolderList;
+  threadSectionList: BrowserThreadSectionList;
   threadSpawn: BrowserThreadSpawn;
 }
 
@@ -186,7 +186,7 @@ interface CoreSurface {
   terminalList: CoreTerminalListResult;
   themeCatalog: CoreThemeCatalog;
   themeSetInput: CoreThemeSetInput;
-  threadFolderList: CoreThreadFolderList;
+  threadSectionList: CoreThreadSectionList;
   threadSpawn: CoreThreadSpawn;
 }
 
@@ -213,7 +213,7 @@ interface NodeSurface {
   terminalList: NodeTerminalListResult;
   themeCatalog: NodeThemeCatalog;
   themeSetInput: NodeThemeSetInput;
-  threadFolderList: NodeThreadFolderList;
+  threadSectionList: NodeThreadSectionList;
   threadSpawn: NodeThreadSpawn;
 }
 
@@ -230,7 +230,7 @@ type ExpectedBbSdkKey =
   | "system"
   | "terminals"
   | "theme"
-  | "threadFolders"
+  | "threadSections"
   | "threads";
 
 type ExpectedRealtimeKey = "subscribe";
@@ -335,7 +335,7 @@ type ExpectedSystemKey =
 
 type ExpectedThemeKey = "catalog" | "get" | "set";
 
-type ExpectedThreadFoldersKey = "create" | "delete" | "list" | "update";
+type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
   | "archive"
@@ -493,8 +493,8 @@ describe("SDK public type entrypoints", () => {
     >().toEqualTypeOf<ExpectedTerminalsKey>();
     expectTypeOf<keyof RootBbSdk["theme"]>().toEqualTypeOf<ExpectedThemeKey>();
     expectTypeOf<
-      keyof RootBbSdk["threadFolders"]
-    >().toEqualTypeOf<ExpectedThreadFoldersKey>();
+      keyof RootBbSdk["threadSections"]
+    >().toEqualTypeOf<ExpectedThreadSectionsKey>();
     expectTypeOf<
       keyof RootBbSdk["threads"]
     >().toEqualTypeOf<ExpectedThreadsKey>();

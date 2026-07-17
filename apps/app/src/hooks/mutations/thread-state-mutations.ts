@@ -43,7 +43,7 @@ type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
 type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
   ReorderPinnedThreadRequest;
 type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
-  folderId: string | null;
+  sectionId: string | null;
 };
 
 interface UpdateThreadMutationOptions {
@@ -82,16 +82,16 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       api.updateThread(id, request),
     onMutate: ({
-      folderId,
+      sectionId,
       id,
       title,
     }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
-      if (title === undefined && folderId === undefined) {
+      if (title === undefined && sectionId === undefined) {
         return undefined;
       }
 
       return beginThreadMetadataTransaction({
-        folderId,
+        sectionId,
         queryClient,
         threadId: id,
         title,
@@ -184,13 +184,13 @@ export function useUnpinAndMoveThread() {
     meta: {
       errorMessage: "Failed to unpin and move thread.",
     },
-    mutationFn: async ({ folderId, id }) => {
+    mutationFn: async ({ sectionId, id }) => {
       await api.unpinThread(id);
-      return api.updateThread(id, { folderId });
+      return api.updateThread(id, { sectionId });
     },
-    onMutate: async ({ folderId, id }) =>
+    onMutate: async ({ sectionId, id }) =>
       beginUnpinAndMoveThreadTransaction({
-        folderId,
+        sectionId,
         queryClient,
         threadId: id,
       }),

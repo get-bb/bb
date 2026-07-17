@@ -19,6 +19,7 @@ This release introduces multi-machine workflows and bb Connect, adds more ways t
 - Customize, disable, or reset keyboard shortcuts from Settings → Keyboard.
 - Shortcut hints appear contextually and can be delayed or hidden entirely.
 - Sidebar organization and sorting now live in one streamlined display menu, including a new By machine view when multi-machine mode is enabled.
+- Thread groups are now called Sections consistently across the app, CLI, and SDK; existing group assignments and sidebar preferences migrate automatically.
 - Provider settings can disable native Codex or Claude Code subagents, along with Claude Code's Workflow tool.
 
 ### Clearer agent activity
@@ -73,7 +74,7 @@ This release expands agent and model support, introduces a redesigned Settings e
 
 ### Fixes and polish
 
-- Fixed the app becoming unresponsive after creating, renaming, or removing a folder from a sidebar menu.
+- Fixed the app becoming unresponsive after creating, renaming, or removing a section from a sidebar menu.
 - Fixed manually marked unread threads remaining unread after reopening.
 - Fixed sidebar alignment in macOS fullscreen mode.
 - Fixed clipped focus rings in the composer toolbar.

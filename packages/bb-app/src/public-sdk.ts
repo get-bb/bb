@@ -74,7 +74,7 @@ export class BBSdk implements BbSdk {
   readonly system: BbSdk["system"];
   readonly terminals: BbSdk["terminals"];
   readonly theme: BbSdk["theme"];
-  readonly threadFolders: BbSdk["threadFolders"];
+  readonly threadSections: BbSdk["threadSections"];
   readonly threads: BbSdk["threads"];
   readonly subscribe: BbSdk["subscribe"];
 
@@ -91,7 +91,7 @@ export class BBSdk implements BbSdk {
     this.system = sdk.system;
     this.terminals = sdk.terminals;
     this.theme = sdk.theme;
-    this.threadFolders = sdk.threadFolders;
+    this.threadSections = sdk.threadSections;
     this.threads = sdk.threads;
     this.subscribe = sdk.subscribe;
   }

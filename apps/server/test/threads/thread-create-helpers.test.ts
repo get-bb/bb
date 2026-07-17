@@ -3,8 +3,8 @@ import {
   createConnection,
   createEnvironment,
   createProject,
-  createThreadFolder,
-  deleteThreadFolder,
+  createThreadSection,
+  deleteThreadSection,
   migrate,
   noopNotifier,
   upsertHost,
@@ -84,7 +84,7 @@ describe("baseBranchSpecToStoredName", () => {
 });
 
 describe("createThreadRecord", () => {
-  it("returns folder_not_found when the folder is stale by create time", () => {
+  it("returns section_not_found when the section is stale by create time", () => {
     const db = createConnection(":memory:");
     try {
       migrate(db);
@@ -97,25 +97,25 @@ describe("createThreadRecord", () => {
         name: "Test Project",
         source: {
           hostId: host.id,
-          path: "/tmp/stale-folder-create-project",
+          path: "/tmp/stale-section-create-project",
           type: "local_path",
         },
       });
       const environment = createEnvironment(db, noopNotifier, {
         hostId: host.id,
-        path: "/tmp/stale-folder-create-project",
+        path: "/tmp/stale-section-create-project",
         projectId: project.id,
         status: "ready",
         workspaceProvisionType: "managed-worktree",
       });
-      const folderResult = createThreadFolder(db, noopNotifier, {
+      const sectionResult = createThreadSection(db, noopNotifier, {
         name: "Race",
       });
-      if (folderResult.status !== "created") {
-        throw new Error("Expected folder fixture to be created");
+      if (sectionResult.status !== "created") {
+        throw new Error("Expected section fixture to be created");
       }
-      deleteThreadFolder(db, noopNotifier, {
-        id: folderResult.folder.id,
+      deleteThreadSection(db, noopNotifier, {
+        id: sectionResult.section.id,
       });
 
       try {
@@ -126,7 +126,7 @@ describe("createThreadRecord", () => {
               environmentId: environment.id,
               type: "reuse",
             },
-            folderId: folderResult.folder.id,
+            sectionId: sectionResult.section.id,
             input: [],
             origin: "app",
             projectId: project.id,
@@ -140,8 +140,8 @@ describe("createThreadRecord", () => {
         expect(error).toBeInstanceOf(ApiError);
         expect((error as ApiError).status).toBe(404);
         expect((error as ApiError).body).toMatchObject({
-          code: "folder_not_found",
-          message: "Folder not found",
+          code: "section_not_found",
+          message: "Section not found",
         });
       }
     } finally {

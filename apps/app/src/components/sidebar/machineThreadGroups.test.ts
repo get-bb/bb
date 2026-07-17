@@ -13,7 +13,7 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -49,7 +49,9 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   };
 }
 
-function createHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
+function createHost(
+  overrides: Partial<Host> & Pick<Host, "id" | "name">,
+): Host {
   return {
     type: "persistent",
     status: "connected",
@@ -96,7 +98,9 @@ describe("buildMachineThreadGroups", () => {
       createHost({ id: "host_a", name: "Laptop" }),
       createHost({ id: "host_b", name: "Desktop" }),
     ];
-    const threads = [createThread({ id: "thr_1", environmentHostId: "host_b" })];
+    const threads = [
+      createThread({ id: "thr_1", environmentHostId: "host_b" }),
+    ];
 
     const groups = buildMachineThreadGroups(threads, hosts);
 

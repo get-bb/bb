@@ -1177,7 +1177,7 @@ function applyQueuedMessageGroupingSchema(db: DbConnection): void {
     .run();
 }
 
-function applyThreadFoldersSchema(db: DbConnection): void {
+function applyInitialThreadSectionSchema(db: DbConnection): void {
   if (!tableExists(db, "thread_folders")) {
     db.$client
       .prepare(
@@ -1221,7 +1221,7 @@ function applyThreadFoldersSchema(db: DbConnection): void {
   }
 }
 
-function repairBranchLocalQueuedGroupingBeforeThreadFolders(
+function repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
   db: DbConnection,
   migrationsFolder: string,
 ): void {
@@ -1231,7 +1231,7 @@ function repairBranchLocalQueuedGroupingBeforeThreadFolders(
 
   const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
   const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
-  const threadFoldersMigration = requireExpectedAppliedMigration(
+  const initialThreadSectionsMigration = requireExpectedAppliedMigration(
     expectedMigrations,
     "0046_thread_folders",
   );
@@ -1240,14 +1240,14 @@ function repairBranchLocalQueuedGroupingBeforeThreadFolders(
     "0047_sharp_martin_li",
   );
   if (
-    appliedCreatedAts.has(threadFoldersMigration.createdAt) ||
+    appliedCreatedAts.has(initialThreadSectionsMigration.createdAt) ||
     !appliedCreatedAts.has(queuedGroupingMigration.createdAt)
   ) {
     return;
   }
 
-  applyThreadFoldersSchema(db);
-  markMigrationApplied(db, threadFoldersMigration);
+  applyInitialThreadSectionSchema(db);
+  markMigrationApplied(db, initialThreadSectionsMigration);
 }
 
 const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
@@ -1489,7 +1489,10 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       migrationsFolder,
     );
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
-    repairBranchLocalQueuedGroupingBeforeThreadFolders(db, migrationsFolder);
+    repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
+      db,
+      migrationsFolder,
+    );
     const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
       db,
       migrationsFolder,

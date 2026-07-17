@@ -16,7 +16,7 @@ interface SelfOptions extends JsonOptions {
   self?: boolean;
 }
 
-interface FolderDeleteOptions extends JsonOptions {
+interface SectionDeleteOptions extends JsonOptions {
   yes?: boolean;
 }
 
@@ -70,71 +70,73 @@ export function registerOrganizationCommands(
   parent: Command,
   getUrl: () => string,
 ): void {
-  const folder = parent.command("folder").description("Manage thread folders");
+  const section = parent
+    .command("section")
+    .description("Manage thread sections");
 
-  folder
+  section
     .command("list")
-    .description("List thread folders")
+    .description("List thread sections")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: JsonOptions) => {
-        const folders = await createCliBbSdk(getUrl()).threadFolders.list();
-        if (outputJson(opts, folders)) return;
-        if (folders.length === 0) {
-          console.log("No thread folders found");
+        const sections = await createCliBbSdk(getUrl()).threadSections.list();
+        if (outputJson(opts, sections)) return;
+        if (sections.length === 0) {
+          console.log("No thread sections found");
           return;
         }
-        for (const item of folders) console.log(`${item.id}\t${item.name}`);
+        for (const item of sections) console.log(`${item.id}\t${item.name}`);
       }),
     );
 
-  folder
+  section
     .command("create <name>")
-    .description("Create a thread folder")
+    .description("Create a thread section")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (name: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).threadFolders.create({
+        const result = await createCliBbSdk(getUrl()).threadSections.create({
           name,
         });
         if (outputJson(opts, result)) return;
-        console.log(`Thread folder ${result.id} created: ${result.name}`);
+        console.log(`Thread section ${result.id} created: ${result.name}`);
       }),
     );
 
-  folder
+  section
     .command("rename <id> <name>")
-    .description("Rename a thread folder")
+    .description("Rename a thread section")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, name: string, opts: JsonOptions) => {
-        const result = await createCliBbSdk(getUrl()).threadFolders.update({
+        const result = await createCliBbSdk(getUrl()).threadSections.update({
           id,
           name,
         });
         if (outputJson(opts, result)) return;
-        console.log(`Thread folder ${result.id} renamed: ${result.name}`);
+        console.log(`Thread section ${result.id} renamed: ${result.name}`);
       }),
     );
 
-  folder
+  section
     .command("delete <id>")
-    .description("Delete a thread folder and unfile its threads")
+    .description("Delete a thread section and remove its thread assignments")
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string, opts: FolderDeleteOptions) => {
+      action(async (id: string, opts: SectionDeleteOptions) => {
         if (
           !opts.yes &&
-          !(await confirmDestructiveAction(`Delete thread folder ${id}?`))
+          !(await confirmDestructiveAction(`Delete thread section ${id}?`))
         )
           return;
-        const result = await createCliBbSdk(getUrl()).threadFolders.delete({
+        const result = await createCliBbSdk(getUrl()).threadSections.delete({
           id,
         });
         if (outputJson(opts, result)) return;
         console.log(
-          `Thread folder ${result.id} deleted; ${result.updatedThreadCount} thread(s) unfiled`,
+          `Thread section ${result.id} deleted; ${result.updatedThreadCount} thread(s) unsectioned`,
         );
       }),
     );

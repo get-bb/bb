@@ -3,7 +3,7 @@ import {
   formatArchivedEnvironmentThreadsToastTitle,
   shouldSuppressPinnedThreadDropPreview,
 } from "./ProjectRow";
-import { PINNED_THREAD_PARENT_KEY } from "./useFolderThreadDnd";
+import { PINNED_THREAD_PARENT_KEY } from "./useSectionThreadDnd";
 
 describe("formatArchivedEnvironmentThreadsToastTitle", () => {
   it("uses the thread title when archiving one thread", () => {

@@ -32,7 +32,7 @@ export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
 export const SIDEBAR_SUCCESS_STATUS_DOT_CLASS =
   "size-[5px] rounded-full bg-muted-foreground/60 max-md:pointer-coarse:size-1.5";
 
-// Identity-glyph slot: the folder / worktree icon box on a disclosure header.
+// Identity-glyph slot: the section / worktree icon box on a disclosure header.
 export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
 
@@ -60,7 +60,7 @@ export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
   "cursor-pointer text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 
 // Header rows whose caret (not the row body) is the click target: project and
-// folder rows. Text color only — no row-level hover highlight.
+// section rows. Text color only — no row-level hover highlight.
 export const SIDEBAR_ROW_STATIC_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground";
 
@@ -72,7 +72,7 @@ export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
 
 /**
  * Hairline that runs through an expanded project's thread list, sitting
- * under the center of the project chevron/folder icon. The coarse-pointer
+ * under the center of the project chevron/section icon. The coarse-pointer
  * variant nudges the line a few px right to follow the larger icon.
  *
  * Z-index sits between the parent tiers (z-40 and below) and the project

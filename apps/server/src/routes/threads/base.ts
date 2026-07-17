@@ -3,7 +3,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
-  getThreadFolderById,
+  getThreadSectionById,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
@@ -146,12 +146,12 @@ function parseSearchLimitPerGroup(value: string | undefined): number {
   return limit;
 }
 
-function requireThreadFolder(
+function requireThreadSection(
   deps: Pick<AppDeps, "db">,
-  folderId: string,
+  sectionId: string,
 ): void {
-  if (!getThreadFolderById(deps.db, folderId)) {
-    throw new ApiError(404, "folder_not_found", "Folder not found");
+  if (!getThreadSectionById(deps.db, sectionId)) {
+    throw new ApiError(404, "section_not_found", "Section not found");
   }
 }
 
@@ -206,22 +206,22 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.projectId) {
       requirePublicProject(deps.db, query.projectId);
     }
-    if (query.folderId && query.unfiled === "true") {
+    if (query.sectionId && query.unsectioned === "true") {
       throw new ApiError(
         400,
         "invalid_request",
-        "folderId and unfiled cannot be used together",
+        "sectionId and unsectioned cannot be used together",
       );
     }
-    if (query.folderId) {
-      requireThreadFolder(deps, query.folderId);
+    if (query.sectionId) {
+      requireThreadSection(deps, query.sectionId);
     }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
-      ...(query.folderId ? { folderId: query.folderId } : {}),
-      ...(query.unfiled === "true" ? { unfiled: true } : {}),
+      ...(query.sectionId ? { sectionId: query.sectionId } : {}),
+      ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
       ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
@@ -258,8 +258,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.create, async (context, payload) => {
-    if (payload.folderId) {
-      requireThreadFolder(deps, payload.folderId);
+    if (payload.sectionId) {
+      requireThreadSection(deps, payload.sectionId);
     }
     const thread = await createThreadFromRequest(deps, {
       ...payload,
@@ -321,12 +321,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if ("title" in payload) {
       metadataUpdate.title = payload.title;
     }
-    const folderId = payload.folderId;
-    if (folderId !== undefined) {
-      if (folderId !== null) {
-        requireThreadFolder(deps, folderId);
+    const sectionId = payload.sectionId;
+    if (sectionId !== undefined) {
+      if (sectionId !== null) {
+        requireThreadSection(deps, sectionId);
       }
-      metadataUpdate.folderId = folderId;
+      metadataUpdate.sectionId = sectionId;
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;

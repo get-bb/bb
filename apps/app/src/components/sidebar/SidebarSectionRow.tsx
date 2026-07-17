@@ -42,11 +42,11 @@ import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 
-interface SidebarFolderRowProps {
+interface SidebarSectionRowProps {
   // Leaf segment shown on the header ("Q3").
   name: string;
   label: string;
-  // Render depth (folder nesting + section offset); drives indentation.
+  // Render depth (section nesting + section offset); drives indentation.
   depth: number;
   activity: CollapsedChildActivity;
   isCollapsed: boolean;
@@ -61,10 +61,10 @@ interface SidebarFolderRowProps {
   onRemove?: () => void;
 }
 
-// The "Work › Q3" disclosure header for a folder. Not a thread: clicking
+// The "Work › Q3" disclosure header for a section. Not a thread: clicking
 // toggles collapse, there is no navigation. It stays visually quieter than a
 // project row while still mirroring parent-thread disclosure behavior.
-function SidebarFolderRowComponent({
+function SidebarSectionRowComponent({
   name,
   label,
   depth,
@@ -78,7 +78,7 @@ function SidebarFolderRowComponent({
   onRename,
   onRemove,
   stickyLevel,
-}: SidebarFolderRowProps) {
+}: SidebarSectionRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
@@ -294,4 +294,4 @@ function SidebarFolderRowComponent({
   );
 }
 
-export const SidebarFolderRow = memo(SidebarFolderRowComponent);
+export const SidebarSectionRow = memo(SidebarSectionRowComponent);

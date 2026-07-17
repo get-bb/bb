@@ -178,7 +178,7 @@ describe("workflows plugin", () => {
       "parentThreadId",
     );
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).not.toHaveProperty(
-      "folderId",
+      "sectionId",
     );
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
       visibility: "hidden",

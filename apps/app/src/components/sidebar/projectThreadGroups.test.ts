@@ -2,7 +2,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   buildChronologicalThreadList,
-  buildFolderThreadList,
+  buildSectionThreadList,
   buildProjectThreadGroups,
   compareByCreatedAtDescending,
   compareStandardThreads,
@@ -16,11 +16,11 @@ type TreeSummary =
   | string
   | { id: string; children: TreeSummary[] }
   | { env: string; threads: TreeSummary[] }
-  | { folder: string; name: string; items: TreeSummary[] };
+  | { section: string; name: string; items: TreeSummary[] };
 
 function getItemAlphaLabel(item: ProjectThreadItem): string {
   switch (item.kind) {
-    case "folder":
+    case "section":
       return item.group.name;
     case "thread":
       return item.node.thread.title ?? item.node.thread.titleFallback ?? "";
@@ -50,7 +50,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -107,9 +107,9 @@ function summarizeItems(items: readonly ProjectThreadItem[]): TreeSummary[] {
           env: item.group.environmentId,
           threads: item.group.nodes.map(summarizeNode),
         };
-      case "folder":
+      case "section":
         return {
-          folder: item.group.key,
+          section: item.group.key,
           name: item.group.name,
           items: summarizeItems(item.group.items),
         };
@@ -122,10 +122,10 @@ function findNode(
   threadId: string,
 ): ProjectThreadNode | null {
   for (const item of items) {
-    if (item.kind === "folder") {
-      const folderNode = findNode(item.group.items, threadId);
-      if (folderNode) {
-        return folderNode;
+    if (item.kind === "section") {
+      const sectionNode = findNode(item.group.items, threadId);
+      if (sectionNode) {
+        return sectionNode;
       }
       continue;
     }
@@ -538,28 +538,28 @@ describe("buildProjectThreadGroups", () => {
   });
 });
 
-describe("folder bucketing", () => {
-  it("buckets threads into flat folders by folder id, folders above loose threads", () => {
-    const items = buildFolderThreadList(
+describe("section bucketing", () => {
+  it("buckets threads into flat sections by section id, sections above loose threads", () => {
+    const items = buildSectionThreadList(
       [
-        createThread({ id: "a", title: "Plan", folderId: "fld_work_q3" }),
-        createThread({ id: "b", title: "Notes", folderId: "fld_work_q3" }),
-        createThread({ id: "c", title: "Q4", folderId: "fld_work" }),
+        createThread({ id: "a", title: "Plan", sectionId: "sec_work_q3" }),
+        createThread({ id: "b", title: "Notes", sectionId: "sec_work_q3" }),
+        createThread({ id: "c", title: "Q4", sectionId: "sec_work" }),
         createThread({ id: "d", title: "Standalone" }),
       ],
       compareStandardThreads,
       [
-        { id: "fld_work", name: "Work" },
-        { id: "fld_work_q3", name: "Work/Q3" },
+        { id: "sec_work", name: "Work" },
+        { id: "sec_work_q3", name: "Work/Q3" },
       ],
     );
 
-    // Same idle/attention threads tie-break on codepoint id; flat folders render
+    // Same idle/attention threads tie-break on codepoint id; flat sections render
     // as a block above the loose "Standalone" thread.
     expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::fld_work", name: "Work", items: ["c"] },
+      { section: "chronological::sec_work", name: "Work", items: ["c"] },
       {
-        folder: "chronological::fld_work_q3",
+        section: "chronological::sec_work_q3",
         name: "Work/Q3",
         items: ["a", "b"],
       },
@@ -567,8 +567,8 @@ describe("folder bucketing", () => {
     ]);
   });
 
-  it("does not derive folders from slashes in titles", () => {
-    const items = buildFolderThreadList([
+  it("does not derive sections from slashes in titles", () => {
+    const items = buildSectionThreadList([
       createThread({ id: "a", title: "Work/Q3/Plan" }),
       createThread({ id: "b", title: "Work/Notes" }),
     ]);
@@ -576,16 +576,16 @@ describe("folder bucketing", () => {
     expect(summarizeItems(items)).toEqual(["a", "b"]);
   });
 
-  it("renders explicit empty folders without a thread using that id", () => {
-    const items = buildFolderThreadList(
+  it("renders explicit empty sections without a thread using that id", () => {
+    const items = buildSectionThreadList(
       [createThread({ id: "a", title: "Standalone" })],
       compareStandardThreads,
-      [{ id: "fld_work_q3", name: "Work/Q3" }],
+      [{ id: "sec_work_q3", name: "Work/Q3" }],
     );
 
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "chronological::fld_work_q3",
+        section: "chronological::sec_work_q3",
         name: "Work/Q3",
         items: [],
       },
@@ -593,50 +593,50 @@ describe("folder bucketing", () => {
     ]);
   });
 
-  it("keeps a folder thread's own children nested under it and ignores child folders", () => {
-    const items = buildFolderThreadList(
+  it("keeps a section thread's own children nested under it and ignores child sections", () => {
+    const items = buildSectionThreadList(
       [
         createThread({
           id: "parent",
           title: "Project",
-          folderId: "fld_work",
+          sectionId: "sec_work",
         }),
         createThread({
           id: "child",
           parentThreadId: "parent",
           title: "Path",
-          folderId: "fld_ignored",
+          sectionId: "sec_ignored",
         }),
       ],
       compareStandardThreads,
       [
-        { id: "fld_work", name: "Work" },
-        { id: "fld_ignored", name: "Ignored/Child" },
+        { id: "sec_work", name: "Work" },
+        { id: "sec_ignored", name: "Ignored/Child" },
       ],
     );
 
     // Only the top-level parent picks the bucket; the child stays nested under it
-    // and does not create a second folder row.
+    // and does not create a second section row.
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "chronological::fld_work",
+        section: "chronological::sec_work",
         name: "Work",
         items: [{ id: "parent", children: ["child"] }],
       },
       {
-        folder: "chronological::fld_ignored",
+        section: "chronological::sec_ignored",
         name: "Ignored/Child",
         items: [],
       },
     ]);
   });
 
-  it("orders explicit folders by name rather than descendant recency", () => {
+  it("orders explicit sections by name rather than descendant recency", () => {
     const threads = [
       createThread({
         id: "old-active",
         title: "x",
-        folderId: "fld_archive",
+        sectionId: "sec_archive",
         status: "active",
         createdAt: 10,
         latestAttentionAt: 5,
@@ -645,32 +645,32 @@ describe("folder bucketing", () => {
       createThread({
         id: "new-idle",
         title: "y",
-        folderId: "fld_work",
+        sectionId: "sec_work",
         status: "idle",
         createdAt: 50,
         latestAttentionAt: 5,
       }),
     ];
 
-    const folders = [
-      { id: "fld_archive", name: "Archive" },
-      { id: "fld_empty", name: "Empty" },
-      { id: "fld_work", name: "Work" },
+    const sections = [
+      { id: "sec_archive", name: "Archive" },
+      { id: "sec_empty", name: "Empty" },
+      { id: "sec_work", name: "Work" },
     ];
 
     expect(
       summarizeItems(
-        buildFolderThreadList(threads, compareStandardThreads, folders),
+        buildSectionThreadList(threads, compareStandardThreads, sections),
       ),
     ).toEqual([
       {
-        folder: "chronological::fld_archive",
+        section: "chronological::sec_archive",
         name: "Archive",
         items: ["old-active"],
       },
-      { folder: "chronological::fld_empty", name: "Empty", items: [] },
+      { section: "chronological::sec_empty", name: "Empty", items: [] },
       {
-        folder: "chronological::fld_work",
+        section: "chronological::sec_work",
         name: "Work",
         items: ["new-idle"],
       },
@@ -678,97 +678,101 @@ describe("folder bucketing", () => {
 
     expect(
       summarizeItems(
-        buildFolderThreadList(threads, compareByCreatedAtDescending, folders),
+        buildSectionThreadList(threads, compareByCreatedAtDescending, sections),
       ),
     ).toEqual([
       {
-        folder: "chronological::fld_archive",
+        section: "chronological::sec_archive",
         name: "Archive",
         items: ["old-active"],
       },
-      { folder: "chronological::fld_empty", name: "Empty", items: [] },
+      { section: "chronological::sec_empty", name: "Empty", items: [] },
       {
-        folder: "chronological::fld_work",
+        section: "chronological::sec_work",
         name: "Work",
         items: ["new-idle"],
       },
     ]);
   });
 
-  it("applies alpha descending order to folder rows", () => {
-    const items = buildFolderThreadList([], compareAlphaDescending, [
-      { id: "fld_archive", name: "Archive" },
-      { id: "fld_empty", name: "Empty" },
-      { id: "fld_work", name: "Work" },
+  it("applies alpha descending order to section rows", () => {
+    const items = buildSectionThreadList([], compareAlphaDescending, [
+      { id: "sec_archive", name: "Archive" },
+      { id: "sec_empty", name: "Empty" },
+      { id: "sec_work", name: "Work" },
     ]);
 
     expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::fld_work", name: "Work", items: [] },
-      { folder: "chronological::fld_empty", name: "Empty", items: [] },
-      { folder: "chronological::fld_archive", name: "Archive", items: [] },
+      { section: "chronological::sec_work", name: "Work", items: [] },
+      { section: "chronological::sec_empty", name: "Empty", items: [] },
+      { section: "chronological::sec_archive", name: "Archive", items: [] },
     ]);
   });
 
-  it("rolls descendant count + activity up onto the folder group", () => {
-    const items = buildFolderThreadList(
+  it("rolls descendant count + activity up onto the section group", () => {
+    const items = buildSectionThreadList(
       [
         createThread({
           id: "busy",
           title: "Busy",
-          folderId: "fld_work",
+          sectionId: "sec_work",
           hasPendingInteraction: true,
         }),
-        createThread({ id: "quiet", title: "Quiet", folderId: "fld_work" }),
+        createThread({ id: "quiet", title: "Quiet", sectionId: "sec_work" }),
       ],
       compareStandardThreads,
-      [{ id: "fld_work", name: "Work" }],
+      [{ id: "sec_work", name: "Work" }],
     );
 
     expect(items).toHaveLength(1);
-    const folder = items[0];
-    if (folder.kind !== "folder") {
-      throw new Error("expected a folder item");
+    const section = items[0];
+    if (section.kind !== "section") {
+      throw new Error("expected a section item");
     }
-    expect(folder.group.threadCount).toBe(2);
-    expect(folder.group.activity.pending).toBe(true);
+    expect(section.group.threadCount).toBe(2);
+    expect(section.group.activity.pending).toBe(true);
   });
 
-  it("folds the chronological list into folders", () => {
-    const items = buildFolderThreadList(
+  it("folds the chronological list into sections", () => {
+    const items = buildSectionThreadList(
       [
         createThread({
           id: "a",
           title: "One",
-          folderId: "fld_work",
+          sectionId: "sec_work",
           createdAt: 20,
         }),
         createThread({
           id: "b",
           title: "Two",
-          folderId: "fld_personal",
+          sectionId: "sec_personal",
           createdAt: 10,
         }),
       ],
       compareByCreatedAtDescending,
       [
-        { id: "fld_personal", name: "Personal" },
-        { id: "fld_work", name: "Work" },
+        { id: "sec_personal", name: "Personal" },
+        { id: "sec_work", name: "Work" },
       ],
     );
 
     expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::fld_personal", name: "Personal", items: ["b"] },
-      { folder: "chronological::fld_work", name: "Work", items: ["a"] },
+      {
+        section: "chronological::sec_personal",
+        name: "Personal",
+        items: ["b"],
+      },
+      { section: "chronological::sec_work", name: "Work", items: ["a"] },
     ]);
   });
 
-  it("nests a child thread under its parent root inside a folder", () => {
-    const items = buildFolderThreadList(
+  it("nests a child thread under its parent root inside a section", () => {
+    const items = buildSectionThreadList(
       [
         createThread({
           id: "parent",
           title: "Parent",
-          folderId: "fld_work",
+          sectionId: "sec_work",
           createdAt: 20,
         }),
         createThread({
@@ -779,44 +783,44 @@ describe("folder bucketing", () => {
         }),
       ],
       compareByCreatedAtDescending,
-      [{ id: "fld_work", name: "Work" }],
+      [{ id: "sec_work", name: "Work" }],
     );
 
-    // The child follows its parent into the folder as a nested row rather than
+    // The child follows its parent into the section as a nested row rather than
     // splitting out as a loose top-level thread.
     expect(summarizeItems(items)).toEqual([
       {
-        folder: "chronological::fld_work",
+        section: "chronological::sec_work",
         name: "Work",
         items: [{ id: "parent", children: ["child"] }],
       },
     ]);
   });
 
-  it("combines threads from different projects that share the same folder id", () => {
-    const items = buildFolderThreadList(
+  it("combines threads from different projects that share the same section id", () => {
+    const items = buildSectionThreadList(
       [
         createThread({
           id: "a",
           projectId: "proj_1",
           title: "One",
-          folderId: "fld_work",
+          sectionId: "sec_work",
           createdAt: 20,
         }),
         createThread({
           id: "b",
           projectId: "proj_2",
           title: "Two",
-          folderId: "fld_work",
+          sectionId: "sec_work",
           createdAt: 10,
         }),
       ],
       compareByCreatedAtDescending,
-      [{ id: "fld_work", name: "Work" }],
+      [{ id: "sec_work", name: "Work" }],
     );
 
     expect(summarizeItems(items)).toEqual([
-      { folder: "chronological::fld_work", name: "Work", items: ["a", "b"] },
+      { section: "chronological::sec_work", name: "Work", items: ["a", "b"] },
     ]);
   });
 });

@@ -24,7 +24,7 @@ const parentTarget: ThreadRenameDialogTarget = {
 };
 
 const slashTitleTarget: ThreadRenameDialogTarget = {
-  id: "thr_folder",
+  id: "thr_section",
   currentTitle: "test/say hi",
 };
 

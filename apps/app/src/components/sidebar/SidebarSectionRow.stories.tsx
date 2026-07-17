@@ -5,11 +5,11 @@ import {
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { SidebarFolderRow } from "./SidebarFolderRow";
+import { SidebarSectionRow } from "./SidebarSectionRow";
 import { DropPreviewRow } from "./ProjectRow";
 
 export default {
-  title: "sidebar/Folder row",
+  title: "sidebar/Section row",
 };
 
 const noop = () => {};
@@ -33,9 +33,9 @@ function SidebarStage({ children }: { children: ReactNode }) {
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="expanded" hint="folder header, no rolled-up status">
+      <StoryRow label="expanded" hint="section header, no rolled-up status">
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Work"
             label="Work"
             depth={0}
@@ -45,9 +45,12 @@ export function Overview() {
           />
         </SidebarStage>
       </StoryRow>
-      <StoryRow label="collapsed unread" hint="collapsed folders show activity">
+      <StoryRow
+        label="collapsed unread"
+        hint="collapsed sections show activity"
+      >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Q3"
             label="Work / Q3"
             depth={1}
@@ -59,7 +62,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="collapsed working" hint="busy descendant rolls up">
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Build"
             label="Work / Build"
             depth={2}
@@ -76,7 +79,7 @@ export function Overview() {
         hint="hidden plan-mode banner rolls up to the right-aligned plan glyph"
       >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Planning"
             label="Work / Planning"
             depth={2}
@@ -93,7 +96,7 @@ export function Overview() {
         hint="hidden active-goal banner rolls up to the right-aligned target glyph"
       >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Goals"
             label="Work / Goals"
             depth={2}
@@ -107,7 +110,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="pending" hint="pending descendant wins the rollup">
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Reviews"
             label="Work / Reviews"
             depth={3}
@@ -119,9 +122,9 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="long name" hint="header truncates inside sidebar width">
         <SidebarStage>
-          <SidebarFolderRow
-            name="Very long customer migration and rollout folder"
-            label="Clients / Very long customer migration and rollout folder"
+          <SidebarSectionRow
+            name="Very long customer migration and rollout section"
+            label="Clients / Very long customer migration and rollout section"
             depth={1}
             activity={activity()}
             isCollapsed={false}
@@ -129,9 +132,12 @@ export function Overview() {
           />
         </SidebarStage>
       </StoryRow>
-      <StoryRow label="beyond sticky cap" hint="deep folders render non-sticky">
+      <StoryRow
+        label="beyond sticky cap"
+        hint="deep sections render non-sticky"
+      >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Fifth level"
             label="A / B / C / D / Fifth level"
             depth={5}
@@ -145,7 +151,7 @@ export function Overview() {
   );
 }
 
-// Drag-into-folder affordance: the folder highlights as a drop target, and
+// Drag-into-section affordance: the section highlights as a drop target, and
 // after a short hover it springs open with an empty placeholder slot. The
 // dragged row keeps its own title (like dragging a queued message), so the
 // placeholder stays blank rather than duplicating the title.
@@ -154,10 +160,10 @@ export function DragInto() {
     <StoryCard>
       <StoryRow
         label="drop target"
-        hint="folder highlights while a thread is dragged over it"
+        hint="section highlights while a thread is dragged over it"
       >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Work"
             label="Work"
             depth={0}
@@ -170,10 +176,10 @@ export function DragInto() {
       </StoryRow>
       <StoryRow
         label="empty placeholder"
-        hint="after the hover dwell, an empty slot opens inside the folder"
+        hint="after the hover dwell, an empty slot opens inside the section"
       >
         <SidebarStage>
-          <SidebarFolderRow
+          <SidebarSectionRow
             name="Work"
             label="Work"
             depth={0}
@@ -187,7 +193,7 @@ export function DragInto() {
       </StoryRow>
       <StoryRow
         label="loose-list drop"
-        hint="dragging a thread out of a folder previews the same slot at root depth in the loose Threads list"
+        hint="dragging a thread out of a section previews the same slot at root depth in the loose Threads list"
       >
         <SidebarStage>
           <DropPreviewRow depth={0} />

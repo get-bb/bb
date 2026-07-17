@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useAtom } from "jotai";
 import {
-  sidebarFolderSectionOrderAtom,
+  sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarSectionOrderAtom,
   type SidebarOrganizationMode,
@@ -22,8 +22,8 @@ const MODE_SECTION_ORDER_CONFIG: Record<
     legacyEntityAnchor: "projects",
   },
   chronological: {
-    atom: sidebarFolderSectionOrderAtom,
-    legacyEntityAnchor: "folders",
+    atom: sidebarManualSectionOrderAtom,
+    legacyEntityAnchor: "sections",
   },
   machine: {
     atom: sidebarMachineSectionOrderAtom,

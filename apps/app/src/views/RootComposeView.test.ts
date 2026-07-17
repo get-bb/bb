@@ -23,8 +23,8 @@ import {
   hasSingleUseRootComposeTargetState,
   isProjectSourceWorktreeUnavailable,
   mergeMissingPromptDraftAttachments,
-  readFolderIdFromLocationState,
-  readRootComposeFolderTargetFromLocationState,
+  readSectionIdFromLocationState,
+  readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   restorePromptDraftAfterOptionChange,
   resolveComposeHostId,
@@ -78,7 +78,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     providerId: "codex",
     title: args.id,
     titleFallback: args.id,
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -172,7 +172,7 @@ function makeProjectBranchesResponse(
 describe("buildMobileRecentThreads", () => {
   it("includes projectless and every project thread", () => {
     const sidebarNavigation: SidebarBootstrapResponse = {
-      folders: [],
+      sections: [],
       personalProject: makeProject({
         id: PERSONAL_PROJECT_ID,
         kind: "personal",
@@ -240,43 +240,45 @@ describe("readInitialPromptFromLocationState", () => {
   });
 });
 
-describe("readFolderIdFromLocationState", () => {
-  it("returns a trimmed folder id seeded by navigation state", () => {
-    expect(readFolderIdFromLocationState({ folderId: " fld_work " })).toBe(
-      "fld_work",
+describe("readSectionIdFromLocationState", () => {
+  it("returns a trimmed section id seeded by navigation state", () => {
+    expect(readSectionIdFromLocationState({ sectionId: " sec_work " })).toBe(
+      "sec_work",
     );
   });
 
-  it("returns null when no usable folder id is present", () => {
-    expect(readFolderIdFromLocationState(null)).toBeNull();
-    expect(readFolderIdFromLocationState({})).toBeNull();
-    expect(readFolderIdFromLocationState({ folderId: "" })).toBeNull();
-    expect(readFolderIdFromLocationState({ folderId: 42 })).toBeNull();
+  it("returns null when no usable section id is present", () => {
+    expect(readSectionIdFromLocationState(null)).toBeNull();
+    expect(readSectionIdFromLocationState({})).toBeNull();
+    expect(readSectionIdFromLocationState({ sectionId: "" })).toBeNull();
+    expect(readSectionIdFromLocationState({ sectionId: 42 })).toBeNull();
   });
 });
 
-describe("readRootComposeFolderTargetFromLocationState", () => {
-  it("returns a folder target when navigation provides a folder id", () => {
+describe("readRootComposeSectionTargetFromLocationState", () => {
+  it("returns a section target when navigation provides a section id", () => {
     expect(
-      readRootComposeFolderTargetFromLocationState({ folderId: " fld_work " }),
-    ).toEqual({ folderId: "fld_work", kind: "set" });
+      readRootComposeSectionTargetFromLocationState({
+        sectionId: " sec_work ",
+      }),
+    ).toEqual({ sectionId: "sec_work", kind: "set" });
   });
 
-  it("clears the folder target for plain new-thread focus navigation", () => {
+  it("clears the section target for plain new-thread focus navigation", () => {
     expect(
-      readRootComposeFolderTargetFromLocationState({ focusPrompt: true }),
+      readRootComposeSectionTargetFromLocationState({ focusPrompt: true }),
     ).toEqual({ kind: "clear" });
   });
 
-  it("clears the folder target for an unusable folder id", () => {
+  it("clears the section target for an unusable section id", () => {
     expect(
-      readRootComposeFolderTargetFromLocationState({ folderId: "" }),
+      readRootComposeSectionTargetFromLocationState({ sectionId: "" }),
     ).toEqual({ kind: "clear" });
   });
 
-  it("returns null when no folder target instruction is present", () => {
-    expect(readRootComposeFolderTargetFromLocationState(null)).toBeNull();
-    expect(readRootComposeFolderTargetFromLocationState({})).toBeNull();
+  it("returns null when no section target instruction is present", () => {
+    expect(readRootComposeSectionTargetFromLocationState(null)).toBeNull();
+    expect(readRootComposeSectionTargetFromLocationState({})).toBeNull();
   });
 });
 
@@ -526,8 +528,8 @@ describe("hasPromptBranchSelectionChanged", () => {
 });
 
 describe("hasSingleUseRootComposeTargetState", () => {
-  it("treats folder targets as single-use navigation state", () => {
-    expect(hasSingleUseRootComposeTargetState({ folderId: "fld_work" })).toBe(
+  it("treats section targets as single-use navigation state", () => {
+    expect(hasSingleUseRootComposeTargetState({ sectionId: "sec_work" })).toBe(
       true,
     );
   });
@@ -633,7 +635,10 @@ describe("resolveComposeHostId", () => {
 
   it("falls back to the primary host when no host is selected", () => {
     expect(
-      resolveComposeHostId(parseEnvironmentValue("reuse:env_1"), "host_primary"),
+      resolveComposeHostId(
+        parseEnvironmentValue("reuse:env_1"),
+        "host_primary",
+      ),
     ).toBe("host_primary");
     expect(resolveComposeHostId(parseEnvironmentValue(""), null)).toBeNull();
   });

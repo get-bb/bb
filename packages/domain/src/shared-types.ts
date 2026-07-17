@@ -157,7 +157,7 @@ export type PromptMentionCommandOrigin = z.infer<
   typeof promptMentionCommandOriginSchema
 >;
 
-export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
+const canonicalPromptMentionResourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("thread"),
     threadId: z.string(),
@@ -170,8 +170,8 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     label: z.string(),
   }),
   z.object({
-    kind: z.literal("folder"),
-    folderId: z.string(),
+    kind: z.literal("section"),
+    sectionId: z.string(),
     label: z.string(),
   }),
   z.object({
@@ -207,6 +207,30 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     label: z.string(),
   }),
 ]);
+
+function normalizeLegacyPromptMentionResource(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "folder" || typeof record.folderId !== "string") {
+    return value;
+  }
+
+  const { folderId, ...rest } = record;
+  return { ...rest, kind: "section", sectionId: folderId };
+}
+
+/**
+ * Persisted prompts created before the section rename still contain the old
+ * resource discriminator. Normalize those records at the validation boundary;
+ * all newly parsed and authored resources use the canonical section contract.
+ */
+export const promptMentionResourceSchema = z.preprocess(
+  normalizeLegacyPromptMentionResource,
+  canonicalPromptMentionResourceSchema,
+);
 export type PromptMentionResource = z.infer<typeof promptMentionResourceSchema>;
 
 export const promptTextMentionSchema = z.object({

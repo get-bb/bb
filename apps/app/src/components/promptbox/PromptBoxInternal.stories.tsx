@@ -840,7 +840,7 @@ function WithLiveMentionsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      placeholder="Type @ to mention a file, folder, or thread"
+      placeholder="Type @ to mention a file, folder, section, or thread"
       typeahead={makeTypeahead({
         suggestions,
         onQueryChange: setQuery,
@@ -888,7 +888,7 @@ function RunningWithStopRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      placeholder="Ask for a follow-up. @ to mention files, folders, or threads"
+      placeholder="Ask for a follow-up. @ to mention files, folders, sections, or threads"
       typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
@@ -947,7 +947,7 @@ export function AllPromptPills() {
     <StoryCard>
       <StoryRow
         label="mixed pills"
-        hint="file, folder, thread storage, thread, skill, and project command in one prompt"
+        hint="file, folder, section, thread storage, thread, skill, and project command in one prompt"
       >
         <PromptBoxStoryInstance fixture={mixedPromptPillsFixture} />
       </StoryRow>

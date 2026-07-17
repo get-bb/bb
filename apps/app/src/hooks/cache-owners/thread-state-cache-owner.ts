@@ -58,7 +58,7 @@ interface BeginThreadPinTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginUnpinAndMoveThreadTransactionArgs extends ThreadIdCacheArgs {
-  folderId: string | null;
+  sectionId: string | null;
 }
 
 interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
@@ -66,12 +66,12 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
-  folderId?: string | null;
+  sectionId?: string | null;
   title: string | null;
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
-  folderId?: string | null;
+  sectionId?: string | null;
   title?: string | null;
 }
 
@@ -345,7 +345,7 @@ export function beginUnpinThreadTransaction({
 }
 
 export function beginUnpinAndMoveThreadTransaction({
-  folderId,
+  sectionId,
   queryClient,
   threadId,
 }: BeginUnpinAndMoveThreadTransactionArgs): Promise<ThreadListMutationTransaction> {
@@ -356,14 +356,14 @@ export function beginUnpinAndMoveThreadTransaction({
           thread.id === threadId
             ? {
                 ...thread,
-                folderId,
+                sectionId,
                 pinnedAt: null,
                 pinSortKey: null,
               }
             : thread,
         ),
       ),
-    patch: { folderId, pinnedAt: null },
+    patch: { sectionId, pinnedAt: null },
     queryClient,
     threadId,
   });
@@ -396,13 +396,13 @@ export function beginThreadReadStateTransaction({
 }
 
 export function beginThreadTitleTransaction({
-  folderId,
+  sectionId,
   queryClient,
   threadId,
   title,
 }: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
   return beginThreadMetadataTransaction({
-    folderId,
+    sectionId,
     queryClient,
     threadId,
     title,
@@ -410,14 +410,14 @@ export function beginThreadTitleTransaction({
 }
 
 export function beginThreadMetadataTransaction({
-  folderId,
+  sectionId,
   queryClient,
   threadId,
   title,
 }: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
   const patch = {
     ...(title !== undefined ? { title } : {}),
-    ...(folderId !== undefined ? { folderId } : {}),
+    ...(sectionId !== undefined ? { sectionId } : {}),
   };
   return runOptimisticThreadFieldTransaction({
     applyToLists: (queryClient, threadId) =>

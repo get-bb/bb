@@ -527,9 +527,9 @@ describe("prompt editor markdown serialization (doc -> markdown text)", () => {
     // "## see @thr" -> mention spans the "@thr" token after the "## see " prefix.
     expect(result.text).toBe("## see @thr");
     expect(result.mentions).toHaveLength(1);
-    expect(result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end)).toBe(
-      "@thr",
-    );
+    expect(
+      result.text.slice(result.mentions[0]!.start, result.mentions[0]!.end),
+    ).toBe("@thr");
     expect(result.mentions[0]!.resource).toEqual(resource);
   });
 
@@ -649,18 +649,18 @@ describe("prompt editor serialization", () => {
     expect(roundTrip(value)).toEqual(value);
   });
 
-  it("builds a folder mention resource from a folder suggestion", () => {
+  it("builds a section mention resource from a section suggestion", () => {
     expect(
       promptMentionResourceFromSuggestion({
-        kind: "folder",
-        path: "folder:fld_abc",
-        replacement: "folder:fld_abc",
-        folderId: "fld_abc",
+        kind: "section",
+        path: "section:sec_abc",
+        replacement: "section:sec_abc",
+        sectionId: "sec_abc",
         name: "Release work",
       }),
     ).toEqual({
-      kind: "folder",
-      folderId: "fld_abc",
+      kind: "section",
+      sectionId: "sec_abc",
       label: "Release work",
     });
   });

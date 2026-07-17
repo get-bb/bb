@@ -41,26 +41,29 @@ describe("query cache thread list invalidation keys", () => {
 
   it("excludes archived list keys with unsupported scope filters", () => {
     const { queryClient } = createQueryClientTestHarness();
-    const folderArchivedKey: QueryKey = [
+    const sectionArchivedKey: QueryKey = [
       THREADS_QUERY_KEY,
       ARCHIVED_THREADS_LIST_KIND,
-      { folderId: "fld_work" },
+      { sectionId: "sec_work" },
     ];
-    const unfiledArchivedKey: QueryKey = [
+    const unsectionedArchivedKey: QueryKey = [
       THREADS_QUERY_KEY,
       ARCHIVED_THREADS_LIST_KIND,
-      { unfiled: true },
+      { unsectioned: true },
     ];
 
-    queryClient.setQueryData(folderArchivedKey, { pages: [], pageParams: [] });
-    queryClient.setQueryData(unfiledArchivedKey, { pages: [], pageParams: [] });
+    queryClient.setQueryData(sectionArchivedKey, { pages: [], pageParams: [] });
+    queryClient.setQueryData(unsectionedArchivedKey, {
+      pages: [],
+      pageParams: [],
+    });
 
     const queryKeys = getCachedGlobalThreadListInvalidationQueryKeys({
       queryClient,
     });
 
-    expect(queryKeys).not.toContainEqual(folderArchivedKey);
-    expect(queryKeys).not.toContainEqual(unfiledArchivedKey);
+    expect(queryKeys).not.toContainEqual(sectionArchivedKey);
+    expect(queryKeys).not.toContainEqual(unsectionedArchivedKey);
   });
 
   it("includes archived project lists in project invalidation", () => {

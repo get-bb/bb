@@ -482,8 +482,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     isSettingsView,
     isRootView,
   } = useRouteState();
-  const archivedFolderId = isArchivedView
-    ? new URLSearchParams(location.search).get("folderId")
+  const archivedSectionId = isArchivedView
+    ? new URLSearchParams(location.search).get("sectionId")
     : null;
   // Plugin panel routes ride the shared header (design §5.2): icon + panel
   // title in the center, the registration's headerContent as the actions.
@@ -518,15 +518,15 @@ export function AppLayout({ children }: AppLayoutProps) {
     ];
   }, [sidebarNavigationQuery.data]);
   const titleMentionResources = useMemo(() => {
-    const folderNamesById = new Map<string, string>();
+    const sectionNamesById = new Map<string, string>();
     const projectNamesById = new Map<string, string>();
     const threadById = new Map(
       sidebarThreads.map((entry) => [entry.id, entry]),
     );
     const navigation = sidebarNavigationQuery.data;
     if (navigation) {
-      for (const folder of navigation.folders) {
-        folderNamesById.set(folder.id, folder.name);
+      for (const section of navigation.sections) {
+        sectionNamesById.set(section.id, section.name);
       }
       for (const projectEntry of navigation.projects) {
         projectNamesById.set(projectEntry.id, projectEntry.name);
@@ -536,7 +536,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         navigation.personalProject.name,
       );
     }
-    return { folderNamesById, projectNamesById, threadById };
+    return { sectionNamesById, projectNamesById, threadById };
   }, [sidebarNavigationQuery.data, sidebarThreads]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     enabled: isThreadView && Boolean(threadId),
@@ -569,10 +569,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const project = projectId
     ? projects?.find((candidate) => candidate.id === projectId)
     : undefined;
-  const archivedFolderName = archivedFolderId
-    ? (sidebarNavigationQuery.data?.folders.find(
-        (folder) => folder.id === archivedFolderId,
-      )?.name ?? archivedFolderId)
+  const archivedSectionName = archivedSectionId
+    ? (sidebarNavigationQuery.data?.sections.find(
+        (section) => section.id === archivedSectionId,
+      )?.name ?? archivedSectionId)
     : null;
   const projectName = projectId ? project?.name : undefined;
   const projectLabel = projectName ?? (projectId ? projectId : undefined);
@@ -599,7 +599,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             subtitle: undefined,
             breadcrumbs: [
               { label: "Threads", to: getRootComposeRoutePath() },
-              ...(archivedFolderName ? [{ label: archivedFolderName }] : []),
+              ...(archivedSectionName ? [{ label: archivedSectionName }] : []),
               { label: "Archived" },
             ],
           }
@@ -642,8 +642,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {
-        return archivedFolderName
-          ? `${archivedFolderName} · Archived`
+        return archivedSectionName
+          ? `${archivedSectionName} · Archived`
           : "Threads · Archived";
       }
       return `${projectLabel ?? projectId} · Archived`;

@@ -262,10 +262,10 @@ describe("bb thread spawn command output", () => {
     );
   });
 
-  it("bb thread spawn allows folders for hidden workers", async () => {
+  it("bb thread spawn allows sections for hidden workers", async () => {
     const thread: domain.Thread = fixtures.makeThread({
-      folderId: "fld_work",
-      id: "thread-hidden-folder",
+      sectionId: "sec_work",
+      id: "thread-hidden-section",
       projectId: "proj-1",
       providerId: "codex",
       visibility: "hidden",
@@ -283,15 +283,15 @@ describe("bb thread spawn command output", () => {
         "background work",
         "--visibility",
         "hidden",
-        "--folder",
-        "fld_work",
+        "--section",
+        "sec_work",
       ],
       register,
     );
 
     expect(post).toHaveBeenCalledWith({
       json: expect.objectContaining({
-        folderId: "fld_work",
+        sectionId: "sec_work",
         visibility: "hidden",
       }),
     });

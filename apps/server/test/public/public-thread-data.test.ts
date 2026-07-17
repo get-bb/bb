@@ -4,7 +4,7 @@ import {
   claimQueuedThreadMessage,
   createPromptHistoryEntry,
   createQueuedThreadMessageId,
-  createThreadFolder,
+  createThreadSection,
   deleteQueuedThreadMessage,
   deleteHost,
   environments,
@@ -27,6 +27,9 @@ import {
 } from "@bb/domain";
 import {
   type TimelineRow,
+  sidebarBootstrapResponseSchema,
+  threadSectionMutationResponseSchema,
+  threadSectionSchema,
   threadComposerBootstrapResponseSchema,
   threadConversationOutlineResponseSchema,
   threadQueuedMessageListResponseSchema,
@@ -89,31 +92,142 @@ const clientTurnRequestedDataSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 describe("public thread data routes", () => {
-  it("rejects contradictory folder and unfiled thread list filters", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request(
-        "/api/v1/threads?folderId=fld_work&unfiled=true",
-      );
-
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "folderId and unfiled cannot be used together",
-      });
-    });
-  });
-
-  it("allows creating or assigning a hidden thread in a folder", async () => {
+  it("manages sections through the canonical public route lifecycle", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
-      const folderResult = createThreadFolder(harness.db, harness.deps.hub, {
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Release checklist",
+      });
+
+      const createResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: " Release QA " }),
+        },
+      );
+      expect(createResponse.status).toBe(201);
+      const section = threadSectionSchema.parse(await readJson(createResponse));
+      expect(section.name).toBe("Release QA");
+
+      const duplicateResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "Release QA" }),
+        },
+      );
+      expect(duplicateResponse.status).toBe(409);
+      await expect(readJson(duplicateResponse)).resolves.toMatchObject({
+        code: "section_name_conflict",
+      });
+
+      const assignResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sectionId: section.id }),
+        },
+      );
+      expect(assignResponse.status).toBe(200);
+
+      const renameResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: section.id, name: "Ship room" }),
+        },
+      );
+      expect(renameResponse.status).toBe(200);
+      expect(
+        threadSectionMutationResponseSchema.parse(
+          await readJson(renameResponse),
+        ),
+      ).toEqual({
+        id: section.id,
+        name: "Ship room",
+        updatedThreadCount: 0,
+      });
+
+      const bootstrapResponse = await harness.app.request(
+        "/api/v1/sidebar-bootstrap",
+      );
+      expect(bootstrapResponse.status).toBe(200);
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(bootstrapResponse),
+      );
+      expect(bootstrap.sections).toContainEqual(
+        expect.objectContaining({ id: section.id, name: "Ship room" }),
+      );
+
+      const deleteResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: section.id }),
+        },
+      );
+      expect(deleteResponse.status).toBe(200);
+      expect(
+        threadSectionMutationResponseSchema.parse(
+          await readJson(deleteResponse),
+        ),
+      ).toEqual({
+        id: section.id,
+        name: "Ship room",
+        updatedThreadCount: 1,
+      });
+      expect(getThread(harness.db, thread.id)?.sectionId).toBeNull();
+
+      const missingResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: section.id }),
+        },
+      );
+      expect(missingResponse.status).toBe(404);
+      await expect(readJson(missingResponse)).resolves.toMatchObject({
+        code: "section_not_found",
+      });
+    });
+  });
+
+  it("rejects contradictory section and unsectioned thread list filters", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request(
+        "/api/v1/threads?sectionId=sec_work&unsectioned=true",
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "sectionId and unsectioned cannot be used together",
+      });
+    });
+  });
+
+  it("allows creating or assigning a hidden thread in a section", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const sectionResult = createThreadSection(harness.db, harness.deps.hub, {
         name: "Work",
       });
-      if (folderResult.status !== "created") {
-        throw new Error("Expected folder fixture to be created");
+      if (sectionResult.status !== "created") {
+        throw new Error("Expected section fixture to be created");
       }
 
       const createResponse = await harness.app.request("/api/v1/threads", {
@@ -125,7 +239,7 @@ describe("public thread data routes", () => {
           providerId: "codex",
           input: [{ type: "text", text: "Background work" }],
           visibility: "hidden",
-          folderId: folderResult.folder.id,
+          sectionId: sectionResult.section.id,
           environment: {
             type: "host",
             hostId: host.id,
@@ -135,7 +249,7 @@ describe("public thread data routes", () => {
       });
       expect(createResponse.status).toBe(201);
       const createdThread = threadSchema.parse(await readJson(createResponse));
-      expect(createdThread.folderId).toBe(folderResult.folder.id);
+      expect(createdThread.sectionId).toBe(sectionResult.section.id);
       expect(createdThread.visibility).toBe("hidden");
 
       const hiddenThread = seedThread(harness.deps, {
@@ -148,15 +262,15 @@ describe("public thread data routes", () => {
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ folderId: folderResult.folder.id }),
+          body: JSON.stringify({ sectionId: sectionResult.section.id }),
         },
       );
 
       expect(response.status).toBe(200);
       const updatedThread = threadSchema.parse(await readJson(response));
-      expect(updatedThread.folderId).toBe(folderResult.folder.id);
-      expect(getThread(harness.db, hiddenThread.id)?.folderId).toBe(
-        folderResult.folder.id,
+      expect(updatedThread.sectionId).toBe(sectionResult.section.id);
+      expect(getThread(harness.db, hiddenThread.id)?.sectionId).toBe(
+        sectionResult.section.id,
       );
     });
   });

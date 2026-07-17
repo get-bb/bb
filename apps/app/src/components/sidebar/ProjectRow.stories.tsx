@@ -361,7 +361,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="starts collapsed"
-        hint="children hidden by default — click the folder to expand"
+        hint="children hidden by default — click the section to expand"
       >
         {singleProject({
           initialCollapsed: true,

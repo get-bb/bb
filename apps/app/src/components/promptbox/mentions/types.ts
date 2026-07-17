@@ -43,10 +43,10 @@ export type PromptMentionSuggestion =
       name: string;
     }
   | {
-      kind: "folder";
+      kind: "section";
       path: string;
       replacement: string;
-      folderId: string;
+      sectionId: string;
       name: string;
     }
   | {

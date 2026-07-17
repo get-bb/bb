@@ -20,7 +20,7 @@ import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
 import { buildMachineThreadGroups } from "./machineThreadGroups";
 import {
   collapsedSidebarSectionIdsAtom,
-  sidebarFolderSectionOrderAtom,
+  sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarOrganizationModeAtom,
   sidebarSectionOrderAtom,
@@ -55,7 +55,7 @@ function getModeOrderProbeConfig(mode: SidebarOrganizationMode): {
     case "project":
       return { entitySectionIds: ["project:a"] };
     case "chronological":
-      return { entitySectionIds: ["folder:a"] };
+      return { entitySectionIds: ["section:a"] };
     case "machine":
       return { entitySectionIds: [], hasThreadsSection: true };
   }
@@ -152,7 +152,7 @@ describe("sidebar organization mode sections", () => {
   it("does not mount inactive ordering or machine-grouping work", async () => {
     const store = createStore();
     store.set(sidebarSectionOrderAtom, ["threads", "project:a", "pinned"]);
-    store.set(sidebarFolderSectionOrderAtom, ["folder:stale"]);
+    store.set(sidebarManualSectionOrderAtom, ["section:stale"]);
     store.set(sidebarMachineSectionOrderAtom, ["machine:stale"]);
     const renderChronological = vi.fn(() => (
       <ModeOrderProbe mode="chronological" />
@@ -177,7 +177,7 @@ describe("sidebar organization mode sections", () => {
     expect(renderMachine).not.toHaveBeenCalled();
     expect(mockUseHosts).not.toHaveBeenCalled();
     expect(mockBuildMachineThreadGroups).not.toHaveBeenCalled();
-    expect(store.get(sidebarFolderSectionOrderAtom)).toEqual(["folder:stale"]);
+    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(["section:stale"]);
     expect(store.get(sidebarMachineSectionOrderAtom)).toEqual([
       "machine:stale",
     ]);
@@ -186,10 +186,10 @@ describe("sidebar organization mode sections", () => {
   it("preserves each persisted order while switching modes", async () => {
     const store = createStore();
     const projectOrder = ["threads", "project:a", "pinned"];
-    const folderOrder = ["folder:a", "pinned", "threads"];
+    const sectionOrder = ["section:a", "pinned", "threads"];
     const machineOrder = ["threads", "pinned"];
     store.set(sidebarSectionOrderAtom, projectOrder);
-    store.set(sidebarFolderSectionOrderAtom, folderOrder);
+    store.set(sidebarManualSectionOrderAtom, sectionOrder);
     store.set(sidebarMachineSectionOrderAtom, machineOrder);
     store.set(sidebarOrganizationModeAtom, "project");
     render(
@@ -208,7 +208,7 @@ describe("sidebar organization mode sections", () => {
 
     await waitFor(() => {
       expect(store.get(sidebarSectionOrderAtom)).toEqual(projectOrder);
-      expect(store.get(sidebarFolderSectionOrderAtom)).toEqual(folderOrder);
+      expect(store.get(sidebarManualSectionOrderAtom)).toEqual(sectionOrder);
       expect(store.get(sidebarMachineSectionOrderAtom)).toEqual(machineOrder);
     });
   });

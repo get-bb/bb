@@ -38,11 +38,11 @@ interface ThreadSearchResultRowProps {
   onSelect: () => void;
   projectName: string | undefined;
   /**
-   * Pre-formatted folder path (e.g. "Infra › CI") shown in place of the project
-   * when the sidebar is organized by folder. The caller derives it from the
-   * thread's folder + the Organize-by setting; absent → falls back to project.
+   * Pre-formatted section path (e.g. "Infra › CI") shown in place of the project
+   * when the sidebar is organized by section. The caller derives it from the
+   * thread's section + the Organize-by setting; absent → falls back to project.
    */
-  folderLabel?: string | null;
+  sectionLabel?: string | null;
   thread: ThreadListEntry;
 }
 
@@ -122,7 +122,7 @@ function ThreadSearchResultRowComponent({
   onActive,
   onSelect,
   projectName,
-  folderLabel,
+  sectionLabel,
   thread,
 }: ThreadSearchResultRowProps) {
   const rowRef = useRef<HTMLButtonElement | null>(null);
@@ -152,9 +152,9 @@ function ThreadSearchResultRowComponent({
     thread.projectId !== PERSONAL_PROJECT_ID && projectName
       ? projectName
       : null;
-  // Folder takes the project's place on the metadata line when the sidebar is
-  // organized by folder (the caller supplies a folderLabel only then).
-  const contextLabel = folderLabel ?? projectMetadata;
+  // Section takes the project's place on the metadata line when the sidebar is
+  // organized by section (the caller supplies a sectionLabel only then).
+  const contextLabel = sectionLabel ?? projectMetadata;
   const relativeTime = formatRelativeTime({
     timestamp: thread.updatedAt,
     now: Date.now(),

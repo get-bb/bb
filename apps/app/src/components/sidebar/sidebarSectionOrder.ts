@@ -4,8 +4,8 @@ import {
   buildNeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
 
-export type SidebarEntitySectionKind = "project" | "folder" | "machine";
-export type LegacySidebarEntityAnchor = "projects" | "folders" | "machines";
+export type SidebarEntitySectionKind = "project" | "section" | "machine";
+export type LegacySidebarEntityAnchor = "projects" | "sections" | "machines";
 
 export function buildSidebarEntitySectionId(
   kind: SidebarEntitySectionKind,
@@ -19,7 +19,7 @@ export function isSidebarSectionId(value: string): value is SidebarSectionId {
     value === "pinned" ||
     value === "threads" ||
     value.startsWith("project:") ||
-    value.startsWith("folder:") ||
+    value.startsWith("section:") ||
     value.startsWith("machine:")
   );
 }
@@ -57,7 +57,7 @@ interface NormalizeSidebarSectionOrderArgs {
 /**
  * Reconciles locally persisted order with the live entity set. The old
  * aggregate section token is expanded in place, so existing users keep their
- * Pinned/primary/Threads layout when projects and folders become first-level
+ * Pinned/primary/Threads layout when projects and sections become first-level
  * sections. New entities join after the last entity without disturbing a
  * user's explicit placement of built-in sections.
  */

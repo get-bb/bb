@@ -9,27 +9,27 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { SidebarStickyStack } from "@/components/ui/sidebar.js";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
-  ChronologicalFolderThreadSections,
+  ChronologicalSectionThreadSections,
   type ProjectThreadListState,
 } from "./ProjectRow";
 import {
   compareStandardThreads,
-  type SidebarFolderDefinition,
+  type SidebarSectionDefinition,
 } from "./projectThreadGroups";
 import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 
 export default {
-  title: "sidebar/Folder grouping",
+  title: "sidebar/Section grouping",
 };
 
 const noop = () => {};
 const PROJECT_ID = PROJECT_IDS.bb;
-const STORY_FOLDERS: readonly SidebarFolderDefinition[] = [
-  { id: "fld_work_q3", name: "Work/Q3" },
-  { id: "fld_work_q4", name: "Work/Q4" },
-  { id: "fld_personal_q3", name: "Personal/Q3" },
-  { id: "fld_build", name: "Build" },
-  { id: "fld_empty", name: "Empty" },
+const STORY_SECTIONS: readonly SidebarSectionDefinition[] = [
+  { id: "sec_work_q3", name: "Work/Q3" },
+  { id: "sec_work_q4", name: "Work/Q4" },
+  { id: "sec_personal_q3", name: "Personal/Q3" },
+  { id: "sec_build", name: "Build" },
+  { id: "sec_empty", name: "Empty" },
 ];
 
 function makeThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
@@ -40,40 +40,40 @@ function makeThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
   });
 }
 
-const folderThreads: ThreadListEntry[] = [
+const sectionThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_work_plan",
     title: "Plan",
-    folderId: "fld_work_q3",
+    sectionId: "sec_work_q3",
     latestAttentionAt: 90,
     createdAt: 90,
   }),
   makeThread({
     id: "thr_work_notes",
     title: "Notes",
-    folderId: "fld_work_q3",
+    sectionId: "sec_work_q3",
     latestAttentionAt: 80,
     createdAt: 80,
   }),
   makeThread({
     id: "thr_work_parent",
     title: "Kickoff",
-    folderId: "fld_work_q4",
+    sectionId: "sec_work_q4",
     latestAttentionAt: 70,
     createdAt: 70,
   }),
   makeThread({
     id: "thr_work_child",
     parentThreadId: "thr_work_parent",
-    title: "Child folder stays with the child",
-    folderId: "fld_personal_q3",
+    title: "Child section stays with the child",
+    sectionId: "sec_personal_q3",
     latestAttentionAt: 65,
     createdAt: 65,
   }),
   makeThread({
     id: "thr_personal_plan",
     title: "Plan",
-    folderId: "fld_personal_q3",
+    sectionId: "sec_personal_q3",
     latestAttentionAt: 60,
     createdAt: 60,
   }),
@@ -86,10 +86,10 @@ const folderThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_env_a",
     title: "Daemon",
-    folderId: "fld_build",
-    environmentId: "env_story_folder",
-    environmentName: "Folder build",
-    environmentBranchName: "bb/sidebar-folders",
+    sectionId: "sec_build",
+    environmentId: "env_story_section",
+    environmentName: "Section build",
+    environmentBranchName: "bb/sidebar-sections",
     environmentWorkspaceDisplayKind: "managed-worktree",
     latestAttentionAt: 40,
     createdAt: 40,
@@ -97,10 +97,10 @@ const folderThreads: ThreadListEntry[] = [
   makeThread({
     id: "thr_env_b",
     title: "Stories",
-    folderId: "fld_build",
-    environmentId: "env_story_folder",
-    environmentName: "Folder build",
-    environmentBranchName: "bb/sidebar-folders",
+    sectionId: "sec_build",
+    environmentId: "env_story_section",
+    environmentName: "Section build",
+    environmentBranchName: "bb/sidebar-sections",
     environmentWorkspaceDisplayKind: "managed-worktree",
     hasPendingInteraction: true,
     latestAttentionAt: 30,
@@ -126,25 +126,25 @@ function projectTree(
   return { status: "ready", threads: [...threads] };
 }
 
-export function ChronologicalFolders() {
+export function ChronologicalSections() {
   return (
     <StoryCard>
       <StoryRow
         label="threads"
-        hint="stored folderId groups matching threads across projects"
+        hint="stored sectionId groups matching threads across projects"
       >
         <SidebarStage>
-          <ChronologicalFolderThreadSections
-            threadListState={projectTree(folderThreads)}
+          <ChronologicalSectionThreadSections
+            threadListState={projectTree(sectionThreads)}
             compareThreads={compareStandardThreads}
-            folders={STORY_FOLDERS}
+            sections={STORY_SECTIONS}
             collapsedThreadIds={new Set()}
             collapsedEnvironmentIds={new Set()}
             onToggleThreadCollapsed={noop}
             onToggleEnvironmentCollapsed={noop}
             topLevelSectionOrder={[
-              ...STORY_FOLDERS.map((folder) =>
-                buildSidebarEntitySectionId("folder", folder.id),
+              ...STORY_SECTIONS.map((section) =>
+                buildSidebarEntitySectionId("section", section.id),
               ),
               "threads",
             ]}

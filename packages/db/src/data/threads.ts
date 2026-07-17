@@ -248,7 +248,7 @@ export interface CreateThreadInput {
   providerId: string;
   title?: string | null;
   titleFallback?: string | null;
-  folderId?: string | null;
+  sectionId?: string | null;
   status?: ThreadStatus;
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
@@ -280,7 +280,7 @@ export function createThread(
           providerId: input.providerId,
           title: input.title ?? null,
           titleFallback: input.titleFallback ?? null,
-          folderId: input.folderId ?? null,
+          sectionId: input.sectionId ?? null,
           status: input.status ?? "starting",
           parentThreadId:
             originKind === null ? input.parentThreadId ?? null : null,
@@ -322,10 +322,10 @@ export function getThread(db: ThreadWriteConnection, id: string) {
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
-  /** Restrict to threads filed directly under this folder. */
-  folderId?: string;
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled?: boolean;
+  /** Restrict to threads filed directly under this section. */
+  sectionId?: string;
+  /** Restrict to loose threads — those not filed under any section. */
+  unsectioned?: boolean;
   parentThreadId?: string;
   /** When true, restrict to child threads. When false, restrict to root threads. */
   hasParent?: boolean;
@@ -628,8 +628,8 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
-    options.folderId ? eq(threads.folderId, options.folderId) : undefined,
-    options.unfiled ? isNull(threads.folderId) : undefined,
+    options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
+    options.unsectioned ? isNull(threads.sectionId) : undefined,
     isNull(threads.deletedAt),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
@@ -1587,7 +1587,7 @@ export function reorderPinnedThread({
 
 export interface UpdateThreadInput {
   environmentId?: string | null;
-  folderId?: string | null;
+  sectionId?: string | null;
   lastReadAt?: number | null;
   parentThreadId?: string | null;
   title?: string | null;
@@ -1605,7 +1605,7 @@ export function updateThread(
     return null;
   }
   const changes: ThreadChangeKind[] = [];
-  if ("title" in input || "folderId" in input) changes.push("title-changed");
+  if ("title" in input || "sectionId" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");
   if (
     "parentThreadId" in input &&
@@ -1622,8 +1622,8 @@ export function updateThread(
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
   if ("title" in input) set.title = input.title;
-  if ("folderId" in input) {
-    set.folderId = input.folderId;
+  if ("sectionId" in input) {
+    set.sectionId = input.sectionId;
   }
   if ("environmentId" in input) set.environmentId = input.environmentId;
   if ("lastReadAt" in input) {

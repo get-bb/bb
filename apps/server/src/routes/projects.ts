@@ -10,7 +10,7 @@ import {
   listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
-  listThreadFolders,
+  listThreadSections,
   listThreadsWithPendingInteractionStateForProjects,
   reorderProject,
   updateProject,
@@ -268,7 +268,7 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
     );
   }
   return {
-    folders: listThreadFolders(deps.db),
+    sections: listThreadSections(deps.db),
     projects: buildProjectsWithThreadsResponseFromRows(
       deps,
       listPublicProjects(deps.db),

@@ -141,7 +141,7 @@ function renderThreadRowContainer({
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  // Never show a grab cursor on thread rows. Folder DnD still works after the
+  // Never show a grab cursor on thread rows. Section DnD still works after the
   // activation distance; the link still selects on click.
   if (stickyLevel !== undefined) {
     return (
@@ -460,7 +460,7 @@ function ThreadRowComponent({
     ? "error"
     : "default";
   const threadTitle = getThreadDisplayTitle(thread);
-  // Inside a folder the row shows the leaf but keeps the full path for a11y.
+  // Inside a section the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
   const labelTitle = accessibleTitle ?? threadTitle;
   const threadSplitsEnabled = useThreadSplitsEnabled();

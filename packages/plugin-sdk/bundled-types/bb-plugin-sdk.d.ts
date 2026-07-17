@@ -1928,7 +1928,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -1938,8 +1938,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -1976,7 +1976,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2009,7 +2009,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2019,8 +2019,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2057,7 +2057,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2393,8 +2393,8 @@ type ThreadEventRow = {
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    starting: "starting";
     idle: "idle";
+    starting: "starting";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -2425,7 +2425,7 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2435,8 +2435,8 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2473,7 +2473,7 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2566,32 +2566,32 @@ declare const createProjectRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strict>;
 }, z$1.core.$strip>;
 type CreateProjectRequest = z$1.infer<typeof createProjectRequestSchema>;
-declare const threadFolderSchema: z$1.ZodObject<{
+declare const threadSectionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
     createdAt: z$1.ZodNumber;
     updatedAt: z$1.ZodNumber;
 }, z$1.core.$strict>;
-type ThreadFolderResponse = z$1.infer<typeof threadFolderSchema>;
-declare const createThreadFolderRequestSchema: z$1.ZodObject<{
+type ThreadSectionResponse = z$1.infer<typeof threadSectionSchema>;
+declare const createThreadSectionRequestSchema: z$1.ZodObject<{
     name: z$1.ZodString;
 }, z$1.core.$strict>;
-type CreateThreadFolderRequest = z$1.infer<typeof createThreadFolderRequestSchema>;
-declare const updateThreadFolderRequestSchema: z$1.ZodObject<{
+type CreateThreadSectionRequest = z$1.infer<typeof createThreadSectionRequestSchema>;
+declare const updateThreadSectionRequestSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
 }, z$1.core.$strict>;
-type UpdateThreadFolderRequest = z$1.infer<typeof updateThreadFolderRequestSchema>;
-declare const deleteThreadFolderRequestSchema: z$1.ZodObject<{
+type UpdateThreadSectionRequest = z$1.infer<typeof updateThreadSectionRequestSchema>;
+declare const deleteThreadSectionRequestSchema: z$1.ZodObject<{
     id: z$1.ZodString;
 }, z$1.core.$strict>;
-type DeleteThreadFolderRequest = z$1.infer<typeof deleteThreadFolderRequestSchema>;
-declare const threadFolderMutationResponseSchema: z$1.ZodObject<{
+type DeleteThreadSectionRequest = z$1.infer<typeof deleteThreadSectionRequestSchema>;
+declare const threadSectionMutationResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     name: z$1.ZodString;
     updatedThreadCount: z$1.ZodNumber;
 }, z$1.core.$strict>;
-type ThreadFolderMutationResponse = z$1.infer<typeof threadFolderMutationResponseSchema>;
+type ThreadSectionMutationResponse = z$1.infer<typeof threadSectionMutationResponseSchema>;
 declare const reorderProjectRequestSchema: z$1.ZodObject<{
     previousProjectId: z$1.ZodNullable<z$1.ZodString>;
     nextProjectId: z$1.ZodNullable<z$1.ZodString>;
@@ -2715,7 +2715,7 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -2725,8 +2725,8 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -2763,7 +2763,7 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -2827,8 +2827,8 @@ type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2849,8 +2849,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2873,7 +2873,7 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
         providerId: z$1.ZodString;
         title: z$1.ZodNullable<z$1.ZodString>;
         titleFallback: z$1.ZodNullable<z$1.ZodString>;
-        folderId: z$1.ZodNullable<z$1.ZodString>;
+        sectionId: z$1.ZodNullable<z$1.ZodString>;
         status: z$1.ZodEnum<{
             error: "error";
             stopping: "stopping";
@@ -3743,7 +3743,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -3753,8 +3753,8 @@ declare const hostDaemonCommandRegistry: {
                     projectId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"folder">;
-                    folderId: z$1.ZodString;
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -3791,7 +3791,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -3824,7 +3824,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -3834,8 +3834,8 @@ declare const hostDaemonCommandRegistry: {
                     projectId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"folder">;
-                    folderId: z$1.ZodString;
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -3872,7 +3872,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -3917,7 +3917,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -3927,8 +3927,8 @@ declare const hostDaemonCommandRegistry: {
                     projectId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"folder">;
-                    folderId: z$1.ZodString;
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -3965,7 +3965,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -3998,7 +3998,7 @@ declare const hostDaemonCommandRegistry: {
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -4008,8 +4008,8 @@ declare const hostDaemonCommandRegistry: {
                     projectId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"folder">;
-                    folderId: z$1.ZodString;
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -4046,7 +4046,7 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -6765,7 +6765,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
     mentions: z$1.ZodArray<z$1.ZodObject<{
         start: z$1.ZodNumber;
         end: z$1.ZodNumber;
-        resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             kind: z$1.ZodLiteral<"thread">;
             threadId: z$1.ZodString;
             projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -6775,8 +6775,8 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
             projectId: z$1.ZodString;
             label: z$1.ZodString;
         }, z$1.core.$strip>, z$1.ZodObject<{
-            kind: z$1.ZodLiteral<"folder">;
-            folderId: z$1.ZodString;
+            kind: z$1.ZodLiteral<"section">;
+            sectionId: z$1.ZodString;
             label: z$1.ZodString;
         }, z$1.core.$strip>, z$1.ZodObject<{
             kind: z$1.ZodLiteral<"path">;
@@ -6813,7 +6813,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             label: z$1.ZodString;
-        }, z$1.core.$strip>], "kind">;
+        }, z$1.core.$strip>], "kind">>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     id: z$1.ZodString;
@@ -7350,7 +7350,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7360,8 +7360,8 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7398,7 +7398,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7495,7 +7495,7 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         type: z$1.ZodLiteral<"project-default">;
     }, z$1.core.$strip>], "type">;
     parentThreadId: z$1.ZodOptional<z$1.ZodString>;
-    folderId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+    sectionId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     sourceThreadId: z$1.ZodOptional<z$1.ZodString>;
     sourceSeqEnd: z$1.ZodOptional<z$1.ZodNumber>;
     startedOnBehalfOf: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodObject<{
@@ -7525,7 +7525,7 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7535,8 +7535,8 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7573,7 +7573,7 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7655,7 +7655,7 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7665,8 +7665,8 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -7703,7 +7703,7 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7799,7 +7799,7 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
             mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
                 start: z$1.ZodNumber;
                 end: z$1.ZodNumber;
-                resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"thread">;
                     threadId: z$1.ZodString;
                     projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -7809,8 +7809,8 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                     projectId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
-                    kind: z$1.ZodLiteral<"folder">;
-                    folderId: z$1.ZodString;
+                    kind: z$1.ZodLiteral<"section">;
+                    sectionId: z$1.ZodString;
                     label: z$1.ZodString;
                 }, z$1.core.$strip>, z$1.ZodObject<{
                     kind: z$1.ZodLiteral<"path">;
@@ -7847,7 +7847,7 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
-                }, z$1.core.$strip>], "kind">;
+                }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -7904,7 +7904,7 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -7977,7 +7977,7 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 providerId: z$1.ZodString;
                 title: z$1.ZodNullable<z$1.ZodString>;
                 titleFallback: z$1.ZodNullable<z$1.ZodString>;
-                folderId: z$1.ZodNullable<z$1.ZodString>;
+                sectionId: z$1.ZodNullable<z$1.ZodString>;
                 status: z$1.ZodEnum<{
                     error: "error";
                     stopping: "stopping";
@@ -8065,7 +8065,7 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                 providerId: z$1.ZodString;
                 title: z$1.ZodNullable<z$1.ZodString>;
                 titleFallback: z$1.ZodNullable<z$1.ZodString>;
-                folderId: z$1.ZodNullable<z$1.ZodString>;
+                sectionId: z$1.ZodNullable<z$1.ZodString>;
                 status: z$1.ZodEnum<{
                     error: "error";
                     stopping: "stopping";
@@ -8152,7 +8152,7 @@ declare const threadResponseSchema: z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -8209,7 +8209,7 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
     providerId: z$1.ZodString;
     title: z$1.ZodNullable<z$1.ZodString>;
     titleFallback: z$1.ZodNullable<z$1.ZodString>;
-    folderId: z$1.ZodNullable<z$1.ZodString>;
+    sectionId: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodEnum<{
         error: "error";
         stopping: "stopping";
@@ -8263,9 +8263,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            unmanaged: "unmanaged";
-            "managed-worktree": "managed-worktree";
             personal: "personal";
+            "managed-worktree": "managed-worktree";
+            unmanaged: "unmanaged";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -8475,7 +8475,7 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
         mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
             start: z$1.ZodNumber;
             end: z$1.ZodNumber;
-            resource: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"thread">;
                 threadId: z$1.ZodString;
                 projectId: z$1.ZodOptional<z$1.ZodString>;
@@ -8485,8 +8485,8 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
                 projectId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"folder">;
-                folderId: z$1.ZodString;
+                kind: z$1.ZodLiteral<"section">;
+                sectionId: z$1.ZodString;
                 label: z$1.ZodString;
             }, z$1.core.$strip>, z$1.ZodObject<{
                 kind: z$1.ZodLiteral<"path">;
@@ -8523,7 +8523,7 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">;
+            }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -8582,7 +8582,7 @@ declare const deleteThreadRequestSchema: z$1.ZodObject<{
 type DeleteThreadRequest = z$1.infer<typeof deleteThreadRequestSchema>;
 declare const updateThreadRequestSchema: z$1.ZodObject<{
     title: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
-    folderId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+    sectionId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     parentThreadId: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     model: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     reasoningLevel: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodEnum<{
@@ -8643,8 +8643,8 @@ declare const threadListQuerySchema: z$1.ZodObject<{
         true: "true";
         false: "false";
     }>>;
-    folderId: z$1.ZodOptional<z$1.ZodString>;
-    unfiled: z$1.ZodOptional<z$1.ZodEnum<{
+    sectionId: z$1.ZodOptional<z$1.ZodString>;
+    unsectioned: z$1.ZodOptional<z$1.ZodEnum<{
         true: "true";
         false: "false";
     }>>;
@@ -8913,8 +8913,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         originalModel: z$1.ZodString;
         fallbackModel: z$1.ZodString;
         reason: z$1.ZodEnum<{
-            refusal: "refusal";
             provider: "provider";
+            refusal: "refusal";
         }>;
         message: z$1.ZodString;
     }, z$1.core.$strip>>;
@@ -9851,7 +9851,7 @@ interface TerminalsArea {
 interface ThreadListArgs {
     archived?: boolean;
     excludeSideChats?: boolean;
-    folderId?: string;
+    sectionId?: string;
     hasParent?: boolean;
     limit?: number;
     offset?: number;
@@ -9859,7 +9859,7 @@ interface ThreadListArgs {
     parentThreadId?: string;
     projectId?: string;
     sourceThreadId?: string;
-    unfiled?: boolean;
+    unsectioned?: boolean;
 }
 interface ThreadSearchArgs extends ThreadSearchQuery {
 }
@@ -10097,15 +10097,15 @@ interface ThreadsArea {
     wait(args: ThreadWaitArgs): Promise<ThreadWaitResult>;
 }
 
-type ThreadFolderCreateResult = ThreadFolderResponse;
-type ThreadFolderUpdateResult = ThreadFolderMutationResponse;
-type ThreadFolderDeleteResult = ThreadFolderMutationResponse;
-type ThreadFolderListResult = ThreadFolderResponse[];
-interface ThreadFoldersArea {
-    create(args: CreateThreadFolderRequest): Promise<ThreadFolderCreateResult>;
-    delete(args: DeleteThreadFolderRequest): Promise<ThreadFolderDeleteResult>;
-    list(): Promise<ThreadFolderListResult>;
-    update(args: UpdateThreadFolderRequest): Promise<ThreadFolderUpdateResult>;
+type ThreadSectionCreateResult = ThreadSectionResponse;
+type ThreadSectionUpdateResult = ThreadSectionMutationResponse;
+type ThreadSectionDeleteResult = ThreadSectionMutationResponse;
+type ThreadSectionListResult = ThreadSectionResponse[];
+interface ThreadSectionsArea {
+    create(args: CreateThreadSectionRequest): Promise<ThreadSectionCreateResult>;
+    delete(args: DeleteThreadSectionRequest): Promise<ThreadSectionDeleteResult>;
+    list(): Promise<ThreadSectionListResult>;
+    update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
 
 interface BbSdk extends BbRealtime {
@@ -10120,7 +10120,7 @@ interface BbSdk extends BbRealtime {
     system: SystemArea;
     terminals: TerminalsArea;
     theme: ThemeArea;
-    threadFolders: ThreadFoldersArea;
+    threadSections: ThreadSectionsArea;
     threads: ThreadsArea;
 }
 

@@ -46,7 +46,7 @@ export interface TopLevelSidebarSectionProps {
 
 /**
  * The single visual and interaction contract for every first-level sidebar
- * group: built-in sections, projects, folders, and machine groups.
+ * group: built-in sections, projects, sections, and machine groups.
  */
 export function TopLevelSidebarSection({
   label,

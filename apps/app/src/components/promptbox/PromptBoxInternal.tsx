@@ -1020,7 +1020,7 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
-  placeholder = "Ask anything. @ to mention files or folders",
+  placeholder = "Ask anything. @ to mention files, folders, or sections",
   className,
   header,
   footerStart,

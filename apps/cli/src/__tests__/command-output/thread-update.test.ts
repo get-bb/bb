@@ -113,24 +113,24 @@ describe("bb thread update command output", () => {
     );
   });
 
-  it("bb thread update moves a thread into a folder", async () => {
+  it("bb thread update moves a thread into a section", async () => {
     const thread = fixtures.makeThread({
-      id: "thread-folder",
+      id: "thread-section",
       projectId: "proj-1",
       providerId: "codex",
-      folderId: "folder-review",
+      sectionId: "section-review",
     });
     const patch = vi.fn(async () => thread);
     stubServerApi({ "v1.threads.:id.$patch": patch });
 
     await runCommand(
-      ["thread", "update", "thread-folder", "--folder", "folder-review"],
+      ["thread", "update", "thread-section", "--section", "section-review"],
       register,
     );
 
     expect(patch).toHaveBeenCalledWith({
-      param: { id: "thread-folder" },
-      json: { folderId: "folder-review" },
+      param: { id: "thread-section" },
+      json: { sectionId: "section-review" },
     });
   });
 

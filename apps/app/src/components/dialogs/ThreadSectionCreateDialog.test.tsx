@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThreadFolderRenameDialog } from "./ThreadFolderCreateDialog";
+import { ThreadSectionRenameDialog } from "./ThreadSectionCreateDialog";
 
 const DUPLICATE_NAME_MESSAGE = "Section name already exists";
 
@@ -11,9 +11,9 @@ function RenameDialogHarness({ onRename }: { onRename: () => void }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   return (
-    <ThreadFolderRenameDialog
+    <ThreadSectionRenameDialog
       errorMessage={errorMessage}
-      target={{ id: "fld_alpha", name: "Alpha" }}
+      target={{ id: "sec_alpha", name: "Alpha" }}
       pending={false}
       onOpenChange={() => {}}
       onRename={() => {
@@ -29,7 +29,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ThreadFolderRenameDialog", () => {
+describe("ThreadSectionRenameDialog", () => {
   it("shows the same server validation error after a second submit", () => {
     const onRename = vi.fn();
     render(<RenameDialogHarness onRename={onRename} />);

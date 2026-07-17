@@ -1,30 +1,37 @@
 import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import {
+  createJsonLocalStorage,
+  type SyncStorage,
+} from "@/lib/browser-storage";
 
 const COLLAPSED_PROJECTS_STORAGE_KEY = "bb.sidebar.collapsedProjects";
 const COLLAPSED_THREADS_STORAGE_KEY = "bb.sidebar.collapsedThreads";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
-const SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY =
+const SIDEBAR_MANUAL_SECTION_ORDER_STORAGE_KEY =
+  "bb.sidebar.manualSectionOrder";
+const LEGACY_SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY =
   "bb.sidebar.folderSectionOrder";
 const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
   "bb.sidebar.machineSectionOrder";
 const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
-const COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
+const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
+  "bb.sidebar.collapsedThreadSections";
+const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
 
 export type SidebarSectionId =
   | "pinned"
   | "threads"
   | `project:${string}`
-  | `folder:${string}`
+  | `section:${string}`
   | `machine:${string}`;
 export type CollapsibleSidebarSectionId = "pinned" | "threads";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
-// value for the cross-project Folders view that replaced the old None view;
+// value for the cross-project Sections view that replaced the old None view;
 // "machine" groups threads by the host their environment runs on.
 export type SidebarOrganizationMode = "project" | "chronological" | "machine";
 // Controls thread ordering in both grouped and ungrouped sidebar views. Time
@@ -37,6 +44,68 @@ export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "projects",
   "threads",
 ];
+
+function createLegacyMigratingStringArrayStorage(
+  legacyKey: string,
+  migrateItem: (item: string) => string,
+): SyncStorage<string[]> {
+  const storage = createJsonLocalStorage<string[]>();
+
+  return {
+    getItem(key, initialValue) {
+      if (
+        typeof window === "undefined" ||
+        window.localStorage.getItem(key) !== null
+      ) {
+        return storage.getItem(key, initialValue);
+      }
+
+      const legacyJson = window.localStorage.getItem(legacyKey);
+      if (legacyJson === null) {
+        return initialValue;
+      }
+      let parsedLegacyValue: unknown;
+      try {
+        parsedLegacyValue = JSON.parse(legacyJson);
+      } catch {
+        storage.removeItem(legacyKey);
+        return initialValue;
+      }
+      if (!Array.isArray(parsedLegacyValue)) {
+        storage.removeItem(legacyKey);
+        return initialValue;
+      }
+      const migratedValue = parsedLegacyValue
+        .filter((item): item is string => typeof item === "string")
+        .map(migrateItem);
+      storage.setItem(key, migratedValue);
+      storage.removeItem(legacyKey);
+      return migratedValue;
+    },
+    setItem: storage.setItem,
+    removeItem(key) {
+      storage.removeItem(key);
+      storage.removeItem(legacyKey);
+    },
+    subscribe: storage.subscribe,
+  };
+}
+
+const sidebarManualSectionOrderStorage =
+  createLegacyMigratingStringArrayStorage(
+    LEGACY_SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY,
+    (item) =>
+      item === "folders"
+        ? "sections"
+        : item.startsWith("folder:")
+          ? `section:${item.slice("folder:".length)}`
+          : item,
+  );
+
+const collapsedThreadSectionsStorage = createLegacyMigratingStringArrayStorage(
+  LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY,
+  (item) => item,
+);
 
 export const collapsedProjectIdsAtom = atomWithStorage<string[]>(
   COLLAPSED_PROJECTS_STORAGE_KEY,
@@ -75,10 +144,10 @@ export const sidebarSectionOrderAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
-export const sidebarFolderSectionOrderAtom = atomWithStorage<string[]>(
-  SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY,
-  ["pinned", "folders", "threads"],
-  createJsonLocalStorage<string[]>(),
+export const sidebarManualSectionOrderAtom = atomWithStorage<string[]>(
+  SIDEBAR_MANUAL_SECTION_ORDER_STORAGE_KEY,
+  ["pinned", "sections", "threads"],
+  sidebarManualSectionOrderStorage,
   { getOnInit: true },
 );
 
@@ -105,12 +174,12 @@ export const sidebarChronologicalSortAtom =
     { getOnInit: true },
   );
 
-// Collapsed folder keys (see buildFolderKey in folderKeys.ts). A plain string[],
+// Collapsed section keys (see buildSectionKey in sectionKeys.ts). A plain string[],
 // matching collapsedThreadIds / collapsedProjectIds.
-export const sidebarCollapsedFoldersAtom = atomWithStorage<string[]>(
-  COLLAPSED_FOLDERS_STORAGE_KEY,
+export const sidebarCollapsedThreadSectionsAtom = atomWithStorage<string[]>(
+  COLLAPSED_THREAD_SECTIONS_STORAGE_KEY,
   [],
-  createJsonLocalStorage<string[]>(),
+  collapsedThreadSectionsStorage,
   { getOnInit: true },
 );
 

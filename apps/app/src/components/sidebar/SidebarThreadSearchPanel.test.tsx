@@ -32,11 +32,11 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 const mockUseThreadSearch = vi.mocked(useThreadSearch);
 
 function createThreadListEntry({
-  folderId = null,
+  sectionId = null,
   id,
   title,
 }: {
-  folderId?: string | null;
+  sectionId?: string | null;
   id: string;
   title: string;
 }): ThreadListEntry {
@@ -77,7 +77,7 @@ function createThreadListEntry({
     status: "idle",
     title,
     titleFallback: null,
-    folderId,
+    sectionId,
     updatedAt: 1000,
   };
 }
@@ -181,10 +181,10 @@ describe("SidebarThreadSearchPanel", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 
-  it("shows folder metadata instead of project metadata in folder mode", () => {
+  it("shows section metadata instead of project metadata in section mode", () => {
     const thread = createThreadListEntry({
-      folderId: "fld_ci",
-      id: "thr_folder",
+      sectionId: "sec_ci",
+      id: "thr_section",
       title: "CI cleanup",
     });
     mockThreadSearch({
@@ -200,7 +200,7 @@ describe("SidebarThreadSearchPanel", () => {
     render(
       <SidebarThreadSearchPanel
         activeIndex={0}
-        folderNamesById={new Map([["fld_ci", "Infra / CI"]])}
+        sectionNamesById={new Map([["sec_ci", "Infra / CI"]])}
         isRecentsLoading={false}
         onActiveIndexChange={vi.fn()}
         onNavigationItemsChange={vi.fn()}
@@ -208,7 +208,7 @@ describe("SidebarThreadSearchPanel", () => {
         projectNamesById={new Map([["proj_search", "Search project"]])}
         query="needle"
         recentThreads={[]}
-        showFolderLabels
+        showSectionLabels
       />,
     );
 

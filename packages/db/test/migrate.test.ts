@@ -218,8 +218,8 @@ function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
-  // tables (added by 0039/0041), app_theme (added by 0042), the thread folder
-  // schema (thread folder columns + thread_folders table), thread tabs, and
+  // tables (added by 0039/0041), app_theme (added by 0042), the thread section
+  // schema (thread section columns + thread_sections table), thread tabs, and
   // normalized plugin persistence tables.
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
@@ -237,7 +237,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
     .run();
-  dropThreadFolderSchema(db);
+  dropThreadSectionSchema(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound. Later migrations add plugins, bb_connect, multi_machine, and
   // thread_splits; the current schema has already removed bb_connect and
@@ -311,7 +311,7 @@ const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
 const threadlessTerminalSessionsMigrationWhen = 1782173519934;
-const threadFoldersMigrationWhen = 1782252763916;
+const threadSectionsMigrationWhen = 1782252763916;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
 const pendingInteractionsMigrationWhen = 1783626227375;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
@@ -458,7 +458,7 @@ function dropPost0023Tables(db: DbConnection): void {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
 
-  dropThreadFolderSchema(db);
+  dropThreadSectionSchema(db);
 }
 
 function dropProjectGitRemoteUrlColumn(db: DbConnection): void {
@@ -471,19 +471,20 @@ function dropProjectGitRemoteUrlColumn(db: DbConnection): void {
 }
 
 /**
- * Folder schema lands in migration 0046. Replay scenarios that rewind the
- * ledger past it must drop the schema too, or migrate() re-runs the ADD/CREATE
- * against a DB that already has it.
+ * The original section schema lands in migration 0046. Replay scenarios that
+ * rewind the ledger past it must drop the schema too, or migrate() re-runs the
+ * ADD/CREATE against a DB that already has it.
  */
-function dropThreadFolderSchema(db: DbConnection): void {
+function dropThreadSectionSchema(db: DbConnection): void {
   db.$client.exec("DROP INDEX IF EXISTS threads_folder_archived_deleted_idx;");
+  db.$client.exec("DROP INDEX IF EXISTS threads_section_archived_deleted_idx;");
   const threadColumns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
     .all();
-  if (threadColumns.some((row) => row.name === "folder_id")) {
-    db.$client.prepare("ALTER TABLE threads DROP COLUMN folder_id").run();
+  if (threadColumns.some((row) => row.name === "section_id")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN section_id").run();
   }
-  db.$client.exec("DROP TABLE IF EXISTS thread_folders;");
+  db.$client.exec("DROP TABLE IF EXISTS thread_sections;");
 }
 
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {
@@ -607,7 +608,7 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   restoreEnvironmentCleanupModeColumn(db);
   restoreEnvironmentCleanupRequestedAtColumn(db);
   restoreThreadStopRequestedAtColumn(db);
-  dropThreadFolderSchema(db);
+  dropThreadSectionSchema(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
@@ -1379,17 +1380,22 @@ describe("migrate", () => {
     }
   });
 
-  it("repairs branch-local queued grouping history that skipped thread folders", () => {
+  it("repairs branch-local queued grouping history that skipped thread sections", () => {
     const db = createConnection(":memory:");
 
     try {
       migrate(db);
-      dropThreadFolderSchema(db);
+      dropThreadSectionSchema(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at = ?",
         )
-        .run(threadFoldersMigrationWhen);
+        .run(threadSectionsMigrationWhen);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(latestMigrationWhen);
 
       expect(
         db.$client
@@ -1404,15 +1410,15 @@ describe("migrate", () => {
       ).toEqual({ count: 1 });
       expect(() => migrate(db)).not.toThrow();
 
-      expect(readTableNames(db)).toContain("thread_folders");
+      expect(readTableNames(db)).toContain("thread_sections");
       expect(
         db.$client
           .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
           .all()
           .map((row) => row.name),
-      ).toContain("folder_id");
+      ).toContain("section_id");
       expect(readIndexNames({ db, tableName: "threads" })).toContain(
-        "threads_folder_archived_deleted_idx",
+        "threads_section_archived_deleted_idx",
       );
       expect(
         db.$client
@@ -1423,8 +1429,78 @@ describe("migrate", () => {
               WHERE created_at = ?
             `,
           )
-          .get(threadFoldersMigrationWhen),
+          .get(threadSectionsMigrationWhen),
       ).toEqual({ count: 1 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("renames thread section storage without losing assignments", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO projects (id, name, created_at, updated_at)
+        VALUES ('proj_section_migration', 'Section migration', 1000, 1000);
+
+        INSERT INTO thread_sections (id, name, created_at, updated_at)
+        VALUES ('sec_preserved', 'Release QA', 1000, 1000);
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          section_id,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_section_migration',
+          'proj_section_migration',
+          'codex',
+          'sec_preserved',
+          1000,
+          1000,
+          1000
+        );
+
+        DROP INDEX threads_section_archived_deleted_idx;
+        DROP INDEX thread_sections_name_idx;
+        ALTER TABLE thread_sections RENAME TO thread_folders;
+        CREATE UNIQUE INDEX thread_folders_name_idx
+          ON thread_folders (name);
+        ALTER TABLE threads RENAME COLUMN section_id TO folder_id;
+        CREATE INDEX threads_folder_archived_deleted_idx
+          ON threads (folder_id, archived_at, deleted_at, id);
+      `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(latestMigrationWhen);
+
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(readTableNames(db)).toContain("thread_sections");
+      expect(readTableNames(db)).not.toContain("thread_folders");
+      expect(
+        db.$client
+          .prepare<[], { sectionId: string | null }>(
+            `
+              SELECT section_id AS sectionId
+              FROM threads
+              WHERE id = 'thr_section_migration'
+            `,
+          )
+          .get(),
+      ).toEqual({ sectionId: "sec_preserved" });
+      expect(readIndexNames({ db, tableName: "threads" })).toContain(
+        "threads_section_archived_deleted_idx",
+      );
+      expect(db.$client.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
       closeConnection(db);
     }

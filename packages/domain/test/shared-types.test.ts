@@ -51,6 +51,20 @@ describe("prompt mention command triggers", () => {
     ).toBe(false);
   });
 
+  it("normalizes persisted pre-section mention resources", () => {
+    expect(
+      promptMentionResourceSchema.parse({
+        kind: "folder",
+        folderId: "sec_release_qa",
+        label: "Release QA",
+      }),
+    ).toEqual({
+      kind: "section",
+      sectionId: "sec_release_qa",
+      label: "Release QA",
+    });
+  });
+
   it("rejects legacy dollar command mention resources", () => {
     expect(
       promptMentionResourceSchema.safeParse({
@@ -127,7 +141,9 @@ describe("prompt command input helpers", () => {
   });
 
   it("ignores plain text that looks like a command", () => {
-    const input = [{ type: "text" as const, text: "/plan review", mentions: [] }];
+    const input = [
+      { type: "text" as const, text: "/plan review", mentions: [] },
+    ];
 
     expect(
       promptInputHasCommandMention(input, { trigger: "/", name: "plan" }),

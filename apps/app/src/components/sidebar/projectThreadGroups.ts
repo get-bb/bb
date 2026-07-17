@@ -7,7 +7,7 @@ import {
   getCollapsedChildActivity,
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
-import { buildFolderKey } from "./folderKeys";
+import { buildSectionKey } from "./sectionKeys";
 
 interface ProjectThreadNodeStats {
   childCount: number;
@@ -33,13 +33,13 @@ export interface EnvironmentThreadGroup {
   stats: ProjectThreadNodeStats;
 }
 
-export interface SidebarFolderDefinition {
+export interface SidebarSectionDefinition {
   id: string;
   name: string;
 }
 
-// A flat folder node backed by a durable DB folder row.
-export interface SidebarFolderGroup {
+// A flat section node backed by a durable DB section row.
+export interface SidebarSectionGroup {
   id: string;
   key: string;
   name: string;
@@ -50,13 +50,13 @@ export interface SidebarFolderGroup {
 
 // A single render slot in a thread sibling list. Threads and env groups
 // interleave by recency, so renderers iterate one ordered list rather than two
-// parallel arrays. Folders join the same list only under Group by: Folder.
+// parallel arrays. Sections join the same list only under Group by: Section.
 export type ProjectThreadItem =
   | { kind: "thread"; node: ProjectThreadNode }
   | { kind: "environment"; group: EnvironmentThreadGroup }
-  | { kind: "folder"; group: SidebarFolderGroup };
+  | { kind: "section"; group: SidebarSectionGroup };
 
-// Container-id sentinel for the global folder section. It namespaces persisted
+// Container-id sentinel for the global section section. It namespaces persisted
 // collapse keys and dnd ids from other sidebar rows.
 export const CHRONOLOGICAL_CONTAINER_ID = "chronological";
 
@@ -155,8 +155,8 @@ function representativeThread(item: ProjectThreadItem): ThreadListEntry {
       return item.node.thread;
     case "environment":
       return item.group.nodes[0].thread;
-    case "folder":
-      // Folders never reach this pre-bucket comparator path; fall back to the
+    case "section":
+      // Sections never reach this pre-bucket comparator path; fall back to the
       // first nested item's representative so the function stays total.
       return representativeThread(item.group.items[0]);
   }
@@ -188,7 +188,7 @@ function getItemThreadDescendants(
         return getNodeAndDescendantThreads(item.node);
       case "environment":
         return item.group.nodes.flatMap(getNodeAndDescendantThreads);
-      case "folder":
+      case "section":
         return getItemThreadDescendants(item.group.items);
     }
   });
@@ -381,18 +381,18 @@ export function buildChronologicalThreadList(
   return buildThreadTreeItems(allThreads, compareThreads, false);
 }
 
-// The global Folders view uses the chronological root tree, then buckets those
-// roots by their durable folder id. Descendants stay nested under their parent.
-export function buildFolderThreadList(
+// The global Sections view uses the chronological root tree, then buckets those
+// roots by their durable section id. Descendants stay nested under their parent.
+export function buildSectionThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
-  folders: readonly SidebarFolderDefinition[] = [],
+  sections: readonly SidebarSectionDefinition[] = [],
 ): ProjectThreadItem[] {
-  return bucketIntoFolders(
+  return bucketIntoSections(
     buildChronologicalThreadList(allThreads, compareThreads),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
-    folders,
+    sections,
   );
 }
 
@@ -460,7 +460,7 @@ function getItemOrderingThread(
       return item.node.thread;
     case "environment":
       return item.group.nodes[0].thread;
-    case "folder": {
+    case "section": {
       const descendants = getItemThreadDescendants(item.group.items);
       if (descendants.length === 0) {
         return null;
@@ -478,23 +478,23 @@ export function getSidebarDndItemId(item: ProjectThreadItem): string {
       return item.node.thread.id;
     case "environment":
       return item.group.nodes[0].thread.id;
-    case "folder":
+    case "section":
       return item.group.key;
   }
 }
 
-// Orders folders first, then each block by the active comparator.
+// Orders sections first, then each block by the active comparator.
 function orderSiblingItems(
   items: readonly ProjectThreadItem[],
   compareThreads: ThreadComparator,
 ): ProjectThreadItem[] {
   const decorated = items.map((item) => ({
     item,
-    isFolder: item.kind === "folder",
+    isSection: item.kind === "section",
   }));
   decorated.sort((left, right) => {
-    if (left.isFolder !== right.isFolder) {
-      return left.isFolder ? -1 : 1;
+    if (left.isSection !== right.isSection) {
+      return left.isSection ? -1 : 1;
     }
     return compareSiblingItems(left.item, right.item, compareThreads);
   });
@@ -507,7 +507,7 @@ function getItemFallbackSortLabel(item: ProjectThreadItem): string {
       return item.node.thread.id;
     case "environment":
       return item.group.environmentId;
-    case "folder":
+    case "section":
       return item.group.name;
   }
 }
@@ -535,77 +535,79 @@ function compareSiblingItems(
   );
 }
 
-function buildFolderGroup(
+function buildSectionGroup(
   containerId: string,
-  folder: SidebarFolderDefinition,
+  section: SidebarSectionDefinition,
   items: ProjectThreadItem[],
-): SidebarFolderGroup {
+): SidebarSectionGroup {
   const descendantThreads = getItemThreadDescendants(items);
   return {
-    id: folder.id,
-    key: buildFolderKey(containerId, folder.id),
-    name: folder.name,
+    id: section.id,
+    key: buildSectionKey(containerId, section.id),
+    name: section.name,
     items,
     threadCount: descendantThreads.length,
     activity: getCollapsedChildActivity(descendantThreads),
   };
 }
 
-// Fold a top-level item list into flat DB-backed folders plus loose items.
-function bucketIntoFolders(
+// Fold a top-level item list into flat DB-backed sections plus loose items.
+function bucketIntoSections(
   items: readonly ProjectThreadItem[],
   containerId: string,
   compareThreads: ThreadComparator = compareStandardThreads,
-  folders: readonly SidebarFolderDefinition[] = [],
+  sections: readonly SidebarSectionDefinition[] = [],
 ): ProjectThreadItem[] {
-  const folderDefinitionsById = new Map<string, SidebarFolderDefinition>();
-  const orderedFolders: SidebarFolderDefinition[] = [];
-  for (const folder of folders) {
-    if (folderDefinitionsById.has(folder.id)) {
+  const sectionDefinitionsById = new Map<string, SidebarSectionDefinition>();
+  const orderedSections: SidebarSectionDefinition[] = [];
+  for (const section of sections) {
+    if (sectionDefinitionsById.has(section.id)) {
       continue;
     }
-    folderDefinitionsById.set(folder.id, folder);
-    orderedFolders.push(folder);
+    sectionDefinitionsById.set(section.id, section);
+    orderedSections.push(section);
   }
 
-  const itemsByFolderId = new Map<string, ProjectThreadItem[]>();
-  for (const folder of orderedFolders) {
-    itemsByFolderId.set(folder.id, []);
+  const itemsBySectionId = new Map<string, ProjectThreadItem[]>();
+  for (const section of orderedSections) {
+    itemsBySectionId.set(section.id, []);
   }
   const looseItems: ProjectThreadItem[] = [];
 
   for (const item of items) {
     const orderingThread = getItemOrderingThread(item, compareThreads);
-    const folderId = orderingThread?.folderId;
-    if (!folderId) {
+    const sectionId = orderingThread?.sectionId;
+    if (!sectionId) {
       looseItems.push(item);
       continue;
     }
 
-    let folderItems = itemsByFolderId.get(folderId);
-    if (!folderItems) {
-      const fallbackFolder = { id: folderId, name: "Folder" };
-      folderDefinitionsById.set(folderId, fallbackFolder);
-      orderedFolders.push(fallbackFolder);
-      folderItems = [];
-      itemsByFolderId.set(folderId, folderItems);
+    let sectionItems = itemsBySectionId.get(sectionId);
+    if (!sectionItems) {
+      const fallbackSection = { id: sectionId, name: "Section" };
+      sectionDefinitionsById.set(sectionId, fallbackSection);
+      orderedSections.push(fallbackSection);
+      sectionItems = [];
+      itemsBySectionId.set(sectionId, sectionItems);
     }
-    folderItems.push(item);
+    sectionItems.push(item);
   }
 
-  const folderItemsByName = orderedFolders.map((folder): ProjectThreadItem => {
-    const children = orderSiblingItems(
-      itemsByFolderId.get(folder.id) ?? [],
-      compareThreads,
-    );
-    return {
-      kind: "folder",
-      group: buildFolderGroup(containerId, folder, children),
-    };
-  });
-  const folderItems = compareThreads.compareItems
-    ? orderSiblingItems(folderItemsByName, compareThreads)
-    : folderItemsByName;
+  const sectionItemsByName = orderedSections.map(
+    (section): ProjectThreadItem => {
+      const children = orderSiblingItems(
+        itemsBySectionId.get(section.id) ?? [],
+        compareThreads,
+      );
+      return {
+        kind: "section",
+        group: buildSectionGroup(containerId, section, children),
+      };
+    },
+  );
+  const sectionItems = compareThreads.compareItems
+    ? orderSiblingItems(sectionItemsByName, compareThreads)
+    : sectionItemsByName;
   const orderedLooseItems = orderSiblingItems(looseItems, compareThreads);
-  return [...folderItems, ...orderedLooseItems];
+  return [...sectionItems, ...orderedLooseItems];
 }

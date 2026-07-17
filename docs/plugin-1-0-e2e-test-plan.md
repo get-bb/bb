@@ -89,7 +89,8 @@ coverage.
 - [x] The running frontend bundles report compatible SDK metadata and load successfully.
 - [x] Plugin/package/API versions remain pre-1.0. The live pass ran on SDK
       `0.2.0`; release coordination moved the contract to `0.3.0`, and the
-      additive realtime connection hook advanced it to `0.3.1`.
+      additive realtime connection hook advanced it to `0.3.1`. The breaking
+      thread-group rename advanced the SDK to `0.4.0`.
 
 ## 3. Plugin management UI
 
@@ -266,7 +267,7 @@ coverage.
 - [T] Autosave/edit regression coverage includes successive rich-text and Markdown table updates; live autosave persisted the final value.
 - [x] External change/CAS conflict is surfaced without overwriting either version, and reload is safe.
 - [x] Rename-to-title updates the tree, URL, and file atomically.
-- [x] Create nested folders/documents and distinguish `folder.md` from `folder/`.
+- [x] Create nested sections/documents and distinguish `section.md` from `section/`.
 - [x] Search returns title/path/content matches and clears predictably.
 - [x] Delete confirmation removes the document and selects a sensible next state.
 - [x] Deep link opens the correct document; refresh/back/forward retain selection.
@@ -359,7 +360,7 @@ method may disappear behind a grouped test-plan heading.
   `cloneDefaultPath`, `installProviderCli`, `list`, `pathsExist`, `pickFolder`,
   `providerCliStatus`, `update`. Live passes: `list`, `get`, `directory`,
   `pathsExist`, and `providerCliStatus`. Host deletion, provider installation,
-  native folder-picker interaction, and enrollment mutation are intentionally
+  native section-picker interaction, and enrollment mutation are intentionally
   not performed on the only connected test host; clone-path needs a project.
 - [-] `projects` (18): `attachments.read`, `attachments.upload`, `branches`,
   `commands`, `create`, `defaultExecutionOptions`, `delete`, `fileContent`,
@@ -389,7 +390,7 @@ invalid_request`, and the host stays connected after `P1-E2E-009`; successful
   transcription is unavailable because voice transcription is disabled here.
 - [x] `theme` (3): `get`, `catalog`, `set` (object and compatibility-string
       overloads count as one callable method).
-- [x] `threadFolders` (4): `create`, `delete`, `list`, `update` in a disposable empty folder.
+- [x] `threadSections` (4): `create`, `delete`, `list`, `update` in a disposable empty section.
 - [-] `threads` root (27): `archive`, `archiveAll`, `childSummary`,
   `conversationOutline`, `defaultExecutionOptions`, `delete`, `get`, `list`,
   `markRead`, `markUnread`, `open`, `output`, `pin`, `promptHistory`,

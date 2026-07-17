@@ -64,7 +64,7 @@ interface UseSidebarReorderDndArgs {
   onDragEnd: (event: DragEndEvent) => void;
   /** Runs alongside the internal drag-click suppression on drag start. */
   onDragStart?: (event: DragStartEvent) => void;
-  /** Live drag-over tracking (e.g. to preview/expand a hovered folder). */
+  /** Live drag-over tracking (e.g. to preview/expand a hovered section). */
   onDragOver?: (event: DragOverEvent) => void;
   /** Runs alongside the internal suppression reset when a drag is cancelled. */
   onDragCancel?: () => void;

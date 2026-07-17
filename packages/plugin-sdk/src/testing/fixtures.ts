@@ -18,7 +18,7 @@ export function makeThreadResponse(
     providerId: "test-provider",
     title: null,
     titleFallback: null,
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

@@ -20,9 +20,9 @@ import type {
   CreateHostJoinCodeResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
-  CreateThreadFolderRequest,
+  CreateThreadSectionRequest,
   CreateQueuedMessageRequest,
-  DeleteThreadFolderRequest,
+  DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentArchiveThreadsResponse,
   EnvironmentActionRequest,
@@ -58,8 +58,8 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
-  ThreadFolderMutationResponse,
-  ThreadFolderResponse,
+  ThreadSectionMutationResponse,
+  ThreadSectionResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -83,7 +83,7 @@ import type {
   CopyProjectAttachmentsRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
-  UpdateThreadFolderRequest,
+  UpdateThreadSectionRequest,
   UpdateTerminalRequest,
   UpdateProjectRequest,
   UpdateThreadRequest,
@@ -542,27 +542,27 @@ export async function createProject(
   return request<ProjectResponse>(apiClient.projects.$post({ json: req }));
 }
 
-export async function createThreadFolder(
-  req: CreateThreadFolderRequest,
-): Promise<ThreadFolderResponse> {
-  return request<ThreadFolderResponse>(
-    apiClient["thread-folders"].$post({ json: req }),
+export async function createThreadSection(
+  req: CreateThreadSectionRequest,
+): Promise<ThreadSectionResponse> {
+  return request<ThreadSectionResponse>(
+    apiClient["thread-sections"].$post({ json: req }),
   );
 }
 
-export async function updateThreadFolder(
-  req: UpdateThreadFolderRequest,
-): Promise<ThreadFolderMutationResponse> {
-  return request<ThreadFolderMutationResponse>(
-    apiClient["thread-folders"].$patch({ json: req }),
+export async function updateThreadSection(
+  req: UpdateThreadSectionRequest,
+): Promise<ThreadSectionMutationResponse> {
+  return request<ThreadSectionMutationResponse>(
+    apiClient["thread-sections"].$patch({ json: req }),
   );
 }
 
-export async function deleteThreadFolder(
-  req: DeleteThreadFolderRequest,
-): Promise<ThreadFolderMutationResponse> {
-  return request<ThreadFolderMutationResponse>(
-    apiClient["thread-folders"].$delete({ json: req }),
+export async function deleteThreadSection(
+  req: DeleteThreadSectionRequest,
+): Promise<ThreadSectionMutationResponse> {
+  return request<ThreadSectionMutationResponse>(
+    apiClient["thread-sections"].$delete({ json: req }),
   );
 }
 
@@ -820,10 +820,10 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   sourceThreadId?: string;
-  /** Restrict to threads filed directly under this folder. */
-  folderId?: string;
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled?: boolean;
+  /** Restrict to threads filed directly under this section. */
+  sectionId?: string;
+  /** Restrict to loose threads — those not filed under any section. */
+  unsectioned?: boolean;
   hasParent?: boolean;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadChildOrigin;
@@ -861,8 +861,10 @@ export async function listThreads(
           ...(filters.sourceThreadId
             ? { sourceThreadId: filters.sourceThreadId }
             : {}),
-          ...(filters.folderId ? { folderId: filters.folderId } : {}),
-          ...(filters.unfiled ? { unfiled: toBooleanQueryValue(true) } : {}),
+          ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
+          ...(filters.unsectioned
+            ? { unsectioned: toBooleanQueryValue(true) }
+            : {}),
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),

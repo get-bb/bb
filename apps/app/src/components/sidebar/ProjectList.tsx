@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type {
   ProjectResponse,
-  ThreadFolderResponse,
+  ThreadSectionResponse,
 } from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
@@ -29,10 +29,10 @@ import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
-  useCreateThreadFolder,
-  useDeleteThreadFolder,
-  useUpdateThreadFolder,
-} from "@/hooks/mutations/thread-folder-mutations";
+  useCreateThreadSection,
+  useDeleteThreadSection,
+  useUpdateThreadSection,
+} from "@/hooks/mutations/thread-section-mutations";
 import {
   isHostPathMissing,
   useHostPathExistence,
@@ -48,10 +48,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
-  ThreadFolderCreateDialog,
-  ThreadFolderRenameDialog,
-  type ThreadFolderRenameDialogTarget,
-} from "@/components/dialogs/ThreadFolderCreateDialog";
+  ThreadSectionCreateDialog,
+  ThreadSectionRenameDialog,
+  type ThreadSectionRenameDialogTarget,
+} from "@/components/dialogs/ThreadSectionCreateDialog";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -72,7 +72,7 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
-  ChronologicalFolderThreadSections,
+  ChronologicalSectionThreadSections,
   ProjectThreadTree,
 } from "./ProjectRow";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
@@ -81,7 +81,7 @@ import {
   compareByCreatedAtDescending,
   compareStandardThreads,
   type ProjectThreadItem,
-  type SidebarFolderDefinition,
+  type SidebarSectionDefinition,
   type ThreadComparator,
 } from "./projectThreadGroups";
 import {
@@ -100,7 +100,7 @@ import {
   collapsedProjectIdsAtom,
   collapsedSidebarSectionIdsAtom,
   sidebarChronologicalSortAtom,
-  sidebarCollapsedFoldersAtom,
+  sidebarCollapsedThreadSectionsAtom,
   sidebarCollapsedMachinesAtom,
   sidebarOrganizationModeAtom,
   type SidebarChronologicalSort,
@@ -108,7 +108,7 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { folderKeyForThreadFolder } from "./folderKeys";
+import { sectionKeyForThreadSection } from "./sectionKeys";
 import {
   buildMachineThreadGroups,
   NO_MACHINE_GROUP_KEY,
@@ -169,7 +169,7 @@ interface ProjectListActionButtonsProps {
 interface ProjectListShellProps {
   children: ReactNode;
   titleMentionResources?: {
-    folderNamesById: ReadonlyMap<string, string>;
+    sectionNamesById: ReadonlyMap<string, string>;
     projectNamesById: ReadonlyMap<string, string>;
     threadById: ReadonlyMap<string, ThreadListEntry>;
   };
@@ -189,8 +189,8 @@ interface ProjectListProjectsSectionActionsProps {
 }
 
 interface ProjectListThreadsSectionActionsProps {
-  isCreatingFolder: boolean;
-  onNewFolder?: () => void;
+  isCreatingSection: boolean;
+  onNewSection?: () => void;
   onNewThread: () => void;
 }
 
@@ -263,7 +263,7 @@ interface SelectedThreadSidebarExpansionArgs {
 }
 
 interface SelectedThreadSidebarExpansion {
-  folderKey?: string;
+  sectionKey?: string;
   machineKey?: string;
   projectId?: string;
   sidebarSectionId?: CollapsibleSidebarSectionId;
@@ -322,11 +322,11 @@ export function getSelectedThreadSidebarExpansion({
   }
 
   if (organizationMode === "chronological") {
-    const folderKey = folderKeyForThreadFolder(
+    const sectionKey = sectionKeyForThreadSection(
       CHRONOLOGICAL_CONTAINER_ID,
-      selectedThread.folderId,
+      selectedThread.sectionId,
     );
-    return folderKey ? { folderKey } : { sidebarSectionId: "threads" };
+    return sectionKey ? { sectionKey } : { sidebarSectionId: "threads" };
   }
 
   if (selectedThread.projectId === PERSONAL_PROJECT_ID) {
@@ -349,7 +349,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 };
 
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
-const EMPTY_FOLDER_DEFINITIONS: readonly ThreadFolderResponse[] = [];
+const EMPTY_SECTION_DEFINITIONS: readonly ThreadSectionResponse[] = [];
 
 function getProjectThreadListState({
   status,
@@ -418,7 +418,7 @@ function getProjectThreadItemAlphaLabel(item: ProjectThreadItem): string {
       return getThreadDisplayTitle(item.node.thread);
     case "environment":
       return getThreadDisplayTitle(item.group.nodes[0].thread);
-    case "folder":
+    case "section":
       return item.group.name;
   }
 }
@@ -439,7 +439,7 @@ function compareProjectThreadItemsByTitleAscending(
     return kindDelta;
   }
 
-  return left.kind === "folder" && right.kind === "folder"
+  return left.kind === "section" && right.kind === "section"
     ? left.group.key.localeCompare(right.group.key)
     : 0;
 }
@@ -460,14 +460,13 @@ export function getSidebarThreadComparator(
     : compareStandardThreads;
 }
 
-// The server's thread-folder routes still speak "folder" (the UI-only rename
-// left API vocabulary unchanged), so translate its name-conflict error into
-// the sidebar's "section" wording before displaying it.
+// Keep the section name-conflict response concise and consistent with the
+// sidebar's other mutation errors.
 function getSectionMutationErrorMessage(
   error: unknown,
   fallbackMessage: string,
 ): string {
-  if (error instanceof HttpError && error.code === "folder_name_conflict") {
+  if (error instanceof HttpError && error.code === "section_name_conflict") {
     return "Section name already exists.";
   }
   return getMutationErrorMessage({ error, fallbackMessage });
@@ -533,24 +532,24 @@ function ProjectListProjectsSectionActions({
 }
 
 function ProjectListThreadsSectionActions({
-  isCreatingFolder,
-  onNewFolder,
+  isCreatingSection,
+  onNewSection,
   onNewThread,
 }: ProjectListThreadsSectionActionsProps) {
   return (
     <>
-      {onNewFolder ? (
+      {onNewSection ? (
         <ProjectListSectionIconButton
           ariaLabel="New section"
           title="New section"
-          disabled={isCreatingFolder}
+          disabled={isCreatingSection}
           icon={
             <Icon
               name="SectionAdd"
               className={COARSE_POINTER_ICON_SIZE_CLASS}
             />
           }
-          onClick={onNewFolder}
+          onClick={onNewSection}
         />
       ) : null}
       <ProjectListSectionIconButton
@@ -697,21 +696,21 @@ export function SidebarDisplayOptionsMenu({
 interface SidebarThreadsSectionActionsProps {
   displayOptionsOpen: boolean;
   onDisplayOptionsOpenChange: (open: boolean) => void;
-  isCreatingFolder: boolean;
-  onNewFolder?: () => void;
+  isCreatingSection: boolean;
+  onNewSection?: () => void;
   isCreatingProject: boolean;
   onNewProject?: () => void;
   onNewThread: () => void;
 }
 
 // The complete Threads-section header cluster. Every organization mode and
-// every folder state renders this same component so the label-adjacent actions
+// every section state renders this same component so the label-adjacent actions
 // cannot drift apart.
 function SidebarThreadsSectionActions({
   displayOptionsOpen,
   onDisplayOptionsOpenChange,
-  isCreatingFolder,
-  onNewFolder,
+  isCreatingSection,
+  onNewSection,
   isCreatingProject,
   onNewProject,
   onNewThread,
@@ -729,8 +728,8 @@ function SidebarThreadsSectionActions({
         />
       ) : null}
       <ProjectListThreadsSectionActions
-        isCreatingFolder={isCreatingFolder}
-        onNewFolder={onNewFolder}
+        isCreatingSection={isCreatingSection}
+        onNewSection={onNewSection}
         onNewThread={onNewThread}
       />
     </>
@@ -1150,16 +1149,16 @@ function ProjectModeSections({
   );
 }
 
-interface FolderModeSectionsProps extends BuiltInSectionRenderState {
+interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
-  folders: readonly SidebarFolderDefinition[];
+  sections: readonly SidebarSectionDefinition[];
   isReady: boolean;
-  onCreateThreadInFolder: (folderId: string) => void;
+  onCreateThreadInSection: (sectionId: string) => void;
   onProjectSelect?: () => void;
-  onRemoveFolder: (folder: SidebarFolderDefinition) => void;
-  onRenameFolder: (folder: SidebarFolderDefinition) => void;
+  onRemoveSection: (section: SidebarSectionDefinition) => void;
+  onRenameSection: (section: SidebarSectionDefinition) => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
   pinnedSection: BuiltInSidebarSectionOptions;
@@ -1168,7 +1167,7 @@ interface FolderModeSectionsProps extends BuiltInSectionRenderState {
   onReorderPinnedThread: NonNullable<
     PinnedThreadTreeProps["onReorderPinnedRoot"]
   >;
-  renderTopLevelFolderHeaderActions: (folder: SidebarFolderDefinition) => {
+  renderTopLevelSectionHeaderActions: (section: SidebarSectionDefinition) => {
     actions: ReactNode;
     actionsOpen: boolean;
   };
@@ -1179,18 +1178,18 @@ interface FolderModeSectionsProps extends BuiltInSectionRenderState {
   effectivePinnedThreadIds: ReadonlySet<string>;
 }
 
-function FolderModeSections({
+function SectionModeSections({
   collapsedEnvironmentIds,
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
   effectivePinnedThreadIds,
-  folders,
+  sections,
   isReady,
-  onCreateThreadInFolder,
+  onCreateThreadInSection,
   onProjectSelect,
-  onRemoveFolder,
-  onRenameFolder,
+  onRemoveSection,
+  onRenameSection,
   onToggleCollapsed,
   onToggleEnvironmentCollapsed,
   onToggleThreadCollapsed,
@@ -1198,13 +1197,13 @@ function FolderModeSections({
   pinnedReorderPending,
   pinnedThreads,
   onReorderPinnedThread,
-  renderTopLevelFolderHeaderActions,
+  renderTopLevelSectionHeaderActions,
   selectedThreadId,
   showPinnedSection,
   status,
   threads,
   threadsSection,
-}: FolderModeSectionsProps) {
+}: SectionModeSectionsProps) {
   const nonPinnedThreads = useMemo(
     () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
     [effectivePinnedThreadIds, threads],
@@ -1213,31 +1212,33 @@ function FolderModeSections({
     status,
     threads: nonPinnedThreads,
   });
-  const folderSectionIds = useMemo(
+  const threadSectionIds = useMemo(
     () =>
-      folders.map((folder) => buildSidebarEntitySectionId("folder", folder.id)),
-    [folders],
+      sections.map((section) =>
+        buildSidebarEntitySectionId("section", section.id),
+      ),
+    [sections],
   );
   const { onOrderChange, order } = useSidebarModeSectionOrder({
     mode: "chronological",
-    entitySectionIds: folderSectionIds,
+    entitySectionIds: threadSectionIds,
     showPinnedSection,
     isReady,
   });
 
   return (
-    <ChronologicalFolderThreadSections
+    <ChronologicalSectionThreadSections
       threadListState={threadListState}
       compareThreads={compareThreads}
-      folders={folders}
+      sections={sections}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       onProjectSelect={onProjectSelect}
-      onCreateThreadInFolder={onCreateThreadInFolder}
-      onRenameFolder={onRenameFolder}
-      onRemoveFolder={onRemoveFolder}
-      renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
+      onCreateThreadInSection={onCreateThreadInSection}
+      onRenameSection={onRenameSection}
+      onRemoveSection={onRemoveSection}
+      renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       topLevelSectionOrder={order}
@@ -1436,7 +1437,7 @@ function ProjectListComponent({
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
-  const folders = sidebarNavigation?.folders ?? EMPTY_FOLDER_DEFINITIONS;
+  const sections = sidebarNavigation?.sections ?? EMPTY_SECTION_DEFINITIONS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -1463,13 +1464,13 @@ function ProjectListComponent({
     namesById.set(PERSONAL_PROJECT_ID, sidebarNavigation.personalProject.name);
     return namesById;
   }, [sidebarNavigation]);
-  const folderNamesById = useMemo(() => {
+  const sectionNamesById = useMemo(() => {
     const namesById = new Map<string, string>();
-    for (const folder of folders) {
-      namesById.set(folder.id, folder.name);
+    for (const section of sections) {
+      namesById.set(section.id, section.name);
     }
     return namesById;
-  }, [folders]);
+  }, [sections]);
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
     for (const thread of threads) {
@@ -1478,8 +1479,8 @@ function ProjectListComponent({
     return map;
   }, [threads]);
   const titleMentionResources = useMemo(
-    () => ({ folderNamesById, projectNamesById, threadById }),
-    [folderNamesById, projectNamesById, threadById],
+    () => ({ sectionNamesById, projectNamesById, threadById }),
+    [sectionNamesById, projectNamesById, threadById],
   );
   const projectsState = useConnectionAwareQueryState({
     hasResolvedData: projects !== undefined,
@@ -1495,17 +1496,17 @@ function ProjectListComponent({
     mutate: reorderPinnedThreadMutate,
   } = useReorderPinnedThread();
   const {
-    isPending: isCreateThreadFolderPending,
-    mutate: createThreadFolderMutate,
-  } = useCreateThreadFolder();
+    isPending: isCreateThreadSectionPending,
+    mutate: createThreadSectionMutate,
+  } = useCreateThreadSection();
   const {
-    isPending: isUpdateThreadFolderPending,
-    mutate: updateThreadFolderMutate,
-  } = useUpdateThreadFolder();
+    isPending: isUpdateThreadSectionPending,
+    mutate: updateThreadSectionMutate,
+  } = useUpdateThreadSection();
   const {
-    isPending: isDeleteThreadFolderPending,
-    mutate: deleteThreadFolderMutate,
-  } = useDeleteThreadFolder();
+    isPending: isDeleteThreadSectionPending,
+    mutate: deleteThreadSectionMutate,
+  } = useDeleteThreadSection();
   const handleReorderPinnedRoot = useCallback<
     NonNullable<PinnedThreadTreeProps["onReorderPinnedRoot"]>
   >(
@@ -1524,13 +1525,13 @@ function ProjectListComponent({
     [reorderPinnedThreadMutate],
   );
   const openRootComposeForProject = useCallback(
-    (projectId: string, folderId?: string) => {
+    (projectId: string, sectionId?: string) => {
       setRootComposeProjectId(projectId);
       onProjectSelect?.();
       navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
-          ...(folderId ? { folderId } : {}),
+          ...(sectionId ? { sectionId } : {}),
         },
       });
     },
@@ -1545,41 +1546,41 @@ function ProjectListComponent({
   const handleCreateProjectlessThread = useCallback(() => {
     openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
-  const handleCreateThreadInFolder = useCallback(
-    (folderId: string) => {
-      openRootComposeForProject(PERSONAL_PROJECT_ID, folderId);
+  const handleCreateThreadInSection = useCallback(
+    (sectionId: string) => {
+      openRootComposeForProject(PERSONAL_PROJECT_ID, sectionId);
     },
     [openRootComposeForProject],
   );
-  const [isFolderCreateDialogOpen, setIsFolderCreateDialogOpen] =
+  const [isSectionCreateDialogOpen, setIsSectionCreateDialogOpen] =
     useState(false);
-  const [folderCreateErrorMessage, setFolderCreateErrorMessage] = useState<
+  const [sectionCreateErrorMessage, setSectionCreateErrorMessage] = useState<
     string | null
   >(null);
-  const [folderRenameErrorMessage, setFolderRenameErrorMessage] = useState<
+  const [sectionRenameErrorMessage, setSectionRenameErrorMessage] = useState<
     string | null
   >(null);
-  const folderRenameDialog = useDialogState<ThreadFolderRenameDialogTarget>();
-  const folderDeleteDialog = useDialogState<SidebarFolderDefinition>();
-  const handleOpenCreateFolderDialog = useCallback(() => {
-    setFolderCreateErrorMessage(null);
-    setIsFolderCreateDialogOpen(true);
+  const sectionRenameDialog = useDialogState<ThreadSectionRenameDialogTarget>();
+  const sectionDeleteDialog = useDialogState<SidebarSectionDefinition>();
+  const handleOpenCreateSectionDialog = useCallback(() => {
+    setSectionCreateErrorMessage(null);
+    setIsSectionCreateDialogOpen(true);
   }, []);
-  const handleCreateFolderDialogOpenChange = useCallback((open: boolean) => {
+  const handleCreateSectionDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
-      setFolderCreateErrorMessage(null);
-      setIsFolderCreateDialogOpen(false);
+      setSectionCreateErrorMessage(null);
+      setIsSectionCreateDialogOpen(false);
     }
   }, []);
-  const handleCreateThreadFolder = useCallback(
+  const handleCreateThreadSection = useCallback(
     (name: string) => {
-      setFolderCreateErrorMessage(null);
-      createThreadFolderMutate(
+      setSectionCreateErrorMessage(null);
+      createThreadSectionMutate(
         { name },
         {
-          onSuccess: () => setIsFolderCreateDialogOpen(false),
+          onSuccess: () => setIsSectionCreateDialogOpen(false),
           onError: (error) =>
-            setFolderCreateErrorMessage(
+            setSectionCreateErrorMessage(
               getSectionMutationErrorMessage(
                 error,
                 "Failed to create section.",
@@ -1588,24 +1589,24 @@ function ProjectListComponent({
         },
       );
     },
-    [createThreadFolderMutate],
+    [createThreadSectionMutate],
   );
-  const handleOpenRenameThreadFolder = useCallback(
-    (folder: SidebarFolderDefinition) => {
-      setFolderRenameErrorMessage(null);
-      folderRenameDialog.onOpen({ id: folder.id, name: folder.name });
+  const handleOpenRenameThreadSection = useCallback(
+    (section: SidebarSectionDefinition) => {
+      setSectionRenameErrorMessage(null);
+      sectionRenameDialog.onOpen({ id: section.id, name: section.name });
     },
-    [folderRenameDialog],
+    [sectionRenameDialog],
   );
-  const handleRenameThreadFolder = useCallback(
+  const handleRenameThreadSection = useCallback(
     (id: string, name: string) => {
-      setFolderRenameErrorMessage(null);
-      updateThreadFolderMutate(
+      setSectionRenameErrorMessage(null);
+      updateThreadSectionMutate(
         { id, name },
         {
-          onSuccess: () => folderRenameDialog.onClose(),
+          onSuccess: () => sectionRenameDialog.onClose(),
           onError: (error) =>
-            setFolderRenameErrorMessage(
+            setSectionRenameErrorMessage(
               getSectionMutationErrorMessage(
                 error,
                 "Failed to rename section.",
@@ -1614,41 +1615,41 @@ function ProjectListComponent({
         },
       );
     },
-    [folderRenameDialog, updateThreadFolderMutate],
+    [sectionRenameDialog, updateThreadSectionMutate],
   );
-  const handleRemoveThreadFolder = useCallback(
-    (folder: SidebarFolderDefinition) => {
-      folderDeleteDialog.onOpen(folder);
+  const handleRemoveThreadSection = useCallback(
+    (section: SidebarSectionDefinition) => {
+      sectionDeleteDialog.onOpen(section);
     },
-    [folderDeleteDialog],
+    [sectionDeleteDialog],
   );
-  const handleConfirmRemoveThreadFolder = useCallback(() => {
-    const folder = folderDeleteDialog.target;
-    if (!folder) {
+  const handleConfirmRemoveThreadSection = useCallback(() => {
+    const section = sectionDeleteDialog.target;
+    if (!section) {
       return;
     }
-    deleteThreadFolderMutate(
-      { id: folder.id },
-      { onSuccess: () => folderDeleteDialog.onClose() },
+    deleteThreadSectionMutate(
+      { id: section.id },
+      { onSuccess: () => sectionDeleteDialog.onClose() },
     );
-  }, [deleteThreadFolderMutate, folderDeleteDialog]);
-  const handleFolderDeleteDialogOpenChange = useCallback(
+  }, [deleteThreadSectionMutate, sectionDeleteDialog]);
+  const handleSectionDeleteDialogOpenChange = useCallback(
     (open: boolean) => {
       if (open) {
         return;
       }
-      folderDeleteDialog.onClose();
+      sectionDeleteDialog.onClose();
     },
-    [folderDeleteDialog],
+    [sectionDeleteDialog],
   );
-  const handleRenameThreadFolderOpenChange = useCallback(
+  const handleRenameThreadSectionOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
-        setFolderRenameErrorMessage(null);
+        setSectionRenameErrorMessage(null);
       }
-      folderRenameDialog.onOpenChange(open);
+      sectionRenameDialog.onOpenChange(open);
     },
-    [folderRenameDialog],
+    [sectionRenameDialog],
   );
   const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
@@ -1690,8 +1691,10 @@ function ProjectListComponent({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const isFolderOrganizationMode = organizationMode === "chronological";
-  const setCollapsedFolderList = useSetAtom(sidebarCollapsedFoldersAtom);
+  const isSectionOrganizationMode = organizationMode === "chronological";
+  const setCollapsedSectionList = useSetAtom(
+    sidebarCollapsedThreadSectionsAtom,
+  );
   const sidebarThreadComparator = useMemo<ThreadComparator>(
     () => getSidebarThreadComparator(chronologicalSort),
     [chronologicalSort],
@@ -1797,10 +1800,10 @@ function ProjectListComponent({
         removeCollapsedIds(current, new Set([machineKey])),
       );
     }
-    if (expansion.folderKey) {
-      const folderKey = expansion.folderKey;
-      setCollapsedFolderList((current) =>
-        removeCollapsedIds(current, new Set([folderKey])),
+    if (expansion.sectionKey) {
+      const sectionKey = expansion.sectionKey;
+      setCollapsedSectionList((current) =>
+        removeCollapsedIds(current, new Set([sectionKey])),
       );
     }
     if (expansion.projectId) {
@@ -1820,7 +1823,7 @@ function ProjectListComponent({
     pinnedSidebarState.effectivePinnedThreadIds,
     selectedThreadId,
     setCollapsedEnvironmentIdList,
-    setCollapsedFolderList,
+    setCollapsedSectionList,
     setCollapsedMachineKeyList,
     setCollapsedProjectIdList,
     setCollapsedSidebarSectionIdList,
@@ -1870,14 +1873,14 @@ function ProjectListComponent({
       onReorderPinnedRoot={handleReorderPinnedRoot}
     />
   );
-  // One Threads-header cluster shared by every organization and folder state.
+  // One Threads-header cluster shared by every organization and section state.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
       displayOptionsOpen={threadsDisplayOptionsMenuOpen}
       onDisplayOptionsOpenChange={handleThreadsDisplayOptionsMenuOpenChange}
-      isCreatingFolder={isCreateThreadFolderPending}
-      onNewFolder={
-        isFolderOrganizationMode ? handleOpenCreateFolderDialog : undefined
+      isCreatingSection={isCreateThreadSectionPending}
+      onNewSection={
+        isSectionOrganizationMode ? handleOpenCreateSectionDialog : undefined
       }
       isCreatingProject={isCreatingProject}
       onNewProject={onNewProject}
@@ -1895,37 +1898,37 @@ function ProjectListComponent({
     actions: threadsSectionActions,
     actionsOpen: threadsDisplayOptionsMenuOpen,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
-  const folderCreateDialog = (
-    <ThreadFolderCreateDialog
-      errorMessage={folderCreateErrorMessage}
-      open={isFolderCreateDialogOpen}
-      pending={isCreateThreadFolderPending}
-      onOpenChange={handleCreateFolderDialogOpenChange}
-      onCreate={handleCreateThreadFolder}
+  const sectionCreateDialog = (
+    <ThreadSectionCreateDialog
+      errorMessage={sectionCreateErrorMessage}
+      open={isSectionCreateDialogOpen}
+      pending={isCreateThreadSectionPending}
+      onOpenChange={handleCreateSectionDialogOpenChange}
+      onCreate={handleCreateThreadSection}
     />
   );
-  const folderRenameDialogContent = (
-    <ThreadFolderRenameDialog
-      errorMessage={folderRenameErrorMessage}
-      target={folderRenameDialog.target}
-      pending={isUpdateThreadFolderPending}
-      onOpenChange={handleRenameThreadFolderOpenChange}
-      onRename={handleRenameThreadFolder}
+  const sectionRenameDialogContent = (
+    <ThreadSectionRenameDialog
+      errorMessage={sectionRenameErrorMessage}
+      target={sectionRenameDialog.target}
+      pending={isUpdateThreadSectionPending}
+      onOpenChange={handleRenameThreadSectionOpenChange}
+      onRename={handleRenameThreadSection}
     />
   );
-  const folderDeleteDialogContent = (
+  const sectionDeleteDialogContent = (
     <ConfirmDeleteDialog
-      open={folderDeleteDialog.target !== null}
-      onOpenChange={handleFolderDeleteDialogOpenChange}
+      open={sectionDeleteDialog.target !== null}
+      onOpenChange={handleSectionDeleteDialogOpenChange}
     >
-      {folderDeleteDialog.target ? (
+      {sectionDeleteDialog.target ? (
         <ConfirmDeleteDialogContent
           title="Remove section?"
           description="Threads in this section will move back to Threads."
           confirmLabel="Remove section"
-          pending={isDeleteThreadFolderPending}
-          onConfirm={handleConfirmRemoveThreadFolder}
-          onCancel={folderDeleteDialog.onClose}
+          pending={isDeleteThreadSectionPending}
+          onConfirm={handleConfirmRemoveThreadSection}
+          onCancel={sectionDeleteDialog.onClose}
         />
       ) : null}
     </ConfirmDeleteDialog>
@@ -1940,11 +1943,11 @@ function ProjectListComponent({
           onActiveIndexChange={threadSearch.onActiveIndexChange}
           onNavigationItemsChange={threadSearch.onNavigationItemsChange}
           onSelect={threadSearch.onSelectItem}
-          folderNamesById={folderNamesById}
+          sectionNamesById={sectionNamesById}
           projectNamesById={projectNamesById}
           query={threadSearch.query}
           recentThreads={threads}
-          showFolderLabels={isFolderOrganizationMode}
+          showSectionLabels={isSectionOrganizationMode}
         />
       </ProjectListShell>
     );
@@ -1988,7 +1991,7 @@ function ProjectListComponent({
         )}
         renderChronological={() => (
           <>
-            <FolderModeSections
+            <SectionModeSections
               threads={threads}
               effectivePinnedThreadIds={
                 pinnedSidebarState.effectivePinnedThreadIds
@@ -1996,7 +1999,7 @@ function ProjectListComponent({
               status={projectsState.status}
               isReady={Boolean(sidebarNavigation)}
               showPinnedSection={hasPinnedSection}
-              folders={folders}
+              sections={sections}
               pinnedSection={pinnedSection}
               pinnedReorderPending={isPinnedReorderPending}
               pinnedThreads={pinnedRootThreads}
@@ -2008,13 +2011,13 @@ function ProjectListComponent({
               collapsedEnvironmentIds={collapsedEnvironmentIds}
               compareThreads={sidebarThreadComparator}
               onProjectSelect={onProjectSelect}
-              onCreateThreadInFolder={handleCreateThreadInFolder}
-              onRenameFolder={handleOpenRenameThreadFolder}
-              onRemoveFolder={handleRemoveThreadFolder}
-              renderTopLevelFolderHeaderActions={(folder) => {
+              onCreateThreadInSection={handleCreateThreadInSection}
+              onRenameSection={handleOpenRenameThreadSection}
+              onRemoveSection={handleRemoveThreadSection}
+              renderTopLevelSectionHeaderActions={(section) => {
                 const sectionId = buildSidebarEntitySectionId(
-                  "folder",
-                  folder.id,
+                  "section",
+                  section.id,
                 );
                 return {
                   actions: renderSectionDisplayOptions(sectionId),
@@ -2025,9 +2028,9 @@ function ProjectListComponent({
               onToggleThreadCollapsed={toggleThreadCollapsed}
               onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
             />
-            {folderCreateDialog}
-            {folderRenameDialogContent}
-            {folderDeleteDialogContent}
+            {sectionCreateDialog}
+            {sectionRenameDialogContent}
+            {sectionDeleteDialogContent}
           </>
         )}
         renderProject={() => (
@@ -2056,9 +2059,9 @@ function ProjectListComponent({
               onToggleThreadCollapsed={toggleThreadCollapsed}
               onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
             />
-            {folderCreateDialog}
-            {folderRenameDialogContent}
-            {folderDeleteDialogContent}
+            {sectionCreateDialog}
+            {sectionRenameDialogContent}
+            {sectionDeleteDialogContent}
           </>
         )}
       />

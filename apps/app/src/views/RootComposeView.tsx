@@ -367,31 +367,31 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
-export function readFolderIdFromLocationState(state: unknown): string | null {
+export function readSectionIdFromLocationState(state: unknown): string | null {
   if (typeof state !== "object" || state === null) {
     return null;
   }
-  if (!("folderId" in state) || typeof state.folderId !== "string") {
+  if (!("sectionId" in state) || typeof state.sectionId !== "string") {
     return null;
   }
-  const folderId = state.folderId.trim();
-  return folderId.length > 0 ? folderId : null;
+  const sectionId = state.sectionId.trim();
+  return sectionId.length > 0 ? sectionId : null;
 }
 
-export type RootComposeFolderTarget =
+export type RootComposeSectionTarget =
   | { kind: "clear" }
-  | { folderId: string; kind: "set" };
+  | { sectionId: string; kind: "set" };
 
-export function readRootComposeFolderTargetFromLocationState(
+export function readRootComposeSectionTargetFromLocationState(
   state: unknown,
-): RootComposeFolderTarget | null {
+): RootComposeSectionTarget | null {
   if (typeof state !== "object" || state === null) {
     return null;
   }
 
-  if ("folderId" in state) {
-    const folderId = readFolderIdFromLocationState(state);
-    return folderId ? { folderId, kind: "set" } : { kind: "clear" };
+  if ("sectionId" in state) {
+    const sectionId = readSectionIdFromLocationState(state);
+    return sectionId ? { sectionId, kind: "set" } : { kind: "clear" };
   }
 
   if ("focusPrompt" in state && state.focusPrompt === true) {
@@ -582,7 +582,7 @@ function readForkThreadCreateSeedFromLocationState(
 
 export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
   return (
-    readRootComposeFolderTargetFromLocationState(state) !== null ||
+    readRootComposeSectionTargetFromLocationState(state) !== null ||
     readReuseEnvironmentIdFromLocationState(state) !== null ||
     readForkThreadCreateSeedFromLocationState(state) !== null ||
     readThreadHandoffCreateSeedFromLocationState(state) !== null
@@ -965,9 +965,9 @@ export function RootComposeView() {
   const location = useLocation();
   const navigate = useNavigate();
   const isPointerCoarse = usePointerCoarse();
-  const [rootComposeFolderId, setRootComposeFolderId] = useState<string | null>(
-    () => readFolderIdFromLocationState(location.state),
-  );
+  const [rootComposeSectionId, setRootComposeSectionId] = useState<
+    string | null
+  >(() => readSectionIdFromLocationState(location.state));
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const quickCreateProject = useQuickCreateProjectController();
   const sidebarNavigationQuery = useSidebarNavigation();
@@ -1290,7 +1290,7 @@ export function RootComposeView() {
   // thread/environment. This is single-use — clear location.state after applying
   // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
-    const folderTarget = readRootComposeFolderTargetFromLocationState(
+    const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,
     );
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
@@ -1308,10 +1308,10 @@ export function RootComposeView() {
     if (shouldStartComposingFromLocationState(location.state)) {
       setStartedComposing(true);
     }
-    if (folderTarget?.kind === "set") {
-      setRootComposeFolderId(folderTarget.folderId);
-    } else if (folderTarget?.kind === "clear") {
-      setRootComposeFolderId(null);
+    if (sectionTarget?.kind === "set") {
+      setRootComposeSectionId(sectionTarget.sectionId);
+    } else if (sectionTarget?.kind === "clear") {
+      setRootComposeSectionId(null);
     }
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
@@ -1856,8 +1856,8 @@ export function RootComposeView() {
                   projectId,
                   providerId: selectedProviderId,
                   model: selectedThreadModel,
-                  ...(rootComposeFolderId
-                    ? { folderId: rootComposeFolderId }
+                  ...(rootComposeSectionId
+                    ? { sectionId: rootComposeSectionId }
                     : {}),
                   ...(supportsServiceTier && serviceTier
                     ? { serviceTier }
@@ -1875,7 +1875,7 @@ export function RootComposeView() {
         setLastCreatedThreadId(thread.id);
         clearReuseEnvironment();
         setForkSeed(null);
-        setRootComposeFolderId(null);
+        setRootComposeSectionId(null);
         if (submittedDraft !== null) {
           promptDraft.clearIfCurrentMatches(submittedDraft);
         }
@@ -1905,7 +1905,7 @@ export function RootComposeView() {
       projectId,
       promptDraft,
       reasoningLevel,
-      rootComposeFolderId,
+      rootComposeSectionId,
       selectedEnvironment,
       selectedProviderId,
       selectedThreadModel,

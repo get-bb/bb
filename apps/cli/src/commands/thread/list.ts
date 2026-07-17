@@ -10,8 +10,8 @@ interface ThreadListCommandOptions {
   project?: string;
   parentThread?: string;
   archived?: boolean;
-  folder?: string;
-  unfiled?: boolean;
+  section?: string;
+  unsectioned?: boolean;
   json?: boolean;
 }
 
@@ -24,8 +24,8 @@ export function registerListCommand(
     .description("List threads")
     .option("--project <id>", "Filter by project ID (defaults to all projects)")
     .option("--parent-thread <id>", "Filter by parent thread ID")
-    .option("--folder <id>", "Filter by thread folder ID")
-    .option("--unfiled", "Show only threads outside folders")
+    .option("--section <id>", "Filter by thread section ID")
+    .option("--unsectioned", "Show only threads outside sections")
     .option("--archived", "Show only archived threads")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -39,19 +39,19 @@ export function registerListCommand(
           flagName: "--parent-thread",
           value: opts.parentThread,
         });
-        if (opts.folder && opts.unfiled) {
-          throw new Error("Cannot combine --folder with --unfiled.");
+        if (opts.section && opts.unsectioned) {
+          throw new Error("Cannot combine --section with --unsectioned.");
         }
-        const folderId = resolveExplicitIdFlag({
-          flagName: "--folder",
-          value: opts.folder,
+        const sectionId = resolveExplicitIdFlag({
+          flagName: "--section",
+          value: opts.section,
         });
         const threads = await sdk.threads.list({
           ...(projectId ? { projectId } : {}),
           ...(parentThreadId ? { parentThreadId } : {}),
           ...(opts.archived ? { archived: true } : {}),
-          ...(folderId ? { folderId } : {}),
-          ...(opts.unfiled ? { unfiled: true } : {}),
+          ...(sectionId ? { sectionId } : {}),
+          ...(opts.unsectioned ? { unsectioned: true } : {}),
         });
         if (outputJson(opts, threads)) return;
         if (threads.length === 0) {

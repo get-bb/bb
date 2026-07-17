@@ -22,7 +22,7 @@ export interface ThreadCreateServiceRequestInput {
   environment: CreateThreadEnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   input: PromptInput[];
-  folderId?: CreateThreadRequest["folderId"];
+  sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];
   origin: ThreadCreateOrigin | null;
   /** Plugin attribution; paired with origin "plugin". */

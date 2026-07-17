@@ -34,7 +34,7 @@ function createThread(
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -158,16 +158,21 @@ describe("ThreadRow", () => {
 
     render(
       <SidebarThreadTitleMentionResourcesProvider
-        folderNamesById={new Map([["fld_mentioned", "Mention folder"]])}
+        sectionNamesById={
+          new Map([
+            ["sec_mentioned", "Mention section"],
+            ["sec_legacy", "Legacy section"],
+          ])
+        }
         projectNamesById={new Map([["proj_mentioned", "Mention project"]])}
         threadById={new Map([[mentionedThread.id, mentionedThread]])}
       >
         <ThreadRowTestHarness
           thread={createThread({
             title:
-              "Compare @thread:thr_mentioned in @project:proj_mentioned, @folder:fld_mentioned, and @apps/app/src/ThreadRow.tsx",
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
             titleFallback:
-              "Compare @thread:thr_mentioned in @project:proj_mentioned, @folder:fld_mentioned, and @apps/app/src/ThreadRow.tsx",
+              "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
           })}
         />
       </SidebarThreadTitleMentionResourcesProvider>,
@@ -175,7 +180,8 @@ describe("ThreadRow", () => {
 
     expect(screen.getByText("Mention target").closest("a")).toBeNull();
     expect(screen.getByText("Mention project").closest("a")).toBeNull();
-    expect(screen.getByText("Mention folder").closest("a")).toBeNull();
+    expect(screen.getByText("Mention section").closest("a")).toBeNull();
+    expect(screen.getByText("Legacy section").closest("a")).toBeNull();
     expect(screen.getByTitle("apps/app/src/ThreadRow.tsx")).not.toBeNull();
     expect(screen.queryByText("@thread:thr_mentioned")).toBeNull();
   });

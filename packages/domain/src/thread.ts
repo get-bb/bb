@@ -385,7 +385,7 @@ export const threadSchema = z.object({
   providerId: z.string(),
   title: z.string().nullable(),
   titleFallback: z.string().nullable(),
-  folderId: z.string().nullable(),
+  sectionId: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),

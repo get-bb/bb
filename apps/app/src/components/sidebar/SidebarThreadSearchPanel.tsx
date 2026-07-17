@@ -20,7 +20,7 @@ import { ThreadSearchResultRow } from "./ThreadSearchResultRow";
 
 interface SidebarThreadSearchPanelProps {
   activeIndex: number;
-  folderNamesById?: ReadonlyMap<string, string>;
+  sectionNamesById?: ReadonlyMap<string, string>;
   isRecentsLoading: boolean;
   onActiveIndexChange: (index: number) => void;
   onNavigationItemsChange: (
@@ -30,7 +30,7 @@ interface SidebarThreadSearchPanelProps {
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
   recentThreads: readonly ThreadListEntry[];
-  showFolderLabels?: boolean;
+  showSectionLabels?: boolean;
 }
 
 interface ThreadSearchRenderableRow {
@@ -54,7 +54,7 @@ interface ThreadSearchMessageProps {
 
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
-const EMPTY_FOLDER_NAMES_BY_ID = new Map<string, string>();
+const EMPTY_SECTION_NAMES_BY_ID = new Map<string, string>();
 // The message (non-title) match drives the deep-link target. Mirrors the row's
 // snippet selection so clicking a result lands on the message shown in the row.
 function getMessageMatchSeq(
@@ -106,21 +106,21 @@ function ThreadSearchMessage({
 
 function renderSectionRows({
   activeIndex,
-  folderNamesById,
+  sectionNamesById,
   onActiveIndexChange,
   onSelect,
   projectNamesById,
   section,
-  showFolderLabels,
+  showSectionLabels,
   startIndex,
 }: {
   activeIndex: number;
-  folderNamesById: ReadonlyMap<string, string>;
+  sectionNamesById: ReadonlyMap<string, string>;
   onActiveIndexChange: (index: number) => void;
   onSelect: (item: SidebarThreadSearchNavigationItem) => void;
   projectNamesById: ReadonlyMap<string, string>;
   section: ThreadSearchSection;
-  showFolderLabels: boolean;
+  showSectionLabels: boolean;
   startIndex: number;
 }) {
   if (section.rows.length === 0) {
@@ -157,9 +157,9 @@ function renderSectionRows({
               id={item.optionId}
               isActive={activeIndex === index}
               matches={row.matches}
-              folderLabel={
-                showFolderLabels && row.thread.folderId
-                  ? (folderNamesById.get(row.thread.folderId) ?? "Folder")
+              sectionLabel={
+                showSectionLabels && row.thread.sectionId
+                  ? (sectionNamesById.get(row.thread.sectionId) ?? "Section")
                   : null
               }
               projectName={projectNamesById.get(row.thread.projectId)}
@@ -176,7 +176,7 @@ function renderSectionRows({
 
 export function SidebarThreadSearchPanel({
   activeIndex,
-  folderNamesById = EMPTY_FOLDER_NAMES_BY_ID,
+  sectionNamesById = EMPTY_SECTION_NAMES_BY_ID,
   isRecentsLoading,
   onActiveIndexChange,
   onNavigationItemsChange,
@@ -184,7 +184,7 @@ export function SidebarThreadSearchPanel({
   projectNamesById,
   query,
   recentThreads,
-  showFolderLabels = false,
+  showSectionLabels = false,
 }: SidebarThreadSearchPanelProps) {
   const trimmedQuery = query.trim();
   const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
@@ -324,12 +324,12 @@ export function SidebarThreadSearchPanel({
       {sections.map((section) => {
         const renderedSection = renderSectionRows({
           activeIndex,
-          folderNamesById,
+          sectionNamesById,
           onActiveIndexChange,
           onSelect,
           projectNamesById,
           section,
-          showFolderLabels,
+          showSectionLabels,
           startIndex,
         });
         startIndex += section.rows.length;

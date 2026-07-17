@@ -43,16 +43,16 @@ describe("normalizeSidebarSectionOrder", () => {
     ).toEqual(["pinned", "threads", projectB, projectA, projectC]);
   });
 
-  it("uses the same reconciliation for folders", () => {
-    const folder = buildSidebarEntitySectionId("folder", "work");
+  it("uses the same reconciliation for sections", () => {
+    const section = buildSidebarEntitySectionId("section", "work");
     expect(
       normalizeSidebarSectionOrder({
-        storedOrder: ["pinned", "folders", "threads"],
-        entitySectionIds: [folder],
-        legacyEntityAnchor: "folders",
+        storedOrder: ["pinned", "sections", "threads"],
+        entitySectionIds: [section],
+        legacyEntityAnchor: "sections",
         hasPinnedSection: true,
       }),
-    ).toEqual(["pinned", folder, "threads"]);
+    ).toEqual(["pinned", section, "threads"]);
   });
 });
 

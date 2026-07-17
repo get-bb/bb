@@ -17,9 +17,9 @@ import { createSystemArea, type SystemArea } from "./areas/system.js";
 import { createTerminalsArea, type TerminalsArea } from "./areas/terminals.js";
 import { createThreadsArea, type ThreadsArea } from "./areas/threads.js";
 import {
-  createThreadFoldersArea,
-  type ThreadFoldersArea,
-} from "./areas/thread-folders.js";
+  createThreadSectionsArea,
+  type ThreadSectionsArea,
+} from "./areas/thread-sections.js";
 
 export type * from "./public-types.js";
 
@@ -40,7 +40,7 @@ export interface BbSdk extends BbRealtime {
   system: SystemArea;
   terminals: TerminalsArea;
   theme: ThemeArea;
-  threadFolders: ThreadFoldersArea;
+  threadSections: ThreadSectionsArea;
   threads: ThreadsArea;
 }
 
@@ -65,7 +65,7 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     system: createSystemArea(sdkContext),
     terminals: createTerminalsArea(sdkContext),
     theme: createThemeArea(sdkContext),
-    threadFolders: createThreadFoldersArea(sdkContext),
+    threadSections: createThreadSectionsArea(sdkContext),
     threads: createThreadsArea(sdkContext),
   };
 }

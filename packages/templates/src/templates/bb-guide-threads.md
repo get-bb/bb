@@ -27,7 +27,7 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
-    --folder <id>                  Create the thread in a folder
+    --section <id>                 Create the thread in a section
     --visibility <visibility>      visible (default) or hidden
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
@@ -41,7 +41,7 @@ Spawning:
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization, unread/pending favicon
   attention, and native parent notifications. Ordinary list, search, history,
-  folder, lifecycle, parent-operation, and direct-open behavior is unchanged.
+  section, lifecycle, parent-operation, and direct-open behavior is unchanged.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -54,18 +54,18 @@ Listing:
     --project <id>                         Filter by project
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
-    --folder <id>                          Filter by folder
-    --unfiled                              Show only threads outside folders
+    --section <id>                         Filter by section
+    --unsectioned                          Show only threads outside sections
 
   bb thread search <query>                 Search threads and messages
   bb thread history <id>                   List prompt history
 
-Folders:
+Sections:
 
-  bb thread folder list
-  bb thread folder create <name>
-  bb thread folder rename <id> <name>
-  bb thread folder delete <id> [--yes]
+  bb thread section list
+  bb thread section create <name>
+  bb thread section rename <id> <name>
+  bb thread section delete <id> [--yes]
 
 Inspecting:
 
@@ -139,8 +139,8 @@ Ownership:
     --title <title>                        Set title
     --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment
-    --folder <id>                          Move into a folder
-    --clear-folder                         Remove folder assignment
+    --section <id>                         Move into a section
+    --clear-section                        Remove section assignment
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread

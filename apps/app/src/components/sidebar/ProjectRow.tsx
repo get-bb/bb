@@ -75,21 +75,21 @@ import {
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
-  buildFolderThreadList,
+  buildSectionThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
   getSidebarDndItemId,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
-  type SidebarFolderDefinition,
-  type SidebarFolderGroup,
+  type SidebarSectionDefinition,
+  type SidebarSectionGroup,
   type ThreadComparator,
 } from "./projectThreadGroups";
-import { SidebarFolderRow } from "./SidebarFolderRow";
+import { SidebarSectionRow } from "./SidebarSectionRow";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import {
-  sidebarCollapsedFoldersAtom,
+  sidebarCollapsedThreadSectionsAtom,
   type CollapsibleSidebarSectionId,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
@@ -110,11 +110,11 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
 import {
-  collectFolderThreadDndLookup,
+  collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,
-  useFolderThreadDnd,
-  type FolderThreadDndState,
-} from "./useFolderThreadDnd";
+  useSectionThreadDnd,
+  type SectionThreadDndState,
+} from "./useSectionThreadDnd";
 import {
   getBuiltInSidebarSectionNode,
   renderBuiltInSidebarSection,
@@ -122,7 +122,7 @@ import {
   type BuiltInSidebarSectionOptions,
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
-import { FolderThreadDndProvider } from "./FolderThreadDndContext";
+import { SectionThreadDndProvider } from "./SectionThreadDndContext";
 
 // Pin the project row plus this many parent levels (parent threads,
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
@@ -179,25 +179,25 @@ interface ProjectThreadTreeProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
-interface FolderThreadTreeProps {
+interface SectionThreadTreeProps {
   threadListState: ProjectThreadListState;
   compareThreads: ThreadComparator;
-  folders?: readonly SidebarFolderDefinition[];
+  sections?: readonly SidebarSectionDefinition[];
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderId: string) => void;
-  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
-  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
-  renderTopLevelFolderHeaderActions?: (
-    folder: SidebarFolderDefinition,
-  ) => TopLevelFolderHeaderActions;
+  onCreateThreadInSection?: (sectionId: string) => void;
+  onRenameSection?: (section: SidebarSectionDefinition) => void;
+  onRemoveSection?: (section: SidebarSectionDefinition) => void;
+  renderTopLevelSectionHeaderActions?: (
+    section: SidebarSectionDefinition,
+  ) => TopLevelSectionHeaderActions;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
-interface TopLevelFolderHeaderActions {
+interface TopLevelSectionHeaderActions {
   actions: ReactNode;
   actionsOpen: boolean;
 }
@@ -209,7 +209,7 @@ interface ChronologicalBuiltInSidebarSections {
   threads: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
-interface ChronologicalFolderThreadSectionsProps extends FolderThreadTreeProps {
+interface ChronologicalSectionThreadSectionsProps extends SectionThreadTreeProps {
   builtInSections?: ChronologicalBuiltInSidebarSections;
   topLevelSectionOrder: readonly SidebarSectionId[];
   onTopLevelSectionOrderChange: (order: SidebarSectionId[]) => void;
@@ -233,7 +233,7 @@ type ProjectThreadTreeVariant = "project" | "section";
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
-const EMPTY_FOLDERS: readonly SidebarFolderDefinition[] = [];
+const EMPTY_THREAD_SECTIONS: readonly SidebarSectionDefinition[] = [];
 
 interface ShouldSuppressPinnedThreadDropPreviewArgs {
   activeThreadId: string | undefined;
@@ -286,44 +286,44 @@ interface ThreadTreeItemRowProps {
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderId: string) => void;
-  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
-  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
-  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
+  onCreateThreadInSection?: (sectionId: string) => void;
+  onRenameSection?: (section: SidebarSectionDefinition) => void;
+  onRemoveSection?: (section: SidebarSectionDefinition) => void;
+  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
-  folderDnd?: FolderThreadDndState;
+  sectionDnd?: SectionThreadDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
 }
 
-interface FolderTreeItemRowProps {
-  folder: SidebarFolderGroup;
+interface SectionTreeItemRowProps {
+  section: SidebarSectionGroup;
   depthOffset: number;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateThreadInFolder?: (folderId: string) => void;
-  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
-  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
-  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
+  onCreateThreadInSection?: (sectionId: string) => void;
+  onRenameSection?: (section: SidebarSectionDefinition) => void;
+  onRemoveSection?: (section: SidebarSectionDefinition) => void;
+  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
-  folderDnd?: FolderThreadDndState;
+  sectionDnd?: SectionThreadDndState;
   sortableRef?: (element: HTMLDivElement | null) => void;
   sortableStyle?: CSSProperties;
 }
 
-// Render key + routing projectId for any item kind. Folders derive from their
-// first nested item, so a folder spanning projects in the Folders view still
+// Render key + routing projectId for any item kind. Sections derive from their
+// first nested item, so a section spanning projects in the Sections view still
 // routes each contained thread to its own project.
 function getItemKey(item: ProjectThreadItem): string {
   switch (item.kind) {
@@ -331,8 +331,8 @@ function getItemKey(item: ProjectThreadItem): string {
       return `thread:${item.node.thread.id}`;
     case "environment":
       return `env:${item.group.environmentId}`;
-    case "folder":
-      return `folder:${item.group.key}`;
+    case "section":
+      return `section:${item.group.key}`;
   }
 }
 
@@ -342,7 +342,7 @@ function getItemProjectId(item: ProjectThreadItem): string {
       return item.node.thread.projectId;
     case "environment":
       return item.group.nodes[0].thread.projectId;
-    case "folder":
+    case "section":
       if (item.group.items.length === 0) {
         return PERSONAL_PROJECT_ID;
       }
@@ -615,22 +615,22 @@ function ProjectThreadTreeGroup({
   );
 }
 
-function FolderDndSortableList({
+function SectionDndSortableList({
   children,
-  folderDnd,
+  sectionDnd,
   parentKey,
 }: {
   children: ReactNode;
-  folderDnd?: FolderThreadDndState | null;
+  sectionDnd?: SectionThreadDndState | null;
   parentKey: string;
 }) {
-  if (!folderDnd) {
+  if (!sectionDnd) {
     return <>{children}</>;
   }
 
   return (
     <SortableContext
-      items={[...(folderDnd.itemIdsByParentKey.get(parentKey) ?? [])]}
+      items={[...(sectionDnd.itemIdsByParentKey.get(parentKey) ?? [])]}
       strategy={verticalListSortingStrategy}
     >
       {children}
@@ -640,44 +640,44 @@ function FolderDndSortableList({
 
 // Registers the loose root as a droppable so drops onto its bare/empty area
 // resolve to the loose container. Drop feedback is the inserted placeholder row
-// (see the loose section), matching how folders preview a drop.
-function FolderDndDroppableParent({
+// (see the loose section), matching how sections preview a drop.
+function SectionDndDroppableParent({
   children,
-  folderDnd,
+  sectionDnd,
   parentKey,
 }: {
   children: ReactNode;
-  folderDnd?: FolderThreadDndState | null;
+  sectionDnd?: SectionThreadDndState | null;
   parentKey: string;
 }) {
   const { setNodeRef } = useDroppable({
     id: parentKey,
-    disabled: !folderDnd,
+    disabled: !sectionDnd,
   });
 
   return <div ref={setNodeRef}>{children}</div>;
 }
 
-const FolderDndItemRow = memo(function FolderDndItemRow({
-  folderDnd,
+const SectionDndItemRow = memo(function SectionDndItemRow({
+  sectionDnd,
   ...props
 }: ThreadTreeItemRowProps) {
-  if (!folderDnd || props.item.kind === "environment") {
-    return <ThreadTreeItemRow folderDnd={folderDnd} {...props} />;
+  if (!sectionDnd || props.item.kind === "environment") {
+    return <ThreadTreeItemRow sectionDnd={sectionDnd} {...props} />;
   }
 
-  if (props.item.kind === "folder") {
-    return <DroppableFolderItemRow {...props} folderDnd={folderDnd} />;
+  if (props.item.kind === "section") {
+    return <DroppableSectionItemRow {...props} sectionDnd={sectionDnd} />;
   }
 
-  return <DraggableFolderThreadItemRow {...props} folderDnd={folderDnd} />;
+  return <DraggableSectionThreadItemRow {...props} sectionDnd={sectionDnd} />;
 });
 
-const DraggableFolderThreadItemRow = memo(
-  function DraggableFolderThreadItemRow({
-    folderDnd,
+const DraggableSectionThreadItemRow = memo(
+  function DraggableSectionThreadItemRow({
+    sectionDnd,
     ...props
-  }: ThreadTreeItemRowProps & { folderDnd: FolderThreadDndState }) {
+  }: ThreadTreeItemRowProps & { sectionDnd: SectionThreadDndState }) {
     const itemId = getSidebarDndItemId(props.item);
     const { dragBindings, setNodeRef, style } = useSidebarSortable({
       id: itemId,
@@ -687,12 +687,12 @@ const DraggableFolderThreadItemRow = memo(
     return (
       <ThreadTreeItemRow
         {...props}
-        consumeClickSuppression={folderDnd.consumeClickSuppression}
+        consumeClickSuppression={sectionDnd.consumeClickSuppression}
         dragBindings={dragBindings}
-        folderDnd={folderDnd}
+        sectionDnd={sectionDnd}
         sortableRef={setNodeRef}
         sortableStyle={
-          folderDnd.activeThread?.id === itemId
+          sectionDnd.activeThread?.id === itemId
             ? { ...style, opacity: 0.25 }
             : style
         }
@@ -701,34 +701,36 @@ const DraggableFolderThreadItemRow = memo(
   },
 );
 
-const DroppableFolderItemRow = memo(function DroppableFolderItemRow({
-  folderDnd,
+const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
+  sectionDnd,
   ...props
-}: ThreadTreeItemRowProps & { folderDnd: FolderThreadDndState }) {
+}: ThreadTreeItemRowProps & { sectionDnd: SectionThreadDndState }) {
   const itemId = getSidebarDndItemId(props.item);
-  const isTopLevelFolder =
+  const isTopLevelSection =
     props.variant === "section" && props.depthOffset === 0;
   const topLevelSectionId =
-    props.item.kind === "folder"
-      ? buildSidebarEntitySectionId("folder", props.item.group.id)
+    props.item.kind === "section"
+      ? buildSidebarEntitySectionId("section", props.item.group.id)
       : itemId;
   const sortable = useSidebarSortable({
     id: topLevelSectionId,
-    disabled: !isTopLevelFolder,
+    disabled: !isTopLevelSection,
   });
-  const droppable = useDroppable({ id: itemId, disabled: isTopLevelFolder });
+  const droppable = useDroppable({ id: itemId, disabled: isTopLevelSection });
 
   return (
     <ThreadTreeItemRow
       {...props}
-      consumeClickSuppression={folderDnd.consumeClickSuppression}
-      dragBindings={isTopLevelFolder ? sortable.dragBindings : undefined}
-      isDropTargetActive={isTopLevelFolder ? sortable.isOver : droppable.isOver}
-      folderDnd={folderDnd}
-      sortableRef={
-        isTopLevelFolder ? sortable.setNodeRef : droppable.setNodeRef
+      consumeClickSuppression={sectionDnd.consumeClickSuppression}
+      dragBindings={isTopLevelSection ? sortable.dragBindings : undefined}
+      isDropTargetActive={
+        isTopLevelSection ? sortable.isOver : droppable.isOver
       }
-      sortableStyle={isTopLevelFolder ? sortable.style : undefined}
+      sectionDnd={sectionDnd}
+      sortableRef={
+        isTopLevelSection ? sortable.setNodeRef : droppable.setNodeRef
+      }
+      sortableStyle={isTopLevelSection ? sortable.style : undefined}
     />
   );
 });
@@ -1152,39 +1154,39 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onCreateThreadInFolder,
-  onRenameFolder,
-  onRemoveFolder,
-  renderTopLevelFolderHeaderActions,
+  onCreateThreadInSection,
+  onRenameSection,
+  onRemoveSection,
+  renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive,
-  folderDnd,
+  sectionDnd,
   sortableRef,
   sortableStyle,
 }: ThreadTreeItemRowProps) {
-  if (item.kind === "folder") {
+  if (item.kind === "section") {
     return (
-      <FolderTreeItemRow
-        folder={item.group}
+      <SectionTreeItemRow
+        section={item.group}
         depthOffset={depthOffset}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
         variant={variant}
         onProjectSelect={onProjectSelect}
-        onCreateThreadInFolder={onCreateThreadInFolder}
-        onRenameFolder={onRenameFolder}
-        onRemoveFolder={onRemoveFolder}
-        renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
+        onCreateThreadInSection={onCreateThreadInSection}
+        onRenameSection={onRenameSection}
+        onRemoveSection={onRemoveSection}
+        renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
-        folderDnd={folderDnd}
+        sectionDnd={sectionDnd}
         sortableRef={sortableRef}
         sortableStyle={sortableStyle}
       />
@@ -1230,11 +1232,11 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   );
 });
 
-// A derived folder and its (recursively rendered) contents. Collapse state lives
-// in sidebarCollapsedFoldersAtom — read here rather than threaded so the rest of
+// A derived section and its (recursively rendered) contents. Collapse state lives
+// in sidebarCollapsedThreadSectionsAtom — read here rather than threaded so the rest of
 // the tree's prop wiring and memo equality stay untouched. Children render one
 // depth deeper.
-// Empty drop-slot rendered inside the (auto-expanded) hovered folder so the
+// Empty drop-slot rendered inside the (auto-expanded) hovered section so the
 // landing spot is visible. The dragged row itself carries the title (like
 // dragging a queued message), so this placeholder stays intentionally blank.
 export function DropPreviewRow({
@@ -1247,7 +1249,7 @@ export function DropPreviewRow({
   return (
     <div
       aria-hidden="true"
-      data-sidebar-folder-drop-preview="true"
+      data-sidebar-section-drop-preview="true"
       data-visible={visible ? "true" : "false"}
       style={{
         paddingLeft: getSidebarThreadRowPaddingLeft(depth),
@@ -1269,11 +1271,11 @@ export function DropPreviewRow({
   );
 }
 
-function FolderThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
+function SectionThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
   return (
     <div
       aria-hidden="true"
-      data-sidebar-folder-drag-overlay="true"
+      data-sidebar-section-drag-overlay="true"
       style={{ paddingLeft: getSidebarThreadRowPaddingLeft(0) }}
       className={cn(
         SIDEBAR_ROW_BASE_CLASS,
@@ -1288,53 +1290,53 @@ function FolderThreadDragOverlay({ thread }: { thread: ThreadListEntry }) {
   );
 }
 
-const FolderTreeItemRow = memo(function FolderTreeItemRow({
-  folder,
+const SectionTreeItemRow = memo(function SectionTreeItemRow({
+  section,
   depthOffset,
   selectedThreadId,
   collapsedThreadIds,
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onCreateThreadInFolder,
-  onRenameFolder,
-  onRemoveFolder,
-  renderTopLevelFolderHeaderActions,
+  onCreateThreadInSection,
+  onRenameSection,
+  onRemoveSection,
+  renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive = false,
-  folderDnd,
+  sectionDnd,
   sortableRef,
   sortableStyle,
-}: FolderTreeItemRowProps) {
+}: SectionTreeItemRowProps) {
   const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
-  const collapsedFolders = useAtomValue(sidebarCollapsedFoldersAtom);
-  const setCollapsedFolders = useSetAtom(sidebarCollapsedFoldersAtom);
-  const folderKey = folder.key;
-  const isCollapsed = collapsedFolders.includes(folderKey);
+  const collapsedSections = useAtomValue(sidebarCollapsedThreadSectionsAtom);
+  const setCollapsedSections = useSetAtom(sidebarCollapsedThreadSectionsAtom);
+  const sectionKey = section.key;
+  const isCollapsed = collapsedSections.includes(sectionKey);
   const handleToggleCollapsed = useCallback(() => {
-    setCollapsedFolders((current) =>
-      current.includes(folderKey)
-        ? current.filter((key) => key !== folderKey)
-        : [...current, folderKey],
+    setCollapsedSections((current) =>
+      current.includes(sectionKey)
+        ? current.filter((key) => key !== sectionKey)
+        : [...current, sectionKey],
     );
-  }, [folderKey, setCollapsedFolders]);
+  }, [sectionKey, setCollapsedSections]);
 
   const headerDepth = getThreadRowDepth({ depthOffset, nodeDepth: 0, variant });
   const stickyLevel =
     depthOffset < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? depthOffset : undefined;
-  const showDropPreview = folderDnd?.dragOverParentKey === folderKey;
-  const showChildren = !isCollapsed && folder.items.length > 0;
+  const showDropPreview = sectionDnd?.dragOverParentKey === sectionKey;
+  const showChildren = !isCollapsed && section.items.length > 0;
   // Force the children area open while a thread drag is active so the empty
-  // drop-placeholder row is visible even when the folder is empty. During a
+  // drop-placeholder row is visible even when the section is empty. During a
   // drag the collapsed preview slot stays mounted in every expanded drop
   // target so its height transition can run in both directions as the pointer
-  // crosses folders; outside a drag the area unmounts entirely, so an empty
-  // expanded folder adds no height (mounting it added the wrapper's margin).
+  // crosses sections; outside a drag the area unmounts entirely, so an empty
+  // expanded section adds no height (mounting it added the wrapper's margin).
   const showChildrenArea =
-    showChildren || (folderDnd?.activeThread != null && !isCollapsed);
+    showChildren || (sectionDnd?.activeThread != null && !isCollapsed);
 
   const childrenArea = showChildrenArea ? (
     <div className="relative space-y-px">
@@ -1342,9 +1344,9 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
         <ThreadTreeGroupLine parentRowDepth={headerDepth} />
       ) : null}
       {showChildren ? (
-        <FolderDndSortableList folderDnd={folderDnd} parentKey={folder.key}>
-          {folder.items.map((item) => (
-            <FolderDndItemRow
+        <SectionDndSortableList sectionDnd={sectionDnd} parentKey={section.key}>
+          {section.items.map((item) => (
+            <SectionDndItemRow
               key={getItemKey(item)}
               projectId={getItemProjectId(item)}
               item={item}
@@ -1356,17 +1358,17 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
               collapsedEnvironmentIds={collapsedEnvironmentIds}
               variant={variant}
               onProjectSelect={onProjectSelect}
-              onCreateThreadInFolder={onCreateThreadInFolder}
-              onRenameFolder={onRenameFolder}
-              onRemoveFolder={onRemoveFolder}
+              onCreateThreadInSection={onCreateThreadInSection}
+              onRenameSection={onRenameSection}
+              onRemoveSection={onRemoveSection}
               onToggleThreadCollapsed={onToggleThreadCollapsed}
               onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-              folderDnd={folderDnd}
+              sectionDnd={sectionDnd}
             />
           ))}
-        </FolderDndSortableList>
+        </SectionDndSortableList>
       ) : null}
-      {folderDnd ? (
+      {sectionDnd ? (
         <DropPreviewRow
           visible={showDropPreview}
           depth={getThreadRowDepth({
@@ -1381,8 +1383,8 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
   ) : null;
 
   if (variant === "section" && depthOffset === 0) {
-    const externalHeaderActions = renderTopLevelFolderHeaderActions?.(folder);
-    const hasMenuActions = Boolean(onRenameFolder || onRemoveFolder);
+    const externalHeaderActions = renderTopLevelSectionHeaderActions?.(section);
+    const hasMenuActions = Boolean(onRenameSection || onRemoveSection);
     const topLevelActions = (
       <>
         {externalHeaderActions?.actions}
@@ -1393,7 +1395,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label={`${folder.name} section actions`}
+                aria-label={`${section.name} section actions`}
                 className={cn(
                   "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
                   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
@@ -1406,16 +1408,16 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onRenameFolder ? (
-                <DropdownMenuItem onSelect={() => onRenameFolder(folder)}>
+              {onRenameSection ? (
+                <DropdownMenuItem onSelect={() => onRenameSection(section)}>
                   <Icon name="Edit" aria-hidden="true" />
                   Rename
                 </DropdownMenuItem>
               ) : null}
-              {onRemoveFolder ? (
+              {onRemoveSection ? (
                 <DropdownMenuItem
                   variant="destructive"
-                  onSelect={() => onRemoveFolder(folder)}
+                  onSelect={() => onRemoveSection(section)}
                 >
                   <Icon name="Trash2" aria-hidden="true" />
                   Remove
@@ -1424,13 +1426,13 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        {onCreateThreadInFolder ? (
+        {onCreateThreadInSection ? (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={`New thread in ${folder.name}`}
-            onClick={() => onCreateThreadInFolder(folder.id)}
+            aria-label={`New thread in ${section.name}`}
+            onClick={() => onCreateThreadInSection(section.id)}
             className={cn(
               "rounded-md p-0 text-subtle-foreground hover:bg-transparent hover:text-foreground",
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -1447,7 +1449,7 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
 
     return (
       <TopLevelSidebarSection
-        label={folder.name}
+        label={section.name}
         actions={topLevelActions}
         actionsOpen={
           isTopLevelActionsOpen || externalHeaderActions?.actionsOpen === true
@@ -1478,22 +1480,22 @@ const FolderTreeItemRow = memo(function FolderTreeItemRow({
           "[&_.bb-sidebar-hover-actions-row]:!bg-sidebar-accent [&_.bb-sidebar-hover-actions-row]:!text-sidebar-accent-foreground",
       )}
     >
-      <SidebarFolderRow
-        name={folder.name}
-        label={folder.name}
+      <SidebarSectionRow
+        name={section.name}
+        label={section.name}
         depth={headerDepth}
-        activity={folder.activity}
+        activity={section.activity}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
         isCollapsed={isCollapsed}
         onCreateThread={
-          onCreateThreadInFolder
-            ? () => onCreateThreadInFolder(folder.id)
+          onCreateThreadInSection
+            ? () => onCreateThreadInSection(section.id)
             : undefined
         }
-        onRename={onRenameFolder ? () => onRenameFolder(folder) : undefined}
-        onRemove={onRemoveFolder ? () => onRemoveFolder(folder) : undefined}
+        onRename={onRenameSection ? () => onRenameSection(section) : undefined}
+        onRemove={onRemoveSection ? () => onRemoveSection(section) : undefined}
         onToggleCollapsed={handleToggleCollapsed}
         stickyLevel={stickyLevel}
       />
@@ -1620,16 +1622,16 @@ function ThreadTreeLoadingSkeleton() {
   );
 }
 
-interface FolderThreadTreeItemsProps {
+interface SectionThreadTreeItemsProps {
   items: readonly ProjectThreadItem[];
-  folderDnd: FolderThreadDndState | null;
+  sectionDnd: SectionThreadDndState | null;
   variant: ProjectThreadTreeVariant;
   // Route every row to this project; omit to derive each row's project from its
-  // own thread (the cross-project Folders view).
+  // own thread (the cross-project Sections view).
   projectId?: string;
   depthOffset?: number;
   // Wrap the rows in a SortableContext for this parent. Omit when an outer
-  // SortableList already provides the context (the split Folders/Threads view).
+  // SortableList already provides the context (the split Sections/Threads view).
   sortableParentKey?: string;
   selectedThreadId?: string;
   collapsedThreadIds: Set<string>;
@@ -1637,18 +1639,18 @@ interface FolderThreadTreeItemsProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
-  onCreateThreadInFolder?: (folderId: string) => void;
-  onRenameFolder?: (folder: SidebarFolderDefinition) => void;
-  onRemoveFolder?: (folder: SidebarFolderDefinition) => void;
-  renderTopLevelFolderHeaderActions?: FolderThreadTreeProps["renderTopLevelFolderHeaderActions"];
+  onCreateThreadInSection?: (sectionId: string) => void;
+  onRenameSection?: (section: SidebarSectionDefinition) => void;
+  onRemoveSection?: (section: SidebarSectionDefinition) => void;
+  renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
-// (project, chronological, folders) renders through this, so a row-prop
+// (project, chronological, sections) renders through this, so a row-prop
 // change lands once instead of being copied across each view's renderer.
-function FolderThreadTreeItems({
+function SectionThreadTreeItems({
   items,
-  folderDnd,
+  sectionDnd,
   variant,
   projectId,
   depthOffset = 0,
@@ -1659,13 +1661,13 @@ function FolderThreadTreeItems({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
-  onCreateThreadInFolder,
-  onRenameFolder,
-  onRemoveFolder,
-  renderTopLevelFolderHeaderActions,
-}: FolderThreadTreeItemsProps) {
+  onCreateThreadInSection,
+  onRenameSection,
+  onRemoveSection,
+  renderTopLevelSectionHeaderActions,
+}: SectionThreadTreeItemsProps) {
   const rows = items.map((item) => (
-    <FolderDndItemRow
+    <SectionDndItemRow
       key={getItemKey(item)}
       projectId={projectId ?? getItemProjectId(item)}
       item={item}
@@ -1677,26 +1679,26 @@ function FolderThreadTreeItems({
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-      onCreateThreadInFolder={onCreateThreadInFolder}
-      onRenameFolder={onRenameFolder}
-      onRemoveFolder={onRemoveFolder}
-      renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
-      folderDnd={folderDnd ?? undefined}
+      onCreateThreadInSection={onCreateThreadInSection}
+      onRenameSection={onRenameSection}
+      onRemoveSection={onRemoveSection}
+      renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
+      sectionDnd={sectionDnd ?? undefined}
     />
   ));
 
   return (
     <ProjectThreadTreeGroup
       variant={variant}
-      onClickCapture={folderDnd?.onClickCapture}
+      onClickCapture={sectionDnd?.onClickCapture}
     >
       {sortableParentKey !== undefined ? (
-        <FolderDndSortableList
-          folderDnd={folderDnd}
+        <SectionDndSortableList
+          sectionDnd={sectionDnd}
           parentKey={sortableParentKey}
         >
           {rows}
-        </FolderDndSortableList>
+        </SectionDndSortableList>
       ) : (
         rows
       )}
@@ -1755,12 +1757,12 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     );
   }
 
-  // Per-project trees never contain folder items or enable folder drag-and-drop;
-  // folders live only in the cross-project Folders view below.
+  // Per-project trees never contain section items or enable section drag-and-drop;
+  // sections live only in the cross-project Sections view below.
   return (
-    <FolderThreadTreeItems
+    <SectionThreadTreeItems
       items={rootItems}
-      folderDnd={null}
+      sectionDnd={null}
       variant={variant}
       projectId={projectId}
       sortableParentKey={projectId}
@@ -1774,19 +1776,19 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   );
 });
 
-export const ChronologicalFolderThreadSections = memo(
-  function ChronologicalFolderThreadSections({
+export const ChronologicalSectionThreadSections = memo(
+  function ChronologicalSectionThreadSections({
     threadListState,
     compareThreads,
-    folders = EMPTY_FOLDERS,
+    sections = EMPTY_THREAD_SECTIONS,
     selectedThreadId,
     collapsedThreadIds,
     collapsedEnvironmentIds,
     onProjectSelect,
-    onCreateThreadInFolder,
-    onRenameFolder,
-    onRemoveFolder,
-    renderTopLevelFolderHeaderActions,
+    onCreateThreadInSection,
+    onRenameSection,
+    onRemoveSection,
+    renderTopLevelSectionHeaderActions,
     onToggleThreadCollapsed,
     onToggleEnvironmentCollapsed,
     builtInSections,
@@ -1797,22 +1799,22 @@ export const ChronologicalFolderThreadSections = memo(
     onReorderPinnedThread,
     renderPinnedSection,
     renderThreadsSection,
-  }: ChronologicalFolderThreadSectionsProps) {
+  }: ChronologicalSectionThreadSectionsProps) {
     const threads =
       threadListState.status === "ready"
         ? threadListState.threads
         : EMPTY_PROJECT_THREADS;
     const rootItems = useMemo(
-      () => buildFolderThreadList(threads, compareThreads, folders),
-      [threads, compareThreads, folders],
+      () => buildSectionThreadList(threads, compareThreads, sections),
+      [threads, compareThreads, sections],
     );
-    const persistedFolderItems = rootItems.filter(
-      (item) => item.kind === "folder",
+    const persistedSectionItems = rootItems.filter(
+      (item) => item.kind === "section",
     );
-    const folderDnd = useFolderThreadDnd({
+    const sectionDnd = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
       enabled:
-        topLevelSectionOrder.length > 1 || persistedFolderItems.length > 0,
+        topLevelSectionOrder.length > 1 || persistedSectionItems.length > 0,
       rootItems,
       topLevelSectionOrder,
       onTopLevelSectionOrderChange,
@@ -1821,57 +1823,57 @@ export const ChronologicalFolderThreadSections = memo(
       onReorderPinnedThread,
     });
     const renderedRootItems = useMemo(() => {
-      const activeThread = folderDnd?.activeThread;
-      const projectedFolderId = folderDnd?.projectedFolderId;
-      if (!activeThread || projectedFolderId === undefined) {
+      const activeThread = sectionDnd?.activeThread;
+      const projectedSectionId = sectionDnd?.projectedSectionId;
+      if (!activeThread || projectedSectionId === undefined) {
         return rootItems;
       }
 
       const hasProjectedThread = threads.some(
         (thread) => thread.id === activeThread.id,
       );
-      return buildFolderThreadList(
+      return buildSectionThreadList(
         hasProjectedThread
           ? threads.map((thread) =>
               thread.id === activeThread.id
-                ? { ...thread, folderId: projectedFolderId }
+                ? { ...thread, sectionId: projectedSectionId }
                 : thread,
             )
-          : [...threads, { ...activeThread, folderId: projectedFolderId }],
+          : [...threads, { ...activeThread, sectionId: projectedSectionId }],
         compareThreads,
-        folders,
+        sections,
       );
-    }, [compareThreads, folderDnd, folders, rootItems, threads]);
-    const renderedFolderDnd = useMemo<FolderThreadDndState | null>(() => {
-      if (!folderDnd) {
+    }, [compareThreads, sectionDnd, sections, rootItems, threads]);
+    const renderedSectionDnd = useMemo<SectionThreadDndState | null>(() => {
+      if (!sectionDnd) {
         return null;
       }
       const suppressPinnedDropPreview = shouldSuppressPinnedThreadDropPreview({
-        activeThreadId: folderDnd.activeThread?.id,
-        dragOverParentKey: folderDnd.dragOverParentKey,
+        activeThreadId: sectionDnd.activeThread?.id,
+        dragOverParentKey: sectionDnd.dragOverParentKey,
         pinnedThreads,
       });
       if (renderedRootItems === rootItems) {
         return suppressPinnedDropPreview
-          ? { ...folderDnd, dragOverParentKey: null }
-          : folderDnd;
+          ? { ...sectionDnd, dragOverParentKey: null }
+          : sectionDnd;
       }
 
       if (suppressPinnedDropPreview) {
-        return { ...folderDnd, dragOverParentKey: null };
+        return { ...sectionDnd, dragOverParentKey: null };
       }
 
-      const activeThreadId = folderDnd.activeThread?.id;
+      const activeThreadId = sectionDnd.activeThread?.id;
       const renderedPinnedThreads = activeThreadId
         ? pinnedThreads.filter((thread) => thread.id !== activeThreadId)
         : pinnedThreads;
-      const renderedLookup = collectFolderThreadDndLookup(
+      const renderedLookup = collectSectionThreadDndLookup(
         renderedRootItems,
         CHRONOLOGICAL_CONTAINER_ID,
         renderedPinnedThreads,
       );
       return {
-        ...folderDnd,
+        ...sectionDnd,
         // The projected thread row is the landing slot now. Suppress the old
         // blank preview and give every SortableContext the projected parent
         // membership so dnd-kit can measure the real destination row.
@@ -1880,20 +1882,20 @@ export const ChronologicalFolderThreadSections = memo(
         pinnedItemIds:
           renderedLookup.itemIdsByParentKey.get(PINNED_THREAD_PARENT_KEY) ?? [],
       };
-    }, [folderDnd, pinnedThreads, renderedRootItems, rootItems]);
-    const folderItems = renderedRootItems.filter(
-      (item) => item.kind === "folder",
+    }, [sectionDnd, pinnedThreads, renderedRootItems, rootItems]);
+    const sectionItems = renderedRootItems.filter(
+      (item) => item.kind === "section",
     );
     const looseItems = renderedRootItems.filter(
-      (item) => item.kind !== "folder",
+      (item) => item.kind !== "section",
     );
 
-    // No sortableParentKey: the outer FolderDndSortableList below provides the
-    // SortableContext spanning both the folders and loose-threads sections.
+    // No sortableParentKey: the outer SectionDndSortableList below provides the
+    // SortableContext spanning both the sections and loose-threads sections.
     const renderItems = (items: readonly ProjectThreadItem[]) => (
-      <FolderThreadTreeItems
+      <SectionThreadTreeItems
         items={items}
-        folderDnd={renderedFolderDnd}
+        sectionDnd={renderedSectionDnd}
         variant="section"
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
@@ -1901,18 +1903,18 @@ export const ChronologicalFolderThreadSections = memo(
         onProjectSelect={onProjectSelect}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        onCreateThreadInFolder={onCreateThreadInFolder}
-        onRenameFolder={onRenameFolder}
-        onRemoveFolder={onRemoveFolder}
-        renderTopLevelFolderHeaderActions={renderTopLevelFolderHeaderActions}
+        onCreateThreadInSection={onCreateThreadInSection}
+        onRenameSection={onRenameSection}
+        onRemoveSection={onRemoveSection}
+        renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
       />
     );
 
-    // A thread dragged out of a folder previews its landing in the loose list
-    // with the same inserted placeholder folders use (hiding the empty state so
+    // A thread dragged out of a section previews its landing in the loose list
+    // with the same inserted placeholder sections use (hiding the empty state so
     // the placeholder reads as the drop slot when the loose list is empty).
     const showLoosePreview =
-      renderedFolderDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
+      renderedSectionDnd?.dragOverParentKey === CHRONOLOGICAL_CONTAINER_ID;
     const looseEmptyState = (
       <EmptyState
         message={
@@ -1936,7 +1938,7 @@ export const ChronologicalFolderThreadSections = memo(
         >
           {renderItems(looseItems)}
         </SortableContext>
-      ) : renderedFolderDnd ? (
+      ) : renderedSectionDnd ? (
         <div className="grid">
           <div
             className={cn(
@@ -1953,9 +1955,9 @@ export const ChronologicalFolderThreadSections = memo(
       ) : (
         looseEmptyState
       );
-    const threadsContent = renderedFolderDnd ? (
-      <FolderDndDroppableParent
-        folderDnd={renderedFolderDnd}
+    const threadsContent = renderedSectionDnd ? (
+      <SectionDndDroppableParent
+        sectionDnd={renderedSectionDnd}
         parentKey={CHRONOLOGICAL_CONTAINER_ID}
       >
         {threadsListContent}
@@ -1969,18 +1971,18 @@ export const ChronologicalFolderThreadSections = memo(
             })}
           />
         ) : null}
-      </FolderDndDroppableParent>
+      </SectionDndDroppableParent>
     ) : (
       threadsListContent
     );
 
-    const folderItemsBySectionId = new Map(
-      folderItems.map((item) => [
-        buildSidebarEntitySectionId("folder", item.group.id),
+    const sectionItemsBySectionId = new Map(
+      sectionItems.map((item) => [
+        buildSidebarEntitySectionId("section", item.group.id),
         item,
       ]),
     );
-    const consumeClickSuppression = renderedFolderDnd?.consumeClickSuppression;
+    const consumeClickSuppression = renderedSectionDnd?.consumeClickSuppression;
     const configuredBuiltInSections:
       | BuiltInSidebarSectionOptionsById
       | undefined = builtInSections
@@ -1988,7 +1990,8 @@ export const ChronologicalFolderThreadSections = memo(
           pinned: {
             ...builtInSections.pinned,
             isDropTargetActive:
-              renderedFolderDnd?.dragOverParentKey === PINNED_THREAD_PARENT_KEY,
+              renderedSectionDnd?.dragOverParentKey ===
+              PINNED_THREAD_PARENT_KEY,
           },
           threads: {
             ...builtInSections.threads,
@@ -2000,7 +2003,7 @@ export const ChronologicalFolderThreadSections = memo(
       pinned: renderPinnedSection?.(consumeClickSuppression),
       threads: renderThreadsSection?.(threadsContent, consumeClickSuppression),
     };
-    const sections = (
+    const orderedSections = (
       <SidebarSectionOrderList order={topLevelSectionOrder}>
         {(sectionId) => {
           const builtInSection =
@@ -2021,18 +2024,18 @@ export const ChronologicalFolderThreadSections = memo(
           if (builtInSection !== undefined) {
             return <div key={sectionId}>{builtInSection}</div>;
           }
-          const folderItem = folderItemsBySectionId.get(sectionId);
-          return folderItem ? (
-            <div key={sectionId}>{renderItems([folderItem])}</div>
+          const sectionItem = sectionItemsBySectionId.get(sectionId);
+          return sectionItem ? (
+            <div key={sectionId}>{renderItems([sectionItem])}</div>
           ) : null;
         }}
       </SidebarSectionOrderList>
     );
 
-    return folderDnd ? (
-      <DndContext {...folderDnd.dndContextProps}>
-        <FolderThreadDndProvider value={renderedFolderDnd}>
-          {sections}
+    return sectionDnd ? (
+      <DndContext {...sectionDnd.dndContextProps}>
+        <SectionThreadDndProvider value={renderedSectionDnd}>
+          {orderedSections}
           {createPortal(
             // The overlay only renders thread content. Its default drop side
             // effect hides the active DOM node, so enabling it for a section
@@ -2040,7 +2043,7 @@ export const ChronologicalFolderThreadSections = memo(
             <DragOverlay
               className="cursor-grabbing"
               dropAnimation={
-                folderDnd.activeThread
+                sectionDnd.activeThread
                   ? {
                       duration: 180,
                       easing: "cubic-bezier(0.2, 0, 0, 1)",
@@ -2048,16 +2051,16 @@ export const ChronologicalFolderThreadSections = memo(
                   : null
               }
             >
-              {folderDnd.activeThread ? (
-                <FolderThreadDragOverlay thread={folderDnd.activeThread} />
+              {sectionDnd.activeThread ? (
+                <SectionThreadDragOverlay thread={sectionDnd.activeThread} />
               ) : null}
             </DragOverlay>,
             document.body,
           )}
-        </FolderThreadDndProvider>
+        </SectionThreadDndProvider>
       </DndContext>
     ) : (
-      sections
+      orderedSections
     );
   },
 );

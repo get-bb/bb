@@ -48,7 +48,7 @@ interface ThreadSpawnCommandOptions {
   host?: string;
   file?: string[];
   image?: string[];
-  folder?: string;
+  section?: string;
   originKind?: string;
   sourceThread?: string;
   sourceSeqEnd?: string;
@@ -214,7 +214,7 @@ export function registerSpawnCommand(
       collectOption,
       [],
     )
-    .option("--folder <id>", "Create the thread in a folder")
+    .option("--section <id>", "Create the thread in a section")
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .option("--origin-kind <kind>", "Thread origin: fork or side-chat")
     .option("--source-thread <id>", "Source thread for a fork or side chat")
@@ -321,7 +321,7 @@ export function registerSpawnCommand(
             originKind: opts.originKind ?? null,
             childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
-            ...(opts.folder ? { folderId: opts.folder } : {}),
+            ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
           });

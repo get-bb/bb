@@ -53,9 +53,9 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
-  CreateThreadFolderRequest,
+  CreateThreadSectionRequest,
   CreateThreadRequest,
-  DeleteThreadFolderRequest,
+  DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
@@ -150,8 +150,8 @@ import type {
   ThreadComposerBootstrapResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
-  ThreadFolderMutationResponse,
-  ThreadFolderResponse,
+  ThreadSectionMutationResponse,
+  ThreadSectionResponse,
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
@@ -176,7 +176,7 @@ import type {
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
-  UpdateThreadFolderRequest,
+  UpdateThreadSectionRequest,
   UpdateTerminalRequest,
   UpdateHostRequest,
   UpdateProjectRequest,
@@ -195,8 +195,8 @@ import {
   closeTerminalRequestSchema,
   copyProjectAttachmentsRequestSchema,
   createFilePreviewRequestSchema,
-  createThreadFolderRequestSchema,
-  deleteThreadFolderRequestSchema,
+  createThreadSectionRequestSchema,
+  deleteThreadSectionRequestSchema,
   createTerminalRequestSchema,
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
@@ -263,7 +263,7 @@ import {
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
-  updateThreadFolderRequestSchema,
+  updateThreadSectionRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
@@ -758,38 +758,38 @@ export const publicApiRoutes = {
     }),
   },
 
-  threadFolders: {
+  threadSections: {
     create: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "post",
-      request: jsonRequest<EmptyInput, CreateThreadFolderRequest>(
-        createThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, CreateThreadSectionRequest>(
+        createThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderResponse>({ status: 201 }),
+        jsonResponse<ThreadSectionResponse>({ status: 201 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
     }),
     update: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "patch",
-      request: jsonRequest<EmptyInput, UpdateThreadFolderRequest>(
-        updateThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, UpdateThreadSectionRequest>(
+        updateThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ThreadSectionMutationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
         jsonResponse<ApiError>({ status: 409 }),
       ],
     }),
     delete: defineRoute({
-      path: "/thread-folders",
+      path: "/thread-sections",
       method: "delete",
-      request: jsonRequest<EmptyInput, DeleteThreadFolderRequest>(
-        deleteThreadFolderRequestSchema,
+      request: jsonRequest<EmptyInput, DeleteThreadSectionRequest>(
+        deleteThreadSectionRequestSchema,
       ),
       response: [
-        jsonResponse<ThreadFolderMutationResponse>(),
+        jsonResponse<ThreadSectionMutationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
       ],
     }),

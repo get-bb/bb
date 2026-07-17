@@ -16,8 +16,8 @@ import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
 } from "./useNeighborReorderSortable";
-import { useChronologicalFolderThreadDnd } from "./FolderThreadDndContext";
-import { PINNED_THREAD_PARENT_KEY } from "./useFolderThreadDnd";
+import { useChronologicalSectionThreadDnd } from "./SectionThreadDndContext";
+import { PINNED_THREAD_PARENT_KEY } from "./useSectionThreadDnd";
 
 interface PinnedThreadRootReorderCallbacks {
   onSettled: () => void;
@@ -129,7 +129,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   isPinnedReorderPending = false,
   onReorderPinnedRoot,
 }: PinnedThreadTreeProps) {
-  const chronologicalDnd = useChronologicalFolderThreadDnd();
+  const chronologicalDnd = useChronologicalSectionThreadDnd();
   const handleReorderPinnedRoot = useCallback<
     UseNeighborReorderSortableArgs<ProjectThreadNode>["onReorder"]
   >(

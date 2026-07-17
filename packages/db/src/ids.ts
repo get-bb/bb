@@ -36,8 +36,8 @@ export function createThreadId(): string {
   return createId("thr");
 }
 
-export function createThreadFolderId(): string {
-  return createId("fld");
+export function createThreadSectionId(): string {
+  return createId("sec");
 }
 
 export function createThreadProvisioningId(): string {

@@ -1,6 +1,6 @@
 import {
   createThread,
-  getThreadFolderById,
+  getThreadSectionById,
   getProjectSourceByHost,
   getProject,
   getThread,
@@ -163,9 +163,9 @@ export function createThreadRecord(
     status?: "starting";
   },
 ) {
-  const folderId = args.request.folderId ?? null;
-  if (folderId !== null && !getThreadFolderById(deps.db, folderId)) {
-    throw new ApiError(404, "folder_not_found", "Folder not found");
+  const sectionId = args.request.sectionId ?? null;
+  if (sectionId !== null && !getThreadSectionById(deps.db, sectionId)) {
+    throw new ApiError(404, "section_not_found", "Section not found");
   }
 
   try {
@@ -175,7 +175,7 @@ export function createThreadRecord(
       providerId: args.request.providerId,
       title: args.request.title ?? null,
       titleFallback: args.request.titleFallback,
-      folderId,
+      sectionId,
       parentThreadId: args.request.parentThreadId ?? null,
       sourceThreadId: args.request.sourceThreadId ?? null,
       originKind: args.request.originKind ?? args.request.childOrigin,
@@ -187,12 +187,12 @@ export function createThreadRecord(
     return thread;
   } catch (error) {
     if (
-      folderId !== null &&
+      sectionId !== null &&
       error instanceof Error &&
       isSqliteForeignKeyConstraint(error) &&
-      !getThreadFolderById(deps.db, folderId)
+      !getThreadSectionById(deps.db, sectionId)
     ) {
-      throw new ApiError(404, "folder_not_found", "Folder not found");
+      throw new ApiError(404, "section_not_found", "Section not found");
     }
     throw error;
   }

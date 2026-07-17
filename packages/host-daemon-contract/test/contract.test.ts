@@ -1673,7 +1673,23 @@ describe("host-daemon command schemas", () => {
         projectId: "proj_123",
         providerId: "codex",
         requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
+        input: [
+          {
+            type: "text",
+            text: "@release",
+            mentions: [
+              {
+                start: 0,
+                end: 8,
+                resource: {
+                  kind: "section",
+                  sectionId: "sec_release",
+                  label: "Release QA",
+                },
+              },
+            ],
+          },
+        ],
         options: {
           model: "gpt-5",
           serviceTier: "default",
@@ -1695,6 +1711,18 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "thread.start",
+      input: [
+        {
+          mentions: [
+            {
+              resource: {
+                kind: "section",
+                sectionId: "sec_release",
+              },
+            },
+          ],
+        },
+      ],
       workspaceContext: {
         workspacePath: "/tmp/workspace",
         workspaceProvisionType: "unmanaged",

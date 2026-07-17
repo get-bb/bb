@@ -76,7 +76,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
-      "createThreadRequestSchema.folderId",
+      "createThreadRequestSchema.sectionId",
       "createThreadRequestSchema.model",
       "createThreadRequestSchema.parentThreadId",
       "createThreadRequestSchema.providerId",
@@ -154,7 +154,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread PATCH requests omit fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateThreadRequestSchema.model",
-      "updateThreadRequestSchema.folderId",
+      "updateThreadRequestSchema.sectionId",
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.title",
@@ -209,7 +209,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.childOrigin",
       "threadListQuerySchema.excludeSideChats",
-      "threadListQuerySchema.folderId",
+      "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.offset",
@@ -217,7 +217,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",
-      "threadListQuerySchema.unfiled",
+      "threadListQuerySchema.unsectioned",
     ],
   },
   {
@@ -792,7 +792,7 @@ describe("server-contract canonical schemas", () => {
           providerId: "codex",
           title: "Pending thread",
           titleFallback: "Pending thread",
-          folderId: null,
+          sectionId: null,
           status: "idle",
           parentThreadId: null,
           sourceThreadId: null,
@@ -1208,7 +1208,7 @@ describe("server-contract canonical schemas", () => {
     ).toBe("hidden");
   });
 
-  it("allows assigning a hidden thread to a folder at creation", () => {
+  it("allows assigning a hidden thread to a section at creation", () => {
     expect(
       createThreadRequestSchema.parse({
         projectId: "proj_123",
@@ -1216,14 +1216,14 @@ describe("server-contract canonical schemas", () => {
         origin: "sdk",
         input: [{ type: "text", text: "Background work" }],
         visibility: "hidden",
-        folderId: "fld_work",
+        sectionId: "sec_work",
         environment: {
           type: "host",
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
-      }).folderId,
-    ).toBe("fld_work");
+      }).sectionId,
+    ).toBe("sec_work");
   });
 
   it("rejects empty input for a normal thread start", () => {

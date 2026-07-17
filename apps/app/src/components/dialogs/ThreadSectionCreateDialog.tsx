@@ -12,7 +12,7 @@ import { Input } from "@bb/shared-ui/input";
 import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
-interface ThreadFolderCreateDialogProps {
+interface ThreadSectionCreateDialogProps {
   errorMessage?: string | null;
   open: boolean;
   pending?: boolean;
@@ -20,20 +20,20 @@ interface ThreadFolderCreateDialogProps {
   onCreate: (name: string) => void;
 }
 
-export interface ThreadFolderRenameDialogTarget {
+export interface ThreadSectionRenameDialogTarget {
   id: string;
   name: string;
 }
 
-interface ThreadFolderRenameDialogProps {
+interface ThreadSectionRenameDialogProps {
   errorMessage?: string | null;
-  target: ThreadFolderRenameDialogTarget | null;
+  target: ThreadSectionRenameDialogTarget | null;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
   onRename: (id: string, name: string) => void;
 }
 
-interface ThreadFolderDialogContentProps {
+interface ThreadSectionDialogContentProps {
   description: string;
   errorMessage?: string | null;
   initialName: string;
@@ -45,19 +45,19 @@ interface ThreadFolderDialogContentProps {
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
-export function ThreadFolderCreateDialog({
+export function ThreadSectionCreateDialog({
   errorMessage,
   open,
   pending = false,
   onOpenChange,
   onCreate,
-}: ThreadFolderCreateDialogProps) {
+}: ThreadSectionCreateDialogProps) {
   const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         {open ? (
-          <ThreadFolderDialogContent
+          <ThreadSectionDialogContent
             description="Create a section for threads."
             errorMessage={errorMessage}
             initialName=""
@@ -74,19 +74,19 @@ export function ThreadFolderCreateDialog({
   );
 }
 
-export function ThreadFolderRenameDialog({
+export function ThreadSectionRenameDialog({
   errorMessage,
   target,
   pending = false,
   onOpenChange,
   onRename,
-}: ThreadFolderRenameDialogProps) {
+}: ThreadSectionRenameDialogProps) {
   const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
         {target ? (
-          <ThreadFolderDialogContent
+          <ThreadSectionDialogContent
             key={target.id}
             description="Choose a new name for this section."
             errorMessage={errorMessage}
@@ -104,7 +104,7 @@ export function ThreadFolderRenameDialog({
   );
 }
 
-function ThreadFolderDialogContent({
+function ThreadSectionDialogContent({
   description,
   errorMessage,
   initialName,
@@ -114,7 +114,7 @@ function ThreadFolderDialogContent({
   title,
   onSubmit,
   inputRef,
-}: ThreadFolderDialogContentProps) {
+}: ThreadSectionDialogContentProps) {
   const inputId = useId();
   const [name, setName] = useState(initialName);
   const [hiddenErrorMessage, setHiddenErrorMessage] = useState<string | null>(

@@ -122,7 +122,9 @@ function isPositionInRanges(
   position: number,
   ranges: readonly MarkdownMarkerRange[],
 ): boolean {
-  return ranges.some((range) => position >= range.start && position < range.end);
+  return ranges.some(
+    (range) => position >= range.start && position < range.end,
+  );
 }
 
 function findClosingMarkdownMarker({
@@ -218,9 +220,7 @@ function collectMarkdownMarkRanges(text: string): MarkdownParseRanges {
   markers.sort(
     (left, right) => left.start - right.start || left.end - right.end,
   );
-  marks.sort(
-    (left, right) => left.start - right.start || left.end - right.end,
-  );
+  marks.sort((left, right) => left.start - right.start || left.end - right.end);
 
   return { marks, markers };
 }
@@ -396,7 +396,10 @@ function rebaseMentionsToSpan(
   const rebased: PromptTextMention[] = [];
   for (const mention of value.mentions) {
     for (const span of lineSpans) {
-      if (mention.start >= span.contentStart && mention.end <= span.contentEnd) {
+      if (
+        mention.start >= span.contentStart &&
+        mention.end <= span.contentEnd
+      ) {
         const delta = span.innerStart - span.contentStart;
         rebased.push({
           ...mention,
@@ -648,8 +651,7 @@ function markdownListFromLines({
 
 function isRichMarkdownBlockStart(line: string): boolean {
   return (
-    /^(#{1,6})[ \t]+.*$/u.test(line) ||
-    parseMarkdownListMarker(line) !== null
+    /^(#{1,6})[ \t]+.*$/u.test(line) || parseMarkdownListMarker(line) !== null
   );
 }
 
@@ -737,8 +739,7 @@ export function promptEditorContentFromValue(
     } else {
       const spanStart = groupStarts[0]!;
       const lastLine = groupLines[groupLines.length - 1]!;
-      const spanEnd =
-        groupStarts[groupStarts.length - 1]! + lastLine.length;
+      const spanEnd = groupStarts[groupStarts.length - 1]! + lastLine.length;
       blocks.push(paragraphFromSpan(value, spanStart, spanEnd, options));
     }
     index = end;
@@ -850,9 +851,10 @@ export function promptEditorValueFromDoc(
   const appendBlockBoundary = (blockIsBlockquote: boolean) => {
     closeActiveInlineDelimiters();
     if (previousSerializedBlockWasBlockquote !== null) {
-      text += previousSerializedBlockWasBlockquote && !blockIsBlockquote
-        ? "\n\n"
-        : "\n";
+      text +=
+        previousSerializedBlockWasBlockquote && !blockIsBlockquote
+          ? "\n\n"
+          : "\n";
     }
     previousSerializedBlockWasBlockquote = blockIsBlockquote;
   };
@@ -1060,11 +1062,11 @@ export function promptMentionResourceFromSuggestion(
     };
   }
 
-  if (suggestion.kind === "folder") {
+  if (suggestion.kind === "section") {
     return {
-      kind: "folder",
-      folderId: suggestion.folderId,
-      label: suggestion.name.trim() || suggestion.folderId,
+      kind: "section",
+      sectionId: suggestion.sectionId,
+      label: suggestion.name.trim() || suggestion.sectionId,
     };
   }
 

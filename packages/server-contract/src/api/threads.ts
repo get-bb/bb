@@ -123,7 +123,7 @@ export const createThreadRequestSchema = z
     executionInputSources: createExecutionInputSourcesSchema.optional(),
     environment: createThreadEnvironmentArgsSchema,
     parentThreadId: z.string().min(1).optional(),
-    folderId: z.string().min(1).nullable().optional(),
+    sectionId: z.string().min(1).nullable().optional(),
     sourceThreadId: z.string().min(1).optional(),
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
@@ -363,7 +363,7 @@ export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
 export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
-    folderId: z.string().min(1).nullable(),
+    sectionId: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
@@ -375,7 +375,7 @@ export const updateThreadRequestSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
-      value.folderId !== undefined ||
+      value.sectionId !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined,
@@ -497,10 +497,10 @@ export const threadListQuerySchema = z.object({
   parentThreadId: z.string().min(1).optional(),
   sourceThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
-  /** Restrict to threads filed directly under this folder. */
-  folderId: z.string().min(1).optional(),
-  /** Restrict to loose threads — those not filed under any folder. */
-  unfiled: z.enum(["true", "false"]).optional(),
+  /** Restrict to threads filed directly under this section. */
+  sectionId: z.string().min(1).optional(),
+  /** Restrict to loose threads — those not filed under any section. */
+  unsectioned: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
   /** Restrict to threads spawned with this origin (fork or side-chat). */

@@ -107,7 +107,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     status: "idle",
     title: null,
     titleFallback: null,
-    folderId: null,
+    sectionId: null,
     environmentId: null,
     parentThreadId: null,
     sourceThreadId: null,

@@ -31,8 +31,8 @@ interface ThreadUpdateCommandOptions {
   title?: string;
   parentThread?: string;
   clearParentThread?: boolean;
-  folder?: string;
-  clearFolder?: boolean;
+  section?: string;
+  clearSection?: boolean;
   model?: string;
   reasoningLevel?: string;
 }
@@ -97,7 +97,7 @@ interface PostThreadMessageResult {
 
 interface ThreadUpdateBody {
   title?: string;
-  folderId?: string | null;
+  sectionId?: string | null;
   parentThreadId?: string | null;
   model?: string;
   reasoningLevel?: ReasoningLevel;
@@ -115,8 +115,8 @@ export function registerActionsCommands(
     .option("--title <title>", "Set the thread title")
     .option("--parent-thread <id>", "Set the parent thread id")
     .option("--clear-parent-thread", "Clear the parent thread id")
-    .option("--folder <id>", "Move the thread into a folder")
-    .option("--clear-folder", "Remove the thread from its folder")
+    .option("--section <id>", "Move the thread into a section")
+    .option("--clear-section", "Remove the thread from its section")
     .option(
       "--model <model>",
       "Set the sticky model applied on the thread's next turn",
@@ -133,21 +133,21 @@ export function registerActionsCommands(
               "Cannot combine --parent-thread with --clear-parent-thread.",
             );
           }
-          if (opts.folder && opts.clearFolder) {
-            throw new Error("Cannot combine --folder with --clear-folder.");
+          if (opts.section && opts.clearSection) {
+            throw new Error("Cannot combine --section with --clear-section.");
           }
           const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
-            !opts.folder &&
-            !opts.clearFolder &&
+            !opts.section &&
+            !opts.clearSection &&
             !opts.title &&
             !opts.model &&
             !reasoningLevel
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --folder, --clear-folder, --model, or --reasoning-level.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, or --reasoning-level.",
             );
           }
 
@@ -165,13 +165,13 @@ export function registerActionsCommands(
           } else if (opts.clearParentThread) {
             body.parentThreadId = null;
           }
-          if (opts.folder) {
-            body.folderId = resolveExplicitIdFlag({
-              flagName: "--folder",
-              value: opts.folder,
+          if (opts.section) {
+            body.sectionId = resolveExplicitIdFlag({
+              flagName: "--section",
+              value: opts.section,
             });
-          } else if (opts.clearFolder) {
-            body.folderId = null;
+          } else if (opts.clearSection) {
+            body.sectionId = null;
           }
           if (opts.model) {
             body.model = opts.model;
@@ -194,9 +194,9 @@ export function registerActionsCommands(
                 : "No parent thread",
             );
           }
-          if (opts.folder || opts.clearFolder) {
+          if (opts.section || opts.clearSection) {
             console.log(
-              thread.folderId ? `Folder: ${thread.folderId}` : "No folder",
+              thread.sectionId ? `Section: ${thread.sectionId}` : "No section",
             );
           }
           if (opts.model) {

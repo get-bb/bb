@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.3.1" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.0" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -80,7 +80,7 @@ The manifest is `package.json`:
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.3.1`; the scaffold writes `"^0.3.1"`). Absent means a legacy
+  (currently `0.4.0`; the scaffold writes `"^0.4.0"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -283,7 +283,7 @@ queues/steers a running one.
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
 attention or native parent notifications. They otherwise retain ordinary
-list, search, prompt-history, folder, lifecycle, parent-operation, direct-open,
+list, search, prompt-history, section, lifecycle, parent-operation, direct-open,
 and direct-ID behavior. This is an organization contract, not a security
 boundary: plugins are full-trust server code.
 

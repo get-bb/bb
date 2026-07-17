@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
-  CreateThreadFolderRequest,
-  DeleteThreadFolderRequest,
-  UpdateThreadFolderRequest,
+  CreateThreadSectionRequest,
+  DeleteThreadSectionRequest,
+  UpdateThreadSectionRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
@@ -10,14 +10,14 @@ import {
   invalidateThreadListQueries,
 } from "../cache-owners/mutation-cache-effects";
 
-function invalidateThreadFolderQueries(
+function invalidateThreadSectionQueries(
   queryClient: ReturnType<typeof useQueryClient>,
 ) {
   invalidateProjectListQueries({ queryClient });
   invalidateThreadListQueries({ queryClient });
 }
 
-export function useCreateThreadFolder() {
+export function useCreateThreadSection() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -25,15 +25,15 @@ export function useCreateThreadFolder() {
       errorMessage: "Failed to create section.",
       showErrorToast: false,
     },
-    mutationFn: (request: CreateThreadFolderRequest) =>
-      api.createThreadFolder(request),
+    mutationFn: (request: CreateThreadSectionRequest) =>
+      api.createThreadSection(request),
     onSuccess: () => {
-      invalidateThreadFolderQueries(queryClient);
+      invalidateThreadSectionQueries(queryClient);
     },
   });
 }
 
-export function useUpdateThreadFolder() {
+export function useUpdateThreadSection() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -41,25 +41,25 @@ export function useUpdateThreadFolder() {
       errorMessage: "Failed to rename section.",
       showErrorToast: false,
     },
-    mutationFn: (request: UpdateThreadFolderRequest) =>
-      api.updateThreadFolder(request),
+    mutationFn: (request: UpdateThreadSectionRequest) =>
+      api.updateThreadSection(request),
     onSuccess: () => {
-      invalidateThreadFolderQueries(queryClient);
+      invalidateThreadSectionQueries(queryClient);
     },
   });
 }
 
-export function useDeleteThreadFolder() {
+export function useDeleteThreadSection() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: {
       errorMessage: "Failed to remove section.",
     },
-    mutationFn: (request: DeleteThreadFolderRequest) =>
-      api.deleteThreadFolder(request),
+    mutationFn: (request: DeleteThreadSectionRequest) =>
+      api.deleteThreadSection(request),
     onSuccess: () => {
-      invalidateThreadFolderQueries(queryClient);
+      invalidateThreadSectionQueries(queryClient);
     },
   });
 }

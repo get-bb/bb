@@ -514,7 +514,10 @@ const SENTRY_STREAM: Step[] = [
     ),
   },
   { kind: "step", text: "Edited 2 files" },
-  { kind: "say", text: "Pushed the guard and a follow-up. Re-running the suite." },
+  {
+    kind: "say",
+    text: "Pushed the guard and a follow-up. Re-running the suite.",
+  },
 ];
 
 const LIN482_STREAM: Step[] = [
@@ -530,14 +533,20 @@ const LIN482_STREAM: Step[] = [
   },
   { kind: "say", text: "Cancelling the timer on unmount so there's no leak." },
   { kind: "step", text: "Checked the other call sites" },
-  { kind: "say", text: "Two more inputs could reuse this. Noted it on LIN-482." },
+  {
+    kind: "say",
+    text: "Two more inputs could reuse this. Noted it on LIN-482.",
+  },
   { kind: "step", text: "Edited 1 file" },
   { kind: "say", text: "Verifying the debounce once more." },
 ];
 
 const CHIEF_STREAM: Step[] = [
   { kind: "step", text: "Swept 4 active threads" },
-  { kind: "say", text: "Sentry triage is re-running tests; LIN-482 is verifying." },
+  {
+    kind: "say",
+    text: "Sentry triage is re-running tests; LIN-482 is verifying.",
+  },
   { kind: "step", text: "Checked for blockers" },
   {
     kind: "say",
@@ -548,7 +557,10 @@ const CHIEF_STREAM: Step[] = [
     ),
   },
   { kind: "step", text: "Spawned 1 worker" },
-  { kind: "say", text: "Dispatched the changelog follow-up. Nothing else needs you." },
+  {
+    kind: "say",
+    text: "Dispatched the changelog follow-up. Nothing else needs you.",
+  },
 ];
 
 const HERO_THREADS: MockThread[] = [
@@ -717,7 +729,8 @@ function ThreadFeed({
   thread: MockThread;
   onSpawn: (parentId: string, child: MockThread) => void;
 }) {
-  const isLive = thread.status === "running" && (thread.stream?.length ?? 0) > 0;
+  const isLive =
+    thread.status === "running" && (thread.stream?.length ?? 0) > 0;
   const seedItems = useMemo<FeedItem[]>(
     () =>
       thread.transcript.map((step, i) => ({
@@ -880,7 +893,7 @@ function Composer({ thread }: { thread?: MockThread }) {
             placeholder={
               isNew
                 ? "Ask anything. @ to mention files or folders"
-                : "Ask for a follow-up. @ to mention files, folders, or threads"
+                : "Ask for a follow-up. @ to mention files, folders, sections, or threads"
             }
             aria-label={isNew ? "Start a new thread" : "Message this thread"}
           />
@@ -1061,9 +1074,7 @@ function HeroAppMock() {
           <aside className="side">
             <button
               type="button"
-              className={
-                view === "new" ? "side-act active-act" : "side-act"
-              }
+              className={view === "new" ? "side-act active-act" : "side-act"}
               aria-pressed={view === "new"}
               onClick={() => setView("new")}
             >
@@ -1090,8 +1101,7 @@ function HeroAppMock() {
             <div className="side-label">All Threads</div>
             <ul className="threads">
               {HERO_THREADS.map((candidate, index) => {
-                const isActive =
-                  view === "thread" && candidate.id === activeId;
+                const isActive = view === "thread" && candidate.id === activeId;
                 const kids = spawned[candidate.id] ?? [];
                 return (
                   <li
@@ -1239,7 +1249,10 @@ function useCycle(holdMs: number, fadeMs: number) {
 function AgentChat() {
   const { cycle, leaving } = useCycle(6000, 600);
   return (
-    <div className="tg" aria-label="Texting the Crunch bot, which spawns a bb thread">
+    <div
+      className="tg"
+      aria-label="Texting the Crunch bot, which spawns a bb thread"
+    >
       <div className="tg-bar">
         <ChevronLeft className="tg-back" />
         <span className="tg-contact">
@@ -1459,10 +1472,7 @@ function AutomationRun() {
               <div className="composer-box automation-composer-box">
                 <div className="composer-top">
                   <span className="composer-input automation-typeahead">
-                    <span
-                      className="automation-type-text"
-                      style={promptStyle}
-                    >
+                    <span className="automation-type-text" style={promptStyle}>
                       {run.prompt}
                     </span>
                     <span className="automation-caret" aria-hidden />
@@ -1657,13 +1667,14 @@ function LandingPage() {
 
       <Band title="Anything can kick off work." flip visual={<AgentChat />}>
         <p>
-          The same CLI your agents use is open to any program you write: a
-          shell script, a cron job, or your own Hermes Agent or OpenClaw bot in
+          The same CLI your agents use is open to any program you write: a shell
+          script, a cron job, or your own Hermes Agent or OpenClaw bot in
           Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
           waiting in your sidebar when you are.
         </p>
         <p>
-          It runs on your machine, and is waiting for you when you&rsquo;re back.
+          It runs on your machine, and is waiting for you when you&rsquo;re
+          back.
         </p>
       </Band>
 
@@ -1676,11 +1687,7 @@ function LandingPage() {
         </p>
       </Band>
 
-      <Band
-        title="The gang's all here"
-        flip
-        visual={<SpawnSidebar />}
-      >
+      <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
         <p>
           Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
           live in bb. Give a task to whichever fits, and have one agent spawn

@@ -18,7 +18,7 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",
-    folderId: null,
+    sectionId: null,
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,
@@ -104,7 +104,7 @@ describe("getSidebarThreadComparator", () => {
     ).toEqual(["thr_a", "thr_b", "thr_c"]);
   });
 
-  // Regression: leaf threads and mixed folder/thread items must both sort A→Z.
+  // Regression: leaf threads and mixed section/thread items must both sort A→Z.
   it("alphabetical leaf and item comparators agree", () => {
     const comparator = getSidebarThreadComparator("alpha");
     expect(comparator.compareItems).toBeDefined();
@@ -137,25 +137,28 @@ describe("getSelectedThreadSidebarExpansion", () => {
     ).toEqual({ projectId: "proj_app" });
   });
 
-  it("expands the threads section for unfiled project threads in folders mode", () => {
+  it("expands the threads section for unsectioned project threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
-        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "threads" });
   });
 
-  it("expands the containing folder for foldered threads in folders mode", () => {
+  it("expands the containing section for sectioned threads in sections mode", () => {
     expect(
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: false,
-        selectedThread: thread({ folderId: "fld_work", projectId: "proj_app" }),
+        selectedThread: thread({
+          sectionId: "sec_work",
+          projectId: "proj_app",
+        }),
       }),
     ).toEqual({
-      folderKey: `${CHRONOLOGICAL_CONTAINER_ID}::fld_work`,
+      sectionKey: `${CHRONOLOGICAL_CONTAINER_ID}::sec_work`,
     });
   });
 
@@ -184,7 +187,7 @@ describe("getSelectedThreadSidebarExpansion", () => {
       getSelectedThreadSidebarExpansion({
         organizationMode: "chronological",
         isPinned: true,
-        selectedThread: thread({ folderId: null, projectId: "proj_app" }),
+        selectedThread: thread({ sectionId: null, projectId: "proj_app" }),
       }),
     ).toEqual({ sidebarSectionId: "pinned" });
   });
