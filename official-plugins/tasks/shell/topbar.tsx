@@ -330,10 +330,14 @@ export function TasksTopbar({
         />
       ) : null}
       {route.kind === "project" ? (
-        <ViewToggle
-          view={route.view}
-          onChange={(view) => onNavigate({ ...route, view })}
-        />
+        // Hidden in phone-width containers, where the board is unusable and
+        // the shell renders the list regardless (see BOARD_MIN_WIDTH).
+        <span className="hidden @md:block">
+          <ViewToggle
+            view={route.view}
+            onChange={(view) => onNavigate({ ...route, view })}
+          />
+        </span>
       ) : null}
       {/* Refresh sits immediately left of the primary New task action. */}
       <RefreshTasksButton />

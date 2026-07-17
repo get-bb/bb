@@ -34,6 +34,12 @@ import { TasksRefreshProvider } from "./refresh.js";
     auto-collapses. */
 const SIDEBAR_AUTO_COLLAPSE_WIDTH = 720;
 
+/** Below this container width the board is unusable (columns get crushed), so
+    project routes render the list and the topbar hides the List/Board toggle.
+    Matches the rows' two-line breakpoint (@md, 448px) so the whole surface
+    flips to its phone layout at one width. */
+const BOARD_MIN_WIDTH = 448;
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -77,7 +83,16 @@ function NoProjectsEmptyState({ onNewProject }: { onNewProject: () => void }) {
   );
 }
 
-function RouteOutlet({ route }: { route: TasksRoute }) {
+function RouteOutlet({
+  route,
+  boardUsable,
+}: {
+  route: TasksRoute;
+  /** False in phone-width containers: board routes fall back to the list
+      (deep links/rotation would otherwise strand a crushed board with the
+      toggle hidden). The URL keeps the board view for when width returns. */
+  boardUsable: boolean;
+}) {
   switch (route.kind) {
     case "all":
       return <ListView projectId={null} />;
@@ -88,7 +103,7 @@ function RouteOutlet({ route }: { route: TasksRoute }) {
     case "task":
       return <DetailView taskKey={route.taskKey} />;
     case "project":
-      return route.view === "board" ? (
+      return route.view === "board" && boardUsable ? (
         <BoardView projectId={route.projectId} />
       ) : (
         <ListView projectId={route.projectId} />
@@ -111,6 +126,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
   // client-local preference.
   const rootRef = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
+  const [boardUsable, setBoardUsable] = useState(true);
   const [narrowOverride, setNarrowOverride] = useState<boolean | null>(null);
   useEffect(() => {
     const root = rootRef.current;
@@ -119,6 +135,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
       const width = root.clientWidth;
       // Width 0 means hidden or not yet laid out — keep the wide default.
       setNarrow(width > 0 && width < SIDEBAR_AUTO_COLLAPSE_WIDTH);
+      setBoardUsable(!(width > 0 && width < BOARD_MIN_WIDTH));
     };
     update();
     const observer = new ResizeObserver(update);
@@ -261,7 +278,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
               onNewProject={() => setNewProjectOpen(true)}
             />
           ) : (
-            <RouteOutlet route={route} />
+            <RouteOutlet route={route} boardUsable={boardUsable} />
           )}
         </div>
       </main>
