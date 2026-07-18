@@ -265,6 +265,22 @@ describe("AppCommandProvider", () => {
     vi.useRealTimers();
   });
 
+  it("does not show keyboard hints when another modifier was held first", () => {
+    vi.useFakeTimers();
+    renderProvider(<ModifierState />);
+
+    fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
+    fireEvent.keyDown(window, {
+      key: "Control",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    act(() => vi.advanceTimersByTime(700));
+
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
   it("does not share primary-modifier hold state when keyboard hints are disabled", () => {
     vi.useFakeTimers();
     testState.showKeyboardHints = false;

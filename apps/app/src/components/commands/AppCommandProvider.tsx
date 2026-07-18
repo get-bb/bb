@@ -137,6 +137,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
+      const nonPrimaryModifierHeld =
+        event.shiftKey ||
+        event.altKey ||
+        (primaryModifier === "Meta" ? event.ctrlKey : event.metaKey);
+      if (nonPrimaryModifierHeld) {
+        clearModifierHold();
+        return;
+      }
       modifierHoldTimerRef.current = setTimeout(() => {
         modifierHoldTimerRef.current = null;
         primaryModifierHeldRef.current = true;
