@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
 import {
   createProtocolSelfUpdater,
-  SELF_UPDATE_MIN_INTERVAL_MS,
+  SELF_UPDATE_INITIAL_RETRY_DELAY_MS,
+  SELF_UPDATE_MAX_RETRY_DELAY_MS,
 } from "./protocol-self-update.js";
 
 const roots: string[] = [];
@@ -143,17 +144,38 @@ describe("protocol self-update", () => {
     }
   });
 
-  it("persists and enforces the fifteen-minute attempt rate limit", async () => {
+  it("persists a short exponential retry backoff capped at five minutes", async () => {
     let now = 10_000;
     const test = await createFixture({ now: () => now });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
     );
-    now += SELF_UPDATE_MIN_INTERVAL_MS - 1;
+    now += SELF_UPDATE_INITIAL_RETRY_DELAY_MS - 1;
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "skipped",
     );
     expect(test.installTarball).toHaveBeenCalledOnce();
+
+    now += 1;
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    expect(test.installTarball).toHaveBeenCalledTimes(2);
+
+    for (let attemptCount = 2; attemptCount < 8; attemptCount += 1) {
+      now += Math.min(
+        SELF_UPDATE_INITIAL_RETRY_DELAY_MS * 2 ** (attemptCount - 1),
+        SELF_UPDATE_MAX_RETRY_DELAY_MS,
+      );
+      await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+        "updated",
+      );
+    }
+
+    now += SELF_UPDATE_MAX_RETRY_DELAY_MS - 1;
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "skipped",
+    );
   });
 
   it("contains install failures and rate-limits their retry", async () => {
@@ -170,5 +192,48 @@ describe("protocol self-update", () => {
       expect.objectContaining({ err: expect.any(Error) }),
       expect.stringContaining("self-update failed"),
     );
+  });
+
+  it("lets a user-requested retry bypass and reset the current backoff", async () => {
+    let now = 25_000;
+    const test = await createFixture({
+      installFailure: new Error("download failed"),
+      now: () => now,
+    });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "skipped",
+    );
+
+    await expect(
+      test.updater.handleProtocolMismatch({ force: true }),
+    ).resolves.toBe("failed");
+    expect(test.installTarball).toHaveBeenCalledTimes(2);
+
+    now += SELF_UPDATE_INITIAL_RETRY_DELAY_MS;
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+    expect(test.installTarball).toHaveBeenCalledTimes(3);
+  });
+
+  it("tries immediately when the server advances to another protocol", async () => {
+    let now = 30_000;
+    let protocolVersion = HOST_DAEMON_PROTOCOL_VERSION + 1;
+    const test = await createFixture({ now: () => now });
+    test.fetchFn.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/install/version")) {
+        return Response.json({ version: "test", protocolVersion });
+      }
+      return new Response("tarball");
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    protocolVersion += 1;
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    expect(test.installTarball).toHaveBeenCalledTimes(2);
   });
 });

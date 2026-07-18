@@ -101,6 +101,7 @@ import type {
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
+  HostRetryUpdateResponse,
   ProjectAttachmentContentQuery,
   ProjectAttachmentUploadForm,
   ProjectBranchesQuery,
@@ -539,6 +540,12 @@ export const publicApiRoutes = {
       method: "patch",
       request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
       response: jsonResponse<Host>(),
+    }),
+    retryUpdate: defineRoute({
+      path: "/hosts/:id/retry-update",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<HostRetryUpdateResponse>(),
     }),
     delete: defineRoute({
       path: "/hosts/:id",

@@ -38,6 +38,10 @@ describe("internal session protocol version", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
         code: "protocol_version_mismatch",
+        details: {
+          retryUpdate: false,
+          serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        },
         message: `Daemon protocol version ${staleProtocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
       });
       expect(
@@ -49,6 +53,41 @@ describe("internal session protocol version", () => {
         ),
       ).resolves.toMatchObject({
         lastRejectedProtocolVersion: staleProtocolVersion,
+      });
+
+      server.hub.requestHostProtocolUpdateRetry("host-protocol");
+      const forcedRetry = await daemonClient.session.open.$post({
+        json: {
+          hostId: "host-protocol",
+          instanceId: "instance-retry",
+          hostName: "Protocol Host",
+          hostType: "persistent",
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-protocol-data",
+          protocolVersion: staleProtocolVersion,
+          activeThreads: [],
+        },
+      });
+      expect(await forcedRetry.json()).toMatchObject({
+        details: { retryUpdate: true },
+      });
+
+      const consumedRetry = await daemonClient.session.open.$post({
+        json: {
+          hostId: "host-protocol",
+          instanceId: "instance-retry-consumed",
+          hostName: "Protocol Host",
+          hostType: "persistent",
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-protocol-data",
+          protocolVersion: staleProtocolVersion,
+          activeThreads: [],
+        },
+      });
+      expect(await consumedRetry.json()).toMatchObject({
+        details: { retryUpdate: false },
       });
 
       const accepted = await daemonClient.session.open.$post({

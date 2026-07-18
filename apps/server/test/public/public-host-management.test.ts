@@ -162,6 +162,10 @@ describe("public host management", () => {
           method: "DELETE",
           headers: { "x-bb-gate-auth": "machine" },
         }),
+        harness.app.request(`${API}/hosts/${host.id}/retry-update`, {
+          method: "POST",
+          headers: { "x-bb-gate-auth": "machine" },
+        }),
       ];
       for (const response of await Promise.all(requests)) {
         expect(response.status).toBe(403);
@@ -231,6 +235,42 @@ describe("public host management", () => {
         },
       );
       expect(destroyedResponse.status).toBe(404);
+    });
+  });
+
+  it("queues a retry only for an older daemon awaiting an update", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_retry_update" });
+
+      const notNeeded = await harness.app.request(
+        `${API}/hosts/${host.id}/retry-update`,
+        { method: "POST" },
+      );
+      expect(notNeeded.status).toBe(409);
+
+      updateHost(harness.db, harness.hub, host.id, {
+        lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      });
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/retry-update`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({ ok: true });
+      expect(harness.hub.takeHostProtocolUpdateRetry(host.id)).toBe(true);
+      expect(harness.hub.takeHostProtocolUpdateRetry(host.id)).toBe(false);
+
+      updateHost(harness.db, harness.hub, host.id, {
+        lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION + 1,
+      });
+      const newerDaemon = await harness.app.request(
+        `${API}/hosts/${host.id}/retry-update`,
+        { method: "POST" },
+      );
+      expect(newerDaemon.status).toBe(409);
+      expect(await readJson(newerDaemon)).toMatchObject({
+        code: "host_cannot_self_update",
+      });
     });
   });
 

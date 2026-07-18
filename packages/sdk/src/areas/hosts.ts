@@ -13,6 +13,7 @@ import type {
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
+  HostRetryUpdateResponse,
   UpdateHostRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -27,6 +28,10 @@ export interface HostDeleteArgs {
 }
 
 export interface HostUpdateArgs extends UpdateHostRequest {
+  hostId: string;
+}
+
+export interface HostRetryUpdateArgs {
   hostId: string;
 }
 
@@ -68,6 +73,7 @@ export type HostListResult = Host[];
 export type HostPathsExistResult = HostPathsExistResponse;
 export type HostPickFolderResult = HostPickFolderResponse;
 export type HostProviderCliStatusResult = HostProviderCliStatusResponse;
+export type HostRetryUpdateResult = HostRetryUpdateResponse;
 export type HostUpdateResult = Host;
 
 export interface HostsArea {
@@ -85,6 +91,7 @@ export interface HostsArea {
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
   providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
+  retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
   update(args: HostUpdateArgs): Promise<HostUpdateResult>;
 }
 
@@ -156,10 +163,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     },
     async list(input) {
       return transport.readJson(
-        transport.api.v1.hosts.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
+        transport.api.v1.hosts.$get({}, ...signalRequestArgs(input?.signal)),
       );
     },
     async pathsExist(input) {
@@ -192,6 +196,13 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async retryUpdate(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["retry-update"].$post({
+          param: { id: input.hostId },
+        }),
       );
     },
     async update(input) {

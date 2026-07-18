@@ -1666,7 +1666,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("parses section mentions in thread.start", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(58);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(59);
 
     expect(
       hostDaemonCommandSchema.parse({

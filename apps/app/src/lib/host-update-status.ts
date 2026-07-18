@@ -9,6 +9,14 @@ export function hostNeedsUpdate(host: Host): boolean {
   );
 }
 
+export function hostCanRetryUpdate(host: Host): boolean {
+  return (
+    hostNeedsUpdate(host) &&
+    host.lastRejectedProtocolVersion !== null &&
+    host.lastRejectedProtocolVersion < HOST_DAEMON_PROTOCOL_VERSION
+  );
+}
+
 export function formatHostUpdateStatus(host: Host): string | null {
   if (!hostNeedsUpdate(host)) {
     return null;

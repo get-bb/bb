@@ -5,6 +5,7 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
@@ -132,6 +133,28 @@ export function registerHostRoutes(
     // Host metadata currently shares the connection-change invalidation path.
     deps.hub.notifyHost(hostId, ["host-connected"]);
     return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
+  });
+
+  post(routes.retryUpdate, (context) => {
+    assertHostManagementAllowed(context);
+    const hostId = context.req.param("id");
+    const host = requireMutableHost(deps, hostId);
+    if (host.lastRejectedProtocolVersion === null) {
+      throw new ApiError(
+        409,
+        "host_update_not_needed",
+        "The machine is not waiting for a protocol update",
+      );
+    }
+    if (host.lastRejectedProtocolVersion >= HOST_DAEMON_PROTOCOL_VERSION) {
+      throw new ApiError(
+        409,
+        "host_cannot_self_update",
+        "The machine daemon is not older than this server",
+      );
+    }
+    deps.hub.requestHostProtocolUpdateRetry(hostId);
+    return context.json({ ok: true as const });
   });
 
   del(routes.delete, async (context) => {

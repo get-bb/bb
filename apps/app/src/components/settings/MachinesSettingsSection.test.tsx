@@ -25,6 +25,7 @@ vi.mock("@/lib/sdk", () => ({
     hosts: {
       delete: vi.fn(),
       list: vi.fn(),
+      retryUpdate: vi.fn(),
       update: vi.fn(),
     },
     system: { config: vi.fn() },
@@ -160,6 +161,32 @@ describe("MachinesSettingsSection", () => {
         `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION} · 1 project`,
       ),
     ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry update" })).toBeDefined();
+  });
+
+  it("requests an immediate daemon update retry", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      {
+        ...offlineHost,
+        lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      },
+    ]);
+    vi.mocked(sdk.hosts.retryUpdate).mockResolvedValue({ ok: true });
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Retry update" }),
+    );
+
+    await waitFor(() => {
+      expect(vi.mocked(sdk.hosts.retryUpdate)).toHaveBeenCalledWith({
+        hostId: "host_remote",
+      });
+    });
   });
 
   it("renames a machine through the row menu", async () => {

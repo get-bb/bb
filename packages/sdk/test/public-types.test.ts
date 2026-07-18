@@ -277,6 +277,7 @@ type ExpectedHostsKey =
   | "pathsExist"
   | "pickFolder"
   | "providerCliStatus"
+  | "retryUpdate"
   | "update";
 
 type ExpectedPluginsKey =

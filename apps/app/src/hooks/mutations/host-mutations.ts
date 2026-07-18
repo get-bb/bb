@@ -43,3 +43,10 @@ export function useRemoveHost() {
     },
   });
 }
+
+/** Requests that an older daemon bypass its current self-update backoff. */
+export function useRetryHostUpdate() {
+  return useMutation({
+    mutationFn: (hostId: string) => sdk.hosts.retryUpdate({ hostId }),
+  });
+}

@@ -45,6 +45,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         updateHost(deps.db, deps.hub, daemon.hostId, {
           lastRejectedProtocolVersion: payload.protocolVersion,
         });
+        const retryUpdate = deps.hub.takeHostProtocolUpdateRetry(daemon.hostId);
         deps.hub.notifyHost(daemon.hostId, ["host-disconnected"]);
         deps.logger.error(
           {
@@ -58,6 +59,12 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           400,
           "protocol_version_mismatch",
           `Daemon protocol version ${payload.protocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
+          {
+            details: {
+              retryUpdate,
+              serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+            },
+          },
         );
       }
 

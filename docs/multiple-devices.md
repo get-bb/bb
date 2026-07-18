@@ -74,9 +74,11 @@ different bb versions on one machine can still fight over it.
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads and globally installs the
 server artifact, then exits so the service manager restarts it. Failed attempts
-fall back to normal reconnect behavior and attempts are limited to once per 15
-minutes. A daemon never downgrades itself to an older server protocol. To opt
-out, remove `--auto-update` from
+fall back to normal reconnect behavior with a persisted exponential retry
+backoff from 5 seconds to 5 minutes. Settings → Machines and `bb machine
+retry-update <id-or-name>` can bypass the current backoff. A daemon never
+downgrades itself to an older server protocol. To opt out, remove
+`--auto-update` from
 `~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist` or
 `~/.config/systemd/user/bb-host-daemon-<server>.service`, then reload the
 service.

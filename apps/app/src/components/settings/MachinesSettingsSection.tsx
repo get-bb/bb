@@ -20,6 +20,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
+import { appToast } from "@/components/ui/app-toast";
 import { useRenameDialogAutoFocus } from "@/components/dialogs/useRenameDialogAutoFocus.js";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
@@ -28,14 +29,21 @@ import {
   SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { useRemoveHost, useRenameHost } from "@/hooks/mutations/host-mutations";
+import {
+  useRemoveHost,
+  useRenameHost,
+  useRetryHostUpdate,
+} from "@/hooks/mutations/host-mutations";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { PersistentHostIconName } from "@/lib/host-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { formatHostUpdateStatus } from "@/lib/host-update-status";
+import {
+  formatHostUpdateStatus,
+  hostCanRetryUpdate,
+} from "@/lib/host-update-status";
 
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
@@ -92,6 +100,8 @@ interface MachineRowProps {
   now: number;
   onRename: () => void;
   onRemove: () => void;
+  onRetryUpdate: () => void;
+  retryUpdatePending: boolean;
 }
 
 function MachineRow({
@@ -102,6 +112,8 @@ function MachineRow({
   now,
   onRename,
   onRemove,
+  onRetryUpdate,
+  retryUpdatePending,
 }: MachineRowProps) {
   return (
     <SettingsRow>
@@ -121,6 +133,17 @@ function MachineRow({
           {machineMetaLine({ host, platformLabel, projectCount, now })}
         </p>
       </div>
+      {hostCanRetryUpdate(host) ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={retryUpdatePending}
+          onClick={onRetryUpdate}
+        >
+          {retryUpdatePending ? "Retrying…" : "Retry update"}
+        </Button>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -259,6 +282,7 @@ export function MachinesSettingsSection() {
   const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
+  const retryHostUpdate = useRetryHostUpdate();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Host | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Host | null>(null);
@@ -326,6 +350,19 @@ export function MachinesSettingsSection() {
                   removeHost.reset();
                   setRemoveTarget(host);
                 }}
+                onRetryUpdate={() =>
+                  retryHostUpdate.mutate(host.id, {
+                    onSuccess: () => {
+                      appToast.success(
+                        `Update retry requested for ${host.name}`,
+                      );
+                    },
+                  })
+                }
+                retryUpdatePending={
+                  retryHostUpdate.isPending &&
+                  retryHostUpdate.variables === host.id
+                }
               />
             ))}
           </SettingsRowList>

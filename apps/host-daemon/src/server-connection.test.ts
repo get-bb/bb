@@ -212,7 +212,31 @@ describe("ServerConnection", () => {
     void connection.start();
     await vi.waitFor(() => {
       expect(handleProtocolMismatch).toHaveBeenCalledOnce();
+      expect(handleProtocolMismatch).toHaveBeenCalledWith({ force: false });
       expect(onSelfUpdateInstalled).toHaveBeenCalledOnce();
+    });
+    await connection.shutdown();
+  });
+
+  it("forces a self-update attempt when the server accepted a user retry", async () => {
+    const handleProtocolMismatch = vi.fn(async () => "failed" as const);
+    const protocolError = new ServerResponseError({
+      action: "open session",
+      bodyMessage: "protocol mismatch",
+      code: "protocol_version_mismatch",
+      protocolUpdateRetryRequested: true,
+      retryable: false,
+      status: 400,
+      statusText: "Bad Request",
+    });
+    const { connection } = createConnectionFixture({
+      openSessionError: protocolError,
+      protocolSelfUpdater: { handleProtocolMismatch },
+    });
+
+    void connection.start();
+    await vi.waitFor(() => {
+      expect(handleProtocolMismatch).toHaveBeenCalledWith({ force: true });
     });
     await connection.shutdown();
   });

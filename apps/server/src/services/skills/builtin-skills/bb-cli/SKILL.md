@@ -116,18 +116,20 @@ message agents, or inspect projects, providers, and environments.
   gate; revoke a lost machine from the getbb.app dashboard. The installer uses
   the server's exact `/install/bb-app.tgz` artifact (npm only on a 404) and
   enables daemon `--auto-update`; newer protocol mismatches update from that
-  artifact, rate-limited to once per 15 minutes, then let launchd/systemd
-  restart the daemon. Auto-update never downgrades. Remove `--auto-update` from
-  the service definition and reload it to opt out.
+  artifact with a persisted exponential retry backoff from 5 seconds to 5
+  minutes, then let launchd/systemd restart the daemon. Auto-update never
+  downgrades. Use `bb machine retry-update <id-or-name>` to bypass the current
+  backoff after a transient failure. Remove `--auto-update` from the service
+  definition and reload it to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
   workspace, or combine it with `--new-environment worktree`. Do not combine a
   machine selector with an existing environment ID, which already owns its
   machine.
-- `bb machine show`, `join-code`, `rename`, and `remove` cover the Settings →
-  Machines lifecycle. Use `bb machine provider-cli status|install` to inspect
-  or install provider CLIs on a selected machine.
+- `bb machine show`, `join-code`, `rename`, `retry-update`, and `remove` cover
+  the Settings → Machines lifecycle. Use `bb machine provider-cli
+status|install` to inspect or install provider CLIs on a selected machine.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Omitting both selectors preserves the existing local

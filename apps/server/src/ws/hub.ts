@@ -147,6 +147,7 @@ export class NotificationHub implements DbNotifier {
     string,
     HostOnlineRpcWaiter
   >();
+  private readonly hostProtocolUpdateRetryRequests = new Set<string>();
   private readonly changedMessageListeners = new Set<ChangedMessageListener>();
   private readonly pendingDaemonDisconnects = new Map<
     string,
@@ -687,6 +688,18 @@ export class NotificationHub implements DbNotifier {
       waiter.resolve(true);
     }
     this.hostEventWaiters.delete(hostId);
+  }
+
+  requestHostProtocolUpdateRetry(hostId: string): void {
+    this.hostProtocolUpdateRetryRequests.add(hostId);
+  }
+
+  takeHostProtocolUpdateRetry(hostId: string): boolean {
+    if (!this.hostProtocolUpdateRetryRequests.has(hostId)) {
+      return false;
+    }
+    this.hostProtocolUpdateRetryRequests.delete(hostId);
+    return true;
   }
 
   notifySystem(changes: SystemChangeKind[]): void {

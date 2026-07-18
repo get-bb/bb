@@ -40,6 +40,41 @@ function createInteractiveRequest(): PendingInteractionCreate {
 }
 
 describe("createServerClient", () => {
+  it("narrows a protocol update retry request from error details", async () => {
+    const fetchFn = vi.fn<FetchFn>(async () =>
+      Response.json(
+        {
+          code: "protocol_version_mismatch",
+          details: { retryUpdate: true },
+          message: "protocol mismatch",
+        },
+        { status: 400 },
+      ),
+    );
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "https://bb.example.test",
+    });
+
+    const result = client.openSession({
+      hostId: "host-1",
+      hostName: "Host",
+      hostType: "persistent",
+      dataDir: "/tmp/bb",
+      instanceId: "instance-1",
+      activeThreads: [],
+      loadedEnvironments: [],
+    });
+
+    await expect(result).rejects.toMatchObject({
+      code: "protocol_version_mismatch",
+      protocolUpdateRetryRequested: true,
+    });
+  });
+
   it.each([
     { machineCredential: "bbcm_machine", hasMachineCredential: true },
     { machineCredential: undefined, hasMachineCredential: false },

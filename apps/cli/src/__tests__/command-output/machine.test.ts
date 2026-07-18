@@ -65,6 +65,20 @@ describe("bb machine command output", () => {
     ]);
   });
 
+  it("bb machine retry-update resolves the machine and requests a retry", async () => {
+    const retryUpdate = vi.fn(async () => ({ ok: true as const }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.retry-update.$post": retryUpdate,
+    });
+
+    await runCommand(["machine", "retry-update", "laptop"], register);
+
+    expect(retryUpdate).toHaveBeenCalledOnce();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-remote update retry requested",
+    ]);
+  });
 });
 
 describe("machine selection", () => {

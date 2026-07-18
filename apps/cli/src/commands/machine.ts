@@ -211,6 +211,20 @@ export function registerMachineCommands(
       }),
     );
 
+  machine
+    .command("retry-update <id-or-name>")
+    .description("Retry a pending daemon protocol update now")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: MachineListCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hostId = resolveMachineId(await sdk.hosts.list(), target);
+        const result = await sdk.hosts.retryUpdate({ hostId });
+        if (outputJson(opts, result)) return;
+        console.log(`Machine ${hostId} update retry requested`);
+      }),
+    );
+
   const providerCli = machine
     .command("provider-cli")
     .description("Inspect and install provider CLIs on a machine");

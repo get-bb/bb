@@ -240,7 +240,9 @@ export class ServerConnection {
       ) {
         this.protocolMismatchObserved = true;
         const result =
-          await this.options.protocolSelfUpdater?.handleProtocolMismatch();
+          await this.options.protocolSelfUpdater?.handleProtocolMismatch({
+            force: error.protocolUpdateRetryRequested,
+          });
         if (result === "updated") {
           await this.options.onSelfUpdateInstalled?.();
         }

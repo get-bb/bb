@@ -205,6 +205,7 @@ The SDK area is named `hosts`; the end-user CLI terminology is `machine`.
 | `bb.hosts.get({ hostId })`               | `bb machine show <id-or-name>`                                                        |
 | `bb.hosts.createJoinCode()`              | `bb machine join-code`                                                                |
 | `bb.hosts.update({ hostId, name })`      | `bb machine rename <id-or-name> <name>`                                               |
+| `bb.hosts.retryUpdate({ hostId })`       | `bb machine retry-update <id-or-name>`                                                |
 | `bb.hosts.delete({ hostId })`            | `bb machine remove <id-or-name> [--yes]`                                              |
 | `bb.hosts.providerCliStatus({ hostId })` | `bb machine provider-cli status <id-or-name>`                                         |
 | `bb.hosts.installProviderCli(...)`       | `bb machine provider-cli install <id-or-name> <provider> [--action <install/update>]` |

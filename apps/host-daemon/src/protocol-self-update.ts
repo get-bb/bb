@@ -8,7 +8,8 @@ import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
 
 const execFileAsync = promisify(execFile);
-export const SELF_UPDATE_MIN_INTERVAL_MS = 15 * 60 * 1000;
+export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
+export const SELF_UPDATE_MAX_RETRY_DELAY_MS = 5 * 60 * 1000;
 const ATTEMPT_FILE_NAME = "host-daemon-update-attempt.json";
 
 interface UpdateVersion {
@@ -16,10 +17,18 @@ interface UpdateVersion {
   version: string;
 }
 
+interface UpdateAttempt {
+  attemptedAt: number;
+  attemptCount: number;
+  protocolVersion: number;
+}
+
 export type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
 
 export interface ProtocolSelfUpdater {
-  handleProtocolMismatch(): Promise<ProtocolSelfUpdateResult>;
+  handleProtocolMismatch(options?: {
+    force?: boolean;
+  }): Promise<ProtocolSelfUpdateResult>;
 }
 
 export interface ProtocolSelfUpdateInstaller {
@@ -63,16 +72,35 @@ function parseUpdateVersion(value: unknown): UpdateVersion {
   };
 }
 
-async function readLastAttempt(path: string): Promise<number | null> {
+function retryDelayMs(attemptCount: number): number {
+  return Math.min(
+    SELF_UPDATE_INITIAL_RETRY_DELAY_MS * 2 ** Math.max(0, attemptCount - 1),
+    SELF_UPDATE_MAX_RETRY_DELAY_MS,
+  );
+}
+
+async function readLastAttempt(path: string): Promise<UpdateAttempt | null> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
     if (
       parsed !== null &&
       typeof parsed === "object" &&
       "attemptedAt" in parsed &&
-      typeof parsed.attemptedAt === "number"
+      typeof parsed.attemptedAt === "number" &&
+      "attemptCount" in parsed &&
+      typeof parsed.attemptCount === "number" &&
+      Number.isSafeInteger(parsed.attemptCount) &&
+      parsed.attemptCount > 0 &&
+      "protocolVersion" in parsed &&
+      typeof parsed.protocolVersion === "number" &&
+      Number.isSafeInteger(parsed.protocolVersion) &&
+      parsed.protocolVersion > 0
     ) {
-      return parsed.attemptedAt;
+      return {
+        attemptedAt: parsed.attemptedAt,
+        attemptCount: parsed.attemptCount,
+        protocolVersion: parsed.protocolVersion,
+      };
     }
   } catch {
     // A missing or corrupt marker must not permanently disable repairs.
@@ -80,9 +108,12 @@ async function readLastAttempt(path: string): Promise<number | null> {
   return null;
 }
 
-async function writeAttempt(path: string, attemptedAt: number): Promise<void> {
+async function writeAttempt(
+  path: string,
+  attempt: UpdateAttempt,
+): Promise<void> {
   const temporary = `${path}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify({ attemptedAt })}\n`, {
+  await writeFile(temporary, `${JSON.stringify(attempt)}\n`, {
     mode: 0o600,
   });
   await rename(temporary, path);
@@ -125,7 +156,9 @@ export function createProtocolSelfUpdater(
   const attemptPath = join(options.dataDir, ATTEMPT_FILE_NAME);
 
   return {
-    async handleProtocolMismatch(): Promise<ProtocolSelfUpdateResult> {
+    async handleProtocolMismatch(
+      handleOptions: { force?: boolean } = {},
+    ): Promise<ProtocolSelfUpdateResult> {
       if (!options.enabled) {
         options.logger.error(
           { daemonProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION },
@@ -167,20 +200,38 @@ export function createProtocolSelfUpdater(
         await mkdir(options.dataDir, { recursive: true });
         const attemptedAt = now();
         const lastAttempt = await readLastAttempt(attemptPath);
-        if (
-          lastAttempt !== null &&
-          attemptedAt - lastAttempt < SELF_UPDATE_MIN_INTERVAL_MS
-        ) {
+        const previousAttempt =
+          lastAttempt?.protocolVersion === server.protocolVersion
+            ? lastAttempt
+            : null;
+        const delayMs =
+          previousAttempt === null
+            ? 0
+            : retryDelayMs(previousAttempt.attemptCount);
+        const retryAt =
+          previousAttempt === null
+            ? attemptedAt
+            : previousAttempt.attemptedAt + delayMs;
+        if (!handleOptions.force && attemptedAt < retryAt) {
           options.logger.warn(
             {
-              attemptedAt: lastAttempt,
-              minIntervalMs: SELF_UPDATE_MIN_INTERVAL_MS,
+              attemptCount: previousAttempt?.attemptCount ?? 0,
+              retryAt,
+              retryDelayMs: delayMs,
+              serverProtocolVersion: server.protocolVersion,
             },
-            "Daemon self-update is rate-limited; keeping the current daemon running.",
+            "Daemon self-update is backing off; keeping the current daemon running.",
           );
           return "skipped";
         }
-        await writeAttempt(attemptPath, attemptedAt);
+        await writeAttempt(attemptPath, {
+          attemptedAt,
+          attemptCount:
+            handleOptions.force || previousAttempt === null
+              ? 1
+              : previousAttempt.attemptCount + 1,
+          protocolVersion: server.protocolVersion,
+        });
 
         const tarballPath = join(
           options.dataDir,

@@ -40,6 +40,7 @@ interface JsonRecord {
 interface ApiErrorResponseBody {
   code: string;
   message: string;
+  protocolUpdateRetryRequested: boolean;
   retryable?: boolean;
 }
 
@@ -47,6 +48,7 @@ interface ServerResponseErrorArgs {
   action: string;
   bodyMessage: string | null;
   code: string | null;
+  protocolUpdateRetryRequested?: boolean;
   retryable: boolean;
   status: number;
   statusText: string;
@@ -56,6 +58,7 @@ export class ServerResponseError extends Error {
   readonly action: string;
   readonly bodyMessage: string | null;
   readonly code: string | null;
+  readonly protocolUpdateRetryRequested: boolean;
   readonly retryable: boolean;
   readonly status: number;
   readonly statusText: string;
@@ -69,6 +72,8 @@ export class ServerResponseError extends Error {
     this.action = args.action;
     this.bodyMessage = args.bodyMessage;
     this.code = args.code;
+    this.protocolUpdateRetryRequested =
+      args.protocolUpdateRetryRequested ?? false;
     this.retryable = args.retryable;
     this.status = args.status;
     this.statusText = args.statusText;
@@ -104,10 +109,14 @@ function parseApiErrorResponseBody(text: string): ApiErrorResponseBody | null {
     return null;
   }
 
+  const details = toJsonRecord(record.details);
+  const protocolUpdateRetryRequested = details?.retryUpdate === true;
+
   if (typeof record.retryable === "boolean") {
     return {
       code: record.code,
       message: record.message,
+      protocolUpdateRetryRequested,
       retryable: record.retryable,
     };
   }
@@ -115,6 +124,7 @@ function parseApiErrorResponseBody(text: string): ApiErrorResponseBody | null {
   return {
     code: record.code,
     message: record.message,
+    protocolUpdateRetryRequested,
   };
 }
 
@@ -329,6 +339,7 @@ export function createServerClient(
       action,
       bodyMessage: body?.message ?? null,
       code: body?.code ?? null,
+      protocolUpdateRetryRequested: body?.protocolUpdateRetryRequested ?? false,
       retryable: body?.retryable ?? defaultRetryableForStatus(response.status),
       status: response.status,
       statusText: response.statusText,

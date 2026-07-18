@@ -79,6 +79,13 @@ export const updateHostRequestSchema = z
   .strict();
 export type UpdateHostRequest = z.infer<typeof updateHostRequestSchema>;
 
+export const hostRetryUpdateResponseSchema = z
+  .object({ ok: z.literal(true) })
+  .strict();
+export type HostRetryUpdateResponse = z.infer<
+  typeof hostRetryUpdateResponseSchema
+>;
+
 export const hostPathsExistRequestSchema = pathsExistRequestSchema;
 export type HostPathsExistRequest = PathsExistRequest;
 
