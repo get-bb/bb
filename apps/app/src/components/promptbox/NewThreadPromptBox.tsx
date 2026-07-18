@@ -8,6 +8,7 @@ import {
   type Ref,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
+import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -164,6 +165,7 @@ export interface NewThreadPromptBoxUIProps {
   disabled: boolean;
   /** Active root-composer binding for plugin composer hooks and accessories. */
   pluginComposerHost?: PluginComposerHost | null;
+  textEffect?: PluginComposerTextEffect | null;
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
 
@@ -213,6 +215,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   isSubmitting,
   disabled,
   pluginComposerHost,
+  textEffect,
   zenModeStorageKey,
   history,
   typeahead,
@@ -288,6 +291,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           mentionRanges={mentionRanges}
           onChange={onChange}
           onSubmit={onSubmit}
+          textEffect={textEffect}
           history={history}
           typeahead={typeahead}
           mentionMenuPlacement="bottom"

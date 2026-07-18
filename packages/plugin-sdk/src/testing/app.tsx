@@ -18,6 +18,7 @@ import {
   type PluginComposerAccessoryRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
+  type PluginComposerTextEffect,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageDirectiveRegistration,
@@ -86,6 +87,9 @@ export type NavigateCall =
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
+  /** Latest host-rendered text effect requested by the plugin. */
+  textEffect: PluginComposerTextEffect | null;
+  textEffectCalls: Array<PluginComposerTextEffect | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -715,6 +719,8 @@ export function renderSlot<
     get text() {
       return composerText;
     },
+    textEffect: null,
+    textEffectCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -738,6 +744,10 @@ export function renderSlot<
       },
       clear() {
         commitComposerText("");
+      },
+      setTextEffect(effect) {
+        composerLog.textEffect = effect;
+        composerLog.textEffectCalls.push(effect);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();

@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+} from "react-router-dom";
 import { useMemo, useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
@@ -36,6 +41,7 @@ import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
+import { getComposerTextEffect } from "@/lib/composer-text-effects";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
@@ -206,11 +212,13 @@ describe("useComposer", () => {
         setText: composer.setText,
         updateText: composer.updateText,
         clear: composer.clear,
+        setTextEffect: composer.setTextEffect,
       });
       const methodsAreStable =
         initialMethods.current.setText === composer.setText &&
         initialMethods.current.updateText === composer.updateText &&
-        initialMethods.current.clear === composer.clear;
+        initialMethods.current.clear === composer.clear &&
+        initialMethods.current.setTextEffect === composer.setTextEffect;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
@@ -250,6 +258,18 @@ describe("useComposer", () => {
           </button>
           <button type="button" onClick={() => composer.clear()}>
             {label}-clear
+          </button>
+          <button
+            type="button"
+            onClick={() => composer.setTextEffect("shimmer")}
+          >
+            {label}-start-effect
+          </button>
+          <button
+            type="button"
+            onClick={() => composer.setTextEffect(null)}
+          >
+            {label}-clear-effect
           </button>
           <button type="button" onClick={() => composer.focus()}>
             {label}-focus
@@ -779,6 +799,55 @@ describe("useComposer", () => {
     expect(
       screen.getByTestId("root-project-state-scope-project").textContent,
     ).toBe("null");
+  });
+
+  it("scopes text effects to the composer and clears them on unmount", () => {
+    registerComposerProbe("effect");
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_effect"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftViewer threadId="thr_effect" />
+      </MemoryRouter>,
+    );
+    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
+
+    fireEvent.click(screen.getByText("effect-start-effect"));
+    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    fireEvent.click(screen.getByText("effect-clear-effect"));
+    expect(getComposerTextEffect(storageKey)).toBeNull();
+    fireEvent.click(screen.getByText("effect-start-effect"));
+
+    view.unmount();
+    expect(getComposerTextEffect(storageKey)).toBeNull();
+  });
+
+  it("clears a text effect when the plugin composer scope changes", () => {
+    registerComposerProbe("scope-effect");
+    function ChangeScope() {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate("/threads/thr_effect_next")}
+        >
+          change-scope
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_effect"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftViewer threadId="thr_effect" />
+        <ChangeScope />
+      </MemoryRouter>,
+    );
+    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
+
+    fireEvent.click(screen.getByText("scope-effect-start-effect"));
+    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    fireEvent.click(screen.getByText("change-scope"));
+
+    expect(getComposerTextEffect(storageKey)).toBeNull();
   });
 
   it("appends mention pills with offsets into the new-thread draft", () => {

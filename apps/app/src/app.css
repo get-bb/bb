@@ -245,6 +245,34 @@
     }
   }
 
+  /*
+   * Plugin-requested loading paint for editable composer text. ProseMirror
+   * inline decorations keep the draft fully interactive while the restrained
+   * current-color gradient works against both light and dark surfaces.
+   */
+  .prompt-text-shimmer {
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklch, currentColor 76%, transparent) 0%,
+      currentColor 42%,
+      color-mix(in oklch, currentColor 76%, transparent) 68%,
+      currentColor 100%
+    );
+    background-size: 220% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: prompt-text-shimmer 1.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .prompt-text-shimmer {
+      animation: none;
+      background: none;
+      -webkit-text-fill-color: currentColor;
+    }
+  }
+
   [data-promptbox] {
     container: promptbox / inline-size;
   }
@@ -640,6 +668,15 @@
   }
   100% {
     background-position: -200% 0%;
+  }
+}
+
+@keyframes prompt-text-shimmer {
+  0% {
+    background-position: 180% 0%;
+  }
+  100% {
+    background-position: -120% 0%;
   }
 }
 

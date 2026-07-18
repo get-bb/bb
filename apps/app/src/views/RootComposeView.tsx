@@ -113,6 +113,7 @@ import {
   PluginComposerHostProvider,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
+import { useComposerTextEffect } from "@/lib/composer-text-effects";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -1065,6 +1066,7 @@ export function RootComposeView() {
   }, [hostsQuery.data]);
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
+  const promptTextEffect = useComposerTextEffect(promptDraft.storageKey);
   // Plugin useComposer() writes (from nav panels / homepage sections) target
   // the new-thread draft; surface + focus the composer when they ask.
   useEffect(
@@ -3591,6 +3593,7 @@ export function RootComposeView() {
       onChange={promptDraft.setTextAndMentions}
       onSubmit={submitPrompt}
       pluginComposerHost={pluginComposerHost}
+      textEffect={promptTextEffect}
       isSubmitting={createThread.isPending}
       disabled={isSubmitDisabled}
       zenModeStorageKey={rootComposeZenModeStorageKey}

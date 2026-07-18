@@ -392,6 +392,9 @@ export type PluginComposerScope =
       projectId: string | null;
     };
 
+/** Host-rendered paint applied to the editable composer text. */
+export type PluginComposerTextEffect = "shimmer";
+
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
 export interface PluginComposerMention {
   /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
@@ -428,6 +431,12 @@ export interface PluginComposerApi {
   updateText(updater: (current: string) => string): void;
   /** Clear plain text without clearing independently attached files. */
   clear(): void;
+  /**
+   * Apply a host-rendered effect to this composer's editable text, or clear it.
+   * Effects are scoped to the calling plugin and automatically clear when the
+   * slot unmounts or its composer scope changes.
+   */
+  setTextEffect(effect: PluginComposerTextEffect | null): void;
   /**
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection

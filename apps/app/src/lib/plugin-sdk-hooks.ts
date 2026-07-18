@@ -16,6 +16,7 @@ import { usePluginId } from "@/components/plugin/plugin-context";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
+import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
@@ -414,6 +415,20 @@ export function useComposer(): PluginComposerApi {
     setText("");
   }, [setText]);
 
+  const setTextEffect = useCallback(
+    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
+      setComposerTextEffect(storageKey, pluginId, effect);
+    },
+    [pluginId, storageKey],
+  );
+
+  useEffect(
+    () => () => {
+      setComposerTextEffect(storageKey, pluginId, null);
+    },
+    [pluginId, storageKey],
+  );
+
   const addQuote = useCallback(
     (text: string) => {
       const current = getCurrent();
@@ -483,6 +498,7 @@ export function useComposer(): PluginComposerApi {
       setText,
       updateText,
       clear,
+      setTextEffect,
       addQuote,
       insertMention,
       focus,
@@ -496,6 +512,7 @@ export function useComposer(): PluginComposerApi {
       insertMention,
       projectId,
       setText,
+      setTextEffect,
       threadId,
       updateText,
     ],

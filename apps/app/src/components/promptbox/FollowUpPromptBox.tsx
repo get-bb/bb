@@ -15,6 +15,7 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
+import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -200,6 +201,7 @@ export interface FollowUpPromptBoxProps {
   promptActions?: readonly PromptBoxAction[];
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
+  textEffect?: PluginComposerTextEffect | null;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -255,6 +257,7 @@ function FollowUpPromptBoxWithComposer({
   typeahead,
   promptActions,
   pluginComposerHost,
+  textEffect,
   zenModeResetKey,
   focusEndKey,
   isPrimaryComposer = true,
@@ -548,6 +551,7 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={composer.onSubmit}
+        textEffect={textEffect}
         scrollToBottomOnSubmit={submitMode.kind !== "queue"}
         history={composer.history}
         focusEndKey={focusEndKey}

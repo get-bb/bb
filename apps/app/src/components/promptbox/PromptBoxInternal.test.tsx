@@ -446,6 +446,31 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
+  it("decorates only draft text while shimmering and removes it when cleared", async () => {
+    const props = createPromptBoxProps({ value: "Keep this draft readable" });
+    const view = render(
+      <PromptBoxInternal {...props} textEffect="shimmer" />,
+    );
+
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".prompt-text-shimmer")?.textContent,
+      ).toBe("Keep this draft readable");
+    });
+    expect(
+      view.container
+        .querySelector("[data-promptbox]")
+        ?.classList.contains("prompt-text-shimmer"),
+    ).toBe(false);
+
+    view.rerender(<PromptBoxInternal {...props} textEffect={null} />);
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".prompt-text-shimmer"),
+      ).toBeNull();
+    });
+  });
+
   it("honors early focusEnd requests once the editor is ready", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {

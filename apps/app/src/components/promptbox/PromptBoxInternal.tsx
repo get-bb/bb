@@ -4,6 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
+import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -70,6 +71,7 @@ import {
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
+import { setPromptTextEffect } from "./editor/prompt-text-effect-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
@@ -317,6 +319,8 @@ export interface PromptBoxInternalProps {
   onSubmit: () => void;
   placeholder?: string;
   className?: string;
+  /** Optional host-rendered paint applied only to editable draft text. */
+  textEffect?: PluginComposerTextEffect | null;
   /** Content rendered inside the prompt box card, above the text area. Use
    * for prominent context that should be impossible to miss — e.g. a
    * "Reusing existing worktree" banner when env mode is set to reuse. */
@@ -1022,6 +1026,7 @@ export function PromptBoxInternal({
   onSubmit,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   className,
+  textEffect = null,
   header,
   footerStart,
   submission = {},
@@ -1472,6 +1477,16 @@ export function PromptBoxInternal({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    setPromptTextEffect(editor, textEffect);
+    return () => {
+      if (!editor.isDestroyed) {
+        setPromptTextEffect(editor, null);
+      }
+    };
+  }, [editor, textEffect]);
 
   useLayoutEffect(() => {
     if (!pendingFocusEndRef.current) return;

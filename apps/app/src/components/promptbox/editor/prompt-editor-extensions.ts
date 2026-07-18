@@ -2,6 +2,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import type { AnyExtension } from "@tiptap/react";
 import { PromptMentionExtension } from "./prompt-mention-extension";
+import { PromptTextEffectExtension } from "./prompt-text-effect-extension";
 import { PromptUltracodeHighlightExtension } from "./prompt-ultracode-highlight-extension";
 
 export interface PromptEditorExtensionsOptions {
@@ -60,6 +61,7 @@ export function promptEditorExtensions({
       placeholder: () => getPlaceholder(),
     }),
     PromptMentionExtension,
+    PromptTextEffectExtension,
     PromptUltracodeHighlightExtension,
   ];
 }

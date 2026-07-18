@@ -59,6 +59,7 @@ import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useComposerTextEffect } from "@/lib/composer-text-effects";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -383,6 +384,7 @@ export function ThreadDetailPromptArea({
     projectId,
     threadId: thread.id,
   });
+  const promptTextEffect = useComposerTextEffect(promptDraft.storageKey);
   const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
@@ -1572,6 +1574,7 @@ export function ThreadDetailPromptArea({
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       pluginComposerHost={pluginComposerHost}
+      textEffect={promptTextEffect}
       composerTarget={inlineComposerTarget}
       zenModeResetKey={thread.id}
       focusEndKey={focusEndKey}
