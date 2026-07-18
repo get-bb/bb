@@ -379,6 +379,44 @@ describe("QueuedMessagesList", () => {
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
+  it("keeps an active inline editor usable when the queue is empty", async () => {
+    const { container } = render(
+      <QueuedMessagesList
+        queuedMessages={[]}
+        inlineEditor={{
+          queuedMessageId: "q_missing",
+          queuedMessageIndex: 0,
+          ready: true,
+          onComposerTargetChange: noop,
+          onDismiss: noop,
+        }}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-queued-messages-mode]")
+          ?.getAttribute("data-queued-messages-mode"),
+      ).toBe("workspace");
+    });
+
+    const scrollFrame = container.querySelector(
+      "[data-queued-messages-scroll-frame]",
+    );
+    expect(scrollFrame?.hasAttribute("inert")).toBe(false);
+    expect(scrollFrame?.getAttribute("aria-hidden")).not.toBe("true");
+  });
+
   it("returns to the fitted drawer height after inline editing ends", async () => {
     const queuedMessages = Array.from({ length: 4 }, (_, index) =>
       makeQueuedMessage(`q_${index}`, `Queued message ${index + 1}`),

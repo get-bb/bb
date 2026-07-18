@@ -969,6 +969,7 @@ export function QueuedMessagesList({
   );
   const [surfaceDragging, setSurfaceDragging] = useState(false);
   const [surfaceDragOffset, setSurfaceDragOffset] = useState(0);
+  const inlineEditorActive = inlineEditor !== undefined;
   const surfaceDragStartYRef = useRef(0);
   const surfaceDragOffsetRef = useRef(0);
   const surfaceDraggingRef = useRef(false);
@@ -1112,6 +1113,9 @@ export function QueuedMessagesList({
   useEffect(() => {
     const previousMessageCount = previousMessageCountRef.current;
     previousMessageCountRef.current = queuedMessages.length;
+    if (inlineEditorActive) {
+      return;
+    }
     if (
       queuedMessages.length !== 0 &&
       queuedMessages.length <= previousMessageCount
@@ -1133,7 +1137,7 @@ export function QueuedMessagesList({
     return () => {
       cancelled = true;
     };
-  }, [queuedMessages.length]);
+  }, [inlineEditorActive, queuedMessages.length]);
 
   const openWorkspace = useCallback(() => {
     setMode("workspace");
