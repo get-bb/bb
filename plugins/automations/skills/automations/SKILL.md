@@ -43,12 +43,16 @@ Agent mode flags:
 --prompt <prompt>              Prompt to run when due
 --provider <id>                Provider ID
 --model <model>                Model ID
---permission-mode <mode>       full, workspace-write, or readonly
+--permission-mode <mode>       accept-edits, auto, or full
 --target-thread <id>           Reuse/re-prompt an existing thread
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path
 --new-environment <kind>       Create a new environment (worktree)
 --base-branch <branch>         Base branch for new managed worktrees
 ```
+
+When `--permission-mode` is omitted, the plugin chooses Approve for me
+(`auto`) when the provider supports it and otherwise uses Full Access
+(`full`).
 
 Script mode flags:
 

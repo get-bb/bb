@@ -53,7 +53,7 @@ function makeQueuedMessage(
     content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
     reasoningLevel: "medium",
-    permissionMode: "readonly",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,
@@ -118,7 +118,7 @@ describe("thread runtime cache owner", () => {
       {
         model: "codex-default",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
       },
     );
@@ -141,7 +141,7 @@ describe("thread runtime cache owner", () => {
       content: [{ type: "text", text: "Queue this", mentions: [] }],
       model: "codex-default",
       reasoningLevel: "high",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       serviceTier: "fast",
     });
 

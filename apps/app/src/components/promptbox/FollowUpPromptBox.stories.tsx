@@ -113,13 +113,13 @@ const codexModelLoadError = {
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
+  { value: "accept-edits", label: "Accept Edits" },
+  { value: "auto", label: "Approve for me" },
   { value: "full", label: "Full Access", tone: "warning" },
-  { value: "workspace-write", label: "Workspace Write" },
-  { value: "readonly", label: "Readonly" },
 ];
 
 const basePermission: ExecutionPermissionConfig = {
-  value: "workspace-write",
+  value: "auto",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -163,7 +163,7 @@ const readOnlyExecution = makeExecutionControlsProps({
 });
 
 const readOnlyPermission: ExecutionPermissionConfig = {
-  value: "readonly",
+  value: "accept-edits",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -513,7 +513,7 @@ function makeStoryQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 0,

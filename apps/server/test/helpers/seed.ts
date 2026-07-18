@@ -26,6 +26,7 @@ import type {
   EnvironmentStatus,
   PermissionMode,
   PromptInput,
+  RecordedPermissionMode,
   StoredThreadEventDataForType,
   ThreadEventScope,
   ThreadEventItemType,
@@ -324,7 +325,7 @@ export function seedThreadRuntimeState(
     inputText?: string;
     model?: string;
     providerThreadId: string;
-    permissionMode?: PermissionMode;
+    permissionMode?: RecordedPermissionMode;
     reasoningLevel?: string;
     sequenceStart?: number;
     serviceTier?: string;

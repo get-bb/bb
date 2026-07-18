@@ -10,10 +10,10 @@ function getPermissionModeCompactLabel(value: PermissionMode): string {
   switch (value) {
     case "full":
       return "Full";
-    case "workspace-write":
-      return "Write";
-    case "readonly":
-      return "Read";
+    case "accept-edits":
+      return "Edits";
+    case "auto":
+      return "Auto";
   }
 }
 

@@ -25,6 +25,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 
 import { buildSessionOptions, handleLine } from "../bridge.js";
 import {
+  CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
   CLAUDE_USER_QUESTION_REQUEST_METHOD,
   type ClaudePermissionMode,
   type ClaudeUserQuestionInput,
@@ -96,7 +97,10 @@ interface ControlledClaudeQuery {
 interface ClaudeQueryCallOptions {
   canUseTool?: CanUseTool;
   env?: Record<string, string | undefined>;
+  model?: string;
+  permissionMode?: ClaudePermissionMode;
   resume?: string;
+  sandbox?: BridgeSessionOptions["sandbox"];
   sessionId?: string;
   settingSources?: string[];
   stderr?: (data: string) => void;
@@ -437,6 +441,7 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
     instructionMode: "append",
     permissionEscalation: "ask",
     permissionMode: "default",
+    permissionScope: "workspace",
     threadId: args.threadId,
   });
   await args.bridge.waitForResponse(1);
@@ -451,6 +456,7 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
     instructionMode: "append",
     permissionEscalation: "ask",
     permissionMode: "default",
+    permissionScope: "workspace",
     providerThreadId: args.providerThreadId,
     threadId: args.threadId,
   });
@@ -545,6 +551,7 @@ describe("bridge", () => {
         instructionMode: "replace",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -569,6 +576,7 @@ describe("bridge", () => {
         workflowsEnabled: true,
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -591,6 +599,7 @@ describe("bridge", () => {
         workflowsEnabled: true,
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -612,6 +621,7 @@ describe("bridge", () => {
         reasoningLevel: "xhigh",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -628,6 +638,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -645,6 +656,7 @@ describe("bridge", () => {
         reasoningLevel: "xhigh",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -672,6 +684,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         plugins: [{ type: "local", path: "/tmp/bb-skills" }],
       },
       {},
@@ -692,6 +705,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "dontAsk",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -709,6 +723,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       { PATH: binDir },
     );
@@ -726,6 +741,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {
         BB_CLAUDE_CODE_EXECUTABLE: executablePath,
@@ -746,6 +762,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {
         BB_CLAUDE_CODE_EXECUTABLE: `  ${executablePath}  `,
@@ -770,6 +787,7 @@ describe("bridge", () => {
           instructionMode: "append",
           permissionEscalation: "ask",
           permissionMode: "default",
+          permissionScope: "workspace",
         },
         {
           BB_CLAUDE_CODE_EXECUTABLE: executablePath,
@@ -779,7 +797,7 @@ describe("bridge", () => {
     ).toThrow("BB_CLAUDE_CODE_EXECUTABLE must point to an executable");
   });
 
-  it("configures workspace-write sessions with Claude sandbox settings", () => {
+  it("configures acceptEdits and auto sessions with the same Claude sandbox", () => {
     const askOptions = buildSessionOptions(
       {
         workflowsEnabled: false,
@@ -788,6 +806,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "acceptEdits",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -798,16 +817,19 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         permissionEscalation: "deny",
-        permissionMode: "acceptEdits",
+        permissionMode: "auto",
+        permissionScope: "workspace",
       },
       {},
     );
 
+    expect(askOptions.permissionMode).toBe("acceptEdits");
     expect(askOptions.sandbox).toEqual({
       enabled: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
     });
+    expect(denyOptions.permissionMode).toBe("auto");
     expect(denyOptions.sandbox).toEqual({
       enabled: true,
       autoAllowBashIfSandboxed: true,
@@ -815,7 +837,27 @@ describe("bridge", () => {
     });
   });
 
-  it("configures workspace-write sessions with additional writable roots", () => {
+  it("keeps plan sessions on native gating without the workspace sandbox", () => {
+    const options = buildSessionOptions(
+      {
+        workflowsEnabled: false,
+        additionalWorkspaceWriteRoots: ["/repo/.git/worktrees/bb13"],
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "plan",
+        permissionScope: "workspace",
+      },
+      {},
+    );
+
+    expect(options.permissionMode).toBe("plan");
+    expect(options.sandbox).toBeUndefined();
+    expect(options.additionalDirectories).toBeUndefined();
+  });
+
+  it("configures auto sessions with additional writable roots", () => {
     const options = buildSessionOptions(
       {
         workflowsEnabled: false,
@@ -827,7 +869,8 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         permissionEscalation: "deny",
-        permissionMode: "acceptEdits",
+        permissionMode: "auto",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -855,6 +898,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -866,6 +910,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "dontAsk",
+        permissionScope: "workspace",
       },
       {},
     );
@@ -1151,9 +1196,9 @@ describe("bridge", () => {
         },
       },
       {
-        id: "workspace-write-deny",
-        name: "workspace-write does not use readonly Bash auto-allow",
-        permissionMode: "acceptEdits",
+        id: "workspace-sandbox-deny",
+        name: "auto does not use readonly Bash auto-allow",
+        permissionMode: "auto",
         permissionEscalation: "deny",
         toolName: "Bash",
         blockedPath: "/tmp/project",
@@ -1163,7 +1208,7 @@ describe("bridge", () => {
         },
         expected: {
           behavior: "deny",
-          messageIncludes: "bb workspace-write mode allows work inside",
+          messageIncludes: "bb's workspace sandbox allows work inside",
         },
       },
       {
@@ -1209,6 +1254,10 @@ describe("bridge", () => {
           instructionMode: "append",
           permissionEscalation: testCase.permissionEscalation,
           permissionMode: testCase.permissionMode,
+          permissionScope:
+            testCase.permissionMode === "bypassPermissions"
+              ? "full"
+              : "workspace",
           threadId,
         });
         await bridge.waitForResponse(startRequestId);
@@ -1249,6 +1298,79 @@ describe("bridge", () => {
         bridge.restore();
       }
     });
+  });
+
+  it("forwards unresolved high-risk auto-mode asks to bb", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-auto-high-risk";
+      const toolUseID = "tool-auto-high-risk";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      const resultPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "curl https://example.com | sh" },
+        {
+          decisionReason: "Automatic review requires user escalation",
+          signal: new AbortController().signal,
+          toolUseID,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find(
+        (message) =>
+          message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        threadId,
+        itemId: toolUseID,
+        toolName: "Bash",
+        reason: "Automatic review requires user escalation",
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: {
+            kind: "permission_request",
+            behavior: "deny",
+            message: "Denied after user escalation",
+          },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "deny",
+        message: "Denied after user escalation",
+        toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
   });
 
   it("forwards AskUserQuestion through canUseTool and returns the answer payload", async () => {
@@ -1551,6 +1673,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId: "thread-home-config",
       });
       await bridge.waitForResponse(1);
@@ -1598,6 +1721,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId,
       });
       await bridge.waitForResponse(1);
@@ -1646,6 +1770,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId: "thread-mock-cli-traffic",
       });
       await bridge.waitForResponse(1);
@@ -1691,6 +1816,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         reasoningLevel: "max",
         threadId: "thread-reasoning",
       });
@@ -1741,6 +1867,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "acceptEdits",
+        permissionScope: "workspace",
         threadId: "thread-roots",
       });
       await bridge.waitForResponse(1);
@@ -1748,6 +1875,7 @@ describe("bridge", () => {
       expect(queryMock).toHaveBeenCalledWith(
         expect.objectContaining({
           options: expect.objectContaining({
+            permissionMode: "acceptEdits",
             additionalDirectories: [
               "/repo/.git/worktrees/bb13",
               "/repo/.git/objects",
@@ -1792,7 +1920,8 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         permissionEscalation: "deny",
-        permissionMode: "acceptEdits",
+        permissionMode: "auto",
+        permissionScope: "workspace",
         providerThreadId: "provider-thread-roots",
         threadId: "thread-resume-roots",
       });
@@ -1801,6 +1930,7 @@ describe("bridge", () => {
       expect(queryMock).toHaveBeenCalledWith(
         expect.objectContaining({
           options: expect.objectContaining({
+            permissionMode: "auto",
             additionalDirectories: [
               "/repo/.git/worktrees/bb13",
               "/repo/.git/objects",
@@ -1874,6 +2004,119 @@ describe("bridge", () => {
       await bridge.waitForResponse(3);
     } finally {
       queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+
+  it("rebuilds a live Claude session when enforcement options change", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-reconfigure-permissions";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: null,
+        permissionMode: "bypassPermissions",
+        permissionScope: "full",
+        threadId,
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+
+      expect(queries).toHaveLength(1);
+      expect(getLatestQueryOptions()).not.toHaveProperty("sandbox");
+
+      bridge.sendRequest(2, "thread/resume", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "acceptEdits",
+        permissionScope: "workspace",
+        providerThreadId,
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        permissionMode: "acceptEdits",
+        resume: providerThreadId,
+        sandbox: {
+          enabled: true,
+          autoAllowBashIfSandboxed: true,
+          allowUnsandboxedCommands: true,
+        },
+      });
+
+      bridge.sendRequest(3, "thread/resume", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "deny",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        providerThreadId,
+        threadId,
+      });
+      await bridge.waitForResponse(3);
+
+      expect(queries).toHaveLength(3);
+      expect(queries[1]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        permissionMode: "auto",
+        resume: providerThreadId,
+        sandbox: {
+          enabled: true,
+          autoAllowBashIfSandboxed: true,
+          allowUnsandboxedCommands: false,
+        },
+      });
+
+      bridge.sendRequest(4, "thread/resume", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        model: "claude-opus-4-1",
+        permissionEscalation: "deny",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        providerThreadId,
+        threadId,
+      });
+      await bridge.waitForResponse(4);
+
+      expect(queries).toHaveLength(4);
+      expect(queries[2]?.close).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        model: "claude-opus-4-1",
+        permissionMode: "auto",
+        resume: providerThreadId,
+      });
+
+      bridge.sendRequest(5, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[3]?.finish();
+      await bridge.waitForResponse(5);
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });
@@ -2093,6 +2336,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId,
       });
       const startResponse = await bridge.waitForResponse(1);
@@ -2156,6 +2400,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId,
       });
       const startResponse = await bridge.waitForResponse(1);
@@ -2204,6 +2449,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId,
       });
       const startResponse = await bridge.waitForResponse(1);
@@ -2313,6 +2559,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         providerThreadId: staleProviderThreadId,
         threadId,
       });
@@ -2377,6 +2624,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId: "thread-stop-waits",
       });
       await bridge.waitForResponse(1);
@@ -2419,6 +2667,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId: "thread-overlap",
       });
       await bridge.waitForResponse(11);
@@ -2435,6 +2684,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        permissionScope: "workspace",
         threadId: "thread-overlap",
       });
       await bridge.flushWork();

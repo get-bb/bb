@@ -17,6 +17,7 @@ export const CLAUDE_USER_QUESTION_REQUEST_METHOD = "item/userQuestion/request";
 export const claudePermissionModeSchema = z.enum([
   "default",
   "acceptEdits",
+  "auto",
   "bypassPermissions",
   "plan",
   "dontAsk",
@@ -27,12 +28,12 @@ export function toClaudePermissionMode(
   policy: ResolvedAdapterPermissionPolicy,
 ): ClaudePermissionMode {
   switch (policy.permissionMode) {
+    case "accept-edits":
+      return "acceptEdits";
+    case "auto":
+      return "auto";
     case "full":
       return "bypassPermissions";
-    case "workspace-write":
-      return "acceptEdits";
-    case "readonly":
-      return policy.permissionEscalation === "deny" ? "dontAsk" : "default";
   }
 }
 

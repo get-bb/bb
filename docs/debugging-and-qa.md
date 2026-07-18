@@ -28,5 +28,5 @@ Test agents with:
 
 ```bash
 eval "$(scripts/bb-dev-app env)"
-pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode readonly --title "Smoke test" --prompt "Reply only with ok." --json
+pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```

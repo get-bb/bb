@@ -547,6 +547,13 @@
       "when": 1784301355776,
       "tag": "0077_tough_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "6",
+      "when": 1784311522462,
+      "tag": "0078_permission_modes",
+      "breakpoints": true
     }
   ]
 }

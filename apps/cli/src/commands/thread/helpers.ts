@@ -1,5 +1,5 @@
 import {
-  permissionModeSchema,
+  permissionModeInputSchema,
   type PermissionMode,
   type PromptInput,
   serviceTierSchema,
@@ -23,7 +23,7 @@ export type { ThreadWaitTarget };
 
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
-  "Permission mode: full, workspace-write, or readonly";
+  "Permission mode: accept-edits, auto, or full";
 
 export function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];
@@ -86,11 +86,11 @@ export function parsePermissionMode(
   value: string | undefined,
 ): PermissionMode | undefined {
   if (value === undefined) return undefined;
-  const parsed = permissionModeSchema.safeParse(value);
+  const parsed = permissionModeInputSchema.safeParse(value);
   if (parsed.success) {
     return parsed.data;
   }
   throw new Error(
-    `Invalid permission mode '${value}'. Expected full, workspace-write, or readonly.`,
+    `Invalid permission mode '${value}'. Expected accept-edits, auto, or full.`,
   );
 }

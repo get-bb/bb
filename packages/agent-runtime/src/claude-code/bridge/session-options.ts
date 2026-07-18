@@ -5,6 +5,7 @@ import type {
   InstructionMode,
   PermissionEscalation,
   ReasoningLevel,
+  RuntimePermissionScope,
 } from "@bb/domain";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
@@ -19,6 +20,7 @@ export interface BuildSessionOptionsArgs {
   model?: string;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
+  permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   workflowsEnabled: boolean;
@@ -82,7 +84,7 @@ export function buildReadonlyDenialMessage(): string {
 }
 
 export function buildWorkspaceWriteDenialMessage(): string {
-  return "bb workspace-write mode allows work inside the current workspace only. Stay inside the workspace or explain why extra access is needed.";
+  return "bb's workspace sandbox allows work inside the current workspace only. Stay inside the workspace or explain why extra access is needed.";
 }
 
 function buildReadonlyHooks(
@@ -144,10 +146,21 @@ function buildReadonlyHooks(
   };
 }
 
+// The bb workspace sandbox applies only to the accept-edits/auto session
+// modes. Plan (and the legacy default/dontAsk modes) keep the Claude SDK's
+// native tool gating without a sandbox, matching pre-preset behavior.
+function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
+  return (
+    params.permissionScope === "workspace" &&
+    (params.permissionMode === "acceptEdits" ||
+      params.permissionMode === "auto")
+  );
+}
+
 function buildWorkspaceWriteSandbox(
   params: BuildSessionOptionsArgs,
 ): Options["sandbox"] | undefined {
-  if (params.permissionMode !== "acceptEdits") {
+  if (!usesWorkspaceSandbox(params)) {
     return undefined;
   }
 
@@ -226,10 +239,9 @@ export function buildSessionOptions(
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
   const hooks = buildReadonlyHooks(params);
-  const additionalDirectories =
-    params.permissionMode === "acceptEdits"
-      ? (params.additionalWorkspaceWriteRoots ?? [])
-      : [];
+  const additionalDirectories = usesWorkspaceSandbox(params)
+    ? (params.additionalWorkspaceWriteRoots ?? [])
+    : [];
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
 

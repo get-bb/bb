@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import {
   createLocalStorageEnumStorage,
+  createLocalStorageSyncStorage,
   rawStringLocalStorage,
 } from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
@@ -59,9 +60,7 @@ function isReasoningLevel(value: string): value is ReasoningLevel {
 }
 
 function isPermissionMode(value: string): value is PermissionMode {
-  return (
-    value === "readonly" || value === "workspace-write" || value === "full"
-  );
+  return value === "accept-edits" || value === "auto" || value === "full";
 }
 
 function isServiceTier(value: string): value is ServiceTier {
@@ -104,10 +103,27 @@ const reasoningLevelAtom = atomWithStorage<StoredReasoningLevel>(
   createLocalStorageEnumStorage(isStoredReasoningLevel),
   { getOnInit: true },
 );
+// Legacy preference migration: "workspace-write" maps onto the same workspace
+// sandbox as "accept-edits", so the user's stored intent carries forward.
+// Legacy "readonly" (and any other unknown value) is dropped rather than
+// reinterpreted — localStorage is untrusted, and a read-only preference must
+// never silently become a writable mode.
+const permissionModePreferenceStorage = createLocalStorageSyncStorage<StoredPermissionMode>({
+  parse: (storedValue, initialValue) => {
+    if (storedValue === "workspace-write") {
+      return "accept-edits";
+    }
+    return storedValue !== null && isStoredPermissionMode(storedValue)
+      ? storedValue
+      : initialValue;
+  },
+  serialize: (value) => value,
+});
+
 const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
   PERMISSION_MODE_STORAGE_KEY,
   "",
-  createLocalStorageEnumStorage(isStoredPermissionMode),
+  permissionModePreferenceStorage,
   { getOnInit: true },
 );
 const environmentSelectionAtom = atomWithStorage<string>(

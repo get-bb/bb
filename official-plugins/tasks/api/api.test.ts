@@ -453,8 +453,20 @@ describe("Tasks RPC domain API", () => {
       sdk: {
         providers: {
           list: async () => [
-            { id: "codex", displayName: "Codex" },
-            { id: "claude-code", displayName: "Claude Code" },
+            {
+              id: "codex",
+              displayName: "Codex",
+              capabilities: {
+                supportedPermissionModes: ["accept-edits", "auto", "full"],
+              },
+            },
+            {
+              id: "claude-code",
+              displayName: "Claude Code",
+              capabilities: {
+                supportedPermissionModes: ["accept-edits", "auto", "full"],
+              },
+            },
           ],
           models: async () => ({
             models: [
@@ -485,8 +497,16 @@ describe("Tasks RPC domain API", () => {
 
     await expect(harness.callRpc("listProviders", {})).resolves.toEqual({
       providers: [
-        { id: "codex", name: "Codex" },
-        { id: "claude-code", name: "Claude Code" },
+        {
+          id: "codex",
+          name: "Codex",
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
+        },
+        {
+          id: "claude-code",
+          name: "Claude Code",
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
+        },
       ],
     });
     await expect(
@@ -1195,12 +1215,12 @@ describe("Tasks RPC domain API", () => {
       presetId: preset.id,
       name: "Renamed",
       modelId: "claude-sonnet-6",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
     });
     expect(updated.preset).toMatchObject({
       name: "Renamed",
       modelId: "claude-sonnet-6",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       builtin: true,
     });
     await expect(

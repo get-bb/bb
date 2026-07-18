@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   commandSuggestionArgs: [] as unknown[],
   createThreadMutateAsync: vi.fn(),
   defaultExecutionOptionsThreadIds: [] as string[],
+  defaultExecutionPermissionMode: "auto" as "accept-edits" | "auto" | "full",
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
   promptMentionArgs: [] as unknown[],
@@ -437,6 +438,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
     return {
       data: {
         model: "gpt-5",
+        permissionMode: mocks.defaultExecutionPermissionMode,
         reasoningLevel: "medium",
         serviceTier: undefined,
       },
@@ -501,6 +503,7 @@ afterEach(() => {
   mocks.queuedMessages = [];
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
+  mocks.defaultExecutionPermissionMode = "auto";
   mocks.threadCreationReasoningLevel = "medium";
   mocks.threadCreationSelectedModel = "gpt-5";
   mocks.threadCreationServiceTier = undefined;
@@ -795,7 +798,7 @@ describe("SideChatTabContent", () => {
         ],
         originKind: "side-chat",
         model: "o4-mini",
-        permissionMode: "readonly",
+        permissionMode: "auto",
         reasoningLevel: "high",
         serviceTier: "fast",
         sourceSeqEnd: 9,
@@ -806,6 +809,28 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
+  });
+
+  it("snapshots the source thread's effective permission mode into the created side chat", async () => {
+    mocks.defaultExecutionPermissionMode = "accept-edits";
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    renderDraftSideChat();
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Compare the tradeoffs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originKind: "side-chat",
+        permissionMode: "accept-edits",
+        sourceThreadId: "thr_parent",
+      }),
+    );
   });
 
   it("uses the selected model options when sending an existing side-chat message", async () => {
@@ -829,7 +854,7 @@ describe("SideChatTabContent", () => {
         model: "o4-mini",
         reasoningLevel: "high",
         serviceTier: "fast",
-        permissionMode: "readonly",
+        permissionMode: "auto",
       }),
     );
   });

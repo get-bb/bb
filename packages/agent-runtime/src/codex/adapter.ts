@@ -37,6 +37,7 @@ import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
+import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex, parseModelsResponse } from "./models.js";
 import {
   buildShellEnvironmentPolicyConfig,
@@ -80,12 +81,14 @@ import {
 
 interface CodexPermissionSettings {
   approvalPolicy: AskForApproval;
+  approvalsReviewer: ApprovalsReviewer;
   sandbox: CodexSandboxMode;
   sandboxPolicy: SandboxPolicy;
 }
 
 interface CodexThreadPermissionSettings {
   approvalPolicy: AskForApproval;
+  approvalsReviewer: ApprovalsReviewer;
   sandbox: CodexSandboxMode;
 }
 
@@ -104,6 +107,7 @@ type BbThreadForkParams = {
   serviceTier?: string | null;
   cwd?: string | null;
   approvalPolicy?: AskForApproval | null;
+  approvalsReviewer?: ApprovalsReviewer | null;
   sandbox?: CodexSandboxMode | null;
   config?: { [key in string]?: JsonValue } | null;
   baseInstructions?: string | null;
@@ -258,17 +262,20 @@ function toWorkspaceWriteCodexSandboxPolicy(
   };
 }
 
-function toReadonlyCodexSandboxPolicy(): SandboxPolicy {
-  return {
-    type: "readOnly",
-    networkAccess: false,
-  };
-}
-
 function toEscalationApprovalPolicy(
   escalation: PermissionEscalation,
 ): AskForApproval {
   return escalation === "deny" ? "never" : "on-request";
+}
+
+function toWorkspaceApprovalPolicy(options: {
+  approvalReviewer: "automatic" | "user";
+  permissionEscalation: PermissionEscalation;
+}): AskForApproval {
+  if (options.approvalReviewer === "automatic") {
+    return "on-request";
+  }
+  return toEscalationApprovalPolicy(options.permissionEscalation);
 }
 
 function readTextFileIfPresent(filePath: string): string | null {
@@ -594,31 +601,30 @@ function combineWorkspaceWriteRoots(
 function shouldCaptureWorkspaceWriteGitRoots(
   options: ProviderExecutionContext,
 ): boolean {
-  return options.permissionMode === "workspace-write";
+  return options.permissionScope === "workspace";
+}
+
+function toCodexApprovalsReviewer(
+  options: ProviderExecutionContext,
+): ApprovalsReviewer {
+  return options.approvalReviewer === "automatic" ? "auto_review" : "user";
 }
 
 function toCodexThreadPermissionSettings(
   options: ProviderExecutionContext,
 ): CodexThreadPermissionSettings {
   const permissionPolicy = resolveAdapterPermissionPolicy(options);
-  switch (permissionPolicy.permissionMode) {
-    case "readonly":
+  switch (permissionPolicy.permissionScope) {
+    case "workspace":
       return {
-        approvalPolicy: toEscalationApprovalPolicy(
-          permissionPolicy.permissionEscalation,
-        ),
-        sandbox: "read-only",
-      };
-    case "workspace-write":
-      return {
-        approvalPolicy: toEscalationApprovalPolicy(
-          permissionPolicy.permissionEscalation,
-        ),
+        approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
+        approvalsReviewer: toCodexApprovalsReviewer(options),
         sandbox: "workspace-write",
       };
     case "full":
       return {
         approvalPolicy: "never",
+        approvalsReviewer: toCodexApprovalsReviewer(options),
         sandbox: "danger-full-access",
       };
   }
@@ -628,20 +634,11 @@ function toCodexPermissionSettings(
   args: ToCodexPermissionSettingsArgs,
 ): CodexPermissionSettings {
   const permissionPolicy = resolveAdapterPermissionPolicy(args.options);
-  switch (permissionPolicy.permissionMode) {
-    case "readonly":
+  switch (permissionPolicy.permissionScope) {
+    case "workspace":
       return {
-        approvalPolicy: toEscalationApprovalPolicy(
-          permissionPolicy.permissionEscalation,
-        ),
-        sandbox: "read-only",
-        sandboxPolicy: toReadonlyCodexSandboxPolicy(),
-      };
-    case "workspace-write":
-      return {
-        approvalPolicy: toEscalationApprovalPolicy(
-          permissionPolicy.permissionEscalation,
-        ),
+        approvalPolicy: toWorkspaceApprovalPolicy(permissionPolicy),
+        approvalsReviewer: toCodexApprovalsReviewer(args.options),
         sandbox: "workspace-write",
         sandboxPolicy: toWorkspaceWriteCodexSandboxPolicy(
           combineWorkspaceWriteRoots(
@@ -653,6 +650,7 @@ function toCodexPermissionSettings(
     case "full":
       return {
         approvalPolicy: "never",
+        approvalsReviewer: toCodexApprovalsReviewer(args.options),
         sandbox: "danger-full-access",
         sandboxPolicy: { type: "dangerFullAccess" },
       };
@@ -782,7 +780,7 @@ function buildCodexConfig(
   }
   config["memories.use_memories"] = args.options?.memoryEnabled ?? true;
   config["memories.generate_memories"] = args.options?.memoryEnabled ?? true;
-  if (args.options?.permissionMode === "workspace-write") {
+  if (args.options?.permissionScope === "workspace") {
     const writableRoots = combineWorkspaceWriteRoots(
       args.gitWritableRoots,
       args.additionalWorkspaceWriteRoots,
@@ -1894,6 +1892,8 @@ export function createCodexProviderAdapter(
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
           const params: BbThreadStartParams = {
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            approvalsReviewer:
+              preparedGitRoots.permissionSettings.approvalsReviewer,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
             ...resolveCodexInstructionOverrides(command),
@@ -1919,6 +1919,8 @@ export function createCodexProviderAdapter(
           const params: BbThreadResumeParams = {
             threadId: command.providerThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            approvalsReviewer:
+              preparedGitRoots.permissionSettings.approvalsReviewer,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
             ...resolveCodexInstructionOverrides(command),
@@ -1942,6 +1944,8 @@ export function createCodexProviderAdapter(
           const params: BbThreadForkParams = {
             threadId: command.sourceProviderThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            approvalsReviewer:
+              preparedGitRoots.permissionSettings.approvalsReviewer,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
             ...resolveCodexInstructionOverrides(command),
@@ -1989,6 +1993,7 @@ export function createCodexProviderAdapter(
               threadId: command.providerThreadId,
               input: toCodexUserInput(input),
               approvalPolicy: permissionSettings.approvalPolicy,
+              approvalsReviewer: permissionSettings.approvalsReviewer,
               sandboxPolicy: permissionSettings.sandboxPolicy,
               model: command.options?.model ?? undefined,
               serviceTier: toCodexServiceTier(command.options?.serviceTier),

@@ -227,6 +227,14 @@ const MIGRATIONS = [
       id
     );
   `,
+  `
+    UPDATE presets
+    SET permission_mode = CASE permission_mode
+      WHEN 'workspace-write' THEN 'accept-edits'
+      WHEN 'readonly' THEN 'accept-edits'
+    END
+    WHERE permission_mode IN ('workspace-write', 'readonly');
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

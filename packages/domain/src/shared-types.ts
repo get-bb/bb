@@ -37,13 +37,33 @@ export const instructionModeValues = ["append", "replace"] as const;
 export const instructionModeSchema = z.enum(instructionModeValues);
 export type InstructionMode = z.infer<typeof instructionModeSchema>;
 
-export const permissionModeValues = [
-  "full",
+export const permissionModeValues = ["accept-edits", "auto", "full"] as const;
+export const permissionModeSchema = z.enum(permissionModeValues);
+export type PermissionMode = z.infer<typeof permissionModeSchema>;
+
+/**
+ * Deprecated public input accepted for one compatibility window. Stored
+ * history uses {@link recordedPermissionModeSchema} instead so legacy facts
+ * remain distinguishable from current presets.
+ */
+export const permissionModeInputSchema = z
+  .union([permissionModeSchema, z.literal("workspace-write")])
+  .transform(
+    (permissionMode): PermissionMode =>
+      permissionMode === "workspace-write" ? "accept-edits" : permissionMode,
+  );
+
+export const legacyRecordedPermissionModeValues = [
   "workspace-write",
   "readonly",
 ] as const;
-export const permissionModeSchema = z.enum(permissionModeValues);
-export type PermissionMode = z.infer<typeof permissionModeSchema>;
+export const recordedPermissionModeSchema = z.enum([
+  ...permissionModeValues,
+  ...legacyRecordedPermissionModeValues,
+]);
+export type RecordedPermissionMode = z.infer<
+  typeof recordedPermissionModeSchema
+>;
 
 export const permissionEscalationValues = ["ask", "deny"] as const;
 export const permissionEscalationSchema = z.enum(permissionEscalationValues);
@@ -439,20 +459,46 @@ export type ResolvedThreadExecutionOptions = z.infer<
   typeof resolvedThreadExecutionOptionsSchema
 >;
 
+export const recordedThreadExecutionOptionsSchema =
+  resolvedThreadExecutionOptionsSchema.extend({
+    permissionMode: recordedPermissionModeSchema,
+  });
+export type RecordedThreadExecutionOptions = z.infer<
+  typeof recordedThreadExecutionOptionsSchema
+>;
+
+export const runtimePermissionScopeValues = ["workspace", "full"] as const;
+export const runtimePermissionScopeSchema = z.enum(
+  runtimePermissionScopeValues,
+);
+export type RuntimePermissionScope = z.infer<
+  typeof runtimePermissionScopeSchema
+>;
+
+export const approvalReviewerValues = ["user", "automatic"] as const;
+export const approvalReviewerSchema = z.enum(approvalReviewerValues);
+export type ApprovalReviewer = z.infer<typeof approvalReviewerSchema>;
+
 export const runtimePermissionPolicySchema = z.discriminatedUnion(
   "permissionMode",
   [
     z.object({
+      permissionMode: z.literal("accept-edits"),
+      permissionScope: z.literal("workspace"),
+      approvalReviewer: z.literal("user"),
+      permissionEscalation: permissionEscalationSchema,
+    }),
+    z.object({
+      permissionMode: z.literal("auto"),
+      permissionScope: z.literal("workspace"),
+      approvalReviewer: z.literal("automatic"),
+      permissionEscalation: permissionEscalationSchema,
+    }),
+    z.object({
       permissionMode: z.literal("full"),
+      permissionScope: z.literal("full"),
+      approvalReviewer: z.null(),
       permissionEscalation: z.null(),
-    }),
-    z.object({
-      permissionMode: z.literal("workspace-write"),
-      permissionEscalation: permissionEscalationSchema,
-    }),
-    z.object({
-      permissionMode: z.literal("readonly"),
-      permissionEscalation: permissionEscalationSchema,
     }),
   ],
 );

@@ -10,10 +10,11 @@ import type {
   TaskThreadLiveStatus,
 } from "../db";
 import type { TasksApiStore } from "../api";
-import type {
-  CommentsChangedEvent,
-  TasksChangedEvent,
-  ThreadsChangedEvent,
+import {
+  presetPermissionModeSchema,
+  type CommentsChangedEvent,
+  type TasksChangedEvent,
+  type ThreadsChangedEvent,
 } from "../shared/contract";
 import { delegationRpcContract } from "./contract";
 
@@ -35,7 +36,7 @@ const presetExecutionSchema = z
       "max",
       "ultra",
     ]),
-    permissionMode: z.enum(["readonly", "workspace-write", "full"]),
+    permissionMode: presetPermissionModeSchema,
   })
   .strict();
 

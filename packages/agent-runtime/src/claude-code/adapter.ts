@@ -1074,7 +1074,7 @@ export function createClaudeCodeProviderAdapter(
             command.options,
           );
           const additionalWorkspaceWriteRootsParams =
-            permissionPolicy.permissionMode === "workspace-write"
+            permissionPolicy.permissionScope === "workspace"
               ? buildAdditionalWorkspaceWriteRootsParams(
                   additionalWorkspaceWriteRoots,
                 )
@@ -1095,6 +1095,7 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams
@@ -1140,7 +1141,7 @@ export function createClaudeCodeProviderAdapter(
             command.options,
           );
           const additionalWorkspaceWriteRootsParams =
-            permissionPolicy.permissionMode === "workspace-write"
+            permissionPolicy.permissionScope === "workspace"
               ? buildAdditionalWorkspaceWriteRootsParams(
                   additionalWorkspaceWriteRoots,
                 )
@@ -1162,6 +1163,7 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams
@@ -1257,7 +1259,7 @@ export function createClaudeCodeProviderAdapter(
             command.options,
           );
           const additionalWorkspaceWriteRootsParams =
-            permissionPolicy.permissionMode === "workspace-write"
+            permissionPolicy.permissionScope === "workspace"
               ? buildAdditionalWorkspaceWriteRootsParams(
                   additionalWorkspaceWriteRoots,
                 )
@@ -1279,6 +1281,7 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
                 ? additionalWorkspaceWriteRootsParams

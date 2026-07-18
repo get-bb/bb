@@ -59,7 +59,7 @@ describe("tasks storage", () => {
             { count: number }
           >("SELECT COUNT(*) AS count FROM schema_version")
           .get()?.count,
-      ).toBe(4);
+      ).toBe(5);
     } finally {
       await harness.dispose();
     }
@@ -100,6 +100,38 @@ describe("tasks storage", () => {
         baseBranch: null,
         machineId: null,
       });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("migrates retired preset permission modes to Accept Edits", async () => {
+    const { db, harness } = setup();
+    try {
+      db.exec(`
+        DELETE FROM schema_version WHERE version = 5;
+        INSERT INTO presets (
+          id, name, provider_id, model_id, reasoning_level, permission_mode,
+          instructions, builtin, created_at
+        ) VALUES
+          (
+            '01J00000000000000000000001', 'Legacy readonly', 'codex',
+            'gpt-5', 'high', 'readonly', '', 0,
+            '2026-07-15T00:00:00.000Z'
+          ),
+          (
+            '01J00000000000000000000002', 'Legacy workspace', 'codex',
+            'gpt-5', 'high', 'workspace-write', '', 0,
+            '2026-07-15T00:00:00.000Z'
+          );
+      `);
+
+      const modes = createTasksStore(db)
+        .listPresets()
+        .filter((preset) => preset.name.startsWith("Legacy "))
+        .map((preset) => preset.permissionMode);
+
+      expect(modes).toEqual(["accept-edits", "accept-edits"]);
     } finally {
       await harness.dispose();
     }
@@ -657,7 +689,7 @@ describe("tasks storage", () => {
         providerId: "openai",
         modelId: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         environmentKind: "project-default" as const,
         baseBranch: null,
         machineId: null,

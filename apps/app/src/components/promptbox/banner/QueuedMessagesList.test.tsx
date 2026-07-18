@@ -27,7 +27,7 @@ function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
     content: [{ type: "text", text, mentions: [] }],
     model: "gpt-5.5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 0,

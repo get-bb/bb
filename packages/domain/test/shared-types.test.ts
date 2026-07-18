@@ -1,11 +1,85 @@
 import { describe, expect, it } from "vitest";
 import {
+  permissionModeInputSchema,
+  permissionModeSchema,
   promptInputHasCommandMention,
   promptMentionCommandTriggerSchema,
   promptMentionCommandTriggerValues,
   promptMentionResourceSchema,
   removeCommandMentionsFromPromptInput,
+  runtimePermissionPolicySchema,
 } from "../src/shared-types.js";
+
+describe("permission modes", () => {
+  it("exposes only the three current public presets", () => {
+    expect(permissionModeSchema.options).toEqual([
+      "accept-edits",
+      "auto",
+      "full",
+    ]);
+    expect(permissionModeSchema.safeParse("workspace-write").success).toBe(
+      false,
+    );
+    expect(permissionModeSchema.safeParse("readonly").success).toBe(false);
+  });
+
+  it("normalizes only the deprecated workspace-write input alias", () => {
+    expect(permissionModeInputSchema.parse("workspace-write")).toBe(
+      "accept-edits",
+    );
+    expect(permissionModeInputSchema.safeParse("readonly").success).toBe(false);
+  });
+
+  it("keeps runtime sandbox scope and reviewer behavior explicit", () => {
+    expect(
+      runtimePermissionPolicySchema.parse({
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+        permissionEscalation: "ask",
+      }),
+    ).toEqual({
+      permissionMode: "accept-edits",
+      permissionScope: "workspace",
+      approvalReviewer: "user",
+      permissionEscalation: "ask",
+    });
+    expect(
+      runtimePermissionPolicySchema.parse({
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
+        permissionEscalation: "deny",
+      }),
+    ).toEqual({
+      permissionMode: "auto",
+      permissionScope: "workspace",
+      approvalReviewer: "automatic",
+      permissionEscalation: "deny",
+    });
+    expect(
+      runtimePermissionPolicySchema.parse({
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      }),
+    ).toEqual({
+      permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
+      permissionEscalation: null,
+    });
+    expect(
+      runtimePermissionPolicySchema.safeParse({
+        permissionMode: "auto",
+        permissionScope: "full",
+        approvalReviewer: "automatic",
+        permissionEscalation: "ask",
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("prompt mention command triggers", () => {
   it("accepts slash as the only command trigger", () => {

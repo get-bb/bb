@@ -288,12 +288,25 @@ function toRuntimeExecutionOptions(
     return {
       ...base,
       permissionMode: args.execution.permissionMode,
+      permissionScope: "full",
+      approvalReviewer: null,
       permissionEscalation: null,
+    };
+  }
+  if (args.execution.permissionMode === "auto") {
+    return {
+      ...base,
+      permissionMode: "auto",
+      permissionScope: "workspace",
+      approvalReviewer: "automatic",
+      permissionEscalation: args.permissionEscalation,
     };
   }
   return {
     ...base,
-    permissionMode: args.execution.permissionMode,
+    permissionMode: "accept-edits",
+    permissionScope: "workspace",
+    approvalReviewer: "user",
     permissionEscalation: args.permissionEscalation,
   };
 }

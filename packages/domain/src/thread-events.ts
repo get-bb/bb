@@ -8,7 +8,7 @@ import {
 } from "./pending-interactions.js";
 import {
   promptInputSchema,
-  resolvedThreadExecutionOptionsSchema,
+  recordedThreadExecutionOptionsSchema,
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
@@ -95,7 +95,12 @@ export type ThreadEnvironmentStartReason = z.infer<
   typeof threadEnvironmentStartReasonSchema
 >;
 
-export const turnRequestOptionsSchema = resolvedThreadExecutionOptionsSchema;
+/**
+ * Execution values are historical facts once recorded in the event stream.
+ * The stored-event boundary therefore accepts the two retired modes without
+ * treating either as a current public preset.
+ */
+export const turnRequestOptionsSchema = recordedThreadExecutionOptionsSchema;
 
 export const turnRequestTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("thread-start") }),

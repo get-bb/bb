@@ -114,7 +114,7 @@ describe.sequential("dynamic ACP integration smoke", () => {
         execution: {
           model: "bb-dynamic-acp-native-strong",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
         },
         input: [{ type: "text", text: "native selection", mentions: [] }],
         projectId: project.id,
@@ -136,7 +136,7 @@ describe.sequential("dynamic ACP integration smoke", () => {
         execution: {
           model: "bb-dynamic-smoke-medium",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
         },
         input: [{ type: "text", text: "start launch spec", mentions: [] }],
         projectId: project.id,
@@ -158,7 +158,7 @@ describe.sequential("dynamic ACP integration smoke", () => {
         execution: {
           model: "bb-dynamic-smoke-medium",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
         },
         text: "submit launch spec",
       });
@@ -182,7 +182,7 @@ describe.sequential("dynamic ACP integration smoke", () => {
         execution: {
           model: "bb-dynamic-smoke-medium",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
         },
         text: "resume launch spec",
       });

@@ -86,7 +86,7 @@ describe("public thread default routes", () => {
           model: "gpt-5-mini",
           serviceTier: "fast",
           reasoningLevel: "high",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           permissionEscalation: "ask",
         },
       });
@@ -99,7 +99,7 @@ describe("public thread default routes", () => {
         model: "gpt-5-mini",
         serviceTier: "fast",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
       });
     });
   });
@@ -229,7 +229,7 @@ describe("public thread default routes", () => {
         model: "gpt-5",
         serviceTier: "fast",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -261,7 +261,7 @@ describe("public thread default routes", () => {
           model: "gpt-5",
           serviceTier: "fast",
           reasoningLevel: "high",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           permissionEscalation: "ask",
         },
       });
@@ -287,7 +287,7 @@ describe("public thread default routes", () => {
         model: "gpt-5",
         serviceTier: "fast",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
       });
 
       const response = await harness.app.request("/api/v1/threads", {
@@ -457,7 +457,7 @@ describe("public thread default routes", () => {
           model: "gpt-5-mini",
           serviceTier: "fast",
           reasoningLevel: "high",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           permissionEscalation: "ask",
         },
       });
@@ -497,7 +497,7 @@ describe("public thread default routes", () => {
         model: "gpt-5.5",
         serviceTier: "default",
         reasoningLevel: "medium",
-        permissionMode: "full",
+        permissionMode: "auto",
       });
       expect(
         getProjectExecutionDefaults(harness.db, {

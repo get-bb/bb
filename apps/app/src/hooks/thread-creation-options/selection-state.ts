@@ -130,7 +130,7 @@ export function getInitialThreadPromptSelections(
     selectedModel: options?.initialModel ?? "",
     serviceTier: options?.initialServiceTier,
     reasoningLevel: options?.initialReasoningLevel ?? "medium",
-    permissionMode: options?.initialPermissionMode ?? "full",
+    permissionMode: options?.initialPermissionMode ?? "auto",
     environmentSelectionValue: options?.initialEnvironmentSelectionValue ?? "",
   };
 }
@@ -291,10 +291,16 @@ export function resolvePermissionModeSelection({
   if (supportedPermissionModes.includes(rawPermissionMode)) {
     return rawPermissionMode;
   }
+  // Auto is the product default. Providers without native automatic review
+  // fall back to Full Access rather than implying that Accept Edits provides
+  // equivalent automatic approval behavior.
+  if (supportedPermissionModes.includes("auto")) {
+    return "auto";
+  }
   if (supportedPermissionModes.includes("full")) {
     return "full";
   }
-  return supportedPermissionModes[0] ?? "full";
+  return supportedPermissionModes[0] ?? "auto";
 }
 
 export function formatModelLabel(value: string): string {

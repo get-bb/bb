@@ -85,7 +85,7 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
 }
 
 interface StartThreadArgs {
-  permissionMode?: "full" | "workspace-write" | "readonly";
+  permissionMode?: "accept-edits" | "full";
   permissionEscalation?: "ask" | "deny" | null;
   envVars?: Record<string, string>;
   instructions?: string;
@@ -811,7 +811,7 @@ describe("acp bridge", () => {
 
     const { providerThreadId } = await startThread({
       agent: { command: FAKE_AGENT_PATH, args: [] },
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       permissionCli: {
         full: ["--always-approve"],
       },
@@ -1298,7 +1298,7 @@ describe("acp bridge", () => {
 
   it("forwards permission requests to the runtime in ask mode", async () => {
     const { bbThreadId, providerThreadId } = await startThread({
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
     const turnId = sendRequest("turn/start", {
@@ -1341,7 +1341,7 @@ describe("acp bridge", () => {
 
   it("answers session-grant decisions with the allow_always option", async () => {
     const { providerThreadId } = await startThread({
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       permissionEscalation: "ask",
     });
     const turnId = sendRequest("turn/start", {
@@ -1372,7 +1372,7 @@ describe("acp bridge", () => {
   it("performs client fs writes inside the workspace and reports them", async () => {
     const targetPath = join(workspaceDir, "agent-output.txt");
     const { bbThreadId, providerThreadId } = await startThread({
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       permissionEscalation: "ask",
       envVars: { FAKE_ACP_WRITE_PATH: targetPath },
     });
@@ -1393,31 +1393,12 @@ describe("acp bridge", () => {
     });
   });
 
-  it("denies client fs writes in readonly mode", async () => {
-    const targetPath = join(workspaceDir, "denied.txt");
-    const { providerThreadId } = await startThread({
-      permissionMode: "readonly",
-      permissionEscalation: "deny",
-      envVars: { FAKE_ACP_WRITE_PATH: targetPath },
-    });
-    const turnId = sendRequest("turn/start", {
-      threadId: providerThreadId,
-      input: [{ type: "text", text: "write-file", mentions: [] }],
-    });
-    await waitForResponse(turnId);
-    await waitForTurnCompleted();
-
-    expect(agentMessageTexts()).toContain("write:denied");
-    expect(existsSync(targetPath)).toBe(false);
-    expect(notifications("acp/fs/write")).toHaveLength(0);
-  });
-
-  it("denies client fs writes outside the workspace in workspace-write mode", async () => {
+  it("denies client fs writes outside the workspace in accept-edits mode", async () => {
     const outsideDir = mkdtempSync(join(tmpdir(), "bb-acp-outside-"));
     const targetPath = join(outsideDir, "outside.txt");
     try {
       const { providerThreadId } = await startThread({
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         permissionEscalation: "ask",
         envVars: { FAKE_ACP_WRITE_PATH: targetPath },
       });

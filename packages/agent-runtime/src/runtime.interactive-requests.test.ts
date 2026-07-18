@@ -443,7 +443,9 @@ rl.on("line", (line) => {
       providerId: "fake",
       options: {
         ...fullRuntimeOptions,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "deny",
       },
     });
@@ -453,7 +455,9 @@ rl.on("line", (line) => {
       input: [promptTextInput({ text: "trigger denied interactive request" })],
       options: {
         ...fullRuntimeOptions,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "deny",
       },
     });
@@ -530,7 +534,9 @@ rl.on("line", (line) => {
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => ({
           ...fullRuntimeOptions,
-          permissionMode: "readonly",
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
           permissionEscalation: "deny",
         }),
         onInteractiveRequest,

@@ -35,7 +35,13 @@ function project(projectId = PROJECT_ID) {
   return { id: projectId, name: "Test Project", deletedAt: null };
 }
 
-async function bootAutomationsPlugin(): Promise<FakePluginHost> {
+async function bootAutomationsPlugin(
+  supportedPermissionModes: Array<"accept-edits" | "auto" | "full"> = [
+    "accept-edits",
+    "auto",
+    "full",
+  ],
+): Promise<FakePluginHost> {
   const host = createFakePluginHost({
     pluginId: "automations",
     sdk: {
@@ -51,6 +57,16 @@ async function bootAutomationsPlugin(): Promise<FakePluginHost> {
       hosts: {
         async list() {
           return [{ id: "host_test", status: "connected" }];
+        },
+      },
+      providers: {
+        async list() {
+          return [
+            {
+              id: "codex",
+              capabilities: { supportedPermissionModes },
+            },
+          ] as never;
         },
       },
       threads: {
@@ -88,7 +104,7 @@ function agentExecution(targetThreadId?: string) {
     prompt: "summarize the inbox",
     providerId: "codex",
     model: "gpt-5",
-    permissionMode: "readonly",
+    permissionMode: "accept-edits",
     environment: { type: "project-default" },
     ...(targetThreadId ? { targetThreadId } : {}),
   };
@@ -264,6 +280,75 @@ describe("automations server plugin harness", () => {
     expect(errorResult.exitCode).toBe(1);
     expect(errorResult.stderr).toContain("Provide an execution mode");
 
+    await harness.dispose();
+  });
+
+  it.each([
+    {
+      supported: ["accept-edits", "auto", "full"] as const,
+      expected: "auto",
+    },
+    {
+      supported: ["accept-edits", "full"] as const,
+      expected: "full",
+    },
+  ])(
+    "defaults agent automations to $expected for provider capabilities",
+    async ({ supported, expected }) => {
+      const { harness } = await bootAutomationsPlugin([...supported]);
+      const result = await harness.runCli([
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        `CLI agent ${expected}`,
+        "--at",
+        new Date(Date.now() + 60_000).toISOString(),
+        "--prompt",
+        "Summarize the inbox",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+        "--json",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const automation = automationResponseSchema.parse(
+        JSON.parse(result.stdout ?? ""),
+      );
+      expect(automation.execution).toMatchObject({
+        mode: "agent",
+        permissionMode: expected,
+      });
+      await harness.dispose();
+    },
+  );
+
+  it("rejects an explicit mode the automation provider does not support", async () => {
+    const { harness } = await bootAutomationsPlugin(["accept-edits", "full"]);
+    const result = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Unsupported auto",
+      "--at",
+      new Date(Date.now() + 60_000).toISOString(),
+      "--prompt",
+      "Summarize the inbox",
+      "--provider",
+      "codex",
+      "--model",
+      "gpt-5",
+      "--permission-mode",
+      "auto",
+    ]);
+
+    expect(result).toMatchObject({ exitCode: 1 });
+    expect(result.stderr).toContain(
+      "Permission mode auto is not supported by provider codex",
+    );
     await harness.dispose();
   });
 

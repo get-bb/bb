@@ -552,6 +552,21 @@ function readForkThreadCreateSeedFromLocationState(
   ) {
     return null;
   }
+  // History state can outlive a release. The deprecated "workspace-write"
+  // alias maps onto the same workspace sandbox as "accept-edits"; legacy
+  // "readonly" (or any unknown value) invalidates the seed rather than being
+  // silently reinterpreted as a writable mode.
+  const seedPermissionMode =
+    value.permissionMode === "workspace-write"
+      ? "accept-edits"
+      : value.permissionMode === "accept-edits" ||
+          value.permissionMode === "auto" ||
+          value.permissionMode === "full"
+        ? value.permissionMode
+        : null;
+  if (seedPermissionMode === null) {
+    return null;
+  }
   if (
     value.serviceTier !== undefined &&
     typeof value.serviceTier !== "string"
@@ -569,7 +584,7 @@ function readForkThreadCreateSeedFromLocationState(
   return {
     environmentId: value.environmentId,
     model: value.model,
-    permissionMode: value.permissionMode as PermissionMode,
+    permissionMode: seedPermissionMode,
     projectId: value.projectId,
     providerId: value.providerId,
     reasoningLevel: value.reasoningLevel as ReasoningLevel,

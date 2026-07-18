@@ -28,6 +28,8 @@ export const fullRuntimeOptions = {
   reasoningLevel: "medium",
   workflowsEnabled: false,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
 } satisfies AgentRuntimeExecutionOptions;
 
@@ -209,7 +211,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
       supportsServiceTier: false,
       supportsUserQuestion: false,
       supportsFork: false,
-      supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     process: {
       command: "node",
@@ -320,7 +322,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
       supportsServiceTier: false,
       supportsUserQuestion: false,
       supportsFork: false,
-      supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     process: {
       command: "node",

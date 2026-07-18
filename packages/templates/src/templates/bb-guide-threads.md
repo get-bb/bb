@@ -26,7 +26,7 @@ Spawning:
     --base-branch <branch>         Base branch for a new managed worktree
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
-    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
+    --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible (default) or hidden
     --file <path>                  Host-readable absolute or uploaded file path
@@ -35,7 +35,10 @@ Spawning:
     --source-thread <id>           Source thread for fork/side-chat
     --source-seq-end <seq>         Last included source event sequence
 
-  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
+  Execution defaults resolve from explicit flags, live parent execution, project defaults, then the auto product default.
+  accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
+  the same workspace sandbox with provider-native automatic review. full is the
+  explicit sandbox and approval bypass. Plan mode is separate from permissions.
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by

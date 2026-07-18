@@ -12,6 +12,8 @@ import { getAcpAgentProfile } from "./profiles.js";
 const fullProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
@@ -63,6 +65,32 @@ function countChangedLines(diff: string | undefined): {
 }
 
 describe("acp adapter command plans", () => {
+  it("advertises accept-edits and full without automatic review", () => {
+    expect(createAdapter().capabilities.supportedPermissionModes).toEqual([
+      "accept-edits",
+      "full",
+    ]);
+  });
+
+  it("rejects auto when an ACP command bypasses capability validation", () => {
+    const adapter = createAdapter();
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "thread/start",
+        threadId: "thread-1",
+        cwd: "/workspace",
+        options: {
+          ...fullProviderExecutionContext,
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "ask",
+        },
+        instructionMode: "append",
+      }),
+    ).toThrow('does not support permission mode "auto"');
+  });
+
   it("builds thread/start with agent command, policy, and write roots", () => {
     const adapter = createAdapter();
     const plan = adapter.buildCommandPlan({
@@ -71,7 +99,9 @@ describe("acp adapter command plans", () => {
       cwd: "/workspace",
       options: {
         ...fullProviderExecutionContext,
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
         permissionEscalation: "ask",
         instructions: "Stay focused.",
         envVars: { BB_THREAD_ID: "thread-1" },
@@ -86,7 +116,7 @@ describe("acp adapter command plans", () => {
         threadId: "thread-1",
         cwd: "/workspace",
         agent: { command: "agent", args: ["acp"] },
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         permissionEscalation: "ask",
         workspaceWriteRoots: ["/workspace", "/extra-root"],
         envVars: { BB_THREAD_ID: "thread-1" },

@@ -104,7 +104,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface AcpSessionPolicy {
-  permissionMode: "full" | "workspace-write" | "readonly";
+  permissionMode: "accept-edits" | "full";
   permissionEscalation: "ask" | "deny" | null;
   workspaceWriteRoots: string[];
 }
@@ -549,10 +549,8 @@ function permissionCliArgsForMode(
   switch (permissionMode) {
     case "full":
       return permissionCli.full ?? [];
-    case "workspace-write":
+    case "accept-edits":
       return permissionCli.workspaceWrite ?? [];
-    case "readonly":
-      return permissionCli.readonly ?? [];
   }
 }
 
@@ -1368,20 +1366,13 @@ async function handleFsWriteTextFile(
     return;
   }
 
-  if (session.policy.permissionMode === "readonly") {
-    responder.error(
-      -32000,
-      "File writes are denied by BB's readonly permission mode",
-    );
-    return;
-  }
   if (
-    session.policy.permissionMode === "workspace-write" &&
+    session.policy.permissionMode === "accept-edits" &&
     !isPathInsideRoots(parsed.data.path, session.policy.workspaceWriteRoots)
   ) {
     responder.error(
       -32000,
-      `File writes outside the workspace are denied by BB's workspace-write permission mode: ${parsed.data.path}`,
+      `File writes outside the workspace are denied by BB's accept-edits permission mode: ${parsed.data.path}`,
     );
     return;
   }

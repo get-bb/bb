@@ -49,11 +49,13 @@ const presetReasoningLevelSchema = z.enum([
   "xhigh",
   "max",
 ]);
-const presetPermissionModeSchema = z.enum([
-  "readonly",
-  "workspace-write",
+export const PRESET_PERMISSION_MODES = [
+  "accept-edits",
+  "auto",
   "full",
-]);
+] as const;
+export const presetPermissionModeSchema = z.enum(PRESET_PERMISSION_MODES);
+export type PresetPermissionMode = z.infer<typeof presetPermissionModeSchema>;
 const presetEnvironmentKindSchema = z.enum(PRESET_ENVIRONMENT_KINDS);
 const nullablePresetTargetSchema = nonBlankStringSchema.nullable();
 const projectPrefixSchema = z
@@ -234,7 +236,7 @@ export const presetSchema = z
     providerId: z.string(),
     modelId: z.string(),
     reasoningLevel: z.string(),
-    permissionMode: z.string(),
+    permissionMode: presetPermissionModeSchema,
     environmentKind: presetEnvironmentKindSchema,
     baseBranch: nullablePresetTargetSchema,
     machineId: nullablePresetTargetSchema,
@@ -685,7 +687,13 @@ export const tasksRpcContract = defineRpcContract({
     output: z
       .object({
         providers: z.array(
-          z.object({ id: z.string(), name: z.string() }).strict(),
+          z
+            .object({
+              id: z.string(),
+              name: z.string(),
+              supportedPermissionModes: z.array(presetPermissionModeSchema),
+            })
+            .strict(),
         ),
       })
       .strict(),

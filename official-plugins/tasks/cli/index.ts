@@ -112,8 +112,8 @@ Pass --machine to target another enrolled machine explicitly.`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
-  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <mode> [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <mode>] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";

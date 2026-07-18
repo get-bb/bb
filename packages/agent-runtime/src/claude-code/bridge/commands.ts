@@ -3,6 +3,7 @@ import {
   instructionModeValues,
   permissionEscalationValues,
   reasoningLevelValues,
+  runtimePermissionScopeValues,
 } from "@bb/domain";
 import { z } from "zod";
 import { jsonRpcEnvelopeSchema } from "../../shared/bridge-tool-calls.js";
@@ -12,6 +13,7 @@ const bridgeInstructionModeSchema = z.enum(instructionModeValues);
 const bridgePermissionEscalationSchema = z
   .enum(permissionEscalationValues)
   .nullable();
+const bridgePermissionScopeSchema = z.enum(runtimePermissionScopeValues);
 const bridgeReasoningLevelSchema = z.enum(reasoningLevelValues);
 // Omission means the session has no extra writable roots; this keeps older
 // bridge messages compatible and avoids sending an empty protocol field.
@@ -53,6 +55,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
       claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
@@ -75,6 +78,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
       claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
@@ -97,6 +101,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
       claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,

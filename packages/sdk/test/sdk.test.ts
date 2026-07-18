@@ -949,6 +949,51 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("forwards every public permission mode through thread surfaces", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_auto" }, status: 201 },
+      { body: null, status: 204 },
+      { body: { id: "qmsg_full" }, status: 201 },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      environment: {
+        type: "host",
+        hostId: "host_123",
+        workspace: { type: "unmanaged", path: null },
+      },
+      permissionMode: "auto",
+      prompt: "Approve for me",
+    });
+    await sdk.threads.send({
+      threadId: "thr_auto",
+      input: [{ type: "text", text: "Accept edits", mentions: [] }],
+      mode: "start",
+      permissionMode: "accept-edits",
+    });
+    await sdk.threads.queuedMessages.create({
+      threadId: "thr_auto",
+      input: [{ type: "text", text: "Full access", mentions: [] }],
+      permissionMode: "full",
+    });
+
+    expect(
+      queue.requests.map((request) => JSON.parse(request.bodyText ?? "{}")),
+    ).toEqual([
+      expect.objectContaining({ permissionMode: "auto" }),
+      expect.objectContaining({ permissionMode: "accept-edits" }),
+      expect.objectContaining({ permissionMode: "full" }),
+    ]);
+  });
+
   it("preserves explicit thread spawn origin for CLI callers", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_1" }, status: 201 }]);
     const sdk = createBbSdk({

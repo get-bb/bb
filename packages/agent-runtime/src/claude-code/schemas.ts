@@ -180,6 +180,18 @@ export const claudeStatusSystemMessageSchema = claudeSystemMessageSchema
   })
   .passthrough();
 
+export const claudePermissionDeniedSystemMessageSchema =
+  claudeSystemMessageSchema
+    .extend({
+      subtype: z.literal("permission_denied"),
+      tool_name: z.string(),
+      tool_use_id: z.string(),
+      decision_reason_type: z.string().optional(),
+      decision_reason: z.string().optional(),
+      message: z.string(),
+    })
+    .passthrough();
+
 export const claudeCompactBoundarySystemMessageSchema =
   claudeSystemMessageSchema
     .extend({

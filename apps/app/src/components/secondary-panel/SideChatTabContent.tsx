@@ -90,7 +90,6 @@ import {
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import {
-  SIDE_CHAT_PERMISSION_MODE,
   buildSideChatCreateRequest,
   buildSideChatMessageInput,
   resolveSideChatReplyReference,
@@ -331,7 +330,8 @@ function SideChatConversation({
 /**
  * Hosts a message-anchored side chat: the child thread's conversation above the
  * shared `FollowUpPromptBox` composer (the same component the main thread uses)
- * with provider locked to the parent and permission pinned to read-only. The
+ * with provider locked to the parent and permission snapshotted from the source
+ * thread's effective mode at creation. The
  * child thread is created by the user's first submit, so opening a side chat is
  * just a draft surface until the user sends. Once a thread exists, each
  * side-chat agent reply carries a
@@ -393,8 +393,10 @@ export function SideChatTabContent({
   // Build the SAME execution + permission configs the main thread builds (see
   // ThreadDetailPromptArea), seeded from the parent thread while the side chat
   // is a draft and from the child thread after creation. Provider stays locked
-  // to the parent; permission is pinned to "readonly" because a side chat never
-  // writes to the workspace.
+  // to the parent. Permission seeds from the source thread's effective mode and
+  // is snapshotted into the child at creation; after that the child thread's
+  // own default execution options govern, so later parent changes never mutate
+  // an existing side chat.
   const defaultExecutionOptions = executionOptionsQuery.data;
   const threadCreationOptions = useThreadCreationOptions({
     enabled: shouldLoadExecutionOptions,
@@ -405,7 +407,7 @@ export function SideChatTabContent({
     initialModel: defaultExecutionOptions?.model,
     initialServiceTier: defaultExecutionOptions?.serviceTier,
     initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
-    initialPermissionMode: "readonly",
+    initialPermissionMode: defaultExecutionOptions?.permissionMode,
   });
   const {
     executionOptionsRouting,
@@ -436,6 +438,12 @@ export function SideChatTabContent({
   const selectedExecutionServiceTier = supportsServiceTier
     ? serviceTier
     : undefined;
+  // The side chat's effective permission mode: the source thread's effective
+  // mode while the side chat is a draft (`executionOptionsThreadId` is the
+  // parent), then the child thread's own mode once it exists. Sourced straight
+  // from the thread's resolved defaults — not the provider-filtered picker
+  // state — so a slow capabilities load can never widen the snapshot.
+  const sideChatPermissionMode = defaultExecutionOptions?.permissionMode;
   // `tab.threadId` only flips after async create resolves and panel state
   // propagates. Keep the in-flight create promise here so repeated submit
   // attempts share one side-chat thread.
@@ -629,9 +637,18 @@ export function SideChatTabContent({
               : {}),
           }
         : {}),
-      permissionMode: SIDE_CHAT_PERMISSION_MODE,
+      // Omitted while the child's defaults are still loading — the server then
+      // falls back to the thread's own stored default, which is the same value.
+      ...(sideChatPermissionMode !== undefined
+        ? { permissionMode: sideChatPermissionMode }
+        : {}),
     }),
-    [reasoningLevel, selectedExecutionModel, selectedExecutionServiceTier],
+    [
+      reasoningLevel,
+      selectedExecutionModel,
+      selectedExecutionServiceTier,
+      sideChatPermissionMode,
+    ],
   );
   const childTimeline = useThreadTimelineController({
     enabled: childThreadId !== null,
@@ -725,7 +742,11 @@ export function SideChatTabContent({
       if (createThreadPromiseRef.current !== null) {
         return createThreadPromiseRef.current;
       }
-      if (!canCreateSideChatThread || selectedExecutionModel.length === 0) {
+      if (
+        !canCreateSideChatThread ||
+        selectedExecutionModel.length === 0 ||
+        sideChatPermissionMode === undefined
+      ) {
         return null;
       }
       const request = buildSideChatCreateRequest({
@@ -735,6 +756,7 @@ export function SideChatTabContent({
         sourceEnvironment,
         providerId: sourceThread.providerId,
         model: selectedExecutionModel,
+        permissionMode: sideChatPermissionMode,
         reasoningLevel,
         serviceTier: selectedExecutionServiceTier,
         sourceSeqEnd: tab.sourceSeqEnd ?? undefined,
@@ -762,6 +784,7 @@ export function SideChatTabContent({
       reasoningLevel,
       selectedExecutionModel,
       selectedExecutionServiceTier,
+      sideChatPermissionMode,
       sourceEnvironment,
       sourceThread.id,
       sourceThread.projectId,
@@ -1498,10 +1521,11 @@ export function SideChatTabContent({
 
   const permissionConfig = useMemo<ExecutionPermissionConfig>(
     () => ({
-      // Pinned to the same constant the create request uses, so the displayed
-      // label can't drift from the side chat's actual (always read-only) reach.
-      value:
-        inlineEditingQueuedMessage?.permissionMode ?? SIDE_CHAT_PERMISSION_MODE,
+      // Sourced from the same resolved-defaults value the create request
+      // snapshots, so the displayed label can't drift from the permission the
+      // side chat actually runs with. Undefined until defaults load, which
+      // keeps the picker hidden rather than guessing.
+      value: inlineEditingQueuedMessage?.permissionMode ?? sideChatPermissionMode,
       options: permissionModeOptions,
       onChange: noop,
       supported: supportsPermissionModeSelection,
@@ -1509,6 +1533,7 @@ export function SideChatTabContent({
     [
       inlineEditingQueuedMessage?.permissionMode,
       permissionModeOptions,
+      sideChatPermissionMode,
       supportsPermissionModeSelection,
     ],
   );

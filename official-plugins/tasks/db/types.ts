@@ -1,4 +1,5 @@
 import type { TaskSort } from "../shared/pagination.js";
+import type { PresetPermissionMode } from "../shared/contract.js";
 
 export const TASK_STATUSES = [
   "backlog",
@@ -128,7 +129,7 @@ export interface Preset {
   providerId: string;
   modelId: string;
   reasoningLevel: string;
-  permissionMode: string;
+  permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
   machineId: string | null;
@@ -284,7 +285,7 @@ export interface CreatePresetInput {
   providerId: string;
   modelId: string;
   reasoningLevel: string;
-  permissionMode: string;
+  permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
   machineId: string | null;
@@ -297,7 +298,7 @@ export interface UpdatePresetInput {
   providerId?: string;
   modelId?: string;
   reasoningLevel?: string;
-  permissionMode?: string;
+  permissionMode?: PresetPermissionMode;
   environmentKind?: PresetEnvironmentKind;
   baseBranch?: string | null;
   machineId?: string | null;

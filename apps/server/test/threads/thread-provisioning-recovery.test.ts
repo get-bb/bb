@@ -41,7 +41,7 @@ const THREAD_START_EXECUTION = {
   model: "gpt-5",
   serviceTier: "default",
   reasoningLevel: "medium",
-  permissionMode: "workspace-write",
+  permissionMode: "accept-edits",
   source: "client/turn/requested",
 } satisfies ResolvedThreadExecutionOptions;
 

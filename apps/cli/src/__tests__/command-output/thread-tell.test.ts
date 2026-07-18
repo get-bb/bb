@@ -66,7 +66,7 @@ describe("bb thread tell command output", () => {
         "--reasoning-level",
         "high",
         "--permission-mode",
-        "workspace-write",
+        "accept-edits",
       ],
       register,
     );
@@ -79,7 +79,33 @@ describe("bb thread tell command output", () => {
         model: "gpt-5.5",
         serviceTier: "fast",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
+      },
+    });
+  });
+
+  it("bb thread tell forwards automatic review mode", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "tell",
+        "thread-auto-review",
+        "hello",
+        "--permission-mode",
+        "auto",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-auto-review" },
+      json: {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        mode: "queue-if-active",
+        permissionMode: "auto",
       },
     });
   });

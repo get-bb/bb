@@ -192,8 +192,8 @@ function createFollowUpPromptBoxProps(
       },
     },
     permission: {
-      value: "readonly",
-      options: [{ value: "readonly", label: "Read" }],
+      value: "accept-edits",
+      options: [{ value: "accept-edits", label: "Accept Edits" }],
       onChange: vi.fn(),
       supported: true,
     },

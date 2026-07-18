@@ -48,7 +48,7 @@ describe("project execution defaults persistence", () => {
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
         input: textInput("Reuse one-off"),
         environment: { type: "reuse", environmentId: environment.id },
@@ -94,7 +94,7 @@ describe("project execution defaults persistence", () => {
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
         input: textInput("Set new defaults"),
         environment: {
@@ -115,7 +115,7 @@ describe("project execution defaults persistence", () => {
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
       });
     });
@@ -153,9 +153,9 @@ describe("project execution defaults persistence", () => {
         serviceTier: "default",
       });
 
-      // A side chat forces permissionMode "readonly" and inherits a model the
-      // user never picked in the composer; creating it must not reshape the
-      // project's stored defaults (like the reuse carve-out above).
+      // A side chat snapshots the source thread's effective permission and
+      // inherits a model the user never picked in the composer; creating it
+      // must not reshape the project's stored defaults.
       await createThreadFromRequest(harness.deps, {
         origin: "app",
         childOrigin: "side-chat",
@@ -165,7 +165,7 @@ describe("project execution defaults persistence", () => {
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "readonly",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
         input: textInput("Quick question"),
         environment: {

@@ -27,7 +27,6 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ConfirmDialog } from "../../components/confirm-dialog.js";
 
 /**
  * PR pill on a thread card: a real link to GitHub when the thread's
@@ -166,7 +165,6 @@ export function DispatchControl({
   const rpc = useRpc<DelegationRpcContract>();
   const tasksRpc = useTasksRpc();
   const [dispatching, setDispatching] = useState(false);
-  const [readonlyConfirm, setReadonlyConfirm] = useState<Preset | null>(null);
   const [lastPresetId, setLastPresetId] = useState(loadLastPresetId);
   // Keyed remount resets the create dialog's draft per open.
   const [createDialogKey, setCreateDialogKey] = useState<number | null>(null);
@@ -185,8 +183,7 @@ export function DispatchControl({
   const pickPreset = (preset: Preset) => {
     setLastPresetId(preset.id);
     storeLastPresetId(preset.id);
-    if (preset.permissionMode === "readonly") setReadonlyConfirm(preset);
-    else void dispatch(preset.id);
+    void dispatch(preset.id);
   };
 
   // bg-primary (not the default bg-foreground): custom palettes like Nord
@@ -279,19 +276,6 @@ export function DispatchControl({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ConfirmDialog
-        open={readonlyConfirm !== null}
-        onOpenChange={(open) => {
-          if (!open) setReadonlyConfirm(null);
-        }}
-        title={`Dispatch with “${readonlyConfirm?.name ?? ""}”?`}
-        description="This preset is read-only: the agent can inspect the workspace but can't run bb tasks commands unattended, so it won't update this task on its own."
-        confirmLabel="Dispatch anyway"
-        onConfirm={() => {
-          const preset = readonlyConfirm;
-          if (preset) void dispatch(preset.id);
-        }}
-      />
     </>
   );
 }

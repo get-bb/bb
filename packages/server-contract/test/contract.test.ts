@@ -1043,6 +1043,60 @@ describe("server-contract canonical schemas", () => {
     });
   });
 
+  it("normalizes the deprecated writable alias without widening readonly", () => {
+    const createBase = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app" as const,
+      input: [{ type: "text" as const, text: "Ship it" }],
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+
+    expect(
+      createThreadRequestSchema.parse({
+        ...createBase,
+        permissionMode: "workspace-write",
+      }).permissionMode,
+    ).toBe("accept-edits");
+    expect(
+      sendMessageRequestSchema.parse({
+        input: [{ type: "text", text: "Follow up" }],
+        mode: "queue-if-active",
+        permissionMode: "workspace-write",
+      }).permissionMode,
+    ).toBe("accept-edits");
+    expect(
+      createQueuedMessageRequestSchema.parse({
+        input: [{ type: "text", text: "Later" }],
+        permissionMode: "workspace-write",
+      }).permissionMode,
+    ).toBe("accept-edits");
+
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...createBase,
+        permissionMode: "readonly",
+      }),
+    ).toThrow();
+    expect(() =>
+      sendMessageRequestSchema.parse({
+        input: [{ type: "text", text: "Follow up" }],
+        mode: "queue-if-active",
+        permissionMode: "readonly",
+      }),
+    ).toThrow();
+    expect(() =>
+      createQueuedMessageRequestSchema.parse({
+        input: [{ type: "text", text: "Later" }],
+        permissionMode: "readonly",
+      }),
+    ).toThrow();
+  });
+
   it("keeps only intentional optional request fields", () => {
     expect(
       createThreadRequestSchema.parse({

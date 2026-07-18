@@ -26,6 +26,7 @@ import {
   claudeCompactBoundarySystemMessageSchema,
   claudeModelFallbackSystemMessageSchema,
   claudeModelRefusalNoFallbackSystemMessageSchema,
+  claudePermissionDeniedSystemMessageSchema,
   claudeRateLimitEventSchema,
   claudeResultMessageSchema,
   claudeSdkMessageTypeSchema,
@@ -532,6 +533,27 @@ export function translateClaudeSdkMessage(
           details:
             noFallbackMessage.data.content ??
             "The selected model refused the request and no fallback model was available.",
+        });
+        return events;
+      }
+
+      const permissionDeniedMessage =
+        claudePermissionDeniedSystemMessageSchema.safeParse(args.event);
+      if (permissionDeniedMessage.success) {
+        const message = permissionDeniedMessage.data;
+        const reason = message.decision_reason ?? message.message;
+        events.push({
+          type: "provider/warning",
+          threadId,
+          providerThreadId: "",
+          scope: state.currentTurnId
+            ? turnScope(state.currentTurnId)
+            : threadScope(),
+          category: "general",
+          summary: `${message.tool_name} was denied automatically`,
+          details: message.decision_reason_type
+            ? `${reason} (${message.decision_reason_type})`
+            : reason,
         });
         return events;
       }

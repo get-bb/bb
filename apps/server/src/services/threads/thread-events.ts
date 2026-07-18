@@ -29,6 +29,7 @@ import type {
   ClientTurnLifecycleEventData,
   PromptInput,
   ProvisioningTranscriptEntry,
+  RecordedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
   TurnRequestEventData,
   TurnRequestTarget,
@@ -972,7 +973,7 @@ export function getProviderThreadIdAtOrBeforeSequence(
 export function getLastExecutionOptions(
   deps: Pick<AppDeps, "db">,
   threadId: string,
-): ResolvedThreadExecutionOptions | null {
+): RecordedThreadExecutionOptions | null {
   const row = getLastStoredTurnRequestEvent(deps.db, threadId);
 
   return row
@@ -988,7 +989,7 @@ export function getLastExecutionOptions(
 export function getTurnExecutionOptions(
   deps: Pick<AppDeps, "db">,
   args: { threadId: string; turnId: string },
-): ResolvedThreadExecutionOptions | null {
+): RecordedThreadExecutionOptions | null {
   const row = getStoredTurnRequestEventForTurn(deps.db, args);
 
   return row

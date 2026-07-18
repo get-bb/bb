@@ -427,7 +427,7 @@ function buildOptimisticQueuedMessage({
     permissionMode:
       request.permissionMode ??
       defaultExecutionOptions?.permissionMode ??
-      "readonly",
+      "auto",
     serviceTier:
       request.serviceTier ?? defaultExecutionOptions?.serviceTier ?? "default",
     groupWithNext: false,

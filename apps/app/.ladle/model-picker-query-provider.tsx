@@ -20,11 +20,7 @@ import {
   STORY_SERVICE_TIER_SUPPORT,
 } from "./story-fixtures";
 
-const supportedPermissionModes = [
-  "full",
-  "workspace-write",
-  "readonly",
-] as const;
+const supportedPermissionModes = ["accept-edits", "auto", "full"] as const;
 
 const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
   string,

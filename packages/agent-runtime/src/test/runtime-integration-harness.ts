@@ -95,10 +95,10 @@ export type RuntimeOptionsTemplate = Omit<
 
 export type RuntimeOptionsPreset =
   | "full"
-  | "readonly-ask"
-  | "readonly-deny"
-  | "workspace-write-ask"
-  | "workspace-write-deny";
+  | "accept-edits-ask"
+  | "accept-edits-deny"
+  | "auto-ask"
+  | "auto-deny";
 
 export interface ResolveRuntimeOptionsArgs {
   ctx: TestContext;
@@ -111,6 +111,8 @@ export const fullRuntimeOptionsTemplate = {
   reasoningLevel: "medium",
   workflowsEnabled: false,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
 } satisfies RuntimeOptionsTemplate;
 
@@ -118,7 +120,9 @@ export const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
-  permissionMode: "workspace-write",
+  permissionMode: "accept-edits",
+  permissionScope: "workspace",
+  approvalReviewer: "user",
   permissionEscalation: "ask",
 } satisfies RuntimeOptionsTemplate;
 
@@ -126,7 +130,9 @@ export const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
-  permissionMode: "workspace-write",
+  permissionMode: "accept-edits",
+  permissionScope: "workspace",
+  approvalReviewer: "user",
   permissionEscalation: "deny",
 } satisfies RuntimeOptionsTemplate;
 
@@ -134,7 +140,9 @@ export const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
-  permissionMode: "readonly",
+  permissionMode: "auto",
+  permissionScope: "workspace",
+  approvalReviewer: "automatic",
   permissionEscalation: "ask",
 } satisfies RuntimeOptionsTemplate;
 
@@ -142,16 +150,18 @@ export const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
-  permissionMode: "readonly",
+  permissionMode: "auto",
+  permissionScope: "workspace",
+  approvalReviewer: "automatic",
   permissionEscalation: "deny",
 } satisfies RuntimeOptionsTemplate;
 
 export const runtimeOptionsTemplates = {
   full: fullRuntimeOptionsTemplate,
-  "readonly-ask": readonlyAskRuntimeOptionsTemplate,
-  "readonly-deny": readonlyDenyRuntimeOptionsTemplate,
-  "workspace-write-ask": workspaceWriteAskRuntimeOptionsTemplate,
-  "workspace-write-deny": workspaceWriteDenyRuntimeOptionsTemplate,
+  "auto-ask": readonlyAskRuntimeOptionsTemplate,
+  "auto-deny": readonlyDenyRuntimeOptionsTemplate,
+  "accept-edits-ask": workspaceWriteAskRuntimeOptionsTemplate,
+  "accept-edits-deny": workspaceWriteDenyRuntimeOptionsTemplate,
 } satisfies Record<RuntimeOptionsPreset, RuntimeOptionsTemplate>;
 
 const INTEGRATION_REASONING_LEVEL = "low" satisfies ReasoningLevel;

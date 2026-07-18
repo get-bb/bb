@@ -50,9 +50,24 @@ const acceptedParserCases = [
     expected: undefined,
   },
   {
-    label: "workspace-write permission mode",
+    label: "accept-edits permission mode",
+    parse: () => parsePermissionMode("accept-edits"),
+    expected: "accept-edits",
+  },
+  {
+    label: "auto permission mode",
+    parse: () => parsePermissionMode("auto"),
+    expected: "auto",
+  },
+  {
+    label: "full permission mode",
+    parse: () => parsePermissionMode("full"),
+    expected: "full",
+  },
+  {
+    label: "deprecated workspace-write permission mode",
     parse: () => parsePermissionMode("workspace-write"),
-    expected: "workspace-write",
+    expected: "accept-edits",
   },
 ] as const;
 
@@ -281,7 +296,13 @@ describe("parseServiceTier", () => {
 describe("parsePermissionMode", () => {
   it("throws for invalid mode", () => {
     expect(() => parsePermissionMode("readwrite")).toThrow(
-      "Invalid permission mode 'readwrite'. Expected full, workspace-write, or readonly.",
+      "Invalid permission mode 'readwrite'. Expected accept-edits, auto, or full.",
+    );
+  });
+
+  it("does not widen legacy readonly mode", () => {
+    expect(() => parsePermissionMode("readonly")).toThrow(
+      "Invalid permission mode 'readonly'. Expected accept-edits, auto, or full.",
     );
   });
 });

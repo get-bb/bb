@@ -79,7 +79,7 @@ describe("project-execution-defaults", () => {
       providerId: "codex",
       model: "gpt-5-mini",
       reasoningLevel: "high",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       serviceTier: "fast",
     });
 
@@ -91,7 +91,7 @@ describe("project-execution-defaults", () => {
       providerId: "codex",
       model: "gpt-5-mini",
       reasoningLevel: "high",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       serviceTier: "fast",
     });
   });
@@ -112,7 +112,7 @@ describe("project-execution-defaults", () => {
       providerId: "claude-code",
       model: "claude-opus-4-1",
       reasoningLevel: "high",
-      permissionMode: "workspace-write",
+      permissionMode: "auto",
       serviceTier: "fast",
     });
 

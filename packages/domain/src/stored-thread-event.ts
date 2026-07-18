@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { resolvedThreadExecutionOptionsSchema } from "./shared-types.js";
 import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
@@ -100,7 +99,6 @@ const storedTurnRequestEventDataSchema = turnRequestEventDataSchema.extend({
   // backfill migration — same pattern as `senderThreadId`.
   systemMessageKind: systemMessageKindSchema.default("unlabeled"),
   systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
-  execution: resolvedThreadExecutionOptionsSchema,
 });
 
 function parseStoredTurnRequestEventData(

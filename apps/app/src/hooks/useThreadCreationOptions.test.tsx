@@ -37,7 +37,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           supportsServiceTier: true,
           supportsUserQuestion: true,
           supportsFork: true,
-          supportedPermissionModes: ["readonly", "workspace-write", "full"],
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
         },
       },
       {
@@ -52,7 +52,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           supportsServiceTier: true,
           supportsUserQuestion: true,
           supportsFork: true,
-          supportedPermissionModes: ["readonly", "workspace-write", "full"],
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
         },
       },
     ],
@@ -174,7 +174,8 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.selectedModel).toBe("global-model");
       expect(result.current.serviceTier).toBe("default");
       expect(result.current.reasoningLevel).toBe("high");
-      expect(result.current.permissionMode).toBe("workspace-write");
+      // Stored legacy "workspace-write" migrates to "accept-edits" on read.
+      expect(result.current.permissionMode).toBe("accept-edits");
       expect(result.current.environmentSelectionValue).toBe(
         "host:project-host:local",
       );
@@ -221,7 +222,7 @@ describe("useThreadCreationOptions", () => {
           initialModel: "global-model",
           initialServiceTier: "default",
           initialReasoningLevel: "medium",
-          initialPermissionMode: "workspace-write",
+          initialPermissionMode: "accept-edits",
         }),
       { wrapper },
     );

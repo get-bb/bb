@@ -223,6 +223,8 @@ function threadStartCommand(
       reasoningLevel: "medium",
       workflowsEnabled: false,
       permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
       permissionEscalation: null,
     },
     instructions: "Be a helpful coding agent.",
@@ -248,6 +250,8 @@ function turnSubmitCommand(
       reasoningLevel: "medium",
       workflowsEnabled: false,
       permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
       permissionEscalation: null,
     },
     resumeContext: {

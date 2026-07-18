@@ -133,7 +133,7 @@ describe("resolveSideChatReplyReference", () => {
 });
 
 describe("buildSideChatCreateRequest", () => {
-  it("builds a first-message create request for a read-only side chat", () => {
+  it("builds a first-message create request snapshotting the source thread's mode", () => {
     const request = buildSideChatCreateRequest({
       input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
@@ -141,6 +141,7 @@ describe("buildSideChatCreateRequest", () => {
       sourceEnvironment: makeEnvironment(),
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
       sourceSeqEnd: 7,
@@ -151,9 +152,9 @@ describe("buildSideChatCreateRequest", () => {
       projectId: "proj_test",
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
-      permissionMode: "readonly",
       sourceSeqEnd: 7,
       sourceThreadId: "thr_main",
       originKind: "side-chat",
@@ -170,7 +171,7 @@ describe("buildSideChatCreateRequest", () => {
     });
   });
 
-  it("links the side chat to the main thread as a read-only same-project child", () => {
+  it("links the side chat to the main thread as a same-project child", () => {
     const request = buildSideChatCreateRequest({
       input: [{ type: "text", text: "Why this approach?", mentions: [] }],
       projectId: "proj_test",
@@ -178,6 +179,7 @@ describe("buildSideChatCreateRequest", () => {
       sourceEnvironment: makeEnvironment(),
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
       title: "Why this approach?",
@@ -187,9 +189,9 @@ describe("buildSideChatCreateRequest", () => {
       projectId: "proj_test",
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
-      permissionMode: "readonly",
       sourceThreadId: "thr_main",
       originKind: "side-chat",
       startedOnBehalfOf: null,
@@ -206,6 +208,7 @@ describe("buildSideChatCreateRequest", () => {
       }),
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
       title: "Why this approach?",
@@ -232,6 +235,7 @@ describe("buildSideChatCreateRequest", () => {
       sourceEnvironment: makeEnvironment({ branchName: null }),
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
       title: "Why this approach?",
@@ -254,6 +258,7 @@ describe("buildSideChatCreateRequest", () => {
       sourceEnvironment: null,
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: undefined,
       title: "Why this approach?",
@@ -280,6 +285,7 @@ describe("buildSideChatCreateRequest", () => {
       }),
       providerId: "codex",
       model: "gpt-5",
+      permissionMode: "auto",
       reasoningLevel: "high",
       serviceTier: "fast",
       title: "Why this approach?",

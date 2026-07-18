@@ -92,7 +92,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: true,
   supportsUserQuestion: false,
   supportsFork: true,
-  supportedPermissionModes: ["full", "workspace-write", "readonly"],
+  supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
 const CLAUDE_CAPABILITIES: ProviderCapabilities = {
@@ -101,7 +101,7 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: false,
   supportsUserQuestion: true,
   supportsFork: true,
-  supportedPermissionModes: ["full", "workspace-write", "readonly"],
+  supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
 const PI_CAPABILITIES: ProviderCapabilities = {
@@ -158,7 +158,7 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   // ACP has no session-fork primitive; the adapter has no thread/fork handler,
   // so forks are blocked at the server boundary rather than failing at runtime.
   supportsFork: false,
-  supportedPermissionModes: ["full", "workspace-write", "readonly"],
+  supportedPermissionModes: ["accept-edits", "full"],
 };
 
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {

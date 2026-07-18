@@ -74,7 +74,7 @@ describe("useForkThreadFromMessage", () => {
   it("opens the root composer with the source thread display title in the fork seed", async () => {
     mocks.fetchQuery.mockResolvedValue({
       model: "gpt-5",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       reasoningLevel: "high",
       serviceTier: "fast",
     });
@@ -106,7 +106,7 @@ describe("useForkThreadFromMessage", () => {
     expect(seed).toMatchObject({
       environmentId: "env_source",
       model: "gpt-5",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       projectId: "proj_source",
       providerId: "codex",
       reasoningLevel: "high",

@@ -1237,6 +1237,11 @@ export function createAcpProviderAdapter(
       ...(profile.env ?? {}),
       ...(command.options.envVars ?? {}),
     };
+    if (command.options.permissionMode === "auto") {
+      throw new Error(
+        `Provider "${providerInfo.id}" does not support permission mode "auto".`,
+      );
+    }
     return {
       threadId: command.threadId,
       cwd,

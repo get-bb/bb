@@ -451,7 +451,9 @@ rl.on("line", (line) => {
     const workspaceWriteOptions = {
       ...fullRuntimeOptions,
       permissionEscalation: "ask",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
+      permissionScope: "workspace",
+      approvalReviewer: "user",
     } satisfies AgentRuntimeExecutionOptions;
 
     writeFileSync(
@@ -530,6 +532,102 @@ rl.on("line", (line) => {
           writableRoots: fixture.expectedWritableRoots,
         },
         threadId: "codex-thread-runtime",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("keeps Codex automatic review on-request for agent-initiated runtime commands", async () => {
+    const providerScriptPath = join(tmpDir, "codex-auto-review-provider.cjs");
+    const threadStartLogPath = join(tmpDir, "auto-thread-start.json");
+    const turnStartLogPath = join(tmpDir, "auto-turn-start.json");
+    const agentInitiatedOptions = {
+      ...fullRuntimeOptions,
+      approvalReviewer: "automatic",
+      permissionEscalation: "deny",
+      permissionMode: "auto",
+      permissionScope: "workspace",
+    } satisfies AgentRuntimeExecutionOptions;
+
+    writeFileSync(
+      providerScriptPath,
+      `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const threadStartLogPath = ${JSON.stringify(threadStartLogPath)};
+const turnStartLogPath = ${JSON.stringify(turnStartLogPath)};
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/start") {
+    fs.writeFileSync(threadStartLogPath, JSON.stringify(message.params), "utf8");
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { thread: { id: "codex-auto-review-thread" } },
+    });
+    return;
+  }
+  if (message.method === "turn/start") {
+    fs.writeFileSync(turnStartLogPath, JSON.stringify(message.params), "utf8");
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+  }
+});
+`,
+      "utf8",
+    );
+
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () =>
+        createCodexProviderAdapter({
+          additionalWorkspaceWriteRoots: [],
+          processArgs: [providerScriptPath],
+          processCommand: "node",
+        }),
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        options: agentInitiatedOptions,
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "t1",
+      });
+      expect(JSON.parse(readFileSync(threadStartLogPath, "utf8"))).toMatchObject(
+        {
+          approvalPolicy: "on-request",
+          approvalsReviewer: "auto_review",
+          sandbox: "workspace-write",
+        },
+      );
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224v",
+        input: [promptTextInput({ text: "inspect and edit" })],
+        options: agentInitiatedOptions,
+        threadId: "t1",
+      });
+      expect(JSON.parse(readFileSync(turnStartLogPath, "utf8"))).toMatchObject({
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        sandboxPolicy: { type: "workspaceWrite" },
       });
     } finally {
       await runtime.shutdown();

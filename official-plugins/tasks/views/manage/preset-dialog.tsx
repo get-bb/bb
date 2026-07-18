@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { Preset } from "../../shared/contract.js";
-import { PRESET_ENVIRONMENT_KINDS } from "../../shared/contract.js";
+import type {
+  Preset,
+  PresetPermissionMode,
+} from "../../shared/contract.js";
+import {
+  PRESET_ENVIRONMENT_KINDS,
+  PRESET_PERMISSION_MODES,
+} from "../../shared/contract.js";
 import type { TasksRpc } from "../../shell/data.js";
 import { useTasksQuery } from "../../shell/data.js";
 import {
@@ -31,19 +37,15 @@ export const REASONING_LEVELS = [
   "xhigh",
   "max",
 ] as const;
-export const PERMISSION_MODES = [
-  "readonly",
-  "workspace-write",
-  "full",
-] as const;
+export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
-export type PermissionMode = (typeof PERMISSION_MODES)[number];
+export type PermissionMode = PresetPermissionMode;
 export type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
 export const PERMISSION_LABELS: Record<PermissionMode, string> = {
-  readonly: "Read-only",
-  "workspace-write": "Workspace write",
-  full: "Full access",
+  "accept-edits": "Accept Edits",
+  auto: "Approve for me",
+  full: "Full Access",
 };
 
 export const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
@@ -83,6 +85,16 @@ function isReasoningLevel(value: string): value is ReasoningLevel {
   return (REASONING_LEVELS as readonly string[]).includes(value);
 }
 
+function isPermissionMode(value: string): value is PermissionMode {
+  return (PERMISSION_MODES as readonly string[]).includes(value);
+}
+
+export function defaultPermissionMode(
+  modes: readonly PermissionMode[],
+): PermissionMode {
+  return modes.includes("auto") ? "auto" : "full";
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -106,7 +118,7 @@ const EMPTY_PRESET_DRAFT: PresetDraft = {
   providerId: "",
   modelId: "",
   reasoningLevel: "medium",
-  permissionMode: "workspace-write",
+  permissionMode: "auto",
   environmentKind: "project-default",
   baseBranch: "",
   machineId: "",
@@ -125,7 +137,7 @@ function presetDraft(preset: Preset): PresetDraft {
     providerId: preset.providerId,
     modelId: preset.modelId,
     reasoningLevel: reasoning ?? "medium",
-    permissionMode: permission ?? "workspace-write",
+    permissionMode: permission ?? "full",
     environmentKind: preset.environmentKind,
     baseBranch: preset.baseBranch ?? "",
     machineId: preset.machineId ?? "",
@@ -229,6 +241,15 @@ export function PresetDialog({
     [providerForModels],
   );
   const models = modelsQuery.data?.models;
+  const providerPermissionModes =
+    !providerCustom && draft.providerId !== ""
+      ? (providers
+          ?.find((provider) => provider.id === draft.providerId)
+          ?.supportedPermissionModes.filter(isPermissionMode) ?? [])
+      : [];
+  const permissionOptions: readonly PermissionMode[] = providerCustom
+    ? PERMISSION_MODES
+    : providerPermissionModes;
   const serverLevels = (modelsQuery.data?.reasoningLevels ?? []).filter(
     isReasoningLevel,
   );
@@ -267,6 +288,13 @@ export function PresetDialog({
     }
   }, [reasoningOptions.join(","), draft.reasoningLevel]);
 
+  useEffect(() => {
+    if (permissionOptions.length === 0) return;
+    if (!permissionOptions.includes(draft.permissionMode)) {
+      set("permissionMode", defaultPermissionMode(permissionOptions));
+    }
+  }, [permissionOptions.join(","), draft.permissionMode]);
+
   const canSubmit =
     draft.name.trim() !== "" &&
     draft.providerId.trim() !== "" &&
@@ -301,6 +329,7 @@ export function PresetDialog({
                   if (value === CUSTOM_VALUE) {
                     setProviderCustom(true);
                     setModelCustom(true);
+                    set("permissionMode", "full");
                     return;
                   }
                   setProviderCustom(false);
@@ -438,7 +467,7 @@ export function PresetDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PERMISSION_MODES.map((mode) => (
+                  {permissionOptions.map((mode) => (
                     <SelectItem key={mode} value={mode}>
                       {PERMISSION_LABELS[mode]}
                     </SelectItem>

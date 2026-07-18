@@ -87,7 +87,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
         providerId: "codex",
         model: "gpt-5.5",
         reasoningLevel: "medium",
-        permissionMode: "full",
+        permissionMode: "auto",
         serviceTier: "default",
       },
     });
@@ -111,7 +111,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
   it("reuses matching stored defaults", () => {
     const storedDefaults = makeDefaults({
       model: "gpt-5.1",
-      permissionMode: "readonly",
+      permissionMode: "accept-edits",
     });
 
     expect(
@@ -240,7 +240,7 @@ describe("resolveCreateThreadEnvironment", () => {
 });
 
 describe("resolveThreadDefaultPermissionMode", () => {
-  it("uses the full permission default for non-agent providers", () => {
+  it("uses the auto permission default for non-agent providers", () => {
     expect(
       resolveThreadDefaultPermissionMode({
         thread: makeThread({
@@ -248,7 +248,7 @@ describe("resolveThreadDefaultPermissionMode", () => {
           providerId: "custom-provider",
         }),
       }),
-    ).toBe("full");
+    ).toBe("auto");
   });
 
   it("uses full for Pi threads", () => {
@@ -262,7 +262,18 @@ describe("resolveThreadDefaultPermissionMode", () => {
     ).toBe("full");
   });
 
-  it("uses full for Codex threads", () => {
+  it("uses full for ACP threads when the Auto default is unsupported", () => {
+    expect(
+      resolveThreadDefaultPermissionMode({
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "acp-my-agent",
+        }),
+      }),
+    ).toBe("full");
+  });
+
+  it("uses auto for Codex threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
         thread: makeThread({
@@ -270,12 +281,12 @@ describe("resolveThreadDefaultPermissionMode", () => {
           providerId: "codex",
         }),
       }),
-    ).toBe("full");
+    ).toBe("auto");
   });
 });
 
 describe("resolveThreadExecutionPermissionMode", () => {
-  it("forces side chats to readonly before requested or stored permissions", () => {
+  it("honors the permission snapshot requested for a side chat", () => {
     expect(
       resolveThreadExecutionPermissionMode({
         requestedPermissionMode: "full",
@@ -285,31 +296,31 @@ describe("resolveThreadExecutionPermissionMode", () => {
           originKind: "side-chat",
         }),
       }),
-    ).toBe("readonly");
+    ).toBe("full");
   });
 
   it("prefers requested permission modes over every fallback", () => {
     expect(
       resolveThreadExecutionPermissionMode({
-        requestedPermissionMode: "readonly",
+        requestedPermissionMode: "auto",
         lastExecutionPermissionMode: "workspace-write",
         projectExecutionPermissionMode: "full",
         thread: makeThread(),
       }),
-    ).toBe("readonly");
+    ).toBe("auto");
   });
 
-  it("uses the last execution permission mode before project or policy defaults", () => {
+  it("maps a legacy readonly execution to Accept Edits for future work", () => {
     expect(
       resolveThreadExecutionPermissionMode({
         lastExecutionPermissionMode: "readonly",
         projectExecutionPermissionMode: "full",
         thread: makeThread(),
       }),
-    ).toBe("readonly");
+    ).toBe("accept-edits");
   });
 
-  it("inherits live parent execution permission before project defaults", () => {
+  it("maps a legacy readonly parent execution before inheriting it", () => {
     expect(
       resolveThreadExecutionPermissionMode({
         parentThread: makeParentThread(),
@@ -320,7 +331,18 @@ describe("resolveThreadExecutionPermissionMode", () => {
           providerId: "codex",
         }),
       }),
-    ).toBe("readonly");
+    ).toBe("accept-edits");
+  });
+
+  it("resolves an existing legacy readonly side chat from its source", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        lastExecutionPermissionMode: "readonly",
+        projectExecutionPermissionMode: "accept-edits",
+        sourceThreadEffectivePermissionMode: "full",
+        thread: makeThread({ originKind: "side-chat" }),
+      }),
+    ).toBe("full");
   });
 
   it("uses project permission defaults for child threads without parent execution history", () => {
@@ -341,7 +363,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
       resolveThreadExecutionPermissionMode({
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "workspace-write",
-        projectExecutionPermissionMode: "readonly",
+        projectExecutionPermissionMode: "accept-edits",
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "pi",
@@ -356,21 +378,21 @@ describe("resolveThreadExecutionPermissionMode", () => {
         parentThread: makeParentThread({
           deletedAt: Date.now(),
         }),
-        projectExecutionPermissionMode: "readonly",
+        projectExecutionPermissionMode: "accept-edits",
         thread: makeThread({
           parentThreadId: "thr-deleted-parent-1",
           providerId: "codex",
         }),
       }),
-    ).toBe("readonly");
+    ).toBe("accept-edits");
   });
 
   it("still uses project permission defaults for root threads", () => {
     expect(
       resolveThreadExecutionPermissionMode({
-        projectExecutionPermissionMode: "readonly",
+        projectExecutionPermissionMode: "accept-edits",
         thread: makeThread(),
       }),
-    ).toBe("readonly");
+    ).toBe("accept-edits");
   });
 });

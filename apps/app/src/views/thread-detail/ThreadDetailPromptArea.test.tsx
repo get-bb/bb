@@ -263,7 +263,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
       modelLoadFailed: false,
       modelOptions: [],
       moreModelOptions: [],
-      permissionMode: "readonly",
+      permissionMode: "auto",
       permissionModeOptions: [],
       providerOptions: [],
       reasoningLevel: "medium",
@@ -365,7 +365,7 @@ function makeQueuedMessage(
     content: [{ type: "text", text: "Already queued", mentions: [] }],
     model: "gpt-5",
     reasoningLevel: "medium",
-    permissionMode: "readonly",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,
@@ -495,7 +495,7 @@ describe("ThreadDetailPromptArea", () => {
   it("updates an inline-edited queue item without touching the bottom draft", async () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
-      permissionMode: "readonly",
+      permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -547,7 +547,7 @@ describe("ThreadDetailPromptArea", () => {
   it("shows the queued execution values as read-only while editing", () => {
     mocks.defaultExecutionOptions = {
       model: "bottom-model",
-      permissionMode: "readonly",
+      permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
@@ -728,7 +728,7 @@ describe("ThreadDetailPromptArea", () => {
   it("blocks submit while pending interactions are initially unknown", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
-      permissionMode: "readonly",
+      permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",

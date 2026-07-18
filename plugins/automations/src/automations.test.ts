@@ -52,7 +52,7 @@ function createScheduledAutomation(
       prompt: "do it",
       providerId: "codex",
       model: "gpt-5",
-      permissionMode: "readonly",
+      permissionMode: "accept-edits",
       environment: { type: "project-default" },
     },
     origin: "human",
@@ -77,7 +77,7 @@ function createOnceAutomation(db: Db, nextRunAt: number, id = "auto_once") {
       prompt: "do it once",
       providerId: "codex",
       model: "gpt-5",
-      permissionMode: "readonly",
+      permissionMode: "accept-edits",
       environment: { type: "project-default" },
     },
     origin: "human",
@@ -85,6 +85,49 @@ function createOnceAutomation(db: Db, nextRunAt: number, id = "auto_once") {
     nextRunAt,
   });
 }
+
+describe("data migrations", () => {
+  it("migrates stored agent automations to current permission modes", () => {
+    const db = createTestDb();
+    const insert = db.prepare(
+      `INSERT INTO automations (
+         id, project_id, name, enabled, trigger_type, trigger_config,
+         run_mode, execution, origin, created_at, updated_at
+       ) VALUES (?, 'proj_test', ?, 1, 'schedule', ?, 'agent', ?, 'human', 1, 1)`,
+    );
+    const trigger = JSON.stringify({
+      triggerType: "schedule",
+      cron: "* * * * *",
+      timezone: "UTC",
+    });
+    for (const mode of ["workspace-write", "readonly"]) {
+      insert.run(
+        `auto_${mode}`,
+        mode,
+        trigger,
+        JSON.stringify({
+          mode: "agent",
+          prompt: "legacy",
+          providerId: "codex",
+          model: "gpt-5",
+          permissionMode: mode,
+          environment: { type: "project-default" },
+        }),
+      );
+    }
+
+    db.exec(migrations[1] ?? "");
+
+    const modes = db
+      .prepare<[], { permissionMode: string }>(
+        `SELECT json_extract(execution, '$.permissionMode') AS permissionMode
+         FROM automations ORDER BY id`,
+      )
+      .all()
+      .map((row) => row.permissionMode);
+    expect(modes).toEqual(["accept-edits", "accept-edits"]);
+  });
+});
 
 describe("schedule helpers", () => {
   it("computes cron next runs with timezone", () => {
@@ -334,7 +377,7 @@ describe("automation service", () => {
           prompt: "hello",
           providerId: "codex",
           model: "gpt-5",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
           environment: { type: "project-default" },
         },
         origin: "human",
@@ -454,6 +497,7 @@ describe("legacy import", () => {
     expect(imported).not.toBeNull();
     expect(JSON.parse(imported?.execution ?? "{}")).toMatchObject({
       mode: "agent",
+      permissionMode: "accept-edits",
       environment: { type: "project-default" },
     });
     expect(

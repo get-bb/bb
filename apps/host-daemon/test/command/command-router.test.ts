@@ -118,6 +118,8 @@ function createTurnSubmitCommand(
       reasoningLevel: "medium",
       workflowsEnabled: false,
       permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
       permissionEscalation: null,
     },
     resumeContext: {
@@ -156,6 +158,8 @@ function createThreadStartCommand(): ThreadStartCommand {
       reasoningLevel: "medium",
       workflowsEnabled: false,
       permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
       permissionEscalation: null,
     },
     instructions: "Be a helpful coding agent.",

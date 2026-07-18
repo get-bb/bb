@@ -77,7 +77,7 @@ const executionValuesSchema = z.object({
     "max",
     "ultra",
   ]),
-  permissionMode: z.enum(["full", "workspace-write", "readonly"]),
+  permissionMode: z.enum(["accept-edits", "auto", "full"]),
 });
 
 const selectedExecutionSchema = z.object({

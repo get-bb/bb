@@ -12,7 +12,7 @@ export const AUTOMATION_SCRIPT_TIMEOUT_MAX_MS = 900_000;
 export const AUTOMATION_RUNS_LIMIT_DEFAULT = 50;
 export const AUTOMATION_RUNS_LIMIT_MAX = 200;
 
-export const permissionModeSchema = z.enum(["full", "workspace-write", "readonly"]);
+export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
 
 export const unmanagedBranchSpecSchema = z.discriminatedUnion("kind", [

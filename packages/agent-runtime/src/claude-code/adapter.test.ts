@@ -43,13 +43,17 @@ function loadFixture(name: string): Record<string, unknown> {
 const fullProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  permissionMode: "workspace-write",
+  permissionMode: "accept-edits",
+  permissionScope: "workspace",
+  approvalReviewer: "user",
   permissionEscalation: "deny",
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
@@ -168,7 +172,7 @@ describe("claude-code provider adapter", () => {
       supportsServiceTier: false,
       supportsUserQuestion: true,
       supportsFork: true,
-      supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
   });
 
@@ -403,7 +407,7 @@ describe("claude-code provider adapter", () => {
     expect(cmd?.params).not.toHaveProperty("additionalWorkspaceWriteRoots");
   });
 
-  it("buildCommand thread/start omits workspace roots outside workspace-write mode", () => {
+  it("buildCommand thread/start shares workspace roots with auto but omits them for full", () => {
     const adapter = createClaudeCodeProviderAdapter({
       additionalWorkspaceWriteRoots: [
         "/repo/.git/worktrees/bb13",
@@ -419,7 +423,9 @@ describe("claude-code provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "ask",
       },
     });
@@ -432,9 +438,13 @@ describe("claude-code provider adapter", () => {
       options: fullProviderExecutionContext,
     });
 
-    expect(readonlyCmd?.params).not.toHaveProperty(
-      "additionalWorkspaceWriteRoots",
-    );
+    expect(readonlyCmd?.params).toMatchObject({
+      permissionMode: "auto",
+      additionalWorkspaceWriteRoots: [
+        "/repo/.git/worktrees/bb13",
+        "/repo/.git/objects",
+      ],
+    });
     expect(fullCmd?.params).not.toHaveProperty("additionalWorkspaceWriteRoots");
   });
 
@@ -451,7 +461,9 @@ describe("claude-code provider adapter", () => {
         workflowsEnabled: false,
         permissionEscalation: "ask",
         model: "claude-opus-4-7",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
         instructions: "Focus on the failing tests first.",
         reasoningLevel: "max",
         envVars: {
@@ -535,7 +547,7 @@ describe("claude-code provider adapter", () => {
     });
   });
 
-  it("buildCommand thread/start maps readonly deny policy to dontAsk with deny escalation", () => {
+  it("buildCommand thread/start maps automatic review to Claude auto", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({
       type: "thread/start",
@@ -546,12 +558,14 @@ describe("claude-code provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "deny",
       },
     });
     expect(cmd?.params).toMatchObject({
-      permissionMode: "dontAsk",
+      permissionMode: "auto",
       permissionEscalation: "deny",
     });
   });
@@ -568,6 +582,8 @@ describe("claude-code provider adapter", () => {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
     });
@@ -614,12 +630,14 @@ describe("claude-code provider adapter", () => {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionEscalation: "deny",
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
       },
     });
     expect(cmd?.params).toMatchObject({
       permissionEscalation: "deny",
-      permissionMode: "dontAsk",
+      permissionMode: "auto",
     });
   });
 
@@ -663,7 +681,7 @@ describe("claude-code provider adapter", () => {
     expect(cmd?.params).not.toHaveProperty("additionalWorkspaceWriteRoots");
   });
 
-  it("buildCommand thread/resume omits workspace roots outside workspace-write mode", () => {
+  it("buildCommand thread/resume shares workspace roots with auto but omits them for full", () => {
     const adapter = createClaudeCodeProviderAdapter({
       additionalWorkspaceWriteRoots: [
         "/repo/.git/worktrees/bb13",
@@ -679,7 +697,9 @@ describe("claude-code provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "ask",
       },
     });
@@ -692,9 +712,13 @@ describe("claude-code provider adapter", () => {
       options: fullProviderExecutionContext,
     });
 
-    expect(readonlyCmd?.params).not.toHaveProperty(
-      "additionalWorkspaceWriteRoots",
-    );
+    expect(readonlyCmd?.params).toMatchObject({
+      permissionMode: "auto",
+      additionalWorkspaceWriteRoots: [
+        "/repo/.git/worktrees/bb13",
+        "/repo/.git/objects",
+      ],
+    });
     expect(fullCmd?.params).not.toHaveProperty("additionalWorkspaceWriteRoots");
   });
 
@@ -2570,7 +2594,6 @@ describe("claude-code provider adapter", () => {
       "hook_progress",
       "hook_response",
       "commands_changed",
-      "permission_denied",
     ] as const) {
       const events = adapter.translateEvent({
         jsonrpc: "2.0",
@@ -2590,6 +2613,42 @@ describe("claude-code provider adapter", () => {
 
       expect(events).toMatchObject([]);
     }
+  });
+
+  it("translateEvent surfaces automatic permission denials as warnings", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "system",
+          subtype: "permission_denied",
+          tool_name: "Bash",
+          tool_use_id: "tool-1",
+          decision_reason_type: "classifier",
+          decision_reason: "The command is too risky to approve automatically.",
+          message: "Permission denied",
+          uuid: "message-1",
+          session_id: "session-1",
+        },
+      },
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/warning",
+        category: "general",
+        summary: "Bash was denied automatically",
+        details:
+          "The command is too risky to approve automatically. (classifier)",
+      }),
+    ]);
+    expect(events.some((event) => event.type === "provider/unhandled")).toBe(
+      false,
+    );
   });
 
   it("translateEvent maps thread identity envelopes", () => {

@@ -25,6 +25,8 @@ function loadFixture(name: string): AgentSessionEvent {
 const fullProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;

@@ -1010,6 +1010,8 @@ export function registerHandlers(
         providers: providers.map((provider) => ({
           id: provider.id,
           name: provider.displayName,
+          supportedPermissionModes:
+            provider.capabilities.supportedPermissionModes,
         })),
       };
     },

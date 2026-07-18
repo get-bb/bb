@@ -567,7 +567,9 @@ rl.on("line", (line) => {
         providerId: "fake",
         options: {
           ...fullRuntimeOptions,
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
           permissionEscalation: "ask",
         },
       });
@@ -586,7 +588,11 @@ rl.on("line", (line) => {
       if (!threadStart || threadStart.type !== "thread/start") {
         throw new Error("Expected thread/start command");
       }
-      expect(threadStart.options?.permissionMode).toBe("workspace-write");
+      expect(threadStart.options).toMatchObject({
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
+      });
 
       const reconfigureCommand = findLastRecordedCommand(
         recordedCommands,
@@ -629,7 +635,9 @@ rl.on("line", (line) => {
         options: {
           ...fullRuntimeOptions,
           permissionEscalation: "ask",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
         },
       });
 
@@ -640,7 +648,9 @@ rl.on("line", (line) => {
         options: {
           ...fullRuntimeOptions,
           permissionEscalation: "deny",
-          permissionMode: "readonly",
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
         },
       });
 
@@ -658,15 +668,23 @@ rl.on("line", (line) => {
       if (!resumeCommand || resumeCommand.type !== "thread/resume") {
         throw new Error("Expected thread/resume command");
       }
-      expect(resumeCommand.options?.permissionMode).toBe("readonly");
-      expect(resumeCommand.options?.permissionEscalation).toBe("deny");
+      expect(resumeCommand.options).toMatchObject({
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
+        permissionEscalation: "deny",
+      });
 
       const turnStartCommand = recordedCommands[turnStartIndex];
       if (!turnStartCommand || turnStartCommand.type !== "turn/start") {
         throw new Error("Expected turn/start command");
       }
-      expect(turnStartCommand.options?.permissionMode).toBe("readonly");
-      expect(turnStartCommand.options?.permissionEscalation).toBe("deny");
+      expect(turnStartCommand.options).toMatchObject({
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
+        permissionEscalation: "deny",
+      });
 
       await runtime.shutdown();
     });

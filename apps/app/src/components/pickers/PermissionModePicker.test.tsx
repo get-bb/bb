@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PermissionModePicker } from "./PermissionModePicker";
 
 const permissionOptions = [
+  { value: "accept-edits", label: "Accept Edits" },
+  { value: "auto", label: "Approve for me" },
   { value: "full", label: "Full Access", tone: "warning" },
-  { value: "workspace-write", label: "Workspace Write" },
-  { value: "readonly", label: "Readonly" },
 ] as const;
 
 afterEach(() => {

@@ -45,7 +45,7 @@ function makeQueuedMessage(
     content: [{ type: "text", text: "Queued message", mentions: [] }],
     model: "codex-test",
     reasoningLevel: "medium",
-    permissionMode: "readonly",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 1,

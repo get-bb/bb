@@ -862,14 +862,14 @@ describe("createRealtimeCacheEffects", () => {
     const defaultOptionsKey = threadDefaultExecutionOptionsQueryKey("thr_1");
     const initialDefaults = {
       model: "gpt-5",
-      permissionMode: "readonly",
+      permissionMode: "auto",
       reasoningLevel: "medium",
       serviceTier: "default",
       source: "client/turn/requested",
     };
     const nextDefaults = {
       model: "gpt-5.5",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       reasoningLevel: "high",
       serviceTier: "default",
       source: "client/turn/requested",

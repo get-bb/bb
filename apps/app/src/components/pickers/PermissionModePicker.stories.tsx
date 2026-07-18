@@ -9,30 +9,46 @@ export default {
 
 // Mirrors PERMISSION_MODE_OPTIONS in useThreadCreationOptions.ts
 const allOptions: readonly PickerOption<PermissionMode>[] = [
-  { value: "full", label: "Full Access", tone: "warning" },
-  { value: "workspace-write", label: "Workspace Write" },
-  { value: "readonly", label: "Readonly" },
+  {
+    value: "accept-edits",
+    label: "Accept Edits",
+    description:
+      "Applies edits inside the workspace automatically. Anything beyond the workspace asks you first.",
+  },
+  {
+    value: "auto",
+    label: "Approve for me",
+    description:
+      "Same workspace sandbox, with requests reviewed automatically. High-risk actions can still come back to you.",
+  },
+  {
+    value: "full",
+    label: "Full Access",
+    tone: "warning",
+    description:
+      "No sandbox and no approvals — the agent can run anything on your machine.",
+  },
 ];
 
 const longOptions: readonly PickerOption<PermissionMode>[] = [
+  {
+    value: "accept-edits",
+    label: "Accept Edits with repository-scoped writes and background tasks",
+    description:
+      "Allows file edits in the workspace while keeping the menu content wrapped within the picker width.",
+  },
+  {
+    value: "auto",
+    label: "Approve for me with provider-native automatic request review",
+    description:
+      "Long automatic-review explanations should wrap instead of stretching or clipping the permission menu.",
+  },
   {
     value: "full",
     label: "Full Access with approval before every workspace-changing command",
     description:
       "Use this when the agent needs broad execution capability, but the picker should still wrap the warning copy inside the menu.",
     tone: "warning",
-  },
-  {
-    value: "workspace-write",
-    label: "Workspace Write with repository-scoped edits and background tasks",
-    description:
-      "Allows file edits in the workspace while keeping the menu content wrapped within the picker width.",
-  },
-  {
-    value: "readonly",
-    label: "Readonly investigation without filesystem writes",
-    description:
-      "Long readonly explanations should wrap instead of stretching or clipping the permission menu.",
   },
 ];
 
@@ -43,7 +59,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow label="default" hint="muted by default — used in prompt-box only">
         <PermissionModePicker
-          value="workspace-write"
+          value="accept-edits"
           options={allOptions}
           onChange={noop}
           supported
@@ -81,7 +97,7 @@ export function Overview() {
         hint="explicit muted={false} — for non-prompt-box use"
       >
         <PermissionModePicker
-          value="workspace-write"
+          value="accept-edits"
           options={allOptions}
           onChange={noop}
           supported
@@ -90,7 +106,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="open menu" hint="defaultOpen + modal=false">
         <PermissionModePicker
-          value="workspace-write"
+          value="accept-edits"
           options={allOptions}
           onChange={noop}
           supported
@@ -100,7 +116,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="wrapping menu" hint="long labels and descriptions">
         <PermissionModePicker
-          value="workspace-write"
+          value="accept-edits"
           options={longOptions}
           onChange={noop}
           supported

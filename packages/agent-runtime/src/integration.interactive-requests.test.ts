@@ -152,7 +152,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "workspace-write-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -224,7 +224,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "workspace-write-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -280,7 +280,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "workspace-write-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -338,7 +338,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "workspace-write-deny",
+          preset: "accept-edits-deny",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -394,7 +394,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "workspace-write-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -454,7 +454,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "workspace-write-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -519,7 +519,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -583,7 +583,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -699,7 +699,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -766,7 +766,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "readonly-deny",
+          preset: "auto-deny",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -820,7 +820,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -901,7 +901,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -983,7 +983,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1063,7 +1063,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1179,7 +1179,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "readonly-ask",
+          preset: "auto-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1246,7 +1246,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "readonly-deny",
+          preset: "auto-deny",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",

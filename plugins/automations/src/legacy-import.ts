@@ -11,7 +11,6 @@ import {
   automationTriggerSchema,
   agentEnvironmentSchema,
   automationScriptInterpreterSchema,
-  permissionModeSchema,
 } from "./rpc-types.js";
 import { automationScriptDir } from "./script-files.js";
 
@@ -96,7 +95,13 @@ const legacyAgentExecutionSchema = z
     prompt: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),
-    permissionMode: permissionModeSchema,
+    permissionMode: z.enum([
+      "accept-edits",
+      "auto",
+      "full",
+      "workspace-write",
+      "readonly",
+    ]),
     targetThreadId: z.string().min(1).optional(),
   })
   .strict();
@@ -145,7 +150,12 @@ function normalizeExecution(row: z.infer<typeof legacyAutomationRowSchema>): str
   const execution = legacyExecutionSchema.parse(JSON.parse(row.execution));
   if (execution.mode === "agent") {
     const environment = agentEnvironmentSchema.parse(JSON.parse(row.environment));
-    return JSON.stringify({ ...execution, environment });
+    const permissionMode =
+      execution.permissionMode === "workspace-write" ||
+      execution.permissionMode === "readonly"
+        ? "accept-edits"
+        : execution.permissionMode;
+    return JSON.stringify({ ...execution, permissionMode, environment });
   }
   const { script: _script, ...scriptExecution } = execution;
   return JSON.stringify(scriptExecution);

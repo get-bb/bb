@@ -4,8 +4,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
 import {
+  createQueuedThreadMessage,
+  createThread,
   createConnection,
+  createProject,
   migrate,
+  noopNotifier,
+  upsertHost,
   type DbConnection,
   type MigrationWarningLogger,
 } from "../src/index.js";
@@ -38,6 +43,11 @@ interface MigratedQueuedMessageRow {
   id: string;
   sortKey: string;
   threadId: string;
+}
+
+interface MigratedPermissionModeRow {
+  id: string;
+  permissionMode: string;
 }
 
 interface MigratedProjectRow {
@@ -1050,6 +1060,170 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("migrates mutable permission state while preserving side-chat source intent", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "permission-migration-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "permission-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/permission-migration-project",
+        },
+      });
+      const sourceWithHistory = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      const sourceWithoutHistory = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      const sideChatWithHistory = createThread(db, noopNotifier, {
+        originKind: "side-chat",
+        projectId: project.id,
+        providerId: "codex",
+        sourceThreadId: sourceWithHistory.id,
+        status: "idle",
+      });
+      const sideChatWithoutHistory = createThread(db, noopNotifier, {
+        originKind: "side-chat",
+        projectId: project.id,
+        providerId: "codex",
+        sourceThreadId: sourceWithoutHistory.id,
+        status: "idle",
+      });
+      const regularThread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      const workspaceWriteQueue = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: regularThread.id,
+        content: [
+          { type: "text", text: "legacy workspace write", mentions: [] },
+        ],
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      });
+      const inheritedQueue = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: sideChatWithHistory.id,
+        content: [{ type: "text", text: "legacy side chat", mentions: [] }],
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      });
+      const fallbackQueue = createQueuedThreadMessage(db, noopNotifier, {
+        threadId: sideChatWithoutHistory.id,
+        content: [{ type: "text", text: "legacy fallback", mentions: [] }],
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      });
+      db.$client
+        .prepare(
+          `
+            INSERT INTO events (
+              id,
+              thread_id,
+              scope_kind,
+              sequence,
+              type,
+              data,
+              created_at
+            ) VALUES (?, ?, 'thread', 1, 'client/turn/requested', ?, ?)
+          `,
+        )
+        .run(
+          "evt_permission_source_full",
+          sourceWithHistory.id,
+          JSON.stringify({ execution: { permissionMode: "full" } }),
+          Date.now(),
+        );
+      db.$client
+        .prepare(
+          `
+            INSERT INTO project_execution_defaults (
+              project_id,
+              provider_id,
+              model,
+              service_tier,
+              reasoning_level,
+              permission_mode,
+              updated_at
+            ) VALUES (?, 'codex', 'gpt-5', 'default', 'medium', 'readonly', ?)
+          `,
+        )
+        .run(project.id, Date.now());
+      db.$client
+        .prepare(
+          `
+            UPDATE queued_thread_messages
+            SET permission_mode = CASE id
+              WHEN ? THEN 'workspace-write'
+              ELSE 'readonly'
+            END
+            WHERE id IN (?, ?, ?)
+          `,
+        )
+        .run(
+          workspaceWriteQueue.id,
+          workspaceWriteQueue.id,
+          inheritedQueue.id,
+          fallbackQueue.id,
+        );
+      db.$client
+        .prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?")
+        .run(latestMigrationWhen);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[string], { permissionMode: string }>(
+            `
+              SELECT permission_mode AS permissionMode
+              FROM project_execution_defaults
+              WHERE project_id = ?
+            `,
+          )
+          .get(project.id),
+      ).toEqual({ permissionMode: "accept-edits" });
+      expect(
+        db.$client
+          .prepare<[string, string, string], MigratedPermissionModeRow>(
+            `
+              SELECT id, permission_mode AS permissionMode
+              FROM queued_thread_messages
+              WHERE id IN (?, ?, ?)
+              ORDER BY id
+            `,
+          )
+          .all(workspaceWriteQueue.id, inheritedQueue.id, fallbackQueue.id),
+      ).toEqual(
+        [
+          { id: workspaceWriteQueue.id, permissionMode: "accept-edits" },
+          { id: inheritedQueue.id, permissionMode: "full" },
+          { id: fallbackQueue.id, permissionMode: "accept-edits" },
+        ].sort((left, right) => left.id.localeCompare(right.id)),
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("provisions the singleton personal project", () => {
     const db = createConnection(":memory:");
 
@@ -1400,14 +1574,9 @@ describe("migrate", () => {
         .run(threadSectionsMigrationWhen);
       db.$client
         .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
-        )
-        .run(latestMigrationWhen);
 
       expect(
         db.$client
@@ -1492,14 +1661,9 @@ describe("migrate", () => {
       `);
       db.$client
         .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
-        )
-        .run(latestMigrationWhen);
 
       expect(() => migrate(db)).not.toThrow();
 

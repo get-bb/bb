@@ -7,6 +7,7 @@ const baseThreadStartParams = {
   cwd: "/tmp/worktree",
   baseInstructions: "test",
   permissionMode: "default",
+  permissionScope: "workspace",
   permissionEscalation: "ask",
   instructionMode: "append",
   workflowsEnabled: false,

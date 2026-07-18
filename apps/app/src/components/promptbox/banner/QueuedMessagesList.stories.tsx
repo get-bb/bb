@@ -68,7 +68,7 @@ function makeQueuedMessage({
     content: [{ type: "text", text, mentions: [] }, ...attachmentChunks],
     model: "gpt-5.5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "auto",
     serviceTier: "default",
     groupWithNext: false,
     createdAt: 0,

@@ -203,7 +203,7 @@ describe("bb thread spawn command output", () => {
         "--service-tier",
         "fast",
         "--permission-mode",
-        "workspace-write",
+        "auto",
       ],
       register,
     );
@@ -218,7 +218,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
         model: "gpt-5",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "auto",
         serviceTier: "fast",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -302,7 +302,7 @@ describe("bb thread spawn command output", () => {
     expect(helpOutput).toContain("--permission-mode <mode>");
     expect(helpOutput).toContain("--visibility <visibility>");
     expect(helpOutput).toMatch(
-      /Permission mode: full, workspace-write, or\s+readonly/,
+      /Permission mode: accept-edits, auto, or full/,
     );
   });
 
@@ -326,8 +326,36 @@ describe("bb thread spawn command output", () => {
     ).rejects.toThrow("process.exit:1");
 
     expect(console.error).toHaveBeenCalledWith(
-      "Error: Invalid permission mode 'unsafe'. Expected full, workspace-write, or readonly.",
+      "Error: Invalid permission mode 'unsafe'. Expected accept-edits, auto, or full.",
     );
+  });
+
+  it("bb thread spawn normalizes deprecated workspace-write to accept-edits", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-legacy-permission",
+      projectId: "proj-1",
+      providerId: "codex",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--permission-mode",
+        "workspace-write",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({ permissionMode: "accept-edits" }),
+    });
   });
 
   it("bb thread spawn --json prints the raw thread", async () => {

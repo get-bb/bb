@@ -46,14 +46,27 @@ function codexEvent<M extends CodexEvent["method"]>(
 const fullProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteAskProviderExecutionContext = {
   claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  permissionMode: "workspace-write",
+  permissionMode: "accept-edits",
+  permissionScope: "workspace",
+  approvalReviewer: "user",
   permissionEscalation: "ask",
+  workflowsEnabled: false,
+} satisfies ProviderExecutionContext;
+
+const autoDenyProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  permissionMode: "auto",
+  permissionScope: "workspace",
+  approvalReviewer: "automatic",
+  permissionEscalation: "deny",
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
@@ -313,7 +326,7 @@ describe("codex provider adapter", () => {
       supportsServiceTier: true,
       supportsUserQuestion: false,
       supportsFork: true,
-      supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
   });
 
@@ -576,6 +589,7 @@ describe("codex provider adapter", () => {
       method: "thread/start",
       params: {
         approvalPolicy: "never",
+        approvalsReviewer: "user",
         sandbox: "danger-full-access",
         cwd: "/tmp/worktree",
         experimentalRawEvents: true,
@@ -585,7 +599,7 @@ describe("codex provider adapter", () => {
     expect(JSON.stringify(cmd)).not.toContain("developerInstructions");
   });
 
-  it("buildCommand thread/start maps workspace-write permissions to on-request approvals", () => {
+  it("buildCommand thread/start maps accept-edits to user-reviewed workspace approvals", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
       type: "thread/start",
@@ -600,9 +614,62 @@ describe("codex provider adapter", () => {
       method: "thread/start",
       params: {
         approvalPolicy: "on-request",
+        approvalsReviewer: "user",
         sandbox: "workspace-write",
       },
     });
+  });
+
+  it("keeps automatic review on-request under deny escalation for every command", () => {
+    const adapter = createCodexProviderAdapter();
+    const plans = [
+      adapter.buildCommandPlan({
+        type: "thread/start",
+        cwd: "/tmp/worktree",
+        threadId: "bb-start",
+        instructionMode: "append",
+        options: autoDenyProviderExecutionContext,
+      }),
+      adapter.buildCommandPlan({
+        type: "thread/resume",
+        cwd: "/tmp/worktree",
+        threadId: "bb-resume",
+        providerThreadId: "codex-resume",
+        instructionMode: "append",
+        options: autoDenyProviderExecutionContext,
+      }),
+      adapter.buildCommandPlan({
+        type: "thread/fork",
+        cwd: "/tmp/worktree",
+        threadId: "bb-fork",
+        sourceProviderThreadId: "codex-source",
+        instructionMode: "append",
+        options: autoDenyProviderExecutionContext,
+      }),
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_222222229z",
+        threadId: "bb-turn",
+        providerThreadId: "codex-turn",
+        input: [promptTextInput({ text: "continue" })],
+        options: autoDenyProviderExecutionContext,
+      }),
+    ];
+
+    expect(plans.map((plan) => plan.method)).toEqual([
+      "thread/start",
+      "thread/resume",
+      "thread/fork",
+      "turn/start",
+    ]);
+    for (const plan of plans) {
+      expect(plan).toMatchObject({
+        params: {
+          approvalPolicy: "on-request",
+          approvalsReviewer: "auto_review",
+        },
+      });
+    }
   });
 
   it("buildCommand thread/start and turn/start include captured linked worktree git writable roots", () => {
@@ -1456,7 +1523,9 @@ describe("codex provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
+        permissionScope: "workspace",
+        approvalReviewer: "user",
         permissionEscalation: "deny",
       },
     });
@@ -1482,6 +1551,8 @@ describe("codex provider adapter", () => {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
         permissionEscalation: null,
       },
     });
@@ -2037,7 +2108,7 @@ describe("codex provider adapter", () => {
     });
   });
 
-  it("buildCommand turn/start maps readonly permissions to a read-only sandbox policy", () => {
+  it("buildCommand turn/start maps auto to automatic workspace review", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
       type: "turn/start",
@@ -2048,7 +2119,9 @@ describe("codex provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "ask",
       },
     });
@@ -2056,15 +2129,16 @@ describe("codex provider adapter", () => {
       method: "turn/start",
       params: {
         approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
         sandboxPolicy: {
-          type: "readOnly",
-          networkAccess: false,
+          type: "workspaceWrite",
+          networkAccess: true,
         },
       },
     });
   });
 
-  it("buildCommand turn/start maps readonly deny escalation to no approval prompts", () => {
+  it("buildCommand turn/start preserves the auto reviewer under deny escalation", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
       type: "turn/start",
@@ -2075,16 +2149,19 @@ describe("codex provider adapter", () => {
       options: {
         claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
-        permissionMode: "readonly",
+        permissionMode: "auto",
+        permissionScope: "workspace",
+        approvalReviewer: "automatic",
         permissionEscalation: "deny",
       },
     });
     expect(cmd).toMatchObject({
       method: "turn/start",
       params: {
-        approvalPolicy: "never",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
         sandboxPolicy: {
-          type: "readOnly",
+          type: "workspaceWrite",
         },
       },
     });
@@ -2223,6 +2300,27 @@ describe("codex provider adapter", () => {
     );
 
     expect(events).toEqual([]);
+  });
+
+  it("translateEvent suppresses automatic review lifecycle notifications", () => {
+    const adapter = createCodexProviderAdapter();
+
+    for (const method of [
+      "item/autoApprovalReview/started",
+      "item/autoApprovalReview/completed",
+    ]) {
+      expect(
+        adapter.translateEvent({
+          jsonrpc: "2.0",
+          method,
+          params: {
+            threadId: "t1",
+            turnId: "turn-1",
+            reviewId: "review-1",
+          },
+        }),
+      ).toEqual([]);
+    }
   });
 
   it("translateEvent turn/completed with status and error", () => {

@@ -460,7 +460,7 @@ export function createFakeAdapter(
       supportsServiceTier: false,
       supportsUserQuestion,
       supportsFork: true,
-      supportedPermissionModes: ["full", "workspace-write", "readonly"],
+      supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     decodeToolCallRequest,
     decodeInteractiveRequest: supportsUserQuestion

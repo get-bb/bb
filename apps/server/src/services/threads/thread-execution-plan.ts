@@ -22,9 +22,7 @@ import {
   resolveCreateThreadExecutionDefaults,
   resolveThreadExecutionPermissionMode,
 } from "./thread-default-policy.js";
-import {
-  getLastExecutionOptions,
-} from "./thread-events.js";
+import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 export interface ExecutionPlanFieldInput<TValue> {
@@ -78,6 +76,82 @@ export interface ProjectCreateDefaultExecutionPlan {
   providerId: string;
 }
 
+interface ResolveStoredThreadPermissionModeArgs {
+  projectDefaults?: ProjectExecutionDefaults | null;
+  resolvingThreadIds: ReadonlySet<string>;
+  threadId: string;
+}
+
+function resolveStoredThreadPermissionMode(
+  deps: Pick<AppDeps, "db">,
+  args: ResolveStoredThreadPermissionModeArgs,
+): PermissionMode {
+  const thread = getThread(deps.db, args.threadId);
+  if (!thread) {
+    throw new ApiError(404, "thread_not_found", "Thread not found");
+  }
+  const projectDefaults =
+    args.projectDefaults === undefined
+      ? getProjectExecutionDefaults(deps.db, {
+          projectId: thread.projectId,
+        })
+      : args.projectDefaults;
+  const projectExecution =
+    projectDefaults?.providerId === thread.providerId ? projectDefaults : null;
+  const parentThread =
+    thread.parentThreadId !== null
+      ? getThread(deps.db, thread.parentThreadId)
+      : null;
+  const sourceThread =
+    thread.sourceThreadId !== null
+      ? getThread(deps.db, thread.sourceThreadId)
+      : null;
+  const lastExecutionPermissionMode = getLastExecutionOptions(
+    deps,
+    thread.id,
+  )?.permissionMode;
+  const shouldResolveLegacySideChatSource =
+    lastExecutionPermissionMode === "readonly" &&
+    (thread.originKind ?? thread.childOrigin) === "side-chat" &&
+    sourceThread !== null &&
+    !args.resolvingThreadIds.has(sourceThread.id);
+  const resolvingThreadIds = new Set(args.resolvingThreadIds);
+  resolvingThreadIds.add(thread.id);
+  const sourceThreadEffectivePermissionMode =
+    shouldResolveLegacySideChatSource && sourceThread !== null
+      ? resolveStoredThreadPermissionMode(deps, {
+          ...(sourceThread.projectId === thread.projectId
+            ? { projectDefaults }
+            : {}),
+          resolvingThreadIds,
+          threadId: sourceThread.id,
+        })
+      : undefined;
+  const permissionMode = resolveThreadExecutionPermissionMode({
+    lastExecutionPermissionMode,
+    parentThread,
+    parentThreadExecutionPermissionMode:
+      parentThread !== null
+        ? getLastExecutionOptions(deps, parentThread.id)?.permissionMode
+        : undefined,
+    projectExecutionPermissionMode: projectExecution?.permissionMode,
+    sourceThreadEffectivePermissionMode,
+    thread,
+  });
+  validateProviderPermissionMode(thread.providerId, permissionMode);
+  return permissionMode;
+}
+
+export function resolveExistingThreadPermissionMode(
+  deps: Pick<AppDeps, "db">,
+  threadId: string,
+): PermissionMode {
+  return resolveStoredThreadPermissionMode(deps, {
+    resolvingThreadIds: new Set(),
+    threadId,
+  });
+}
+
 function createMissingThreadExecutionModelError(threadId: string): ApiError {
   return new ApiError(
     500,
@@ -95,8 +169,7 @@ function isMissingThreadExecutionModelError(
   return (
     error instanceof ApiError &&
     error.body.code === "internal_error" &&
-    error.body.message ===
-      `Thread ${threadId} has no stored execution model`
+    error.body.message === `Thread ${threadId} has no stored execution model`
   );
 }
 
@@ -202,7 +275,10 @@ function validateProviderReasoningLevel(
   const supportedLevels = getSupportedReasoningLevelsForProvider(
     providerId ?? "",
   );
-  if (supportedLevels.length === 0 || supportedLevels.includes(reasoningLevel)) {
+  if (
+    supportedLevels.length === 0 ||
+    supportedLevels.includes(reasoningLevel)
+  ) {
     return;
   }
 
@@ -260,6 +336,10 @@ export async function resolveExistingThreadExecutionPlan(
     parentThread !== null
       ? getLastExecutionOptions(deps, parentThread.id)
       : null;
+  const sourceThread =
+    thread.sourceThreadId !== null
+      ? getThread(deps.db, thread.sourceThreadId)
+      : null;
   const model = resolveRequiredField<string>([
     args.input.model?.value,
     thread.modelOverride ?? undefined,
@@ -270,12 +350,28 @@ export async function resolveExistingThreadExecutionPlan(
     throw createMissingThreadExecutionModelError(args.threadId);
   }
 
+  const shouldResolveLegacySideChatSource =
+    args.input.permissionMode === undefined &&
+    lastExecution?.permissionMode === "readonly" &&
+    (thread.originKind ?? thread.childOrigin) === "side-chat" &&
+    sourceThread !== null;
+  const sourceThreadEffectivePermissionMode =
+    shouldResolveLegacySideChatSource && sourceThread !== null
+      ? resolveStoredThreadPermissionMode(deps, {
+          ...(sourceThread.projectId === thread.projectId
+            ? { projectDefaults: rawProjectExecution }
+            : {}),
+          resolvingThreadIds: new Set([thread.id]),
+          threadId: sourceThread.id,
+        })
+      : undefined;
   const permissionMode = resolveThreadExecutionPermissionMode({
     requestedPermissionMode: args.input.permissionMode?.value,
     lastExecutionPermissionMode: lastExecution?.permissionMode,
     parentThread,
     parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
     projectExecutionPermissionMode: projectExecution?.permissionMode,
+    sourceThreadEffectivePermissionMode,
     thread,
   });
   validateProviderPermissionMode(thread.providerId, permissionMode);

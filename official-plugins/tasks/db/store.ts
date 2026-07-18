@@ -7,6 +7,7 @@ import {
   TASKS_PAGE_MAX_LIMIT,
   type TaskSort,
 } from "../shared/pagination.js";
+import { presetPermissionModeSchema } from "../shared/contract.js";
 import type {
   Attachment,
   Comment,
@@ -436,7 +437,7 @@ function presetFromRow(row: PresetRow): Preset {
     providerId: row.provider_id,
     modelId: row.model_id,
     reasoningLevel: row.reasoning_level,
-    permissionMode: row.permission_mode,
+    permissionMode: presetPermissionModeSchema.parse(row.permission_mode),
     environmentKind: row.environment_kind,
     baseBranch: row.base_branch,
     machineId: row.machine_id,

@@ -476,11 +476,15 @@ function describeParsedClaudeRawEvent(
         case "memory_recall":
         case "mirror_error":
         case "notification":
-        case "permission_denied":
         case "plugin_install":
         case "session_state_changed":
         case "thinking_tokens":
           return { kind: `sdk/system:${event.subtype}`, coverage: "noise" };
+        case "permission_denied":
+          return {
+            kind: "sdk/system:permission_denied",
+            coverage: "normalized",
+          };
         case "unknown":
           return { kind: "sdk/system", coverage: "unknown" };
         default:

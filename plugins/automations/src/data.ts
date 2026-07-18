@@ -149,6 +149,20 @@ export const migrations = [
      run_id TEXT NOT NULL,
      created_at INTEGER NOT NULL
    );`,
+  `UPDATE automations
+   SET execution = json_set(
+     execution,
+     '$.permissionMode',
+     CASE json_extract(execution, '$.permissionMode')
+       WHEN 'workspace-write' THEN 'accept-edits'
+       WHEN 'readonly' THEN 'accept-edits'
+     END
+   )
+   WHERE run_mode = 'agent'
+     AND json_extract(execution, '$.permissionMode') IN (
+       'workspace-write',
+       'readonly'
+     );`,
 ];
 
 export interface CreateAutomationInput {

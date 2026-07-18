@@ -9,14 +9,6 @@ import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
 
 /**
- * Side chats always run read-only — they observe a conversation and never mutate
- * the workspace. The composer's displayed permission label and the create
- * request both source this single constant, so the displayed label cannot drift
- * from the permission the thread is actually created with.
- */
-export const SIDE_CHAT_PERMISSION_MODE: PermissionMode = "readonly";
-
-/**
  * Returns the last conversation message's text in the parent timeline, or null
  * when the parent has no conversation messages. Recurses into the turn tree
  * (turn children) because conversation rows hang off turn rows; work and system
@@ -76,6 +68,12 @@ export function resolveSideChatReplyReference(args: {
 
 interface BuildSideChatBaseRequestArgs {
   model: string;
+  /**
+   * The source thread's effective permission mode at creation time. Side chats
+   * snapshot it into the child thread — later parent changes do not mutate an
+   * existing side chat.
+   */
+  permissionMode: PermissionMode;
   projectId: string;
   providerId: string;
   reasoningLevel: ReasoningLevel;
@@ -92,6 +90,7 @@ interface BuildSideChatCreateRequestArgs extends BuildSideChatBaseRequestArgs {
 
 function buildSideChatBaseRequest({
   model,
+  permissionMode,
   projectId,
   providerId,
   reasoningLevel,
@@ -107,7 +106,7 @@ function buildSideChatBaseRequest({
     model,
     reasoningLevel,
     ...(serviceTier ? { serviceTier } : {}),
-    permissionMode: SIDE_CHAT_PERMISSION_MODE,
+    permissionMode,
     title,
     environment: resolveChildThreadEnvironment(sourceEnvironment),
     ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),

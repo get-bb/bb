@@ -1918,7 +1918,7 @@ describe("public thread data routes", () => {
       await expect(readJson(defaultsResponse)).resolves.toEqual({
         model: "gpt-5-mini",
         reasoningLevel: "high",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "fast",
         source: "client/turn/requested",
       });
@@ -3116,7 +3116,7 @@ describe("public thread data routes", () => {
         content: textInput("Queued message"),
         model: "gpt-5.5",
         reasoningLevel: "xhigh",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         serviceTier: "default",
       });
 
@@ -3131,7 +3131,7 @@ describe("public thread data routes", () => {
       expect(bootstrap.defaultExecutionOptions).toMatchObject({
         model: "gpt-5.5",
         reasoningLevel: "xhigh",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
       });
       expect(bootstrap.queuedMessages).toHaveLength(1);
       expect(bootstrap.queuedMessages[0]?.content).toEqual(
@@ -3205,7 +3205,7 @@ describe("public thread data routes", () => {
         providerId: "acp-cursor",
         model: "composer-2.5",
         reasoningLevel: "medium",
-        permissionMode: "readonly",
+        permissionMode: "accept-edits",
         serviceTier: "default",
       });
       const environment = seedEnvironment(harness.deps, {
@@ -3221,7 +3221,7 @@ describe("public thread data routes", () => {
         environmentId: environment.id,
         inputText: "New review comments on the PR",
         model: "zai-coding-plan/glm-5.2",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         providerThreadId: "ses_opencode",
         reasoningLevel: "medium",
         threadId: thread.id,
@@ -3237,7 +3237,7 @@ describe("public thread data routes", () => {
       );
       expect(bootstrap.defaultExecutionOptions).toMatchObject({
         model: "zai-coding-plan/glm-5.2",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         reasoningLevel: "medium",
       });
       const { executionOptions } = bootstrap;

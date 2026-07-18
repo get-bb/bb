@@ -726,7 +726,7 @@ describe("tasks app shell", () => {
       providerId: "claude-code",
       modelId: "claude-sonnet-5",
       reasoningLevel: "medium",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       environmentKind: "project-default",
       baseBranch: null,
       machineId: null,

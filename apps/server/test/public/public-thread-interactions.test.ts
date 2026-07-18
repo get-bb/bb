@@ -1008,6 +1008,64 @@ describe("public thread interaction routes", () => {
     });
   });
 
+  it("normalizes the writable alias in queued messages without accepting readonly", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-public-queued-permission-compatibility",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "codex",
+        status: "active",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-public-queued-permission-compatibility",
+        threadId: thread.id,
+      });
+
+      const compatibleResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Queue legacy writable alias" }],
+            mode: "queue-if-active",
+            permissionMode: "workspace-write",
+          }),
+        },
+      );
+      expect(compatibleResponse.status).toBe(200);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
+        { permissionMode: "accept-edits" },
+      ]);
+
+      const readonlyResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Do not widen readonly" }],
+            mode: "queue-if-active",
+            permissionMode: "readonly",
+          }),
+        },
+      );
+      expect(readonlyResponse.status).toBe(400);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+    });
+  });
+
   it("rejects explicit send permission modes unsupported by the provider", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

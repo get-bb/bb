@@ -36,9 +36,8 @@ if (!window.matchMedia) {
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
 const { derivePrefix } = await import("./shared.js");
-const { describePresetEnvironment, savePresetDraft } = await import(
-  "./preset-dialog.js"
-);
+const { defaultPermissionMode, describePresetEnvironment, savePresetDraft } =
+  await import("./preset-dialog.js");
 
 afterEach(cleanup);
 
@@ -552,7 +551,7 @@ function presetRow(overrides: Record<string, unknown> = {}) {
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "accept-edits",
     environmentKind: "new-worktree",
     baseBranch: "main",
     machineId: "mach_1",
@@ -590,13 +589,22 @@ describe("describePresetEnvironment", () => {
   });
 });
 
+describe("preset permission defaults", () => {
+  it("prefers Auto and otherwise falls back to Full Access", () => {
+    expect(defaultPermissionMode(["accept-edits", "auto", "full"])).toBe(
+      "auto",
+    );
+    expect(defaultPermissionMode(["accept-edits", "full"])).toBe("full");
+  });
+});
+
 describe("savePresetDraft", () => {
   const draft = {
     name: "FB3",
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "medium",
-    permissionMode: "workspace-write",
+    permissionMode: "accept-edits",
     environmentKind: "new-worktree",
     baseBranch: " main ",
     machineId: "mach_1",
@@ -668,7 +676,17 @@ describe("PresetDialog environment section", () => {
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
           listProviders: () => ({
-            providers: [{ id: "claude-code", name: "Claude Code" }],
+            providers: [
+              {
+                id: "claude-code",
+                name: "Claude Code",
+                supportedPermissionModes: [
+                  "accept-edits",
+                  "auto",
+                  "full",
+                ],
+              },
+            ],
           }),
           listProviderModels: () => ({
             models: [

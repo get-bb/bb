@@ -13,7 +13,6 @@ import {
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
   dynamicToolSchema,
   permissionEscalationSchema,
-  permissionModeSchema,
   promptInputSchema,
   reasoningLevelSchema,
   serviceTierSchema,
@@ -129,7 +128,7 @@ const acpBridgeSessionParamsSchema = z.object({
    * selected by CLI args rather than by ACP permission responses.
    */
   permissionCli: acpBridgePermissionCliSchema.optional(),
-  permissionMode: permissionModeSchema,
+  permissionMode: z.enum(["accept-edits", "full"]),
   permissionEscalation: permissionEscalationSchema.nullable(),
   /** Roots (workspace plus configured extras) where client fs writes are allowed. */
   workspaceWriteRoots: z.array(z.string()),

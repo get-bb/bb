@@ -38,7 +38,7 @@ describe("agent provider catalog", () => {
         supportsServiceTier: true,
         supportsUserQuestion: false,
         supportsFork: false,
-        supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        supportedPermissionModes: ["accept-edits", "full"],
       },
       composerActions: [{ kind: "skills", trigger: "/" }],
       available: true,
@@ -75,7 +75,7 @@ describe("agent provider catalog", () => {
     expect(getBuiltInAgentProviderInfo("codex")).toMatchObject({
       displayName: "Codex",
       capabilities: {
-        supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        supportedPermissionModes: ["accept-edits", "auto", "full"],
       },
       composerActions: [
         { kind: "skills", trigger: "/" },

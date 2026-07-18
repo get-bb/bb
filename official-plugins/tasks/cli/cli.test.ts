@@ -613,7 +613,7 @@ describe("bb tasks CLI", () => {
           "--reasoning",
           "high",
           "--permission",
-          "workspace-write",
+          "accept-edits",
           "--environment",
           "worktree",
           "--base-branch",
@@ -629,7 +629,7 @@ describe("bb tasks CLI", () => {
     expect(created).toMatchObject({
       name: "CLI worker",
       providerId: "codex",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       environmentKind: "new-worktree",
       baseBranch: "main",
       machineId: "host_air",

@@ -18,7 +18,7 @@ function cacheInput(): WorkflowCallCacheInput {
       providerId: "codex",
       model: "gpt-5.6-sol",
       reasoningLevel: "medium",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
     },
     outputSchema: {
       type: "object",
@@ -48,7 +48,7 @@ describe("workflow call cache identity", () => {
         type: "object",
       },
       selection: {
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
         reasoningLevel: "medium",
         model: "gpt-5.6-sol",
         providerId: "codex",
@@ -62,7 +62,7 @@ describe("workflow call cache identity", () => {
       computeWorkflowCallCacheKey(second),
     );
     expect(computeWorkflowCallCacheKey(first)).toBe(
-      "fc85e9c97707a4d3479bfc43f24eda8726527cab65df4af4f450737bf3cfdf15",
+      "836c4c5a50796a354fa9ac398bb6c7e4b394a8442fdf51e74e7d7fbc44997125",
     );
   });
 
@@ -96,7 +96,7 @@ describe("workflow call cache identity", () => {
       "permission",
       (input: WorkflowCallCacheInput) => ({
         ...input,
-        selection: { ...input.selection, permissionMode: "readonly" },
+        selection: { ...input.selection, permissionMode: "auto" },
       }),
     ],
     [

@@ -8,6 +8,7 @@ import {
 import type {
   PermissionMode,
   ProjectExecutionDefaults,
+  RecordedPermissionMode,
   ReasoningLevel,
   ServiceTier,
   Thread,
@@ -16,10 +17,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { EnvironmentArgs } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
-import {
-  isLiveParentThread,
-  type ParentThread,
-} from "./thread-parent.js";
+import { isLiveParentThread, type ParentThread } from "./thread-parent.js";
 
 export const DEFAULT_SERVICE_TIER: ServiceTier = "default";
 export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
@@ -37,7 +35,7 @@ export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
     getAgentProviderServerCapabilities(providerId)?.supportsWorkflows ?? false
   );
 }
-const DEFAULT_PERMISSION_MODE: PermissionMode = "full";
+const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 const PRODUCT_DEFAULT_MODEL = "gpt-5.5";
 
@@ -61,11 +59,12 @@ export interface ResolveThreadDefaultPermissionModeArgs {
 }
 
 export interface ResolveThreadExecutionPermissionModeArgs {
-  lastExecutionPermissionMode?: PermissionMode;
+  lastExecutionPermissionMode?: RecordedPermissionMode;
   parentThread?: ParentThread | null;
-  parentThreadExecutionPermissionMode?: PermissionMode;
+  parentThreadExecutionPermissionMode?: RecordedPermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
+  sourceThreadEffectivePermissionMode?: PermissionMode;
   thread: Pick<
     Thread,
     "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
@@ -162,6 +161,9 @@ function resolveSupportedPermissionMode(
   }
   if (supportedPermissionModes.includes(DEFAULT_PERMISSION_MODE)) {
     return DEFAULT_PERMISSION_MODE;
+  }
+  if (supportedPermissionModes.includes("full")) {
+    return "full";
   }
   return supportedPermissionModes[0] ?? DEFAULT_PERMISSION_MODE;
 }
@@ -283,14 +285,18 @@ export function resolveThreadDefaultPermissionMode(
 export function resolveThreadExecutionPermissionMode(
   args: ResolveThreadExecutionPermissionModeArgs,
 ): PermissionMode {
-  if ((args.thread.originKind ?? args.thread.childOrigin) === "side-chat") {
-    return "readonly";
-  }
   if (args.requestedPermissionMode) {
     return args.requestedPermissionMode;
   }
   if (args.lastExecutionPermissionMode) {
-    return args.lastExecutionPermissionMode;
+    if (
+      args.lastExecutionPermissionMode === "readonly" &&
+      (args.thread.originKind ?? args.thread.childOrigin) === "side-chat" &&
+      args.sourceThreadEffectivePermissionMode !== undefined
+    ) {
+      return args.sourceThreadEffectivePermissionMode;
+    }
+    return normalizeRecordedPermissionMode(args.lastExecutionPermissionMode);
   }
 
   if (
@@ -299,7 +305,9 @@ export function resolveThreadExecutionPermissionMode(
   ) {
     return resolveSupportedPermissionMode({
       providerId: args.thread.providerId,
-      preferredPermissionMode: args.parentThreadExecutionPermissionMode,
+      preferredPermissionMode: normalizeRecordedPermissionMode(
+        args.parentThreadExecutionPermissionMode,
+      ),
     });
   }
 
@@ -307,4 +315,24 @@ export function resolveThreadExecutionPermissionMode(
     thread: args.thread,
   });
   return args.projectExecutionPermissionMode ?? defaultPermissionMode;
+}
+
+/**
+ * Resolve a historical permission fact into the current execution contract.
+ * Stored events remain unchanged; only future work is translated. Legacy
+ * workspace-write keeps its workspace boundary, while legacy readonly falls
+ * back to Accept Edits instead of being accepted as a public writable alias.
+ */
+export function normalizeRecordedPermissionMode(
+  permissionMode: RecordedPermissionMode,
+): PermissionMode {
+  switch (permissionMode) {
+    case "accept-edits":
+    case "auto":
+    case "full":
+      return permissionMode;
+    case "workspace-write":
+    case "readonly":
+      return "accept-edits";
+  }
 }

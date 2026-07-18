@@ -58,17 +58,23 @@ const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 
 const PERMISSION_MODE_OPTIONS: PickerOption<PermissionMode>[] = [
   {
+    value: "accept-edits",
+    label: "Accept Edits",
+    description:
+      "Applies edits inside the workspace automatically. Anything beyond the workspace asks you first.",
+  },
+  {
+    value: "auto",
+    label: "Approve for me",
+    description:
+      "Same workspace sandbox, with requests reviewed automatically. High-risk actions can still come back to you.",
+  },
+  {
     value: "full",
     label: "Full Access",
     tone: "warning",
-  },
-  {
-    value: "workspace-write",
-    label: "Workspace Write",
-  },
-  {
-    value: "readonly",
-    label: "Readonly",
+    description:
+      "No sandbox and no approvals — the agent can run anything on your machine.",
   },
 ];
 

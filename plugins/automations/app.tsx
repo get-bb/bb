@@ -389,7 +389,12 @@ const RUN_STATUS_TONE_CLASS: Record<RunStatusLabel["tone"], string> = {
 
 function describeExecution(execution: AutomationExecution): string {
   if (execution.mode === "agent") {
-    return `Agent · ${execution.providerId}/${execution.model} · ${execution.permissionMode}`;
+    const permission = {
+      "accept-edits": "Accept Edits",
+      auto: "Approve for me",
+      full: "Full Access",
+    }[execution.permissionMode];
+    return `Agent · ${execution.providerId}/${execution.model} · ${permission}`;
   }
   const interpreter = execution.interpreter ?? "bash";
   const target = execution.scriptFile ?? "inline script";

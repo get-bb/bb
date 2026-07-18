@@ -80,6 +80,8 @@ export function sameExecutionSettings(
     leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
     leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
     args.left.permissionMode === args.right.permissionMode &&
+    args.left.permissionScope === args.right.permissionScope &&
+    args.left.approvalReviewer === args.right.approvalReviewer &&
     args.left.permissionEscalation === args.right.permissionEscalation
   );
 }

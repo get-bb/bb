@@ -189,7 +189,7 @@ describe("thread runtime config", () => {
         });
         const execution = {
           model: "model-a",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -337,7 +337,7 @@ describe("thread runtime config", () => {
         });
         const execution = {
           model: requestedModel,
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -393,16 +393,16 @@ describe("thread runtime config", () => {
   it.each([
     {
       childProviderId: "codex",
-      expectedPermissionMode: "full",
+      expectedPermissionMode: "auto",
       parentProviderId: null,
-      name: "defaults root-thread execution permission mode to full",
+      name: "defaults root-thread execution permission mode to auto",
       requestedModel: "gpt-5",
     },
     {
       childProviderId: "codex",
-      expectedPermissionMode: "full",
+      expectedPermissionMode: "auto",
       parentProviderId: "codex",
-      name: "defaults child execution permission mode to full without parent history or project defaults",
+      name: "defaults child execution permission mode to auto without parent history or project defaults",
       requestedModel: "gpt-5",
     },
     {
@@ -488,7 +488,7 @@ describe("thread runtime config", () => {
           providerId: "codex",
           model: "gpt-5",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
           serviceTier: "default",
         },
         requestedExecution: {
@@ -497,7 +497,7 @@ describe("thread runtime config", () => {
         },
       });
 
-      expect(execution.permissionMode).toBe("readonly");
+      expect(execution.permissionMode).toBe("accept-edits");
     });
   });
 
@@ -521,7 +521,7 @@ describe("thread runtime config", () => {
         threadId: parentThread.id,
         environmentId: environment.id,
         providerThreadId: "provider-parent-permission-mode",
-        permissionMode: "workspace-write",
+        permissionMode: "accept-edits",
       });
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -536,7 +536,7 @@ describe("thread runtime config", () => {
           providerId: "codex",
           model: "gpt-5",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
           serviceTier: "default",
         },
         requestedExecution: {
@@ -545,7 +545,7 @@ describe("thread runtime config", () => {
         },
       });
 
-      expect(execution.permissionMode).toBe("workspace-write");
+      expect(execution.permissionMode).toBe("accept-edits");
     });
   });
 
@@ -581,7 +581,7 @@ describe("thread runtime config", () => {
           providerId: "codex",
           model: "gpt-5",
           reasoningLevel: "medium",
-          permissionMode: "readonly",
+          permissionMode: "accept-edits",
           serviceTier: "default",
         },
         requestedExecution: {
@@ -590,11 +590,11 @@ describe("thread runtime config", () => {
         },
       });
 
-      expect(execution.permissionMode).toBe("readonly");
+      expect(execution.permissionMode).toBe("accept-edits");
     });
   });
 
-  it("honors requested workspace-write permission mode when the provider supports it", async () => {
+  it("honors requested Accept Edits permission mode when the provider supports it", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-permission-mode-workspace-write",
@@ -615,12 +615,12 @@ describe("thread runtime config", () => {
         threadId: thread.id,
         requestedExecution: {
           model: "gpt-5",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           source: "client/turn/requested",
         },
       });
 
-      expect(execution.permissionMode).toBe("workspace-write");
+      expect(execution.permissionMode).toBe("accept-edits");
     });
   });
 
@@ -647,7 +647,7 @@ describe("thread runtime config", () => {
           threadId: thread.id,
           requestedExecution: {
             model: "openai/codex-mini",
-            permissionMode: "workspace-write",
+            permissionMode: "accept-edits",
             source: "client/turn/requested",
           },
         }),
@@ -977,7 +977,7 @@ describe("thread runtime config", () => {
         environment,
         execution: {
           model: "claude-sonnet-4-6",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           reasoningLevel: "medium",
           serviceTier: "default",
           source: "client/turn/requested",
@@ -1098,7 +1098,7 @@ describe("thread runtime config", () => {
           thread: sideChatThread,
           initiator: "user",
         }),
-      ).toBe("deny");
+      ).toBe("ask");
       expect(
         resolvePermissionEscalation({
           thread: parentThread,

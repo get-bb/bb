@@ -761,7 +761,7 @@ describe("workflow resume cache integration", () => {
     const execution = {
       model: "model-a",
       reasoningLevel: "medium" as "medium" | "high",
-      permissionMode: "full" as "full" | "readonly",
+      permissionMode: "accept-edits" as "accept-edits" | "auto",
     };
     let activeModels = [availableModel("model-a"), availableModel("model-b")];
     let selectedOnlyModels = [availableModel("retired-model")];
@@ -801,7 +801,7 @@ describe("workflow resume cache integration", () => {
                 supportsServiceTier: true,
                 supportsUserQuestion: false,
                 supportsFork: true,
-                supportedPermissionModes: ["full", "readonly"],
+                supportedPermissionModes: ["accept-edits", "auto", "full"],
               },
               composerActions: [],
             },
@@ -981,7 +981,7 @@ describe("workflow resume cache integration", () => {
       resolvedProvider: "codex",
       resolvedModel: "model-a",
       resolvedReasoningLevel: "medium",
-      resolvedPermissionMode: "full",
+      resolvedPermissionMode: "accept-edits",
     });
 
     const inserted = await test.start(
@@ -1280,7 +1280,7 @@ describe("workflow resume cache integration", () => {
 
     test.execution.model = "model-b";
     test.execution.reasoningLevel = "high";
-    test.execution.permissionMode = "readonly";
+    test.execution.permissionMode = "auto";
     const changedSelection = await test.start(
       workflowSource(
         `return await agent("structured", { outputSchema: ${reorderedSchema} });`,
@@ -1291,7 +1291,7 @@ describe("workflow resume cache integration", () => {
     expect(getCall(test.db, changedSelection.id, 0)).toMatchObject({
       resolvedModel: "model-b",
       resolvedReasoningLevel: "high",
-      resolvedPermissionMode: "readonly",
+      resolvedPermissionMode: "auto",
       replaySource: null,
     });
     await expect(

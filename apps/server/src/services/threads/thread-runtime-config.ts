@@ -145,11 +145,7 @@ function resolveDynamicTools(
 export function resolvePermissionEscalation(
   args: ResolvePermissionEscalationArgs,
 ): PermissionEscalation {
-  if (
-    args.initiator !== "user" ||
-    args.thread.parentThreadId !== null ||
-    isSideChatThread(args.thread)
-  ) {
+  if (args.initiator !== "user" || args.thread.parentThreadId !== null) {
     return "deny";
   }
 

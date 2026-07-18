@@ -533,10 +533,10 @@ Agents discover plugin commands through the server-generated
 `PLUGIN_CLI_OUTPUT_MAX_BYTES` from `@bb/plugin-sdk` (1,048,576 UTF-8 bytes).
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use
-file/streaming commands for large content. Caveat: in a `readonly`-sandboxed
-thread the sandbox blocks loopback network, so `bb` CLI calls (including
-plugin commands) fail there; agent flows that need the CLI want
-workspace-write.
+file/streaming commands for large content. Caveat: under the workspace
+sandbox (Accept Edits / Approve for me) some provider sandboxes block
+loopback network for sandboxed commands, so `bb` CLI calls (including
+plugin commands) may need escalation approval or a Full Access thread.
 
 **Multi-machine rule: `run` executes on the server, so a path argument names
 a file on the INVOKING machine, not on `run`'s filesystem.** Never open a
@@ -1151,8 +1151,9 @@ Remaining reference examples in `examples/plugins/`:
 - Schedules only fire while the plugin is loaded (rows are durable, the
   runner is not).
 - CLI `run(argv)` argv excludes the command name; core bb command names
-  are reserved; readonly-sandboxed agent threads cannot reach the bb CLI
-  (no loopback network).
+  are reserved; workspace-sandboxed agent threads (Accept Edits / Approve
+  for me) may fail to reach the bb CLI when the provider sandbox blocks
+  loopback network.
 - Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
   and a throw blocks the send.
 - Agent tool changes apply on the next session start, not mid-session;

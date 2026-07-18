@@ -67,6 +67,38 @@ describe("parseStoredThreadEvent", () => {
     });
   });
 
+  it.each(["workspace-write", "readonly"] as const)(
+    "preserves the legacy %s mode on stored history",
+    (permissionMode) => {
+      const event = parseStoredThreadEvent({
+        type: "client/turn/requested",
+        threadId: "thread-1",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: "creq_23456789ab",
+          source: "tell",
+          initiator: "user",
+          input: [{ type: "text", text: "historical message" }],
+          target: { kind: "new-turn" },
+          request: { method: "turn/start", params: {} },
+          execution: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            permissionMode,
+            source: "client/turn/requested",
+          },
+        },
+      });
+
+      expect(event).toMatchObject({
+        type: "client/turn/requested",
+        execution: { permissionMode },
+      });
+    },
+  );
+
   it("drops legacy data turnId and uses stored scope as ground truth", () => {
     const event = parseStoredThreadEvent({
       type: "item/completed",

@@ -105,7 +105,7 @@ describe("threadDetailPromptSubmission", () => {
       buildCreateQueuedFollowUpRequest({
         execution: {
           model: "gpt-5",
-          permissionMode: "workspace-write",
+          permissionMode: "accept-edits",
           reasoningLevel: "high",
           serviceTier: "fast",
           supportsServiceTier: false,
@@ -122,7 +122,7 @@ describe("threadDetailPromptSubmission", () => {
       id: "thread-1",
       input: textInput,
       model: "gpt-5",
-      permissionMode: "workspace-write",
+      permissionMode: "accept-edits",
       reasoningLevel: "high",
       executionInputSources: {
         model: "explicit",

@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
@@ -55,6 +56,7 @@ import {
   buildReadonlyDenialMessage,
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
+  type BuildSessionOptionsArgs,
 } from "./session-options.js";
 import {
   startClaudeCodeMockCliTrafficProxy,
@@ -185,6 +187,7 @@ interface ClaudeSessionPermissionGrantCoverageArgs {
 
 interface ThreadSession {
   session: SdkSession;
+  sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
   closing: boolean;
@@ -210,6 +213,7 @@ interface CreateThreadSessionArgs {
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   providerThreadId?: string;
+  sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
   sessionPermissionGrants?: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
@@ -219,6 +223,18 @@ interface PreparedSessionEnv {
   env: NodeJS.ProcessEnv;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
 }
+
+interface SessionConstructionConfig {
+  claudeCodeMockCliTraffic: ThreadResumeParams["claudeCodeMockCliTraffic"];
+  config: ThreadResumeParams["config"];
+  dynamicTools: ThreadResumeParams["dynamicTools"];
+  sessionOptions: BuildSessionOptionsArgs;
+}
+
+type SessionConstructionParams =
+  | ThreadStartParams
+  | ThreadResumeParams
+  | ThreadForkParams;
 
 interface PrepareSessionEnvParams {
   claudeCodeMockCliTraffic: ThreadStartParams["claudeCodeMockCliTraffic"];
@@ -435,6 +451,31 @@ function nextSessionSerial(): number {
   return sessionSerialCounter;
 }
 
+function toSessionConstructionConfig(
+  params: SessionConstructionParams,
+): SessionConstructionConfig {
+  return {
+    claudeCodeMockCliTraffic: params.claudeCodeMockCliTraffic,
+    config: params.config,
+    dynamicTools: params.dynamicTools,
+    sessionOptions: {
+      additionalWorkspaceWriteRoots: params.additionalWorkspaceWriteRoots,
+      baseInstructions: params.baseInstructions,
+      cwd: params.cwd,
+      disallowedTools: params.disallowedTools,
+      instructionMode: params.instructionMode,
+      memoryEnabled: params.memoryEnabled,
+      model: params.model,
+      permissionEscalation: params.permissionEscalation,
+      permissionMode: params.permissionMode,
+      permissionScope: params.permissionScope,
+      plugins: params.plugins,
+      reasoningLevel: params.reasoningLevel,
+      workflowsEnabled: params.workflowsEnabled,
+    },
+  };
+}
+
 function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
   const sessionSerial = nextSessionSerial();
   const session = new SdkSession(
@@ -451,6 +492,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
 
   return {
     session,
+    sessionConstructionConfig: args.sessionConstructionConfig,
     sessionOptions: args.sessionOptions,
     sessionSerial,
     closing: false,
@@ -498,6 +540,7 @@ function replaceEndedThreadSession(
     permissionEscalation: args.threadSession.permissionEscalation,
     permissionMode: args.threadSession.permissionMode,
     providerThreadId,
+    sessionConstructionConfig: args.threadSession.sessionConstructionConfig,
     sessionOptions: args.threadSession.sessionOptions,
     sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
     threadIdRef: args.threadSession.threadIdRef,
@@ -1119,7 +1162,8 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       threadSession.permissionMode === "dontAsk"
     ) {
       const policyMessage =
-        threadSession.permissionMode === "acceptEdits"
+        threadSession.permissionMode === "acceptEdits" ||
+        threadSession.permissionMode === "auto"
           ? buildWorkspaceWriteDenialMessage()
           : buildReadonlyDenialMessage();
       return {
@@ -1206,6 +1250,7 @@ async function handleThreadStart(
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     providerThreadId,
+    sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
@@ -1223,6 +1268,7 @@ async function handleThreadResume(
 ): Promise<void> {
   const threadId = params.threadId;
   const requestedProviderThreadId = params.providerThreadId ?? undefined;
+  const sessionConstructionConfig = toSessionConstructionConfig(params);
 
   const existing = sessions.get(threadId);
   if (
@@ -1230,7 +1276,11 @@ async function handleThreadResume(
     requestedProviderThreadId &&
     !existing.closing &&
     !existing.streamEnded &&
-    existing.providerThreadId === requestedProviderThreadId
+    existing.providerThreadId === requestedProviderThreadId &&
+    isDeepStrictEqual(
+      existing.sessionConstructionConfig,
+      sessionConstructionConfig,
+    )
   ) {
     sendResult(id, {
       threadId,
@@ -1266,6 +1316,7 @@ async function handleThreadResume(
     ...(requestedProviderThreadId
       ? { providerThreadId: requestedProviderThreadId }
       : {}),
+    sessionConstructionConfig,
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
@@ -1323,6 +1374,7 @@ async function handleThreadFork(
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     providerThreadId: forkedProviderThreadId,
+    sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,

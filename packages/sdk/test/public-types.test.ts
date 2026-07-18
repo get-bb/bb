@@ -11,6 +11,7 @@ import type {
   PluginGetSourceResult as RootPluginGetSource,
   PluginApplyUpdateResult as RootPluginApplyUpdate,
   PluginCatalogStatusResult as RootPluginCatalogStatus,
+  PermissionMode as RootPermissionMode,
   ProjectAttachmentUploadResult as RootProjectAttachmentUpload,
   ProjectFileContentResult as RootProjectFileContent,
   ProjectGetResult as RootProjectGet,
@@ -410,6 +411,12 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<BrowserBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<CoreBbSdk>().toEqualTypeOf<RootBbSdk>();
     expectTypeOf<NodeBbSdk>().toEqualTypeOf<RootBbSdk>();
+  });
+
+  it("exports only the public permission presets", () => {
+    expectTypeOf<RootPermissionMode>().toEqualTypeOf<
+      "accept-edits" | "auto" | "full"
+    >();
   });
 
   it("makes provider host selectors mutually exclusive", () => {

@@ -20,6 +20,7 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
+import { resolveExistingThreadPermissionMode } from "./thread-execution-plan.js";
 import {
   getLastProviderThreadId,
   getProviderThreadIdAtOrBeforeSequence,
@@ -554,6 +555,10 @@ export async function createThreadFromRequest(
         sourceThreadId,
       })
     : null;
+  const sideChatPermissionMode =
+    originKind === "side-chat" && sourceThread !== null
+      ? resolveExistingThreadPermissionMode(deps, sourceThread.id)
+      : undefined;
   if (originKind !== null && sourceThread !== null) {
     // Forks and side chats are not hierarchy children, but they still consume
     // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
@@ -623,6 +628,19 @@ export async function createThreadFromRequest(
   } = requestInput;
   const request: ThreadCreateServiceRequest = {
     ...requestRest,
+    ...(sideChatPermissionMode !== undefined
+      ? {
+          permissionMode: sideChatPermissionMode,
+          ...(requestRest.executionInputSources !== undefined
+            ? {
+                executionInputSources: {
+                  ...requestRest.executionInputSources,
+                  permissionMode: "explicit" as const,
+                },
+              }
+            : {}),
+        }
+      : {}),
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
       : {}),

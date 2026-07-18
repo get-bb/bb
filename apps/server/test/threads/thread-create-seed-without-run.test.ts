@@ -4,11 +4,16 @@ import {
   getThread,
   listEvents,
 } from "@bb/db";
-import { PERSONAL_PROJECT_ID, turnRequestEventDataSchema } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  turnRequestEventDataSchema,
+  type PermissionMode,
+} from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
+import { resolveExecutionOptions } from "../../src/services/threads/thread-runtime-config.js";
 import { canThreadSpawnChild } from "../../src/services/threads/thread-parent.js";
 import {
   reportQueuedCommandSuccess,
@@ -23,6 +28,7 @@ import {
   seedProjectWithSource,
   seedQueuedMessage,
   seedThread,
+  seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -630,55 +636,101 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
-  it("forks a side chat from the source provider session and runs its question", async () => {
-    await withChildBoundaryHarness(
-      "side-chat-native-fork",
-      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
-        // Give the source a live provider session so the side chat clones it.
-        seedTurnStarted(harness.deps, {
-          threadId: sourceThreadId,
-          turnId: "turn-parent",
-          providerThreadId: "provider-parent-session",
-        });
+  it.each<PermissionMode>(["accept-edits", "auto", "full"])(
+    "snapshots %s from the source thread when forking a side chat",
+    async (permissionMode) => {
+      await withChildBoundaryHarness(
+        `side-chat-native-fork-${permissionMode}`,
+        async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+          // Give the source a live provider session so the side chat clones it.
+          seedThreadRuntimeState(harness.deps, {
+            environmentId:
+              getThread(harness.db, sourceThreadId)?.environmentId ?? null,
+            permissionMode,
+            inputText: "Source question",
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            threadId: sourceThreadId,
+            providerThreadId: "provider-parent-session",
+          });
 
-        const sideChat = await createThreadFromRequest(harness.deps, {
-          environment: {
-            type: "host",
-            hostId,
-            workspace: { type: "unmanaged", path },
-          },
-          input: textInput("What did this code do?"),
-          origin: "app",
-          originKind: "side-chat",
-          projectId,
-          providerId: "codex",
-          sourceThreadId,
-          startedOnBehalfOf: null,
-        });
+          const sideChat = await createThreadFromRequest(harness.deps, {
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("What did this code do?"),
+            origin: "app",
+            originKind: "side-chat",
+            projectId,
+            providerId: "codex",
+            permissionMode: permissionMode === "full" ? "accept-edits" : "full",
+            sourceThreadId,
+            startedOnBehalfOf: null,
+          });
 
-        // The side chat is provisioned as a native fork: the dispatched
-        // thread.start carries the source provider session id so the side chat
-        // clones the full history, AND it still carries the user's question so
-        // the question turn runs immediately.
-        const queuedStart = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === sideChat.id,
-        );
-        if (queuedStart.command.type !== "thread.start") {
-          throw new Error("Expected a thread.start command");
-        }
-        expect(queuedStart.command.fork).toEqual({
-          sourceProviderThreadId: "provider-parent-session",
-        });
-        const startInputText = queuedStart.command.input
-          .filter((entry) => entry.type === "text")
-          .map((entry) => entry.text)
-          .join("\n");
-        expect(startInputText).toContain("What did this code do?");
-      },
-    );
-  });
+          // The side chat is provisioned as a native fork: the dispatched
+          // thread.start carries the source provider session id so the side chat
+          // clones the full history, AND it still carries the user's question so
+          // the question turn runs immediately.
+          const queuedStart = await waitForQueuedCommand(
+            harness,
+            ({ command }) =>
+              command.type === "thread.start" &&
+              command.threadId === sideChat.id,
+          );
+          if (queuedStart.command.type !== "thread.start") {
+            throw new Error("Expected a thread.start command");
+          }
+          expect(queuedStart.command.fork).toEqual({
+            sourceProviderThreadId: "provider-parent-session",
+          });
+          expect(queuedStart.command.options).toMatchObject({
+            permissionMode,
+            permissionScope: permissionMode === "full" ? "full" : "workspace",
+            approvalReviewer:
+              permissionMode === "full"
+                ? null
+                : permissionMode === "auto"
+                  ? "automatic"
+                  : "user",
+            permissionEscalation: permissionMode === "full" ? null : "ask",
+          });
+          const startInputText = queuedStart.command.input
+            .filter((entry) => entry.type === "text")
+            .map((entry) => entry.text)
+            .join("\n");
+          expect(startInputText).toContain("What did this code do?");
+
+          seedThreadRuntimeState(harness.deps, {
+            environmentId:
+              getThread(harness.db, sourceThreadId)?.environmentId ?? null,
+            permissionMode: permissionMode === "full" ? "auto" : "full",
+            threadId: sourceThreadId,
+            inputText: "Source permission changed",
+            model: "gpt-5",
+            providerThreadId: "provider-parent-session",
+            reasoningLevel: "medium",
+            sequenceStart: 10,
+            serviceTier: "default",
+          });
+          const sideChatExecution = await resolveExecutionOptions(
+            harness.deps,
+            {
+              requestedExecution: {
+                model: "gpt-5",
+                source: "client/turn/requested",
+              },
+              threadId: sideChat.id,
+            },
+          );
+          expect(sideChatExecution.permissionMode).toBe(permissionMode);
+        },
+      );
+    },
+  );
 
   it("preloads an empty-input side chat by cloning the source provider session", async () => {
     await withChildBoundaryHarness(
@@ -833,7 +885,7 @@ describe("thread creation child-thread boundary validation", () => {
         seedQueuedMessage(harness.deps, {
           threadId: sideChat.id,
           content: textInput("Queued first side-chat question"),
-          permissionMode: "readonly",
+          permissionMode: "auto",
         });
 
         await reportQueuedCommandSuccess(harness, queuedStart, {

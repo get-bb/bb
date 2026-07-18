@@ -164,6 +164,12 @@ environment pull-request show <id>`. Diff commands require an explicit target
   `bb environment archive-threads` bulk-archives an environment's threads.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
+- Public permission modes are `accept-edits`, `auto`, and `full`.
+  `accept-edits` keeps workspace sandboxing and asks the user to review
+  escalations. `auto` keeps the same workspace sandbox while using the
+  provider's automatic reviewer. `full` explicitly bypasses sandbox and
+  approval protections. Plan mode remains separate. The product default is
+  `auto` when no inherited or project default applies.
 - When spawning a subagent, pass `--permission-mode full` unless the user or
   task explicitly requests restricted access.
 - Use `--parent-self` inside a thread to parent the new thread to the current

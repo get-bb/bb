@@ -130,8 +130,10 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "hook/completed": "unknown",
   "hook/started": "unknown",
   "item/agentMessage/delta": "normalized",
-  "item/autoApprovalReview/completed": "unknown",
-  "item/autoApprovalReview/started": "unknown",
+  // Codex's automatic reviewer lifecycle is internal policy progress. The
+  // resulting tool/item lifecycle already carries the actionable outcome.
+  "item/autoApprovalReview/completed": "noise",
+  "item/autoApprovalReview/started": "noise",
   "item/commandExecution/outputDelta": "normalized",
   "item/commandExecution/terminalInteraction": "unknown",
   "item/completed": "normalized",

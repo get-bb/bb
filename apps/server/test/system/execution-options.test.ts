@@ -842,9 +842,8 @@ describe("resolveSystemExecutionOptions", () => {
                 supportsFork: false,
                 supportsServiceTier: true,
                 supportedPermissionModes: [
+                  "accept-edits",
                   "full",
-                  "workspace-write",
-                  "readonly",
                 ],
               }),
             }),
