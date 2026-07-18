@@ -242,6 +242,29 @@ describe("AppCommandProvider", () => {
     vi.useRealTimers();
   });
 
+  it("cancels keyboard hints when the modifier becomes part of a shortcut chord", () => {
+    vi.useFakeTimers();
+    renderProvider(<ModifierState />);
+
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(699));
+    fireEvent.keyDown(window, {
+      key: "Shift",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText("released")).toBeDefined();
+
+    fireEvent.keyUp(window, { key: "Control" });
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyDown(window, { key: "3", ctrlKey: true, shiftKey: true });
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
   it("does not share primary-modifier hold state when keyboard hints are disabled", () => {
     vi.useFakeTimers();
     testState.showKeyboardHints = false;

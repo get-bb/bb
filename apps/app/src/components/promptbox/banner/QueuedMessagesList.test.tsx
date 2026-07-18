@@ -107,7 +107,7 @@ afterEach(() => {
 });
 
 describe("QueuedMessagesList", () => {
-  it("cycles from drawer to workspace to collapsed with one header control", () => {
+  it("toggles a few messages between the fitted drawer and collapsed modes", () => {
     const { container, getByRole } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
       makeQueuedMessage("q_two", "Second queued message"),
@@ -115,28 +115,18 @@ describe("QueuedMessagesList", () => {
     const header = container.querySelector<HTMLElement>(
       "[data-queued-messages-mode]",
     );
+    const surface = container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    );
 
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
     expect(header?.className.split(/\s+/u)).toContain("border-b");
-    expect(header?.className.split(/\s+/u)).toContain("border-border/35");
-    expect(
-      getByRole("button", { name: "Expand queued messages" }).querySelector(
-        '[data-icon="ChevronUp"]',
-      ),
-    ).not.toBeNull();
-
-    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
-    expect(header?.getAttribute("data-queued-messages-mode")).toBe("workspace");
+    expect(surface?.style.height).toBe("123px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
         '[data-icon="ChevronDown"]',
       ),
     ).not.toBeNull();
-    expect(
-      container.querySelector<HTMLElement>(
-        'section[aria-label="Queued messages"]',
-      )?.style.height,
-    ).toBe("240px");
 
     fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
@@ -146,16 +136,76 @@ describe("QueuedMessagesList", () => {
         '[data-icon="ChevronUp"]',
       ),
     ).not.toBeNull();
+    expect(surface?.style.height).toBe("44px");
 
     fireEvent.click(getByRole("button", { name: "Show queued messages" }));
+    expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
+    expect(surface?.style.height).toBe("123px");
+  });
+
+  it("toggles an overflowing queue between the workspace and collapsed modes", () => {
+    const { container, getByRole } = renderQueuedMessages(
+      Array.from({ length: 5 }, (_, index) =>
+        makeQueuedMessage(`q_${index}`, `Queued message ${index + 1}`),
+      ),
+    );
+    const header = container.querySelector<HTMLElement>(
+      "[data-queued-messages-mode]",
+    );
+
+    expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
+    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
+    expect(header?.getAttribute("data-queued-messages-mode")).toBe("workspace");
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
+    expect(header?.getAttribute("data-queued-messages-mode")).toBe("collapsed");
+    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
+    expect(header?.getAttribute("data-queued-messages-mode")).toBe("workspace");
+  });
+
+  it("opens the fitted drawer when a queued message arrives while collapsed", async () => {
+    const sharedProps = {
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSendImmediately: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const firstMessage = makeQueuedMessage("q_one", "First queued message");
+    const { container, getByRole, rerender } = render(
+      <QueuedMessagesList {...sharedProps} queuedMessages={[firstMessage]} />,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     expect(
       container
         .querySelector("[data-queued-messages-mode]")
         ?.getAttribute("data-queued-messages-mode"),
-    ).toBe("drawer");
+    ).toBe("collapsed");
+
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[
+          firstMessage,
+          makeQueuedMessage("q_two", "Second queued message"),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-queued-messages-mode]")
+          ?.getAttribute("data-queued-messages-mode"),
+      ).toBe("drawer");
+    });
   });
 
-  it("opens the workspace when the header handle is dragged up", () => {
+  it("moves through all three modes with the header drag handle", () => {
     const { container, getByRole } = renderQueuedMessages([
       makeQueuedMessage("q_one", "First queued message"),
       makeQueuedMessage("q_two", "Second queued message"),
@@ -167,20 +217,51 @@ describe("QueuedMessagesList", () => {
       configurable: true,
       value: vi.fn(),
     });
+    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     fireEvent.pointerDown(handle, {
       button: 0,
       clientY: 200,
       pointerId: 1,
     });
+    expect(handle.className.split(/\s+/u)).toContain("cursor-grabbing");
     fireEvent.pointerMove(handle, { clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(handle, { clientY: 100, pointerId: 1 });
+    expect(handle.className.split(/\s+/u)).toContain("cursor-grab");
 
     expect(
       container
         .querySelector("[data-queued-messages-mode]")
         ?.getAttribute("data-queued-messages-mode"),
     ).toBe("workspace");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      clientY: 100,
+      pointerId: 2,
+    });
+    fireEvent.pointerMove(handle, { clientY: 200, pointerId: 2 });
+    fireEvent.pointerUp(handle, { clientY: 200, pointerId: 2 });
+
+    expect(
+      container
+        .querySelector("[data-queued-messages-mode]")
+        ?.getAttribute("data-queued-messages-mode"),
+    ).toBe("drawer");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      clientY: 100,
+      pointerId: 3,
+    });
+    fireEvent.pointerMove(handle, { clientY: 200, pointerId: 3 });
+    fireEvent.pointerUp(handle, { clientY: 200, pointerId: 3 });
+
+    expect(
+      container
+        .querySelector("[data-queued-messages-mode]")
+        ?.getAttribute("data-queued-messages-mode"),
+    ).toBe("collapsed");
   });
 
   it("uses hover-revealed icon actions on desktop and an overflow menu on mobile widths", () => {
@@ -298,7 +379,7 @@ describe("QueuedMessagesList", () => {
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
-  it("returns to the drawer height after inline editing ends", async () => {
+  it("returns to the fitted drawer height after inline editing ends", async () => {
     const queuedMessages = Array.from({ length: 4 }, (_, index) =>
       makeQueuedMessage(`q_${index}`, `Queued message ${index + 1}`),
     );
@@ -488,6 +569,11 @@ describe("QueuedMessagesList", () => {
     expect(
       container.querySelector('[data-icon="FileAttachment"]'),
     ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[title="Review the attached screenshot"]')
+        ?.classList.contains("fade-clip-right"),
+    ).toBe(false);
     expect(container.textContent).not.toContain("1 attachment");
   });
 

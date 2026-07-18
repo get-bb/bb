@@ -98,6 +98,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const modifierHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const primaryModifierHeldRef = useRef(false);
   const keybindingsRef = useRef(keybindings);
   const handlersRef = useRef(
     new Map<AppCommandId, Map<symbol, AppCommandHandlerRegistration>>(),
@@ -117,17 +118,28 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         clearTimeout(modifierHoldTimerRef.current);
         modifierHoldTimerRef.current = null;
       }
+      primaryModifierHeldRef.current = false;
       setIsPrimaryModifierHeld(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== primaryModifier) {
+        if (
+          modifierHoldTimerRef.current !== null ||
+          primaryModifierHeldRef.current
+        ) {
+          clearModifierHold();
+        }
+        return;
+      }
       if (
-        event.key !== primaryModifier ||
-        modifierHoldTimerRef.current !== null
+        modifierHoldTimerRef.current !== null ||
+        primaryModifierHeldRef.current
       ) {
         return;
       }
       modifierHoldTimerRef.current = setTimeout(() => {
         modifierHoldTimerRef.current = null;
+        primaryModifierHeldRef.current = true;
         setIsPrimaryModifierHeld(true);
       }, SHORTCUT_HINT_HOLD_DELAY_MS);
     };

@@ -534,7 +534,7 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_4", "Compare the queue in light and dark themes."),
   makeStoryQueuedMessage("q_5", "Verify keyboard reordering from each grip."),
   makeStoryQueuedMessage("q_6", "Run the prompt-box typecheck."),
-  makeStoryQueuedMessage("q_7", "Review the drawer at a narrow width."),
+  makeStoryQueuedMessage("q_7", "Review the queue at a narrow width."),
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
@@ -1023,7 +1023,7 @@ export function QueuedWorkspace() {
     <StoryCard>
       <StoryRow
         label="eight queued follow-ups"
-        hint="drag the header up, reorder by the grip, then choose Edit from a row menu"
+        hint="the centered handle stays quiet; hover the header to reveal the right-aligned caret"
       >
         <Row
           submitMode={{ kind: "queue", onStop: noop }}

@@ -414,7 +414,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple messages"
-        hint="hover for the grip and row menu; drag the header up for the workspace"
+        hint="a few messages fit the drawer; the caret collapses it"
       >
         <ResponsivePromptStage>
           <ReorderableQueuedMessagesList />
@@ -422,7 +422,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="overflowing queue"
-        hint="nine messages scroll in the drawer and expand into the pull-up workspace"
+        hint="the caret expands an overflowing drawer into the pull-up workspace"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList
@@ -441,7 +441,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="with attachments"
-        hint="FileAttachment icon; multiple files add a compact numeric count"
+        hint="the attachment icon and count sit directly beside the prompt text"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList

@@ -132,8 +132,9 @@ interface QueuedMessageRowProps {
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
-const COLLAPSED_HEIGHT = 56;
+const COLLAPSED_HEIGHT = 44;
 const DRAWER_HEIGHT = 174;
+const DRAWER_MAX_VISIBLE_MESSAGES = 3;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -561,10 +562,12 @@ function buildQueuedMessagePreviewText(
 
 function QueuedMessagePreview({
   compact,
+  hasAttachments,
   queuedMessage,
   resolveMentionLink,
 }: {
   compact: boolean;
+  hasAttachments: boolean;
   queuedMessage: ThreadQueuedMessage;
   resolveMentionLink?: PromptMentionLinkResolver;
 }) {
@@ -582,7 +585,10 @@ function QueuedMessagePreview({
 
   return (
     <div
-      className="fade-clip-right min-w-0 flex-1 overflow-hidden text-foreground"
+      className={cn(
+        "min-w-0 overflow-hidden text-foreground",
+        !hasAttachments && "fade-clip-right",
+      )}
       title={preview}
     >
       {markdownPreview.text.length > 0 ? (
@@ -684,6 +690,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           >
             <QueuedMessagePreview
               compact={compact}
+              hasAttachments={attachmentCount > 0}
               queuedMessage={queuedMessage}
               resolveMentionLink={resolveMentionLink}
             />
@@ -957,7 +964,9 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [mode, setMode] = useState<QueueSurfaceMode>("drawer");
+  const [mode, setMode] = useState<QueueSurfaceMode>(
+    queuedMessages.length > 0 ? "drawer" : "collapsed",
+  );
   const [surfaceDragging, setSurfaceDragging] = useState(false);
   const [surfaceDragOffset, setSurfaceDragOffset] = useState(0);
   const surfaceDragStartYRef = useRef(0);
@@ -965,6 +974,7 @@ export function QueuedMessagesList({
   const surfaceDraggingRef = useRef(false);
   const wasInlineEditingRef = useRef(false);
   const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
+  const previousMessageCountRef = useRef(queuedMessages.length);
   const {
     aboveOverflow,
     belowOverflow,
@@ -1098,6 +1108,32 @@ export function QueuedMessagesList({
     }
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
+
+  useEffect(() => {
+    const previousMessageCount = previousMessageCountRef.current;
+    previousMessageCountRef.current = queuedMessages.length;
+    if (
+      queuedMessages.length !== 0 &&
+      queuedMessages.length <= previousMessageCount
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (queuedMessages.length === 0) {
+        setMode("collapsed");
+        return;
+      }
+      setMode((currentMode) =>
+        currentMode === "collapsed" ? "drawer" : currentMode,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [queuedMessages.length]);
 
   const openWorkspace = useCallback(() => {
     setMode("workspace");
@@ -1270,6 +1306,24 @@ export function QueuedMessagesList({
 
   if (queuedMessages.length === 0 && !inlineEditor) return null;
 
+  const queueFitsDrawer = queuedMessages.length <= DRAWER_MAX_VISIBLE_MESSAGES;
+  const caretWillCollapse =
+    mode === "workspace" || (mode === "drawer" && queueFitsDrawer);
+  const caretLabel = caretWillCollapse
+    ? "Collapse queued messages"
+    : mode === "collapsed" && queueFitsDrawer
+      ? "Show queued messages"
+      : "Expand queued messages";
+  const handleCaretClick = () => {
+    if (caretWillCollapse) {
+      collapseDrawer();
+    } else if (mode === "drawer" || !queueFitsDrawer) {
+      openWorkspace();
+    } else {
+      showDrawer();
+    }
+  };
+
   return (
     <PromptStackCard
       ariaLabel="Queued messages"
@@ -1285,12 +1339,12 @@ export function QueuedMessagesList({
     >
       <header
         className={cn(
-          "flex h-9 shrink-0 items-center gap-2 px-2",
+          "group/queue-header flex h-8 shrink-0 items-center gap-2 px-2",
           mode !== "collapsed" && "border-b border-border/35",
         )}
         data-queued-messages-mode={mode}
       >
-        <div className="flex min-w-20 items-baseline gap-1.5 pl-1">
+        <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
           <span className="text-xs font-medium text-foreground">Queued</span>
           <span className="text-2xs text-subtle-foreground">
             {queuedMessages.length}
@@ -1299,8 +1353,8 @@ export function QueuedMessagesList({
         <button
           type="button"
           className={cn(
-            "group/handle flex h-full min-w-24 flex-1 touch-none cursor-ns-resize select-none items-center justify-center focus-visible:rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            surfaceDragging && "cursor-grabbing",
+            "group/handle flex h-full min-w-16 flex-1 touch-none select-none items-center justify-center focus-visible:rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            surfaceDragging ? "cursor-grabbing" : "cursor-grab",
           )}
           aria-label={
             mode === "workspace"
@@ -1313,36 +1367,31 @@ export function QueuedMessagesList({
           onPointerCancel={finishSurfaceDrag}
           onKeyDown={handleSurfaceKeyDown}
         >
-          <span className="h-1 w-10 rounded-full bg-border transition-colors group-hover/handle:bg-muted-foreground/45" />
+          <span className="h-px w-7 rounded-full bg-muted-foreground opacity-30 transition-opacity group-hover/handle:opacity-50 group-focus-visible/handle:opacity-50" />
         </button>
-        <div className="flex min-w-20 items-center justify-end">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="size-7 text-muted-foreground"
-            onClick={
-              mode === "workspace"
-                ? collapseDrawer
-                : mode === "drawer"
-                  ? openWorkspace
-                  : showDrawer
-            }
-            aria-label={
-              mode === "workspace"
-                ? "Collapse queued messages"
-                : mode === "drawer"
-                  ? "Expand queued messages"
-                  : "Show queued messages"
-            }
-            aria-expanded={mode !== "collapsed"}
-          >
-            <Icon
-              name={mode === "workspace" ? "ChevronDown" : "ChevronUp"}
-              className="size-4 text-subtle-foreground opacity-60"
-              aria-hidden
-            />
-          </Button>
+        <div className="flex min-w-16 items-center justify-end">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-6 text-muted-foreground hover:bg-surface-recessed"
+                  onClick={handleCaretClick}
+                  aria-label={caretLabel}
+                  aria-expanded={mode !== "collapsed"}
+                >
+                  <Icon
+                    name={caretWillCollapse ? "ChevronDown" : "ChevronUp"}
+                    className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/queue-header:opacity-65 group-focus-within/queue-header:opacity-65 [@media(hover:none)]:opacity-45"
+                    aria-hidden
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{caretLabel}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
       <div
