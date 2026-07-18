@@ -1385,7 +1385,19 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   if (variant === "section" && depthOffset === 0) {
     const externalHeaderActions = renderTopLevelSectionHeaderActions?.(section);
     const hasMenuActions = Boolean(onRenameSection || onRemoveSection);
-    const topLevelActions = (
+    const hasTopLevelActions = Boolean(
+      externalHeaderActions?.actions ||
+      hasMenuActions ||
+      onCreateThreadInSection,
+    );
+    const topLevelActionsOpen =
+      isTopLevelActionsOpen || externalHeaderActions?.actionsOpen === true;
+    const showRollupGlyph =
+      isCollapsed &&
+      (section.activity.pending ||
+        section.activity.working ||
+        section.activity.unread);
+    const topLevelActionControls = (
       <>
         {externalHeaderActions?.actions}
         {hasMenuActions ? (
@@ -1446,14 +1458,66 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         ) : null}
       </>
     );
+    const topLevelActions = (
+      <span
+        className={cn(
+          "relative z-10 inline-flex shrink-0 items-center",
+          showRollupGlyph &&
+            !hasTopLevelActions &&
+            COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+        )}
+      >
+        {showRollupGlyph ? (
+          <span
+            data-sidebar-hover-actions-open={
+              topLevelActionsOpen ? "true" : undefined
+            }
+            className={cn(
+              hasTopLevelActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
+              hasTopLevelActions && "max-md:pointer-coarse:hidden",
+            )}
+          >
+            <CollapsedThreadStatusGlyph
+              activity={section.activity}
+              isBusy={section.activity.working}
+            />
+          </span>
+        ) : null}
+        {showRollupGlyph && hasTopLevelActions ? (
+          <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+            <CollapsedThreadStatusGlyph
+              activity={section.activity}
+              isBusy={section.activity.working}
+            />
+          </span>
+        ) : null}
+        {hasTopLevelActions ? (
+          <span
+            data-sidebar-hover-actions-open={
+              topLevelActionsOpen ? "true" : undefined
+            }
+            data-sidebar-hover-actions-mobile={
+              SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+            }
+            className={cn(
+              SIDEBAR_HOVER_ACTIONS_CLASS,
+              "relative z-10 inline-flex shrink-0 items-center",
+              SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
+            )}
+          >
+            {topLevelActionControls}
+          </span>
+        ) : null}
+      </span>
+    );
 
     return (
       <TopLevelSidebarSection
         label={section.name}
         actions={topLevelActions}
-        actionsOpen={
-          isTopLevelActionsOpen || externalHeaderActions?.actionsOpen === true
-        }
+        actionsAlwaysVisible
+        actionsOpen={topLevelActionsOpen}
         actionsMobileAlways
         collapseControl={{
           isCollapsed,

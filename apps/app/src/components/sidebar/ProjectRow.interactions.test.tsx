@@ -11,7 +11,14 @@ import type { ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { ProjectRow, type ProjectThreadListState } from "./ProjectRow";
+import { Provider, createStore } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  ChronologicalSectionThreadSections,
+  ProjectRow,
+  type ProjectThreadListState,
+} from "./ProjectRow";
+import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -190,6 +197,53 @@ describe("ProjectRow interactions", () => {
     expect(screen.getByLabelText("Agent working")).not.toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows active thread status when a top-level section is collapsed", () => {
+    const store = createStore();
+    const queryClient = new QueryClient();
+    const sectionId = "sec_active";
+    const activeThread = makeThread({
+      id: "thr_section_active",
+      sectionId,
+      status: "active",
+      runtime: {
+        displayStatus: "active",
+        hostReconnectGraceExpiresAt: null,
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ChronologicalSectionThreadSections
+              threadListState={{ status: "ready", threads: [activeThread] }}
+              compareThreads={() => 0}
+              sections={[{ id: sectionId, name: "Active work" }]}
+              collapsedThreadIds={new Set()}
+              collapsedEnvironmentIds={new Set()}
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={vi.fn()}
+              topLevelSectionOrder={[
+                buildSidebarEntitySectionId("section", sectionId),
+              ]}
+              onTopLevelSectionOrderChange={vi.fn()}
+              pinnedReorderPending={false}
+              pinnedThreads={[]}
+              onReorderPinnedThread={vi.fn()}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse Active work section" }),
+    );
+
+    expect(screen.queryByText("Test thread")).toBeNull();
+    expect(screen.getByLabelText("Agent working")).not.toBeNull();
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {
