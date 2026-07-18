@@ -296,6 +296,15 @@
         "topo"
       ]
     },
+    "@bb/templates#typecheck": {
+      // Templates embed the plugin SDK's generated declarations by file path.
+      // Keep the check from racing the SDK build without adding a package edge,
+      // which would create a dependency cycle through @bb/sdk.
+      "dependsOn": [
+        "@bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "@bb/integration-tests#typecheck": {
       "dependsOn": [
         "topo"
@@ -314,6 +323,17 @@
     "test": {
       "dependsOn": [
         "//#ensure-native-modules",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    "@bb/templates#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/plugin-sdk#build",
         "topo"
       ],
       "inputs": [

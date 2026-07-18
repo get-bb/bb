@@ -118,7 +118,14 @@ for (const [fileName, entry] of Object.entries(outputs)) {
  * committed bytes.
  */
 function canonicalize(content) {
-  return content.split("\n").sort().join("\n");
+  // Union member order can vary on a single emitted line as well as across
+  // object-member lines. Normalize quoted literal unions before sorting lines
+  // so semantically identical output does not rewrite committed declarations.
+  const normalizedLiteralUnions = content.replace(
+    /"(?:[^"\\]|\\.)+"(?: \| "(?:[^"\\]|\\.)+")+/gu,
+    (union) => union.split(" | ").sort().join(" | "),
+  );
+  return normalizedLiteralUnions.split("\n").sort().join("\n");
 }
 
 const check = process.argv.includes("--check");
