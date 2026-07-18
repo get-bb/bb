@@ -1,6 +1,7 @@
-import type { FSWatcher } from "node:fs";
+import { existsSync, type FSWatcher } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
@@ -41,6 +42,24 @@ import type {
   PluginWireLookup,
   ServiceRuntime,
 } from "./plugin-service-internal.js";
+
+/**
+ * Plugin server bundles keep `@bb/plugin-sdk` external (see @bb/plugin-build),
+ * and plugin authors never have it installed — the scaffold maps the specifier
+ * to bundled `.d.ts` files only. Source-checkout servers resolve the workspace
+ * package naturally, but built and packaged servers have no node_modules copy,
+ * so the server build ships a self-contained SDK runtime bundle next to the
+ * server bundle and the loader aliases the specifier to it.
+ */
+const pluginSdkRuntimePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "plugin-sdk-runtime.js",
+);
+const pluginSdkAlias: Record<string, string> | undefined = existsSync(
+  pluginSdkRuntimePath,
+)
+  ? { "@bb/plugin-sdk": pluginSdkRuntimePath }
+  : undefined;
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
@@ -888,7 +907,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     });
     try {
       // Fresh instance per load: guarantees re-imports see current sources.
-      const jiti = createJiti(import.meta.url, { moduleCache: false });
+      const jiti = createJiti(import.meta.url, {
+        moduleCache: false,
+        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+      });
       // Same jiti instance for source and prebuilt dist/server.js, so the
       // @bb/plugin-sdk resolution applies identically to both.
       const mod = (await jiti.import(

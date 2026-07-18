@@ -7,6 +7,19 @@ import { fileURLToPath } from "node:url";
 
 const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
+const PLUGIN_LOAD_TIMEOUT_MS = 60_000;
+const PLUGIN_LOAD_INTERVAL_MS = 1_000;
+// Auto-installed, default-enabled builtins (apps/server/src/services/plugins/
+// builtin-registry.ts). Each must reach "running" in the packed tarball —
+// bundles that pass health checks can still fail to load (0.0.31 shipped with
+// every builtin unable to resolve @bb/plugin-sdk at import time).
+const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
+  "automations",
+  "connect",
+  "custom-instructions",
+  "inline-vis",
+  "secrets",
+];
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -493,6 +506,44 @@ async function smokeSdkPackage(tarballPath) {
   return sdkDir;
 }
 
+async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
+  const deadline = Date.now() + PLUGIN_LOAD_TIMEOUT_MS;
+  let lastSummary = "no plugin list output yet";
+  // Plugins load after the HTTP server starts listening, so poll until every
+  // expected builtin settles into "running".
+  while (Date.now() <= deadline) {
+    const stdout = await runCommand({
+      args: createNpxArgs(tarballPath, "bb", ["plugin", "list", "--json"]),
+      command: "npx",
+      env: cliEnv,
+      label: "bb plugin list",
+    });
+    const plugins = JSON.parse(stdout).plugins ?? [];
+    const byId = new Map(plugins.map((plugin) => [plugin.id, plugin]));
+    const errored = plugins.filter((plugin) => plugin.status === "error");
+    if (errored.length > 0) {
+      throw new Error(
+        `Builtin plugins failed to load:\n${errored
+          .map((plugin) => `- ${plugin.id}: ${plugin.statusDetail}`)
+          .join("\n")}`,
+      );
+    }
+    const pending = EXPECTED_RUNNING_BUILTIN_PLUGINS.filter(
+      (id) => byId.get(id)?.status !== "running",
+    );
+    if (pending.length === 0) {
+      return;
+    }
+    lastSummary = pending
+      .map((id) => `${id}=${byId.get(id)?.status ?? "missing"}`)
+      .join(", ");
+    await delay(PLUGIN_LOAD_INTERVAL_MS);
+  }
+  throw new Error(
+    `Timed out waiting for builtin plugins to run: ${lastSummary}`,
+  );
+}
+
 async function smokeFullStack(tarballPath, sdkDir) {
   const dataDir = join(tempRoot, "full-stack-data");
   const serverPort = await getFreePort();
@@ -525,16 +576,18 @@ async function smokeFullStack(tarballPath, sdkDir) {
       processRef: stack,
       url: `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${daemonPort}/health`,
     });
+    const cliEnv = {
+      BB_DATA_DIR: dataDir,
+      BB_HOST_DAEMON_PORT: String(daemonPort),
+      BB_SERVER_URL: serverUrl,
+    };
     await runCommand({
       args: createNpxArgs(tarballPath, "bb", ["status"]),
       command: "npx",
-      env: {
-        BB_DATA_DIR: dataDir,
-        BB_HOST_DAEMON_PORT: String(daemonPort),
-        BB_SERVER_URL: serverUrl,
-      },
+      env: cliEnv,
       label: "bb cli status",
     });
+    await smokeBuiltinPluginsRunning({ cliEnv, tarballPath });
     await runCommand({
       args: [
         "--input-type=module",
