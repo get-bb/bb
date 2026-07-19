@@ -36,33 +36,24 @@ const THREAD_MENTION_HAST_NAME = "bb-thread-mention";
 // hast property key — `mdast-util-to-hast` lowercases it into the
 // `data-thread-id` DOM attribute that the component reads back.
 const THREAD_MENTION_THREAD_ID_PROPERTY = "dataThreadId";
-const THREAD_MENTION_INTERACTIVE_PROPERTY = "dataThreadInteractive";
 
 // Builds a real mdast `text` node that, via `data.hName`, renders as the custom
 // element rather than its (empty) text value. `mdast-util-to-hast` honours
 // `data.hName`/`data.hProperties` for any node.
-function threadMentionNode(threadId: string, interactive = true): Text {
+function threadMentionNode(threadId: string): Text {
   return {
     type: "text",
     value: "",
     data: {
       hName: THREAD_MENTION_HAST_NAME,
-      hProperties: {
-        [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId,
-        ...(interactive
-          ? {}
-          : { [THREAD_MENTION_INTERACTIVE_PROPERTY]: "false" }),
-      },
+      hProperties: { [THREAD_MENTION_THREAD_ID_PROPERTY]: threadId },
     },
   };
 }
 
 // Splits a text node on the `@thread:<id>` token, returning the original node
 // when no token is present so untouched text stays a plain text node.
-function splitTextNodeOnMentions(
-  node: Text,
-  interactive = true,
-): PhrasingContent[] {
+function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
   const { value } = node;
   THREAD_MENTION_PATTERN.lastIndex = 0;
   const replacements: PhrasingContent[] = [];
@@ -79,7 +70,7 @@ function splitTextNodeOnMentions(
         value: value.slice(cursor, match.index),
       });
     }
-    replacements.push(threadMentionNode(threadId, interactive));
+    replacements.push(threadMentionNode(threadId));
     cursor = match.index + match[0].length;
   }
   if (replacements.length === 0) {
@@ -128,19 +119,6 @@ function isUndecoratedTextDirective(directive: ParsedTextDirective): boolean {
     !Array.isArray(directive.attributes) &&
     Object.keys(directive.attributes).length === 0
   );
-}
-
-function collectAuthoredMarkdownLinkNodes(tree: Nodes): WeakSet<object> {
-  const linkNodes = new WeakSet<object>();
-  visit(tree, (node) => {
-    if (node.type !== "link" && node.type !== "linkReference") {
-      return;
-    }
-    visit(node, (descendant) => {
-      linkNodes.add(descendant);
-    });
-  });
-  return linkNodes;
 }
 
 type ThreadMentionFormattingNode = Delete | Emphasis | Strong;
@@ -286,22 +264,18 @@ function isMentionBoundary(text: string, index: number): boolean {
  * thread-mention pill. When `remark-directive` is active, its parser splits the
  * same source into an `@thread` text suffix plus a `:<id>` text directive; the
  * second pass rejoins that exact pair before the directive renderer sees it.
- * Mentions nested inside authored Markdown links carry a non-interactive flag
- * and are lifted out of the authored anchor, splitting any ordinary linked text
- * around them. This keeps the canonical pill appearance without activating the
- * thread or authored link. No-op for bodies without the token.
+ * Mentions nested inside authored Markdown links are lifted out of the authored
+ * anchor so the canonical thread pill remains interactive without creating a
+ * nested link. Any ordinary linked text around a mention keeps the authored
+ * destination. No-op for bodies without the token.
  */
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
-    const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
     visit(tree, "text", (node: Text, index, parent: Parent | undefined) => {
       if (parent === undefined || index === undefined) {
         return;
       }
-      const replacements = splitTextNodeOnMentions(
-        node,
-        !authoredMarkdownLinkNodes.has(node),
-      );
+      const replacements = splitTextNodeOnMentions(node);
       if (replacements.length === 1 && replacements[0] === node) {
         return;
       }
@@ -332,19 +306,14 @@ export function remarkThreadMentions() {
       ) {
         return;
       }
-      if (authoredMarkdownLinkNodes.has(node)) {
-        const leadingText = previous.value.slice(0, prefixStart);
-        const mentionNode = threadMentionNode(directive.name, false);
-        if (leadingText.length === 0) {
-          parent.children.splice(index - 1, 2, mentionNode);
-          return index;
-        }
-        previous.value = leadingText;
-        parent.children.splice(index, 1, mentionNode);
-        return index + 1;
+      const leadingText = previous.value.slice(0, prefixStart);
+      const mentionNode = threadMentionNode(directive.name);
+      if (leadingText.length === 0) {
+        parent.children.splice(index - 1, 2, mentionNode);
+        return index;
       }
-      previous.value = previous.value.slice(0, prefixStart);
-      parent.children.splice(index, 1, threadMentionNode(directive.name));
+      previous.value = leadingText;
+      parent.children.splice(index, 1, mentionNode);
       return index + 1;
     });
     liftThreadMentionsOutOfAuthoredLinks(tree);
@@ -358,7 +327,6 @@ interface BuildThreadMentionComponentArgs {
 
 interface ThreadMentionElementProps {
   "data-thread-id"?: string;
-  "data-thread-interactive"?: string;
 }
 
 // `react-markdown`'s `Components` map is keyed by `JSX.IntrinsicElements`, so
@@ -387,8 +355,7 @@ function resolveThreadMentionHref(
  * The `components` renderer for thread mentions, keyed (by the caller) on the
  * custom hast element the remark plugin emits. Resolves the mention's display
  * resource from the body `mentions` array and routes the link through
- * `resolveSegmentLinkHref`, reusing the canonical `PromptMentionPill`. Nodes
- * marked non-interactive render as a display-only span.
+ * `resolveSegmentLinkHref`, reusing the canonical `PromptMentionPill`.
  */
 export function buildThreadMentionComponent({
   mentions,
@@ -396,7 +363,6 @@ export function buildThreadMentionComponent({
 }: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
   function ThreadMentionElement(props: ThreadMentionElementProps) {
     const threadId = props["data-thread-id"] ?? "";
-    const interactive = props["data-thread-interactive"] !== "false";
     const liveResource = useThreadMentionResource(threadId);
     if (threadId.length === 0) {
       return null;
@@ -405,7 +371,6 @@ export function buildThreadMentionComponent({
       liveResource ?? resolveThreadMentionResource(mentions, threadId);
     return (
       <PromptMentionPill
-        interactive={interactive}
         resource={resource}
         serializedText={`@thread:${threadId}`}
         linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
