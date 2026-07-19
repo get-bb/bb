@@ -9,6 +9,7 @@ import {
   type TopLevelSidebarSectionProps,
 } from "./TopLevelSidebarSection";
 import { useSidebarSortable } from "./sortableMotion";
+import type { CollapsedChildActivity } from "@/lib/thread-activity";
 
 interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
   disabled: boolean;
@@ -16,6 +17,7 @@ interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
 }
 
 export interface BuiltInSidebarSectionOptions {
+  activity?: CollapsedChildActivity;
   actions?: ReactNode;
   actionsOpen?: boolean;
   content: ReactNode;
@@ -74,6 +76,7 @@ export const SortableSidebarSection = memo(function SortableSidebarSection({
 function BuiltInSidebarSection({
   actions,
   actionsOpen,
+  activity,
   consumeClickSuppression,
   content,
   disabled,
@@ -90,6 +93,7 @@ function BuiltInSidebarSection({
       disabled={disabled}
       actions={actions}
       actionsOpen={actionsOpen}
+      collapsedActivity={activity}
       actionsMobileAlways
       collapseControl={{
         isCollapsed,

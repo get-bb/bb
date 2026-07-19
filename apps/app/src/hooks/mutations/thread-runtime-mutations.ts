@@ -21,6 +21,8 @@ import {
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
+  applyThreadGoalClearResult,
+  applyThreadPlanCancellationResult,
   beginCreateQueuedMessageTransaction,
   beginCreateThreadTransaction,
   beginRemoveQueuedMessageTransaction,
@@ -44,6 +46,7 @@ import {
   type StopThreadTransaction,
   type UpdateQueuedMessageTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
+import { invalidateThreadBannerQueries } from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
@@ -484,6 +487,36 @@ export function useStopThread() {
     },
     onSettled: (_data, _error, threadId) => {
       settleStopThreadTransaction({ queryClient, threadId });
+    },
+  });
+}
+
+export function useCancelThreadPlan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { errorMessage: "Failed to exit Plan mode." },
+    mutationFn: async (threadId: string) => {
+      await sdk.threads.cancelPlan({ threadId });
+    },
+    onSuccess: (_data, threadId) => {
+      applyThreadPlanCancellationResult({ queryClient, threadId });
+      invalidateThreadBannerQueries({ queryClient, threadId });
+    },
+  });
+}
+
+export function useClearThreadGoal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { errorMessage: "Failed to clear Goal." },
+    mutationFn: async (threadId: string) => {
+      await sdk.threads.clearGoal({ threadId });
+    },
+    onSuccess: (_data, threadId) => {
+      applyThreadGoalClearResult({ queryClient, threadId });
+      invalidateThreadBannerQueries({ queryClient, threadId });
     },
   });
 }

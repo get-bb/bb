@@ -29,6 +29,8 @@ omit that flag unless it changes the command's behavior.
 | Pinned order         | `bb.threads.reorderPinned(...)`                                              | `bb thread reorder-pinned <id> [--after <id>] [--before <id>]`                         |
 | Queued messages      | `bb.threads.queuedMessages.*`                                                | `bb thread queue ...`                                                                  |
 | Persisted panel tabs | `bb.threads.tabs.get/update`                                                 | `bb thread tabs show/set ...`                                                          |
+| Plan cancellation    | `bb.threads.cancelPlan({ threadId })`                                        | `bb thread cancel-plan [id]`                                                           |
+| Goal cancellation    | `bb.threads.clearGoal({ threadId })`                                         | `bb thread clear-goal [id]`                                                            |
 
 Queued-message SDK methods are:
 

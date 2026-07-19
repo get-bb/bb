@@ -568,6 +568,25 @@ function handleMessage(message: JsonRecord): void {
     return;
   }
 
+  if (method === "thread/goal/clear") {
+    const params = getParams(message);
+    const providerThreadId = getString(
+      params.providerThreadId,
+      getString(params.threadId, "unknown"),
+    );
+    send({
+      jsonrpc: "2.0",
+      method: "thread/goal/cleared",
+      params: { threadId: providerThreadId },
+    });
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: { cleared: true },
+    });
+    return;
+  }
+
   if (method === "thread/name/set") {
     const params = getParams(message);
     const threadId = getString(params.threadId, "unknown");

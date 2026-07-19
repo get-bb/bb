@@ -161,7 +161,10 @@ afterEach(cleanup);
 
 describe("ThreadRow", () => {
   it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({ hasComposerDraft: true });
+    const { container } = renderThreadRow({
+      hasComposerDraft: true,
+      shortcutKey: "3",
+    });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
@@ -171,7 +174,9 @@ describe("ThreadRow", () => {
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
+    expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("replaces the active working spinner with a shimmering draft icon", () => {
@@ -220,17 +225,24 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("replaces a running workflow with the same shimmering draft icon", () => {
+  it.each([
+    "activeWorkflowCount",
+    "activeBackgroundAgentCount",
+    "activeBackgroundCommandCount",
+    "activePlanModeCount",
+    "activeGoalCount",
+  ] as const)("uses the shimmering draft pencil with %s", (activityKey) => {
     renderThreadRow({
       hasComposerDraft: true,
       isActive: false,
       thread: createThread({
         activity: {
-          activeWorkflowCount: 1,
+          activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
           activePlanModeCount: 0,
           activeGoalCount: 0,
+          [activityKey]: 1,
         },
       }),
     });
@@ -242,7 +254,6 @@ describe("ThreadRow", () => {
     expect(Array.from(draftIcon.classList)).toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
   it("renders serialized title mentions as non-interactive pills", () => {
@@ -316,6 +327,7 @@ describe("ThreadRow", () => {
             childActivity: {
               pending: false,
               working: false,
+              hasUnsubmittedDraft: false,
               runtimeWorking: false,
               workflow: false,
               backgroundAgent: false,
@@ -432,6 +444,7 @@ describe("ThreadRow", () => {
         childActivity: {
           pending: false,
           working: false,
+          hasUnsubmittedDraft: false,
           runtimeWorking: false,
           workflow: false,
           backgroundAgent: false,
@@ -452,16 +465,15 @@ describe("ThreadRow", () => {
     ).toBe("always");
   });
 
-  it("shows its Command shortcut in place of the trailing status", () => {
+  it("shows its Command shortcut only when no indicator applies", () => {
     renderThreadRow({
       shortcutKey: "3",
-      thread: createThread({ hasPendingInteraction: true }),
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
     });
 
     const shortcut = screen.getByText("⌘3");
     expect(shortcut.className).toContain("p-1.5");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -472,6 +484,7 @@ describe("ThreadRow", () => {
   it("shows an unread error before pending or active work", () => {
     renderThreadRow({
       hasComposerDraft: true,
+      shortcutKey: "3",
       thread: createThread({
         status: "error",
         hasPendingInteraction: true,
@@ -498,6 +511,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Background agent running")).toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
     expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
+    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
@@ -521,7 +535,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows foreground agent work before active workflow work", () => {
+  it("shows named workflow work before generic runtime work", () => {
     renderThreadRow({
       thread: createThread({
         title: "Active workflow thread",
@@ -540,8 +554,7 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
@@ -677,7 +690,31 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
+  it("shows Plan before a concurrent Goal", () => {
+    renderThreadRow({
+      shortcutKey: "3",
+      thread: createThread({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 1,
+        },
+      }),
+    });
+
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Goal active")).toBeNull();
+    expect(screen.queryByText("⌘3")).toBeNull();
+  });
+
   it.each([
+    {
+      flag: "workflow" as const,
+      label: "Workflow running",
+      icon: "Workflow",
+    },
     {
       flag: "backgroundAgent" as const,
       label: "Background agent running",
@@ -716,6 +753,7 @@ describe("ThreadRow", () => {
           childActivity: {
             pending: false,
             working: true,
+            hasUnsubmittedDraft: false,
             runtimeWorking: false,
             workflow: false,
             backgroundAgent: false,
@@ -734,6 +772,38 @@ describe("ThreadRow", () => {
       expect(screen.queryByLabelText("Thread working")).toBeNull();
     },
   );
+
+  it("shows a working draft for collapsed descendants before named work", () => {
+    renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        childActivity: {
+          pending: false,
+          working: true,
+          hasUnsubmittedDraft: true,
+          runtimeWorking: false,
+          workflow: false,
+          backgroundAgent: false,
+          backgroundCommand: false,
+          planMode: true,
+          goal: true,
+          unread: false,
+          unreadError: false,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    expect(
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
 
   it("renders an already-unread successful thread as a settled dot on initial load", () => {
     const { container } = renderThreadRow({
@@ -760,7 +830,7 @@ describe("ThreadRow", () => {
     });
     const { container, rerenderThreadRow } = renderThreadRow({ thread });
 
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
 
     rerenderThreadRow({
       ...thread,

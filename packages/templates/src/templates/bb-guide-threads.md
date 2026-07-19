@@ -134,7 +134,9 @@ Messaging:
   non-urgent follow-ups that can wait until the agent is free.
 
   bb thread stop [id]                      Stop an active or provisioning thread
-    --self                                 Stop current thread
+  bb thread cancel-plan [id]               Exit the provider's active Plan mode
+  bb thread clear-goal [id]                Clear the provider's active Goal
+    --self                                 Target current thread
 
 Ownership:
 

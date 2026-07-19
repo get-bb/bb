@@ -24,6 +24,12 @@ interface ActiveTurnInput {
     { type: "client/turn/requested" }
   >;
   seq: number;
+  turnId: string;
+}
+
+export interface ThreadTimelineActivePlanTurn {
+  promptMode: ThreadTimelineActivePromptMode;
+  turnId: string;
 }
 
 function promptTextWithoutPlanCommand(
@@ -83,11 +89,11 @@ function extractActiveTurnInputs(
       return [];
     }
     const request = requestsById.get(event.clientRequestId);
-    return request ? [{ request, seq: meta.seq }] : [];
+    return request ? [{ request, seq: meta.seq, turnId }] : [];
   });
 }
 
-export function extractThreadTimelineActivePromptMode({
+export function extractThreadTimelineActivePlanTurn({
   events,
   providerId,
   threadStatus,
@@ -95,7 +101,7 @@ export function extractThreadTimelineActivePromptMode({
   events: readonly ThreadEventWithMeta[];
   providerId: string | undefined;
   threadStatus: Thread["status"];
-}): ThreadTimelineActivePromptMode | null {
+}): ThreadTimelineActivePlanTurn | null {
   if (threadStatus !== "active" || !isPlanModeProviderId(providerId)) {
     return null;
   }
@@ -116,9 +122,18 @@ export function extractThreadTimelineActivePromptMode({
 
   return latestPlanTurn
     ? {
-        mode: "plan",
-        providerId,
-        prompt: promptTextWithoutPlanCommand(latestPlanTurn.request),
+        promptMode: {
+          mode: "plan",
+          providerId,
+          prompt: promptTextWithoutPlanCommand(latestPlanTurn.request),
+        },
+        turnId: latestPlanTurn.turnId,
       }
     : null;
+}
+
+export function extractThreadTimelineActivePromptMode(
+  args: Parameters<typeof extractThreadTimelineActivePlanTurn>[0],
+): ThreadTimelineActivePromptMode | null {
+  return extractThreadTimelineActivePlanTurn(args)?.promptMode ?? null;
 }

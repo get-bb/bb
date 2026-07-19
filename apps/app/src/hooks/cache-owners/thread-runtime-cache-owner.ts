@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import type {
   PromptHistoryEntry,
   ResolvedThreadExecutionOptions,
+  ThreadListEntry,
   ThreadQueuedMessage,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -12,6 +13,8 @@ import type {
   SendQueuedMessageMode,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  ThreadSearchResponse,
+  ThreadTimelineResponse,
   TimelineConversationAttachments,
   TimelineRow,
   UpdateQueuedMessageRequest,
@@ -28,6 +31,7 @@ import {
   insertOptimisticTimelineRow,
   optimisticallyInsertThread,
   removeOptimisticTimelineRow,
+  applyToCachedThreadListsAndSidebarNavigation,
   updateCachedThread,
 } from "./query-cache";
 import {
@@ -41,6 +45,7 @@ import {
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadQueuedMessagesQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
@@ -60,6 +65,8 @@ interface ThreadIdCacheArgs {
   queryClient: QueryClient;
   threadId: string;
 }
+
+type ThreadBannerActivityKind = "goal" | "plan";
 
 interface BeginCreateThreadTransactionArgs {
   queryClient: QueryClient;
@@ -669,6 +676,80 @@ function applyOptimisticStopRequest({
           : thread,
       ),
   });
+}
+
+function clearThreadBannerActivity(
+  thread: ThreadListEntry,
+  threadId: string,
+  kind: ThreadBannerActivityKind,
+): ThreadListEntry {
+  if (thread.id !== threadId) {
+    return thread;
+  }
+  return {
+    ...thread,
+    activity: {
+      ...thread.activity,
+      ...(kind === "plan"
+        ? { activePlanModeCount: 0 }
+        : { activeGoalCount: 0 }),
+    },
+  };
+}
+
+function applyAuthoritativeThreadBannerCancellation({
+  kind,
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs & { kind: ThreadBannerActivityKind }): void {
+  for (const [
+    queryKey,
+    timeline,
+  ] of queryClient.getQueriesData<ThreadTimelineResponse>({
+    queryKey: threadTimelineQueryKeyPrefix(threadId),
+  })) {
+    if (!timeline) {
+      continue;
+    }
+    queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
+      ...timeline,
+      ...(kind === "plan" ? { activePromptMode: null } : { goal: null }),
+    });
+  }
+
+  applyToCachedThreadListsAndSidebarNavigation(queryClient, (threads) =>
+    threads.map((thread) => clearThreadBannerActivity(thread, threadId, kind)),
+  );
+
+  queryClient.setQueriesData<ThreadSearchResponse>(
+    { queryKey: threadSearchQueryKeyPrefix() },
+    (response) => {
+      if (!response) {
+        return response;
+      }
+      const mapGroup = (group: ThreadSearchResponse["active"]) => ({
+        ...group,
+        results: group.results.map((result) => ({
+          ...result,
+          thread: clearThreadBannerActivity(result.thread, threadId, kind),
+        })),
+      });
+      return {
+        active: mapGroup(response.active),
+        archived: mapGroup(response.archived),
+      };
+    },
+  );
+}
+
+export function applyThreadPlanCancellationResult(
+  args: ThreadIdCacheArgs,
+): void {
+  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "plan" });
+}
+
+export function applyThreadGoalClearResult(args: ThreadIdCacheArgs): void {
+  applyAuthoritativeThreadBannerCancellation({ ...args, kind: "goal" });
 }
 
 export async function beginCreateThreadTransaction({
