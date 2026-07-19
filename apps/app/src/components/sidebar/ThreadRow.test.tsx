@@ -7,7 +7,10 @@ import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
-import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "./sidebarRowClasses";
+import {
+  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+} from "./sidebarRowClasses";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
@@ -202,6 +205,26 @@ describe("ThreadRow", () => {
       screen.queryByLabelText("Prompt Shaper improving prompt"),
     ).toBeNull();
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
+  });
+
+  it("renders a shimmering plugin status with the semantic success tone", () => {
+    setPluginThreadRowStatus("thr_test", "prompt-shaper", {
+      icon: "AiContentGenerator01",
+      label: "Prompt Shaper improving prompt",
+      effect: "shimmer",
+      tone: "success",
+    });
+    renderThreadRow({ hasComposerDraft: true });
+
+    const shapingIcon = screen.getByLabelText("Prompt Shaper improving prompt");
+    expect(shapingIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
+    expect(Array.from(shapingIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(shapingIcon.classList)).toContain(
+      SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+    );
+    expect(Array.from(shapingIcon.classList)).not.toContain(
+      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+    );
   });
 
   it("replaces the generic working indicator with a shimmering plugin status", () => {

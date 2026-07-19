@@ -52,6 +52,7 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
@@ -150,8 +151,15 @@ function PluginThreadRowStatusIndicator({
         "pointer-events-none shrink-0",
         COARSE_POINTER_ICON_SIZE_CLASS,
         status.effect === "shimmer"
-          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
-          : "text-muted-foreground",
+          ? [
+              "animate-shine-icon",
+              status.tone === "success"
+                ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+                : SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            ]
+          : status.tone === "success"
+            ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+            : "text-muted-foreground",
       )}
       aria-label={status.label}
     />
