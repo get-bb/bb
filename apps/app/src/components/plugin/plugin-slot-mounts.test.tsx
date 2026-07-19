@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   act,
   cleanup,
@@ -944,6 +944,86 @@ describe("useComposer", () => {
     expect(getComposerTextEffect(storageKey)).toBe("shimmer");
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "second status",
+    );
+  });
+
+  it("keeps the next scope's visual state when the previous scope cleans up", () => {
+    const draft: PromptDraftState = {
+      text: "Queued draft",
+      mentions: [],
+      attachments: [],
+    };
+
+    function ScopedVisualWriter() {
+      const { scope, setTextEffect, setThreadRowStatus } = useComposer();
+      const queuedMessageId =
+        scope.kind === "queued-message"
+          ? scope.queuedMessageId
+          : "unexpected";
+
+      useLayoutEffect(() => {
+        setTextEffect("shimmer");
+        setThreadRowStatus({
+          icon: "AiContentGenerator01",
+          label: `${queuedMessageId} status`,
+          effect: "shimmer",
+          tone: "success",
+        });
+      }, [queuedMessageId, setTextEffect, setThreadRowStatus]);
+
+      return null;
+    }
+
+    function Harness() {
+      const [queuedMessageId, setQueuedMessageId] = useState("qmsg_1");
+      const host = useMemo<PluginComposerHost>(
+        () => ({
+          scope: {
+            kind: "queued-message",
+            threadId: "thr_scope_owner",
+            queuedMessageId,
+          },
+          draft,
+          // A host can retain its editable surface while its logical scope
+          // changes, as root compose does when the selected project changes.
+          textEffectKey: "shared-scope-effect",
+          getCurrent: () => draft,
+          setDraft: () => {},
+          focus: () => {},
+        }),
+        [queuedMessageId],
+      );
+
+      return (
+        <PluginContext.Provider value="demo">
+          <PluginComposerHostProvider value={host}>
+            <ScopedVisualWriter />
+            <button
+              type="button"
+              onClick={() => setQueuedMessageId("qmsg_2")}
+            >
+              change-visual-scope
+            </button>
+          </PluginComposerHostProvider>
+        </PluginContext.Provider>
+      );
+    }
+
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    );
+    expect(getComposerTextEffect("shared-scope-effect")).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
+      "qmsg_1 status",
+    );
+
+    fireEvent.click(screen.getByText("change-visual-scope"));
+
+    expect(getComposerTextEffect("shared-scope-effect")).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
+      "qmsg_2 status",
     );
   });
 

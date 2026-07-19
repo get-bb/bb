@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -378,7 +378,6 @@ function createComposerScopeOwnership(scopeKey: string) {
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
-  const [visualStateOwner] = useState(() => Symbol(pluginId));
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -468,6 +467,10 @@ export function useComposer(): PluginComposerApi {
   const scopeOwnership = useMemo(
     () => createComposerScopeOwnership(scopeOwnershipKey),
     [scopeOwnershipKey],
+  );
+  const visualStateOwner = useMemo(
+    () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
+    [pluginId, scopeOwnershipKey],
   );
   const setTextEffect = useCallback(
     (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
