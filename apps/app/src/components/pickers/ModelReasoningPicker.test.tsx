@@ -41,6 +41,7 @@ const manyCodexModels: readonly PickerOption<string>[] = [
 
 const reasoningOptions: readonly PickerOption<ReasoningLevel>[] = [
   { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
 ];
 
 function availableModel({
@@ -83,12 +84,14 @@ function executionOptions({
 function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
+  onReasoningChange = vi.fn(),
   modelOptions = codexModels,
   moreModelOptions = [],
   providerRouting,
 }: {
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
+  onReasoningChange?: (value: ReasoningLevel) => void;
   modelOptions?: readonly PickerOption<string>[];
   moreModelOptions?: readonly PickerOption<string>[];
   providerRouting?: SystemProvidersQuery;
@@ -124,7 +127,7 @@ function renderPicker({
       onModelChange={onModelChange}
       reasoningValue="medium"
       reasoningOptions={reasoningOptions}
-      onReasoningChange={vi.fn()}
+      onReasoningChange={onReasoningChange}
       fastModeEnabled={false}
       onFastModeChange={vi.fn()}
       showFastModeToggle={false}
@@ -133,7 +136,7 @@ function renderPicker({
     { wrapper },
   );
 
-  return { onSelectedProviderChange, onModelChange };
+  return { onSelectedProviderChange, onModelChange, onReasoningChange };
 }
 
 afterEach(() => {
@@ -142,6 +145,28 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("stays open while changing both the model and reasoning effort", () => {
+    const { onModelChange, onReasoningChange } = renderPicker({
+      modelOptions: [
+        ...codexModels,
+        { value: "gpt-5.2", label: "GPT-5.2" },
+      ],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByText("5.2"));
+
+    expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+    expect(screen.getByRole("dialog")).not.toBeNull();
+
+    fireEvent.click(screen.getByText("High"));
+
+    expect(onReasoningChange).toHaveBeenCalledWith("high");
+    expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+
   it("marks the portaled picker as native no-drag content", () => {
     renderPicker();
 
