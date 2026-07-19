@@ -19,6 +19,7 @@ import type { PromptDraftState } from "@/lib/prompt-draft";
 export interface PluginComposerHost {
   scope: PluginComposerScope;
   draft: PromptDraftState;
+  textEffectKey: string;
   getCurrent(): PromptDraftState;
   setDraft(next: PromptDraftState): void;
   focus(): void;

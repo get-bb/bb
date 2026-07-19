@@ -351,6 +351,22 @@ function reconcileComposerMentions(
   });
 }
 
+function createComposerScopeOwnership(scopeKey: string) {
+  let active = true;
+  return {
+    scopeKey,
+    activate() {
+      active = true;
+    },
+    invalidate() {
+      active = false;
+    },
+    isActive() {
+      return active;
+    },
+  };
+}
+
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
@@ -374,6 +390,7 @@ export function useComposer(): PluginComposerApi {
   const routeDraft = usePromptDraftStorage(routeScope);
   const getCurrent = composerHost?.getCurrent ?? routeDraft.getCurrent;
   const setDraft = composerHost?.setDraft ?? routeDraft.setDraft;
+  const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   const hostFocus = composerHost?.focus;
   const focusActiveComposer = useCallback(() => {
     if (hostFocus) {
@@ -418,13 +435,6 @@ export function useComposer(): PluginComposerApi {
     setText("");
   }, [setText]);
 
-  const setTextEffect = useCallback(
-    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
-      setComposerTextEffect(storageKey, pluginId, effect);
-    },
-    [pluginId, storageKey],
-  );
-
   const composerScope = composerHost?.scope;
   const threadRowStatusThreadId =
     composerScope?.kind === "thread" || composerScope?.kind === "queued-message"
@@ -438,27 +448,65 @@ export function useComposer(): PluginComposerApi {
       : threadRowStatusThreadId === null
         ? "new-thread"
         : `thread:${threadRowStatusThreadId}`;
+  const composerOwnershipScopeKey =
+    composerScope?.kind === "queued-message"
+      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
+      : composerScope?.kind === "thread"
+        ? `thread:${composerScope.threadId}`
+        : composerScope?.kind === "new-thread"
+          ? `new-thread:${composerScope.projectId ?? "null"}`
+          : threadId !== undefined
+            ? `thread:${threadId}`
+            : `new-thread:${projectId ?? "null"}`;
+  const scopeOwnershipKey = [
+    pluginId,
+    composerOwnershipScopeKey,
+    textEffectKey ?? "null",
+    threadRowStatusScopeKey,
+  ].join("\u0000");
+  const scopeOwnership = useMemo(
+    () => createComposerScopeOwnership(scopeOwnershipKey),
+    [scopeOwnershipKey],
+  );
+  const setTextEffect = useCallback(
+    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
+      if (!scopeOwnership.isActive()) return;
+      setComposerTextEffect(textEffectKey, pluginId, effect);
+    },
+    [pluginId, scopeOwnership, textEffectKey],
+  );
   const setThreadRowStatus = useCallback(
     (status: PluginComposerThreadRowStatus | null) => {
-      if (threadRowStatusScopeKey === "new-thread") return;
+      if (
+        !scopeOwnership.isActive() ||
+        threadRowStatusScopeKey === "new-thread"
+      ) {
+        return;
+      }
       setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, status);
     },
-    [pluginId, threadRowStatusScopeKey, threadRowStatusThreadId],
+    [
+      pluginId,
+      scopeOwnership,
+      threadRowStatusScopeKey,
+      threadRowStatusThreadId,
+    ],
   );
 
-  useEffect(
-    () => () => {
-      setComposerTextEffect(storageKey, pluginId, null);
-    },
-    [pluginId, storageKey],
-  );
-
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    scopeOwnership.activate();
+    return () => {
+      scopeOwnership.invalidate();
+      setComposerTextEffect(textEffectKey, pluginId, null);
       setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, null);
-    },
-    [pluginId, threadRowStatusScopeKey, threadRowStatusThreadId],
-  );
+    };
+  }, [
+    pluginId,
+    scopeOwnership,
+    textEffectKey,
+    threadRowStatusScopeKey,
+    threadRowStatusThreadId,
+  ]);
 
   const addQuote = useCallback(
     (text: string) => {

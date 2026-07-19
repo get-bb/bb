@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 
-import {
-  MemoryRouter,
-  Route,
-  Routes,
-  useNavigate,
-} from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { useMemo, useRef, useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  PluginComposerApi,
   PluginComposerAccessoryProps,
   PluginThreadPanelProps,
 } from "@bb/plugin-sdk";
@@ -207,12 +209,16 @@ describe("useComposer", () => {
     window.localStorage.clear();
   });
 
-  function registerComposerProbe(label: string) {
+  function registerComposerProbe(
+    label: string,
+    onRender?: (composer: PluginComposerApi) => void,
+  ) {
     function ComposerProbe({
       projectId,
       threadId,
     }: PluginComposerAccessoryProps) {
       const composer = useComposer();
+      onRender?.(composer);
       const initialMethods = useRef({
         setText: composer.setText,
         updateText: composer.updateText,
@@ -273,10 +279,7 @@ describe("useComposer", () => {
           >
             {label}-start-effect
           </button>
-          <button
-            type="button"
-            onClick={() => composer.setTextEffect(null)}
-          >
+          <button type="button" onClick={() => composer.setTextEffect(null)}>
             {label}-clear-effect
           </button>
           <button
@@ -499,6 +502,7 @@ describe("useComposer", () => {
             queuedMessageId,
           },
           draft,
+          textEffectKey: `queued-message:thr_queue:${queuedMessageId}:1`,
           getCurrent: () => draftRef.current,
           setDraft,
           focus: () => {},
@@ -708,6 +712,7 @@ describe("useComposer", () => {
         () => ({
           scope: { kind: "new-thread", projectId },
           draft,
+          textEffectKey: `root:${projectId}`,
           getCurrent: () => draftRef.current,
           setDraft,
           focus: () => {},
@@ -800,6 +805,7 @@ describe("useComposer", () => {
         return {
           scope: { kind: "new-thread", projectId },
           draft,
+          textEffectKey: `root-state:${projectId ?? "null"}`,
           getCurrent: () => draft,
           setDraft: () => {},
           focus: () => {},
@@ -889,6 +895,97 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("change-scope"));
 
     expect(getComposerTextEffect(storageKey)).toBeNull();
+  });
+
+  it("rejects captured effect and status setters after scope cleanup or unmount", () => {
+    const captured: Array<
+      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+    > = [];
+    registerComposerProbe("owned", (composer) => {
+      const previous = captured.at(-1);
+      if (
+        previous?.setTextEffect !== composer.setTextEffect ||
+        previous.setThreadRowStatus !== composer.setThreadRowStatus
+      ) {
+        captured.push({
+          setTextEffect: composer.setTextEffect,
+          setThreadRowStatus: composer.setThreadRowStatus,
+        });
+      }
+    });
+    function ChangeScope() {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate("/threads/thr_owned_next")}
+        >
+          change-owned-scope
+        </button>
+      );
+    }
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_owned"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftViewer threadId="thr_owned" />
+        <ThreadDraftViewer threadId="thr_owned_next" />
+        <ChangeScope />
+      </MemoryRouter>,
+    );
+    const [initialStorageKey, nextStorageKey] = screen
+      .getAllByTestId("draft-key")
+      .map((element) => element.textContent ?? "");
+
+    fireEvent.click(screen.getByText("owned-start-effect"));
+    fireEvent.click(screen.getByText("owned-start-row-status"));
+    expect(getComposerTextEffect(initialStorageKey ?? null)).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_owned")).not.toBeNull();
+
+    const staleScopeSetters = captured[0]!;
+    fireEvent.click(screen.getByText("change-owned-scope"));
+    expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
+    expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
+
+    act(() => {
+      staleScopeSetters.setTextEffect("shimmer");
+      staleScopeSetters.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "stale status",
+        effect: "shimmer",
+        tone: "success",
+      });
+    });
+    expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
+    expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
+
+    const currentSetters = captured.at(-1)!;
+    act(() => {
+      currentSetters.setTextEffect("shimmer");
+      currentSetters.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "current status",
+        effect: "shimmer",
+        tone: "success",
+      });
+    });
+    expect(getComposerTextEffect(nextStorageKey ?? null)).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_owned_next")?.label).toBe(
+      "current status",
+    );
+
+    view.unmount();
+    expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
+    expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
+    act(() => {
+      currentSetters.setTextEffect("shimmer");
+      currentSetters.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "unmounted status",
+        effect: "shimmer",
+      });
+    });
+    expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
+    expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
   });
 
   it("appends mention pills with offsets into the new-thread draft", () => {

@@ -731,6 +731,7 @@ export function renderSlot<
     mentions: [],
     focusCount: 0,
   };
+  const composerOwnership = { active: true };
   const composer: TestComposerStore = {
     getSnapshot: () => composerText,
     subscribe(listener) {
@@ -752,10 +753,12 @@ export function renderSlot<
         commitComposerText("");
       },
       setTextEffect(effect) {
+        if (!composerOwnership.active) return;
         composerLog.textEffect = effect;
         composerLog.textEffectCalls.push(effect);
       },
       setThreadRowStatus(status) {
+        if (!composerOwnership.active || threadId === null) return;
         composerLog.threadRowStatus = status;
         composerLog.threadRowStatusCalls.push(status);
       },
@@ -833,10 +836,18 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
+  const unmountSlot = (): void => {
+    if (!composerOwnership.active) return;
+    composerOwnership.active = false;
+    composerLog.textEffect = null;
+    composerLog.threadRowStatus = null;
+    result.unmount();
+  };
 
   return {
     ...result,
     rerender: rerenderSlot,
+    unmount: unmountSlot,
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
@@ -844,6 +855,6 @@ export function renderSlot<
     composer: composerLog,
     behavior: { emitRealtime, setRealtimeConnectionState },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
-    lifecycle: { rerender: rerenderSlot, unmount: result.unmount },
+    lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };
 }

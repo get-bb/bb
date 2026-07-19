@@ -16,6 +16,10 @@ const css = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "theme.css"),
   "utf8",
 );
+const appCss = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "..", "app.css"),
+  "utf8",
+);
 
 /** Declarations of the rule whose body contains `color-scheme: <scheme>;`. */
 function modeBlock(scheme: "light" | "dark"): string {
@@ -81,9 +85,7 @@ function variableValue(block: string, token: string): string {
 }
 
 function parseOklch(value: string): OklchColor {
-  const match = value.match(
-    /^oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)$/,
-  );
+  const match = value.match(/^oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)$/);
   const lightness = match?.[1];
   const chroma = match?.[2];
   const hueDegrees = match?.[3];
@@ -221,9 +223,7 @@ describe("theme.css Cadence text tokens", () => {
     expect(css).toMatch(
       /--color-readback-foreground:\s*var\(--readback-foreground\);/,
     );
-    expect(css).toMatch(
-      /--color-timeline-accent:\s*var\(--timeline-accent\);/,
-    );
+    expect(css).toMatch(/--color-timeline-accent:\s*var\(--timeline-accent\);/);
     expect(css).toMatch(
       /--color-destructive-text:\s*var\(--destructive-text\);/,
     );
@@ -238,7 +238,9 @@ describe("theme.css Cadence text tokens", () => {
       const readbackForeground = parseOklch(
         variableValue(block, "readback-foreground"),
       );
-      const timelineAccent = parseOklch(variableValue(block, "timeline-accent"));
+      const timelineAccent = parseOklch(
+        variableValue(block, "timeline-accent"),
+      );
       const destructiveText = parseOklch(
         variableValue(block, "destructive-text"),
       );
@@ -246,14 +248,38 @@ describe("theme.css Cadence text tokens", () => {
       expect(contrastRatio(readbackForeground, canvas)).toBeGreaterThanOrEqual(
         4.5,
       );
-      expect(contrastRatio(timelineAccent, canvas)).toBeGreaterThanOrEqual(
-        4.5,
-      );
+      expect(contrastRatio(timelineAccent, canvas)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(destructiveText, canvas)).toBeGreaterThanOrEqual(
         4.5,
       );
     });
   }
+});
+
+describe("composer text shimmer", () => {
+  it("uses semantic success color with hue-preserving translucent stops", () => {
+    const shimmerRule = appCss.match(
+      /\.prompt-text-shimmer\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(shimmerRule).toContain("color: var(--success);");
+    expect(
+      shimmerRule?.match(
+        /color-mix\(in oklab, var\(--success\) 76%, transparent\)/g,
+      ),
+    ).toHaveLength(2);
+    expect(shimmerRule).not.toMatch(/color-mix\(in oklch[^;]*transparent/);
+  });
+
+  it("keeps a static semantic color when reduced motion is requested", () => {
+    const reducedMotionRule = appCss.match(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.prompt-text-shimmer\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(reducedMotionRule).toContain("animation: none;");
+    expect(reducedMotionRule).toContain("background: none;");
+    expect(reducedMotionRule).toContain(
+      "-webkit-text-fill-color: currentColor;",
+    );
+  });
 });
 
 describe("theme.css desktop portal hit testing", () => {

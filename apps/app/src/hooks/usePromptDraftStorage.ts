@@ -221,7 +221,7 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
-function getPromptDraftStorageKey(scope: PromptDraftScope): string | null {
+function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   if (scope.kind === "new-thread") {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }

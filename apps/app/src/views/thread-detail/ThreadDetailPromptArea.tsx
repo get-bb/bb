@@ -385,6 +385,12 @@ export function ThreadDetailPromptArea({
     threadId: thread.id,
   });
   const promptTextEffect = useComposerTextEffect(promptDraft.storageKey);
+  const queuedComposerTextEffectKey = inlineEditingQueuedMessage
+    ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
+    : null;
+  const queuedComposerTextEffect = useComposerTextEffect(
+    queuedComposerTextEffectKey,
+  );
   const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
@@ -624,6 +630,7 @@ export function ThreadDetailPromptArea({
         threadId: thread.id,
         queuedMessageId,
       },
+      textEffectKey: `queued-message:${thread.id}:${queuedMessageId}:${editSessionId}`,
       getCurrent: () => {
         const current = inlineEditingQueuedMessageRef.current;
         return isCurrentSession(current) ? current.draft : initialDraft;
@@ -1574,7 +1581,9 @@ export function ThreadDetailPromptArea({
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       pluginComposerHost={pluginComposerHost}
-      textEffect={promptTextEffect}
+      textEffect={
+        inlineEditingQueuedMessage ? queuedComposerTextEffect : promptTextEffect
+      }
       composerTarget={inlineComposerTarget}
       zenModeResetKey={thread.id}
       focusEndKey={focusEndKey}
