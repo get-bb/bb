@@ -292,7 +292,11 @@ const starterTypeOnlyDeps = new Set();
     );
   }
 }
-starterFiles.sort((a, b) => a.target.localeCompare(b.target));
+starterFiles.sort((a, b) => {
+  if (a.target < b.target) return -1;
+  if (a.target > b.target) return 1;
+  return 0;
+});
 function versionedDeps(names) {
   return Object.fromEntries(
     [...names].sort().map((name) => {
