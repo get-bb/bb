@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 60 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 61 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -349,6 +349,22 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.stop"),
+  })
+  .strict();
+
+const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.goal.clear"),
+    options: runtimeThreadExecutionOptionsSchema,
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    resumeContext: turnResumeContextSchema,
+  })
+  .strict();
+
+const threadPlanCancelCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.plan.cancel"),
+    expectedTurnId: z.string().min(1),
   })
   .strict();
 
@@ -1258,6 +1274,24 @@ export const hostDaemonCommandRegistry = {
     type: "thread.stop",
     schema: threadStopCommandSchema,
     resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
+  "thread.goal.clear": defineHostDaemonCommandDescriptor({
+    type: "thread.goal.clear",
+    schema: threadGoalClearCommandSchema,
+    resultSchema: z.object({ cleared: z.boolean() }).strict(),
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "thread.plan.cancel": defineHostDaemonCommandDescriptor({
+    type: "thread.plan.cancel",
+    schema: threadPlanCancelCommandSchema,
+    resultSchema: z.object({ cancelled: z.boolean() }).strict(),
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

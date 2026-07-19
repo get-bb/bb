@@ -646,7 +646,8 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.providerThreadId}`,
           threadId: command.threadId,
         });
-      case "thread.stop": {
+      case "thread.stop":
+      case "thread.plan.cancel": {
         const session = this.options.runtimeManager
           .get(command.environmentId)
           ?.runtime.getProviderSession(command.threadId);
@@ -661,7 +662,25 @@ export class CommandRouter {
             "write",
           );
         }
-        return this.getInFlightThreadStopProviderLane(command);
+        return command.type === "thread.stop"
+          ? this.getInFlightThreadStopProviderLane(command)
+          : null;
+      }
+      case "thread.goal.clear": {
+        const session = this.options.runtimeManager
+          .get(command.environmentId)
+          ?.runtime.getProviderSession(command.threadId);
+        return this.createThreadProviderExecutionLane(
+          {
+            environmentId: command.environmentId,
+            providerId: session?.providerId ?? command.resumeContext.providerId,
+            providerThreadId:
+              session?.providerThreadId ??
+              command.resumeContext.providerThreadId,
+            threadId: command.threadId,
+          },
+          "write",
+        );
       }
       default:
         return null;

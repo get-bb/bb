@@ -392,7 +392,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="foreground agent activity wins over workflow activity"
+        hint="named workflow activity wins over the generic runtime spinner"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />
@@ -756,7 +756,7 @@ export function ActiveWorkflow() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="foreground runtime takes precedence over workflow activity"
+        hint="named workflow activity wins over the generic runtime spinner"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />

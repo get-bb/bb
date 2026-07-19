@@ -1935,6 +1935,21 @@ describe("codex provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/goal/clear maps to the native Goal clear request", () => {
+    const adapter = createCodexProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/goal/clear",
+        threadId: "bb-t1",
+        providerThreadId: "codex-thread-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/goal/clear",
+      params: { threadId: "codex-thread-1" },
+    });
+  });
+
   it("buildCommand turn/start includes input and sandbox policy", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({

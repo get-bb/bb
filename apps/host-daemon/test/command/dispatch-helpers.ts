@@ -390,6 +390,9 @@ export function createFakeRuntime() {
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
     },
+    async clearThreadGoal() {
+      return { cleared: true };
+    },
     async renameThread(args) {
       state.renamedTitle = args.title;
     },

@@ -23,6 +23,8 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
+import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 
 export interface TopLevelSidebarSectionCollapseControl {
   isCollapsed: boolean;
@@ -37,6 +39,7 @@ export interface TopLevelSidebarSectionProps {
   actionsMobileAlways?: boolean;
   actionsOpen?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
+  collapsedActivity?: CollapsedChildActivity;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
@@ -56,6 +59,7 @@ export function TopLevelSidebarSection({
   actionsMobileAlways = false,
   actionsOpen = false,
   collapseControl,
+  collapsedActivity,
   dragBindings,
   sectionRef,
   sectionStyle,
@@ -158,6 +162,11 @@ export function TopLevelSidebarSection({
             </button>
           ) : null}
         </span>
+        {collapseControl?.isCollapsed && collapsedActivity ? (
+          <span className="pointer-events-none relative z-20 inline-flex shrink-0 items-center text-subtle-foreground">
+            <CollapsedThreadStatusGlyph activity={collapsedActivity} />
+          </span>
+        ) : null}
         {actions ? (
           <span
             className="relative z-20 inline-flex h-6 shrink-0 items-center"

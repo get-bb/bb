@@ -342,7 +342,9 @@ type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 type ExpectedThreadsKey =
   | "archive"
   | "archiveAll"
+  | "cancelPlan"
   | "childSummary"
+  | "clearGoal"
   | "conversationOutline"
   | "defaultExecutionOptions"
   | "delete"

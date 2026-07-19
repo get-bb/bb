@@ -2,6 +2,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import { compareCodepoint } from "@/lib/codepoint-compare";
 import {
   buildProjectThreadGroups,
+  compareStandardThreads,
   type ProjectThreadItem,
   type ProjectThreadNode,
 } from "./projectThreadGroups";
@@ -12,6 +13,7 @@ interface PinnedSidebarState {
 }
 
 interface BuildPinnedSidebarStateArgs {
+  draftThreadIds?: ReadonlySet<string>;
   threads: readonly ThreadListEntry[];
 }
 
@@ -91,6 +93,7 @@ function collectRootNodes(
 }
 
 export function buildPinnedSidebarState({
+  draftThreadIds = new Set(),
   threads,
 }: BuildPinnedSidebarStateArgs): PinnedSidebarState {
   const explicitlyPinnedThreads = threads.filter(
@@ -124,7 +127,11 @@ export function buildPinnedSidebarState({
   const effectivePinnedThreads = threads.filter((thread) =>
     effectivePinnedThreadIds.has(thread.id),
   );
-  const projectItems = buildProjectThreadGroups(effectivePinnedThreads);
+  const projectItems = buildProjectThreadGroups(
+    effectivePinnedThreads,
+    compareStandardThreads,
+    draftThreadIds,
+  );
   const rootNodes = collectRootNodes(projectItems);
   rootNodes.sort((left, right) =>
     comparePinnedRoots(left.thread, right.thread),

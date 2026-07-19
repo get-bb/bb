@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 
 import type {
+  PendingInteraction,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
+  ThreadTimelineActivePromptMode,
+  ThreadTimelineGoal,
   ThreadTimelineModelFallback,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -20,6 +23,8 @@ import { BbHttpError } from "@/lib/sdk";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
+  cancelThreadPlanMutate: vi.fn(),
+  clearThreadGoalMutate: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
@@ -192,7 +197,25 @@ vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
-  ThreadGoalCard: () => null,
+  ThreadGoalCard: ({
+    goal,
+    onClearGoal,
+  }: {
+    goal: ThreadTimelineGoal | null;
+    onClearGoal?: () => void;
+  }) =>
+    goal ? (
+      <div data-testid="composer-stack-item">
+        Goal banner
+        {onClearGoal ? (
+          <button
+            type="button"
+            aria-label="Clear active Goal"
+            onClick={onClearGoal}
+          />
+        ) : null}
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
@@ -200,7 +223,25 @@ vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
-  ThreadPromptModeCard: () => null,
+  ThreadPromptModeCard: ({
+    activePromptMode,
+    onExitPlanMode,
+  }: {
+    activePromptMode: ThreadTimelineActivePromptMode | null;
+    onExitPlanMode?: () => void;
+  }) =>
+    activePromptMode ? (
+      <div data-testid="composer-stack-item">
+        Plan banner
+        {onExitPlanMode ? (
+          <button
+            type="button"
+            aria-label="Exit plan mode"
+            onClick={onExitPlanMode}
+          />
+        ) : null}
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
@@ -214,9 +255,17 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
 vi.mock(
   "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
   () => ({
-    ThreadPendingInteractionBanner: () => null,
+    ThreadPendingInteractionBanner: () => (
+      <div data-testid="composer-stack-item">Pending interaction</div>
+    ),
   }),
 );
+
+vi.mock("@/components/plugin/PluginPendingInteractionComposer", () => ({
+  PluginPendingInteractionComposer: () => (
+    <div data-testid="composer-stack-item">Plugin pending interaction</div>
+  ),
+}));
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: { error: mocks.toastError },
@@ -292,6 +341,14 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCancelThreadPlan: () => ({
+    isPending: false,
+    mutate: mocks.cancelThreadPlanMutate,
+  }),
+  useClearThreadGoal: () => ({
+    isPending: false,
+    mutate: mocks.clearThreadGoalMutate,
+  }),
   useCreateThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.createQueuedMessageMutateAsync,
@@ -346,7 +403,8 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  getLatestPendingInteraction: () => null,
+  getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
+    interactions.at(-1) ?? null,
   useThreadPromptHistory: (threadId: string, options: unknown) => {
     mocks.useThreadPromptHistory(threadId, options);
     return { data: [] };
@@ -389,34 +447,112 @@ function makeThread(
   } as ThreadWithRuntime;
 }
 
+const activePlan = {
+  mode: "plan",
+  providerId: "codex",
+  prompt: "Plan the work",
+} satisfies ThreadTimelineActivePromptMode;
+
+const activeGoal = {
+  sourceSeq: 1,
+  updatedAt: 100,
+  objective: "Finish the work",
+  status: "active",
+  tokenBudget: null,
+  tokensUsed: 100,
+  timeUsedSeconds: 10,
+} satisfies ThreadTimelineGoal;
+
+function makePendingInteraction(): PendingInteraction {
+  return {
+    id: "interaction-1",
+    threadId: "thr_1",
+    turnId: "turn-1",
+    providerId: "codex",
+    providerThreadId: "provider-thread-1",
+    providerRequestId: "provider-request-1",
+    origin: {
+      kind: "provider",
+      providerId: "codex",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: "provider-request-1",
+    },
+    payload: {
+      kind: "user_question",
+      questions: [
+        {
+          id: "question-1",
+          prompt: "Continue?",
+          multiSelect: false,
+          allowFreeText: true,
+        },
+      ],
+    },
+    resolution: null,
+    status: "pending",
+    statusReason: null,
+    createdAt: 1,
+    resolvedAt: null,
+  };
+}
+
+function makePluginPendingInteraction(): PendingInteraction {
+  return {
+    id: "plugin-interaction-1",
+    threadId: "thr_1",
+    turnId: null,
+    origin: {
+      kind: "plugin",
+      pluginId: "example-plugin",
+      rendererId: "example-form",
+    },
+    payload: {
+      kind: "plugin",
+      title: "Plugin input",
+      data: null,
+    },
+    resolution: null,
+    status: "pending",
+    statusReason: null,
+    createdAt: 1,
+    resolvedAt: null,
+  };
+}
+
 interface RenderPromptAreaOptions {
+  activePromptMode?: ThreadTimelineActivePromptMode | null;
+  goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
+  pendingInteractions?: readonly PendingInteraction[];
   pendingInteractionsInitialLoading?: boolean;
   thread?: ThreadWithRuntime;
 }
 
 function buildPromptAreaElement({
+  activePromptMode = null,
+  goal = null,
   modelFallback = null,
+  pendingInteractions = [],
   pendingInteractionsInitialLoading = false,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
     <ThreadDetailPromptArea
       activeBackgroundCommands={[]}
-      activePromptMode={null}
+      activePromptMode={activePromptMode}
       activeWorkflow={null}
       canUseGitUi={false}
       childThreadsSection={null}
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
       environmentGoneStatus={null}
-      goal={null}
+      goal={goal}
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}
       onChangedFileClick={vi.fn()}
       openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
-      pendingInteractions={[]}
+      pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={null}
       projectId="proj_1"
@@ -742,6 +878,71 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("submit-mode").textContent).toBe(
       "blocked:loading-pending-interactions",
     );
+  });
+
+  it("keeps Goal above a pending interaction", () => {
+    renderPromptArea({
+      goal: activeGoal,
+      pendingInteractions: [makePendingInteraction()],
+    });
+
+    expect(
+      screen
+        .getAllByTestId("composer-stack-item")
+        .map((item) => item.textContent),
+    ).toEqual(["Goal banner", "Pending interaction"]);
+  });
+
+  it("wires the Plan exit action to the current thread", () => {
+    renderPromptArea({
+      activePromptMode: activePlan,
+      thread: makeThread({ id: "thr_plan" }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Exit plan mode" }));
+
+    expect(mocks.cancelThreadPlanMutate).toHaveBeenCalledWith("thr_plan");
+    expect(mocks.clearThreadGoalMutate).not.toHaveBeenCalled();
+  });
+
+  it("wires the Goal clear action to the current thread", () => {
+    renderPromptArea({
+      goal: activeGoal,
+      thread: makeThread({ id: "thr_goal" }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear active Goal" }));
+
+    expect(mocks.clearThreadGoalMutate).toHaveBeenCalledWith("thr_goal");
+    expect(mocks.cancelThreadPlanMutate).not.toHaveBeenCalled();
+  });
+
+  it("keeps independent Plan and Goal banners above a pending interaction", () => {
+    renderPromptArea({
+      activePromptMode: activePlan,
+      goal: activeGoal,
+      pendingInteractions: [makePendingInteraction()],
+    });
+
+    expect(
+      screen
+        .getAllByTestId("composer-stack-item")
+        .map((item) => item.textContent),
+    ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
+  });
+
+  it("keeps independent Plan and Goal banners above plugin input", () => {
+    renderPromptArea({
+      activePromptMode: activePlan,
+      goal: activeGoal,
+      pendingInteractions: [makePluginPendingInteraction()],
+    });
+
+    expect(
+      screen
+        .getAllByTestId("composer-stack-item")
+        .map((item) => item.textContent),
+    ).toEqual(["Plan banner", "Goal banner", "Plugin pending interaction"]);
   });
 
   it("selects the provider fallback model for the next turn", () => {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -48,6 +49,7 @@ import {
   RuntimeThreadIdentityRegistry,
   stampThreadEventScope,
 } from "./runtime-thread-identity.js";
+import { RuntimeThreadGoalState } from "./runtime-thread-goal-state.js";
 import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
@@ -137,6 +139,9 @@ function defaultBridgeNodeEnv(): Record<string, string> | undefined {
 // ---------------------------------------------------------------------------
 
 type ProviderProcess = RuntimeProviderProcess;
+
+const threadGoalClearResultSchema = z.object({ cleared: z.boolean() }).strict();
+const THREAD_GOAL_CLEAR_EVENT_TIMEOUT_MS = 5_000;
 
 interface ThreadRuntimeConfig {
   dynamicTools?: DynamicTool[];
@@ -228,6 +233,7 @@ function createAgentRuntimeInternal(
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStartThreadIds = new Set<string>();
   const threadOperationCounts = new Map<string, number>();
+  const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
   const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
@@ -420,6 +426,7 @@ function createAgentRuntimeInternal(
     codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStartThreadIds.delete(threadId);
+    threadGoalState.clearThread(threadId);
     threadRuntimeConfigs.delete(threadId);
   }
 
@@ -886,6 +893,7 @@ function createAgentRuntimeInternal(
         codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
       }
       options.onEvent(normalizedEvent);
+      threadGoalState.observe(normalizedEvent);
     }
   }
 
@@ -1458,6 +1466,44 @@ function createAgentRuntimeInternal(
       });
     },
 
+    async clearThreadGoal({ threadId }) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          const adapterCommand: AdapterCommand = {
+            type: "thread/goal/clear",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          const clearRevision = threadGoalState.getClearRevision(threadId);
+          const result = await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: threadGoalClearResultSchema,
+          });
+          if (
+            !result.cleared &&
+            threadGoalState.getClearRevision(threadId) > clearRevision
+          ) {
+            return { cleared: true };
+          }
+          const confirmed = await threadGoalState.waitForGoalClear({
+            afterRevision: clearRevision,
+            threadId,
+            timeoutMs: THREAD_GOAL_CLEAR_EVENT_TIMEOUT_MS,
+          });
+          return { cleared: confirmed };
+        },
+      });
+    },
+
     async renameThread({ threadId, title }) {
       return runThreadOperation({
         threadId,
@@ -1617,6 +1663,7 @@ function createAgentRuntimeInternal(
       idleProviderSessionSinceMsByThreadId.clear();
       pendingTurnStartThreadIds.clear();
       threadOperationCounts.clear();
+      threadGoalState.clear();
       turnState.clear();
       turnReplayFilter.clear();
       await providerProcesses.shutdown();

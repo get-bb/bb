@@ -15,6 +15,7 @@ import {
   settleEnvironmentProvisionCommandResult,
 } from "../services/environments/environment-provisioning-internal.js";
 import {
+  settleThreadPlanCancelCommandResult,
   settleThreadStartCommandResult,
   settleThreadStopCommandResult,
   settleTurnSubmitCommandResult,
@@ -71,6 +72,9 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "thread.stop": {
     applySideEffects: settleThreadStopCommandResult,
   },
+  "thread.plan.cancel": {
+    applySideEffects: settleThreadPlanCancelCommandResult,
+  },
   "turn.submit": {
     applySideEffects: settleTurnSubmitCommandResult,
   },
@@ -106,7 +110,9 @@ function getCommandResultOwner<TType extends ParsedCommandType>(
   return commandResultOwners[command.type];
 }
 
-export function handleLiveCommandResultSideEffects<TType extends ParsedCommandType>(
+export function handleLiveCommandResultSideEffects<
+  TType extends ParsedCommandType,
+>(
   deps: CommandResultSettlementDeps,
   args: {
     command: ParsedCommandForType<TType>;
