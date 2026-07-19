@@ -96,6 +96,7 @@ import {
   type DesktopAutoUpdateLogger,
   type DesktopAutoUpdateService,
 } from "./desktop-auto-update.js";
+import { mergeDesktopUpdateInfo } from "./desktop-update-info.js";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
@@ -233,11 +234,6 @@ interface ResolveDesktopUpdateFeedUrlArgs {
   env: NodeJS.ProcessEnv;
 }
 
-interface MergeDesktopUpdateInfoArgs {
-  autoInfo: BbDesktopInfo | null;
-  feedInfo: BbDesktopInfo | null;
-}
-
 interface FetchSystemConfigArgs {
   serverUrl: string;
 }
@@ -337,51 +333,6 @@ function getDesktopVersion(version: string | undefined): string {
     throw new Error("Desktop version must be injected at build time");
   }
   return version;
-}
-
-function latestCheckedAt(
-  left: string | null,
-  right: string | null,
-): string | null {
-  if (left === null) {
-    return right;
-  }
-  if (right === null) {
-    return left;
-  }
-  return left > right ? left : right;
-}
-
-function mergeDesktopUpdateInfo(
-  args: MergeDesktopUpdateInfoArgs,
-): BbDesktopInfo | null {
-  const baseInfo = args.feedInfo ?? args.autoInfo;
-  if (baseInfo === null) {
-    return null;
-  }
-
-  const feedUpdateAvailable = args.feedInfo?.updateAvailable ?? false;
-  const autoUpdateAvailable = args.autoInfo?.updateAvailable ?? false;
-  const updateDownloaded = args.autoInfo?.updateDownloaded ?? false;
-  const pendingVersion = args.autoInfo?.pendingVersion ?? null;
-  const latestVersion =
-    pendingVersion ??
-    args.feedInfo?.latestVersion ??
-    args.autoInfo?.latestVersion ??
-    null;
-
-  return {
-    ...baseInfo,
-    lastCheckedAt: latestCheckedAt(
-      args.feedInfo?.lastCheckedAt ?? null,
-      args.autoInfo?.lastCheckedAt ?? null,
-    ),
-    latestVersion,
-    pendingVersion,
-    updateAvailable:
-      feedUpdateAvailable || autoUpdateAvailable || updateDownloaded,
-    updateDownloaded,
-  };
 }
 
 function getCurrentDesktopInfo(): BbDesktopInfo | null {

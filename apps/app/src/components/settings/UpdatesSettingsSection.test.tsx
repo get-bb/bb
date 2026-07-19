@@ -190,7 +190,9 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
 function renderSection(): void {
   render(
     <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
     >
       <UpdatesSettingsSection />
     </QueryClientProvider>,
@@ -242,6 +244,7 @@ describe("UpdatesSettingsSection", () => {
 
   it("checks for desktop updates through the desktop bridge", async () => {
     const desktopInfo: BbDesktopInfo = {
+      downloadState: "downloaded",
       lastCheckedAt: null,
       latestVersion: "0.0.6",
       pendingVersion: "0.0.6",
@@ -272,6 +275,54 @@ describe("UpdatesSettingsSection", () => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
     expect(sdk.system.version).not.toHaveBeenCalled();
+  });
+
+  it("does not claim a legacy desktop shell is downloading an available update", () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: null,
+      latestVersion: "0.0.6",
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: true,
+      updateDownloaded: false,
+      version: "0.0.5",
+    };
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: {} as BbDesktopApi,
+      desktopInfo,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
+
+    renderSection();
+
+    expect(screen.getByText("Available")).toBeDefined();
+    expect(screen.queryByText("Downloading in the background…")).toBeNull();
+  });
+
+  it("retries a failed desktop download through the desktop bridge", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      downloadState: "failed",
+      lastCheckedAt: null,
+      latestVersion: "0.0.6",
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: true,
+      updateDownloaded: false,
+      version: "0.0.5",
+    };
+    const checkForUpdates = vi.fn().mockResolvedValue(desktopInfo);
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
+      desktopInfo,
+    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
+
+    renderSection();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("runs every actionable provider update across machines from Update all", () => {

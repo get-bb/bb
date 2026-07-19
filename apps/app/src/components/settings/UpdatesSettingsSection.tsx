@@ -142,15 +142,14 @@ function StateCell({
 }
 
 function ActionCell({ children }: { children?: ReactNode }) {
-  return (
-    <span className="flex min-w-14 justify-end">{children ?? null}</span>
-  );
+  return <span className="flex min-w-14 justify-end">{children ?? null}</span>;
 }
 
 export interface BbAppUpdateRowsProps {
   systemVersion: SystemVersionResponse | undefined;
   desktopInfo: BbDesktopInfo | null;
   onRelaunchDesktop: (() => void) | null;
+  onRetryDesktop: (() => void) | null;
 }
 
 /**
@@ -162,6 +161,7 @@ export function BbAppUpdateRows({
   systemVersion,
   desktopInfo,
   onRelaunchDesktop,
+  onRetryDesktop,
 }: BbAppUpdateRowsProps) {
   if (desktopInfo !== null) {
     const pendingVersion =
@@ -184,9 +184,23 @@ export function BbAppUpdateRows({
               </RowButton>
             </ActionCell>
           </>
+        ) : desktopInfo.downloadState === "downloading" ? (
+          <>
+            <StateCell tone="attention">
+              Downloading in the background…
+            </StateCell>
+            <ActionCell />
+          </>
+        ) : desktopInfo.downloadState === "failed" ? (
+          <>
+            <StateCell tone="destructive">Download failed</StateCell>
+            <ActionCell>
+              <RowButton onClick={() => onRetryDesktop?.()}>Retry</RowButton>
+            </ActionCell>
+          </>
         ) : desktopInfo.updateAvailable ? (
           <>
-            <StateCell tone="attention">Downloading in the background…</StateCell>
+            <StateCell tone="attention">Available</StateCell>
             <ActionCell />
           </>
         ) : (
@@ -508,6 +522,19 @@ export function UpdatesSettingsSection() {
                         description: updateCheckErrorDescription(error),
                       });
                     });
+                  }
+            }
+            onRetryDesktop={
+              desktopApi === null
+                ? null
+                : () => {
+                    void desktopApi
+                      .checkForUpdates()
+                      .catch((error: unknown) => {
+                        appToast.error("Update retry failed", {
+                          description: updateCheckErrorDescription(error),
+                        });
+                      });
                   }
             }
           />
