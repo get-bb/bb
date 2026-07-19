@@ -278,8 +278,12 @@ describe("MarkdownPreview thread mentions", () => {
     );
 
     const link = screen.getByRole("link", { name: "Rebuild comments" });
+    const pill = screen.getByText("Rebuild comments").parentElement;
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(link.querySelector("strong")?.textContent).toBe("Rebuild comments");
+    expect(pill?.classList.contains("font-normal")).toBe(true);
+    expect(pill?.classList.contains("cursor-default")).toBe(true);
+    expect(pill?.classList.contains("cursor-pointer")).toBe(false);
     expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
