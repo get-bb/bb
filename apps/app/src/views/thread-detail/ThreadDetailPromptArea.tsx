@@ -631,12 +631,7 @@ export function ThreadDetailPromptArea({
       },
       focus: () => setEditFocusNonce((nonce) => nonce + 1),
     };
-  }, [
-    inlineEditingQueuedMessage?.editSessionId,
-    inlineEditingQueuedMessage?.queuedMessageId,
-    commitInlineQueuedMessage,
-    thread.id,
-  ]);
+  }, [inlineEditingQueuedMessage, commitInlineQueuedMessage, thread.id]);
   const pluginComposerHost = useMemo<PluginComposerHost | null>(
     () =>
       pluginComposerHostBinding && inlineEditingQueuedMessage
@@ -645,7 +640,7 @@ export function ThreadDetailPromptArea({
             draft: inlineEditingQueuedMessage.draft,
           }
         : null,
-    [inlineEditingQueuedMessage?.draft, pluginComposerHostBinding],
+    [inlineEditingQueuedMessage, pluginComposerHostBinding],
   );
   const handleComposerMessageChange = useCallback(
     (text: string, mentions: PromptDraftState["mentions"]) => {
