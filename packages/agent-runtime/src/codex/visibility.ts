@@ -183,7 +183,8 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "thread/unarchived": "noise",
   "turn/completed": "normalized",
   "turn/diff/updated": "normalized",
-  "turn/moderationMetadata": "unknown",
+  // Internal moderation accounting is not actionable thread output.
+  "turn/moderationMetadata": "noise",
   "turn/plan/updated": "normalized",
   "turn/started": "normalized",
   warning: "unknown",
