@@ -874,9 +874,41 @@ describe("SideChatTabContent", () => {
       "Current side draft",
     );
 
-    view.unmount();
+    view.rerender(
+      buildSideChatElement({
+        isActive: true,
+        onSetThreadId,
+        threadId: "thr_side",
+      }),
+    );
+    const reactivatedHost = mocks.latestPluginComposerHost;
+    expect(reactivatedHost).not.toBe(staleActiveHost);
     act(() => {
       staleActiveHost?.setDraft({
+        text: "Reactivated stale replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+    act(() => {
+      reactivatedHost?.setDraft({
+        text: "Current activation replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current activation replacement",
+    );
+
+    view.unmount();
+    act(() => {
+      reactivatedHost?.setDraft({
         text: "Unmounted replacement",
         mentions: [],
         attachments: [],

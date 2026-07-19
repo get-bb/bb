@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -101,6 +102,13 @@ import { useComposerTextEffect } from "@/lib/composer-text-effects";
 import { BbHttpError } from "@/lib/sdk";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
+
+let pluginComposerHostOwnershipSequence = 0;
+
+function createPluginComposerHostIdentity(scopeIdentity: string): string {
+  pluginComposerHostOwnershipSequence += 1;
+  return `${scopeIdentity}:ownership:${pluginComposerHostOwnershipSequence}`;
+}
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
 import {
   buildSideChatSubmitMode,
@@ -562,29 +570,14 @@ export function SideChatTabContent({
   const activeComposerIdentity = queuedComposerIdentity
     ? `queued-message:${queuedComposerIdentity.ownerThreadId}:${queuedComposerIdentity.queuedMessageId}:${queuedComposerIdentity.editSessionId}`
     : `side-chat:${sourceThread.projectId}:${sourceThread.id}:${tab.id}:${childThreadId ?? ""}`;
-  const composerOwnershipRef = useRef({
-    activeComposerIdentity,
-    isActive,
-    version: 0,
-  });
-  if (
-    composerOwnershipRef.current.activeComposerIdentity !==
-      activeComposerIdentity ||
-    composerOwnershipRef.current.isActive !== isActive
-  ) {
-    composerOwnershipRef.current = {
-      activeComposerIdentity,
-      isActive,
-      version: composerOwnershipRef.current.version + 1,
-    };
-  }
-  const activeComposerHostIdentity = `${activeComposerIdentity}:ownership:${composerOwnershipRef.current.version}`;
-  const activeComposerIdentityRef = useRef<string | null>(
-    isActive ? activeComposerHostIdentity : null,
+  const activeComposerHostIdentity = useMemo(
+    () =>
+      createPluginComposerHostIdentity(
+        `${activeComposerIdentity}:${isActive ? "active" : "inactive"}`,
+      ),
+    [activeComposerIdentity, isActive],
   );
-  activeComposerIdentityRef.current = isActive
-    ? activeComposerHostIdentity
-    : null;
+  const activeComposerIdentityRef = useRef<string | null>(null);
   const activeComposerDraftRef = useRef(activeComposerDraft);
   activeComposerDraftRef.current = activeComposerDraft;
   const pluginComposerHostBinding = useMemo<
@@ -849,16 +842,22 @@ export function SideChatTabContent({
   }
   queuedMessageCountRef.current = queuedMessages.length;
 
-  useEffect(() => {
-    isMountedRef.current = true;
+  useLayoutEffect(() => {
     activeComposerIdentityRef.current = isActive
       ? activeComposerHostIdentity
       : null;
     return () => {
-      isMountedRef.current = false;
-      activeComposerIdentityRef.current = null;
+      if (activeComposerIdentityRef.current === activeComposerHostIdentity) {
+        activeComposerIdentityRef.current = null;
+      }
     };
   }, [activeComposerHostIdentity, isActive]);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (childHasUserMessage) {
       setOptimisticFirstUserRow(null);
