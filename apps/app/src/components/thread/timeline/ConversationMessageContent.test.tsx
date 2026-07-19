@@ -143,3 +143,46 @@ describe("ConversationMessageContent assistant thread mentions", () => {
     expect(screen.queryByText("@thread", { exact: false })).toBeNull();
   });
 });
+
+describe("ConversationMessageContent user thread mentions", () => {
+  it("renders a raw thread token as the canonical pill when structured mentions are empty", () => {
+    const mentionedThread = threadListEntry({
+      id: "thr_ti4st72wgs",
+      projectId: "proj_personal",
+      title: "Mention pill QA thread",
+    });
+
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ThreadTitleMentionResourcesProvider
+            sectionNamesById={new Map()}
+            projectNamesById={new Map()}
+            threadById={new Map([[mentionedThread.id, mentionedThread]])}
+          >
+            <ConversationMessageContent
+              role="user"
+              attachments={null}
+              childOrigin={null}
+              initiator="user"
+              mentions={[]}
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderChildOrigin={null}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text="Why was @thread:thr_ti4st72wgs not a pill?"
+              turnRequest={{ kind: "message", status: "accepted" }}
+            />
+          </ThreadTitleMentionResourcesProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const mentionLink = screen.getByRole("link", {
+      name: "Mention pill QA thread",
+    });
+    expect(mentionLink.getAttribute("href")).toBe("/threads/thr_ti4st72wgs");
+    expect(screen.queryByText("@thread", { exact: false })).toBeNull();
+  });
+});

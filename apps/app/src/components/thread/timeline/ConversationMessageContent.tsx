@@ -281,6 +281,14 @@ function CollapsibleMessageText({
     }),
     [body.mentions, resolveSegmentLinkHref, resolveMentionLink],
   );
+  const rawThreadMentions = useMemo<MarkdownThreadMentions>(
+    () => ({
+      mentions: body.mentions,
+      preserveSoftBreaks: true,
+      resolveLinkHref: resolveSegmentLinkHref,
+    }),
+    [body.mentions, resolveSegmentLinkHref],
+  );
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
     () => (onOpenLink ? { onOpenLink } : undefined),
     [onOpenLink],
@@ -319,6 +327,7 @@ function CollapsibleMessageText({
         <MarkdownPreview
           content={body.text}
           promptMentions={promptMentions}
+          threadMentions={rawThreadMentions}
           linkRouting={linkRouting}
         />
         {isExpanded && isTruncated ? (

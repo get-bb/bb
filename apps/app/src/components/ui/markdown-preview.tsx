@@ -112,7 +112,11 @@ export interface MarkdownPreviewProps {
    * editor's offset-based `mentions` array (offsets into `content`) and renders
    * every kind — thread, file/path, and slash command — as its canonical pill.
    * Activates the offset-substitution pipeline in `markdown-prompt-mentions`.
-   * Absent for assistant and generated bodies; that path is unaffected.
+   * User messages may also supply {@link threadMentions} so raw serialized
+   * thread tokens without offset metadata still render consistently. Structured
+   * spans are substituted before Markdown parsing, so the two pipelines do not
+   * double-render the same mention. Absent for assistant and generated bodies;
+   * that path is unaffected.
    */
   promptMentions?: MarkdownPromptMentions;
   /**
@@ -1304,8 +1308,9 @@ function MarkdownPreviewComponent({
   // bodies opt into `remark-breaks` so a single `\n` stays a line break;
   // assistant thread mentions keep ordinary CommonMark soft breaks. Authored
   // prompt mentions also preserve breaks to retain the editor's prior
-  // `whitespace-pre-wrap` behavior. The two mention props are mutually
-  // exclusive in practice but are honoured independently here.
+  // `whitespace-pre-wrap` behavior. User messages may enable both pipelines:
+  // offset substitution removes structured mentions before the raw-token pass,
+  // leaving only unstructured `@thread:<id>` tokens for that fallback.
   //
   // Message directives (assistant only) add `remark-directive` + a host
   // transformer that rewrites recognized leaf directives into plugin mounts.
