@@ -503,10 +503,7 @@ function getSectionMutationErrorMessage(
   error: unknown,
   fallbackMessage: string,
 ): string {
-  if (
-    error instanceof BbHttpError &&
-    error.code === "section_name_conflict"
-  ) {
+  if (error instanceof BbHttpError && error.code === "section_name_conflict") {
     return "Section name already exists.";
   }
   return getMutationErrorMessage({ error, fallbackMessage });
@@ -689,10 +686,7 @@ export function SidebarDisplayOptionsMenu({
         iconName="SlidersHorizontal"
         tooltip="Display options"
       />
-      <DropdownMenuContent
-        align="end"
-        mobileTitle="Display options"
-      >
+      <DropdownMenuContent align="end" mobileTitle="Display options">
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
           Organize
         </DropdownMenuLabel>

@@ -106,9 +106,7 @@ function StoredActiveModeOrderProbe() {
   return <ActiveModeOrderProbe mode={mode} />;
 }
 
-function makeThread(
-  overrides: Partial<ThreadListEntry> = {},
-): ThreadListEntry {
+function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   return {
     id: "thr_machine",
     projectId: "proj_machine",
@@ -152,11 +150,7 @@ function makeThread(
   };
 }
 
-function MachineModeProbe({
-  threads = [],
-}: {
-  threads?: ThreadListEntry[];
-}) {
+function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   const [collapsedSectionIds, setCollapsedSectionIds] = useAtom(
     collapsedSidebarSectionIdsAtom,
   );

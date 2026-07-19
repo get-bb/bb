@@ -408,18 +408,15 @@ describe("dispatchCommand", () => {
       },
     };
 
-    const result = await dispatchCommand(
-      command,
-      {
-        dataDir: "/tmp/bb-data",
-        eventSink: { emit: vi.fn(), flush },
-        fetchProjectAttachment: async () => {
-          throw new Error("Unexpected project attachment fetch");
-        },
-        runtimeManager: manager,
-        threadStorageRootPath: "/tmp/bb-thread-storage",
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
       },
-    );
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
 
     expect(result).toEqual({ cleared: true });
     expect(runtime.resumeThread).toHaveBeenCalledWith(

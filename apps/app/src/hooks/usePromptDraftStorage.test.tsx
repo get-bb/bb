@@ -71,7 +71,10 @@ describe("usePromptDraftStorage", () => {
       LEGACY_PROJECT_DRAFT_KEY,
       storedDraft("project draft"),
     );
-    window.localStorage.setItem(NEW_THREAD_DRAFT_KEY, storedDraft("global draft"));
+    window.localStorage.setItem(
+      NEW_THREAD_DRAFT_KEY,
+      storedDraft("global draft"),
+    );
 
     const { result } = renderHook(() =>
       usePromptDraftStorage({ kind: "new-thread" }),
@@ -121,9 +124,9 @@ describe("usePromptDraftStorage addQuote", () => {
     // Blockquote-prefixed, with a trailing newline so the reply sits below it.
     expect(result.current.text).toBe("> ship it\n");
     expect(window.localStorage.length).toBe(1);
-    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
-      "> ship it",
-    );
+    expect(
+      window.localStorage.getItem(result.current.storageKey ?? ""),
+    ).toContain("> ship it");
   });
 
   it("stacks a second quote below the first, separated by a blank line", () => {
@@ -169,9 +172,9 @@ describe("usePromptDraftStorage addQuote", () => {
         sizeBytes: 0,
       },
     ]);
-    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
-      "uploads/spec.md",
-    );
+    expect(
+      window.localStorage.getItem(result.current.storageKey ?? ""),
+    ).toContain("uploads/spec.md");
   });
 
   it("ignores whitespace-only text without writing", () => {

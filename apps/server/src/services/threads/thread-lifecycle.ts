@@ -1024,10 +1024,7 @@ export function settleThreadPlanCancelCommandResult(
     return emptyCommandResultSideEffects();
   }
   const activeTurnId = getActiveTurnId(args.deps, args.command.threadId);
-  if (
-    activeTurnId !== null &&
-    activeTurnId !== args.command.expectedTurnId
-  ) {
+  if (activeTurnId !== null && activeTurnId !== args.command.expectedTurnId) {
     return emptyCommandResultSideEffects();
   }
   finalizeStoppedThreadInTransaction(args.deps, {

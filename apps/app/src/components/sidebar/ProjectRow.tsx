@@ -1791,11 +1791,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
   const rootItems = useMemo(
     () =>
-      buildProjectThreadGroups(
-        projectThreads,
-        compareThreads,
-        draftThreadIds,
-      ),
+      buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
     [compareThreads, draftThreadIds, projectThreads],
   );
 

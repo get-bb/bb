@@ -1014,9 +1014,8 @@ describe("host-daemon command schemas", () => {
       }),
     ).toEqual({ cancelled: true });
     expect(
-      hostDaemonCommandResultSchemaByType[
-        "thread.plan.cancel"
-      ].safeParse({}).success,
+      hostDaemonCommandResultSchemaByType["thread.plan.cancel"].safeParse({})
+        .success,
     ).toBe(false);
   });
 

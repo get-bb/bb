@@ -78,11 +78,10 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   thread: ThreadWithPendingInteractionState;
 }
 
-interface PromptBannerActivityState
-  extends Pick<
-    ThreadActivityState,
-    "activeGoalCount" | "activePlanModeCount"
-  > {
+interface PromptBannerActivityState extends Pick<
+  ThreadActivityState,
+  "activeGoalCount" | "activePlanModeCount"
+> {
   activePlanTurnId: string | null;
 }
 
