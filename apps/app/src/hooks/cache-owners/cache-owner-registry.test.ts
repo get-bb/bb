@@ -238,6 +238,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadPromptHistoryQueryKey",
     "threadQueryKey",
     "threadQueuedMessagesQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadTimelineQueryKeyPrefix",
     "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
     "threadsQueryKey",
