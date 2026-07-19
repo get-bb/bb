@@ -344,6 +344,8 @@ export interface PromptBoxInternalProps {
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
+  /** Suppress plugin-rendered composer accessories without unmounting the editor. */
+  suppressPluginComposerAccessories?: boolean;
   zenMode?: PromptBoxZenModeConfig;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
   compact?: PromptBoxCompactConfig;
@@ -1035,6 +1037,7 @@ export function PromptBoxInternal({
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
   promptActions,
+  suppressPluginComposerAccessories = false,
   zenMode = {},
   compact,
   containerCompactPlaceholder,
@@ -2842,7 +2845,9 @@ export function PromptBoxInternal({
                   onAction={applyPromptAction}
                 />
                 {footerStart}
-                <PluginComposerAccessories />
+                {!suppressPluginComposerAccessories ? (
+                  <PluginComposerAccessories />
+                ) : null}
               </div>
             ) : null}
             <div className="flex shrink-0 flex-row items-center gap-1">

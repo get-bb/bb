@@ -851,11 +851,14 @@ export function SideChatTabContent({
 
   useEffect(() => {
     isMountedRef.current = true;
+    activeComposerIdentityRef.current = isActive
+      ? activeComposerHostIdentity
+      : null;
     return () => {
       isMountedRef.current = false;
       activeComposerIdentityRef.current = null;
     };
-  }, []);
+  }, [activeComposerHostIdentity, isActive]);
   useEffect(() => {
     if (childHasUserMessage) {
       setOptimisticFirstUserRow(null);
@@ -1732,6 +1735,7 @@ export function SideChatTabContent({
           permissionReadOnly
           typeahead={typeaheadConfig}
           promptActions={promptActions}
+          suppressPluginComposerAccessories={!isActive}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
           // A side chat is a secondary composer: it stays mounted (often hidden)

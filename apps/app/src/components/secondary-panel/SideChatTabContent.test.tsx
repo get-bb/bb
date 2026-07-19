@@ -9,7 +9,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -54,6 +54,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost,
     readOnly,
     stack,
+    suppressPluginComposerAccessories,
     textEffect,
     typeahead,
   }: {
@@ -99,6 +100,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
     };
     stack: ReactNode | null;
+    suppressPluginComposerAccessories?: boolean;
     textEffect?: string | null;
   }) => {
     mocks.latestPluginComposerHost = pluginComposerHost ?? null;
@@ -107,6 +109,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         <input
           data-testid="side-chat-composer"
           data-focus-end-key={focusEndKey}
+          data-plugin-accessories-suppressed={
+            suppressPluginComposerAccessories ? "true" : "false"
+          }
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}
         />
@@ -690,6 +695,33 @@ describe("SideChatTabContent", () => {
     );
   });
 
+  it("suppresses inactive plugin accessories and restores them without remounting the editor", () => {
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      buildSideChatElement({
+        isActive: false,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+    const composer = screen.getByTestId<HTMLInputElement>("side-chat-composer");
+
+    fireEvent.change(composer, { target: { value: "Retained side draft" } });
+    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("true");
+
+    rerender(
+      buildSideChatElement({
+        isActive: true,
+        onSetThreadId,
+        threadId: null,
+      }),
+    );
+
+    expect(screen.getByTestId("side-chat-composer")).toBe(composer);
+    expect(composer.value).toBe("Retained side draft");
+    expect(composer.dataset.pluginAccessoriesSuppressed).toBe("false");
+  });
+
   it("exposes only the visible side-chat draft to plugins before and after child creation", async () => {
     mocks.uploadPromptAttachmentMutateAsync.mockResolvedValueOnce({
       type: "localFile",
@@ -766,6 +798,30 @@ describe("SideChatTabContent", () => {
     );
     expect(screen.getByTestId("parent-composer-draft").textContent).toBe(
       "Keep parent draft",
+    );
+  });
+
+  it("keeps the initial plugin host writable through StrictMode effect replay", () => {
+    render(
+      <StrictMode>
+        {buildSideChatElement({
+          onSetThreadId: vi.fn(),
+          threadId: null,
+        })}
+      </StrictMode>,
+    );
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Strict side draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "1",
     );
   });
 

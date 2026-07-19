@@ -50,6 +50,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     onSubmit,
     promptBoxRef,
     submission,
+    suppressPluginComposerAccessories,
     zenMode,
     heightAnimationKey,
   }: {
@@ -66,6 +67,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       } | null;
     };
     submission?: { onModifierSubmit?: () => void };
+    suppressPluginComposerAccessories?: boolean;
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
   }) => (
@@ -74,6 +76,9 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       data-compact={compact?.isCompact}
       data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
+      data-plugin-accessories-suppressed={
+        suppressPluginComposerAccessories ? "true" : "false"
+      }
     >
       {footerStart}
       <input
@@ -272,6 +277,28 @@ describe("FollowUpPromptBox", () => {
     expect(input.value).toBe("Uncommitted editor state");
 
     target.remove();
+  });
+
+  it("forwards accessory suppression changes without remounting the composer", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const { rerender } = render(
+      <FollowUpPromptBox {...props} suppressPluginComposerAccessories />,
+    );
+    const promptBox = screen.getByTestId("prompt-box");
+    const input = screen.getByLabelText("Follow-up prompt");
+
+    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("true");
+
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        suppressPluginComposerAccessories={false}
+      />,
+    );
+
+    expect(screen.getByTestId("prompt-box")).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("false");
   });
 
   it("scrolls to the bottom after submitting a ready follow-up", () => {

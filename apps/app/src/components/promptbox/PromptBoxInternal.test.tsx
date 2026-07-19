@@ -39,6 +39,12 @@ import type {
   ProviderCommandSuggestion,
 } from "./mentions/types";
 
+vi.mock("@/components/plugin/PluginComposerAccessories", () => ({
+  PluginComposerAccessories: () => (
+    <span data-testid="plugin-composer-accessories" />
+  ),
+}));
+
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
 interface PromptChange {
@@ -297,7 +303,8 @@ async function selectPromptAction(label: string) {
     expect(document.activeElement).toBe(getPromptEditorElement()),
   );
   await act(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
   );
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   fireEvent.pointerDown(trigger, { button: 0 });
@@ -446,11 +453,34 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
+  it("suppresses and restores plugin accessories without remounting the editor", () => {
+    const props = createPromptBoxProps({ value: "Retained draft" });
+    const view = render(<PromptBoxInternal {...props} />);
+    const editor = getPromptEditorElement();
+
+    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+
+    view.rerender(
+      <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
+    );
+
+    expect(screen.queryByTestId("plugin-composer-accessories")).toBeNull();
+    expect(getPromptEditorElement()).toBe(editor);
+
+    view.rerender(
+      <PromptBoxInternal
+        {...props}
+        suppressPluginComposerAccessories={false}
+      />,
+    );
+
+    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+    expect(getPromptEditorElement()).toBe(editor);
+  });
+
   it("decorates only draft text while shimmering and removes it when cleared", async () => {
     const props = createPromptBoxProps({ value: "Keep this draft readable" });
-    const view = render(
-      <PromptBoxInternal {...props} textEffect="shimmer" />,
-    );
+    const view = render(<PromptBoxInternal {...props} textEffect="shimmer" />);
 
     await waitFor(() => {
       expect(
@@ -465,9 +495,7 @@ describe("PromptBoxInternal controlled value sync", () => {
 
     view.rerender(<PromptBoxInternal {...props} textEffect={null} />);
     await waitFor(() => {
-      expect(
-        view.container.querySelector(".prompt-text-shimmer"),
-      ).toBeNull();
+      expect(view.container.querySelector(".prompt-text-shimmer")).toBeNull();
     });
   });
 

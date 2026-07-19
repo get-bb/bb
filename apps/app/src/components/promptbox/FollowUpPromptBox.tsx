@@ -199,6 +199,8 @@ export interface FollowUpPromptBoxProps {
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
+  /** Suppress plugin accessories while a retained secondary composer is inactive. */
+  suppressPluginComposerAccessories?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffect?: PluginComposerTextEffect | null;
@@ -256,6 +258,7 @@ function FollowUpPromptBoxWithComposer({
   permissionReadOnly,
   typeahead,
   promptActions,
+  suppressPluginComposerAccessories,
   pluginComposerHost,
   textEffect,
   zenModeResetKey,
@@ -582,6 +585,7 @@ function FollowUpPromptBoxWithComposer({
         typeahead={typeahead}
         attachments={attachments}
         promptActions={promptActions}
+        suppressPluginComposerAccessories={suppressPluginComposerAccessories}
         compact={compactConfig}
         zenMode={{
           layout: "thread",
