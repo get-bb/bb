@@ -3,15 +3,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
-import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
-import {
-  useDesktopUpdateAvailableToast,
-  useUpdateAvailableToast,
-} from "./hooks/useUpdateAvailableToast";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
@@ -76,10 +71,6 @@ function AppRoutes() {
 export function App() {
   // Connect WebSocket for real-time invalidation
   useWebSocket();
-  // Show a toast when the server reports a newer bb-app published on npm.
-  useUpdateAvailableToast();
-  // Show a separate toast when the Electron shell reports a desktop update.
-  useDesktopUpdateAvailableToast();
   // Keep the Electron window chrome (traffic lights, inactive title bar)
   // in sync with bb's theme preference.
   useDesktopThemeSync();
@@ -95,7 +86,6 @@ export function App() {
     <QuickCreateProjectProvider>
       <AppCommandProvider>
         <RouteNavigationProvider>
-          <ProviderCliHealthToasts />
           <Routes>
             <Route
               path={AUTH_CALLBACK_ROUTE_PATH}

@@ -35,6 +35,7 @@ import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
+  providerCliJobKey,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
@@ -1431,11 +1432,10 @@ export function RootComposeView() {
   const refetchProviderCliStatus = providerCliStatus.refetch;
   const {
     installLogDialog: providerCliInstallLogDialog,
-    queuedProviders,
-    runningProvider,
+    queuedJobKeys,
+    runningJobKey,
     startInstall,
   } = useProviderCliInstallRunner({
-    hostId: composeHostId,
     onStatusUpdated: () => {
       void refetchProviderCliStatus();
     },
@@ -1455,11 +1455,11 @@ export function RootComposeView() {
     return issue && hasProviderCliAction(issue) ? issue : null;
   }, [codexCliStatus, isCodexCliVersionBlocked]);
   const handleUpdateCodexCli = useCallback(() => {
-    if (codexCliIssue === null) {
+    if (codexCliIssue === null || composeHostId === null) {
       return;
     }
-    startInstall(codexCliIssue);
-  }, [codexCliIssue, startInstall]);
+    startInstall({ hostId: composeHostId, issue: codexCliIssue });
+  }, [codexCliIssue, composeHostId, startInstall]);
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   useEffect(() => {
     setBranchSearchQuery("");
@@ -3502,17 +3502,22 @@ export function RootComposeView() {
         currentVersion={codexCliStatus.currentVersion}
         minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
         issue={codexCliIssue}
-        updating={runningProvider === "codex" || queuedProviders.has("codex")}
+        updating={
+          composeHostId !== null &&
+          (runningJobKey === providerCliJobKey(composeHostId, "codex") ||
+            queuedJobKeys.has(providerCliJobKey(composeHostId, "codex")))
+        }
         onUpdate={handleUpdateCodexCli}
       />
     );
   }, [
     codexCliIssue,
     codexCliStatus,
+    composeHostId,
     handleUpdateCodexCli,
     isCodexCliVersionBlocked,
-    queuedProviders,
-    runningProvider,
+    queuedJobKeys,
+    runningJobKey,
   ]);
 
   if (!hasSidebarNavigationSettled) {

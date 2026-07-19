@@ -123,13 +123,15 @@ describe("useProviderCliInstallRunner", () => {
     const onStatusUpdated = vi.fn();
     const { result } = renderHook(() =>
       useProviderCliInstallRunner({
-        hostId: "host_1",
         onStatusUpdated,
       }),
     );
 
     act(() => {
-      result.current.startInstall(issueForProvider("codex"));
+      result.current.startInstall({
+        hostId: "host_1",
+        issue: issueForProvider("codex"),
+      });
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
@@ -141,7 +143,10 @@ describe("useProviderCliInstallRunner", () => {
     );
 
     act(() => {
-      result.current.startInstall(issueForProvider("claudeCode"));
+      result.current.startInstall({
+        hostId: "host_1",
+        issue: issueForProvider("claudeCode"),
+      });
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
@@ -149,10 +154,10 @@ describe("useProviderCliInstallRunner", () => {
     expect(appToastMock.message).toHaveBeenCalledWith(
       "Claude Code update queued",
       expect.objectContaining({
-        id: "provider-cli-health-run:claudeCode",
+        id: "provider-cli-health-run:host_1:claudeCode",
       }),
     );
-    expect(result.current.queuedProviders.has("claudeCode")).toBe(true);
+    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(true);
 
     await act(async () => {
       completeInstall(installAt(0), {
@@ -173,7 +178,7 @@ describe("useProviderCliInstallRunner", () => {
         actionKind: "update",
       }),
     );
-    expect(result.current.queuedProviders.has("claudeCode")).toBe(false);
+    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(false);
 
     await act(async () => {
       completeInstall(installAt(1), {
@@ -186,5 +191,6 @@ describe("useProviderCliInstallRunner", () => {
     });
 
     expect(onStatusUpdated).toHaveBeenCalledTimes(2);
+    expect(onStatusUpdated).toHaveBeenLastCalledWith("host_1");
   });
 });

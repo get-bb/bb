@@ -1056,6 +1056,8 @@ export function SettingsView() {
     );
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
+  } else if (activeSection === "updates") {
+    content = <UpdatesSettingsSection />;
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
@@ -1114,7 +1116,6 @@ export function SettingsView() {
           onRichTextEditingChange={setRichTextEditing}
         />
         <VoiceInputSettingsSection />
-        <UpdatesSettingsSection />
         <DebugSettingsSection
           enabled={generalSettings.showUnhandledProviderEvents}
           disabled={
