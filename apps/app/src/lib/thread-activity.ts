@@ -130,6 +130,8 @@ export interface CollapsedChildActivity {
   pending: boolean;
   /** At least one child is actively working, including workflow work. */
   working: boolean;
+  /** At least one child has an unsubmitted composer draft. */
+  hasUnsubmittedDraft: boolean;
   /** At least one child is actively running a foreground/runtime turn. */
   runtimeWorking: boolean;
   /** At least one idle child has a provider workflow still running. */
@@ -151,6 +153,7 @@ export interface CollapsedChildActivity {
 export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
+  hasUnsubmittedDraft: false,
   runtimeWorking: false,
   workflow: false,
   backgroundAgent: false,
@@ -163,14 +166,18 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
 
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
-  Pick<ThreadListEntry, "activity" | "hasPendingInteraction">;
+  Pick<ThreadListEntry, "id" | "activity" | "hasPendingInteraction">;
+
+const EMPTY_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
 
 /** Rolls a child thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
   threads: readonly ThreadActivityShape[],
+  draftThreadIds: ReadonlySet<string> = EMPTY_DRAFT_THREAD_IDS,
 ): CollapsedChildActivity {
   let pending = false;
   let working = false;
+  let hasUnsubmittedDraft = false;
   let runtimeWorking = false;
   let workflow = false;
   let backgroundAgent = false;
@@ -180,6 +187,9 @@ export function getCollapsedChildActivity(
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
+    if (draftThreadIds.has(thread.id)) {
+      hasUnsubmittedDraft = true;
+    }
     const childUnreadDone = isUnreadDoneThread(thread);
     if (childUnreadDone && thread.status === "error") {
       unreadError = true;
@@ -225,6 +235,7 @@ export function getCollapsedChildActivity(
   return {
     pending,
     working,
+    hasUnsubmittedDraft,
     runtimeWorking,
     workflow,
     backgroundAgent,

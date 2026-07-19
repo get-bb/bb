@@ -49,7 +49,10 @@ function makeThread(): ThreadListEntry {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 describe("RootComposeMobileRecents", () => {
   it("does not let runtime gating conceal concurrent Plan and Goal activity", () => {
@@ -67,5 +70,28 @@ describe("RootComposeMobileRecents", () => {
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("subscribes mobile recents to working draft state", () => {
+    window.localStorage.setItem(
+      "bb.promptbox.contents-proj_mobile-thr_mobile-3",
+      JSON.stringify({ text: "Keep editing", attachments: [] }),
+    );
+
+    render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          showCreatingRow={false}
+          threads={[makeThread()]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 });

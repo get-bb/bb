@@ -26,6 +26,7 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
 import { isSidebarThreadTitleMatch } from "./sidebarThreadSearch";
+import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -136,9 +137,14 @@ function ThreadSearchResultRowComponent({
   const primaryHighlightRanges = primaryMatch?.highlightRanges ?? [];
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadUnreadDone = isUnreadDoneThread(thread);
+  const hasUnsubmittedDraft = usePromptDraftHasInput({
+    kind: "thread",
+    projectId: thread.projectId,
+    threadId: thread.id,
+  });
   const indicatorState: ThreadListIndicatorState = {
     hasPendingInteraction,
-    hasUnsubmittedDraft: false,
+    hasUnsubmittedDraft,
     hasUnreadError: threadUnreadDone && thread.status === "error",
     hasUnreadSuccess: threadUnreadDone && thread.status !== "error",
     isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),

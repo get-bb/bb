@@ -15,6 +15,7 @@ function makeChild(
   overrides: Partial<ChildActivityInput> = {},
 ): ChildActivityInput {
   return {
+    id: "thr-child",
     status: "idle",
     lastReadAt: 10,
     latestAttentionAt: 10,
@@ -282,10 +283,25 @@ describe("thread-activity", () => {
   });
 
   describe("getCollapsedChildActivity", () => {
+    it("preserves descendant draft state independently from work", () => {
+      expect(
+        getCollapsedChildActivity(
+          [busyChild, pendingChild],
+          new Set([pendingChild.id]),
+        ),
+      ).toMatchObject({
+        pending: true,
+        working: true,
+        hasUnsubmittedDraft: true,
+        runtimeWorking: true,
+      });
+    });
+
     it("flags nothing for an empty or fully-idle child list", () => {
       expect(getCollapsedChildActivity([])).toEqual({
         pending: false,
         working: false,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -298,6 +314,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([makeChild(), makeChild()])).toEqual({
         pending: false,
         working: false,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -313,6 +330,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([busyChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -325,6 +343,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([pendingChild])).toEqual({
         pending: true,
         working: false,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -337,6 +356,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([unreadChild])).toEqual({
         pending: false,
         working: false,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -349,6 +369,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([unreadErrorChild])).toEqual({
         pending: false,
         working: false,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -366,6 +387,7 @@ describe("thread-activity", () => {
       ).toEqual({
         pending: true,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -385,6 +407,7 @@ describe("thread-activity", () => {
       ).toEqual({
         pending: true,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -414,6 +437,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([busyUnreadErrorChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: true,
         backgroundAgent: true,
@@ -434,6 +458,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([busyAndPending])).toEqual({
         pending: true,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -459,6 +484,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([commandChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -484,6 +510,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([agentChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: true,
@@ -509,6 +536,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([workflowChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: true,
         backgroundAgent: false,
@@ -534,6 +562,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([planModeChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -559,6 +588,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([goalChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: false,
         workflow: false,
         backgroundAgent: false,
@@ -586,6 +616,7 @@ describe("thread-activity", () => {
       expect(getCollapsedChildActivity([workflowAndRuntimeChild])).toEqual({
         pending: false,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: true,
         backgroundAgent: false,

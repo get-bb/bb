@@ -88,6 +88,7 @@ function SidebarSectionRowComponent({
     isCollapsed &&
     (activity.pending ||
       activity.working ||
+      activity.hasUnsubmittedDraft ||
       activity.unread ||
       activity.unreadError);
   const className = cn(

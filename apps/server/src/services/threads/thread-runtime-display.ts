@@ -22,7 +22,7 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
-  extractThreadTimelineActivePromptMode,
+  extractThreadTimelineActivePlanTurn,
   extractThreadTimelineGoal,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
@@ -78,10 +78,13 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
   thread: ThreadWithPendingInteractionState;
 }
 
-type PromptBannerActivityState = Pick<
-  ThreadActivityState,
-  "activeGoalCount" | "activePlanModeCount"
->;
+interface PromptBannerActivityState
+  extends Pick<
+    ThreadActivityState,
+    "activeGoalCount" | "activePlanModeCount"
+  > {
+  activePlanTurnId: string | null;
+}
 
 const EMPTY_THREAD_ACTIVITY: ThreadActivityState = {
   activeBackgroundAgentCount: 0,
@@ -267,7 +270,7 @@ function getThreadPromptBannerActivityState(
   thread: Thread,
   events: readonly ThreadEventWithMeta[],
 ): PromptBannerActivityState {
-  const activePromptMode = extractThreadTimelineActivePromptMode({
+  const activePlanTurn = extractThreadTimelineActivePlanTurn({
     events,
     providerId: thread.providerId,
     threadStatus: thread.status,
@@ -276,7 +279,8 @@ function getThreadPromptBannerActivityState(
 
   return {
     activeGoalCount: goal?.status === "active" ? 1 : 0,
-    activePlanModeCount: activePromptMode?.mode === "plan" ? 1 : 0,
+    activePlanModeCount: activePlanTurn === null ? 0 : 1,
+    activePlanTurnId: activePlanTurn?.turnId ?? null,
   };
 }
 
@@ -353,7 +357,11 @@ export function getThreadPromptBannerActivity(
   return (
     buildThreadPromptBannerActivityByThreadId(deps, [thread]).get(
       thread.id,
-    ) ?? { activeGoalCount: 0, activePlanModeCount: 0 }
+    ) ?? {
+      activeGoalCount: 0,
+      activePlanModeCount: 0,
+      activePlanTurnId: null,
+    }
   );
 }
 

@@ -1020,7 +1020,14 @@ export function settleThreadStopCommandResult(
 export function settleThreadPlanCancelCommandResult(
   args: SettleThreadPlanCancelCommandResultArgs,
 ): CommandResultSideEffectsResult {
-  if (!args.report.ok) {
+  if (!args.report.ok || !args.report.result.cancelled) {
+    return emptyCommandResultSideEffects();
+  }
+  const activeTurnId = getActiveTurnId(args.deps, args.command.threadId);
+  if (
+    activeTurnId !== null &&
+    activeTurnId !== args.command.expectedTurnId
+  ) {
     return emptyCommandResultSideEffects();
   }
   finalizeStoppedThreadInTransaction(args.deps, {

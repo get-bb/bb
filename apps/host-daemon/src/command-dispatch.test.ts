@@ -161,6 +161,7 @@ function createWorkspace(): HostWorkspace {
 interface FakeDispatchRuntime extends AgentRuntime {
   /** Test-only mutator for the runtime-owned per-thread turn state. */
   setActiveTurn: (threadId: string, turnId: string) => void;
+  setIdle: (threadId: string) => void;
 }
 
 function createRuntime(): FakeDispatchRuntime {
@@ -205,6 +206,10 @@ function createRuntime(): FakeDispatchRuntime {
     setActiveTurn: (threadId, turnId) => {
       hostedThreadIds.add(threadId);
       activeTurnsByThreadId.set(threadId, turnId);
+    },
+    setIdle: (threadId: string) => {
+      hostedThreadIds.add(threadId);
+      activeTurnsByThreadId.delete(threadId);
     },
   };
 }
@@ -276,6 +281,7 @@ describe("dispatchCommand", () => {
         type: "thread.plan.cancel",
         environmentId: "env-1",
         threadId: "thread-1",
+        expectedTurnId: "turn-1",
       },
       {
         dataDir: "/tmp/bb-data",
@@ -288,9 +294,82 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ cancelled: true });
     expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
     expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("does not cancel Plan after its turn has already ended", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.plan.cancel",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-plan-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ cancelled: false });
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel a newer turn when the Plan cancellation is stale", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setActiveTurn("thread-1", "turn-newer-2");
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.plan.cancel",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-plan-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ cancelled: false });
+    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-newer-2");
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
   });
 
   it("resumes a reaped Codex runtime before clearing its Goal", async () => {

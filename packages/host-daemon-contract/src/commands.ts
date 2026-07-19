@@ -364,6 +364,7 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
 const threadPlanCancelCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.plan.cancel"),
+    expectedTurnId: z.string().min(1),
   })
   .strict();
 
@@ -1290,7 +1291,7 @@ export const hostDaemonCommandRegistry = {
   "thread.plan.cancel": defineHostDaemonCommandDescriptor({
     type: "thread.plan.cancel",
     schema: threadPlanCancelCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: z.object({ cancelled: z.boolean() }).strict(),
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

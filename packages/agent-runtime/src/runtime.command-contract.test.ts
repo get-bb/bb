@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,7 +10,7 @@ import {
 import { promptTextInput } from "./test/prompt-input.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
@@ -310,7 +311,9 @@ describe("createAgentRuntime command contracts", () => {
         const base = createFakeAdapter(scriptPath);
         return {
           ...base,
-          buildCommandPlan(command: Parameters<typeof base.buildCommandPlan>[0]) {
+          buildCommandPlan(
+            command: Parameters<typeof base.buildCommandPlan>[0],
+          ) {
             if (command.type === "model/list") {
               seenModelListMarkers.push(marker);
             }
@@ -610,13 +613,13 @@ rl.on("line", (line) => {
         providerId: "codex",
         threadId: "t1",
       });
-      expect(JSON.parse(readFileSync(threadStartLogPath, "utf8"))).toMatchObject(
-        {
-          approvalPolicy: "on-request",
-          approvalsReviewer: "auto_review",
-          sandbox: "workspace-write",
-        },
-      );
+      expect(
+        JSON.parse(readFileSync(threadStartLogPath, "utf8")),
+      ).toMatchObject({
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        sandbox: "workspace-write",
+      });
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224v",
@@ -754,6 +757,116 @@ rl.on("line", (line) => {
       runtime.renameThread({ threadId: "t1", title: "New Title" }),
     ).rejects.toThrow(/does not support thread rename/);
     await runtime.shutdown();
+  });
+
+  it("waits for Goal clear persistence when Codex responds before notifying", async () => {
+    const providerScriptPath = join(tmpDir, "codex-goal-clear-provider.cjs");
+    const responseMarkerPath = join(tmpDir, "goal-clear-response");
+    const notificationReleasePath = join(tmpDir, "release-goal-clear");
+    writeFileSync(
+      providerScriptPath,
+      `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const responseMarkerPath = ${JSON.stringify(responseMarkerPath)};
+const notificationReleasePath = ${JSON.stringify(notificationReleasePath)};
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { thread: { id: "codex-goal-thread" } },
+    });
+    return;
+  }
+  if (message.method === "thread/goal/clear") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { cleared: true },
+    });
+    fs.writeFileSync(responseMarkerPath, "responded", "utf8");
+    const releasePoll = setInterval(() => {
+      if (!fs.existsSync(notificationReleasePath)) {
+        return;
+      }
+      clearInterval(releasePoll);
+      send({
+        jsonrpc: "2.0",
+        method: "thread/goal/cleared",
+        params: { threadId: "codex-goal-thread" },
+      });
+    }, 5);
+  }
+});
+`,
+      "utf8",
+    );
+    const events: ThreadEvent[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: (event) => events.push(event),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () =>
+        createCodexProviderAdapter({
+          additionalWorkspaceWriteRoots: [],
+          processArgs: [providerScriptPath],
+          processCommand: "node",
+        }),
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-goal",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      let settled = false;
+      const clearPromise = runtime.clearThreadGoal({
+        threadId: "t-goal",
+      });
+      void clearPromise.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+
+      await vi.waitFor(() => {
+        expect(existsSync(responseMarkerPath)).toBe(true);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(settled).toBe(false);
+
+      writeFileSync(notificationReleasePath, "release", "utf8");
+      await expect(clearPromise).resolves.toEqual({ cleared: true });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          threadId: "t-goal",
+          type: "thread/goal/cleared",
+        }),
+      );
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
   it("rejects thread resume when providerThreadId cannot be resolved", async () => {

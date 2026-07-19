@@ -256,12 +256,14 @@ const commandHandlers: CommandHandlerMap = {
         `No provider runtime available for thread ${command.threadId}`,
       );
     }
-    await entry.runtime.waitForActiveTurn(command.threadId, {
-      timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
-    });
+    if (
+      entry.runtime.getActiveTurnId(command.threadId) !== command.expectedTurnId
+    ) {
+      return { cancelled: false };
+    }
     await entry.runtime.stopThread({ threadId: command.threadId });
     await options.eventSink.flush();
-    return {};
+    return { cancelled: true };
   },
   "thread.rename": async (command, options) => {
     const entry = await options.runtimeManager.getOrAwait(

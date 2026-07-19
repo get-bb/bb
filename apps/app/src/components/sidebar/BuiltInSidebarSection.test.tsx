@@ -6,6 +6,7 @@ import {
   renderBuiltInSidebarSection,
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 
 const SECTIONS: BuiltInSidebarSectionOptionsById = {
   pinned: {
@@ -54,5 +55,31 @@ describe("built-in sidebar section renderer", () => {
 
     expect(screen.getByText("Pinned content")).not.toBeNull();
     expect(screen.getByText("Threads content")).not.toBeNull();
+  });
+
+  it("surfaces shared activity when Threads is collapsed", () => {
+    render(
+      renderBuiltInSidebarSection({
+        collapsedSectionIds: new Set(["threads"]),
+        disabled: true,
+        onToggleCollapsed: vi.fn(),
+        sectionId: "threads",
+        sections: {
+          ...SECTIONS,
+          threads: {
+            ...SECTIONS.threads,
+            activity: {
+              ...NO_COLLAPSED_CHILD_ACTIVITY,
+              goal: true,
+              working: true,
+            },
+          },
+        },
+        showPinnedSection: false,
+      }),
+    );
+
+    expect(screen.queryByText("Threads content")).toBeNull();
+    expect(screen.getByLabelText("Goal active")).not.toBeNull();
   });
 });

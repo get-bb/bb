@@ -1357,6 +1357,18 @@ export function ThreadDetailPromptArea({
       isPromptModeExpanded,
     ],
   );
+  const activeGoalCard = useMemo(
+    () => (
+      <ThreadGoalCard
+        goal={goal}
+        isClearPending={clearThreadGoal.isPending}
+        isExpanded={isGoalExpanded}
+        onClearGoal={handleClearGoal}
+        onToggle={() => setIsGoalExpanded((value) => !value)}
+      />
+    ),
+    [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
+  );
   const promptStack = useMemo(
     () => (
       <>
@@ -1371,13 +1383,7 @@ export function ThreadDetailPromptArea({
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
         {activePromptModeCard}
-        <ThreadGoalCard
-          goal={goal}
-          isClearPending={clearThreadGoal.isPending}
-          isExpanded={isGoalExpanded}
-          onClearGoal={handleClearGoal}
-          onToggle={() => setIsGoalExpanded((value) => !value)}
-        />
+        {activeGoalCard}
         <ThreadTodoCard
           pendingTodos={
             thread.archivedAt === null && environmentGoneStatus === null
@@ -1469,11 +1475,8 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       inlineEditor,
-      goal,
-      clearThreadGoal.isPending,
-      handleClearGoal,
+      activeGoalCard,
       activePromptModeCard,
-      isGoalExpanded,
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
@@ -1498,28 +1501,26 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
-    if (isPluginPendingInteraction(activePendingInteraction)) {
-      return (
-        <PluginPendingInteractionComposer
-          interaction={activePendingInteraction}
-        />
-      );
-    }
-    if (!activePromptMode) {
-      return (
-        <ThreadPendingInteractionBanner
-          interaction={activePendingInteraction}
-          threadId={thread.id}
-        />
-      );
+    const pendingInteractionComposer = isPluginPendingInteraction(
+      activePendingInteraction,
+    ) ? (
+      <PluginPendingInteractionComposer
+        interaction={activePendingInteraction}
+      />
+    ) : (
+      <ThreadPendingInteractionBanner
+        interaction={activePendingInteraction}
+        threadId={thread.id}
+      />
+    );
+    if (!activePromptMode && !goal) {
+      return pendingInteractionComposer;
     }
     return (
       <div className="space-y-2">
         {activePromptModeCard}
-        <ThreadPendingInteractionBanner
-          interaction={activePendingInteraction}
-          threadId={thread.id}
-        />
+        {activeGoalCard}
+        {pendingInteractionComposer}
       </div>
     );
   }

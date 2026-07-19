@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { getThread, listEvents } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -174,8 +174,9 @@ describe("public thread banner actions", () => {
           expect(command).toMatchObject({
             type: "thread.plan.cancel",
             threadId: fixture.threadId,
+            expectedTurnId: "turn-plan-1",
           });
-          return { ok: true, result: {} };
+          return { ok: true, result: { cancelled: true } };
         },
       });
 
@@ -227,6 +228,124 @@ describe("public thread banner actions", () => {
         {
           activePlanModeCount: 1,
         },
+      );
+    });
+  });
+
+  it("does not finalize the thread when a stale Plan cancellation finds a newer turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "active" });
+      seedActivePlan(harness, fixture);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: fixture.hostId,
+        sessionId: fixture.sessionId,
+        handle: ({ command }) => {
+          expect(command).toMatchObject({
+            type: "thread.plan.cancel",
+            threadId: fixture.threadId,
+            expectedTurnId: "turn-plan-1",
+          });
+          return { ok: true, result: { cancelled: false } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/plan/cancel`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(409);
+      expect(responder.requests).toHaveLength(1);
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("active");
+      expect(
+        listEvents(harness.db, { threadId: fixture.threadId }).some(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toBe(false);
+      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
+        { activePlanModeCount: 1 },
+      );
+    });
+  });
+
+  it("does not finalize a newer server turn when the daemon reports the Plan turn cancelled", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "active" });
+      seedActivePlan(harness, fixture);
+      registerHostRpcResponder(harness, {
+        hostId: fixture.hostId,
+        sessionId: fixture.sessionId,
+        handle: ({ command }) => {
+          expect(command).toMatchObject({
+            type: "thread.plan.cancel",
+            expectedTurnId: "turn-plan-1",
+          });
+          seedTurnStarted(harness.deps, {
+            environmentId: fixture.environmentId,
+            providerThreadId: "provider-thread-1",
+            sequence: 4,
+            threadId: fixture.threadId,
+            turnId: "turn-newer-2",
+          });
+          return { ok: true, result: { cancelled: true } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/plan/cancel`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(409);
+      expect(getThread(harness.db, fixture.threadId)?.status).toBe("active");
+      expect(
+        listEvents(harness.db, { threadId: fixture.threadId }).some(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toBe(false);
+      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
+        { activePlanModeCount: 1 },
+      );
+    });
+  });
+
+  it("accepts a stale Plan cancellation only after provider events show the Plan turn ended", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "active" });
+      seedActivePlan(harness, fixture);
+      registerHostRpcResponder(harness, {
+        hostId: fixture.hostId,
+        sessionId: fixture.sessionId,
+        handle: () => {
+          seedEvent(harness.deps, {
+            threadId: fixture.threadId,
+            environmentId: fixture.environmentId,
+            providerThreadId: "provider-thread-1",
+            sequence: 4,
+            type: "turn/completed",
+            scope: turnScope("turn-plan-1"),
+            data: {
+              providerThreadId: "provider-thread-1",
+              status: "completed",
+            },
+          });
+          return { ok: true, result: { cancelled: false } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/plan/cancel`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        listEvents(harness.db, { threadId: fixture.threadId }).some(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toBe(false);
+      await expect(readBannerActivity(harness, fixture)).resolves.toMatchObject(
+        { activePlanModeCount: 0 },
       );
     });
   });

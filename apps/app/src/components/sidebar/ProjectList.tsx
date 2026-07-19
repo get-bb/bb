@@ -39,6 +39,8 @@ import {
 } from "@/hooks/queries/host-path-queries";
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
+import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
+import { getCollapsedChildActivity } from "@/lib/thread-activity";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -80,6 +82,7 @@ import type { ProjectThreadListState } from "./ProjectRow";
 import {
   compareByCreatedAtDescending,
   compareStandardThreads,
+  isSidebarProjectThread,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
   type ThreadComparator,
@@ -975,6 +978,7 @@ interface ProjectModeSectionsProps extends BuiltInSectionRenderState {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
+  draftThreadIds: ReadonlySet<string>;
   effectivePinnedThreadIds: ReadonlySet<string>;
   isReady: boolean;
   onCreateProjectThread: (projectId: string) => void;
@@ -996,6 +1000,7 @@ function ProjectModeSections({
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
+  draftThreadIds,
   effectivePinnedThreadIds,
   isReady,
   isSectionDisplayOptionsOpen,
@@ -1113,16 +1118,20 @@ function ProjectModeSections({
     isReady,
   });
   const reorderDisabled = order.length < 2;
+  const personalThreads =
+    threadsByProject.get(PERSONAL_PROJECT_ID)?.filter(isSidebarProjectThread) ??
+    [];
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,
     threads: {
       ...threadsSection,
+      activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
       content: (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
           threadListState={getProjectThreadListState({
             status,
-            threads: threadsByProject.get(PERSONAL_PROJECT_ID),
+            threads: personalThreads,
           })}
           selectedThreadId={selectedThreadId}
           collapsedThreadIds={collapsedThreadIds}
@@ -1296,6 +1305,7 @@ interface MachineModeSectionsProps extends BuiltInSectionRenderState {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
+  draftThreadIds: ReadonlySet<string>;
   effectivePinnedThreadIds: ReadonlySet<string>;
   isReady: boolean;
   onProjectSelect?: () => void;
@@ -1315,6 +1325,7 @@ export function MachineModeSections({
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
+  draftThreadIds,
   effectivePinnedThreadIds,
   isReady,
   isSectionDisplayOptionsOpen,
@@ -1347,7 +1358,12 @@ export function MachineModeSections({
     [setCollapsedMachineKeyList],
   );
   const nonPinnedThreads = useMemo(
-    () => threads.filter((thread) => !effectivePinnedThreadIds.has(thread.id)),
+    () =>
+      threads.filter(
+        (thread) =>
+          !effectivePinnedThreadIds.has(thread.id) &&
+          isSidebarProjectThread(thread),
+      ),
     [effectivePinnedThreadIds, threads],
   );
   const allThreadsListState = getProjectThreadListState({
@@ -1357,6 +1373,7 @@ export function MachineModeSections({
   const machineSections = useMemo(
     () =>
       buildMachineThreadGroups(nonPinnedThreads, hosts ?? []).map((group) => ({
+        activity: getCollapsedChildActivity(group.threads, draftThreadIds),
         key: group.key,
         label: group.label,
         threadListState: {
@@ -1364,7 +1381,7 @@ export function MachineModeSections({
           threads: group.threads,
         } satisfies ProjectThreadListState,
       })),
-    [hosts, nonPinnedThreads],
+    [draftThreadIds, hosts, nonPinnedThreads],
   );
   const machineSectionIds = useMemo(
     () =>
@@ -1395,6 +1412,7 @@ export function MachineModeSections({
     pinned: pinnedSection,
     threads: {
       ...threadsSection,
+      activity: getCollapsedChildActivity(nonPinnedThreads, draftThreadIds),
       content: (
         <ProjectThreadTree
           threadListState={allThreadsListState}
@@ -1439,6 +1457,7 @@ export function MachineModeSections({
             actions={renderSectionDisplayOptions(sectionId)}
             actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
             actionsMobileAlways
+            collapsedActivity={section.activity}
             collapseControl={{
               isCollapsed: collapsedMachineKeys.has(section.key),
               onToggleCollapsed: () => toggleMachineCollapsed(section.key),
@@ -1489,6 +1508,7 @@ function ProjectListComponent({
     sidebarThreads.push(...sidebarNavigation.personalProject.threads);
     return sidebarThreads;
   }, [sidebarNavigation]);
+  const draftThreadIds = usePromptDraftInputThreadIds(threads);
   const projectNamesById = useMemo(() => {
     const namesById = new Map<string, string>();
     if (!sidebarNavigation) {
@@ -1772,8 +1792,8 @@ function ProjectListComponent({
     }
   }, [chronologicalSort, setChronologicalSort]);
   const pinnedSidebarState = useMemo(
-    () => buildPinnedSidebarState({ threads }),
-    [threads],
+    () => buildPinnedSidebarState({ draftThreadIds, threads }),
+    [draftThreadIds, threads],
   );
   const pinnedRootThreads = useMemo(
     () => pinnedSidebarState.rootNodes.map((node) => node.thread),
@@ -1924,6 +1944,14 @@ function ProjectListComponent({
     />
   );
   const pinnedSection: BuiltInSidebarSectionOptions = {
+    activity: getCollapsedChildActivity(
+      threads.filter(
+        (thread) =>
+          pinnedSidebarState.effectivePinnedThreadIds.has(thread.id) &&
+          isSidebarProjectThread(thread),
+      ),
+      draftThreadIds,
+    ),
     label: "Pinned",
     content: pinnedSectionContent,
     actions: renderSectionDisplayOptions("pinned"),
@@ -2004,6 +2032,7 @@ function ProjectListComponent({
         renderMachine={() => (
           <MachineModeSections
             threads={threads}
+            draftThreadIds={draftThreadIds}
             effectivePinnedThreadIds={
               pinnedSidebarState.effectivePinnedThreadIds
             }
@@ -2074,6 +2103,7 @@ function ProjectListComponent({
             <ProjectModeSections
               projects={projects ?? EMPTY_PROJECTS}
               threads={threads}
+              draftThreadIds={draftThreadIds}
               effectivePinnedThreadIds={
                 pinnedSidebarState.effectivePinnedThreadIds
               }

@@ -330,7 +330,7 @@ export function CollapsedThreadStatusGlyph({
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={activity.pending}
-      hasUnsubmittedDraft={false}
+      hasUnsubmittedDraft={activity.hasUnsubmittedDraft}
       hasUnreadError={activity.unreadError}
       hasUnreadSuccess={activity.unread}
       isBackgroundAgentActive={activity.backgroundAgent}
@@ -446,6 +446,24 @@ function ThreadRowComponent({
   const trailingHasUnreadSuccess = hasHiddenChildren
     ? threadUnreadSuccess || childActivity.unread
     : threadUnreadSuccess;
+  const trailingHasUnsubmittedDraft = hasHiddenChildren
+    ? hasComposerDraft || childActivity.hasUnsubmittedDraft
+    : hasComposerDraft;
+  const trailingIndicatorState: ThreadListIndicatorState = {
+    hasPendingInteraction: trailingHasPendingInteraction,
+    hasUnsubmittedDraft: trailingHasUnsubmittedDraft,
+    hasUnreadError: trailingHasUnreadError,
+    hasUnreadSuccess: trailingHasUnreadSuccess,
+    isBackgroundAgentActive: trailingBackgroundAgentActive,
+    isBackgroundCommandActive: trailingBackgroundCommandActive,
+    isGoalActive: trailingGoalActive,
+    isPlanModeActive: trailingPlanModeActive,
+    isRuntimeActive: trailingRuntimeBusy,
+    isWorkflowActive: trailingIsWorkflowActive,
+  };
+  const trailingIndicatorKind = resolveThreadListIndicator(
+    trailingIndicatorState,
+  );
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
@@ -527,7 +545,7 @@ function ThreadRowComponent({
             label={`${labelTitle} — open in split`}
           />
         ) : null}
-        {shortcut ? (
+        {shortcut && trailingIndicatorKind === "none" ? (
           <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
             {shortcut.label}
           </kbd>
@@ -553,18 +571,7 @@ function ThreadRowComponent({
                   "absolute inset-0 flex items-center justify-center",
                 )}
               >
-                <ThreadTrailingIndicator
-                  hasPendingInteraction={trailingHasPendingInteraction}
-                  hasUnsubmittedDraft={hasComposerDraft}
-                  hasUnreadError={trailingHasUnreadError}
-                  hasUnreadSuccess={trailingHasUnreadSuccess}
-                  isBackgroundAgentActive={trailingBackgroundAgentActive}
-                  isBackgroundCommandActive={trailingBackgroundCommandActive}
-                  isGoalActive={trailingGoalActive}
-                  isPlanModeActive={trailingPlanModeActive}
-                  isRuntimeActive={trailingRuntimeBusy}
-                  isWorkflowActive={trailingIsWorkflowActive}
-                />
+                <ThreadTrailingIndicator {...trailingIndicatorState} />
               </span>
               <div
                 data-sidebar-hover-actions-open={

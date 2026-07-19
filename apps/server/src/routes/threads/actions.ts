@@ -422,6 +422,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     if (activity.activePlanModeCount === 0) {
       throw new ApiError(409, "invalid_request", "Plan mode is not active");
     }
+    if (activity.activePlanTurnId === null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The active Plan turn could not be identified",
+      );
+    }
     const environment = requireThreadHostCommandEnvironment({
       db: deps.db,
       thread,
@@ -434,6 +441,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
           threadId: thread.id,
         }),
         type: "thread.plan.cancel",
+        expectedTurnId: activity.activePlanTurnId,
       },
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

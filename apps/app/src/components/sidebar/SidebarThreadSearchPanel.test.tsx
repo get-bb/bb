@@ -109,6 +109,7 @@ function mockThreadSearch(result: UseThreadSearchResult): void {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   vi.clearAllMocks();
   vi.restoreAllMocks();
 });
@@ -222,6 +223,45 @@ describe("SidebarThreadSearchPanel", () => {
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("subscribes search results to working draft state", () => {
+    const thread = createThreadListEntry({
+      id: "thr_search_draft",
+      title: "Working draft",
+    });
+    thread.activity = { ...thread.activity, activePlanModeCount: 1 };
+    window.localStorage.setItem(
+      "bb.promptbox.contents-proj_search-thr_search_draft-3",
+      JSON.stringify({ text: "Keep editing", attachments: [] }),
+    );
+    mockThreadSearch({
+      data: createSearchResponse(thread),
+      debouncedQuery: "draft",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="draft"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
   it("shows section metadata instead of project metadata in section mode", () => {

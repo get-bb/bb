@@ -21,6 +21,8 @@ import {
   applyQueuedMessageSendResult,
   applyQueuedMessageUpdateResult,
   applySendThreadMessageSuccess,
+  applyThreadGoalClearResult,
+  applyThreadPlanCancellationResult,
   beginCreateQueuedMessageTransaction,
   beginCreateThreadTransaction,
   beginRemoveQueuedMessageTransaction,
@@ -498,6 +500,7 @@ export function useCancelThreadPlan() {
       await sdk.threads.cancelPlan({ threadId });
     },
     onSuccess: (_data, threadId) => {
+      applyThreadPlanCancellationResult({ queryClient, threadId });
       invalidateThreadBannerQueries({ queryClient, threadId });
     },
   });
@@ -512,6 +515,7 @@ export function useClearThreadGoal() {
       await sdk.threads.clearGoal({ threadId });
     },
     onSuccess: (_data, threadId) => {
+      applyThreadGoalClearResult({ queryClient, threadId });
       invalidateThreadBannerQueries({ queryClient, threadId });
     },
   });
