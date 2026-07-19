@@ -10,7 +10,10 @@ import {
   PromptMentionPill,
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
-import { useThreadMentionResource } from "@/components/thread/ThreadTitleMentions.js";
+import {
+  useSidebarThreadMentionResource,
+  useThreadMentionResource,
+} from "@/components/thread/ThreadTitleMentions.js";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 
 // Literal token the generated-message body uses to reference a thread:
@@ -51,7 +54,12 @@ function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
   let match: RegExpExecArray | null;
   while ((match = THREAD_MENTION_PATTERN.exec(value)) !== null) {
     const threadId = match[1];
-    if (threadId === undefined) {
+    const matchEnd = match.index + match[0].length;
+    if (
+      threadId === undefined ||
+      !isMentionBoundary(value, match.index) ||
+      !isMentionEndBoundary(value, matchEnd)
+    ) {
       continue;
     }
     if (match.index > cursor) {
@@ -129,6 +137,21 @@ function isMentionBoundary(text: string, index: number): boolean {
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
 }
 
+function isMentionEndBoundary(text: string, index: number): boolean {
+  const next = text[index];
+  if (next === undefined) return true;
+  if (next === ".") {
+    const afterPeriod = text[index + 1];
+    return afterPeriod === undefined || /[\s,;:!?)}\]]/u.test(afterPeriod);
+  }
+  return !/[\p{L}\p{N}_.+\/-]/u.test(next);
+}
+
+function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
+  const next = parent.children[index + 1];
+  return next?.type !== "text" || isMentionEndBoundary(next.value, 0);
+}
+
 /**
  * Remark plugin that rewrites the literal `@thread:<id>` token inside text
  * nodes into custom inline nodes the `components` map renders as the canonical
@@ -172,14 +195,14 @@ export function remarkThreadMentions() {
         return;
       }
       const prefixStart = previous.value.length - THREAD_MENTION_PREFIX.length;
-      if (
-        prefixStart < 0 ||
-        !previous.value.endsWith(THREAD_MENTION_PREFIX) ||
-        !isMentionBoundary(previous.value, prefixStart)
-      ) {
+      if (prefixStart < 0 || !previous.value.endsWith(THREAD_MENTION_PREFIX)) {
         return;
       }
-      if (authoredMarkdownLinkNodes.has(node)) {
+      if (
+        !isMentionBoundary(previous.value, prefixStart) ||
+        !isDirectiveMentionEndBoundary(parent, index) ||
+        authoredMarkdownLinkNodes.has(node)
+      ) {
         const leadingText = previous.value.slice(0, prefixStart);
         const mentionText: Text = {
           type: "text",
@@ -241,14 +264,34 @@ export function buildThreadMentionComponent({
   mentions,
   resolveSegmentLinkHref,
 }: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
+  function ThreadMentionPillWithQuery({ threadId }: { threadId: string }) {
+    const liveResource = useThreadMentionResource(threadId);
+    const resource =
+      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+    return (
+      <PromptMentionPill
+        resource={resource}
+        serializedText={`@thread:${threadId}`}
+        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
+      />
+    );
+  }
+
   function ThreadMentionElement(props: ThreadMentionElementProps) {
     const threadId = props["data-thread-id"] ?? "";
-    const liveResource = useThreadMentionResource(threadId);
+    const sidebarResource = useSidebarThreadMentionResource(threadId);
     if (threadId.length === 0) {
       return null;
     }
-    const resource =
-      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+    const persistedResource = mentions.find(
+      (mention) =>
+        mention.resource.kind === "thread" &&
+        mention.resource.threadId === threadId,
+    )?.resource;
+    const resource = sidebarResource ?? persistedResource;
+    if (resource === undefined) {
+      return <ThreadMentionPillWithQuery threadId={threadId} />;
+    }
     return (
       <PromptMentionPill
         resource={resource}

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { PromptMentionResource, ThreadListEntry } from "@bb/domain";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions";
+import { useThread } from "@/hooks/queries/thread-queries";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 export interface ThreadTitleMentionResources {
@@ -229,8 +230,8 @@ export function useThreadTitleDisplayText(title: string): string {
   );
 }
 
-/** Resolves a serialized thread id against the live sidebar thread resources. */
-export function useThreadMentionResource(
+/** Resolves a thread mention from the sidebar's already-loaded metadata. */
+export function useSidebarThreadMentionResource(
   threadId: string,
 ): PromptMentionResource | null {
   const resources = useContext(ThreadTitleMentionResourcesContext);
@@ -238,6 +239,31 @@ export function useThreadMentionResource(
     () => threadMentionResource(threadId, resources),
     [resources, threadId],
   );
+}
+
+/** Resolves a thread mention from sidebar metadata, then the thread query. */
+export function useThreadMentionResource(
+  threadId: string,
+): PromptMentionResource | null {
+  const sidebarResource = useSidebarThreadMentionResource(threadId);
+  const threadQuery = useThread(threadId, {
+    enabled: sidebarResource === null,
+  });
+
+  return useMemo<PromptMentionResource | null>(() => {
+    if (sidebarResource !== null) {
+      return sidebarResource;
+    }
+    if (threadQuery.data === undefined) {
+      return null;
+    }
+    return {
+      kind: "thread",
+      threadId,
+      projectId: threadQuery.data.projectId,
+      label: getThreadDisplayTitle(threadQuery.data),
+    };
+  }, [sidebarResource, threadId, threadQuery.data]);
 }
 
 /** Renders serialized prompt mentions persisted in thread title fallbacks. */
