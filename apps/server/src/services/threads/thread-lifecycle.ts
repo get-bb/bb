@@ -99,6 +99,7 @@ import { isPreStartThreadStatus } from "./thread-status.js";
 type ReadyThreadTurnDispatchKind = "thread.start" | "turn.submit";
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
+type ThreadPlanCancelCommand = HostDaemonCommandForType<"thread.plan.cancel">;
 type TurnSubmitCommand = HostDaemonCommandForType<"turn.submit">;
 type ThreadEventAppendArgs = Parameters<
   typeof appendThreadEventsInTransaction
@@ -113,6 +114,8 @@ type ThreadStartCommandResultReport =
   CommandResultReportForType<"thread.start">;
 type TurnSubmitCommandResultReport = CommandResultReportForType<"turn.submit">;
 type ThreadStopCommandResultReport = CommandResultReportForType<"thread.stop">;
+type ThreadPlanCancelCommandResultReport =
+  CommandResultReportForType<"thread.plan.cancel">;
 
 export interface PreparedThreadStartCommand {
   command: ThreadStartCommand;
@@ -311,6 +314,13 @@ interface SettleThreadStopCommandResultArgs {
   deps: FinalizeStoppedThreadTransactionDeps;
   execution: HostDaemonCommandExecutionRecord;
   report: ThreadStopCommandResultReport;
+}
+
+interface SettleThreadPlanCancelCommandResultArgs {
+  command: ThreadPlanCancelCommand;
+  deps: FinalizeStoppedThreadTransactionDeps;
+  execution: HostDaemonCommandExecutionRecord;
+  report: ThreadPlanCancelCommandResultReport;
 }
 
 function lifecycleEventForInterruptedThread(
@@ -1005,6 +1015,22 @@ export function settleThreadStopCommandResult(
       },
     ],
   };
+}
+
+export function settleThreadPlanCancelCommandResult(
+  args: SettleThreadPlanCancelCommandResultArgs,
+): CommandResultSideEffectsResult {
+  if (!args.report.ok || !args.report.result.cancelled) {
+    return emptyCommandResultSideEffects();
+  }
+  const activeTurnId = getActiveTurnId(args.deps, args.command.threadId);
+  if (activeTurnId !== null && activeTurnId !== args.command.expectedTurnId) {
+    return emptyCommandResultSideEffects();
+  }
+  finalizeStoppedThreadInTransaction(args.deps, {
+    threadId: args.command.threadId,
+  });
+  return emptyCommandResultSideEffects();
 }
 
 function dispatchThreadStartFromRequest(

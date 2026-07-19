@@ -16,10 +16,12 @@ import {
   useAtomValue,
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
 import { buildMachineThreadGroups } from "./machineThreadGroups";
 import {
   collapsedSidebarSectionIdsAtom,
+  sidebarCollapsedMachinesAtom,
   sidebarManualSectionOrderAtom,
   sidebarMachineSectionOrderAtom,
   sidebarOrganizationModeAtom,
@@ -104,7 +106,51 @@ function StoredActiveModeOrderProbe() {
   return <ActiveModeOrderProbe mode={mode} />;
 }
 
-function MachineModeProbe() {
+function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
+  return {
+    id: "thr_machine",
+    projectId: "proj_machine",
+    environmentId: null,
+    providerId: "codex",
+    title: "Machine activity",
+    titleFallback: "Machine activity",
+    sectionId: null,
+    status: "active",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    childOrigin: null,
+    archivedAt: null,
+    pinnedAt: null,
+    pinSortKey: null,
+    deletedAt: null,
+    lastReadAt: 1,
+    latestAttentionAt: 2,
+    createdAt: 1,
+    updatedAt: 2,
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 1,
+      activeGoalCount: 0,
+    },
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+    runtime: {
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    },
+    ...overrides,
+  };
+}
+
+function MachineModeProbe({ threads = [] }: { threads?: ThreadListEntry[] }) {
   const [collapsedSectionIds, setCollapsedSectionIds] = useAtom(
     collapsedSidebarSectionIdsAtom,
   );
@@ -122,7 +168,8 @@ function MachineModeProbe() {
 
   return (
     <MachineModeSections
-      threads={[]}
+      threads={threads}
+      draftThreadIds={new Set()}
       effectivePinnedThreadIds={new Set()}
       status="ready"
       isReady
@@ -235,5 +282,20 @@ describe("sidebar organization mode sections", () => {
     );
     expect(screen.getByText("No threads")).not.toBeNull();
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
+  });
+
+  it("surfaces shared activity for a collapsed machine section", () => {
+    const store = createStore();
+    store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
+    store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
+
+    render(
+      <JotaiProvider store={store}>
+        <MachineModeProbe threads={[makeThread()]} />
+      </JotaiProvider>,
+    );
+
+    expect(screen.queryByText("Machine activity")).toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
   });
 });

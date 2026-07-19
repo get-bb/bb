@@ -1,17 +1,26 @@
-import type { ThreadQueuedMessage } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type { ThreadListEntry, ThreadQueuedMessage } from "@bb/domain";
+import type {
+  SidebarBootstrapResponse,
+  ThreadSearchResponse,
+  ThreadTimelineResponse,
+} from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  sidebarNavigationQueryKey,
+  threadListQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadQueuedMessagesQueryKey,
+  threadSearchQueryKey,
   threadTimelineQueryKey,
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   applyQueuedMessageCreateResult,
   applyQueuedMessageUpdateResult,
+  applyThreadGoalClearResult,
+  applyThreadPlanCancellationResult,
   beginCreateQueuedMessageTransaction,
   beginRemoveQueuedMessageTransaction,
   beginReorderQueuedMessageTransaction,
@@ -45,6 +54,91 @@ function makeTimelineResponse(): ThreadTimelineResponse {
   };
 }
 
+function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
+  return {
+    id,
+    projectId: "project-1",
+    environmentId: "env-1",
+    providerId: "codex",
+    title: null,
+    titleFallback: null,
+    sectionId: null,
+    status: "active",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    childOrigin: null,
+    archivedAt: null,
+    pinnedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 50,
+    createdAt: 1,
+    updatedAt: 1,
+    runtime: {
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 1,
+      activeGoalCount: 1,
+    },
+    pinSortKey: null,
+    hasPendingInteraction: false,
+    environmentHostId: "host-1",
+    environmentName: "Environment",
+    environmentBranchName: "main",
+    environmentWorkspaceDisplayKind: "managed-worktree",
+  };
+}
+
+function makeSidebarNavigation(
+  threads: ThreadListEntry[],
+): SidebarBootstrapResponse {
+  return {
+    sections: [],
+    projects: [
+      {
+        id: "project-1",
+        kind: "standard",
+        name: "Project",
+        gitRemoteUrl: null,
+        createdAt: 1,
+        updatedAt: 1,
+        sources: [],
+        threads,
+        defaultExecutionOptions: null,
+      },
+    ],
+    personalProject: {
+      id: "proj_personal",
+      kind: "personal",
+      name: "Personal",
+      gitRemoteUrl: null,
+      createdAt: 1,
+      updatedAt: 1,
+      sources: [],
+      threads: [],
+      defaultExecutionOptions: null,
+    },
+  };
+}
+
+function makeSearchResponse(thread: ThreadListEntry): ThreadSearchResponse {
+  return {
+    active: {
+      total: 1,
+      results: [{ thread, matches: [] }],
+    },
+    archived: { total: 0, results: [] },
+  };
+}
+
 function makeQueuedMessage(
   message: Partial<ThreadQueuedMessage> = {},
 ): ThreadQueuedMessage {
@@ -63,6 +157,91 @@ function makeQueuedMessage(
 }
 
 describe("thread runtime cache owner", () => {
+  it.each([
+    ["Plan", applyThreadPlanCancellationResult, "activePlanModeCount"],
+    ["Goal", applyThreadGoalClearResult, "activeGoalCount"],
+  ] as const)(
+    "reconciles authoritative %s cancellation across banner caches while preserving independent state",
+    (label, applyResult, clearedCount) => {
+      const queryClient = createAppQueryClient({
+        defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+        showMutationErrorToasts: false,
+      });
+      const thread = makeThreadListEntry();
+      const listKey = threadListQueryKey({
+        archived: false,
+        projectId: "project-1",
+      });
+      const secondListKey = threadListQueryKey({
+        archived: false,
+        projectId: undefined,
+      });
+      const searchKey = threadSearchQueryKey({
+        query: "work",
+        limitPerGroup: 20,
+      });
+      queryClient.setQueryData(listKey, [thread]);
+      queryClient.setQueryData(secondListKey, [thread]);
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([thread]),
+      );
+      queryClient.setQueryData(searchKey, makeSearchResponse(thread));
+      queryClient.setQueryData(threadTimelineQueryKey("thread-1"), {
+        ...makeTimelineResponse(),
+        activePromptMode: {
+          mode: "plan",
+          providerId: "codex",
+          prompt: "Plan the work",
+        },
+        goal: {
+          sourceSeq: 1,
+          updatedAt: 100,
+          objective: "Finish the work",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 100,
+          timeUsedSeconds: 10,
+        },
+      });
+
+      applyResult({ queryClient, threadId: "thread-1" });
+
+      const timeline = queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      );
+      if (label === "Plan") {
+        expect(timeline?.activePromptMode).toBeNull();
+        expect(timeline?.goal).toMatchObject({ objective: "Finish the work" });
+      } else {
+        expect(timeline?.activePromptMode).toMatchObject({ mode: "plan" });
+        expect(timeline?.goal).toBeNull();
+      }
+
+      const listEntries = [listKey, secondListKey].map(
+        (queryKey) =>
+          queryClient.getQueryData<ThreadListEntry[]>(queryKey)?.[0],
+      );
+      const sidebarEntry = queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0];
+      const searchEntry =
+        queryClient.getQueryData<ThreadSearchResponse>(searchKey)?.active
+          .results[0]?.thread;
+
+      for (const entry of [...listEntries, sidebarEntry, searchEntry]) {
+        expect(entry?.activity[clearedCount]).toBe(0);
+        expect(
+          entry?.activity[
+            clearedCount === "activePlanModeCount"
+              ? "activeGoalCount"
+              : "activePlanModeCount"
+          ],
+        ).toBe(1);
+      }
+    },
+  );
+
   it("omits agent-only text from optimistic user messages", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },

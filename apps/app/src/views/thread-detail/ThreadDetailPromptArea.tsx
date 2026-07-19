@@ -68,6 +68,8 @@ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useCreateThreadQueuedMessage,
+  useCancelThreadPlan,
+  useClearThreadGoal,
   useDeleteThreadQueuedMessage,
   useReorderThreadQueuedMessage,
   useSendThreadQueuedMessage,
@@ -373,6 +375,8 @@ export function ThreadDetailPromptArea({
   const setQueuedMessageGroupBoundary =
     useSetThreadQueuedMessageGroupBoundary();
   const stopThread = useStopThread();
+  const cancelThreadPlan = useCancelThreadPlan();
+  const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
   // The personal project isn't a meaningful label in the footer, so skip it.
@@ -555,6 +559,12 @@ export function ThreadDetailPromptArea({
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
   }, [stopThread, thread.id]);
+  const handleCancelPlan = useCallback(() => {
+    cancelThreadPlan.mutate(thread.id);
+  }, [cancelThreadPlan, thread.id]);
+  const handleClearGoal = useCallback(() => {
+    clearThreadGoal.mutate(thread.id);
+  }, [clearThreadGoal, thread.id]);
   const submitMode: FollowUpSubmitMode = useMemo(() => {
     return buildFollowUpSubmitMode({
       hasPendingInteraction,
@@ -1403,12 +1413,30 @@ export function ThreadDetailPromptArea({
     () => (
       <ThreadPromptModeCard
         activePromptMode={activePromptMode}
+        isExitPending={cancelThreadPlan.isPending}
         isExpanded={isPromptModeExpanded}
-        onExitPlanMode={handleStopThread}
+        onExitPlanMode={handleCancelPlan}
         onToggle={() => setIsPromptModeExpanded((value) => !value)}
       />
     ),
-    [activePromptMode, handleStopThread, isPromptModeExpanded],
+    [
+      activePromptMode,
+      cancelThreadPlan.isPending,
+      handleCancelPlan,
+      isPromptModeExpanded,
+    ],
+  );
+  const activeGoalCard = useMemo(
+    () => (
+      <ThreadGoalCard
+        goal={goal}
+        isClearPending={clearThreadGoal.isPending}
+        isExpanded={isGoalExpanded}
+        onClearGoal={handleClearGoal}
+        onToggle={() => setIsGoalExpanded((value) => !value)}
+      />
+    ),
+    [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
   );
   const promptStack = useMemo(
     () => (
@@ -1424,11 +1452,7 @@ export function ThreadDetailPromptArea({
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
         />
         {activePromptModeCard}
-        <ThreadGoalCard
-          goal={goal}
-          isExpanded={isGoalExpanded}
-          onToggle={() => setIsGoalExpanded((value) => !value)}
-        />
+        {activeGoalCard}
         <ThreadTodoCard
           pendingTodos={
             thread.archivedAt === null && environmentGoneStatus === null
@@ -1520,9 +1544,8 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       inlineEditor,
-      goal,
+      activeGoalCard,
       activePromptModeCard,
-      isGoalExpanded,
       isTodoExpanded,
       activeWorkflow,
       isWorkflowExpanded,
@@ -1547,28 +1570,26 @@ export function ThreadDetailPromptArea({
   );
 
   if (activePendingInteraction && !shouldHideComposer) {
-    if (isPluginPendingInteraction(activePendingInteraction)) {
-      return (
-        <PluginPendingInteractionComposer
-          interaction={activePendingInteraction}
-        />
-      );
-    }
-    if (!activePromptMode) {
-      return (
-        <ThreadPendingInteractionBanner
-          interaction={activePendingInteraction}
-          threadId={thread.id}
-        />
-      );
+    const pendingInteractionComposer = isPluginPendingInteraction(
+      activePendingInteraction,
+    ) ? (
+      <PluginPendingInteractionComposer
+        interaction={activePendingInteraction}
+      />
+    ) : (
+      <ThreadPendingInteractionBanner
+        interaction={activePendingInteraction}
+        threadId={thread.id}
+      />
+    );
+    if (!activePromptMode && !goal) {
+      return pendingInteractionComposer;
     }
     return (
       <div className="space-y-2">
         {activePromptModeCard}
-        <ThreadPendingInteractionBanner
-          interaction={activePendingInteraction}
-          threadId={thread.id}
-        />
+        {activeGoalCard}
+        {pendingInteractionComposer}
       </div>
     );
   }

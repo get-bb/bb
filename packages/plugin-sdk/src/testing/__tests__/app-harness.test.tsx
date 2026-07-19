@@ -123,7 +123,7 @@ function ComposerProbe() {
         onClick={() =>
           composer.setThreadRowStatus({
             icon: "AiContentGenerator01",
-            label: "Prompt Shaper improving prompt",
+            label: "Plugin improving draft",
             effect: "shimmer",
           })
         }
@@ -391,7 +391,7 @@ describe("renderSlot", () => {
     fireEvent.click(slot.getByText("set row status"));
     expect(slot.composer.threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
-      label: "Prompt Shaper improving prompt",
+      label: "Plugin improving draft",
       effect: "shimmer",
     });
 
@@ -426,7 +426,7 @@ describe("renderSlot", () => {
       setters.setTextEffect("shimmer");
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
-        label: "Prompt Shaper improving prompt",
+        label: "Plugin improving draft",
         effect: "shimmer",
         tone: "success",
       });

@@ -380,6 +380,7 @@ describe("buildProjectThreadGroups", () => {
       childActivity: {
         pending: true,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
@@ -395,6 +396,7 @@ describe("buildProjectThreadGroups", () => {
       childActivity: {
         pending: true,
         working: true,
+        hasUnsubmittedDraft: false,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,

@@ -415,3 +415,76 @@ export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
     () => false,
   );
 }
+
+export interface PromptDraftThreadRef {
+  id: string;
+  projectId: string;
+}
+
+interface PromptDraftThreadSubscription {
+  storageKey: string;
+  threadId: string;
+}
+
+/**
+ * Subscribes to draft presence for a collection of threads without mounting a
+ * hook per row. The primitive bit-string snapshot stays referentially stable
+ * for `useSyncExternalStore`; the returned set changes only when draft presence
+ * changes or the supplied thread collection changes.
+ */
+export function usePromptDraftInputThreadIds(
+  threads: readonly PromptDraftThreadRef[],
+): ReadonlySet<string> {
+  const subscriptions = useMemo<PromptDraftThreadSubscription[]>(() => {
+    const seenStorageKeys = new Set<string>();
+    const next: PromptDraftThreadSubscription[] = [];
+    for (const thread of threads) {
+      const storageKey = getPromptDraftStorageKey({
+        kind: "thread",
+        projectId: thread.projectId,
+        threadId: thread.id,
+      });
+      if (!storageKey || seenStorageKeys.has(storageKey)) continue;
+
+      seenStorageKeys.add(storageKey);
+      next.push({ storageKey, threadId: thread.id });
+    }
+    return next;
+  }, [threads]);
+
+  const presenceSnapshot = useSyncExternalStore(
+    useCallback(
+      (listener) => {
+        const unsubscribe = subscriptions.map(({ storageKey }) =>
+          subscribePromptDraft(storageKey, listener),
+        );
+        return () => {
+          for (const stopListening of unsubscribe) {
+            stopListening();
+          }
+        };
+      },
+      [subscriptions],
+    ),
+    useCallback(
+      () =>
+        subscriptions
+          .map(({ storageKey }) =>
+            isPromptDraftEmpty(readPromptDraft(storageKey)) ? "0" : "1",
+          )
+          .join(""),
+      [subscriptions],
+    ),
+    () => "",
+  );
+
+  return useMemo(() => {
+    const threadIds = new Set<string>();
+    subscriptions.forEach(({ threadId }, index) => {
+      if (presenceSnapshot[index] === "1") {
+        threadIds.add(threadId);
+      }
+    });
+    return threadIds;
+  }, [presenceSnapshot, subscriptions]);
+}

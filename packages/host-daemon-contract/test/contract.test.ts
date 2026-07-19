@@ -439,6 +439,8 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     appliedAs: "new-turn",
   },
   "thread.stop": {},
+  "thread.goal.clear": { cleared: true },
+  "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
   "thread.archive": {},
   "thread.unarchive": {},
@@ -987,6 +989,36 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  it("binds Plan cancellation to a required turn id and typed result", () => {
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "thread.plan.cancel",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        expectedTurnId: "turn-plan-123",
+      }),
+    ).toMatchObject({
+      type: "thread.plan.cancel",
+      expectedTurnId: "turn-plan-123",
+    });
+    expect(
+      hostDaemonCommandSchema.safeParse({
+        type: "thread.plan.cancel",
+        environmentId: "env_123",
+        threadId: "thr_123",
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonCommandResultSchemaByType["thread.plan.cancel"].parse({
+        cancelled: true,
+      }),
+    ).toEqual({ cancelled: true });
+    expect(
+      hostDaemonCommandResultSchemaByType["thread.plan.cancel"].safeParse({})
+        .success,
+    ).toBe(false);
+  });
+
   it("preserves optional USD spend amounts on usage windows", () => {
     expect(
       contract.providerUsageWindowSchema.parse({

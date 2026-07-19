@@ -74,6 +74,8 @@ interface ThreadStopCommandOptions {
   json?: boolean;
 }
 
+type ThreadBannerActionCommandOptions = ThreadStopCommandOptions;
+
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
 interface PostThreadMessageArgs {
@@ -399,6 +401,46 @@ export function registerActionsCommands(
         if (outputJson(opts, { ok: true, threadId })) return;
         console.log(`Thread ${threadId} stopped`);
       }),
+    );
+
+  parent
+    .command("cancel-plan [id]")
+    .description("Ask the provider to exit the active Plan mode")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadBannerActionCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.threads.cancelPlan({ threadId });
+          if (outputJson(opts, { ok: true, threadId })) return;
+          console.log(`Thread ${threadId} exited Plan mode`);
+        },
+      ),
+    );
+
+  parent
+    .command("clear-goal [id]")
+    .description("Ask the provider to clear the active Goal")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadBannerActionCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.threads.clearGoal({ threadId });
+          if (outputJson(opts, { ok: true, threadId })) return;
+          console.log(`Thread ${threadId} cleared its Goal`);
+        },
+      ),
     );
 }
 

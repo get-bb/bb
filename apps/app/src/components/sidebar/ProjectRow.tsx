@@ -18,7 +18,10 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
-import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
+import {
+  usePromptDraftHasInput,
+  usePromptDraftInputThreadIds,
+} from "@/hooks/usePromptDraftStorage";
 import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
@@ -78,7 +81,9 @@ import {
   buildSectionThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
+  getProjectThreadItemDescendants,
   getSidebarDndItemId,
+  isSidebarProjectThread,
   type EnvironmentThreadGroup,
   type ProjectThreadItem,
   type ProjectThreadNode,
@@ -931,7 +936,11 @@ function EnvironmentThreadGroupHeader({
   // header has no status of its own.
   const showRollupGlyph =
     isCollapsed &&
-    (childActivity.pending || childActivity.working || childActivity.unread);
+    (childActivity.pending ||
+      childActivity.working ||
+      childActivity.hasUnsubmittedDraft ||
+      childActivity.unread ||
+      childActivity.unreadError);
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     // A pinned header is already a positioned (sticky) box for its absolute
@@ -989,10 +998,7 @@ function EnvironmentThreadGroupHeader({
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={childActivity}
-              isBusy={childActivity.runtimeWorking}
-            />
+            <CollapsedThreadStatusGlyph activity={childActivity} />
           </span>
         ) : null}
         <div
@@ -1396,7 +1402,9 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       isCollapsed &&
       (section.activity.pending ||
         section.activity.working ||
-        section.activity.unread);
+        section.activity.hasUnsubmittedDraft ||
+        section.activity.unread ||
+        section.activity.unreadError);
     const topLevelActionControls = (
       <>
         {externalHeaderActions?.actions}
@@ -1478,18 +1486,12 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               hasTopLevelActions && "max-md:pointer-coarse:hidden",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={section.activity}
-              isBusy={section.activity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={section.activity} />
           </span>
         ) : null}
         {showRollupGlyph && hasTopLevelActions ? (
           <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            <CollapsedThreadStatusGlyph
-              activity={section.activity}
-              isBusy={section.activity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={section.activity} />
           </span>
         ) : null}
         {hasTopLevelActions ? (
@@ -1786,9 +1788,11 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
     threadListState.status === "ready"
       ? threadListState.threads
       : EMPTY_PROJECT_THREADS;
+  const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
   const rootItems = useMemo(
-    () => buildProjectThreadGroups(projectThreads, compareThreads),
-    [compareThreads, projectThreads],
+    () =>
+      buildProjectThreadGroups(projectThreads, compareThreads, draftThreadIds),
+    [compareThreads, draftThreadIds, projectThreads],
   );
 
   if (threadListState.status === "loading") {
@@ -1868,9 +1872,16 @@ export const ChronologicalSectionThreadSections = memo(
       threadListState.status === "ready"
         ? threadListState.threads
         : EMPTY_PROJECT_THREADS;
+    const draftThreadIds = usePromptDraftInputThreadIds(threads);
     const rootItems = useMemo(
-      () => buildSectionThreadList(threads, compareThreads, sections),
-      [threads, compareThreads, sections],
+      () =>
+        buildSectionThreadList(
+          threads,
+          compareThreads,
+          sections,
+          draftThreadIds,
+        ),
+      [threads, compareThreads, sections, draftThreadIds],
     );
     const persistedSectionItems = rootItems.filter(
       (item) => item.kind === "section",
@@ -1906,8 +1917,16 @@ export const ChronologicalSectionThreadSections = memo(
           : [...threads, { ...activeThread, sectionId: projectedSectionId }],
         compareThreads,
         sections,
+        draftThreadIds,
       );
-    }, [compareThreads, sectionDnd, sections, rootItems, threads]);
+    }, [
+      compareThreads,
+      draftThreadIds,
+      sectionDnd,
+      sections,
+      rootItems,
+      threads,
+    ]);
     const renderedSectionDnd = useMemo<SectionThreadDndState | null>(() => {
       if (!sectionDnd) {
         return null;
@@ -2059,6 +2078,10 @@ export const ChronologicalSectionThreadSections = memo(
           },
           threads: {
             ...builtInSections.threads,
+            activity: getCollapsedChildActivity(
+              getProjectThreadItemDescendants(looseItems),
+              draftThreadIds,
+            ),
             content: threadsContent,
           },
         }
@@ -2154,6 +2177,14 @@ function ProjectRowComponent({
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const isActionsOpen =
     isDropdownActionsOpen || isContextActionsOpen || headerActionsOpen;
+  const projectThreads = useMemo(
+    () =>
+      isCollapsed && threadListState.status === "ready"
+        ? threadListState.threads.filter(isSidebarProjectThread)
+        : EMPTY_PROJECT_THREADS,
+    [isCollapsed, threadListState],
+  );
+  const draftThreadIds = usePromptDraftInputThreadIds(projectThreads);
   const handleProjectRowToggle = useCallback(() => {
     onToggleProjectCollapsed(project.id);
   }, [onToggleProjectCollapsed, project.id]);
@@ -2164,13 +2195,15 @@ function ProjectRowComponent({
     if (!isCollapsed || threadListState.status !== "ready") {
       return NO_COLLAPSED_CHILD_ACTIVITY;
     }
-    return getCollapsedChildActivity(threadListState.threads);
-  }, [isCollapsed, threadListState]);
+    return getCollapsedChildActivity(projectThreads, draftThreadIds);
+  }, [draftThreadIds, isCollapsed, projectThreads, threadListState.status]);
   const showProjectRollupGlyph =
     isCollapsed &&
     (projectActivity.pending ||
       projectActivity.working ||
-      projectActivity.unread);
+      projectActivity.hasUnsubmittedDraft ||
+      projectActivity.unread ||
+      projectActivity.unreadError);
   const projectActions = (
     <>
       {headerActions ? (
@@ -2211,18 +2244,12 @@ function ProjectRowComponent({
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={projectActivity}
-              isBusy={projectActivity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={projectActivity} />
           </span>
         ) : null}
         {showProjectRollupGlyph ? (
           <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            <CollapsedThreadStatusGlyph
-              activity={projectActivity}
-              isBusy={projectActivity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={projectActivity} />
           </span>
         ) : null}
         <span

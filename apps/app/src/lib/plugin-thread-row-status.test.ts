@@ -6,9 +6,9 @@ import {
   subscribePluginThreadRowStatus,
 } from "./plugin-thread-row-status";
 
-const SHAPING_STATUS = {
+const RUNNING_STATUS = {
   icon: "AiContentGenerator01",
-  label: "Prompt Shaper improving prompt",
+  label: "Plugin improving draft",
   effect: "shimmer",
 } as const;
 
@@ -17,11 +17,11 @@ describe("plugin thread-row status", () => {
     const listener = vi.fn();
     const unsubscribe = subscribePluginThreadRowStatus("thr_1", listener);
 
-    setPluginThreadRowStatus("thr_1", "prompt-shaper", SHAPING_STATUS);
-    expect(getPluginThreadRowStatus("thr_1")).toEqual(SHAPING_STATUS);
+    setPluginThreadRowStatus("thr_1", "composer-status-test", RUNNING_STATUS);
+    expect(getPluginThreadRowStatus("thr_1")).toEqual(RUNNING_STATUS);
     expect(listener).toHaveBeenCalledTimes(1);
 
-    setPluginThreadRowStatus("thr_1", "prompt-shaper", null);
+    setPluginThreadRowStatus("thr_1", "composer-status-test", null);
     expect(getPluginThreadRowStatus("thr_1")).toBeNull();
     expect(listener).toHaveBeenCalledTimes(2);
 
@@ -30,7 +30,7 @@ describe("plugin thread-row status", () => {
   });
 
   it("ignores new-thread scopes without a thread row", () => {
-    setPluginThreadRowStatus(null, "prompt-shaper", SHAPING_STATUS);
+    setPluginThreadRowStatus(null, "composer-status-test", RUNNING_STATUS);
     expect(getPluginThreadRowStatus("thr_1")).toBeNull();
     resetPluginThreadRowStatusesForTest();
   });

@@ -254,6 +254,10 @@ export interface RenameThreadArgs {
   title: string;
 }
 
+export interface ClearThreadGoalArgs {
+  threadId: string;
+}
+
 export interface ArchiveThreadArgs {
   providerId: string;
   providerThreadId: string;
@@ -289,6 +293,8 @@ export interface AgentRuntime {
    * `resumeThread`. The provider process keeps running for other threads.
    */
   stopThread(args: StopThreadArgs): Promise<void>;
+
+  clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 
   renameThread(args: RenameThreadArgs): Promise<void>;
 

@@ -24,6 +24,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   buildThreadTimelineFromEvents,
+  extractThreadTimelineActivePlanTurn,
   type ThreadEventWithMeta,
 } from "../src/index.js";
 import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
@@ -908,6 +909,38 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("extracts the exact active Plan turn id from the accepted input scope", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_23456789ab";
+    const events = fromRows([
+      event.clientTurnRequested({
+        requestId,
+        text: "/plan inspect the failing command",
+        input: planPromptInput,
+      }),
+      event.turnStarted({ turnId: "turn-plan-42" }),
+      event.inputAccepted({
+        clientRequestId: requestId,
+        turnId: "turn-plan-42",
+      }),
+    ]);
+
+    expect(
+      extractThreadTimelineActivePlanTurn({
+        events,
+        providerId: "codex",
+        threadStatus: "active",
+      }),
+    ).toEqual({
+      promptMode: {
+        mode: "plan",
+        providerId: "codex",
+        prompt: "inspect the failing command",
+      },
+      turnId: "turn-plan-42",
+    });
+  });
+
   it("projects active Claude plan mode from an accepted plan command pill", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const requestId = "creq_23456789ab";
