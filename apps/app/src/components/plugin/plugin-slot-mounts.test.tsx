@@ -612,6 +612,25 @@ describe("useComposer", () => {
   it("binds root compose accessories and hooks to the selected project without losing its draft", () => {
     registerComposerProbe("root");
 
+    function RootSiblingPluginSurface() {
+      const composer = useComposer();
+      return (
+        <>
+          <div data-testid="root-sibling-scope-project">
+            {composer.scope.kind === "new-thread"
+              ? (composer.scope.projectId ?? "null")
+              : "none"}
+          </div>
+          <button
+            type="button"
+            onClick={() => composer.setText("sibling replacement")}
+          >
+            root-sibling-replace
+          </button>
+        </>
+      );
+    }
+
     function RootComposerHarness() {
       const [projectId, setProjectId] = useState("proj_selected");
       const [draft, setDraft] = useState<PromptDraftState>({
@@ -642,6 +661,9 @@ describe("useComposer", () => {
       return (
         <PluginComposerHostProvider value={host}>
           <PluginComposerAccessories />
+          <PluginContext.Provider value="demo">
+            <RootSiblingPluginSurface />
+          </PluginContext.Provider>
           <div data-testid="root-attachments">
             {JSON.stringify(draft.attachments)}
           </div>
@@ -664,6 +686,9 @@ describe("useComposer", () => {
     expect(screen.getByTestId("root-scope-project").textContent).toBe(
       "proj_selected",
     );
+    expect(screen.getByTestId("root-sibling-scope-project").textContent).toBe(
+      "proj_selected",
+    );
     expect(screen.getByTestId("root-accessory-thread").textContent).toBe(
       "null",
     );
@@ -675,8 +700,19 @@ describe("useComposer", () => {
     expect(screen.getByTestId("root-scope-project").textContent).toBe(
       "proj_other",
     );
+    expect(screen.getByTestId("root-sibling-scope-project").textContent).toBe(
+      "proj_other",
+    );
     expect(screen.getByTestId("root-composer-text").textContent).toBe(
       "root draft",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("root-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("root-sibling-replace"));
+    expect(screen.getByTestId("root-composer-text").textContent).toBe(
+      "sibling replacement",
     );
     expect(
       JSON.parse(screen.getByTestId("root-attachments").textContent ?? "[]"),

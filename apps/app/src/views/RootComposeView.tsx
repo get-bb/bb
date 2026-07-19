@@ -106,7 +106,10 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -3622,66 +3625,68 @@ export function RootComposeView() {
       {providerCliInstallLogDialog}
       {machineSetupDialog}
       {rootPanelToggle}
-      <RootComposeSecondaryContent
-        contentClassName={
-          showEmptyWelcome
-            ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-            : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
-        }
-        isSecondaryPanelOpen={isSecondaryPanelOpen}
-        onToggleSecondaryPanel={handleToggleSecondaryPanel}
-        panelTogglePositionClassName={panelTogglePositionClassName}
-        secondaryPanel={{
-          activeTab: activeFixedSecondaryTab,
-          canUseGitUi: false,
-          environmentId: rootPanelEnvironmentId ?? undefined,
-          metadataContent: rootPanelMetadataContent,
-          workspaceRootPath:
-            rootPanelEnvironment?.path ??
-            (rootPanelTerminalTarget?.kind === "host_path"
-              ? (rootPanelTerminalTarget.cwd ?? undefined)
-              : undefined),
-          fileTabs,
-          fileTabContent,
-          renderBrowserDeck,
-          isBrowserTabActive,
-          isOpen: isSecondaryPanelOpen,
-          showConversationCollapseControl: false,
-          showGitDiffTab: false,
-          showInfoTab: false,
-          showNewTabButton: true,
-          inlinePanelToggle: "reserved",
-          onClose: closeSecondaryPanel,
-          onCollapse: closeSecondaryPanel,
-          onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
-          onFileTabReorder: reorderFileTab,
-          onOpenNewTab: handleOpenNewTab,
-          onOpenFilePreview: handleOpenFilePreview,
-          onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-          onPanelFocus: handleSecondaryPanelFocus,
-          onPanelChange: handleSecondaryPanelChange,
-        }}
-      >
-        {showEmptyWelcome ? (
-          <RootComposeEmptyWelcome
-            onCompose={handleStartComposing}
-            onAddProject={quickCreateProject.openCreateDialog}
-            addProjectDisabled={
-              !quickCreateProject.isAvailable || quickCreateProject.isCreating
-            }
-          />
-        ) : (
-          <>
-            {promptBox}
-            <RootComposeMobileRecents
-              highlightedThreadId={lastCreatedThreadId}
-              projectNamesById={mobileRecentProjectNamesById}
-              showCreatingRow={createThread.isPending}
-              threads={mobileRecentThreads}
+      <PluginComposerHostProvider value={pluginComposerHost}>
+        <RootComposeSecondaryContent
+          contentClassName={
+            showEmptyWelcome
+              ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
+              : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+          }
+          isSecondaryPanelOpen={isSecondaryPanelOpen}
+          onToggleSecondaryPanel={handleToggleSecondaryPanel}
+          panelTogglePositionClassName={panelTogglePositionClassName}
+          secondaryPanel={{
+            activeTab: activeFixedSecondaryTab,
+            canUseGitUi: false,
+            environmentId: rootPanelEnvironmentId ?? undefined,
+            metadataContent: rootPanelMetadataContent,
+            workspaceRootPath:
+              rootPanelEnvironment?.path ??
+              (rootPanelTerminalTarget?.kind === "host_path"
+                ? (rootPanelTerminalTarget.cwd ?? undefined)
+                : undefined),
+            fileTabs,
+            fileTabContent,
+            renderBrowserDeck,
+            isBrowserTabActive,
+            isOpen: isSecondaryPanelOpen,
+            showConversationCollapseControl: false,
+            showGitDiffTab: false,
+            showInfoTab: false,
+            showNewTabButton: true,
+            inlinePanelToggle: "reserved",
+            onClose: closeSecondaryPanel,
+            onCollapse: closeSecondaryPanel,
+            onOpenFileInEditor: handleOpenWorkspaceFileInEditor,
+            onFileTabReorder: reorderFileTab,
+            onOpenNewTab: handleOpenNewTab,
+            onOpenFilePreview: handleOpenFilePreview,
+            onSelectionAddToChat: handleRootPanelSelectionAddToChat,
+            onPanelFocus: handleSecondaryPanelFocus,
+            onPanelChange: handleSecondaryPanelChange,
+          }}
+        >
+          {showEmptyWelcome ? (
+            <RootComposeEmptyWelcome
+              onCompose={handleStartComposing}
+              onAddProject={quickCreateProject.openCreateDialog}
+              addProjectDisabled={
+                !quickCreateProject.isAvailable || quickCreateProject.isCreating
+              }
             />
-          </>
-        )}
-      </RootComposeSecondaryContent>
+          ) : (
+            <>
+              {promptBox}
+              <RootComposeMobileRecents
+                highlightedThreadId={lastCreatedThreadId}
+                projectNamesById={mobileRecentProjectNamesById}
+                showCreatingRow={createThread.isPending}
+                threads={mobileRecentThreads}
+              />
+            </>
+          )}
+        </RootComposeSecondaryContent>
+      </PluginComposerHostProvider>
     </>
   );
 }
