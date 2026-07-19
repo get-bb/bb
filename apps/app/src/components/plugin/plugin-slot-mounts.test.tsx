@@ -243,9 +243,13 @@ describe("useComposer", () => {
             {threadId ?? "null"}
           </div>
           <div data-testid={`${label}-scope-project`}>
-            {composer.scope.kind === "new-thread"
+            {composer.scope.kind === "new-thread" ||
+            composer.scope.kind === "side-chat"
               ? (composer.scope.projectId ?? "null")
               : "none"}
+          </div>
+          <div data-testid={`${label}-scope-details`}>
+            {JSON.stringify(composer.scope)}
           </div>
           <div data-testid={`${label}-composer-text`}>{composer.text}</div>
           <div data-testid={`${label}-stable-methods`}>
@@ -647,6 +651,113 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("dismiss-queued-edit"));
     expect(screen.getByTestId("sibling-scope").textContent).toBe("thread");
+  });
+
+  it("binds side-chat accessories and hooks to the visible side-chat draft", () => {
+    registerComposerProbe("side");
+
+    function SideChatComposerHarness() {
+      const [childThreadId, setChildThreadId] = useState<string | null>(null);
+      const [draft, setDraft] = useState<PromptDraftState>({
+        text: "side-chat draft",
+        mentions: [],
+        attachments: [
+          {
+            type: "localFile",
+            path: "uploads/side-spec.md",
+            name: "side-spec.md",
+            sizeBytes: 42,
+          },
+        ],
+      });
+      const draftRef = useRef(draft);
+      draftRef.current = draft;
+      const host = useMemo<PluginComposerHost>(
+        () => ({
+          scope: {
+            kind: "side-chat",
+            projectId: "proj_side",
+            parentThreadId: "thr_parent",
+            tabId: "side-chat:one",
+            childThreadId,
+          },
+          draft,
+          textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
+          getCurrent: () => draftRef.current,
+          setDraft,
+          focus: () => {},
+        }),
+        [childThreadId, draft],
+      );
+
+      return (
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerAccessories />
+          <div data-testid="side-attachments">
+            {JSON.stringify(draft.attachments)}
+          </div>
+          <button type="button" onClick={() => setChildThreadId("thr_side")}>
+            create-side-child
+          </button>
+        </PluginComposerHostProvider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_parent"]}>
+        <SideChatComposerHarness />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("scope: side-chat")).toBeDefined();
+    expect(screen.getByTestId("side-accessory-project").textContent).toBe(
+      "proj_side",
+    );
+    expect(screen.getByTestId("side-accessory-thread").textContent).toBe(
+      "thr_parent",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_side",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    });
+
+    fireEvent.click(screen.getByText("side-replace"));
+    expect(screen.getByTestId("side-composer-text").textContent).toBe(
+      "replacement",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("side-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("side-start-row-status"));
+    expect(getPluginThreadRowStatus("thr_parent")).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Prompt Shaper improving prompt",
+      effect: "shimmer",
+    });
+
+    fireEvent.click(screen.getByText("create-side-child"));
+    expect(screen.getByTestId("side-accessory-thread").textContent).toBe(
+      "thr_side",
+    );
+    expect(getPluginThreadRowStatus("thr_parent")).toBeNull();
+    expect(
+      JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_side",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: "thr_side",
+    });
+    expect(screen.getByTestId("side-composer-text").textContent).toBe(
+      "replacement",
+    );
   });
 
   it("targets the new-thread composer without leaking replacements to thread drafts", () => {

@@ -29,9 +29,15 @@ function PluginComposerAccessoryList({
   const composerHost = usePluginComposerHost();
   const scope = composerHost?.scope;
   const activeProjectId =
-    scope?.kind === "new-thread" ? scope.projectId : (projectId ?? null);
+    scope?.kind === "new-thread" || scope?.kind === "side-chat"
+      ? scope.projectId
+      : (projectId ?? null);
   const activeThreadId =
-    scope && scope.kind !== "new-thread" ? scope.threadId : (threadId ?? null);
+    scope?.kind === "side-chat"
+      ? (scope.childThreadId ?? scope.parentThreadId)
+      : scope && scope.kind !== "new-thread"
+        ? scope.threadId
+        : (threadId ?? null);
   return (
     <>
       {accessories.map((accessory) => (

@@ -18,6 +18,7 @@ import {
   type PluginComposerAccessoryRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
+  type PluginComposerScope,
   type PluginComposerTextEffect,
   type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
@@ -545,8 +546,8 @@ export interface RenderSlotOptions<
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
-  /** Initial plain text for this render's isolated `useComposer()` scope. */
-  composer?: { text?: string };
+  /** Initial state for this render's isolated `useComposer()` scope. */
+  composer?: { text?: string; scope?: PluginComposerScope };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -711,6 +712,11 @@ export function renderSlot<
 
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
+  const composerScope: PluginComposerScope =
+    options.composer?.scope ??
+    (threadId !== null
+      ? { kind: "thread", threadId }
+      : { kind: "new-thread", projectId });
 
   let composerText = options.composer?.text ?? "";
   const composerListeners = new Set<() => void>();
@@ -739,10 +745,7 @@ export function renderSlot<
       return () => composerListeners.delete(listener);
     },
     api: {
-      scope:
-        threadId !== null
-          ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId },
+      scope: composerScope,
       setText(next) {
         commitComposerText(next);
       },
@@ -758,7 +761,9 @@ export function renderSlot<
         composerLog.textEffectCalls.push(effect);
       },
       setThreadRowStatus(status) {
-        if (!composerOwnership.active || threadId === null) return;
+        if (!composerOwnership.active || composerScope.kind === "new-thread") {
+          return;
+        }
         composerLog.threadRowStatus = status;
         composerLog.threadRowStatusCalls.push(status);
       },

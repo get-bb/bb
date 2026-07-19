@@ -387,6 +387,13 @@ export type PluginComposerScope =
       queuedMessageId: string;
     }
   | {
+      kind: "side-chat";
+      projectId: string;
+      parentThreadId: string;
+      tabId: string;
+      childThreadId: string | null;
+    }
+  | {
       kind: "new-thread";
       /** Root compose's effective selected project; null only while unresolved. */
       projectId: string | null;

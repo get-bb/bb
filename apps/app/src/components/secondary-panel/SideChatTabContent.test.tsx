@@ -2,6 +2,7 @@
 
 import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,6 +12,8 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { SideChatTabContent } from "./SideChatTabContent";
 
@@ -21,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   defaultExecutionPermissionMode: "auto" as "accept-edits" | "auto" | "full",
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
+  latestPluginComposerHost: null as PluginComposerHost | null,
   promptMentionArgs: [] as unknown[],
   promptMentionSetQuery: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
@@ -47,8 +51,10 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     focusEndKey,
     permission,
     permissionReadOnly,
+    pluginComposerHost,
     readOnly,
     stack,
+    textEffect,
     typeahead,
   }: {
     attachments: {
@@ -81,6 +87,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     focusEndKey?: string | number;
     permissionReadOnly?: boolean;
     permission: { value?: string };
+    pluginComposerHost?: PluginComposerHost | null;
     readOnly?: boolean;
     typeahead: {
       command: {
@@ -92,92 +99,119 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
     };
     stack: ReactNode | null;
-  }) => (
-    <div>
-      <input
-        data-testid="side-chat-composer"
-        data-focus-end-key={focusEndKey}
-        value={composer.message}
-        onChange={(event) => composer.onChangeMessage(event.target.value, [])}
-      />
-      <button type="button" onClick={composer.onSubmit}>
-        Send
-      </button>
-      <button type="button" onClick={() => execution.model.onChange("o4-mini")}>
-        Use o4-mini
-      </button>
-      <button
-        type="button"
-        onClick={() => execution.reasoning.onChange("high")}
-      >
-        Use high reasoning
-      </button>
-      <button
-        type="button"
-        onClick={() => execution.serviceTier?.onChange("fast")}
-      >
-        Use fast mode
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          void attachments.onAttachFiles?.([
-            new File(["hello"], "note.md", { type: "text/markdown" }),
-          ])
-        }
-      >
-        Attach
-      </button>
-      <button
-        type="button"
-        onClick={() => typeahead.mention.onQueryChange("readme")}
-      >
-        Mention query
-      </button>
-      <button
-        type="button"
-        onClick={() => typeahead.command.onQueryChange("review")}
-      >
-        Command query
-      </button>
-      <span data-testid="command-trigger">{typeahead.command.trigger}</span>
-      <span data-testid="side-chat-stack-state">
-        {stack === null ? "null" : "provided"}
-      </span>
-      <span data-testid="side-chat-selected-model">
-        {execution.model.selected}
-      </span>
-      <span data-testid="side-chat-selected-reasoning">
-        {execution.reasoning.value}
-      </span>
-      <span data-testid="side-chat-selected-service-tier">
-        {execution.serviceTier?.value}
-      </span>
-      <span data-testid="side-chat-selected-permission">
-        {permission.value}
-      </span>
-      <span data-testid="side-chat-attachment-count">
-        {attachments.items.length}
-      </span>
-      <span data-testid="side-chat-execution-read-only">
-        {executionReadOnly ? "true" : "false"}
-      </span>
-      <span data-testid="side-chat-read-only">
-        {readOnly ? "true" : "false"}
-      </span>
-      <span data-testid="side-chat-permission-read-only">
-        {permissionReadOnly ? "true" : "false"}
-      </span>
-      {stack}
-      <button
-        type="button"
-        disabled={!composer.canModifierSubmit}
-        onClick={composer.onModifierSubmit}
-      >
-        Steer
-      </button>
-    </div>
-  ),
+    textEffect?: string | null;
+  }) => {
+    mocks.latestPluginComposerHost = pluginComposerHost ?? null;
+    return (
+      <div>
+        <input
+          data-testid="side-chat-composer"
+          data-focus-end-key={focusEndKey}
+          value={composer.message}
+          onChange={(event) => composer.onChangeMessage(event.target.value, [])}
+        />
+        <button type="button" onClick={composer.onSubmit}>
+          Send
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.model.onChange("o4-mini")}
+        >
+          Use o4-mini
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.reasoning.onChange("high")}
+        >
+          Use high reasoning
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.serviceTier?.onChange("fast")}
+        >
+          Use fast mode
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            void attachments.onAttachFiles?.([
+              new File(["hello"], "note.md", { type: "text/markdown" }),
+            ])
+          }
+        >
+          Attach
+        </button>
+        <button
+          type="button"
+          onClick={() => typeahead.mention.onQueryChange("readme")}
+        >
+          Mention query
+        </button>
+        <button
+          type="button"
+          onClick={() => typeahead.command.onQueryChange("review")}
+        >
+          Command query
+        </button>
+        <span data-testid="command-trigger">{typeahead.command.trigger}</span>
+        <span data-testid="side-chat-stack-state">
+          {stack === null ? "null" : "provided"}
+        </span>
+        <span data-testid="side-chat-selected-model">
+          {execution.model.selected}
+        </span>
+        <span data-testid="side-chat-selected-reasoning">
+          {execution.reasoning.value}
+        </span>
+        <span data-testid="side-chat-selected-service-tier">
+          {execution.serviceTier?.value}
+        </span>
+        <span data-testid="side-chat-selected-permission">
+          {permission.value}
+        </span>
+        <span data-testid="side-chat-attachment-count">
+          {attachments.items.length}
+        </span>
+        <span data-testid="side-chat-execution-read-only">
+          {executionReadOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-read-only">
+          {readOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-permission-read-only">
+          {permissionReadOnly ? "true" : "false"}
+        </span>
+        <span data-testid="side-chat-plugin-scope">
+          {pluginComposerHost
+            ? JSON.stringify(pluginComposerHost.scope)
+            : "null"}
+        </span>
+        <span data-testid="side-chat-text-effect">{textEffect ?? "none"}</span>
+        <button
+          type="button"
+          disabled={!pluginComposerHost}
+          onClick={() => {
+            if (!pluginComposerHost) return;
+            pluginComposerHost.setDraft({
+              ...pluginComposerHost.getCurrent(),
+              text: "Plugin replacement",
+            });
+            pluginComposerHost.focus();
+          }}
+        >
+          Plugin replace
+        </button>
+        {stack}
+        <button
+          type="button"
+          disabled={!composer.canModifierSubmit}
+          onClick={composer.onModifierSubmit}
+        >
+          Steer
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
@@ -504,6 +538,7 @@ afterEach(() => {
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
   mocks.defaultExecutionPermissionMode = "auto";
+  mocks.latestPluginComposerHost = null;
   mocks.threadCreationReasoningLevel = "medium";
   mocks.threadCreationSelectedModel = "gpt-5";
   mocks.threadCreationServiceTier = undefined;
@@ -513,6 +548,31 @@ afterEach(() => {
 });
 
 describe("SideChatTabContent", () => {
+  function ParentDraftProbe() {
+    const draft = usePromptDraftStorage({
+      kind: "thread",
+      projectId: "proj_parent",
+      threadId: "thr_parent",
+    });
+    return (
+      <>
+        <span data-testid="parent-composer-draft">{draft.text}</span>
+        <button
+          type="button"
+          onClick={() =>
+            draft.setDraft({
+              text: "Keep parent draft",
+              mentions: [],
+              attachments: [],
+            })
+          }
+        >
+          Seed parent draft
+        </button>
+      </>
+    );
+  }
+
   function makeQueuedMessage(
     overrides: Partial<ThreadQueuedMessage> = {},
   ): ThreadQueuedMessage {
@@ -630,6 +690,144 @@ describe("SideChatTabContent", () => {
     );
   });
 
+  it("exposes only the visible side-chat draft to plugins before and after child creation", async () => {
+    mocks.uploadPromptAttachmentMutateAsync.mockResolvedValueOnce({
+      type: "localFile",
+      path: "thread-storage/uploads/note.md",
+      name: "note.md",
+      mimeType: "text/markdown",
+      sizeBytes: 5,
+    });
+    const onSetThreadId = vi.fn();
+    const { rerender } = render(
+      <>
+        <ParentDraftProbe />
+        {buildSideChatElement({ onSetThreadId, threadId: null })}
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Seed parent draft" }));
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Visible side-chat draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+        "1",
+      ),
+    );
+
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_parent",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
+    expect(screen.getByTestId("parent-composer-draft").textContent).toBe(
+      "Keep parent draft",
+    );
+    expect(screen.getByTestId("side-chat-composer").dataset.focusEndKey).toBe(
+      "1",
+    );
+
+    rerender(
+      <>
+        <ParentDraftProbe />
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </>,
+    );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "side-chat",
+      projectId: "proj_parent",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: "thr_side",
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Plugin replacement",
+    );
+    expect(screen.getByTestId("parent-composer-draft").textContent).toBe(
+      "Keep parent draft",
+    );
+  });
+
+  it("ignores stale plugin writes after side-chat ownership changes and unmounts", () => {
+    const onSetThreadId = vi.fn();
+    const view = render(
+      buildSideChatElement({ onSetThreadId, threadId: null }),
+    );
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Current side draft" },
+    });
+    const staleDraftHost = mocks.latestPluginComposerHost;
+    expect(staleDraftHost).not.toBeNull();
+
+    view.rerender(
+      buildSideChatElement({ onSetThreadId, threadId: "thr_side" }),
+    );
+    act(() => {
+      staleDraftHost?.setDraft({
+        text: "Stale replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+
+    const staleActiveHost = mocks.latestPluginComposerHost;
+    view.rerender(
+      buildSideChatElement({
+        isActive: false,
+        onSetThreadId,
+        threadId: "thr_side",
+      }),
+    );
+    expect(screen.getByTestId("side-chat-plugin-scope").textContent).toBe(
+      "null",
+    );
+    act(() => {
+      staleActiveHost?.setDraft({
+        text: "Hidden replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Current side draft",
+    );
+
+    view.unmount();
+    act(() => {
+      staleActiveHost?.setDraft({
+        text: "Unmounted replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+  });
+
   it("keeps permission locked while model controls remain editable", () => {
     renderDraftSideChat();
 
@@ -646,7 +844,20 @@ describe("SideChatTabContent", () => {
   });
 
   it("updates an inline queue row with its captured version and execution values", async () => {
-    mocks.queuedMessages = [makeQueuedMessage()];
+    mocks.queuedMessages = [
+      makeQueuedMessage({
+        content: [
+          { type: "text", text: "Queued side message", mentions: [] },
+          {
+            type: "localFile",
+            path: "thread-storage/uploads/queued-note.md",
+            name: "queued-note.md",
+            mimeType: "text/markdown",
+            sizeBytes: 7,
+          },
+        ],
+      }),
+    ];
     renderSideChat({ threadId: "thr_side" });
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Untouched bottom side draft" },
@@ -675,17 +886,42 @@ describe("SideChatTabContent", () => {
     expect(
       screen.getByTestId("side-chat-permission-read-only").textContent,
     ).toBe("true");
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toEqual({
+      kind: "queued-message",
+      threadId: "thr_side",
+      queuedMessageId: "qmsg_side_1",
+    });
 
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Edited side queue" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
+    expect(screen.getByTestId("side-chat-attachment-count").textContent).toBe(
+      "1",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() =>
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
         expectedUpdatedAt: 17,
         id: "thr_side",
-        input: [{ type: "text", text: "Edited side queue", mentions: [] }],
+        input: [
+          { type: "text", text: "Plugin replacement", mentions: [] },
+          {
+            type: "localFile",
+            path: "thread-storage/uploads/queued-note.md",
+            name: "queued-note.md",
+            mimeType: "text/markdown",
+            sizeBytes: 7,
+          },
+        ],
         queuedMessageId: "qmsg_side_1",
       }),
     );

@@ -437,27 +437,34 @@ export function useComposer(): PluginComposerApi {
 
   const composerScope = composerHost?.scope;
   const threadRowStatusThreadId =
-    composerScope?.kind === "thread" || composerScope?.kind === "queued-message"
-      ? composerScope.threadId
-      : composerScope === undefined && threadId !== undefined
-        ? threadId
-        : null;
+    composerScope?.kind === "side-chat"
+      ? (composerScope.childThreadId ?? composerScope.parentThreadId)
+      : composerScope?.kind === "thread" ||
+          composerScope?.kind === "queued-message"
+        ? composerScope.threadId
+        : composerScope === undefined && threadId !== undefined
+          ? threadId
+          : null;
   const threadRowStatusScopeKey =
     composerScope?.kind === "queued-message"
       ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
-      : threadRowStatusThreadId === null
-        ? "new-thread"
-        : `thread:${threadRowStatusThreadId}`;
+      : composerScope?.kind === "side-chat"
+        ? `side-chat:${composerScope.projectId}:${composerScope.parentThreadId}:${composerScope.tabId}:${composerScope.childThreadId ?? ""}`
+        : threadRowStatusThreadId === null
+          ? "new-thread"
+          : `thread:${threadRowStatusThreadId}`;
   const composerOwnershipScopeKey =
     composerScope?.kind === "queued-message"
       ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
-      : composerScope?.kind === "thread"
-        ? `thread:${composerScope.threadId}`
-        : composerScope?.kind === "new-thread"
-          ? `new-thread:${composerScope.projectId ?? "null"}`
-          : threadId !== undefined
-            ? `thread:${threadId}`
-            : `new-thread:${projectId ?? "null"}`;
+      : composerScope?.kind === "side-chat"
+        ? `side-chat:${composerScope.projectId}:${composerScope.parentThreadId}:${composerScope.tabId}:${composerScope.childThreadId ?? ""}`
+        : composerScope?.kind === "thread"
+          ? `thread:${composerScope.threadId}`
+          : composerScope?.kind === "new-thread"
+            ? `new-thread:${composerScope.projectId ?? "null"}`
+            : threadId !== undefined
+              ? `thread:${threadId}`
+              : `new-thread:${projectId ?? "null"}`;
   const scopeOwnershipKey = [
     pluginId,
     composerOwnershipScopeKey,

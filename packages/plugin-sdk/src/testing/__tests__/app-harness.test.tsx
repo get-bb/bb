@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type {
   PluginComposerApi,
+  PluginComposerScope,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -105,6 +106,9 @@ function ComposerProbe() {
   return (
     <div>
       <span data-testid="composer-scope">{composer.scope.kind}</span>
+      <span data-testid="composer-scope-details">
+        {JSON.stringify(composer.scope)}
+      </span>
       <span data-testid="composer-text">{composer.text}</span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
@@ -359,6 +363,31 @@ describe("renderSlot", () => {
     expect(newThreadSlot.composer.text).toBe("new-thread seed");
     expect(newThread.getByTestId("composer-scope").textContent).toBe(
       "new-thread",
+    );
+  });
+
+  it("exposes an explicit side-chat composer scope", () => {
+    const sideChatScope = {
+      kind: "side-chat",
+      projectId: "proj_1",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    } satisfies PluginComposerScope;
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_parent" },
+      { composer: { text: "side-chat draft", scope: sideChatScope } },
+    );
+
+    expect(
+      JSON.parse(
+        slot.getByTestId("composer-scope-details").textContent ?? "{}",
+      ),
+    ).toEqual(sideChatScope);
+    fireEvent.click(slot.getByText("set row status"));
+    expect(slot.composer.threadRowStatus?.label).toBe(
+      "Prompt Shaper improving prompt",
     );
   });
 
