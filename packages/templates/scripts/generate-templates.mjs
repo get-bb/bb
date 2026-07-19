@@ -341,8 +341,9 @@ const generatedFiles = [
 if (process.argv.includes("--check")) {
   for (const file of generatedFiles) {
     if ((await readCurrentOutput(file.outputPath)) !== file.content) {
+      const relativeOutputPath = path.relative(packageRoot, file.outputPath);
       console.error(
-        "Generated templates are out of date. Run `node packages/templates/scripts/generate-templates.mjs`.",
+        `Generated template output is out of date: packages/templates/${relativeOutputPath}. Run \`node packages/templates/scripts/generate-templates.mjs\`.`,
       );
       process.exit(1);
     }
