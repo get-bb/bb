@@ -118,6 +118,17 @@ interface SlotEnv {
   composerLog: ComposerLog;
 }
 
+function SlotLifecycleGuard({
+  children,
+  onUnmount,
+}: {
+  children: ReactNode;
+  onUnmount: () => void;
+}) {
+  useEffect(() => () => onUnmount(), [onUnmount]);
+  return children;
+}
+
 interface TestRealtimeConnectionStore {
   getSnapshot(): PluginRealtimeConnectionState;
   subscribe(listener: () => void): () => void;
@@ -803,18 +814,25 @@ export function renderSlot<
     composerLog,
   };
 
-  const Component = registration.component;
-  const element: ReactElement = (
+  const releaseComposerOwnership = (): void => {
+    if (!composerOwnership.active) return;
+    composerOwnership.active = false;
+    composerLog.textEffect = null;
+    composerLog.threadRowStatus = null;
+  };
+  const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>
-      <Component {...props} />
+      <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
+        {ui}
+      </SlotLifecycleGuard>
     </SlotEnvContext.Provider>
   );
+  const Component = registration.component;
+  const element = renderSlotTree(<Component {...props} />);
   const result = render(element);
 
   const rerenderSlot = (ui: ReactNode): void => {
-    result.rerender(
-      <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>,
-    );
+    result.rerender(renderSlotTree(ui));
   };
   const emitRealtime = async (
     channel: string,
@@ -838,9 +856,6 @@ export function renderSlot<
   };
   const unmountSlot = (): void => {
     if (!composerOwnership.active) return;
-    composerOwnership.active = false;
-    composerLog.textEffect = null;
-    composerLog.threadRowStatus = null;
     result.unmount();
   };
 

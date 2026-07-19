@@ -212,6 +212,19 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
+  it("shows a plugin status instead of a keyboard shortcut when no native status applies", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+
+    renderThreadRow({ shortcutKey: "3" });
+
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByText("⌘3")).toBeNull();
+  });
+
   it("renders a shimmering plugin status with the semantic success tone", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",

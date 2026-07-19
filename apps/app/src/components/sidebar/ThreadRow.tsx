@@ -610,7 +610,9 @@ function ThreadRowComponent({
             label={`${labelTitle} — open in split`}
           />
         ) : null}
-        {shortcut && trailingIndicatorKind === "none" ? (
+        {shortcut &&
+        trailingIndicatorKind === "none" &&
+        pluginThreadRowStatus === null ? (
           <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
             {shortcut.label}
           </kbd>

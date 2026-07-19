@@ -251,13 +251,13 @@
    * semantic success gradient works against both light and dark surfaces.
    */
   .prompt-text-shimmer {
-    color: var(--success);
+    color: var(--success-foreground);
     background: linear-gradient(
       90deg,
-      color-mix(in oklab, var(--success) 76%, transparent) 0%,
-      var(--success) 42%,
-      color-mix(in oklab, var(--success) 76%, transparent) 68%,
-      var(--success) 100%
+      color-mix(in oklch, var(--success-foreground) 78%, var(--ink)) 0%,
+      var(--success-foreground) 42%,
+      color-mix(in oklch, var(--success-foreground) 78%, var(--ink)) 68%,
+      var(--success-foreground) 100%
     );
     background-size: 220% 100%;
     background-clip: text;

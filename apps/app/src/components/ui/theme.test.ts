@@ -136,6 +136,22 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function mixOklch(
+  foreground: OklchColor,
+  background: OklchColor,
+  foregroundWeight: number,
+): OklchColor {
+  return {
+    lightness:
+      foreground.lightness * foregroundWeight +
+      background.lightness * (1 - foregroundWeight),
+    chroma:
+      foreground.chroma * foregroundWeight +
+      background.chroma * (1 - foregroundWeight),
+    hueDegrees: foreground.hueDegrees,
+  };
+}
+
 describe("theme.css neutral ramp", () => {
   for (const mode of MODES) {
     describe(mode, () => {
@@ -257,17 +273,36 @@ describe("theme.css Cadence text tokens", () => {
 });
 
 describe("composer text shimmer", () => {
-  it("uses semantic success color with hue-preserving translucent stops", () => {
+  it("uses the accessible semantic success foreground with opaque stops", () => {
     const shimmerRule = appCss.match(
       /\.prompt-text-shimmer\s*\{([^}]*)\}/,
     )?.[1];
-    expect(shimmerRule).toContain("color: var(--success);");
+    expect(shimmerRule).toContain("color: var(--success-foreground);");
     expect(
       shimmerRule?.match(
-        /color-mix\(in oklab, var\(--success\) 76%, transparent\)/g,
+        /color-mix\(in oklch, var\(--success-foreground\) 78%, var\(--ink\)\)/g,
       ),
     ).toHaveLength(2);
-    expect(shimmerRule).not.toMatch(/color-mix\(in oklch[^;]*transparent/);
+    expect(shimmerRule).not.toMatch(/color-mix\([^;]*transparent/);
+
+    for (const mode of MODES) {
+      const block = modeBlock(mode);
+      expect(block).toMatch(
+        /--success-foreground:\s*color-mix\(\s*in oklch,\s*var\(--success\) 55%,\s*var\(--ink\)\s*\);/,
+      );
+      const canvas = parseOklch(variableValue(block, "canvas"));
+      const ink = parseOklch(variableValue(block, "ink"));
+      const success = parseOklch(variableValue(block, "success"));
+      const successForeground = mixOklch(success, ink, 0.55);
+      const darkestShimmerStop = mixOklch(successForeground, ink, 0.78);
+
+      expect(contrastRatio(successForeground, canvas)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(
+        contrastRatio(darkestShimmerStop, canvas),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it("keeps a static semantic color when reduced motion is requested", () => {
