@@ -37,6 +37,7 @@ import {
   hasActiveWorkflowActivity,
   isRuntimeBusyThread,
   isUnreadDoneThread,
+  getThreadListIndicatorLabel,
   NO_COLLAPSED_CHILD_ACTIVITY,
   resolveThreadListIndicator,
   type CollapsedChildActivity,
@@ -117,7 +118,16 @@ interface ThreadRowContainerArgs {
   style: CSSProperties;
 }
 
-function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
+function ThreadDraftIndicator({
+  hideIdleLabel = false,
+  isWorking,
+}: {
+  hideIdleLabel?: boolean;
+  isWorking: boolean;
+}) {
+  const label = getThreadListIndicatorLabel(
+    isWorking ? "working-draft" : "draft",
+  );
   return (
     <Icon
       name="Edit"
@@ -128,9 +138,9 @@ function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
           ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
           : "text-muted-foreground",
       )}
-      {...(isWorking
-        ? { "aria-label": "Thread working with unsubmitted draft" }
-        : { "aria-hidden": true })}
+      {...(!isWorking && hideIdleLabel
+        ? { "aria-hidden": true }
+        : { "aria-label": label ?? undefined })}
     />
   );
 }
@@ -185,13 +195,16 @@ function renderThreadRowContainer({
   );
 }
 
-type ThreadStatusGlyphProps = ThreadListIndicatorState;
+interface ThreadStatusGlyphProps extends ThreadListIndicatorState {
+  hideIdleDraftLabel?: boolean;
+}
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   hasUnsubmittedDraft,
   hasUnreadError,
   hasUnreadSuccess,
+  hideIdleDraftLabel = false,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isGoalActive,
@@ -218,7 +231,7 @@ export function ThreadStatusGlyph({
         <Icon
           name="CircleX"
           className={cn("text-destructive", COARSE_POINTER_ICON_SIZE_CLASS)}
-          aria-label="Unread thread failed"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "waiting-for-input":
@@ -229,7 +242,7 @@ export function ThreadStatusGlyph({
             "text-muted-foreground/75",
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Thread needs user input"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "working-draft":
@@ -243,7 +256,7 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Workflow running"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "background-agent":
@@ -255,7 +268,7 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Background agent running"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "background-command":
@@ -267,7 +280,7 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Background command running"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "plan-mode":
@@ -279,7 +292,7 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Plan mode active"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "goal":
@@ -291,7 +304,7 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Goal active"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "runtime":
@@ -303,16 +316,21 @@ export function ThreadStatusGlyph({
             SIDEBAR_WORKING_STATUS_COLOR_CLASS,
             COARSE_POINTER_ICON_SIZE_CLASS,
           )}
-          aria-label="Thread working"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "draft":
-      return <ThreadDraftIndicator isWorking={false} />;
+      return (
+        <ThreadDraftIndicator
+          hideIdleLabel={hideIdleDraftLabel}
+          isWorking={false}
+        />
+      );
     case "unread-success":
       return (
         <span
           className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
-          aria-label="Unread thread succeeded"
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
     case "none":
@@ -571,7 +589,12 @@ function ThreadRowComponent({
                   "absolute inset-0 flex items-center justify-center",
                 )}
               >
-                <ThreadTrailingIndicator {...trailingIndicatorState} />
+                <ThreadTrailingIndicator
+                  {...trailingIndicatorState}
+                  hideIdleDraftLabel={
+                    !hasHiddenChildren && trailingIndicatorKind === "draft"
+                  }
+                />
               </span>
               <div
                 data-sidebar-hover-actions-open={

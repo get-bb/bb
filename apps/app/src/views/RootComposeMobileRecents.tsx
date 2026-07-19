@@ -13,8 +13,11 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
+  getThreadListIndicatorLabel,
   isRuntimeBusyThread,
   isUnreadDoneThread,
+  resolveThreadListIndicator,
+  type ThreadListIndicatorState,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -30,10 +33,6 @@ type ThreadListEntryComparator = (
 interface GetMobileRecentThreadsArgs {
   highlightedThreadId: string | null;
   threads: readonly ThreadListEntry[];
-}
-
-interface MobileRecentThreadStatusProps {
-  thread: ThreadListEntry;
 }
 
 interface MobileRecentThreadRowProps {
@@ -88,7 +87,12 @@ function getMobileRecentThreads({
   ];
 }
 
-function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
+function MobileRecentThreadRow({
+  highlighted,
+  projectName,
+  thread,
+}: MobileRecentThreadRowProps) {
+  const threadTitle = getThreadDisplayTitle(thread);
   const isUnreadDone = isUnreadDoneThread(thread);
   const isUnreadError = isUnreadDone && thread.status === "error";
   const hasUnsubmittedDraft = usePromptDraftHasInput({
@@ -96,29 +100,21 @@ function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
     projectId: thread.projectId,
     threadId: thread.id,
   });
-
-  return (
-    <ThreadStatusGlyph
-      hasPendingInteraction={thread.hasPendingInteraction}
-      hasUnsubmittedDraft={hasUnsubmittedDraft}
-      hasUnreadError={isUnreadError}
-      hasUnreadSuccess={isUnreadDone && !isUnreadError}
-      isBackgroundAgentActive={hasActiveBackgroundAgentActivity(thread)}
-      isBackgroundCommandActive={hasActiveBackgroundCommandActivity(thread)}
-      isGoalActive={hasActiveGoalActivity(thread)}
-      isPlanModeActive={hasActivePlanModeActivity(thread)}
-      isRuntimeActive={isRuntimeBusyThread(thread)}
-      isWorkflowActive={hasActiveWorkflowActivity(thread)}
-    />
+  const indicatorState: ThreadListIndicatorState = {
+    hasPendingInteraction: thread.hasPendingInteraction,
+    hasUnsubmittedDraft,
+    hasUnreadError: isUnreadError,
+    hasUnreadSuccess: isUnreadDone && !isUnreadError,
+    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
+    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
+    isGoalActive: hasActiveGoalActivity(thread),
+    isPlanModeActive: hasActivePlanModeActivity(thread),
+    isRuntimeActive: isRuntimeBusyThread(thread),
+    isWorkflowActive: hasActiveWorkflowActivity(thread),
+  };
+  const indicatorLabel = getThreadListIndicatorLabel(
+    resolveThreadListIndicator(indicatorState),
   );
-}
-
-function MobileRecentThreadRow({
-  highlighted,
-  projectName,
-  thread,
-}: MobileRecentThreadRowProps) {
-  const threadTitle = getThreadDisplayTitle(thread);
   return (
     <li>
       <Link
@@ -126,7 +122,7 @@ function MobileRecentThreadRow({
           projectId: thread.projectId,
           threadId: thread.id,
         })}
-        aria-label={`Open ${threadTitle}`}
+        aria-label={`Open ${threadTitle}${indicatorLabel ? ` — ${indicatorLabel}` : ""}`}
         className={cn(
           "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           highlighted && "bg-surface-selected",
@@ -141,7 +137,7 @@ function MobileRecentThreadRow({
           ) : null}
         </span>
         <span className="flex size-6 shrink-0 items-center justify-center">
-          <MobileRecentThreadStatus thread={thread} />
+          <ThreadStatusGlyph {...indicatorState} />
         </span>
       </Link>
     </li>

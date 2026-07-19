@@ -503,17 +503,16 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     });
-    if (!result.cleared) {
+    const updatedThread = requirePublicThread(deps.db, thread.id);
+    const updatedActivity = getThreadPromptBannerActivity(deps, updatedThread);
+    if (updatedActivity.activeGoalCount > 0 && !result.cleared) {
       throw new ApiError(
         409,
         "invalid_request",
         "The provider did not clear the active Goal",
       );
     }
-    const updatedThread = requirePublicThread(deps.db, thread.id);
-    if (
-      getThreadPromptBannerActivity(deps, updatedThread).activeGoalCount > 0
-    ) {
+    if (updatedActivity.activeGoalCount > 0) {
       throw new ApiError(
         409,
         "invalid_request",

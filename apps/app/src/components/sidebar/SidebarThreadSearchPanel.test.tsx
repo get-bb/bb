@@ -264,6 +264,48 @@ describe("SidebarThreadSearchPanel", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
+  it("includes an idle draft in the search result accessible name", () => {
+    const thread = createThreadListEntry({
+      id: "thr_search_idle_draft",
+      title: "Idle draft",
+    });
+    window.localStorage.setItem(
+      "bb.promptbox.contents-proj_search-thr_search_idle_draft-3",
+      JSON.stringify({ text: "Keep editing", attachments: [] }),
+    );
+    mockThreadSearch({
+      data: createSearchResponse(thread),
+      debouncedQuery: "draft",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="draft"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Thread has unsubmitted draft"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("option", {
+        name: /Idle draft.*Thread has unsubmitted draft/,
+      }),
+    ).not.toBeNull();
+  });
+
   it("shows section metadata instead of project metadata in section mode", () => {
     const thread = createThreadListEntry({
       sectionId: "sec_ci",

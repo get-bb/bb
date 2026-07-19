@@ -1488,8 +1488,11 @@ function createAgentRuntimeInternal(
             message: cmd,
             resultSchema: threadGoalClearResultSchema,
           });
-          if (!result.cleared) {
-            return result;
+          if (
+            !result.cleared &&
+            threadGoalState.getClearRevision(threadId) > clearRevision
+          ) {
+            return { cleared: true };
           }
           const confirmed = await threadGoalState.waitForGoalClear({
             afterRevision: clearRevision,

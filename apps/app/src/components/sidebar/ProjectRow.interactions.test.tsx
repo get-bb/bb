@@ -394,7 +394,9 @@ describe("ProjectRow interactions", () => {
       true,
     );
 
-    expect(document.querySelector('[data-icon="Edit"]')).not.toBeNull();
+    expect(
+      screen.getAllByLabelText("Thread has unsubmitted draft"),
+    ).not.toHaveLength(0);
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
   });
 

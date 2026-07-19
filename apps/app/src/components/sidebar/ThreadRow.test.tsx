@@ -174,6 +174,7 @@ describe("ThreadRow", () => {
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
+    expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
     expect(screen.queryByText("⌘3")).toBeNull();
   });

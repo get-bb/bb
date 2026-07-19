@@ -759,13 +759,25 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
-  it("waits for Goal clear persistence when Codex responds before notifying", async () => {
-    const providerScriptPath = join(tmpDir, "codex-goal-clear-provider.cjs");
-    const responseMarkerPath = join(tmpDir, "goal-clear-response");
-    const notificationReleasePath = join(tmpDir, "release-goal-clear");
-    writeFileSync(
-      providerScriptPath,
-      `
+  it.each([
+    { reportedCleared: true, label: "confirms success" },
+    { reportedCleared: false, label: "reconciles a stale failure" },
+  ])(
+    "$label after Codex persists a delayed Goal clear",
+    async ({ reportedCleared }) => {
+      const providerScriptPath = join(tmpDir, "codex-goal-clear-provider.cjs");
+      const caseSuffix = reportedCleared ? "success" : "stale-failure";
+      const responseMarkerPath = join(
+        tmpDir,
+        `goal-clear-response-${caseSuffix}`,
+      );
+      const notificationReleasePath = join(
+        tmpDir,
+        `release-goal-clear-${caseSuffix}`,
+      );
+      writeFileSync(
+        providerScriptPath,
+        `
 const fs = require("node:fs");
 const readline = require("node:readline");
 const responseMarkerPath = ${JSON.stringify(responseMarkerPath)};
@@ -794,7 +806,7 @@ rl.on("line", (line) => {
     send({
       jsonrpc: "2.0",
       id: message.id,
-      result: { cleared: true },
+      result: { cleared: ${reportedCleared} },
     });
     fs.writeFileSync(responseMarkerPath, "responded", "utf8");
     const releasePoll = setInterval(() => {
@@ -811,63 +823,65 @@ rl.on("line", (line) => {
   }
 });
 `,
-      "utf8",
-    );
-    const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createCodexProviderAdapter({
-          additionalWorkspaceWriteRoots: [],
-          processArgs: [providerScriptPath],
-          processCommand: "node",
-        }),
-    });
-
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t-goal",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      let settled = false;
-      const clearPromise = runtime.clearThreadGoal({
-        threadId: "t-goal",
-      });
-      void clearPromise.then(
-        () => {
-          settled = true;
-        },
-        () => {
-          settled = true;
-        },
+        "utf8",
       );
-
-      await vi.waitFor(() => {
-        expect(existsSync(responseMarkerPath)).toBe(true);
+      const events: ThreadEvent[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () =>
+          createCodexProviderAdapter({
+            additionalWorkspaceWriteRoots: [],
+            processArgs: [providerScriptPath],
+            processCommand: "node",
+          }),
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(settled).toBe(false);
 
-      writeFileSync(notificationReleasePath, "release", "utf8");
-      await expect(clearPromise).resolves.toEqual({ cleared: true });
-      expect(events).toContainEqual(
-        expect.objectContaining({
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
           threadId: "t-goal",
-          type: "thread/goal/cleared",
-        }),
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
+          projectId: "p1",
+          providerId: "codex",
+          options: fullRuntimeOptions,
+        });
+        let settled = false;
+        const clearPromise = runtime.clearThreadGoal({
+          threadId: "t-goal",
+        });
+        void clearPromise.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+
+        await vi.waitFor(() => {
+          expect(existsSync(responseMarkerPath)).toBe(true);
+        });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(settled).toBe(false);
+
+        writeFileSync(notificationReleasePath, "release", "utf8");
+        await expect(clearPromise).resolves.toEqual({ cleared: true });
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            threadId: "t-goal",
+            type: "thread/goal/cleared",
+          }),
+        );
+      } finally {
+        await runtime.shutdown();
+      }
+    },
+    10_000,
+  );
 
   it("rejects thread resume when providerThreadId cannot be resolved", async () => {
     const runtime = createContractRuntime({

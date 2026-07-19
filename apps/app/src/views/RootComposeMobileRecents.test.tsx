@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 
-function makeThread(): ThreadListEntry {
+function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
   return {
     id: "thr_mobile",
     projectId: "proj_mobile",
@@ -46,6 +46,7 @@ function makeThread(): ThreadListEntry {
       displayStatus: "active",
       hostReconnectGraceExpiresAt: null,
     },
+    ...overrides,
   };
 }
 
@@ -91,6 +92,46 @@ describe("RootComposeMobileRecents", () => {
 
     expect(
       screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("includes only the resolved idle draft indicator in the link label", () => {
+    window.localStorage.setItem(
+      "bb.promptbox.contents-proj_mobile-thr_mobile-3",
+      JSON.stringify({ text: "Keep editing", attachments: [] }),
+    );
+
+    render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          showCreatingRow={false}
+          threads={[
+            makeThread({
+              status: "idle",
+              activity: {
+                activeWorkflowCount: 0,
+                activeBackgroundAgentCount: 0,
+                activeBackgroundCommandCount: 0,
+                activePlanModeCount: 0,
+                activeGoalCount: 0,
+              },
+              runtime: {
+                displayStatus: "idle",
+                hostReconnectGraceExpiresAt: null,
+              },
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", {
+        name: "Open Mobile activity — Thread has unsubmitted draft",
+      }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });

@@ -85,6 +85,29 @@ export type ThreadListIndicatorKind =
   | "unread-success"
   | "none";
 
+const THREAD_LIST_INDICATOR_LABELS: Record<
+  Exclude<ThreadListIndicatorKind, "none">,
+  string
+> = {
+  "unread-error": "Unread thread failed",
+  "waiting-for-input": "Thread needs user input",
+  "working-draft": "Thread working with unsubmitted draft",
+  workflow: "Workflow running",
+  "background-agent": "Background agent running",
+  "background-command": "Background command running",
+  "plan-mode": "Plan mode active",
+  goal: "Goal active",
+  runtime: "Thread working",
+  draft: "Thread has unsubmitted draft",
+  "unread-success": "Unread thread succeeded",
+};
+
+export function getThreadListIndicatorLabel(
+  kind: ThreadListIndicatorKind,
+): string | null {
+  return kind === "none" ? null : THREAD_LIST_INDICATOR_LABELS[kind];
+}
+
 /**
  * Resolves the one trailing indicator slot from independent, unsuppressed
  * thread state. Keep all precedence here so every thread-list surface makes
