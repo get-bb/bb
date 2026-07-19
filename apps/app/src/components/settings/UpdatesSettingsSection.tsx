@@ -472,9 +472,12 @@ export function UpdatesSettingsSection() {
         description="The bb app updates here; connected machines follow the server version automatically."
         action={
           <div className="flex items-center gap-1">
-            <RowButton onClick={() => openUrlInExternalBrowser(CHANGELOG_URL)}>
+            <RowButton
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => openUrlInExternalBrowser(CHANGELOG_URL)}
+            >
               What's new
-              <Icon name="ExternalLink" className="size-3.5" />
             </RowButton>
             <RowButton
               aria-busy={isChecking}
