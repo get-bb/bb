@@ -546,6 +546,7 @@ export const GeneratedConversationMessage = memo(
                   resolveSegmentLinkHref
                     ? {
                         mentions: collapsedPreviewBody.mentions,
+                        preserveSoftBreaks: true,
                         resolveLinkHref: resolveSegmentLinkHref,
                       }
                     : undefined
@@ -592,6 +593,7 @@ export const GeneratedConversationMessage = memo(
                     resolveSegmentLinkHref
                       ? {
                           mentions: messageMentions,
+                          preserveSoftBreaks: true,
                           resolveLinkHref: resolveSegmentLinkHref,
                         }
                       : undefined

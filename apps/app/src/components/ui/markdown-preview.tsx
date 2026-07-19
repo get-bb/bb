@@ -101,11 +101,9 @@ export interface MarkdownPreviewProps {
   /**
    * When supplied, the literal `@thread:<id>` token in the markdown source
    * renders as the canonical thread-mention pill (display name resolved from
-   * `mentions`, falling back to the id) with its link routed through
-   * `resolveLinkHref` (the same resolver the timeline title links use). The two
-   * fields are coupled — a pill is only useful when it can resolve both its
-   * display resource and its href — so they travel together. Absent for
-   * assistant content, which carries no mentions; that path is unaffected.
+   * live thread resources, then `mentions`, and finally the id). When present,
+   * `resolveLinkHref` routes links through the same resolver as timeline
+   * titles; otherwise the mention resource's project route is used.
    */
   threadMentions?: MarkdownThreadMentions;
   /**
@@ -129,7 +127,8 @@ export interface MarkdownPreviewProps {
 
 export interface MarkdownThreadMentions {
   mentions: readonly PromptTextMention[];
-  resolveLinkHref: TimelineTitleLinkResolver;
+  preserveSoftBreaks: boolean;
+  resolveLinkHref?: TimelineTitleLinkResolver;
 }
 
 interface MarkdownAnchorProps
@@ -384,6 +383,7 @@ function areMarkdownThreadMentionsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.mentions === next.mentions &&
+    previous.preserveSoftBreaks === next.preserveSoftBreaks &&
     previous.resolveLinkHref === next.resolveLinkHref
   );
 }
@@ -1300,13 +1300,12 @@ function MarkdownPreviewComponent({
       messageDirectiveMounts,
     ],
   );
-  // A mention pipeline activates only when its prop is set. Assistant content
-  // (no mentions) keeps the unchanged `[remarkGfm]` pipeline, including
-  // CommonMark soft breaks. A mention branch adds `remark-breaks` so a single
-  // `\n` stays a line break — generated bodies (child-outcome reports,
-  // provisioning transcripts) and authored prompts both rely on the prior
-  // `whitespace-pre-wrap` behavior. The two mention props are mutually exclusive
-  // in practice but are honoured independently here.
+  // A mention pipeline activates only when its prop is set. Generated thread
+  // bodies opt into `remark-breaks` so a single `\n` stays a line break;
+  // assistant thread mentions keep ordinary CommonMark soft breaks. Authored
+  // prompt mentions also preserve breaks to retain the editor's prior
+  // `whitespace-pre-wrap` behavior. The two mention props are mutually
+  // exclusive in practice but are honoured independently here.
   //
   // Message directives (assistant only) add `remark-directive` + a host
   // transformer that rewrites recognized leaf directives into plugin mounts.
@@ -1321,7 +1320,10 @@ function MarkdownPreviewComponent({
       // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
       [remarkMath, { singleDollarTextMath: false }],
     ];
-    if (threadMentions !== undefined || promptMentions !== undefined) {
+    if (
+      threadMentions?.preserveSoftBreaks === true ||
+      promptMentions !== undefined
+    ) {
       plugins.push(remarkBreaks);
     }
     if (threadMentions !== undefined) {

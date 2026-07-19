@@ -93,6 +93,22 @@ function pathMentionResource(token: string): PromptMentionResource {
   };
 }
 
+function threadMentionResource(
+  threadId: string,
+  resources: ThreadTitleMentionResources,
+): PromptMentionResource | null {
+  const thread = resources.threadById.get(threadId);
+  if (!thread) {
+    return null;
+  }
+  return {
+    kind: "thread",
+    threadId,
+    projectId: thread.projectId,
+    label: getThreadDisplayTitle(thread),
+  };
+}
+
 function resolveTitleMentionResource(
   token: string,
   resources: ThreadTitleMentionResources,
@@ -100,13 +116,13 @@ function resolveTitleMentionResource(
   const serializedValue = token.slice(1);
   if (serializedValue.startsWith("thread:")) {
     const threadId = serializedValue.slice("thread:".length);
-    const thread = resources.threadById.get(threadId);
-    return {
-      kind: "thread",
-      threadId,
-      ...(thread ? { projectId: thread.projectId } : {}),
-      label: thread ? getThreadDisplayTitle(thread) : threadId,
-    };
+    return (
+      threadMentionResource(threadId, resources) ?? {
+        kind: "thread",
+        threadId,
+        label: threadId,
+      }
+    );
   }
 
   if (serializedValue.startsWith("project:")) {
@@ -210,6 +226,17 @@ export function useThreadTitleDisplayText(title: string): string {
   return useMemo(
     () => resolveThreadTitleDisplayText(title, resources),
     [resources, title],
+  );
+}
+
+/** Resolves a serialized thread id against the live sidebar thread resources. */
+export function useThreadMentionResource(
+  threadId: string,
+): PromptMentionResource | null {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return useMemo(
+    () => threadMentionResource(threadId, resources),
+    [resources, threadId],
   );
 }
 
