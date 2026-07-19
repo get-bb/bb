@@ -220,17 +220,24 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("replaces a running workflow with the same shimmering draft icon", () => {
+  it.each([
+    "activeWorkflowCount",
+    "activeBackgroundAgentCount",
+    "activeBackgroundCommandCount",
+    "activePlanModeCount",
+    "activeGoalCount",
+  ] as const)("uses the shimmering draft pencil with %s", (activityKey) => {
     renderThreadRow({
       hasComposerDraft: true,
       isActive: false,
       thread: createThread({
         activity: {
-          activeWorkflowCount: 1,
+          activeWorkflowCount: 0,
           activeBackgroundAgentCount: 0,
           activeBackgroundCommandCount: 0,
           activePlanModeCount: 0,
           activeGoalCount: 0,
+          [activityKey]: 1,
         },
       }),
     });
@@ -242,7 +249,6 @@ describe("ThreadRow", () => {
     expect(Array.from(draftIcon.classList)).toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
   it("renders serialized title mentions as non-interactive pills", () => {
@@ -521,7 +527,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows foreground agent work before active workflow work", () => {
+  it("shows named workflow work before generic runtime work", () => {
     renderThreadRow({
       thread: createThread({
         title: "Active workflow thread",
@@ -540,8 +546,7 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
@@ -677,7 +682,29 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
+  it("shows Plan before a concurrent Goal", () => {
+    renderThreadRow({
+      thread: createThread({
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 1,
+        },
+      }),
+    });
+
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Goal active")).toBeNull();
+  });
+
   it.each([
+    {
+      flag: "workflow" as const,
+      label: "Workflow running",
+      icon: "Workflow",
+    },
     {
       flag: "backgroundAgent" as const,
       label: "Background agent running",
@@ -760,7 +787,7 @@ describe("ThreadRow", () => {
     });
     const { container, rerenderThreadRow } = renderThreadRow({ thread });
 
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
 
     rerenderThreadRow({
       ...thread,

@@ -439,6 +439,8 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     appliedAs: "new-turn",
   },
   "thread.stop": {},
+  "thread.goal.clear": { cleared: true },
+  "thread.plan.cancel": {},
   "thread.rename": {},
   "thread.archive": {},
   "thread.unarchive": {},

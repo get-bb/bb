@@ -346,6 +346,17 @@ function buildThreadPromptBannerActivityByThreadId(
   return result;
 }
 
+export function getThreadPromptBannerActivity(
+  deps: ThreadRuntimeDisplayDeps,
+  thread: Thread,
+): PromptBannerActivityState {
+  return (
+    buildThreadPromptBannerActivityByThreadId(deps, [thread]).get(
+      thread.id,
+    ) ?? { activeGoalCount: 0, activePlanModeCount: 0 }
+  );
+}
+
 export function toThreadListEntryResponses(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadListEntryResponsesArgs,

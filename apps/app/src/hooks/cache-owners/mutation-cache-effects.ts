@@ -228,6 +228,23 @@ export function invalidateThreadStopQueries({
   });
 }
 
+export function invalidateThreadBannerQueries({
+  queryClient,
+  threadId,
+}: ThreadArg): void {
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [
+      ...getThreadDetailInvalidationQueryKeys({ threadId }),
+      ...getThreadTimelineInvalidationQueryKeys({ threadId }),
+      ...getThreadListInvalidationQueryKeys({
+        projectId: undefined,
+        queryClient,
+      }),
+    ],
+  });
+}
+
 export function invalidateThreadPendingInteractionResolutionQueries({
   queryClient,
   threadId,

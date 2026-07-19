@@ -58,13 +58,68 @@ export function isBusyThread(
   );
 }
 
+export interface ThreadListIndicatorState {
+  hasPendingInteraction: boolean;
+  hasUnsubmittedDraft: boolean;
+  hasUnreadError: boolean;
+  hasUnreadSuccess: boolean;
+  isBackgroundAgentActive: boolean;
+  isBackgroundCommandActive: boolean;
+  isGoalActive: boolean;
+  isPlanModeActive: boolean;
+  isRuntimeActive: boolean;
+  isWorkflowActive: boolean;
+}
+
+export type ThreadListIndicatorKind =
+  | "unread-error"
+  | "waiting-for-input"
+  | "working-draft"
+  | "workflow"
+  | "background-agent"
+  | "background-command"
+  | "plan-mode"
+  | "goal"
+  | "runtime"
+  | "draft"
+  | "unread-success"
+  | "none";
+
+/**
+ * Resolves the one trailing indicator slot from independent, unsuppressed
+ * thread state. Keep all precedence here so every thread-list surface makes
+ * the same choice when activities overlap.
+ */
+export function resolveThreadListIndicator(
+  state: ThreadListIndicatorState,
+): ThreadListIndicatorKind {
+  if (state.hasUnreadError) return "unread-error";
+  if (state.hasPendingInteraction) return "waiting-for-input";
+
+  const hasActiveWork =
+    state.isRuntimeActive ||
+    state.isWorkflowActive ||
+    state.isBackgroundAgentActive ||
+    state.isBackgroundCommandActive ||
+    state.isPlanModeActive ||
+    state.isGoalActive;
+  if (state.hasUnsubmittedDraft && hasActiveWork) return "working-draft";
+  if (state.isWorkflowActive) return "workflow";
+  if (state.isBackgroundAgentActive) return "background-agent";
+  if (state.isBackgroundCommandActive) return "background-command";
+  if (state.isPlanModeActive) return "plan-mode";
+  if (state.isGoalActive) return "goal";
+  if (state.isRuntimeActive) return "runtime";
+  if (state.hasUnsubmittedDraft) return "draft";
+  if (state.hasUnreadSuccess) return "unread-success";
+  return "none";
+}
+
 /**
  * The signals a collapsed parent row surfaces on behalf of its hidden children.
  * A collapsed row renders these through its single trailing status glyph, using
- * the same priority as a leaf row: failed unread work is loudest, then pending
- * user input, then foreground runtime work, then workflow work, then background
- * agent work, then background commands, then plan/goal banner modes, then
- * unread success, then generic runtime work. Expanded rows show their own status,
+ * the same priority as a leaf row through `resolveThreadListIndicator`.
+ * Expanded rows show their own status,
  * since the children are then visible with their own glyphs. Background
  * agent, command, and workflow work are tracked separately from runtime work so
  * the sidebar can use task-specific signals instead of collapsing them into a
@@ -87,11 +142,7 @@ export interface CollapsedChildActivity {
   planMode: boolean;
   /** At least one child is showing the active-goal banner above the composer. */
   goal: boolean;
-  /**
-   * At least one finished child is unread. Only top-level worktree children
-   * qualify — `isUnreadDoneThread` is false for parented threads, so manager
-   * and managed-subgroup rollups never set this.
-   */
+  /** At least one successfully finished child is unread. */
   unread: boolean;
   /** At least one unread child has reached the terminal error state. */
   unreadError: boolean;
@@ -131,14 +182,13 @@ export function getCollapsedChildActivity(
   for (const thread of threads) {
     const childUnreadDone = isUnreadDoneThread(thread);
     if (childUnreadDone && thread.status === "error") {
-      unread = true;
       unreadError = true;
+    } else if (childUnreadDone) {
+      unread = true;
     }
 
     if (thread.hasPendingInteraction) {
-      // Mirror leaf rows: a blocked thread reads as pending, not also working.
       pending = true;
-      continue;
     }
     const childRuntimeWorking = isRuntimeBusyThread(thread);
     const childWorkflowActive = hasActiveWorkflowActivity(thread);
@@ -170,17 +220,6 @@ export function getCollapsedChildActivity(
     if (childGoalActive) {
       goal = true;
       working = true;
-    }
-    if (
-      !childRuntimeWorking &&
-      !childWorkflowActive &&
-      !childBackgroundAgentActive &&
-      !childBackgroundCommandActive &&
-      !childPlanModeActive &&
-      !childGoalActive &&
-      childUnreadDone
-    ) {
-      unread = true;
     }
   }
   return {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -137,6 +138,8 @@ function defaultBridgeNodeEnv(): Record<string, string> | undefined {
 // ---------------------------------------------------------------------------
 
 type ProviderProcess = RuntimeProviderProcess;
+
+const threadGoalClearResultSchema = z.object({ cleared: z.boolean() }).strict();
 
 interface ThreadRuntimeConfig {
   dynamicTools?: DynamicTool[];
@@ -1454,6 +1457,31 @@ function createAgentRuntimeInternal(
           });
           forgetThreadRuntimeState(proc, threadId);
           await shutdownThreadScopedCodexProcessIfIdle(proc);
+        },
+      });
+    },
+
+    async clearThreadGoal({ threadId }) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          const adapterCommand: AdapterCommand = {
+            type: "thread/goal/clear",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          return sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: threadGoalClearResultSchema,
+          });
         },
       });
     },

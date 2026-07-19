@@ -181,6 +181,49 @@ describe("SidebarThreadSearchPanel", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 
+  it("uses shared Plan precedence for search results", () => {
+    const thread = createThreadListEntry({
+      id: "thr_plan_goal",
+      title: "Concurrent Plan and Goal",
+    });
+    thread.status = "active";
+    thread.runtime = {
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    };
+    thread.activity = {
+      ...thread.activity,
+      activePlanModeCount: 1,
+      activeGoalCount: 1,
+    };
+    mockThreadSearch({
+      data: createSearchResponse(thread),
+      debouncedQuery: "plan",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="plan"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Goal active")).toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
   it("shows section metadata instead of project metadata in section mode", () => {
     const thread = createThreadListEntry({
       sectionId: "sec_ci",

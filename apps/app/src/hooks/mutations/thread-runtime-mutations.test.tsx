@@ -8,6 +8,8 @@ import { BbHttpError, sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 import {
+  useCancelThreadPlan,
+  useClearThreadGoal,
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
   useSetThreadQueuedMessageGroupBoundary,
@@ -20,6 +22,8 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
     ...actual,
     sdk: {
       threads: {
+        cancelPlan: vi.fn(),
+        clearGoal: vi.fn(),
         queuedMessages: {
           create: vi.fn(),
           delete: vi.fn(),
@@ -62,6 +66,8 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
+  vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
@@ -76,6 +82,35 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
+  it.each([
+    ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
+    ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],
+  ] as const)(
+    "invalidates persisted banner state only after successful %s cancellation",
+    async (_label, useMutationHook, getSdkMethod) => {
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => useMutationHook(), { wrapper });
+
+      await act(async () => {
+        await result.current.mutateAsync("thread-1");
+      });
+      expect(getSdkMethod()).toHaveBeenCalledWith({ threadId: "thread-1" });
+      expect(invalidateQueries).toHaveBeenCalled();
+
+      invalidateQueries.mockClear();
+      vi.mocked(getSdkMethod()).mockRejectedValueOnce(
+        new Error("provider rejected cancellation"),
+      );
+      await act(async () => {
+        await expect(result.current.mutateAsync("thread-1")).rejects.toThrow(
+          "provider rejected cancellation",
+        );
+      });
+      expect(invalidateQueries).not.toHaveBeenCalled();
+    },
+  );
+
   it("forwards execution input sources when sending a thread message", async () => {
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(() => useSendThreadMessage(), { wrapper });

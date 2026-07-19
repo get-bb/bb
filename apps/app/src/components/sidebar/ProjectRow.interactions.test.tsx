@@ -151,7 +151,7 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("shows foreground agent rollup before workflow activity", () => {
+  it("shows named workflow rollup before generic runtime activity", () => {
     renderProjectRow(
       vi.fn(),
       {
@@ -194,12 +194,11 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
-  it("shows active thread status when a top-level section is collapsed", () => {
+  it("uses shared Plan precedence when a top-level section is collapsed", () => {
     const store = createStore();
     const queryClient = new QueryClient();
     const sectionId = "sec_active";
@@ -210,6 +209,13 @@ describe("ProjectRow interactions", () => {
       runtime: {
         displayStatus: "active",
         hostReconnectGraceExpiresAt: null,
+      },
+      activity: {
+        activeWorkflowCount: 0,
+        activeBackgroundAgentCount: 0,
+        activeBackgroundCommandCount: 0,
+        activePlanModeCount: 1,
+        activeGoalCount: 1,
       },
     });
 
@@ -243,7 +249,35 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Goal active")).toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("surfaces named activity when the project is collapsed", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 0,
+              activeGoalCount: 1,
+            },
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(screen.queryByText("Test thread")).toBeNull();
+    expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

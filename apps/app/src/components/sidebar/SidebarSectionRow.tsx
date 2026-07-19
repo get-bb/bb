@@ -85,7 +85,11 @@ function SidebarSectionRowComponent({
   // Collapsed: the header speaks for its hidden descendants through one glyph
   // (pending > working > unread). Expanded: descendants show their own glyphs.
   const showRollupGlyph =
-    isCollapsed && (activity.pending || activity.working || activity.unread);
+    isCollapsed &&
+    (activity.pending ||
+      activity.working ||
+      activity.unread ||
+      activity.unreadError);
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     // Only the non-sticky header needs `relative`; a sticky tier is already a
@@ -167,10 +171,7 @@ function SidebarSectionRowComponent({
               hasActions && "max-md:pointer-coarse:hidden",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={activity}
-              isBusy={activity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={activity} />
           </span>
         ) : null}
         {hasActions ? (
@@ -188,10 +189,7 @@ function SidebarSectionRowComponent({
           >
             {showRollupGlyph ? (
               <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                <CollapsedThreadStatusGlyph
-                  activity={activity}
-                  isBusy={activity.working}
-                />
+                <CollapsedThreadStatusGlyph activity={activity} />
               </span>
             ) : null}
             {hasMenuActions ? (

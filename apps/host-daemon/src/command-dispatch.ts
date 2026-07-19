@@ -237,6 +237,32 @@ const commandHandlers: CommandHandlerMap = {
     await options.eventSink.flush();
     return {};
   },
+  "thread.goal.clear": async (command, options) => {
+    const entry = await ensureThreadRuntime(command, options);
+    const result = await entry.runtime.clearThreadGoal({
+      threadId: command.threadId,
+    });
+    await options.eventSink.flush();
+    return result;
+  },
+  "thread.plan.cancel": async (command, options) => {
+    const entry = await requireExistingEnvironment(
+      command.environmentId,
+      options.runtimeManager,
+    );
+    if (!entry.runtime.hasThread(command.threadId)) {
+      throw new ExpectedCommandDispatchError(
+        "unknown_thread_runtime",
+        `No provider runtime available for thread ${command.threadId}`,
+      );
+    }
+    await entry.runtime.waitForActiveTurn(command.threadId, {
+      timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+    });
+    await entry.runtime.stopThread({ threadId: command.threadId });
+    await options.eventSink.flush();
+    return {};
+  },
   "thread.rename": async (command, options) => {
     const entry = await options.runtimeManager.getOrAwait(
       command.environmentId,

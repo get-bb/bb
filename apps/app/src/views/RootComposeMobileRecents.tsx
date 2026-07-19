@@ -13,7 +13,6 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isBusyThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
 } from "@/lib/thread-activity";
@@ -89,56 +88,21 @@ function getMobileRecentThreads({
 }
 
 function MobileRecentThreadStatus({ thread }: MobileRecentThreadStatusProps) {
-  const isBusy = isBusyThread(thread);
-  const isRuntimeBusy = isRuntimeBusyThread(thread);
   const isUnreadDone = isUnreadDoneThread(thread);
   const isUnreadError = isUnreadDone && thread.status === "error";
-  const isWorkflowActive =
-    !isRuntimeBusy &&
-    hasActiveWorkflowActivity(thread) &&
-    !thread.hasPendingInteraction;
-  const isBackgroundAgentActive =
-    !isRuntimeBusy &&
-    !isWorkflowActive &&
-    hasActiveBackgroundAgentActivity(thread) &&
-    !thread.hasPendingInteraction;
-  const isBackgroundCommandActive =
-    !isRuntimeBusy &&
-    !isWorkflowActive &&
-    !isBackgroundAgentActive &&
-    hasActiveBackgroundCommandActivity(thread) &&
-    !thread.hasPendingInteraction;
-  const isPlanModeActive =
-    !isRuntimeBusy &&
-    !isWorkflowActive &&
-    !isBackgroundAgentActive &&
-    !isBackgroundCommandActive &&
-    hasActivePlanModeActivity(thread) &&
-    !thread.hasPendingInteraction;
-  const isGoalActive =
-    !isRuntimeBusy &&
-    !isWorkflowActive &&
-    !isBackgroundAgentActive &&
-    !isBackgroundCommandActive &&
-    !isPlanModeActive &&
-    hasActiveGoalActivity(thread) &&
-    !thread.hasPendingInteraction;
 
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={thread.hasPendingInteraction}
-      isBackgroundAgentActive={isBackgroundAgentActive}
-      isBackgroundCommandActive={isBackgroundCommandActive}
-      isForegroundAgentWorking={isRuntimeBusy && !thread.hasPendingInteraction}
-      isGoalActive={isGoalActive}
-      isPlanModeActive={isPlanModeActive}
-      isBusy={isRuntimeBusy && !thread.hasPendingInteraction}
-      isWorkflowActive={isWorkflowActive}
-      showUnreadBadge={
-        isUnreadError ||
-        (!thread.hasPendingInteraction && !isBusy && isUnreadDone)
-      }
-      unreadBadgeTone={isUnreadError ? "error" : "default"}
+      hasUnsubmittedDraft={false}
+      hasUnreadError={isUnreadError}
+      hasUnreadSuccess={isUnreadDone && !isUnreadError}
+      isBackgroundAgentActive={hasActiveBackgroundAgentActivity(thread)}
+      isBackgroundCommandActive={hasActiveBackgroundCommandActivity(thread)}
+      isGoalActive={hasActiveGoalActivity(thread)}
+      isPlanModeActive={hasActivePlanModeActivity(thread)}
+      isRuntimeActive={isRuntimeBusyThread(thread)}
+      isWorkflowActive={hasActiveWorkflowActivity(thread)}
     />
   );
 }

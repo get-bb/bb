@@ -3,6 +3,8 @@ import {
   getCollapsedChildActivity,
   isBusyThread,
   isUnreadDoneThread,
+  resolveThreadListIndicator,
+  type ThreadListIndicatorState,
 } from "./thread-activity";
 
 type ChildActivityInput = Parameters<
@@ -42,7 +44,99 @@ const unreadErrorChild = makeChild({
   lastReadAt: 10,
 });
 
+const idleIndicatorState: ThreadListIndicatorState = {
+  hasPendingInteraction: false,
+  hasUnsubmittedDraft: false,
+  hasUnreadError: false,
+  hasUnreadSuccess: false,
+  isBackgroundAgentActive: false,
+  isBackgroundCommandActive: false,
+  isGoalActive: false,
+  isPlanModeActive: false,
+  isRuntimeActive: false,
+  isWorkflowActive: false,
+};
+
 describe("thread-activity", () => {
+  describe("resolveThreadListIndicator", () => {
+    it.each([
+      ["isWorkflowActive", "workflow"],
+      ["isBackgroundAgentActive", "background-agent"],
+      ["isBackgroundCommandActive", "background-command"],
+      ["isPlanModeActive", "plan-mode"],
+      ["isGoalActive", "goal"],
+    ] as const)(
+      "prefers %s over concurrent generic runtime work",
+      (flag, expected) => {
+        expect(
+          resolveThreadListIndicator({
+            ...idleIndicatorState,
+            isRuntimeActive: true,
+            [flag]: true,
+          }),
+        ).toBe(expected);
+      },
+    );
+
+    it.each([
+      "isRuntimeActive",
+      "isWorkflowActive",
+      "isBackgroundAgentActive",
+      "isBackgroundCommandActive",
+      "isPlanModeActive",
+      "isGoalActive",
+    ] as const)("uses the working draft pencil with %s", (flag) => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          hasUnsubmittedDraft: true,
+          [flag]: true,
+        }),
+      ).toBe("working-draft");
+    });
+
+    it("keeps Plan and Goal independent and applies Plan precedence", () => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isGoalActive: true,
+          isPlanModeActive: true,
+        }),
+      ).toBe("plan-mode");
+    });
+
+    it("applies critical, idle draft, and unread precedence", () => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          hasPendingInteraction: true,
+          hasUnreadError: true,
+          isWorkflowActive: true,
+        }),
+      ).toBe("unread-error");
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          hasPendingInteraction: true,
+          isWorkflowActive: true,
+        }),
+      ).toBe("waiting-for-input");
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          hasUnsubmittedDraft: true,
+          hasUnreadSuccess: true,
+        }),
+      ).toBe("draft");
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          hasUnreadSuccess: true,
+        }),
+      ).toBe("unread-success");
+    });
+  });
+
   it("exposes shared running/unread helpers", () => {
     expect(
       isBusyThread({
@@ -261,7 +355,7 @@ describe("thread-activity", () => {
         backgroundCommand: false,
         planMode: false,
         goal: false,
-        unread: true,
+        unread: false,
         unreadError: true,
       });
     });
@@ -326,12 +420,12 @@ describe("thread-activity", () => {
         backgroundCommand: true,
         planMode: false,
         goal: false,
-        unread: true,
+        unread: false,
         unreadError: true,
       });
     });
 
-    it("reads a blocked child as pending only, never also working", () => {
+    it("preserves raw work signals for a blocked child", () => {
       const busyAndPending = makeChild({
         status: "active",
         hasPendingInteraction: true,
@@ -339,8 +433,8 @@ describe("thread-activity", () => {
       });
       expect(getCollapsedChildActivity([busyAndPending])).toEqual({
         pending: true,
-        working: false,
-        runtimeWorking: false,
+        working: true,
+        runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
         backgroundCommand: false,

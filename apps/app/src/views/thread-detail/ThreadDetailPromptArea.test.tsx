@@ -20,6 +20,8 @@ import { BbHttpError } from "@/lib/sdk";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
+  cancelThreadPlanMutate: vi.fn(),
+  clearThreadGoalMutate: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
@@ -292,6 +294,14 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCancelThreadPlan: () => ({
+    isPending: false,
+    mutate: mocks.cancelThreadPlanMutate,
+  }),
+  useClearThreadGoal: () => ({
+    isPending: false,
+    mutate: mocks.clearThreadGoalMutate,
+  }),
   useCreateThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.createQueuedMessageMutateAsync,

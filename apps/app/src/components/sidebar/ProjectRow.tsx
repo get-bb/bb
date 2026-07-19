@@ -931,7 +931,10 @@ function EnvironmentThreadGroupHeader({
   // header has no status of its own.
   const showRollupGlyph =
     isCollapsed &&
-    (childActivity.pending || childActivity.working || childActivity.unread);
+    (childActivity.pending ||
+      childActivity.working ||
+      childActivity.unread ||
+      childActivity.unreadError);
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     // A pinned header is already a positioned (sticky) box for its absolute
@@ -989,10 +992,7 @@ function EnvironmentThreadGroupHeader({
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={childActivity}
-              isBusy={childActivity.runtimeWorking}
-            />
+            <CollapsedThreadStatusGlyph activity={childActivity} />
           </span>
         ) : null}
         <div
@@ -1396,7 +1396,8 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       isCollapsed &&
       (section.activity.pending ||
         section.activity.working ||
-        section.activity.unread);
+        section.activity.unread ||
+        section.activity.unreadError);
     const topLevelActionControls = (
       <>
         {externalHeaderActions?.actions}
@@ -1478,18 +1479,12 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               hasTopLevelActions && "max-md:pointer-coarse:hidden",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={section.activity}
-              isBusy={section.activity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={section.activity} />
           </span>
         ) : null}
         {showRollupGlyph && hasTopLevelActions ? (
           <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            <CollapsedThreadStatusGlyph
-              activity={section.activity}
-              isBusy={section.activity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={section.activity} />
           </span>
         ) : null}
         {hasTopLevelActions ? (
@@ -2170,7 +2165,8 @@ function ProjectRowComponent({
     isCollapsed &&
     (projectActivity.pending ||
       projectActivity.working ||
-      projectActivity.unread);
+      projectActivity.unread ||
+      projectActivity.unreadError);
   const projectActions = (
     <>
       {headerActions ? (
@@ -2211,18 +2207,12 @@ function ProjectRowComponent({
               "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
             )}
           >
-            <CollapsedThreadStatusGlyph
-              activity={projectActivity}
-              isBusy={projectActivity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={projectActivity} />
           </span>
         ) : null}
         {showProjectRollupGlyph ? (
           <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            <CollapsedThreadStatusGlyph
-              activity={projectActivity}
-              isBusy={projectActivity.working}
-            />
+            <CollapsedThreadStatusGlyph activity={projectActivity} />
           </span>
         ) : null}
         <span
