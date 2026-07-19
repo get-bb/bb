@@ -283,7 +283,7 @@ describe("useComposer", () => {
             type="button"
             onClick={() =>
               composer.setThreadRowStatus({
-                icon: "AiScanText",
+                icon: "AiContentGenerator01",
                 label: "Prompt Shaper improving prompt",
                 effect: "shimmer",
               })
@@ -542,7 +542,7 @@ describe("useComposer", () => {
     expect(getComposerTextEffect(firstEffectKey)).toBe("shimmer");
     fireEvent.click(screen.getByText("queued-start-row-status"));
     expect(getPluginThreadRowStatus("thr_queue")).toEqual({
-      icon: "AiScanText",
+      icon: "AiContentGenerator01",
       label: "Prompt Shaper improving prompt",
       effect: "shimmer",
     });

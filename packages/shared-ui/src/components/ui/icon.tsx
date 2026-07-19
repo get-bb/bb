@@ -1,5 +1,6 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
+  AiContentGenerator01Icon,
   Alert02Icon,
   AlertCircleIcon,
   Archive03Icon,
@@ -118,44 +119,6 @@ import {
   ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "../../lib/utils";
-
-// Hugeicons added ai-scan-text to its catalog before the free npm package
-// exported it. Keep the official stroke-rounded geometry here until the
-// package export is available.
-const AiScanTextIcon: IconSvgElement = [
-  [
-    "path",
-    {
-      d: "M2.5 16.5C2.5 17.4293 2.5 17.894 2.57686 18.2804C2.89249 19.8671 4.13288 21.1075 5.71964 21.4231C6.10603 21.5 6.57069 21.5 7.5 21.5M21.5 16.5C21.5 17.4293 21.5 17.894 21.4231 18.2804C21.1075 19.8671 19.8671 21.1075 18.2804 21.4231C17.894 21.5 17.4293 21.5 16.5 21.5M2.5 7.5C2.5 6.57069 2.5 6.10603 2.57686 5.71964C2.89249 4.13288 4.13288 2.89249 5.71964 2.57686C6.10603 2.5 6.57069 2.5 7.5 2.5",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "0",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M7 9.5H13M7 14.5H17",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "1",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M19 2.5L18.8158 2.9979C18.5742 3.6507 18.4534 3.9772 18.2153 4.2153C17.9772 4.4534 17.6507 4.5742 16.9979 4.8158L16.5 5L16.9979 5.1842C17.6507 5.4258 17.9772 5.5466 18.2153 5.7847C18.4534 6.0228 18.5742 6.3493 18.8158 7.0021L19 7.5L19.1842 7.0021C19.4258 6.3493 19.5466 6.0228 19.7847 5.7847C20.0228 5.5466 20.3493 5.4258 21.0021 5.1842L21.5 5L21.0021 4.8158C20.3493 4.5742 20.0228 4.4534 19.7847 4.2153C19.5466 3.9772 19.4258 3.6507 19.1842 2.9979L19 2.5Z",
-      stroke: "currentColor",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "2",
-    },
-  ],
-];
 
 // The free hugeicons set ships no artist-palette glyph (its `Palette` export
 // is a pen nib), so this inlines the stroke-rounded palette artwork in the
@@ -291,7 +254,7 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
 ];
 
 const ICON_MAP = {
-  AiScanText: AiScanTextIcon,
+  AiContentGenerator01: AiContentGenerator01Icon,
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
   AlignLeft: Menu02Icon,

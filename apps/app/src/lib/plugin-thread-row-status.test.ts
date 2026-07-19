@@ -7,7 +7,7 @@ import {
 } from "./plugin-thread-row-status";
 
 const SHAPING_STATUS = {
-  icon: "AiScanText",
+  icon: "AiContentGenerator01",
   label: "Prompt Shaper improving prompt",
   effect: "shimmer",
 } as const;

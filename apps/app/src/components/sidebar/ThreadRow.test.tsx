@@ -183,14 +183,14 @@ describe("ThreadRow", () => {
 
   it("replaces the draft icon with a shimmering plugin status and restores it when cleared", () => {
     setPluginThreadRowStatus("thr_test", "prompt-shaper", {
-      icon: "AiScanText",
+      icon: "AiContentGenerator01",
       label: "Prompt Shaper improving prompt",
       effect: "shimmer",
     });
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const shapingIcon = screen.getByLabelText("Prompt Shaper improving prompt");
-    expect(shapingIcon.getAttribute("data-icon")).toBe("AiScanText");
+    expect(shapingIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(shapingIcon.classList)).toContain("animate-shine-icon");
     expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
 
@@ -206,7 +206,7 @@ describe("ThreadRow", () => {
 
   it("replaces the generic working indicator with a shimmering plugin status", () => {
     setPluginThreadRowStatus("thr_test", "prompt-shaper", {
-      icon: "AiScanText",
+      icon: "AiContentGenerator01",
       label: "Prompt Shaper improving prompt",
       effect: "shimmer",
     });
@@ -222,7 +222,7 @@ describe("ThreadRow", () => {
     });
 
     const shapingIcon = screen.getByLabelText("Prompt Shaper improving prompt");
-    expect(shapingIcon.getAttribute("data-icon")).toBe("AiScanText");
+    expect(shapingIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(shapingIcon.classList)).toContain("animate-shine-icon");
     expect(screen.queryByLabelText("Agent working")).toBeNull();
     expect(
