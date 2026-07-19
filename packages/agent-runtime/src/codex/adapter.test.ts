@@ -2668,6 +2668,26 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("translateEvent ignores Codex turn moderation metadata", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "turn/moderationMetadata",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        metadata: {
+          prompt: {},
+          generation: {},
+          tool_call: {},
+          tool_response: {},
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   it("translateEvent item/mcpToolCall/progress maps to shared tool progress", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(

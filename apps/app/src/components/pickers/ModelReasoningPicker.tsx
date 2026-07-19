@@ -531,7 +531,6 @@ export function ModelReasoningPicker({
       }
       onModelChange(model);
       setMoreModelsOpen(false);
-      setOpen(false);
       setPreviewProviderId(null);
     },
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
@@ -590,9 +589,8 @@ export function ModelReasoningPicker({
         onModelChange(previewDefaultModel.model);
       }
       onReasoningChange(level);
-      // Match the standalone Reasoning OptionPicker's behaviour: picking a
-      // value commits and closes.
-      setOpen(false);
+      // Keep the combined picker open so the model and reasoning effort can be
+      // changed together without reopening it between selections.
       setPreviewProviderId(null);
       setMoreModelsOpen(false);
     },

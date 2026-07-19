@@ -36,6 +36,24 @@ unless you pass `--auto-update` explicitly.
   bb machine provider-cli install <machine> <claudeCode|codex|cursor>
     --action <install|update>
 
+Updates commands
+
+One consolidated view of bb and provider CLI updates across machines — the
+CLI counterpart of Settings → Updates and the sidebar Updates badge.
+
+  bb updates [status]                     Show bb-app and provider CLI update
+                                          status for every machine
+    --machine <id-or-name>                Limit to one machine
+    --json                                Print the aggregate as JSON
+  bb updates apply                        Run every available provider CLI
+                                          install/update, one at a time
+    --machine <id-or-name>                Limit to one machine
+    --json                                Print per-target results as JSON
+
+`bb updates apply` covers provider CLIs only. Update bb-app itself with the
+printed upgrade command (`npx bb-app@latest`) or the desktop app's relaunch;
+connected daemons then follow the server version automatically.
+
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.
 

@@ -21,10 +21,6 @@ vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
   ProviderCliInstallLogDialog: () => null,
 }));
 
-vi.mock("@/components/ui/app-toast-descriptions", () => ({
-  AppToastCommandDescription: () => null,
-}));
-
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -84,7 +80,6 @@ function issueForProvider(
     title: `${displayName} update available`,
     description: "1.0.0 -> 1.0.1",
     fingerprint: `${provider}:outdated`,
-    toastId: `provider-cli-health:${provider}`,
   };
 }
 
@@ -123,13 +118,15 @@ describe("useProviderCliInstallRunner", () => {
     const onStatusUpdated = vi.fn();
     const { result } = renderHook(() =>
       useProviderCliInstallRunner({
-        hostId: "host_1",
         onStatusUpdated,
       }),
     );
 
     act(() => {
-      result.current.startInstall(issueForProvider("codex"));
+      result.current.startInstall({
+        hostId: "host_1",
+        issue: issueForProvider("codex"),
+      });
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
@@ -141,18 +138,16 @@ describe("useProviderCliInstallRunner", () => {
     );
 
     act(() => {
-      result.current.startInstall(issueForProvider("claudeCode"));
+      result.current.startInstall({
+        hostId: "host_1",
+        issue: issueForProvider("claudeCode"),
+      });
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
-    expect(appToastMock.warning).not.toHaveBeenCalled();
-    expect(appToastMock.message).toHaveBeenCalledWith(
-      "Claude Code update queued",
-      expect.objectContaining({
-        id: "provider-cli-health-run:claudeCode",
-      }),
-    );
-    expect(result.current.queuedProviders.has("claudeCode")).toBe(true);
+    expect(appToastMock.message).not.toHaveBeenCalled();
+    expect(appToastMock.loading).not.toHaveBeenCalled();
+    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(true);
 
     await act(async () => {
       completeInstall(installAt(0), {
@@ -173,7 +168,7 @@ describe("useProviderCliInstallRunner", () => {
         actionKind: "update",
       }),
     );
-    expect(result.current.queuedProviders.has("claudeCode")).toBe(false);
+    expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(false);
 
     await act(async () => {
       completeInstall(installAt(1), {
@@ -186,5 +181,7 @@ describe("useProviderCliInstallRunner", () => {
     });
 
     expect(onStatusUpdated).toHaveBeenCalledTimes(2);
+    expect(onStatusUpdated).toHaveBeenLastCalledWith("host_1");
+    expect(appToastMock.success).not.toHaveBeenCalled();
   });
 });
