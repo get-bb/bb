@@ -43,12 +43,9 @@ function RowButton({ className, ...props }: ButtonProps) {
   return (
     <Button
       type="button"
-      variant="ghost"
+      variant="outline"
       size="sm"
-      className={cn(
-        "h-6 px-2 text-xs text-muted-foreground hover:text-foreground",
-        className,
-      )}
+      className={cn("h-6 px-2 text-xs", className)}
       {...props}
     />
   );
@@ -332,7 +329,7 @@ export function MachineUpdatesRows({
           </>
         ) : host.status === "connected" ? (
           <>
-            <StateCell tone="subtle">Follows the server version</StateCell>
+            <StateCell tone="subtle">In sync</StateCell>
             <ActionCell />
           </>
         ) : (
