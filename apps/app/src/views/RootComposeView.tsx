@@ -105,7 +105,10 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
-import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
+import {
+  requestComposerFocus,
+  subscribeComposerFocusRequests,
+} from "@/lib/composer-focus-requests";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -411,6 +414,10 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
     return false;
   }
   return "focusPrompt" in state && state.focusPrompt === true;
+}
+
+export function requestRootComposePluginFocus(storageKey: string | null): void {
+  requestComposerFocus(storageKey);
 }
 
 interface BuildMobileRecentThreadsArgs {
@@ -1106,7 +1113,7 @@ export function RootComposeView() {
       },
       getCurrent: promptDraft.getCurrent,
       setDraft: promptDraft.setDraft,
-      focus: () => promptBoxRef.current?.focusEnd(),
+      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
     }),
     [
       projectId,
@@ -1114,6 +1121,7 @@ export function RootComposeView() {
       promptDraft.getCurrent,
       promptDraft.mentions,
       promptDraft.setDraft,
+      promptDraft.storageKey,
       promptDraft.text,
     ],
   );

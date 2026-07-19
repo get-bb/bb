@@ -12,6 +12,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
   buildRootComposeTerminalSessions,
@@ -26,6 +27,7 @@ import {
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
+  requestRootComposePluginFocus,
   restorePromptDraftAfterOptionChange,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
@@ -35,6 +37,23 @@ import {
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
+
+describe("requestRootComposePluginFocus", () => {
+  it("routes host focus through the subscriber that reveals the root composer", () => {
+    let focusRequests = 0;
+    const unsubscribe = subscribeComposerFocusRequests(
+      "bb.promptDraft.new-thread",
+      () => {
+        focusRequests += 1;
+      },
+    );
+
+    requestRootComposePluginFocus("bb.promptDraft.new-thread");
+
+    expect(focusRequests).toBe(1);
+    unsubscribe();
+  });
+});
 
 interface MakeThreadArgs {
   id: string;
