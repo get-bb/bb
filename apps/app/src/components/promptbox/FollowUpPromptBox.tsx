@@ -16,6 +16,10 @@ import type {
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
 import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import {
   useAppCommandContext,
   useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
@@ -194,6 +198,8 @@ export interface FollowUpPromptBoxProps {
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
+  /** Optional transient draft host exposed to plugin composer hooks. */
+  pluginComposerHost?: PluginComposerHost | null;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -248,6 +254,7 @@ function FollowUpPromptBoxWithComposer({
   permissionReadOnly,
   typeahead,
   promptActions,
+  pluginComposerHost,
   zenModeResetKey,
   focusEndKey,
   isPrimaryComposer = true,
@@ -616,7 +623,12 @@ function FollowUpPromptBoxWithComposer({
           {stack}
         </div>
         <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
-        {createPortal(composerElement, composerPortalHost)}
+        {createPortal(
+          <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+            {composerElement}
+          </PluginComposerHostProvider>,
+          composerPortalHost,
+        )}
       </div>
     </>
   );

@@ -9,6 +9,7 @@ import type {
 import {
   cleanup,
   fireEvent,
+  act,
   render,
   screen,
   waitFor,
@@ -17,6 +18,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { BbHttpError } from "@/lib/sdk";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
   navigate: vi.fn(),
+  pluginComposerHost: null as PluginComposerHost | null,
   promptDraft: {
     addAttachment: vi.fn(),
     attachments: [],
@@ -66,6 +69,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     executionReadOnly,
     permission,
     permissionReadOnly,
+    pluginComposerHost,
     stack,
   }: {
     attachments: {
@@ -92,6 +96,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     executionReadOnly?: boolean;
     permission: { value?: string };
     permissionReadOnly?: boolean;
+    pluginComposerHost?: PluginComposerHost | null;
     stack: ReactNode;
   }) => (
     <div data-testid="follow-up-prompt-box">
@@ -111,6 +116,54 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         {permissionReadOnly ? "true" : "false"}
       </div>
       <div data-testid="attachment-count">{attachments.items.length}</div>
+      <div data-testid="plugin-composer-scope">
+        {pluginComposerHost
+          ? `${pluginComposerHost.scope.kind}:${
+              pluginComposerHost.scope.kind === "queued-message"
+                ? pluginComposerHost.scope.queuedMessageId
+                : ""
+            }`
+          : "route"}
+      </div>
+      {pluginComposerHost ? (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              pluginComposerHost.setDraft({
+                ...pluginComposerHost.draft,
+                text: "Plugin-enhanced queued message",
+              })
+            }
+          >
+            Simulate plugin replacement
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              pluginComposerHost.setDraft({
+                ...pluginComposerHost.getCurrent(),
+                text: "First plugin update",
+              });
+              const current = pluginComposerHost.getCurrent();
+              pluginComposerHost.setDraft({
+                ...current,
+                text: `${current.text} + second plugin update`,
+              });
+            }}
+          >
+            Simulate chained plugin updates
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              mocks.pluginComposerHost = pluginComposerHost;
+            }}
+          >
+            Capture plugin host
+          </button>
+        </>
+      ) : null}
       {composer ? (
         <>
           <input
@@ -450,6 +503,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
+  mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.queuedMessages = [];
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
@@ -542,6 +596,133 @@ describe("ThreadDetailPromptArea", () => {
         ).value,
       ).toBe("Keep this bottom draft");
     });
+  });
+
+  it("exposes the inline queued draft to plugins without dropping attachments", async () => {
+    mocks.queuedMessages = [
+      makeQueuedMessage({
+        content: [
+          { type: "text", text: "Already queued", mentions: [] },
+          {
+            type: "localFile",
+            path: "uploads/queued-spec.md",
+            name: "queued-spec.md",
+            sizeBytes: 42,
+          },
+        ],
+      }),
+    ];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+
+    expect(screen.getByTestId("plugin-composer-scope").textContent).toBe(
+      "queued-message:qmsg_1",
+    );
+    expect(screen.getByTestId("attachment-count").textContent).toBe("1");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Simulate plugin replacement" }),
+    );
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Plugin-enhanced queued message");
+    expect(screen.getByTestId("attachment-count").textContent).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    await waitFor(() => {
+      expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        expectedUpdatedAt: 1,
+        id: "thr_1",
+        input: [
+          {
+            mentions: [],
+            text: "Plugin-enhanced queued message",
+            type: "text",
+          },
+          {
+            name: "queued-spec.md",
+            path: "uploads/queued-spec.md",
+            sizeBytes: 42,
+            type: "localFile",
+          },
+        ],
+        queuedMessageId: "qmsg_1",
+      });
+    });
+  });
+
+  it("keeps back-to-back plugin updates in the active queued draft", () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Simulate chained plugin updates" }),
+    );
+
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("First plugin update + second plugin update");
+  });
+
+  it("ignores a stale plugin write after the queued edit changes", () => {
+    mocks.queuedMessages = [
+      makeQueuedMessage({
+        id: "qmsg_1",
+        content: [{ type: "text", text: "First queued draft", mentions: [] }],
+      }),
+      makeQueuedMessage({
+        id: "qmsg_2",
+        content: [{ type: "text", text: "Second queued draft", mentions: [] }],
+      }),
+    ];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const staleHost = mocks.pluginComposerHost;
+    expect(staleHost?.scope).toMatchObject({
+      kind: "queued-message",
+      queuedMessageId: "qmsg_1",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 2" }),
+    );
+    expect(screen.getByTestId("plugin-composer-scope").textContent).toBe(
+      "queued-message:qmsg_2",
+    );
+
+    act(() => {
+      staleHost?.setDraft({
+        ...staleHost.getCurrent(),
+        text: "Late plugin replacement",
+      });
+    });
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Second queued draft");
   });
 
   it("shows the queued execution values as read-only while editing", () => {

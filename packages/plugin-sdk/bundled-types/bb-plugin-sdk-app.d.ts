@@ -387,10 +387,14 @@ interface PluginSettingsState {
 }
 /** State of the app's shared realtime connection to the bb server. */
 type PluginRealtimeConnectionState = "connecting" | "connected" | "reconnecting";
-/** Where `useComposer()` writes: the active thread's draft or the new-thread draft. */
+/** Where `useComposer()` writes. */
 type PluginComposerScope = {
     kind: "thread";
     threadId: string;
+} | {
+    kind: "queued-message";
+    threadId: string;
+    queuedMessageId: string;
 } | {
     kind: "new-thread";
     projectId: string | null;
@@ -407,9 +411,11 @@ interface PluginComposerMention {
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
  * built-in "Add to chat" affordances (file preview, diff, terminal selections)
- * write to. Inside a thread context writes land in that thread's draft;
- * anywhere else (nav panel, homepage section) they seed the new-thread
- * composer draft, which persists until the user sends or clears it.
+ * write to. While a queued message is being edited, writes land in that
+ * message's inline editor. Otherwise, inside a thread context writes land in
+ * that thread's draft; anywhere else (nav panel, homepage section) they seed
+ * the new-thread composer draft, which persists until the user sends or clears
+ * it.
  */
 interface PluginComposerApi {
     scope: PluginComposerScope;

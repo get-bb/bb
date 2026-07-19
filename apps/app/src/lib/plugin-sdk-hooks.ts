@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -18,12 +13,14 @@ import type {
   PluginSettingsState,
 } from "@bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
+import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
+import { appendQuoteAndAttachmentsToDraft } from "@/lib/prompt-draft";
 import {
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
@@ -353,23 +350,34 @@ function reconcileComposerMentions(
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
- * write to. Thread context → that thread's draft; anywhere else → the
- * new-thread draft. Focus requests ride the composer-focus bus, which the
- * composer hosts (ThreadDetailView / RootComposeView) subscribe to by
- * draft storage key.
+ * write to. A transient host takes precedence while a queued message is being
+ * edited; otherwise thread context targets that thread's draft and every
+ * other surface targets the new-thread draft. Focus requests ride the
+ * composer-focus bus when the active composer does not provide its own focus
+ * primitive.
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
+  const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
-  const scope: PromptDraftScope = useMemo(
+  const routeScope: PromptDraftScope = useMemo(
     () =>
       threadId !== undefined && projectId !== undefined
         ? { kind: "thread", projectId, threadId }
         : { kind: "new-thread" },
     [projectId, threadId],
   );
-  const draft = usePromptDraftStorage(scope);
-  const { addQuote: addDraftQuote, getCurrent, setDraft, storageKey } = draft;
+  const routeDraft = usePromptDraftStorage(routeScope);
+  const getCurrent = composerHost?.getCurrent ?? routeDraft.getCurrent;
+  const setDraft = composerHost?.setDraft ?? routeDraft.setDraft;
+  const hostFocus = composerHost?.focus;
+  const focusActiveComposer = useCallback(() => {
+    if (hostFocus) {
+      hostFocus();
+      return;
+    }
+    requestComposerFocus(routeDraft.storageKey);
+  }, [hostFocus, routeDraft.storageKey]);
 
   const replaceText = useCallback(
     (current: ReturnType<typeof getCurrent>, nextText: string) => {
@@ -408,10 +416,14 @@ export function useComposer(): PluginComposerApi {
 
   const addQuote = useCallback(
     (text: string) => {
-      addDraftQuote(text);
-      requestComposerFocus(storageKey);
+      const current = getCurrent();
+      const next = appendQuoteAndAttachmentsToDraft(current, text, []);
+      if (next !== current) {
+        setDraft(next);
+      }
+      focusActiveComposer();
     },
-    [addDraftQuote, storageKey],
+    [focusActiveComposer, getCurrent, setDraft],
   );
 
   const insertMention = useCallback(
@@ -451,22 +463,23 @@ export function useComposer(): PluginComposerApi {
           },
         ],
       });
-      requestComposerFocus(storageKey);
+      focusActiveComposer();
     },
-    [getCurrent, pluginId, setDraft, storageKey],
+    [focusActiveComposer, getCurrent, pluginId, setDraft],
   );
 
-  const focus = useCallback(() => {
-    requestComposerFocus(storageKey);
-  }, [storageKey]);
+  const focus = focusActiveComposer;
+  const composerScope = composerHost?.scope;
+  const composerText = composerHost?.draft.text ?? routeDraft.text;
 
   return useMemo(
     () => ({
       scope:
-        threadId !== undefined
+        composerScope ??
+        (threadId !== undefined
           ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId: projectId ?? null },
-      text: draft.text,
+          : { kind: "new-thread", projectId: projectId ?? null }),
+      text: composerText,
       setText,
       updateText,
       clear,
@@ -477,7 +490,8 @@ export function useComposer(): PluginComposerApi {
     [
       addQuote,
       clear,
-      draft.text,
+      composerScope,
+      composerText,
       focus,
       insertMention,
       projectId,
