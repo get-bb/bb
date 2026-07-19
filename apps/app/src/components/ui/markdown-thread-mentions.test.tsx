@@ -38,6 +38,16 @@ function renderMarkdown(node: ReactNode) {
   return render(markdownTree(node));
 }
 
+function expectDisplayOnlyPill(label: string): void {
+  const labelNode = screen.getByText(label);
+  const pill = labelNode.closest<HTMLElement>("[data-prompt-mention]");
+  expect(pill).not.toBeNull();
+  expect(pill?.closest("a")).toBeNull();
+  expect(pill?.classList.contains("font-normal")).toBe(true);
+  expect(pill?.classList.contains("cursor-default")).toBe(true);
+  expect(pill?.classList.contains("cursor-pointer")).toBe(false);
+}
+
 const THREAD_MENTION: PromptTextMention = {
   start: 0,
   end: "@thread:thr_child".length,
@@ -187,7 +197,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
-  it("renders a non-interactive thread pill inside an authored Markdown link", () => {
+  it("lifts a non-interactive thread pill out of an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -199,13 +209,12 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("renders a directive-split thread pill as non-interactive inside an authored Markdown link", () => {
+  it("lifts a directive-split thread pill out of an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -218,13 +227,12 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("renders a non-interactive thread pill inside an authored Markdown link reference", () => {
+  it("lifts a non-interactive thread pill out of an authored Markdown link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -238,13 +246,12 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("renders a directive-split thread pill as non-interactive inside a link reference", () => {
+  it("lifts a directive-split thread pill out of a link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -259,13 +266,34 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("renders a non-interactive thread pill inside formatted authored link text", () => {
+  it("preserves surrounding authored link text while lifting the mention pill", () => {
+    renderMarkdown(
+      <MarkdownPreview
+        content="[Read @thread:thr_child details](https://example.com)"
+        threadMentions={{
+          mentions: [THREAD_MENTION],
+          preserveSoftBreaks: true,
+          resolveLinkHref: resolveThreadLink,
+        }}
+      />,
+    );
+
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(
+      screen.getByRole("link", { name: "Read" }).getAttribute("href"),
+    ).toBe("https://example.com");
+    expect(
+      screen.getByRole("link", { name: "details" }).getAttribute("href"),
+    ).toBe("https://example.com");
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+  });
+
+  it("lifts a non-interactive thread pill out of formatted authored link text", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[**@thread:thr_child**](https://example.com)"
@@ -277,18 +305,12 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    const pill = screen.getByText("Rebuild comments").parentElement;
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(link.querySelector("strong")?.textContent).toBe("Rebuild comments");
-    expect(pill?.classList.contains("font-normal")).toBe(true);
-    expect(pill?.classList.contains("cursor-default")).toBe(true);
-    expect(pill?.classList.contains("cursor-pointer")).toBe(false);
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("renders a directive-split thread pill as non-interactive inside a formatted link reference", () => {
+  it("lifts a directive-split thread pill out of a formatted link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -303,10 +325,8 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Rebuild comments" });
-    expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(link.querySelector("em")?.textContent).toBe("Rebuild comments");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expectDisplayOnlyPill("Rebuild comments");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 

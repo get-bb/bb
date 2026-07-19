@@ -1,5 +1,15 @@
 import type { ComponentType } from "react";
-import type { Nodes, Parent, PhrasingContent, Text } from "mdast";
+import type {
+  Delete,
+  Emphasis,
+  Link,
+  LinkReference,
+  Nodes,
+  Parent,
+  PhrasingContent,
+  Strong,
+  Text,
+} from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties` so a
 // plain `text` node can carry the custom element instructions below.
 import type {} from "mdast-util-to-hast";
@@ -133,6 +143,138 @@ function collectAuthoredMarkdownLinkNodes(tree: Nodes): WeakSet<object> {
   return linkNodes;
 }
 
+type ThreadMentionFormattingNode = Delete | Emphasis | Strong;
+type AuthoredMarkdownLinkNode = Link | LinkReference;
+
+function isThreadMentionNode(node: PhrasingContent): node is Text {
+  return node.type === "text" && node.data?.hName === THREAD_MENTION_HAST_NAME;
+}
+
+function isThreadMentionFormattingNode(
+  node: PhrasingContent,
+): node is ThreadMentionFormattingNode {
+  return (
+    node.type === "delete" || node.type === "emphasis" || node.type === "strong"
+  );
+}
+
+function cloneFormattingNodeWithChildren(
+  node: ThreadMentionFormattingNode,
+  children: PhrasingContent[],
+): ThreadMentionFormattingNode {
+  switch (node.type) {
+    case "delete":
+      return { ...node, children };
+    case "emphasis":
+      return { ...node, children };
+    case "strong":
+      return { ...node, children };
+  }
+}
+
+function cloneAuthoredLinkWithChildren(
+  node: AuthoredMarkdownLinkNode,
+  children: PhrasingContent[],
+): AuthoredMarkdownLinkNode {
+  switch (node.type) {
+    case "link":
+      return { ...node, children };
+    case "linkReference":
+      return { ...node, children };
+  }
+}
+
+function splitFormattingNodeOnThreadMentions(
+  node: ThreadMentionFormattingNode,
+): PhrasingContent[] {
+  const children = node.children.flatMap(splitPhrasingNodeOnThreadMentions);
+  if (!children.some(isThreadMentionNode)) {
+    return [node];
+  }
+
+  const replacements: PhrasingContent[] = [];
+  let formattingChildren: PhrasingContent[] = [];
+  const flushFormattingChildren = () => {
+    if (formattingChildren.length === 0) {
+      return;
+    }
+    replacements.push(
+      cloneFormattingNodeWithChildren(node, formattingChildren),
+    );
+    formattingChildren = [];
+  };
+
+  for (const child of children) {
+    if (isThreadMentionNode(child)) {
+      flushFormattingChildren();
+      replacements.push(child);
+      continue;
+    }
+    formattingChildren.push(child);
+  }
+  flushFormattingChildren();
+  return replacements;
+}
+
+function splitPhrasingNodeOnThreadMentions(
+  node: PhrasingContent,
+): PhrasingContent[] {
+  if (isThreadMentionNode(node)) {
+    return [node];
+  }
+  return isThreadMentionFormattingNode(node)
+    ? splitFormattingNodeOnThreadMentions(node)
+    : [node];
+}
+
+function splitAuthoredLinkOnThreadMentions(
+  node: AuthoredMarkdownLinkNode,
+): PhrasingContent[] {
+  const children = node.children.flatMap(splitPhrasingNodeOnThreadMentions);
+  if (!children.some(isThreadMentionNode)) {
+    return [node];
+  }
+
+  const replacements: PhrasingContent[] = [];
+  let linkChildren: PhrasingContent[] = [];
+  const flushLinkChildren = () => {
+    if (linkChildren.length === 0) {
+      return;
+    }
+    replacements.push(cloneAuthoredLinkWithChildren(node, linkChildren));
+    linkChildren = [];
+  };
+
+  for (const child of children) {
+    if (isThreadMentionNode(child)) {
+      flushLinkChildren();
+      replacements.push(child);
+      continue;
+    }
+    linkChildren.push(child);
+  }
+  flushLinkChildren();
+  return replacements;
+}
+
+function liftThreadMentionsOutOfAuthoredLinks(tree: Nodes): void {
+  visit(tree, (node, index, parent: Parent | undefined) => {
+    if (
+      (node.type !== "link" && node.type !== "linkReference") ||
+      index === undefined ||
+      parent === undefined
+    ) {
+      return;
+    }
+    const replacements = splitAuthoredLinkOnThreadMentions(node);
+    if (replacements.length === 1 && replacements[0] === node) {
+      return;
+    }
+    parent.children.splice(index, 1, ...replacements);
+    return index + replacements.length;
+  });
+}
+
 function isMentionBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
@@ -145,8 +287,9 @@ function isMentionBoundary(text: string, index: number): boolean {
  * same source into an `@thread` text suffix plus a `:<id>` text directive; the
  * second pass rejoins that exact pair before the directive renderer sees it.
  * Mentions nested inside authored Markdown links carry a non-interactive flag
- * so they keep the canonical pill appearance without creating a nested link.
- * No-op for bodies without the token.
+ * and are lifted out of the authored anchor, splitting any ordinary linked text
+ * around them. This keeps the canonical pill appearance without activating the
+ * thread or authored link. No-op for bodies without the token.
  */
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
@@ -204,6 +347,7 @@ export function remarkThreadMentions() {
       parent.children.splice(index, 1, threadMentionNode(directive.name));
       return index + 1;
     });
+    liftThreadMentionsOutOfAuthoredLinks(tree);
   };
 }
 
@@ -244,7 +388,7 @@ function resolveThreadMentionHref(
  * custom hast element the remark plugin emits. Resolves the mention's display
  * resource from the body `mentions` array and routes the link through
  * `resolveSegmentLinkHref`, reusing the canonical `PromptMentionPill`. Nodes
- * marked non-interactive render the pill as a span inside their authored link.
+ * marked non-interactive render as a display-only span.
  */
 export function buildThreadMentionComponent({
   mentions,
