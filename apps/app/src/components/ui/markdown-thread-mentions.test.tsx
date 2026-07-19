@@ -38,18 +38,6 @@ function renderMarkdown(node: ReactNode) {
   return render(markdownTree(node));
 }
 
-function expectLinkedThreadPill(label: string): void {
-  const labelNode = screen.getByText(label);
-  const pill = labelNode.closest<HTMLElement>("[data-prompt-mention]");
-  expect(pill).not.toBeNull();
-  expect(pill?.closest("a")?.getAttribute("href")).toBe(
-    "/projects/proj_demo/threads/thr_child",
-  );
-  expect(pill?.classList.contains("font-normal")).toBe(true);
-  expect(pill?.classList.contains("cursor-pointer")).toBe(true);
-  expect(pill?.classList.contains("cursor-default")).toBe(false);
-}
-
 const THREAD_MENTION: PromptTextMention = {
   start: 0,
   end: "@thread:thr_child".length,
@@ -199,7 +187,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
-  it("gives a thread mention precedence over an authored Markdown link", () => {
+  it("leaves a raw thread token inside an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -211,12 +199,13 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    expectLinkedThreadPill("Rebuild comments");
+    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
+    expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
-  it("gives a directive-split thread mention precedence over an authored Markdown link", () => {
+  it("reconstructs a directive-split thread token inside an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -229,107 +218,10 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    expectLinkedThreadPill("Rebuild comments");
+    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
-  });
-
-  it("gives a thread mention precedence over an authored Markdown link reference", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content={
-          "[@thread:thr_child][reference]\n\n[reference]: https://example.com"
-        }
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    expectLinkedThreadPill("Rebuild comments");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
-  });
-
-  it("gives a directive-split thread mention precedence over a link reference", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content={
-          "[@thread:thr_child][reference]\n\n[reference]: https://example.com"
-        }
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
-
-    expectLinkedThreadPill("Rebuild comments");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
-  });
-
-  it("preserves surrounding authored link text while giving the mention its own link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[Read @thread:thr_child details](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    expectLinkedThreadPill("Rebuild comments");
-    expect(
-      screen.getByRole("link", { name: "Read" }).getAttribute("href"),
-    ).toBe("https://example.com");
-    expect(
-      screen.getByRole("link", { name: "details" }).getAttribute("href"),
-    ).toBe("https://example.com");
-    expect(screen.getAllByRole("link")).toHaveLength(3);
-  });
-
-  it("gives a formatted thread mention precedence over an authored link", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content="[**@thread:thr_child**](https://example.com)"
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-      />,
-    );
-
-    expectLinkedThreadPill("Rebuild comments");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
-  });
-
-  it("gives a formatted directive-split thread mention precedence over a link reference", () => {
-    renderMarkdown(
-      <MarkdownPreview
-        content={
-          "[*@thread:thr_child*][reference]\n\n[reference]: https://example.com"
-        }
-        threadMentions={{
-          mentions: [THREAD_MENTION],
-          preserveSoftBreaks: true,
-          resolveLinkHref: resolveThreadLink,
-        }}
-        messageDirectives={ACTIVE_MESSAGE_DIRECTIVES}
-      />,
-    );
-
-    expectLinkedThreadPill("Rebuild comments");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("@thread:thr_child")).toBeNull();
+    expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
   it("leaves assistant content (no mentions prop) untouched — token stays literal", () => {

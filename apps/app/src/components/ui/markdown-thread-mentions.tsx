@@ -1,15 +1,5 @@
 import type { ComponentType } from "react";
-import type {
-  Delete,
-  Emphasis,
-  Link,
-  LinkReference,
-  Nodes,
-  Parent,
-  PhrasingContent,
-  Strong,
-  Text,
-} from "mdast";
+import type { Nodes, Parent, PhrasingContent, Text } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties` so a
 // plain `text` node can carry the custom element instructions below.
 import type {} from "mdast-util-to-hast";
@@ -121,136 +111,17 @@ function isUndecoratedTextDirective(directive: ParsedTextDirective): boolean {
   );
 }
 
-type ThreadMentionFormattingNode = Delete | Emphasis | Strong;
-type AuthoredMarkdownLinkNode = Link | LinkReference;
-
-function isThreadMentionNode(node: PhrasingContent): node is Text {
-  return node.type === "text" && node.data?.hName === THREAD_MENTION_HAST_NAME;
-}
-
-function isThreadMentionFormattingNode(
-  node: PhrasingContent,
-): node is ThreadMentionFormattingNode {
-  return (
-    node.type === "delete" || node.type === "emphasis" || node.type === "strong"
-  );
-}
-
-function cloneFormattingNodeWithChildren(
-  node: ThreadMentionFormattingNode,
-  children: PhrasingContent[],
-): ThreadMentionFormattingNode {
-  switch (node.type) {
-    case "delete":
-      return { ...node, children };
-    case "emphasis":
-      return { ...node, children };
-    case "strong":
-      return { ...node, children };
-  }
-}
-
-function cloneAuthoredLinkWithChildren(
-  node: AuthoredMarkdownLinkNode,
-  children: PhrasingContent[],
-): AuthoredMarkdownLinkNode {
-  switch (node.type) {
-    case "link":
-      return { ...node, children };
-    case "linkReference":
-      return { ...node, children };
-  }
-}
-
-function splitFormattingNodeOnThreadMentions(
-  node: ThreadMentionFormattingNode,
-): PhrasingContent[] {
-  const children = node.children.flatMap(splitPhrasingNodeOnThreadMentions);
-  if (!children.some(isThreadMentionNode)) {
-    return [node];
-  }
-
-  const replacements: PhrasingContent[] = [];
-  let formattingChildren: PhrasingContent[] = [];
-  const flushFormattingChildren = () => {
-    if (formattingChildren.length === 0) {
+function collectAuthoredMarkdownLinkNodes(tree: Nodes): WeakSet<object> {
+  const linkNodes = new WeakSet<object>();
+  visit(tree, (node) => {
+    if (node.type !== "link" && node.type !== "linkReference") {
       return;
     }
-    replacements.push(
-      cloneFormattingNodeWithChildren(node, formattingChildren),
-    );
-    formattingChildren = [];
-  };
-
-  for (const child of children) {
-    if (isThreadMentionNode(child)) {
-      flushFormattingChildren();
-      replacements.push(child);
-      continue;
-    }
-    formattingChildren.push(child);
-  }
-  flushFormattingChildren();
-  return replacements;
-}
-
-function splitPhrasingNodeOnThreadMentions(
-  node: PhrasingContent,
-): PhrasingContent[] {
-  if (isThreadMentionNode(node)) {
-    return [node];
-  }
-  return isThreadMentionFormattingNode(node)
-    ? splitFormattingNodeOnThreadMentions(node)
-    : [node];
-}
-
-function splitAuthoredLinkOnThreadMentions(
-  node: AuthoredMarkdownLinkNode,
-): PhrasingContent[] {
-  const children = node.children.flatMap(splitPhrasingNodeOnThreadMentions);
-  if (!children.some(isThreadMentionNode)) {
-    return [node];
-  }
-
-  const replacements: PhrasingContent[] = [];
-  let linkChildren: PhrasingContent[] = [];
-  const flushLinkChildren = () => {
-    if (linkChildren.length === 0) {
-      return;
-    }
-    replacements.push(cloneAuthoredLinkWithChildren(node, linkChildren));
-    linkChildren = [];
-  };
-
-  for (const child of children) {
-    if (isThreadMentionNode(child)) {
-      flushLinkChildren();
-      replacements.push(child);
-      continue;
-    }
-    linkChildren.push(child);
-  }
-  flushLinkChildren();
-  return replacements;
-}
-
-function liftThreadMentionsOutOfAuthoredLinks(tree: Nodes): void {
-  visit(tree, (node, index, parent: Parent | undefined) => {
-    if (
-      (node.type !== "link" && node.type !== "linkReference") ||
-      index === undefined ||
-      parent === undefined
-    ) {
-      return;
-    }
-    const replacements = splitAuthoredLinkOnThreadMentions(node);
-    if (replacements.length === 1 && replacements[0] === node) {
-      return;
-    }
-    parent.children.splice(index, 1, ...replacements);
-    return index + replacements.length;
+    visit(node, (descendant) => {
+      linkNodes.add(descendant);
+    });
   });
+  return linkNodes;
 }
 
 function isMentionBoundary(text: string, index: number): boolean {
@@ -264,15 +135,17 @@ function isMentionBoundary(text: string, index: number): boolean {
  * thread-mention pill. When `remark-directive` is active, its parser splits the
  * same source into an `@thread` text suffix plus a `:<id>` text directive; the
  * second pass rejoins that exact pair before the directive renderer sees it.
- * Mentions nested inside authored Markdown links are lifted out of the authored
- * anchor so the canonical thread pill remains interactive without creating a
- * nested link. Any ordinary linked text around a mention keeps the authored
- * destination. No-op for bodies without the token.
+ * No-op for bodies without the token.
  */
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
+    const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
     visit(tree, "text", (node: Text, index, parent: Parent | undefined) => {
-      if (parent === undefined || index === undefined) {
+      if (
+        parent === undefined ||
+        index === undefined ||
+        authoredMarkdownLinkNodes.has(node)
+      ) {
         return;
       }
       const replacements = splitTextNodeOnMentions(node);
@@ -306,17 +179,24 @@ export function remarkThreadMentions() {
       ) {
         return;
       }
-      const leadingText = previous.value.slice(0, prefixStart);
-      const mentionNode = threadMentionNode(directive.name);
-      if (leadingText.length === 0) {
-        parent.children.splice(index - 1, 2, mentionNode);
-        return index;
+      if (authoredMarkdownLinkNodes.has(node)) {
+        const leadingText = previous.value.slice(0, prefixStart);
+        const mentionText: Text = {
+          type: "text",
+          value: `${THREAD_MENTION_PREFIX}:${directive.name}`,
+        };
+        if (leadingText.length === 0) {
+          parent.children.splice(index - 1, 2, mentionText);
+          return index;
+        }
+        previous.value = leadingText;
+        parent.children.splice(index, 1, mentionText);
+        return index + 1;
       }
-      previous.value = leadingText;
-      parent.children.splice(index, 1, mentionNode);
+      previous.value = previous.value.slice(0, prefixStart);
+      parent.children.splice(index, 1, threadMentionNode(directive.name));
       return index + 1;
     });
-    liftThreadMentionsOutOfAuthoredLinks(tree);
   };
 }
 
