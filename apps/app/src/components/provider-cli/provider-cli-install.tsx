@@ -10,7 +10,6 @@ import type {
 import { ProviderCliInstallLogDialog } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import { appToast } from "@/components/ui/app-toast";
-import { AppToastCommandDescription } from "@/components/ui/app-toast-descriptions";
 import { sdk } from "@/lib/sdk";
 
 type ProviderCliInstallCompletedEvent = Extract<
@@ -30,19 +29,13 @@ export interface ProviderCliIssue {
   title: string;
   description: string;
   fingerprint: string;
-  toastId: string;
 }
 
 export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
 
-type ProviderCliTitlePhase =
-  | "queued"
-  | "progress"
-  | "success"
-  | "failure"
-  | "log";
+type ProviderCliTitlePhase = "failure" | "log";
 type ProviderCliTitleTemplate = (displayName: string) => string;
 
 interface GetProviderCliTitleParams {
@@ -76,18 +69,6 @@ export function providerCliJobKey(
 }
 
 const PROVIDER_CLI_TITLE_TEMPLATES = {
-  queued: {
-    install: (displayName) => `${displayName} install queued`,
-    update: (displayName) => `${displayName} update queued`,
-  },
-  progress: {
-    install: (displayName) => `Installing ${displayName}`,
-    update: (displayName) => `Updating ${displayName}`,
-  },
-  success: {
-    install: (displayName) => `${displayName} installed`,
-    update: (displayName) => `${displayName} is up to date`,
-  },
   failure: {
     install: (displayName) => `${displayName} install failed`,
     update: (displayName) => `${displayName} update failed`,
@@ -119,7 +100,6 @@ export function buildProviderCliIssue(
   entry: ProviderCliStatusEntry,
 ): ProviderCliIssue | null {
   const { provider, status } = entry;
-  const toastId = `provider-cli-health:${provider}`;
   if (!status.installed) {
     return {
       provider,
@@ -128,7 +108,6 @@ export function buildProviderCliIssue(
       title: `${status.displayName} CLI not installed`,
       description: `Install ${status.displayName} so bb can start ${status.displayName} sessions.`,
       fingerprint: `${provider}:missing:${status.latestVersion ?? "latest"}`,
-      toastId,
     };
   }
 
@@ -152,7 +131,6 @@ export function buildProviderCliIssue(
         minimumVersion,
         status.executablePath ?? status.executableName,
       ].join(":"),
-      toastId,
     };
   }
 
@@ -176,7 +154,6 @@ export function buildProviderCliIssue(
       title: `${status.displayName} update available`,
       description,
       fingerprint,
-      toastId,
     };
   }
 
@@ -202,8 +179,8 @@ function exitDescription(event: ProviderCliInstallCompletedEvent): string {
   return `Command exited after signal ${event.signal ?? "unknown"}`;
 }
 
-function getProviderCliRunToastId(job: ProviderCliInstallJob): string {
-  return `provider-cli-health-run:${providerCliJobKey(job.hostId, job.issue.provider)}`;
+function getProviderCliFailureToastId(job: ProviderCliInstallJob): string {
+  return `provider-cli-install-failure:${providerCliJobKey(job.hostId, job.issue.provider)}`;
 }
 
 function getProviderCliTitle({
@@ -236,14 +213,6 @@ function showProviderCliInstallFailureToast({
       label: "View log",
       onClick: () => onViewLog(logDialogState),
     },
-  });
-}
-
-function showProviderCliInstallQueuedToast(job: ProviderCliInstallJob): void {
-  appToast.message(getProviderCliTitle({ issue: job.issue, phase: "queued" }), {
-    id: getProviderCliRunToastId(job),
-    description: "Waiting for the current install or update to finish.",
-    duration: Infinity,
   });
 }
 
@@ -288,16 +257,10 @@ export function useProviderCliInstallRunner({
 
       runningJobKeyRef.current = jobKey;
       setRunningJobKey(jobKey);
-      appToast.dismiss(issue.toastId);
-      const runToastId = getProviderCliRunToastId(job);
+      const failureToastId = getProviderCliFailureToastId(job);
       let installLogChunks = [`$ ${action.command}\n`];
       let completedEvent: ProviderCliInstallCompletedEvent | null = null;
       let errorMessage: string | null = null;
-
-      appToast.loading(getProviderCliTitle({ issue, phase: "progress" }), {
-        id: runToastId,
-        description: <AppToastCommandDescription command={action.command} />,
-      });
 
       void sdk.hosts
         .installProviderCli({
@@ -313,15 +276,6 @@ export function useProviderCliInstallRunner({
             switch (event.type) {
               case "started":
                 installLogChunks = [`$ ${event.command}\n`];
-                appToast.loading(
-                  getProviderCliTitle({ issue, phase: "progress" }),
-                  {
-                    id: runToastId,
-                    description: (
-                      <AppToastCommandDescription command={event.command} />
-                    ),
-                  },
-                );
                 break;
               case "output":
                 if (event.text.length > 0) {
@@ -339,9 +293,6 @@ export function useProviderCliInstallRunner({
           }
 
           if (completedEvent?.success) {
-            appToast.success(getProviderCliTitle({ issue, phase: "success" }), {
-              id: runToastId,
-            });
             onStatusUpdated?.(installHostId);
             return;
           }
@@ -356,7 +307,7 @@ export function useProviderCliInstallRunner({
             log: installLogChunks.join(""),
             message: failureMessage,
             onViewLog: setLogDialogState,
-            toastId: runToastId,
+            toastId: failureToastId,
           });
         })
         .catch((error) => {
@@ -368,7 +319,7 @@ export function useProviderCliInstallRunner({
             log: installLogChunks.join(""),
             message,
             onViewLog: setLogDialogState,
-            toastId: runToastId,
+            toastId: failureToastId,
           });
         })
         .finally(() => {
@@ -402,7 +353,6 @@ export function useProviderCliInstallRunner({
   const startInstall = useCallback(
     (job: ProviderCliInstallJob) => {
       const jobKey = providerCliJobKey(job.hostId, job.issue.provider);
-      appToast.dismiss(job.issue.toastId);
       if (runningJobKeyRef.current === jobKey) {
         return;
       }
@@ -412,13 +362,11 @@ export function useProviderCliInstallRunner({
             providerCliJobKey(queued.hostId, queued.issue.provider) === jobKey,
         )
       ) {
-        showProviderCliInstallQueuedToast(job);
         return;
       }
       if (runningJobKeyRef.current !== null) {
         queuedInstallsRef.current.push(job);
         updateQueuedJob(jobKey, true);
-        showProviderCliInstallQueuedToast(job);
         return;
       }
 

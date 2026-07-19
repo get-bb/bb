@@ -96,7 +96,6 @@ function issueFor(
     title: `${status.displayName} update available`,
     description: "story",
     fingerprint: `${provider}:story`,
-    toastId: `provider-cli-health:${provider}`,
   };
 }
 

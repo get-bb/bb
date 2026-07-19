@@ -118,7 +118,6 @@ function makeUpdateIssue(args: {
     title: `${displayName} update available`,
     description: "1.0.0 -> 1.0.1",
     fingerprint: `${args.provider}:outdated`,
-    toastId: `provider-cli-health:${args.provider}`,
   };
 }
 

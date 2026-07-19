@@ -21,10 +21,6 @@ vi.mock("@/components/dialogs/ProviderCliInstallLogDialog", () => ({
   ProviderCliInstallLogDialog: () => null,
 }));
 
-vi.mock("@/components/ui/app-toast-descriptions", () => ({
-  AppToastCommandDescription: () => null,
-}));
-
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
     dismiss: vi.fn(),
@@ -84,7 +80,6 @@ function issueForProvider(
     title: `${displayName} update available`,
     description: "1.0.0 -> 1.0.1",
     fingerprint: `${provider}:outdated`,
-    toastId: `provider-cli-health:${provider}`,
   };
 }
 
@@ -150,13 +145,8 @@ describe("useProviderCliInstallRunner", () => {
     });
 
     expect(installHostProviderCliMock).toHaveBeenCalledTimes(1);
-    expect(appToastMock.warning).not.toHaveBeenCalled();
-    expect(appToastMock.message).toHaveBeenCalledWith(
-      "Claude Code update queued",
-      expect.objectContaining({
-        id: "provider-cli-health-run:host_1:claudeCode",
-      }),
-    );
+    expect(appToastMock.message).not.toHaveBeenCalled();
+    expect(appToastMock.loading).not.toHaveBeenCalled();
     expect(result.current.queuedJobKeys.has("host_1:claudeCode")).toBe(true);
 
     await act(async () => {
@@ -192,5 +182,6 @@ describe("useProviderCliInstallRunner", () => {
 
     expect(onStatusUpdated).toHaveBeenCalledTimes(2);
     expect(onStatusUpdated).toHaveBeenLastCalledWith("host_1");
+    expect(appToastMock.success).not.toHaveBeenCalled();
   });
 });
