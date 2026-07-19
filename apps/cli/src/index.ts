@@ -14,6 +14,7 @@ import { registerTerminalCommands } from "./commands/terminal.js";
 import { registerSettingsCommands } from "./commands/settings.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
+import { registerUpdatesCommands } from "./commands/updates.js";
 import { registerVoiceCommands } from "./commands/voice.js";
 import {
   createCliRuntimeContext,
@@ -86,6 +87,7 @@ registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerMachineCommands(program, getUrl);
+registerUpdatesCommands(program, getUrl);
 registerTerminalCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);

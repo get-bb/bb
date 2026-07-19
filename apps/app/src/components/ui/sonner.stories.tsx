@@ -75,97 +75,10 @@ function gitSuccessDescription({
 
 const TOAST_EXAMPLES: readonly ToastExample[] = [
   {
-    id: "bb-app-update",
-    group: "Updates",
-    label: "bb app update",
-    source: "useUpdateAvailableToast",
-    usage: [
-      "Production web app only",
-      "New app version reported",
-      "Once per version",
-    ],
-    current: {
-      tone: "message",
-      title: "bb-app update available",
-      description: "0.0.7 is available. Restart bb-app to update.",
-      secondaryActionLabel: "Dismiss",
-    },
-  },
-  {
-    id: "desktop-update-ready",
-    group: "Updates",
-    label: "desktop update ready",
-    source: "useDesktopUpdateAvailableToast",
-    usage: ["Desktop shell only", "Update downloaded", "Relaunch installs"],
-    current: {
-      tone: "message",
-      title: "Desktop update ready",
-      description: "bb desktop 0.0.2 is ready to install.",
-      primaryActionLabel: "Relaunch",
-    },
-  },
-  {
-    id: "codex-provider-update",
-    group: "Provider CLI",
-    label: "Codex update",
-    source: "ProviderCliHealthToasts",
-    usage: ["Host daemon reports Codex outdated", "Install action available"],
-    current: {
-      tone: "warning",
-      title: "Codex update available",
-      description: "0.132.0 -> 0.133.0",
-      primaryActionLabel: "Update",
-      secondaryActionLabel: "Dismiss",
-    },
-  },
-  {
-    id: "claude-provider-update",
-    group: "Provider CLI",
-    label: "Claude update",
-    source: "ProviderCliHealthToasts",
-    usage: [
-      "Host daemon reports Claude Code outdated",
-      "Install action available",
-    ],
-    current: {
-      tone: "warning",
-      title: "Claude Code update available",
-      description: "2.1.149 -> 2.1.150",
-      primaryActionLabel: "Update",
-      secondaryActionLabel: "Dismiss",
-    },
-  },
-  {
-    id: "provider-missing",
-    group: "Provider CLI",
-    label: "missing provider",
-    source: "ProviderCliHealthToasts",
-    usage: ["Provider CLI not installed", "Install starts host-daemon flow"],
-    current: {
-      tone: "warning",
-      title: "Codex CLI not installed",
-      description: "Install Codex so bb can start Codex sessions.",
-      primaryActionLabel: "Install",
-      secondaryActionLabel: "Dismiss",
-    },
-  },
-  {
-    id: "provider-host-unavailable",
-    group: "Provider CLI",
-    label: "host daemon unavailable",
-    source: "ProviderCliHealthToasts",
-    usage: ["After clicking Install/Update", "Host daemon port unavailable"],
-    current: {
-      tone: "error",
-      title: "Host daemon unavailable",
-      description: "Start bb again and retry the provider CLI setup.",
-    },
-  },
-  {
     id: "provider-update-loading",
     group: "Provider CLI",
     label: "provider update loading",
-    source: "ProviderCliHealthToasts",
+    source: "useProviderCliInstallRunner",
     usage: [
       "After clicking Update",
       "Replaces the update-available toast",
@@ -183,7 +96,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     id: "provider-queued",
     group: "Provider CLI",
     label: "setup queued",
-    source: "ProviderCliHealthToasts",
+    source: "useProviderCliInstallRunner",
     usage: ["Click Install/Update while another setup is running"],
     current: {
       tone: "message",
@@ -195,7 +108,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     id: "provider-up-to-date",
     group: "Provider CLI",
     label: "provider success",
-    source: "ProviderCliHealthToasts",
+    source: "useProviderCliInstallRunner",
     usage: ["Provider CLI install/update succeeds"],
     current: {
       tone: "success",
@@ -206,7 +119,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     id: "provider-update-failed",
     group: "Provider CLI",
     label: "provider update failed",
-    source: "ProviderCliHealthToasts",
+    source: "useProviderCliInstallRunner",
     usage: [
       "Provider CLI install/update fails",
       "View log opens the command output dialog",
@@ -403,7 +316,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     current: {
       tone: "message",
       title: "Opening in editor",
-      description: "apps/app/src/components/provider-cli/ProviderCliHealthToasts.tsx",
+      description: "apps/app/src/components/settings/UpdatesSettingsSection.tsx",
     },
   },
   {

@@ -25,6 +25,7 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
@@ -461,6 +462,7 @@ export function AppSidebar({
                 <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarUpdatesBadge onNavigate={closeOnMobile} />
           </SidebarMenu>
         </SidebarFooter>
         <div
