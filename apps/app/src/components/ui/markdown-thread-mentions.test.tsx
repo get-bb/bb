@@ -58,10 +58,7 @@ const UPDATED_THREAD_MENTION: PromptTextMention = {
 };
 
 const MESSAGE_DIRECTIVE_REGISTRY: MessageDirectiveRegistry = new Map([
-  [
-    "inline-vis",
-    { status: "collision", pluginIds: ["plugin-a", "plugin-b"] },
-  ],
+  ["inline-vis", { status: "collision", pluginIds: ["plugin-a", "plugin-b"] }],
 ]);
 
 const ACTIVE_MESSAGE_DIRECTIVES: MarkdownMessageDirectives = {
@@ -190,7 +187,7 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
-  it("preserves a raw thread token inside an authored Markdown link", () => {
+  it("renders a non-interactive thread pill inside an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -202,13 +199,13 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("reconstructs a directive-split thread token inside an authored Markdown link", () => {
+  it("renders a directive-split thread pill as non-interactive inside an authored Markdown link", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[@thread:thr_child](https://example.com)"
@@ -221,13 +218,13 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("preserves a raw thread token inside an authored Markdown link reference", () => {
+  it("renders a non-interactive thread pill inside an authored Markdown link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -241,13 +238,13 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("reconstructs a directive-split thread token inside an authored Markdown link reference", () => {
+  it("renders a directive-split thread pill as non-interactive inside a link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -262,13 +259,13 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("preserves a raw thread token inside formatted authored link text", () => {
+  it("renders a non-interactive thread pill inside formatted authored link text", () => {
     renderMarkdown(
       <MarkdownPreview
         content="[**@thread:thr_child**](https://example.com)"
@@ -280,16 +277,14 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(link.querySelector("strong")?.textContent).toBe(
-      "@thread:thr_child",
-    );
+    expect(link.querySelector("strong")?.textContent).toBe("Rebuild comments");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
-  it("reconstructs a directive-split thread token inside a formatted link reference", () => {
+  it("renders a directive-split thread pill as non-interactive inside a formatted link reference", () => {
     renderMarkdown(
       <MarkdownPreview
         content={
@@ -304,11 +299,11 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "@thread:thr_child" });
+    const link = screen.getByRole("link", { name: "Rebuild comments" });
     expect(link.getAttribute("href")).toBe("https://example.com");
-    expect(link.querySelector("em")?.textContent).toBe("@thread:thr_child");
+    expect(link.querySelector("em")?.textContent).toBe("Rebuild comments");
     expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Rebuild comments")).toBeNull();
+    expect(screen.queryByText("@thread:thr_child")).toBeNull();
   });
 
   it("leaves assistant content (no mentions prop) untouched — token stays literal", () => {
