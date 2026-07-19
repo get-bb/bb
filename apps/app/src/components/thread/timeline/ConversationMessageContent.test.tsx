@@ -185,4 +185,50 @@ describe("ConversationMessageContent user thread mentions", () => {
     expect(mentionLink.getAttribute("href")).toBe("/threads/thr_ti4st72wgs");
     expect(screen.queryByText("@thread", { exact: false })).toBeNull();
   });
+
+  it("routes a raw thread token through the target thread project", () => {
+    const mentionedThread = threadListEntry({
+      id: "thr_cross_project",
+      projectId: "proj_target",
+      title: "Cross-project mention",
+    });
+
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ThreadTitleMentionResourcesProvider
+            sectionNamesById={new Map()}
+            projectNamesById={new Map()}
+            threadById={new Map([[mentionedThread.id, mentionedThread]])}
+          >
+            <ConversationMessageContent
+              role="user"
+              attachments={null}
+              childOrigin={null}
+              initiator="user"
+              mentions={[]}
+              resolveSegmentLinkHref={(link) =>
+                link.kind === "thread"
+                  ? `/projects/proj_current/threads/${link.threadId}`
+                  : null
+              }
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderChildOrigin={null}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text="See @thread:thr_cross_project for the result."
+              turnRequest={{ kind: "message", status: "accepted" }}
+            />
+          </ThreadTitleMentionResourcesProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen
+        .getByRole("link", { name: "Cross-project mention" })
+        .getAttribute("href"),
+    ).toBe("/projects/proj_target/threads/thr_cross_project");
+  });
 });

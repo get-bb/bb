@@ -285,9 +285,8 @@ function CollapsibleMessageText({
     () => ({
       mentions: body.mentions,
       preserveSoftBreaks: true,
-      resolveLinkHref: resolveSegmentLinkHref,
     }),
-    [body.mentions, resolveSegmentLinkHref],
+    [body.mentions],
   );
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
     () => (onOpenLink ? { onOpenLink } : undefined),

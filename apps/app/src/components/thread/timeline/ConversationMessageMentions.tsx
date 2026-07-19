@@ -387,7 +387,8 @@ export function renderMessageBodyWithQuotes({
       );
     } else {
       const spanStart = lineStarts[index]!;
-      const spanEnd = lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
+      const spanEnd =
+        lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
       const subText = text.slice(spanStart, spanEnd);
       const subMentions = normalized.flatMap((mention) =>
         mention.start >= spanStart && mention.end <= spanEnd
