@@ -44,6 +44,7 @@ import {
   shouldReserveMacosTrafficLights,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
+import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -88,7 +89,17 @@ interface ThreadDetailSecondaryContentProps {
   timeline: ThreadTimelinePaneProps;
 }
 
-export function ThreadDetailSecondaryContent({
+export function ThreadDetailSecondaryContent(
+  props: ThreadDetailSecondaryContentProps,
+) {
+  return (
+    <PluginComposerHostScopeProvider>
+      <ThreadDetailSecondaryContentBody {...props} />
+    </PluginComposerHostScopeProvider>
+  );
+}
+
+function ThreadDetailSecondaryContentBody({
   footer,
   header,
   isMetadataLoading,

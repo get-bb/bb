@@ -26,7 +26,10 @@ import type {
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
-import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import {
+  type PluginComposerHost,
+  usePublishPluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
@@ -642,6 +645,7 @@ export function ThreadDetailPromptArea({
         : null,
     [inlineEditingQueuedMessage, pluginComposerHostBinding],
   );
+  usePublishPluginComposerHost(pluginComposerHost);
   const handleComposerMessageChange = useCallback(
     (text: string, mentions: PromptDraftState["mentions"]) => {
       const current = inlineEditingQueuedMessageRef.current;
