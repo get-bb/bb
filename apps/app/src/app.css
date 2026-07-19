@@ -254,9 +254,9 @@
     color: var(--success-foreground);
     background: linear-gradient(
       90deg,
-      color-mix(in oklch, var(--success-foreground) 78%, var(--ink)) 0%,
+      color-mix(in oklab, var(--success-foreground) 78%, var(--ink)) 0%,
       var(--success-foreground) 42%,
-      color-mix(in oklch, var(--success-foreground) 78%, var(--ink)) 68%,
+      color-mix(in oklab, var(--success-foreground) 78%, var(--ink)) 68%,
       var(--success-foreground) 100%
     );
     background-size: 220% 100%;

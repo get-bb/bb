@@ -371,8 +371,8 @@
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
   --success-foreground: color-mix(
-    in oklch,
-    var(--success) 55%,
+    in oklab,
+    var(--success) 45%,
     var(--ink)
   );
   --diff-added: oklch(0.4 0.13 163);
@@ -585,8 +585,8 @@
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
   --success-foreground: color-mix(
-    in oklch,
-    var(--success) 55%,
+    in oklab,
+    var(--success) 45%,
     var(--ink)
   );
   --diff-added: oklch(0.77 0.17 163);
