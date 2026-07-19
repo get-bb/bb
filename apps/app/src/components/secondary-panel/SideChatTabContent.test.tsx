@@ -9,7 +9,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, Suspense, startTransition, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   latestPluginComposerHost: null as PluginComposerHost | null,
   promptMentionArgs: [] as unknown[],
   promptMentionSetQuery: vi.fn(),
+  suspendedComposerMessage: null as string | null,
+  composerSuspension: null as Promise<never> | null,
   sendThreadMessageMutateAsync: vi.fn(),
   threadCreationReasoningLevel: "medium",
   threadCreationSelectedModel: "gpt-5",
@@ -35,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   timelineRowsProps: [] as Array<{
     onSendToMainMessage?: (target: { messageText: string }) => void;
   }>,
+  transitionComposerMessage: null as string | null,
   threadRuntimeDisplayStatus: "idle",
   queuedMessages: [] as ThreadQueuedMessage[],
   toastError: vi.fn(),
@@ -103,6 +106,12 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     suppressPluginComposerAccessories?: boolean;
     textEffect?: string | null;
   }) => {
+    if (
+      mocks.composerSuspension !== null &&
+      composer.message === mocks.suspendedComposerMessage
+    ) {
+      throw mocks.composerSuspension;
+    }
     mocks.latestPluginComposerHost = pluginComposerHost ?? null;
     return (
       <div>
@@ -118,6 +127,21 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         <button type="button" onClick={composer.onSubmit}>
           Send
         </button>
+        {mocks.transitionComposerMessage !== null ? (
+          <button
+            type="button"
+            onClick={() =>
+              startTransition(() => {
+                composer.onChangeMessage(
+                  mocks.transitionComposerMessage ?? "",
+                  [],
+                );
+              })
+            }
+          >
+            Transition side draft
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => execution.model.onChange("o4-mini")}
@@ -539,6 +563,8 @@ afterEach(() => {
   mocks.commandSuggestionArgs.length = 0;
   mocks.defaultExecutionOptionsThreadIds.length = 0;
   mocks.promptMentionArgs.length = 0;
+  mocks.composerSuspension = null;
+  mocks.suspendedComposerMessage = null;
   mocks.queuedMessages = [];
   mocks.threadTimelineRows.length = 0;
   mocks.timelineRowsProps.length = 0;
@@ -547,6 +573,7 @@ afterEach(() => {
   mocks.threadCreationReasoningLevel = "medium";
   mocks.threadCreationSelectedModel = "gpt-5";
   mocks.threadCreationServiceTier = undefined;
+  mocks.transitionComposerMessage = null;
   mocks.threadRuntimeDisplayStatus = "idle";
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   vi.clearAllMocks();
@@ -914,6 +941,40 @@ describe("SideChatTabContent", () => {
         attachments: [],
       });
     });
+  });
+
+  it("keeps the published host on committed state when a queued draft render suspends", () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    const onSetThreadId = vi.fn();
+    const view = render(
+      <Suspense fallback={<div>Suspended side chat</div>}>
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </Suspense>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const committedHost = mocks.latestPluginComposerHost;
+    expect(committedHost?.getCurrent().text).toBe("Queued side message");
+
+    mocks.suspendedComposerMessage = "Uncommitted queued edit";
+    mocks.composerSuspension = new Promise<never>(() => {});
+    mocks.transitionComposerMessage = "Uncommitted queued edit";
+    view.rerender(
+      <Suspense fallback={<div>Suspended side chat</div>}>
+        {buildSideChatElement({ onSetThreadId, threadId: "thr_side" })}
+      </Suspense>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transition side draft" }),
+    );
+
+    expect(screen.queryByText("Suspended side chat")).toBeNull();
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Queued side message",
+    );
+    expect(committedHost?.getCurrent().text).toBe("Queued side message");
+
+    view.unmount();
   });
 
   it("keeps permission locked while model controls remain editable", () => {

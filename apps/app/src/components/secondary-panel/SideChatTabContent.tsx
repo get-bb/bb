@@ -539,10 +539,12 @@ export function SideChatTabContent({
     [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
   const currentPromptDraftRef = useRef(currentPromptDraft);
-  currentPromptDraftRef.current = currentPromptDraft;
   const inlineEditingQueuedMessageRef =
     useRef<InlineQueuedMessageEditState | null>(inlineEditingQueuedMessage);
-  inlineEditingQueuedMessageRef.current = inlineEditingQueuedMessage;
+  useLayoutEffect(() => {
+    currentPromptDraftRef.current = currentPromptDraft;
+    inlineEditingQueuedMessageRef.current = inlineEditingQueuedMessage;
+  }, [currentPromptDraft, inlineEditingQueuedMessage]);
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),
     [currentPromptDraft],
