@@ -32,13 +32,13 @@ import {
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginComposerAccessories } from "./PluginComposerAccessories";
+import { PluginContext } from "./plugin-context";
 import {
   PluginComposerHostProvider,
   PluginComposerHostScopeProvider,
   type PluginComposerHost,
   usePublishPluginComposerHost,
 } from "./plugin-composer-host";
-import { PluginContext } from "./plugin-context";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
@@ -602,6 +602,8 @@ describe("useComposer", () => {
                   queuedMessageId: "qmsg_1",
                 },
                 draft,
+                textEffectKey:
+                  "queued-message:thr_queue:qmsg_1:sibling-surface",
                 getCurrent: () => draft,
                 setDraft,
                 focus: () => {},
@@ -866,6 +868,83 @@ describe("useComposer", () => {
     view.unmount();
     expect(getComposerTextEffect(storageKey)).toBeNull();
     expect(getPluginThreadRowStatus("thr_effect")).toBeNull();
+  });
+
+  it("keeps a same-plugin hook owner's visual state when its sibling unmounts", () => {
+    const captured = new Map<
+      string,
+      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+    >();
+
+    function VisualOwner({ label }: { label: string }) {
+      const composer = useComposer();
+      captured.set(label, {
+        setTextEffect: composer.setTextEffect,
+        setThreadRowStatus: composer.setThreadRowStatus,
+      });
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            composer.setTextEffect("shimmer");
+            composer.setThreadRowStatus({
+              icon: "AiContentGenerator01",
+              label: `${label} status`,
+              effect: "shimmer",
+              tone: "success",
+            });
+          }}
+        >
+          start-{label}
+        </button>
+      );
+    }
+
+    function Harness() {
+      const [showFirst, setShowFirst] = useState(true);
+      return (
+        <PluginContext.Provider value="demo">
+          {showFirst ? <VisualOwner label="first" /> : null}
+          <VisualOwner label="second" />
+          <button type="button" onClick={() => setShowFirst(false)}>
+            unmount-first
+          </button>
+          <ThreadDraftViewer threadId="thr_shared_owner" />
+        </PluginContext.Provider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_shared_owner"]}>
+        <Harness />
+      </MemoryRouter>,
+    );
+    const storageKey = screen.getByTestId("draft-key").textContent ?? "";
+
+    fireEvent.click(screen.getByText("start-first"));
+    fireEvent.click(screen.getByText("start-second"));
+    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
+      "first status",
+    );
+
+    const staleFirst = captured.get("first");
+    expect(staleFirst).toBeDefined();
+    fireEvent.click(screen.getByText("unmount-first"));
+
+    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
+      "second status",
+    );
+
+    act(() => {
+      staleFirst?.setTextEffect(null);
+      staleFirst?.setThreadRowStatus(null);
+    });
+    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
+      "second status",
+    );
   });
 
   it("clears a text effect when the plugin composer scope changes", () => {

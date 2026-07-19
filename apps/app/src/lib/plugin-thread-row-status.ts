@@ -2,10 +2,14 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 
 type ThreadRowStatusListener = () => void;
+type ThreadRowStatusOwner = string | symbol;
 
 const statusesByThreadId = new Map<
   string,
-  Map<string, PluginComposerThreadRowStatus>
+  Map<
+    ThreadRowStatusOwner,
+    { pluginId: string; status: PluginComposerThreadRowStatus }
+  >
 >();
 const listenersByThreadId = new Map<string, Set<ThreadRowStatusListener>>();
 
@@ -22,20 +26,21 @@ export function getPluginThreadRowStatus(
 ): PluginComposerThreadRowStatus | null {
   const statuses = statusesByThreadId.get(threadId);
   if (!statuses || statuses.size === 0) return null;
-  return statuses.values().next().value ?? null;
+  return statuses.values().next().value?.status ?? null;
 }
 
 export function setPluginThreadRowStatus(
   threadId: string | null,
   pluginId: string,
   status: PluginComposerThreadRowStatus | null,
+  owner: ThreadRowStatusOwner = pluginId,
 ): void {
   if (threadId === null) return;
   const previous = getPluginThreadRowStatus(threadId);
   let statuses = statusesByThreadId.get(threadId);
 
   if (status === null) {
-    statuses?.delete(pluginId);
+    statuses?.delete(owner);
     if (statuses?.size === 0) {
       statusesByThreadId.delete(threadId);
     }
@@ -44,7 +49,7 @@ export function setPluginThreadRowStatus(
       statuses = new Map();
       statusesByThreadId.set(threadId, statuses);
     }
-    statuses.set(pluginId, { ...status });
+    statuses.set(owner, { pluginId, status: { ...status } });
   }
 
   if (getPluginThreadRowStatus(threadId) !== previous) {

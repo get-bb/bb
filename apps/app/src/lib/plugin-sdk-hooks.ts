@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
@@ -378,6 +378,7 @@ function createComposerScopeOwnership(scopeKey: string) {
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
+  const [visualStateOwner] = useState(() => Symbol(pluginId));
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -471,9 +472,9 @@ export function useComposer(): PluginComposerApi {
   const setTextEffect = useCallback(
     (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
       if (!scopeOwnership.isActive()) return;
-      setComposerTextEffect(textEffectKey, pluginId, effect);
+      setComposerTextEffect(textEffectKey, pluginId, effect, visualStateOwner);
     },
-    [pluginId, scopeOwnership, textEffectKey],
+    [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
   );
   const setThreadRowStatus = useCallback(
     (status: PluginComposerThreadRowStatus | null) => {
@@ -483,13 +484,19 @@ export function useComposer(): PluginComposerApi {
       ) {
         return;
       }
-      setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, status);
+      setPluginThreadRowStatus(
+        threadRowStatusThreadId,
+        pluginId,
+        status,
+        visualStateOwner,
+      );
     },
     [
       pluginId,
       scopeOwnership,
       threadRowStatusScopeKey,
       threadRowStatusThreadId,
+      visualStateOwner,
     ],
   );
 
@@ -497,8 +504,13 @@ export function useComposer(): PluginComposerApi {
     scopeOwnership.activate();
     return () => {
       scopeOwnership.invalidate();
-      setComposerTextEffect(textEffectKey, pluginId, null);
-      setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, null);
+      setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
+      setPluginThreadRowStatus(
+        threadRowStatusThreadId,
+        pluginId,
+        null,
+        visualStateOwner,
+      );
     };
   }, [
     pluginId,
@@ -506,6 +518,7 @@ export function useComposer(): PluginComposerApi {
     textEffectKey,
     threadRowStatusScopeKey,
     threadRowStatusThreadId,
+    visualStateOwner,
   ]);
 
   const addQuote = useCallback(

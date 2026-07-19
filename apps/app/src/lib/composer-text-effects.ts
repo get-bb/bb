@@ -2,10 +2,14 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
 
 type ComposerTextEffectListener = () => void;
+type ComposerTextEffectOwner = string | symbol;
 
 const effectsByStorageKey = new Map<
   string,
-  Map<string, PluginComposerTextEffect>
+  Map<
+    ComposerTextEffectOwner,
+    { pluginId: string; effect: PluginComposerTextEffect }
+  >
 >();
 const listenersByStorageKey = new Map<
   string,
@@ -26,20 +30,21 @@ export function getComposerTextEffect(
   if (storageKey === null) return null;
   const effects = effectsByStorageKey.get(storageKey);
   if (!effects || effects.size === 0) return null;
-  return effects.values().next().value ?? null;
+  return effects.values().next().value?.effect ?? null;
 }
 
 export function setComposerTextEffect(
   storageKey: string | null,
   pluginId: string,
   effect: PluginComposerTextEffect | null,
+  owner: ComposerTextEffectOwner = pluginId,
 ): void {
   if (storageKey === null) return;
   const previous = getComposerTextEffect(storageKey);
   let effects = effectsByStorageKey.get(storageKey);
 
   if (effect === null) {
-    effects?.delete(pluginId);
+    effects?.delete(owner);
     if (effects?.size === 0) {
       effectsByStorageKey.delete(storageKey);
     }
@@ -48,7 +53,7 @@ export function setComposerTextEffect(
       effects = new Map();
       effectsByStorageKey.set(storageKey, effects);
     }
-    effects.set(pluginId, effect);
+    effects.set(owner, { pluginId, effect });
   }
 
   if (getComposerTextEffect(storageKey) !== previous) {
