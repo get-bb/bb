@@ -204,6 +204,32 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
+  it("replaces the generic working indicator with a shimmering plugin status", () => {
+    setPluginThreadRowStatus("thr_test", "prompt-shaper", {
+      icon: "AiScanText",
+      label: "Prompt Shaper improving prompt",
+      effect: "shimmer",
+    });
+    const { container } = renderThreadRow({
+      hasComposerDraft: false,
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    const shapingIcon = screen.getByLabelText("Prompt Shaper improving prompt");
+    expect(shapingIcon.getAttribute("data-icon")).toBe("AiScanText");
+    expect(Array.from(shapingIcon.classList)).toContain("animate-shine-icon");
+    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    expect(
+      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
+    ).not.toBeNull();
+  });
+
   it("replaces the active working spinner with a shimmering draft icon", () => {
     renderThreadRow({
       hasComposerDraft: true,
