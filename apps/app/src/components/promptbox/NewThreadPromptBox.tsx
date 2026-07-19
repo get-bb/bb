@@ -9,6 +9,10 @@ import {
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
 import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import {
   useAppCommandContext,
   useAppCommandHandler,
 } from "@/components/commands/AppCommandProvider";
@@ -158,6 +162,8 @@ export interface NewThreadPromptBoxUIProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
   isSubmitting: boolean;
   disabled: boolean;
+  /** Active root-composer binding for plugin composer hooks and accessories. */
+  pluginComposerHost?: PluginComposerHost | null;
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
 
@@ -206,6 +212,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   promptBoxRef: externalPromptBoxRef,
   isSubmitting,
   disabled,
+  pluginComposerHost,
   zenModeStorageKey,
   history,
   typeahead,
@@ -273,33 +280,35 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       {modeConfig.banner ? (
         <div className="mb-2">{modeConfig.banner}</div>
       ) : null}
-      <PromptBoxInternal
-        id={id}
-        promptBoxRef={promptBoxRef}
-        value={value}
-        mentionRanges={mentionRanges}
-        onChange={onChange}
-        onSubmit={onSubmit}
-        history={history}
-        typeahead={typeahead}
-        mentionMenuPlacement="bottom"
-        attachments={attachments}
-        promptActions={promptActions}
-        voice={voice}
-        submission={{
-          isSubmitting,
-          disabled,
-          title: submitTitle,
-        }}
-        zenMode={{
-          layout: "root-compose",
-          storageKey: zenModeStorageKey,
-        }}
-        minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
-        placeholder={placeholder}
-        header={modeConfig.header}
-        footerStart={<ExecutionControls {...execution} />}
-      />
+      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        <PromptBoxInternal
+          id={id}
+          promptBoxRef={promptBoxRef}
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          history={history}
+          typeahead={typeahead}
+          mentionMenuPlacement="bottom"
+          attachments={attachments}
+          promptActions={promptActions}
+          voice={voice}
+          submission={{
+            isSubmitting,
+            disabled,
+            title: submitTitle,
+          }}
+          zenMode={{
+            layout: "root-compose",
+            storageKey: zenModeStorageKey,
+          }}
+          minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
+          placeholder={placeholder}
+          header={modeConfig.header}
+          footerStart={<ExecutionControls {...execution} />}
+        />
+      </PluginComposerHostProvider>
       {/* Strip below the prompt-box card: optional project + env + branch (or
           worktree) on the left, permission picker pinned to the right. `mt-1`
           reproduces the 4px gap main got from a

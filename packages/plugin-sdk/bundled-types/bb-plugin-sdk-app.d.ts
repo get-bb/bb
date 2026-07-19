@@ -118,7 +118,9 @@ interface PluginThreadPanelProps {
 }
 /** Props passed to a `composerAccessory` component. */
 interface PluginComposerAccessoryProps {
+    /** The active composer's project. Root compose uses its selected project. */
     projectId: string | null;
+    /** The active composer's thread, or null for a new-thread composer. */
     threadId: string | null;
 }
 interface PluginPendingInteractionView {
@@ -397,6 +399,7 @@ type PluginComposerScope = {
     queuedMessageId: string;
 } | {
     kind: "new-thread";
+    /** Root compose's effective selected project; null only while unresolved. */
     projectId: string | null;
 };
 /** An @-mention pill bound to one of the calling plugin's mention providers. */

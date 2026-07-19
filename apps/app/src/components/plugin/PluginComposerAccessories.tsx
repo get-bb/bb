@@ -4,14 +4,15 @@ import {
 } from "@/lib/plugin-slots";
 import { useRouteState } from "@/hooks/useRouteState";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { usePluginComposerHost } from "./plugin-composer-host";
 
 /**
  * Plugin `composerAccessory` slot mounts (plugin design §5.2), rendered in
  * the prompt box footer's leading region alongside the surface-provided
- * footer content. `projectId`/`threadId` are null on the homepage (new
- * thread) composer. The route-derived props live in an inner component so
- * hosts without a Router (isolated tests/stories) can render the empty
- * state.
+ * footer content. When a host supplies an active composer scope (for example,
+ * a root composer whose selected project is not represented in the URL), its
+ * scope takes precedence over route-derived props. The route-derived fallback
+ * lets hosts without a Router (isolated tests/stories) render the empty state.
  */
 export function PluginComposerAccessories() {
   const { composerAccessories } = usePluginSlots();
@@ -25,6 +26,12 @@ function PluginComposerAccessoryList({
   accessories: readonly PluginComposerAccessorySlot[];
 }) {
   const { projectId, threadId } = useRouteState();
+  const composerHost = usePluginComposerHost();
+  const scope = composerHost?.scope;
+  const activeProjectId =
+    scope?.kind === "new-thread" ? scope.projectId : (projectId ?? null);
+  const activeThreadId =
+    scope && scope.kind !== "new-thread" ? scope.threadId : (threadId ?? null);
   return (
     <>
       {accessories.map((accessory) => (
@@ -37,8 +44,8 @@ function PluginComposerAccessoryList({
           slotId={accessory.id}
         >
           <accessory.component
-            projectId={projectId ?? null}
-            threadId={threadId ?? null}
+            projectId={activeProjectId}
+            threadId={activeThreadId}
           />
         </PluginSlotMount>
       ))}

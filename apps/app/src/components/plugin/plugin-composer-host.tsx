@@ -12,8 +12,9 @@ import type { PluginComposerScope } from "@bb/plugin-sdk";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 /**
- * Binds plugin composer hooks to a transient composer that is not backed by
- * the route-level draft store, such as an inline queued-message editor.
+ * Binds plugin composer hooks to an active composer whose scope cannot be
+ * derived from the current route, such as a root-project selection or inline
+ * queued-message editor.
  */
 export interface PluginComposerHost {
   scope: PluginComposerScope;

@@ -6,7 +6,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { PluginThreadPanelProps } from "@bb/plugin-sdk";
+import type {
+  PluginComposerAccessoryProps,
+  PluginThreadPanelProps,
+} from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -194,7 +197,10 @@ describe("useComposer", () => {
   });
 
   function registerComposerProbe(label: string) {
-    function ComposerProbe() {
+    function ComposerProbe({
+      projectId,
+      threadId,
+    }: PluginComposerAccessoryProps) {
       const composer = useComposer();
       const initialMethods = useRef({
         setText: composer.setText,
@@ -208,6 +214,17 @@ describe("useComposer", () => {
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
+          <div data-testid={`${label}-accessory-project`}>
+            {projectId ?? "null"}
+          </div>
+          <div data-testid={`${label}-accessory-thread`}>
+            {threadId ?? "null"}
+          </div>
+          <div data-testid={`${label}-scope-project`}>
+            {composer.scope.kind === "new-thread"
+              ? (composer.scope.projectId ?? "null")
+              : "none"}
+          </div>
           <div data-testid={`${label}-composer-text`}>{composer.text}</div>
           <div data-testid={`${label}-stable-methods`}>
             {String(methodsAreStable)}
@@ -287,6 +304,12 @@ describe("useComposer", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("scope: thread")).toBeDefined();
+    expect(screen.getByTestId("t-accessory-project").textContent).toBe(
+      PERSONAL_PROJECT_ID,
+    );
+    expect(screen.getByTestId("t-accessory-thread").textContent).toBe(
+      "thr_comp1",
+    );
 
     let focusRequests = 0;
     const storageKey = screen.getByTestId("draft-key").textContent ?? "";
@@ -456,6 +479,9 @@ describe("useComposer", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("scope: queued-message")).toBeDefined();
+    expect(screen.getByTestId("queued-accessory-thread").textContent).toBe(
+      "thr_queue",
+    );
 
     fireEvent.click(screen.getByText("queued-replace"));
     expect(screen.getByTestId("queued-composer-text").textContent).toBe(
@@ -581,6 +607,142 @@ describe("useComposer", () => {
     expect(screen.getAllByTestId("draft-text")[1]?.textContent).toBe(
       "Before ideas.md after",
     );
+  });
+
+  it("binds root compose accessories and hooks to the selected project without losing its draft", () => {
+    registerComposerProbe("root");
+
+    function RootComposerHarness() {
+      const [projectId, setProjectId] = useState("proj_selected");
+      const [draft, setDraft] = useState<PromptDraftState>({
+        text: "root draft",
+        mentions: [],
+        attachments: [
+          {
+            type: "localFile",
+            path: "uploads/root-spec.md",
+            name: "root-spec.md",
+            sizeBytes: 42,
+          },
+        ],
+      });
+      const draftRef = useRef(draft);
+      draftRef.current = draft;
+      const host = useMemo<PluginComposerHost>(
+        () => ({
+          scope: { kind: "new-thread", projectId },
+          draft,
+          getCurrent: () => draftRef.current,
+          setDraft,
+          focus: () => {},
+        }),
+        [draft, projectId],
+      );
+
+      return (
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerAccessories />
+          <div data-testid="root-attachments">
+            {JSON.stringify(draft.attachments)}
+          </div>
+          <button type="button" onClick={() => setProjectId("proj_other")}>
+            change-root-project
+          </button>
+        </PluginComposerHostProvider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <RootComposerHarness />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("root-accessory-project").textContent).toBe(
+      "proj_selected",
+    );
+    expect(screen.getByTestId("root-scope-project").textContent).toBe(
+      "proj_selected",
+    );
+    expect(screen.getByTestId("root-accessory-thread").textContent).toBe(
+      "null",
+    );
+
+    fireEvent.click(screen.getByText("change-root-project"));
+    expect(screen.getByTestId("root-accessory-project").textContent).toBe(
+      "proj_other",
+    );
+    expect(screen.getByTestId("root-scope-project").textContent).toBe(
+      "proj_other",
+    );
+    expect(screen.getByTestId("root-composer-text").textContent).toBe(
+      "root draft",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("root-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("root-replace"));
+    expect(screen.getByTestId("root-composer-text").textContent).toBe(
+      "replacement",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("root-attachments").textContent ?? "[]"),
+    ).toHaveLength(1);
+  });
+
+  it("exposes the personal project and an unresolved root scope faithfully", () => {
+    registerComposerProbe("root-project-state");
+
+    function RootProjectStateHarness() {
+      const [projectId, setProjectId] = useState<string | null>(
+        PERSONAL_PROJECT_ID,
+      );
+      const host = useMemo<PluginComposerHost>(() => {
+        const draft: PromptDraftState = {
+          text: "",
+          mentions: [],
+          attachments: [],
+        };
+        return {
+          scope: { kind: "new-thread", projectId },
+          draft,
+          getCurrent: () => draft,
+          setDraft: () => {},
+          focus: () => {},
+        };
+      }, [projectId]);
+
+      return (
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerAccessories />
+          <button type="button" onClick={() => setProjectId(null)}>
+            unset-root-project
+          </button>
+        </PluginComposerHostProvider>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <RootProjectStateHarness />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByTestId("root-project-state-accessory-project").textContent,
+    ).toBe(PERSONAL_PROJECT_ID);
+    expect(
+      screen.getByTestId("root-project-state-scope-project").textContent,
+    ).toBe(PERSONAL_PROJECT_ID);
+
+    fireEvent.click(screen.getByText("unset-root-project"));
+    expect(
+      screen.getByTestId("root-project-state-accessory-project").textContent,
+    ).toBe("null");
+    expect(
+      screen.getByTestId("root-project-state-scope-project").textContent,
+    ).toBe("null");
   });
 
   it("appends mention pills with offsets into the new-thread draft", () => {
