@@ -108,6 +108,21 @@ function ComposerProbe() {
       <button type="button" onClick={() => composer.clear()}>
         clear
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          composer.setThreadRowStatus({
+            icon: "AiScanText",
+            label: "Prompt Shaper improving prompt",
+            effect: "shimmer",
+          })
+        }
+      >
+        set row status
+      </button>
+      <button type="button" onClick={() => composer.setThreadRowStatus(null)}>
+        clear row status
+      </button>
       <button type="button" onClick={() => composer.addQuote("picked text")}>
         quote
       </button>
@@ -354,5 +369,24 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
+  });
+
+  it("records composer thread-row status changes", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+
+    fireEvent.click(slot.getByText("set row status"));
+    expect(slot.composer.threadRowStatus).toEqual({
+      icon: "AiScanText",
+      label: "Prompt Shaper improving prompt",
+      effect: "shimmer",
+    });
+
+    fireEvent.click(slot.getByText("clear row status"));
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(2);
   });
 });

@@ -19,6 +19,7 @@ import {
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerTextEffect,
+  type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageDirectiveRegistration,
@@ -90,6 +91,9 @@ export interface ComposerLog {
   /** Latest host-rendered text effect requested by the plugin. */
   textEffect: PluginComposerTextEffect | null;
   textEffectCalls: Array<PluginComposerTextEffect | null>;
+  /** Latest host-rendered thread-row status requested by the plugin. */
+  threadRowStatus: PluginComposerThreadRowStatus | null;
+  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -721,6 +725,8 @@ export function renderSlot<
     },
     textEffect: null,
     textEffectCalls: [],
+    threadRowStatus: null,
+    threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -748,6 +754,10 @@ export function renderSlot<
       setTextEffect(effect) {
         composerLog.textEffect = effect;
         composerLog.textEffectCalls.push(effect);
+      },
+      setThreadRowStatus(status) {
+        composerLog.threadRowStatus = status;
+        composerLog.threadRowStatusCalls.push(status);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();

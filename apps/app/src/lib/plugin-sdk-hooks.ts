@@ -7,6 +7,7 @@ import type {
   BbNavigate,
   PluginComposerApi,
   PluginComposerMention,
+  PluginComposerThreadRowStatus,
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
@@ -17,6 +18,7 @@ import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host"
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
+import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
@@ -255,7 +257,8 @@ export function useBbNavigate(): BbNavigate {
       // The canonical thread path carries the owning project, which the
       // plugin does not know — resolve it, falling back to the projectless
       // path when the lookup fails.
-      void sdk.threads.get({ threadId })
+      void sdk.threads
+        .get({ threadId })
         .then((thread) =>
           navigate(
             getThreadRoutePath({ projectId: thread.projectId, threadId }),
@@ -422,11 +425,39 @@ export function useComposer(): PluginComposerApi {
     [pluginId, storageKey],
   );
 
+  const composerScope = composerHost?.scope;
+  const threadRowStatusThreadId =
+    composerScope?.kind === "thread" || composerScope?.kind === "queued-message"
+      ? composerScope.threadId
+      : composerScope === undefined && threadId !== undefined
+        ? threadId
+        : null;
+  const threadRowStatusScopeKey =
+    composerScope?.kind === "queued-message"
+      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
+      : threadRowStatusThreadId === null
+        ? "new-thread"
+        : `thread:${threadRowStatusThreadId}`;
+  const setThreadRowStatus = useCallback(
+    (status: PluginComposerThreadRowStatus | null) => {
+      if (threadRowStatusScopeKey === "new-thread") return;
+      setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, status);
+    },
+    [pluginId, threadRowStatusScopeKey, threadRowStatusThreadId],
+  );
+
   useEffect(
     () => () => {
       setComposerTextEffect(storageKey, pluginId, null);
     },
     [pluginId, storageKey],
+  );
+
+  useEffect(
+    () => () => {
+      setPluginThreadRowStatus(threadRowStatusThreadId, pluginId, null);
+    },
+    [pluginId, threadRowStatusScopeKey, threadRowStatusThreadId],
   );
 
   const addQuote = useCallback(
@@ -484,7 +515,6 @@ export function useComposer(): PluginComposerApi {
   );
 
   const focus = focusActiveComposer;
-  const composerScope = composerHost?.scope;
   const composerText = composerHost?.draft.text ?? routeDraft.text;
 
   return useMemo(
@@ -499,6 +529,7 @@ export function useComposer(): PluginComposerApi {
       updateText,
       clear,
       setTextEffect,
+      setThreadRowStatus,
       addQuote,
       insertMention,
       focus,
@@ -513,6 +544,7 @@ export function useComposer(): PluginComposerApi {
       projectId,
       setText,
       setTextEffect,
+      setThreadRowStatus,
       threadId,
       updateText,
     ],

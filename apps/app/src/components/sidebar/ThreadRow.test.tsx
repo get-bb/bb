@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
@@ -12,6 +12,10 @@ import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   SidebarThreadShortcutKeysContext,
 } from "./sidebarThreadShortcuts";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
@@ -157,7 +161,10 @@ function renderThreadRow({
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPluginThreadRowStatusesForTest();
+});
 
 describe("ThreadRow", () => {
   it("puts the draft icon in the trailing status slot", () => {
@@ -172,6 +179,29 @@ describe("ThreadRow", () => {
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
+
+  it("replaces the draft icon with a shimmering plugin status and restores it when cleared", () => {
+    setPluginThreadRowStatus("thr_test", "prompt-shaper", {
+      icon: "AiScanText",
+      label: "Prompt Shaper improving prompt",
+      effect: "shimmer",
+    });
+    const { container } = renderThreadRow({ hasComposerDraft: true });
+
+    const shapingIcon = screen.getByLabelText("Prompt Shaper improving prompt");
+    expect(shapingIcon.getAttribute("data-icon")).toBe("AiScanText");
+    expect(Array.from(shapingIcon.classList)).toContain("animate-shine-icon");
+    expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
+
+    act(() => {
+      setPluginThreadRowStatus("thr_test", "prompt-shaper", null);
+    });
+
+    expect(
+      screen.queryByLabelText("Prompt Shaper improving prompt"),
+    ).toBeNull();
+    expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
   it("replaces the active working spinner with a shimmering draft icon", () => {

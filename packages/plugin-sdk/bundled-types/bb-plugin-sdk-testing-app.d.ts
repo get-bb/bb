@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginComposerTextEffect, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -63,6 +63,9 @@ interface ComposerLog {
     /** Latest host-rendered text effect requested by the plugin. */
     textEffect: PluginComposerTextEffect | null;
     textEffectCalls: Array<PluginComposerTextEffect | null>;
+    /** Latest host-rendered thread-row status requested by the plugin. */
+    threadRowStatus: PluginComposerThreadRowStatus | null;
+    threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
     quotes: string[];
     mentions: PluginComposerMention[];
     focusCount: number;

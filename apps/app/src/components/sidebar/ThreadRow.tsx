@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
@@ -67,6 +68,8 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
+import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -131,6 +134,26 @@ function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
       {...(isWorking
         ? { "aria-label": "Thread working with unsubmitted draft" }
         : { "aria-hidden": true })}
+    />
+  );
+}
+
+function PluginThreadRowStatusIndicator({
+  status,
+}: {
+  status: PluginComposerThreadRowStatus;
+}) {
+  return (
+    <Icon
+      name={pluginIconName(status.icon)}
+      className={cn(
+        "pointer-events-none shrink-0",
+        COARSE_POINTER_ICON_SIZE_CLASS,
+        status.effect === "shimmer"
+          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
+          : "text-muted-foreground",
+      )}
+      aria-label={status.label}
     />
   );
 }
@@ -379,6 +402,7 @@ function getThreadUnreadBadgeLabel({
 
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
   hasComposerDraft: boolean;
+  pluginStatus: PluginComposerThreadRowStatus | null;
 };
 
 function isThreadWorkingGlyphVisible({
@@ -419,6 +443,7 @@ function isThreadWorkingGlyphVisible({
 
 function ThreadTrailingIndicator({
   hasComposerDraft,
+  pluginStatus,
   hasPendingInteraction,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
@@ -456,7 +481,8 @@ function ThreadTrailingIndicator({
     hasComposerDraft && isThreadWorkingGlyphVisible(statusProps);
   const hasCriticalStatus =
     (showUnreadBadge && unreadBadgeTone === "error") || hasPendingInteraction;
-  const showDraftIndicator = hasComposerDraft && !hasCriticalStatus;
+  const showDraftIndicator =
+    (hasComposerDraft || pluginStatus !== null) && !hasCriticalStatus;
 
   if (!showStatusGlyph && !showDraftIndicator) {
     return null;
@@ -471,7 +497,11 @@ function ThreadTrailingIndicator({
       )}
     >
       {showDraftIndicator ? (
-        <ThreadDraftIndicator isWorking={draftIsWorking} />
+        pluginStatus === null ? (
+          <ThreadDraftIndicator isWorking={draftIsWorking} />
+        ) : (
+          <PluginThreadRowStatusIndicator status={pluginStatus} />
+        )
       ) : (
         <ThreadStatusGlyph {...statusProps} />
       )}
@@ -495,6 +525,7 @@ function ThreadRowComponent({
     getThreadConversationCollapsedAtom(thread.id),
   );
   const shortcut = useSidebarThreadShortcut(thread.id);
+  const pluginThreadRowStatus = usePluginThreadRowStatus(thread.id);
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadRuntimeBusy =
@@ -685,6 +716,7 @@ function ThreadRowComponent({
               >
                 <ThreadTrailingIndicator
                   hasComposerDraft={hasComposerDraft}
+                  pluginStatus={pluginThreadRowStatus}
                   hasPendingInteraction={trailingHasPendingInteraction}
                   isBackgroundAgentActive={trailingBackgroundAgentActive}
                   isBackgroundCommandActive={trailingBackgroundCommandActive}
