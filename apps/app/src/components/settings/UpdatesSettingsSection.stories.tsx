@@ -3,12 +3,13 @@ import type { Host } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
-import {
-  SettingsRowList,
-  SettingsSection,
-} from "@/components/ui/settings-section";
+import { SettingsSection } from "@/components/ui/settings-section";
 import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
-import { BbAppUpdateRows, MachineUpdatesRows } from "./UpdatesSettingsSection";
+import {
+  BbAppUpdateRows,
+  MachineUpdatesRows,
+  UpdatesRowList,
+} from "./UpdatesSettingsSection";
 
 export default {
   title: "settings/Updates",
@@ -136,7 +137,7 @@ function machineOf(args: {
 function MachineSection({ machine }: { machine: UpdateInventoryMachine }) {
   return (
     <SettingsSection title="Machines">
-      <SettingsRowList>
+      <UpdatesRowList>
         <MachineUpdatesRows
           machine={machine}
           runningJobKey={null}
@@ -145,7 +146,7 @@ function MachineSection({ machine }: { machine: UpdateInventoryMachine }) {
           onStartInstall={noop}
           onRetryDaemonUpdate={noop}
         />
-      </SettingsRowList>
+      </UpdatesRowList>
     </SettingsSection>
   );
 }
@@ -154,7 +155,7 @@ export function WebAppUpdateAvailable() {
   return (
     <Stage>
       <SettingsSection title="bb">
-        <SettingsRowList>
+        <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={{
               currentVersion: "0.0.32",
@@ -167,7 +168,7 @@ export function WebAppUpdateAvailable() {
             desktopInfo={null}
             onRelaunchDesktop={null}
           />
-        </SettingsRowList>
+        </UpdatesRowList>
       </SettingsSection>
     </Stage>
   );
@@ -177,7 +178,7 @@ export function DesktopUpdateReady() {
   return (
     <Stage>
       <SettingsSection title="bb">
-        <SettingsRowList>
+        <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={undefined}
             desktopInfo={{
@@ -191,7 +192,7 @@ export function DesktopUpdateReady() {
             }}
             onRelaunchDesktop={noop}
           />
-        </SettingsRowList>
+        </UpdatesRowList>
       </SettingsSection>
     </Stage>
   );
@@ -201,7 +202,7 @@ export function DesktopDownloading() {
   return (
     <Stage>
       <SettingsSection title="bb">
-        <SettingsRowList>
+        <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={undefined}
             desktopInfo={{
@@ -215,7 +216,7 @@ export function DesktopDownloading() {
             }}
             onRelaunchDesktop={noop}
           />
-        </SettingsRowList>
+        </UpdatesRowList>
       </SettingsSection>
     </Stage>
   );
@@ -270,7 +271,7 @@ export function MachineRunningAndQueued() {
   return (
     <Stage>
       <SettingsSection title="Machines">
-        <SettingsRowList>
+        <UpdatesRowList>
           <MachineUpdatesRows
             machine={machine}
             runningJobKey="host-primary:codex"
@@ -279,7 +280,7 @@ export function MachineRunningAndQueued() {
             onStartInstall={noop}
             onRetryDaemonUpdate={noop}
           />
-        </SettingsRowList>
+        </UpdatesRowList>
       </SettingsSection>
     </Stage>
   );

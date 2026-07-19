@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
-import { Button } from "@bb/shared-ui/button";
+import { Button, type ButtonProps } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -15,8 +15,6 @@ import {
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   SettingsBadge,
-  SettingsRow,
-  SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
@@ -41,7 +39,61 @@ function updateCheckErrorDescription(error: unknown): string {
   return "The update check did not complete.";
 }
 
-function VersionArrow({
+function RowButton({ className, ...props }: ButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-6 px-2 text-xs text-muted-foreground hover:text-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A card whose rows are a shared 4-column grid (name / version / state /
+ * action) via subgrid, so the columns line up across every row.
+ */
+export function UpdatesRowList({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4">
+      {children}
+    </div>
+  );
+}
+
+function UpdatesRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="col-span-4 grid grid-cols-subgrid items-center border-t border-border py-2.5 text-sm first:border-t-0 first:pt-0 last:pb-0">
+      {children}
+    </div>
+  );
+}
+
+function NameCell({
+  indent,
+  children,
+}: {
+  indent?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 truncate text-foreground",
+        indent && "pl-4",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function VersionCell({
   current,
   latest,
 }: {
@@ -49,17 +101,17 @@ function VersionArrow({
   latest: string | null;
 }) {
   if (current === null && latest === null) {
-    return null;
+    return <span />;
   }
   if (current === null) {
     return (
-      <span className="shrink-0 font-mono text-xs font-semibold text-foreground">
+      <span className="justify-self-end font-mono text-xs font-semibold text-foreground">
         {latest}
       </span>
     );
   }
   return (
-    <span className="shrink-0 font-mono text-xs text-muted-foreground">
+    <span className="justify-self-end font-mono text-xs text-muted-foreground">
       {current}
       {latest !== null && latest !== current ? (
         <>
@@ -71,7 +123,7 @@ function VersionArrow({
   );
 }
 
-function RowState({
+function StateCell({
   tone,
   children,
 }: {
@@ -81,7 +133,7 @@ function RowState({
   return (
     <span
       className={cn(
-        "shrink-0 text-xs",
+        "text-xs",
         tone === "subtle" && "text-subtle-foreground",
         tone === "attention" && "text-foreground",
         tone === "destructive" && "text-destructive-text",
@@ -89,6 +141,12 @@ function RowState({
     >
       {children}
     </span>
+  );
+}
+
+function ActionCell({ children }: { children?: ReactNode }) {
+  return (
+    <span className="flex min-w-14 justify-end">{children ?? null}</span>
   );
 }
 
@@ -109,83 +167,98 @@ export function BbAppUpdateRows({
   onRelaunchDesktop,
 }: BbAppUpdateRowsProps) {
   if (desktopInfo !== null) {
-    const pendingVersion = desktopInfo.pendingVersion ?? desktopInfo.latestVersion;
+    const pendingVersion =
+      desktopInfo.pendingVersion ?? desktopInfo.latestVersion;
     return (
-      <SettingsRow>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          bb desktop
-        </span>
-        <VersionArrow
+      <UpdatesRow>
+        <NameCell>
+          <span className="truncate font-medium">bb desktop</span>
+        </NameCell>
+        <VersionCell
           current={desktopInfo.version}
           latest={desktopInfo.updateAvailable ? pendingVersion : null}
         />
         {desktopInfo.updateDownloaded ? (
           <>
-            <RowState tone="attention">Downloaded</RowState>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onRelaunchDesktop?.()}
-            >
-              Relaunch
-            </Button>
+            <StateCell tone="attention">Downloaded</StateCell>
+            <ActionCell>
+              <RowButton onClick={() => onRelaunchDesktop?.()}>
+                Relaunch
+              </RowButton>
+            </ActionCell>
           </>
         ) : desktopInfo.updateAvailable ? (
-          <RowState tone="attention">Downloading in the background…</RowState>
+          <>
+            <StateCell tone="attention">Downloading in the background…</StateCell>
+            <ActionCell />
+          </>
         ) : (
-          <RowState tone="subtle">Up to date</RowState>
+          <>
+            <StateCell tone="subtle">Up to date</StateCell>
+            <ActionCell />
+          </>
         )}
-      </SettingsRow>
+      </UpdatesRow>
     );
   }
 
   if (systemVersion === undefined) {
     return (
-      <SettingsRow>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          bb-app
-        </span>
-        <RowState tone="subtle">Checking…</RowState>
-      </SettingsRow>
+      <UpdatesRow>
+        <NameCell>
+          <span className="truncate font-medium">bb-app</span>
+        </NameCell>
+        <span />
+        <StateCell tone="subtle">Checking…</StateCell>
+        <ActionCell />
+      </UpdatesRow>
     );
   }
 
   return (
-    <SettingsRow>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-        bb-app
-      </span>
-      <VersionArrow
-        current={systemVersion.currentVersion}
-        latest={systemVersion.updateAvailable ? systemVersion.latestVersion : null}
-      />
-      {systemVersion.isDevelopment ? (
-        <RowState tone="subtle">Development mode</RowState>
-      ) : systemVersion.updateAvailable ? (
-        <>
-          <RowState tone="attention">Available</RowState>
-          <code className="shrink-0 rounded-sm bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+    <UpdatesRow>
+      <NameCell>
+        <span className="truncate font-medium">bb-app</span>
+        {systemVersion.updateAvailable ? (
+          <code className="ml-1.5 shrink-0 rounded-sm bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
             {systemVersion.upgradeCommand}
           </code>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(systemVersion.upgradeCommand)
-                .then(() => appToast.success("Upgrade command copied"))
-                .catch(() => undefined);
-            }}
-          >
-            Copy
-          </Button>
+        ) : null}
+      </NameCell>
+      <VersionCell
+        current={systemVersion.currentVersion}
+        latest={
+          systemVersion.updateAvailable ? systemVersion.latestVersion : null
+        }
+      />
+      {systemVersion.isDevelopment ? (
+        <>
+          <StateCell tone="subtle">Development mode</StateCell>
+          <ActionCell />
+        </>
+      ) : systemVersion.updateAvailable ? (
+        <>
+          <StateCell tone="attention">Available</StateCell>
+          <ActionCell>
+            <RowButton
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(systemVersion.upgradeCommand)
+                  .then(() => appToast.success("Upgrade command copied"))
+                  .catch(() => undefined);
+              }}
+            >
+              Copy
+            </RowButton>
+          </ActionCell>
         </>
       ) : (
-        <RowState tone="subtle">Up to date</RowState>
+        <>
+          <StateCell tone="subtle">Up to date</StateCell>
+          <ActionCell />
+        </>
       )}
-    </SettingsRow>
+    </UpdatesRow>
   );
 }
 
@@ -234,48 +307,57 @@ export function MachineUpdatesRows({
 
   return (
     <>
-      <SettingsRow>
-        <MachineStatusDot connected={host.status === "connected"} />
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {host.name}
-        </span>
-        {machine.isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
-        <span className="flex-1" />
+      <UpdatesRow>
+        <NameCell>
+          <MachineStatusDot connected={host.status === "connected"} />
+          <span className="truncate font-medium">{host.name}</span>
+          {machine.isPrimary ? (
+            <SettingsBadge>this machine</SettingsBadge>
+          ) : null}
+        </NameCell>
+        <span />
         {machine.canRetryDaemonUpdate ? (
           <>
-            <RowState tone="destructive">
+            <StateCell tone="destructive">
               {daemonUpdateStatus ?? "Needs update"}
-            </RowState>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={retryUpdatePending}
-              onClick={() => onRetryDaemonUpdate(host.id)}
-            >
-              {retryUpdatePending ? "Retrying…" : "Retry update"}
-            </Button>
+            </StateCell>
+            <ActionCell>
+              <RowButton
+                disabled={retryUpdatePending}
+                onClick={() => onRetryDaemonUpdate(host.id)}
+              >
+                {retryUpdatePending ? "Retrying…" : "Retry update"}
+              </RowButton>
+            </ActionCell>
           </>
         ) : host.status === "connected" ? (
-          <RowState tone="subtle">Follows the server version</RowState>
+          <>
+            <StateCell tone="subtle">Follows the server version</StateCell>
+            <ActionCell />
+          </>
         ) : (
-          <RowState tone="subtle">
-            Offline — connect to check for updates
-          </RowState>
+          <>
+            <StateCell tone="subtle">
+              Offline — connect to check for updates
+            </StateCell>
+            <ActionCell />
+          </>
         )}
-      </SettingsRow>
+      </UpdatesRow>
       {host.status !== "connected" ? null : machine.statusError ? (
-        <SettingsRow>
-          <span className="pl-4 text-xs text-destructive-text">
+        <UpdatesRow>
+          <span className="col-span-3 pl-4 text-xs text-destructive-text">
             Couldn't check provider CLIs on this machine.
           </span>
-        </SettingsRow>
+          <ActionCell />
+        </UpdatesRow>
       ) : machine.statusPending || machine.providerStatus === null ? (
-        <SettingsRow>
-          <span className="pl-4 text-xs text-subtle-foreground">
+        <UpdatesRow>
+          <span className="col-span-3 pl-4 text-xs text-subtle-foreground">
             Checking provider CLIs…
           </span>
-        </SettingsRow>
+          <ActionCell />
+        </UpdatesRow>
       ) : (
         (["codex", "claudeCode"] as const).map((provider) => {
           const status = machine.providerStatus?.[provider];
@@ -291,40 +373,37 @@ export function MachineUpdatesRows({
           const running = runningJobKey === jobKey;
           const queued = queuedJobKeys.has(jobKey);
           return (
-            <SettingsRow key={provider}>
-              <span className="min-w-0 flex-1 truncate pl-4 text-sm text-foreground">
-                {status.displayName}
-              </span>
-              <VersionArrow
+            <UpdatesRow key={provider}>
+              <NameCell indent>
+                <span className="truncate">{status.displayName}</span>
+              </NameCell>
+              <VersionCell
                 current={status.currentVersion}
                 latest={issue !== null ? status.latestVersion : null}
               />
               {running ? (
-                <RowState tone="attention">
+                <StateCell tone="attention">
                   <span className="inline-flex items-center gap-1.5">
                     <Icon name="Spinner" className="size-3 animate-spin" />
                     Running…
                   </span>
-                </RowState>
+                </StateCell>
               ) : queued ? (
-                <RowState tone="subtle">Queued</RowState>
+                <StateCell tone="subtle">Queued</StateCell>
               ) : (
-                <RowState tone={state.tone}>{state.label}</RowState>
+                <StateCell tone={state.tone}>{state.label}</StateCell>
               )}
-              {issue !== null &&
-              hasProviderCliAction(issue) &&
-              !running &&
-              !queued ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onStartInstall(host.id, issue)}
-                >
-                  {issue.action.label}
-                </Button>
-              ) : null}
-            </SettingsRow>
+              <ActionCell>
+                {issue !== null &&
+                hasProviderCliAction(issue) &&
+                !running &&
+                !queued ? (
+                  <RowButton onClick={() => onStartInstall(host.id, issue)}>
+                    {issue.action.label}
+                  </RowButton>
+                ) : null}
+              </ActionCell>
+            </UpdatesRow>
           );
         })
       )}
@@ -349,12 +428,14 @@ export function UpdatesSettingsSection() {
       },
     });
 
-  const actionableIssues: { hostId: string; issue: ProviderCliActionableIssue }[] =
-    inventory.machines.flatMap((machine) =>
-      machine.issues
-        .filter(hasProviderCliAction)
-        .map((issue) => ({ hostId: machine.host.id, issue })),
-    );
+  const actionableIssues: {
+    hostId: string;
+    issue: ProviderCliActionableIssue;
+  }[] = inventory.machines.flatMap((machine) =>
+    machine.issues
+      .filter(hasProviderCliAction)
+      .map((issue) => ({ hostId: machine.host.id, issue })),
+  );
 
   async function handleCheckForUpdates(): Promise<void> {
     if (isChecking) {
@@ -393,20 +474,12 @@ export function UpdatesSettingsSection() {
         title="bb"
         description="The bb app updates here; connected machines follow the server version automatically."
         action={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => openUrlInExternalBrowser(CHANGELOG_URL)}
-            >
+          <div className="flex items-center gap-1">
+            <RowButton onClick={() => openUrlInExternalBrowser(CHANGELOG_URL)}>
               What's new
               <Icon name="ExternalLink" className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
+            </RowButton>
+            <RowButton
               aria-busy={isChecking}
               disabled={isChecking}
               onClick={() => {
@@ -418,11 +491,11 @@ export function UpdatesSettingsSection() {
                 className={cn("size-3.5", isChecking && "animate-spin")}
               />
               {isChecking ? "Checking" : "Check for updates"}
-            </Button>
+            </RowButton>
           </div>
         }
       >
-        <SettingsRowList>
+        <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={inventory.systemVersion}
             desktopInfo={desktopInfo}
@@ -438,16 +511,14 @@ export function UpdatesSettingsSection() {
                   }
             }
           />
-        </SettingsRowList>
+        </UpdatesRowList>
       </SettingsSection>
 
       <SettingsSection
         title="Machines"
         description="Provider CLIs installed on each connected machine."
         action={
-          <Button
-            type="button"
-            size="sm"
+          <RowButton
             disabled={actionableIssues.length === 0}
             onClick={() => {
               for (const { hostId, issue } of actionableIssues) {
@@ -457,7 +528,7 @@ export function UpdatesSettingsSection() {
           >
             Update all
             {actionableIssues.length > 0 ? ` (${actionableIssues.length})` : ""}
-          </Button>
+          </RowButton>
         }
       >
         {inventory.machines.length === 0 ? (
@@ -465,7 +536,7 @@ export function UpdatesSettingsSection() {
             {inventory.isLoading ? "Loading…" : "No machines yet."}
           </p>
         ) : (
-          <SettingsRowList>
+          <UpdatesRowList>
             {inventory.machines.map((machine) => (
               <MachineUpdatesRows
                 key={machine.host.id}
@@ -490,7 +561,7 @@ export function UpdatesSettingsSection() {
                 }
               />
             ))}
-          </SettingsRowList>
+          </UpdatesRowList>
         )}
       </SettingsSection>
       {installLogDialog}
