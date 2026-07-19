@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadPromptModeCard } from "./ThreadPromptModeCard";
 
 afterEach(() => {
@@ -56,5 +56,41 @@ describe("ThreadPromptModeCard", () => {
     );
 
     expect(container.textContent).toBe("");
+  });
+
+  it("requests an authoritative exit and stays visible while pending", () => {
+    const onExitPlanMode = vi.fn();
+    render(
+      <ThreadPromptModeCard
+        activePromptMode={{
+          mode: "plan",
+          providerId: "codex",
+          prompt: "Plan the change",
+        }}
+        isExitPending
+        isExpanded={false}
+        onExitPlanMode={onExitPlanMode}
+        onToggle={() => {}}
+      />,
+    );
+
+    const exit = screen.getByRole("button", { name: "Exit plan mode" });
+    const controls = screen.getByRole("group", {
+      name: "Plan mode controls",
+    });
+    expect(controls.classList.contains("bg-background/70")).toBe(true);
+    expect(exit.parentElement).toBe(controls);
+    expect(exit.classList.contains("border-l")).toBe(true);
+    expect(exit.classList.contains("border-border/35")).toBe(true);
+    expect(exit.classList.contains("min-h-8")).toBe(true);
+    expect(exit.classList.contains("w-8")).toBe(true);
+    expect(exit.classList.contains("rounded-none")).toBe(true);
+    expect(exit.classList.contains("bg-transparent")).toBe(true);
+    expect(exit.classList.contains("hover:bg-state-hover")).toBe(false);
+    expect(exit.classList.contains("disabled:opacity-60")).toBe(false);
+    expect(exit.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByLabelText("Prompt mode")).not.toBeNull();
+    fireEvent.click(exit);
+    expect(onExitPlanMode).not.toHaveBeenCalled();
   });
 });

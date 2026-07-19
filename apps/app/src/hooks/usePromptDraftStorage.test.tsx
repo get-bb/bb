@@ -2,7 +2,10 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { usePromptDraftStorage } from "./usePromptDraftStorage";
+import {
+  usePromptDraftInputThreadIds,
+  usePromptDraftStorage,
+} from "./usePromptDraftStorage";
 
 const NEW_THREAD_DRAFT_KEY = "bb.promptbox.contents-draft-3";
 const LEGACY_PROJECT_DRAFT_KEY = "bb.promptbox.contents-proj_prompt-draft-3";
@@ -32,12 +35,46 @@ afterEach(() => {
 });
 
 describe("usePromptDraftStorage", () => {
+  it("subscribes to draft presence for a batch of threads", () => {
+    const projectId = "proj-batch-drafts";
+    const threadRefs = [
+      { id: "thr-batch-a", projectId },
+      { id: "thr-batch-b", projectId },
+    ];
+    const { result } = renderHook(() => ({
+      draft: usePromptDraftStorage({
+        kind: "thread",
+        projectId,
+        threadId: "thr-batch-b",
+      }),
+      inputThreadIds: usePromptDraftInputThreadIds(threadRefs),
+    }));
+
+    expect([...result.current.inputThreadIds]).toEqual([]);
+
+    act(() => {
+      result.current.draft.setDraft({
+        text: "Unsubmitted",
+        mentions: [],
+        attachments: [],
+      });
+    });
+
+    expect([...result.current.inputThreadIds]).toEqual(["thr-batch-b"]);
+
+    act(() => result.current.draft.clear());
+    expect([...result.current.inputThreadIds]).toEqual([]);
+  });
+
   it("uses project-agnostic storage for new-thread prompt contents", () => {
     window.localStorage.setItem(
       LEGACY_PROJECT_DRAFT_KEY,
       storedDraft("project draft"),
     );
-    window.localStorage.setItem(NEW_THREAD_DRAFT_KEY, storedDraft("global draft"));
+    window.localStorage.setItem(
+      NEW_THREAD_DRAFT_KEY,
+      storedDraft("global draft"),
+    );
 
     const { result } = renderHook(() =>
       usePromptDraftStorage({ kind: "new-thread" }),
@@ -87,9 +124,9 @@ describe("usePromptDraftStorage addQuote", () => {
     // Blockquote-prefixed, with a trailing newline so the reply sits below it.
     expect(result.current.text).toBe("> ship it\n");
     expect(window.localStorage.length).toBe(1);
-    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
-      "> ship it",
-    );
+    expect(
+      window.localStorage.getItem(result.current.storageKey ?? ""),
+    ).toContain("> ship it");
   });
 
   it("stacks a second quote below the first, separated by a blank line", () => {
@@ -135,9 +172,9 @@ describe("usePromptDraftStorage addQuote", () => {
         sizeBytes: 0,
       },
     ]);
-    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
-      "uploads/spec.md",
-    );
+    expect(
+      window.localStorage.getItem(result.current.storageKey ?? ""),
+    ).toContain("uploads/spec.md");
   });
 
   it("ignores whitespace-only text without writing", () => {

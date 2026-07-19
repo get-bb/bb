@@ -120,8 +120,8 @@ export function clipMentionTextToVisibleRange({
 function mentionPillClassName(interactive: boolean): string {
   return cn(
     PROMPT_MENTION_PILL_CLASS,
-    "bg-surface-raised/50 no-underline hover:no-underline",
-    interactive && "cursor-pointer hover:bg-state-hover",
+    "bg-surface-raised/50 font-normal no-underline hover:no-underline",
+    interactive ? "cursor-pointer hover:bg-state-hover" : "cursor-default",
   );
 }
 
@@ -387,7 +387,8 @@ export function renderMessageBodyWithQuotes({
       );
     } else {
       const spanStart = lineStarts[index]!;
-      const spanEnd = lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
+      const spanEnd =
+        lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
       const subText = text.slice(spanStart, spanEnd);
       const subMentions = normalized.flatMap((mention) =>
         mention.start >= spanStart && mention.end <= spanEnd

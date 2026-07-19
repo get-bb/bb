@@ -17,9 +17,12 @@ import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 import { getProviderCliStatusForProvider } from "../provider-cli-health.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
+type ExistingThreadRuntimeCommand =
+  | TurnSubmitCommand
+  | CommandOf<"thread.goal.clear">;
 
 interface ResumeThreadRuntimeIfMissingArgs {
-  command: TurnSubmitCommand;
+  command: ExistingThreadRuntimeCommand;
   entry: RuntimeEntry;
 }
 
@@ -235,7 +238,7 @@ export async function startThread(
 }
 
 export async function ensureThreadRuntime(
-  command: TurnSubmitCommand,
+  command: ExistingThreadRuntimeCommand,
   options: CommandDispatchOptions,
 ): Promise<RuntimeEntry> {
   const { resumeContext } = command;

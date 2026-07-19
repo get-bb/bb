@@ -1,7 +1,4 @@
-import type {
-  AgentRuntime,
-  AgentRuntimeOptions,
-} from "@bb/agent-runtime";
+import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +56,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
       return { status: "steered" };
     },
     async stopThread() {},
+    async clearThreadGoal() {
+      return { cleared: true };
+    },
     async renameThread() {},
     async archiveThread() {},
     async unarchiveThread() {},
@@ -98,11 +98,9 @@ describe("command dispatch support", () => {
   });
 
   it("classifies ACP model-list authentication errors", () => {
-    expect(
-      getErrorCode(
-        new Error("ACP agent is not authenticated."),
-      ),
-    ).toBe("auth_required");
+    expect(getErrorCode(new Error("ACP agent is not authenticated."))).toBe(
+      "auth_required",
+    );
     expect(
       getErrorCode(
         new Error(

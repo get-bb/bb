@@ -10,11 +10,17 @@ import {
   PromptMentionPill,
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
+import {
+  useSidebarThreadMentionResource,
+  useThreadMentionResource,
+} from "@/components/thread/ThreadTitleMentions.js";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
 
 // Literal token the generated-message body uses to reference a thread:
 // `@thread:<id>`. The id is the trailing run of id-safe characters.
 const THREAD_MENTION_PATTERN = /@thread:([A-Za-z0-9_-]+)/gu;
+const THREAD_MENTION_PREFIX = "@thread";
+const THREAD_MENTION_ID_PATTERN = /^[A-Za-z0-9_-]+$/u;
 
 // Custom hast element the remark plugin emits for each token; mapped back to a
 // React pill via the `components` entry below. Lowercase + hyphenated so it is a
@@ -48,7 +54,12 @@ function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
   let match: RegExpExecArray | null;
   while ((match = THREAD_MENTION_PATTERN.exec(value)) !== null) {
     const threadId = match[1];
-    if (threadId === undefined) {
+    const matchEnd = match.index + match[0].length;
+    if (
+      threadId === undefined ||
+      !isMentionBoundary(value, match.index) ||
+      !isMentionEndBoundary(value, matchEnd)
+    ) {
       continue;
     }
     if (match.index > cursor) {
@@ -69,15 +80,95 @@ function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
   return replacements;
 }
 
+interface ParsedTextDirective {
+  attributes: unknown;
+  children: unknown;
+  name: string;
+  type: "textDirective";
+}
+
+function parseTextDirective(node: unknown): ParsedTextDirective | null {
+  if (typeof node !== "object" || node === null) {
+    return null;
+  }
+  const candidate = node as {
+    attributes?: unknown;
+    children?: unknown;
+    name?: unknown;
+    type?: unknown;
+  };
+  return candidate.type === "textDirective" &&
+    typeof candidate.name === "string"
+    ? {
+        type: candidate.type,
+        name: candidate.name,
+        attributes: candidate.attributes,
+        children: candidate.children,
+      }
+    : null;
+}
+
+function isUndecoratedTextDirective(directive: ParsedTextDirective): boolean {
+  return (
+    Array.isArray(directive.children) &&
+    directive.children.length === 0 &&
+    typeof directive.attributes === "object" &&
+    directive.attributes !== null &&
+    !Array.isArray(directive.attributes) &&
+    Object.keys(directive.attributes).length === 0
+  );
+}
+
+function collectAuthoredMarkdownLinkNodes(tree: Nodes): WeakSet<object> {
+  const linkNodes = new WeakSet<object>();
+  visit(tree, (node) => {
+    if (node.type !== "link" && node.type !== "linkReference") {
+      return;
+    }
+    visit(node, (descendant) => {
+      linkNodes.add(descendant);
+    });
+  });
+  return linkNodes;
+}
+
+function isMentionBoundary(text: string, index: number): boolean {
+  const previous = text[index - 1];
+  return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
+}
+
+function isMentionEndBoundary(text: string, index: number): boolean {
+  const next = text[index];
+  if (next === undefined) return true;
+  if (next === ".") {
+    const afterPeriod = text[index + 1];
+    return afterPeriod === undefined || /[\s,;:!?)}\]]/u.test(afterPeriod);
+  }
+  return !/[\p{L}\p{N}_.+\/-]/u.test(next);
+}
+
+function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
+  const next = parent.children[index + 1];
+  return next?.type !== "text" || isMentionEndBoundary(next.value, 0);
+}
+
 /**
  * Remark plugin that rewrites the literal `@thread:<id>` token inside text
  * nodes into custom inline nodes the `components` map renders as the canonical
- * thread-mention pill. No-op for bodies without the token.
+ * thread-mention pill. When `remark-directive` is active, its parser splits the
+ * same source into an `@thread` text suffix plus a `:<id>` text directive; the
+ * second pass rejoins that exact pair before the directive renderer sees it.
+ * No-op for bodies without the token.
  */
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
+    const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
     visit(tree, "text", (node: Text, index, parent: Parent | undefined) => {
-      if (parent === undefined || index === undefined) {
+      if (
+        parent === undefined ||
+        index === undefined ||
+        authoredMarkdownLinkNodes.has(node)
+      ) {
         return;
       }
       const replacements = splitTextNodeOnMentions(node);
@@ -86,6 +177,48 @@ export function remarkThreadMentions() {
       }
       parent.children.splice(index, 1, ...replacements);
       return index + replacements.length;
+    });
+    visit(tree, (node, index, parent: Parent | undefined) => {
+      const directive = parseTextDirective(node);
+      if (
+        directive === null ||
+        index === undefined ||
+        index === 0 ||
+        parent === undefined ||
+        !isUndecoratedTextDirective(directive) ||
+        !THREAD_MENTION_ID_PATTERN.test(directive.name)
+      ) {
+        return;
+      }
+      const previous = parent.children[index - 1];
+      if (previous?.type !== "text") {
+        return;
+      }
+      const prefixStart = previous.value.length - THREAD_MENTION_PREFIX.length;
+      if (prefixStart < 0 || !previous.value.endsWith(THREAD_MENTION_PREFIX)) {
+        return;
+      }
+      if (
+        !isMentionBoundary(previous.value, prefixStart) ||
+        !isDirectiveMentionEndBoundary(parent, index) ||
+        authoredMarkdownLinkNodes.has(node)
+      ) {
+        const leadingText = previous.value.slice(0, prefixStart);
+        const mentionText: Text = {
+          type: "text",
+          value: `${THREAD_MENTION_PREFIX}:${directive.name}`,
+        };
+        if (leadingText.length === 0) {
+          parent.children.splice(index - 1, 2, mentionText);
+          return index;
+        }
+        previous.value = leadingText;
+        parent.children.splice(index, 1, mentionText);
+        return index + 1;
+      }
+      previous.value = previous.value.slice(0, prefixStart);
+      parent.children.splice(index, 1, threadMentionNode(directive.name));
+      return index + 1;
     });
   };
 }
@@ -131,12 +264,34 @@ export function buildThreadMentionComponent({
   mentions,
   resolveSegmentLinkHref,
 }: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
+  function ThreadMentionPillWithQuery({ threadId }: { threadId: string }) {
+    const liveResource = useThreadMentionResource(threadId);
+    const resource =
+      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+    return (
+      <PromptMentionPill
+        resource={resource}
+        serializedText={`@thread:${threadId}`}
+        linkHref={resolveThreadMentionHref(threadId, resolveSegmentLinkHref)}
+      />
+    );
+  }
+
   function ThreadMentionElement(props: ThreadMentionElementProps) {
-    const threadId = props["data-thread-id"];
-    if (threadId === undefined) {
+    const threadId = props["data-thread-id"] ?? "";
+    const sidebarResource = useSidebarThreadMentionResource(threadId);
+    if (threadId.length === 0) {
       return null;
     }
-    const resource = resolveThreadMentionResource(mentions, threadId);
+    const persistedResource = mentions.find(
+      (mention) =>
+        mention.resource.kind === "thread" &&
+        mention.resource.threadId === threadId,
+    )?.resource;
+    const resource = sidebarResource ?? persistedResource;
+    if (resource === undefined) {
+      return <ThreadMentionPillWithQuery threadId={threadId} />;
+    }
     return (
       <PromptMentionPill
         resource={resource}

@@ -305,6 +305,9 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+- Use `bb thread cancel-plan <id>` to exit an active Plan turn without
+  optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
+  a Codex thread's durable active Goal. Both wait for provider confirmation.
 
 ## Memory
 

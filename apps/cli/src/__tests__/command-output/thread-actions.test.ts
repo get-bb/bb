@@ -335,4 +335,22 @@ describe("bb thread action command output", () => {
     );
     expect(stopPost).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ["cancel-plan", "plan.cancel", "exited Plan mode"],
+    ["clear-goal", "goal.clear", "cleared its Goal"],
+  ])(
+    "bb thread %s calls the authoritative banner action",
+    async (command, route, output) => {
+      const post = vi.fn(async () => ({ ok: true }));
+      stubServerApi({ [`v1.threads.:id.${route}.$post`]: post });
+
+      await runCommand(["thread", command, "thread-banner"], register);
+
+      expect(post).toHaveBeenCalledWith({ param: { id: "thread-banner" } });
+      expect(collectLogLines(vi.mocked(console.log))).toContain(
+        `Thread thread-banner ${output}`,
+      );
+    },
+  );
 });

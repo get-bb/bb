@@ -1416,6 +1416,8 @@ export function createPiProviderAdapter(
               threadId: command.providerThreadId,
             },
           };
+        case "thread/goal/clear":
+          return { kind: "noop", reason: "goals unsupported" };
         case "thread/name/set":
           return { kind: "noop", reason: "rename unsupported" };
         case "thread/archive":

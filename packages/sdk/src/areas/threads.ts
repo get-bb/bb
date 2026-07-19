@@ -106,6 +106,7 @@ export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
 export type ThreadStopResult = { ok: true };
+export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
 export type ThreadReadStateResult = ThreadResponse;
@@ -395,6 +396,8 @@ export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
+  cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
+  clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
     args: ThreadStatusArgs,
   ): Promise<ThreadConversationOutlineResult>;
@@ -987,6 +990,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async stop(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].stop.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async cancelPlan(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].plan.cancel.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async clearGoal(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].goal.clear.$post({
           param: { id: input.threadId },
         }),
       );

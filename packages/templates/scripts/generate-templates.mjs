@@ -292,7 +292,11 @@ const starterTypeOnlyDeps = new Set();
     );
   }
 }
-starterFiles.sort((a, b) => a.target.localeCompare(b.target));
+starterFiles.sort((a, b) => {
+  if (a.target < b.target) return -1;
+  if (a.target > b.target) return 1;
+  return 0;
+});
 function versionedDeps(names) {
   return Object.fromEntries(
     [...names].sort().map((name) => {
@@ -340,10 +344,13 @@ const generatedFiles = [
 
 if (process.argv.includes("--check")) {
   for (const file of generatedFiles) {
-    if ((await readCurrentOutput(file.outputPath)) !== file.content) {
+    const currentContent = await readCurrentOutput(file.outputPath);
+    if (currentContent !== file.content) {
+      const relativeOutputPath = path.relative(packageRoot, file.outputPath);
       console.error(
-        "Generated templates are out of date. Run `node packages/templates/scripts/generate-templates.mjs`.",
+        `Generated template output is out of date: packages/templates/${relativeOutputPath}. Run \`node packages/templates/scripts/generate-templates.mjs\`.`,
       );
+      console.error(describeFirstDifference(currentContent, file.content));
       process.exit(1);
     }
   }
@@ -366,6 +373,25 @@ async function readCurrentOutput(filePath) {
     }
     throw error;
   });
+}
+
+function describeFirstDifference(currentContent, expectedContent) {
+  const current = currentContent ?? "";
+  const sharedLength = Math.min(current.length, expectedContent.length);
+  let differenceIndex = 0;
+  while (
+    differenceIndex < sharedLength &&
+    current[differenceIndex] === expectedContent[differenceIndex]
+  ) {
+    differenceIndex += 1;
+  }
+  const contextStart = Math.max(0, differenceIndex - 120);
+  const contextEnd = differenceIndex + 280;
+  return [
+    `First difference at offset ${differenceIndex}; committed length ${current.length}, generated length ${expectedContent.length}.`,
+    `Committed context: ${JSON.stringify(current.slice(contextStart, contextEnd))}`,
+    `Generated context: ${JSON.stringify(expectedContent.slice(contextStart, contextEnd))}`,
+  ].join("\n");
 }
 
 async function writeOutputAtomically(filePath, content) {

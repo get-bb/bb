@@ -9,13 +9,18 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 const PROMPT_MODE_CARD_ROW_HEIGHT = 32;
-const PROMPT_MODE_HEADER_BUTTON_CLASS = activityRowClass(
+const PROMPT_MODE_HEADER_GROUP_CLASS = activityRowClass(
   "active",
-  "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
+  "flex w-full items-stretch rounded-none px-0 py-0",
 );
+const PROMPT_MODE_HEADER_BUTTON_CLASS =
+  "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
+const PROMPT_MODE_EXIT_BUTTON_CLASS =
+  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait disabled:text-muted-foreground/60";
 
 export interface ThreadPromptModeCardProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
+  isExitPending?: boolean;
   isExpanded: boolean;
   onExitPlanMode?: () => void;
   onToggle: () => void;
@@ -26,6 +31,7 @@ const TOGGLE_ID = "thread-prompt-mode-card-toggle";
 
 export function ThreadPromptModeCard({
   activePromptMode,
+  isExitPending = false,
   isExpanded,
   onExitPlanMode,
   onToggle,
@@ -42,7 +48,11 @@ export function ThreadPromptModeCard({
       className="overflow-hidden"
       style={{ minHeight: PROMPT_MODE_CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center">
+      <div
+        role="group"
+        aria-label="Plan mode controls"
+        className={PROMPT_MODE_HEADER_GROUP_CLASS}
+      >
         <button
           type="button"
           id={TOGGLE_ID}
@@ -80,9 +90,14 @@ export function ThreadPromptModeCard({
             type="button"
             aria-label="Exit plan mode"
             onClick={onExitPlanMode}
-            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            disabled={isExitPending}
+            className={PROMPT_MODE_EXIT_BUTTON_CLASS}
           >
-            <Icon name="X" className="size-3.5" aria-hidden="true" />
+            <Icon
+              name={isExitPending ? "Loading" : "X"}
+              className={cn("size-3.5", isExitPending && "animate-spin")}
+              aria-hidden="true"
+            />
           </button>
         ) : null}
       </div>

@@ -17,13 +17,16 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isBusyThread,
   isRuntimeBusyThread,
+  isUnreadDoneThread,
+  resolveThreadListIndicator,
+  type ThreadListIndicatorState,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
 import { isSidebarThreadTitleMatch } from "./sidebarThreadSearch";
+import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -133,19 +136,25 @@ function ThreadSearchResultRowComponent({
   const primaryText = primaryMatch?.text ?? title;
   const primaryHighlightRanges = primaryMatch?.highlightRanges ?? [];
   const hasPendingInteraction = thread.hasPendingInteraction;
-  const threadRuntimeBusy =
-    isRuntimeBusyThread(thread) && !hasPendingInteraction;
-  const threadWorkflowActive =
-    !hasPendingInteraction && hasActiveWorkflowActivity(thread);
-  const threadBackgroundAgentActive =
-    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
-  const threadBackgroundCommandActive =
-    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
-  const threadPlanModeActive =
-    !hasPendingInteraction && hasActivePlanModeActivity(thread);
-  const threadGoalActive =
-    !hasPendingInteraction && hasActiveGoalActivity(thread);
-  const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
+  const threadUnreadDone = isUnreadDoneThread(thread);
+  const hasUnsubmittedDraft = usePromptDraftHasInput({
+    kind: "thread",
+    projectId: thread.projectId,
+    threadId: thread.id,
+  });
+  const indicatorState: ThreadListIndicatorState = {
+    hasPendingInteraction,
+    hasUnsubmittedDraft,
+    hasUnreadError: threadUnreadDone && thread.status === "error",
+    hasUnreadSuccess: threadUnreadDone && thread.status !== "error",
+    isBackgroundAgentActive: hasActiveBackgroundAgentActivity(thread),
+    isBackgroundCommandActive: hasActiveBackgroundCommandActivity(thread),
+    isGoalActive: hasActiveGoalActivity(thread),
+    isPlanModeActive: hasActivePlanModeActivity(thread),
+    isRuntimeActive: isRuntimeBusyThread(thread),
+    isWorkflowActive: hasActiveWorkflowActivity(thread),
+  };
+  const indicatorKind = resolveThreadListIndicator(indicatorState);
   // For recents and title-only matches, the second line shows the project and
   // when the thread was last active.
   const projectMetadata =
@@ -213,20 +222,9 @@ function ThreadSearchResultRowComponent({
           <span className="min-w-0 truncate">{metadataText}</span>
         </span>
       </span>
-      {hasPendingInteraction || threadIsBusy ? (
+      {indicatorKind !== "none" ? (
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
-          <ThreadStatusGlyph
-            hasPendingInteraction={hasPendingInteraction}
-            isBackgroundAgentActive={threadBackgroundAgentActive}
-            isBackgroundCommandActive={threadBackgroundCommandActive}
-            isForegroundAgentWorking={threadRuntimeBusy}
-            isGoalActive={threadGoalActive}
-            isPlanModeActive={threadPlanModeActive}
-            isBusy={threadRuntimeBusy}
-            isWorkflowActive={threadWorkflowActive}
-            showUnreadBadge={false}
-            unreadBadgeTone="default"
-          />
+          <ThreadStatusGlyph {...indicatorState} />
         </span>
       ) : null}
     </button>

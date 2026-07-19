@@ -162,6 +162,15 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
           threadId: command.threadId,
         },
       };
+    case "thread/goal/clear":
+      return {
+        kind: "request",
+        method: "thread/goal/clear",
+        params: {
+          providerThreadId: command.providerThreadId,
+          threadId: command.threadId,
+        },
+      };
     case "thread/name/set":
       return {
         kind: "request",
