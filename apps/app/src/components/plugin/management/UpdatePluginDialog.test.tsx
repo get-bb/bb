@@ -13,12 +13,13 @@ import { UpdatePluginDialog } from "./UpdatePluginDialog";
 function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
   return {
     id: "linear",
+    source: "npm:@example/linear@^1.6.0",
+    rootDir: "/plugins/linear",
     version: "1.6.2",
     enabled: true,
     status: "running",
     statusDetail: null,
     description: null,
-    source: "npm:@example/linear@^1.6.0",
     name: "Linear",
     icon: null,
     logoUrl: null,
@@ -26,8 +27,14 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     hasSettings: false,
     provenance: "catalog",
     isOrphanedBuiltin: false,
+    catalogEntryId: "linear",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    app: { hasApp: false, bundle: null },
   };
 }
 
@@ -92,7 +99,7 @@ describe("UpdatePluginDialog", () => {
     ).toBe(true);
   });
 
-  it("renders a rolled-back outcome in place, pointing at Needs attention", async () => {
+  it("renders a rolled-back outcome in place, pointing at Update failed", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -120,7 +127,11 @@ describe("UpdatePluginDialog", () => {
 
     expect(await screen.findByText("Update failed — rolled back")).toBeTruthy();
     expect(screen.getByText("factory threw during activation")).toBeTruthy();
-    expect(screen.getByText(/Needs attention/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The plugin is marked “Update failed” in the installed list until an update succeeds.",
+      ),
+    ).toBeTruthy();
   });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {

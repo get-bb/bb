@@ -57,13 +57,21 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
+  getAutomationsRoutePath,
   getLegacyProjectComposeRoutePath,
+  getPluginsRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
+  getSkillsRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -268,6 +276,12 @@ function SidebarTriggerOverlay({
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   "/settings": { title: "Settings" },
+  "/tools": { title: "Skills" },
+  "/tools/skills": { title: "Skills" },
+  "/tools/plugins": { title: "Plugins" },
+  "/tools/automations": { title: "Automations" },
+  "/automations": { title: "Automations" },
+  "/skills": { title: "Skills" },
 };
 
 function resolveRouteTitle(
@@ -278,7 +292,12 @@ function resolveRouteTitle(
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }
-  return routeTitles[pathname];
+  return (
+    routeTitles[pathname] ??
+    (pathname === "/tools" || pathname.startsWith("/tools/")
+      ? routeTitles["/tools"]
+      : undefined)
+  );
 }
 
 interface AppHeaderProps {
@@ -343,7 +362,7 @@ function AppHeader({
                   <Link
                     to={segment.to}
                     className={cn(
-                      "shrink-0 text-muted-foreground transition-colors hover:text-foreground",
+                      "-mx-2 inline-flex min-h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                       usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                     )}
                   >
@@ -587,51 +606,122 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
+  const toolsPluginDetailMatch = matchPath(
+    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsSkillDetailMatch = matchPath(
+    TOOLS_SKILL_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsRegistrySkillDetailMatch = matchPath(
+    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsAutomationDetailMatch = matchPath(
+    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsAutomationEditMatch = matchPath(
+    TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+    location.pathname,
+  );
+  const toolsBreadcrumbs = (() => {
+    const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
+    const pluginsCrumb = { label: "Plugins", to: getPluginsRoutePath() };
+    const automationsCrumb = {
+      label: "Automations",
+      to: getAutomationsRoutePath(),
+    };
+    if (toolsSkillDetailMatch) {
+      return [skillsCrumb, { label: "Skill" }];
+    }
+    if (toolsRegistrySkillDetailMatch) {
+      return [
+        skillsCrumb,
+        {
+          label:
+            toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh",
+        },
+      ];
+    }
+    if (toolsPluginDetailMatch) {
+      return [pluginsCrumb, { label: "Plugin" }];
+    }
+    const automationMatch =
+      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
+    if (automationMatch) {
+      return [automationsCrumb, { label: "Automation" }];
+    }
+    if (location.pathname === getPluginsRoutePath()) {
+      return [{ label: "Plugins" }];
+    }
+    if (
+      location.pathname === getAutomationsRoutePath() ||
+      location.pathname === "/automations"
+    ) {
+      return [{ label: "Automations" }];
+    }
+    if (
+      location.pathname === "/tools" ||
+      location.pathname === getSkillsRoutePath() ||
+      location.pathname === "/skills"
+    ) {
+      return [{ label: "Skills" }];
+    }
+    return null;
+  })();
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isArchivedView && projectId
-      ? isProjectlessProjectId(projectId)
-        ? {
-            title: "",
-            subtitle: undefined,
-            breadcrumbs: [
-              { label: "Threads", to: getRootComposeRoutePath() },
-              ...(archivedSectionName ? [{ label: archivedSectionName }] : []),
-              { label: "Archived" },
-            ],
-          }
-        : {
-            title: "",
-            subtitle: undefined,
-            breadcrumbs: [
-              {
-                label: projectLabel ?? projectId,
-                to: getLegacyProjectComposeRoutePath(projectId),
-              },
-              { label: "Archived" },
-            ],
-          }
-      : isSettingsView && projectId
-        ? {
-            title: "",
-            subtitle: undefined,
-            breadcrumbs: [
-              {
-                label: projectLabel ?? projectId,
-                to: getLegacyProjectComposeRoutePath(projectId),
-              },
-              { label: "Settings" },
-            ],
-          }
-        : projectId
+    : toolsBreadcrumbs
+      ? {
+          title: "",
+          subtitle: undefined,
+          breadcrumbs: toolsBreadcrumbs,
+        }
+      : isArchivedView && projectId
+        ? isProjectlessProjectId(projectId)
           ? {
-              title: projectLabel ?? projectId,
+              title: "",
               subtitle: undefined,
+              breadcrumbs: [
+                { label: "Threads", to: getRootComposeRoutePath() },
+                ...(archivedSectionName ? [{ label: archivedSectionName }] : []),
+                { label: "Archived" },
+              ],
             }
-          : (resolveRouteTitle(location.pathname) ?? { title: "" });
+          : {
+              title: "",
+              subtitle: undefined,
+              breadcrumbs: [
+                {
+                  label: projectLabel ?? projectId,
+                  to: getLegacyProjectComposeRoutePath(projectId),
+                },
+                { label: "Archived" },
+              ],
+            }
+        : isSettingsView && projectId
+          ? {
+              title: "",
+              subtitle: undefined,
+              breadcrumbs: [
+                {
+                  label: projectLabel ?? projectId,
+                  to: getLegacyProjectComposeRoutePath(projectId),
+                },
+                { label: "Settings" },
+              ],
+            }
+          : projectId
+            ? {
+                title: projectLabel ?? projectId,
+                subtitle: undefined,
+              }
+            : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -639,6 +729,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (pluginPanel) {
       return pluginPanel.title;
+    }
+    if (toolsSkillDetailMatch) {
+      return "Skill · Skills";
+    }
+    if (toolsRegistrySkillDetailMatch) {
+      return `${toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh"} · Skills`;
+    }
+    if (toolsPluginDetailMatch) {
+      return "Plugin · Plugins";
+    }
+    const automationDetailMatch =
+      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
+    if (automationDetailMatch) {
+      return "Automation · Automations";
+    }
+    if (toolsBreadcrumbs) {
+      return toolsBreadcrumbs.at(-1)?.label ?? "bb";
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

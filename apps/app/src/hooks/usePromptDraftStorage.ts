@@ -18,6 +18,7 @@ const PROMPT_DRAFT_STORAGE_VERSION = "3";
 const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type PromptDraftScope =
+  | { kind: "automation-edit"; automationId: string }
   | { kind: "new-thread" }
   | { kind: "side-chat"; parentThreadId: string; tabId: string }
   | { kind: "thread"; projectId: string; threadId: string };
@@ -222,6 +223,10 @@ function restorePromptDraftIfEmpty(
 }
 
 function getPromptDraftStorageKey(scope: PromptDraftScope): string {
+  if (scope.kind === "automation-edit") {
+    const normalizedAutomationId = normalizeStorageSegment(scope.automationId);
+    return `${PROMPT_DRAFT_STORAGE_PREFIX}-automation-edit-${normalizedAutomationId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+  }
   if (scope.kind === "new-thread") {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }

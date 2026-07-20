@@ -62,6 +62,9 @@ export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
+export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
+export const SKILL_CONTENT_QUERY_KEY = "skillContent";
+export const SKILL_FILES_QUERY_KEY = "skillFiles";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -1106,4 +1109,27 @@ export function hostPathExistenceQueryKey(
 
 export function hostPathExistenceQueryKeyPrefix(): HostPathExistenceQueryKeyPrefix {
   return [HOST_PATH_EXISTENCE_QUERY_KEY];
+}
+
+export function projectSkillsQueryKey(projectId: string) {
+  return [PROJECT_SKILLS_QUERY_KEY, projectId] as const;
+}
+
+export function skillContentQueryKey(
+  projectId: string,
+  skillId: string,
+  path: string,
+) {
+  return [SKILL_CONTENT_QUERY_KEY, projectId, skillId, path] as const;
+}
+
+export function skillContentQueryKeyPrefix(
+  projectId: string,
+  skillId: string,
+) {
+  return [SKILL_CONTENT_QUERY_KEY, projectId, skillId] as const;
+}
+
+export function skillFilesQueryKey(projectId: string, skillId: string) {
+  return [SKILL_FILES_QUERY_KEY, projectId, skillId] as const;
 }

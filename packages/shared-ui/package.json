@@ -74,6 +74,11 @@
       "types": "./src/components/ui/checkbox.tsx",
       "default": "./src/components/ui/checkbox.tsx"
     },
+    "./chrome-style-tokens": {
+      "source": "./src/components/ui/chrome-style-tokens.ts",
+      "types": "./src/components/ui/chrome-style-tokens.ts",
+      "default": "./src/components/ui/chrome-style-tokens.ts"
+    },
     "./coarse-pointer-sizing": {
       "source": "./src/components/ui/coarse-pointer-sizing.ts",
       "types": "./src/components/ui/coarse-pointer-sizing.ts",
@@ -188,6 +193,21 @@
       "source": "./src/components/ui/progress.tsx",
       "types": "./src/components/ui/progress.tsx",
       "default": "./src/components/ui/progress.tsx"
+    },
+    "./resource-list": {
+      "source": "./src/components/ui/resource-list.tsx",
+      "types": "./src/components/ui/resource-list.tsx",
+      "default": "./src/components/ui/resource-list.tsx"
+    },
+    "./resource-edit-prompt": {
+      "source": "./src/components/ui/resource-edit-prompt.ts",
+      "types": "./src/components/ui/resource-edit-prompt.ts",
+      "default": "./src/components/ui/resource-edit-prompt.ts"
+    },
+    "./resource-pagination": {
+      "source": "./src/components/ui/resource-pagination.tsx",
+      "types": "./src/components/ui/resource-pagination.tsx",
+      "default": "./src/components/ui/resource-pagination.tsx"
     },
     "./radio-group": {
       "source": "./src/components/ui/radio-group.tsx",

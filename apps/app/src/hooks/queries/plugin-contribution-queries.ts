@@ -138,7 +138,6 @@ export function usePluginContributions() {
     staleTime: 30_000,
   });
 }
-
 /**
  * Invoke one plugin thread action server-side. Resolves with the returned
  * toast (or null); throws with the server's error message for handler

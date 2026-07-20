@@ -48,4 +48,15 @@ Skills (.bb/skills/):
   A project skill overrides a user or builtin skill with the same name. Two
   skills with the same name within one source collide and are both dropped.
 
+  Use `bb skill list` to inspect installed and discovered skills and copy the
+  opaque skill ID. `bb skill show|files <skill-id>` reads that exact skill;
+  `bb skill show <skill-id> --json` returns the revision required by `bb skill
+  update <skill-id> --revision <sha256>`. `bb skill delete <skill-id>` and
+  update are restricted to editable, user-owned skills. Use `bb skill
+  search` to browse skills.sh, `bb skill registry detail <registry-skill-id>`
+  to inspect metadata and the bounded file preview, and `bb skill install
+  <registry-skill-id>` to install a canonical registry identity. These commands
+  default to `BB_PROJECT_ID`, then the personal project; pass `--project` or
+  `--environment` when a different workspace is required.
+
   Use the skill-creator skill to author and iterate on skills.

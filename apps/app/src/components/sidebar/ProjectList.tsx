@@ -170,8 +170,14 @@ interface ProjectListActionButtonsProps {
     openInSplit(): void;
   };
   onNewChat?: () => void;
+  onOpenSkills?: () => void;
+  onOpenPlugins?: () => void;
+  onOpenAutomations?: () => void;
+  activeTool?: ProjectListToolActionId | null;
   threadSearch?: SidebarThreadSearchInputController;
 }
+
+export type ProjectListToolActionId = "skills" | "plugins" | "automations";
 
 interface ProjectListShellProps {
   children: ReactNode;
@@ -804,6 +810,10 @@ export function ProjectListActionButtons({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
+  onOpenSkills,
+  onOpenPlugins,
+  onOpenAutomations,
+  activeTool = null,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -813,6 +823,31 @@ export function ProjectListActionButtons({
     { kind: "new-thread" },
     splitEnabled,
   );
+  const toolActions = [
+    {
+      id: "skills",
+      label: "Skills",
+      iconName: "Zap",
+      onClick: onOpenSkills,
+    },
+    {
+      id: "plugins",
+      label: "Plugins",
+      iconName: "ElectricPlugs",
+      onClick: onOpenPlugins,
+    },
+    {
+      id: "automations",
+      label: "Automations",
+      iconName: "TimeSchedule",
+      onClick: onOpenAutomations,
+    },
+  ] satisfies readonly {
+    id: ProjectListToolActionId;
+    label: string;
+    iconName: IconName;
+    onClick: (() => void) | undefined;
+  }[];
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".
@@ -921,6 +956,29 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
+      {toolActions.map((action) => {
+        if (!action.onClick) return null;
+        const active = activeTool === action.id;
+        return (
+          <Button
+            key={action.id}
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(
+              PROJECT_LIST_ACTION_BUTTON_CLASS,
+              active && "bg-sidebar-accent text-sidebar-foreground",
+            )}
+            aria-current={active ? "page" : undefined}
+            onClick={action.onClick}
+          >
+            <Icon name={action.iconName} />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {action.label}
+            </span>
+          </Button>
+        );
+      })}
     </div>
   );
 }

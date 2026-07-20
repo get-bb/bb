@@ -16,6 +16,7 @@ import {
   hashSkillTreeEntries,
   readSkillTreeManifest,
   resolveInjectedSkillSources as resolveInjectedSkillSourcesWithRegistry,
+  resolveServerOwnedSkillCatalogEntries,
   SkillTreeRegistry,
   type ResolveInjectedSkillSourcesArgs,
 } from "../../src/services/skills/injected-skills.js";
@@ -518,5 +519,37 @@ describe("injected skill source discovery", () => {
       expect(source.description.trim().length).toBeGreaterThan(0);
     }
     expect(warnings).toEqual([]);
+  });
+
+  it("lists server-owned user and built-in copies independently", async () => {
+    const root = await makeTempDir();
+    const dataDir = path.join(root, "data");
+    const builtinSkillsRootPath = path.join(root, "builtins");
+    await writeSkill({
+      rootPath: builtinSkillsRootPath,
+      name: "review",
+      description: "Built-in review.",
+    });
+    await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "review",
+      description: "User review.",
+    });
+    const { logger } = createCapturingLogger();
+    const entries = resolveServerOwnedSkillCatalogEntries({
+      builtinSkillsRootPath,
+      dataDir,
+      logger,
+      skillTreeRegistry: new SkillTreeRegistry(),
+    });
+
+    expect(entries.map((entry) => entry.provenance.kind)).toEqual([
+      "builtin",
+      "user",
+    ]);
+    expect(entries.map((entry) => entry.runtimeSource.description)).toEqual([
+      "Built-in review.",
+      "User review.",
+    ]);
   });
 });

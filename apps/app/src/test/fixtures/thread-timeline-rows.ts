@@ -225,11 +225,10 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   turnId?: string | null;
 }
 
-export interface NonOperationSystemRowArgs
-  extends Omit<
-    SystemRowArgs,
-    "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
-  > {
+export interface NonOperationSystemRowArgs extends Omit<
+  SystemRowArgs,
+  "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
+> {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
 

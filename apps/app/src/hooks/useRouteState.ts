@@ -12,6 +12,10 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
+  /** On the Tools hub, legacy tool routes, or the Automations plugin panel. */
+  isToolsView: boolean;
+  /** On the Skills surface. */
+  isSkillsView: boolean;
   /** On the root route ("/"). */
   isRootView: boolean;
   /** On a projectless surface: compose, thread detail, or archived threads. */
@@ -36,6 +40,11 @@ export function useRouteState(): RouteState {
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
+  const automationsPluginPanelMatch = useMatch(
+    "/plugins/automations/automations/*",
+  );
+  const isToolsPath =
+    location.pathname === "/tools" || location.pathname.startsWith("/tools/");
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
@@ -62,6 +71,13 @@ export function useRouteState(): RouteState {
     isArchivedView:
       Boolean(projectArchivedMatch) || Boolean(projectlessArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
+    isToolsView:
+      isToolsPath ||
+      location.pathname === "/skills" ||
+      location.pathname === "/automations" ||
+      Boolean(automationsPluginPanelMatch),
+    isSkillsView:
+      location.pathname === "/tools/skills" || location.pathname === "/skills",
     isRootView,
     isProjectlessView:
       isRootView ||

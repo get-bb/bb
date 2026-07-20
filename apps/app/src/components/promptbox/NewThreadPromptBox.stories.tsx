@@ -156,7 +156,10 @@ function PromptStage({ children }: PromptStageProps) {
 
 function UnsupportedCodexCliBanner() {
   return (
-    <PromptStackCard ariaLabel="Codex update needed" className="overflow-hidden">
+    <PromptStackCard
+      ariaLabel="Codex update needed"
+      className="overflow-hidden"
+    >
       <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
         <Icon
           name="Info"

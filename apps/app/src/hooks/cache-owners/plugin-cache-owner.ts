@@ -1,9 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
   allPluginListQueryKeyPrefix,
+  pluginListQueryKey,
   pluginSettingsViewQueryKey,
+  toPluginListItem,
+  type PluginListResult,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
+import type { InstalledPlugin } from "@bb/server-contract";
 import { allPluginCatalogSearchQueryKeyPrefix } from "../queries/plugin-catalog-queries";
 
 /**
@@ -20,6 +24,35 @@ export function applyPluginSettingsView(args: {
   args.queryClient.setQueryData(
     pluginSettingsViewQueryKey(args.pluginId),
     args.view,
+  );
+}
+
+/**
+ * Seed the canonical installed-plugin response before a post-install route
+ * transition. The detail route reads this list, so waiting for invalidation to
+ * refetch can otherwise flash a false "Plugin not found" state.
+ */
+export function applyInstalledPlugin(args: {
+  queryClient: QueryClient;
+  plugin: InstalledPlugin;
+}): void {
+  const installed = toPluginListItem(args.plugin);
+  args.queryClient.setQueryData<PluginListResult>(
+    pluginListQueryKey(true),
+    (current) => {
+      const plugins = current?.plugins ?? [];
+      const existingIndex = plugins.findIndex(
+        (candidate) => candidate.id === installed.id,
+      );
+      if (existingIndex === -1) {
+        return { plugins: [...plugins, installed] };
+      }
+      return {
+        plugins: plugins.map((candidate, index) =>
+          index === existingIndex ? installed : candidate,
+        ),
+      };
+    },
   );
 }
 

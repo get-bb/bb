@@ -29,6 +29,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
     id: "linear",
+    source: "npm:@example/linear@^1.6.0",
+    rootDir: "/plugins/linear",
     version: "1.6.2",
     enabled: true,
     status: "running",
@@ -36,14 +38,19 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     description: null,
     name: "Linear",
     icon: null,
-    source: "npm:@example/linear@^1.6.0",
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
     provenance: "direct",
     isOrphanedBuiltin: false,
+    catalogEntryId: null,
     sourceDisplay: "npm · @bb-plugins/linear · pinned",
     updateState: EMPTY_PLUGIN_UPDATE_STATE,
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    app: { hasApp: false, bundle: null },
     ...overrides,
   };
 }
@@ -103,7 +110,9 @@ describe("PluginUpdatesSourceCard check now", () => {
     queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
     render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
 
-    fireEvent.click(screen.getByRole("button", { name: /Check now/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check for updates now" }),
+    );
 
     await vi.waitFor(() => {
       const post = requests.find((request) =>
@@ -127,7 +136,9 @@ describe("PluginUpdatesSourceCard check now", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
 
-    fireEvent.click(screen.getByRole("button", { name: /Check now/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check for updates now" }),
+    );
 
     await vi.waitFor(() => {
       expect(errorToast).toHaveBeenCalledWith(
@@ -162,7 +173,9 @@ describe("PluginUpdatesSourceCard source details", () => {
       fetchMock.mock.calls.some(([url]) => String(url).endsWith("/source")),
     ).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show source details" }),
+    );
 
     expect(
       await screen.findByText("npm:@bb-plugins/linear@^1.4.0"),

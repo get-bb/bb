@@ -51,6 +51,13 @@ import { toThreadListEntryResponses } from "../services/threads/thread-runtime-d
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
 import {
+  deleteProjectSkill,
+  listProjectSkillFiles,
+  listProjectSkills,
+  readProjectSkill,
+  writeProjectSkill,
+} from "../services/skills/skill-listing.js";
+import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
@@ -713,6 +720,92 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         skillCatalog,
       }),
     );
+  });
+
+  get(routes.skills, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(query.environmentId !== null
+        ? { environmentId: query.environmentId }
+        : {}),
+    });
+    const skills = await listProjectSkills(deps, { workspace });
+    return context.json({ skills });
+  });
+
+  del(routes.deleteSkill, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(payload.environmentId !== null
+        ? { environmentId: payload.environmentId }
+        : {}),
+    });
+    const deletedPath = await deleteProjectSkill(deps, {
+      skillId: payload.skillId,
+      workspace,
+    });
+    return context.json({ deletedPath });
+  });
+
+  get(routes.skillContent, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(query.environmentId !== null
+        ? { environmentId: query.environmentId }
+        : {}),
+    });
+    const content = await readProjectSkill(deps, {
+      skillId: query.skillId,
+      path: query.path,
+      workspace,
+    });
+    return context.json(content);
+  });
+
+  get(routes.skillFiles, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(query.environmentId !== null
+        ? { environmentId: query.environmentId }
+        : {}),
+    });
+    return context.json(
+      await listProjectSkillFiles(deps, {
+        skillId: query.skillId,
+        workspace,
+      }),
+    );
+  });
+
+  patch(routes.updateSkill, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+
+    const workspace = resolveProjectCommandWorkspace(deps, {
+      projectId,
+      ...(payload.environmentId !== null
+        ? { environmentId: payload.environmentId }
+        : {}),
+    });
+    const result = await writeProjectSkill(deps, {
+      skillId: payload.skillId,
+      content: payload.content,
+      revision: payload.revision,
+      workspace,
+    });
+    return context.json(result);
   });
 
   get(routes.branches, async (context, query) => {

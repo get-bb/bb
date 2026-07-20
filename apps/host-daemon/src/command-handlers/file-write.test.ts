@@ -93,6 +93,38 @@ describe("writeHostFile", () => {
     await expect(fs.readFile(target, "utf8")).resolves.toBe("new");
   });
 
+  it("allows only one concurrent write for the same expected hash", async () => {
+    const dir = await makeTempDir("bb-file-write-");
+    const target = path.join(dir, "note.md");
+    await fs.writeFile(target, "old");
+    const expectedSha256 = sha256("old");
+
+    const results = await Promise.all([
+      writeHostFile(
+        writeCommand({
+          path: target,
+          content: "first",
+          expectedSha256,
+        }),
+      ),
+      writeHostFile(
+        writeCommand({
+          path: target,
+          content: "second",
+          expectedSha256,
+        }),
+      ),
+    ]);
+
+    expect(
+      results.filter((result) => result.outcome === "written"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.outcome === "conflict"),
+    ).toHaveLength(1);
+    await expect(fs.readFile(target, "utf8")).resolves.toMatch(/first|second/);
+  });
+
   it("returns a conflict with the current hash when the expected hash is stale", async () => {
     const dir = await makeTempDir("bb-file-write-");
     const target = path.join(dir, "note.md");

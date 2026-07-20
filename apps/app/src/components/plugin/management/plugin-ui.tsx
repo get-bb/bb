@@ -6,7 +6,7 @@ import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
 /**
- * Shared pieces of the Settings → Plugins surfaces. Tinted styles derive
+ * Shared pieces of the Plugins collection and detail surfaces. Tinted styles derive
  * from the theme anchors per the repo palette rules. These mix a *chromatic*
  * token (--success/--warning-text/--destructive-text) against the near-zero
  * chroma --canvas/--ink anchors, so they mix `in oklab`, not `in oklch`:
@@ -22,14 +22,6 @@ export const UPDATE_TINT_STYLE = {
   background: "color-mix(in oklab, var(--success) 14%, var(--canvas))",
   borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
-} as const;
-
-/** Destructive "Needs attention" tint (sketch v2 `.pill.bad`). */
-export const ATTENTION_TINT_STYLE = {
-  background: "color-mix(in oklab, var(--destructive-text) 9%, var(--canvas))",
-  borderColor:
-    "color-mix(in oklab, var(--destructive-text) 28%, var(--canvas))",
-  color: "var(--destructive-text)",
 } as const;
 
 /** Success verdict banner tint (sketch v2 `.banner`). */

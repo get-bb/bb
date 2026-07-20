@@ -34,7 +34,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   CircleDashed: "Child-thread busy section indicator",
   CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
-  Clock: "Thread duration and timestamp affordances",
+  Clock:
+    "Thread duration and timestamp affordances, automation prompt action",
   Code: "Right-panel source file visual, Mermaid source toggle",
   Columns2: "Git diff toolbar “split view”",
   Container: "Container icon",

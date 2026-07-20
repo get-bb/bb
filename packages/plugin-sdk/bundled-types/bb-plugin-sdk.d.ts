@@ -296,8 +296,8 @@ interface PluginPendingInteractionRegistration {
 /** Context handed to a `sidebarFooterAction`'s `run`. */
 interface PluginSidebarFooterActionContext {
     /**
-     * Navigate to this plugin's Settings detail page
-     * (`/settings/plugins/<pluginId>`), where declarative settings and
+     * Navigate to this plugin's Plugins detail page
+     * (`/tools/plugins/<pluginId>`), where declarative settings and
      * `settingsSection` slots render.
      */
     openSettings(): void;
@@ -508,16 +508,30 @@ interface BbNavigate {
     toPluginPanel(path: string, options?: {
         subPath?: string;
         replace?: boolean;
+        /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
+        returnOnExit?: boolean;
+    }): void;
+    /**
+     * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
+     * direct entries replace themselves with this fallback location.
+     */
+    exitPluginPanel(path: string, options?: {
+        subPath?: string;
     }): void;
     /**
      * Navigate to the root compose surface (the new-thread screen). Pass
      * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
      * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
+     * points that drop the user into chat with a prefilled prompt. Set
+     * `replaceInitialPrompt` for an explicit resource action whose context must
+     * replace any stale root-composer draft. Set `replace` for redirects so the
+     * intermediary route does not trap browser Back navigation.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
+        replace?: boolean;
     }): void;
 }
 /**
@@ -2868,6 +2882,41 @@ declare const projectCommandsQuerySchema: z$1.ZodObject<{
     environmentId: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodOptional<z$1.ZodString>>>;
 }, z$1.core.$strict>;
 type ProjectCommandsQuery = z$1.infer<typeof projectCommandsQuerySchema>;
+declare const skillListResponseSchema: z$1.ZodObject<{
+    skills: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        name: z$1.ZodString;
+        description: z$1.ZodNullable<z$1.ZodString>;
+        provider: z$1.ZodNullable<z$1.ZodEnum<{
+            codex: "codex";
+            "claude-code": "claude-code";
+        }>>;
+        scope: z$1.ZodEnum<{
+            plugin: "plugin";
+            "bb-builtin": "bb-builtin";
+            "bb-user": "bb-user";
+            "bb-project": "bb-project";
+            "claude-user": "claude-user";
+            "claude-project": "claude-project";
+            "codex-user": "codex-user";
+            "codex-project": "codex-project";
+        }>;
+        pluginId: z$1.ZodNullable<z$1.ZodString>;
+        filePath: z$1.ZodString;
+        manageable: z$1.ZodBoolean;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type SkillListResponse = z$1.infer<typeof skillListResponseSchema>;
+declare const skillContentResponseSchema: z$1.ZodObject<{
+    content: z$1.ZodString;
+    revision: z$1.ZodString;
+}, z$1.core.$strip>;
+type SkillContentResponse = z$1.infer<typeof skillContentResponseSchema>;
+declare const skillFilesResponseSchema: z$1.ZodObject<{
+    files: z$1.ZodArray<z$1.ZodString>;
+    truncated: z$1.ZodBoolean;
+}, z$1.core.$strip>;
+type SkillFilesResponse = z$1.infer<typeof skillFilesResponseSchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
@@ -3020,6 +3069,57 @@ declare const copyProjectAttachmentsRequestSchema: z$1.ZodObject<{
 }, z$1.core.$strict>;
 type CopyProjectAttachmentsRequest = z$1.infer<typeof copyProjectAttachmentsRequestSchema>;
 
+declare const registrySkillSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    source: z$1.ZodString;
+    skillId: z$1.ZodString;
+    name: z$1.ZodString;
+    installs: z$1.ZodNumber;
+    stars: z$1.ZodNullable<z$1.ZodNumber>;
+    installUrl: z$1.ZodNullable<z$1.ZodString>;
+    url: z$1.ZodString;
+    topic: z$1.ZodNullable<z$1.ZodString>;
+    summary: z$1.ZodNullable<z$1.ZodString>;
+}, z$1.core.$strip>;
+type RegistrySkill = z$1.infer<typeof registrySkillSchema>;
+declare const registrySkillsPageSchema: z$1.ZodObject<{
+    skills: z$1.ZodArray<z$1.ZodObject<{
+        id: z$1.ZodString;
+        source: z$1.ZodString;
+        skillId: z$1.ZodString;
+        name: z$1.ZodString;
+        installs: z$1.ZodNumber;
+        stars: z$1.ZodNullable<z$1.ZodNumber>;
+        installUrl: z$1.ZodNullable<z$1.ZodString>;
+        url: z$1.ZodString;
+        topic: z$1.ZodNullable<z$1.ZodString>;
+        summary: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>>;
+    pagination: z$1.ZodObject<{
+        page: z$1.ZodNumber;
+        perPage: z$1.ZodNumber;
+        total: z$1.ZodNumber;
+        hasMore: z$1.ZodBoolean;
+    }, z$1.core.$strip>;
+}, z$1.core.$strip>;
+type RegistrySkillsPage = z$1.infer<typeof registrySkillsPageSchema>;
+declare const registrySkillDetailSchema: z$1.ZodObject<{
+    id: z$1.ZodString;
+    source: z$1.ZodString;
+    skillId: z$1.ZodString;
+    hash: z$1.ZodNullable<z$1.ZodString>;
+    files: z$1.ZodNullable<z$1.ZodArray<z$1.ZodObject<{
+        path: z$1.ZodString;
+        contents: z$1.ZodString;
+    }, z$1.core.$strip>>>;
+}, z$1.core.$strip>;
+type RegistrySkillDetail = z$1.infer<typeof registrySkillDetailSchema>;
+declare const registrySkillInstallResponseSchema: z$1.ZodObject<{
+    ok: z$1.ZodLiteral<true>;
+    filePath: z$1.ZodString;
+}, z$1.core.$strip>;
+type RegistrySkillInstallResponse = z$1.infer<typeof registrySkillInstallResponseSchema>;
+
 declare const updateEnvironmentRequestSchema: z$1.ZodObject<{
     mergeBaseBranch: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
     name: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
@@ -3145,8 +3245,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    rebase: "rebase";
     squash: "squash";
+    rebase: "rebase";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -3177,8 +3277,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        rebase: "rebase";
         squash: "squash";
+        rebase: "rebase";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -5090,6 +5190,67 @@ declare const hostDaemonCommandRegistry: {
             argumentHint: z$1.ZodNullable<z$1.ZodString>;
         }, z$1.core.$strip>>;
     }, z$1.core.$strip>, "onlineRpc", true>;
+    "host.list_skills": HostDaemonCommandDescriptor<"host.list_skills", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.list_skills">;
+        providerId: z$1.ZodString;
+        cwd: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        skills: z$1.ZodArray<z$1.ZodObject<{
+            id: z$1.ZodString;
+            name: z$1.ZodString;
+            description: z$1.ZodNullable<z$1.ZodString>;
+            filePath: z$1.ZodString;
+            rootKind: z$1.ZodEnum<{
+                plugin: "plugin";
+                "bb-project": "bb-project";
+                "bb-data-dir": "bb-data-dir";
+                "bb-builtin": "bb-builtin";
+                "provider-project": "provider-project";
+                "provider-user": "provider-user";
+            }>;
+        }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, "onlineRpc", true>;
+    "host.install_registry_skill": HostDaemonCommandDescriptor<"host.install_registry_skill", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.install_registry_skill">;
+        packageRef: z$1.ZodString;
+        skillId: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        filePath: z$1.ZodString;
+    }, z$1.core.$strip>, "onlineRpc", false>;
+    "host.delete_skill": HostDaemonCommandDescriptor<"host.delete_skill", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.delete_skill">;
+        scope: z$1.ZodEnum<{
+            "bb-project": "bb-project";
+            "bb-user": "bb-user";
+            "claude-user": "claude-user";
+            "claude-project": "claude-project";
+            "codex-user": "codex-user";
+            "codex-project": "codex-project";
+        }>;
+        name: z$1.ZodString;
+        cwd: z$1.ZodNullable<z$1.ZodString>;
+        rootPath: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        deletedPath: z$1.ZodString;
+    }, z$1.core.$strip>, "onlineRpc", false>;
+    "host.write_skill": HostDaemonCommandDescriptor<"host.write_skill", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.write_skill">;
+        scope: z$1.ZodEnum<{
+            "bb-project": "bb-project";
+            "bb-user": "bb-user";
+        }>;
+        name: z$1.ZodString;
+        cwd: z$1.ZodNullable<z$1.ZodString>;
+        content: z$1.ZodString;
+        expectedSha256: z$1.ZodString;
+    }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        outcome: z$1.ZodLiteral<"written">;
+        filePath: z$1.ZodString;
+        sha256: z$1.ZodString;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        outcome: z$1.ZodLiteral<"conflict">;
+        currentSha256: z$1.ZodNullable<z$1.ZodString>;
+    }, z$1.core.$strip>], "outcome">, "onlineRpc", false>;
     "host.list_branches": HostDaemonCommandDescriptor<"host.list_branches", z$1.ZodObject<{
         type: z$1.ZodLiteral<"host.list_branches">;
         path: z$1.ZodString;
@@ -6465,6 +6626,7 @@ declare const pluginCatalogStatusSchema: z$1.ZodObject<{
 type PluginCatalogStatus = z$1.infer<typeof pluginCatalogStatusSchema>;
 declare const pluginCatalogSearchResultSchema: z$1.ZodObject<{
     entryId: z$1.ZodString;
+    pluginId: z$1.ZodString;
     displayName: z$1.ZodString;
     description: z$1.ZodString;
     icon: z$1.ZodNullable<z$1.ZodString>;
@@ -6948,9 +7110,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -6979,9 +7141,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -9355,8 +9517,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -10228,6 +10390,62 @@ interface StatusArea {
     get(args?: StatusGetArgs): Promise<StatusResult>;
 }
 
+interface SkillWorkspaceArgs {
+    projectId: string;
+    environmentId: string | null;
+}
+interface SkillListArgs extends SkillWorkspaceArgs {
+    signal?: AbortSignal;
+}
+interface SkillIdentityArgs extends SkillListArgs {
+    skillId: string;
+}
+interface SkillContentArgs extends SkillIdentityArgs {
+    path: string;
+}
+interface SkillUpdateArgs extends SkillWorkspaceArgs {
+    skillId: string;
+    content: string;
+    revision: string;
+}
+interface SkillDeleteArgs extends SkillWorkspaceArgs {
+    skillId: string;
+}
+interface RegistrySkillsSearchArgs {
+    query?: string;
+    page?: number;
+    perPage?: number;
+}
+interface RegistrySkillIdArgs {
+    registrySkillId: string;
+}
+interface RegistrySkillSourceArgs {
+    source: string;
+    skillId: string;
+}
+interface RegistrySkillInstallArgs extends RegistrySkillIdArgs {
+    projectId: string;
+}
+interface SkillsRegistryArea {
+    detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;
+    get(args: RegistrySkillIdArgs): Promise<RegistrySkill>;
+    install(args: RegistrySkillInstallArgs): Promise<RegistrySkillInstallResponse>;
+    search(args?: RegistrySkillsSearchArgs): Promise<RegistrySkillsPage>;
+}
+interface SkillsArea {
+    getContent(args: SkillContentArgs): Promise<SkillContentResponse>;
+    list(args: SkillListArgs): Promise<SkillListResponse>;
+    listFiles(args: SkillIdentityArgs): Promise<SkillFilesResponse>;
+    registry: SkillsRegistryArea;
+    remove(args: SkillDeleteArgs): Promise<{
+        deletedPath: string;
+    }>;
+    update(args: SkillUpdateArgs): Promise<{
+        filePath: string;
+        revision: string;
+    }>;
+}
+
 type ThemeGetResult = AppTheme;
 type ThemeCatalogResult = ThemeCatalogResponse;
 type ThemeSetInput = AppThemeSelection;
@@ -10699,6 +10917,7 @@ interface BbSdk extends BbRealtime {
     projects: ProjectsArea;
     plugins: PluginsArea;
     providers: ProvidersArea;
+    skills: SkillsArea;
     status: StatusArea;
     system: SystemArea;
     terminals: TerminalsArea;

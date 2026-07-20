@@ -47,6 +47,13 @@ export interface StagedInjectedSkills {
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
+export interface CopyInjectedSkillSourceArgs {
+  destinationPath: string;
+  name: string;
+  sourceRootPath: string;
+  skillFilePath: string;
+}
+
 interface CollectedSkillFile {
   bytes: Buffer;
   mode: number;
@@ -70,6 +77,12 @@ interface CollectSkillTreeArgs {
   skillFilePath: string;
 }
 
+interface CollectSkillDirectoryArgs {
+  name: string;
+  sourceRootPath: string;
+  skillFilePath: string;
+}
+
 interface WalkSkillTreeArgs {
   currentPath: string;
   depth: number;
@@ -85,7 +98,7 @@ interface SkillTreeCollectionState {
 
 interface StageTreeArgs {
   skillDirectoryPath: string;
-  tree: CollectedSkillTree;
+  tree: SkillTreeCollectionState;
 }
 
 interface WriteStageRootArgs {
@@ -236,10 +249,10 @@ function compareStringsByCodePoint(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function assertUsableSource(args: CollectSkillTreeArgs): void {
-  const { source, sourceRootPath, skillFilePath } = args;
-  if (!SKILL_NAME_PATTERN.test(source.name)) {
-    throw new Error(`Invalid injected skill name: ${source.name}`);
+function assertUsableSkillDirectory(args: CollectSkillDirectoryArgs): void {
+  const { name, sourceRootPath, skillFilePath } = args;
+  if (!SKILL_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid injected skill name: ${name}`);
   }
   if (!path.isAbsolute(sourceRootPath)) {
     throw new Error(
@@ -321,10 +334,10 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
   }
 }
 
-async function collectSkillTree(
-  args: CollectSkillTreeArgs,
-): Promise<CollectedSkillTree> {
-  assertUsableSource(args);
+async function collectSkillDirectory(
+  args: CollectSkillDirectoryArgs,
+): Promise<SkillTreeCollectionState> {
+  assertUsableSkillDirectory(args);
   const rootStat = await fs.lstat(args.sourceRootPath);
   if (rootStat.isSymbolicLink()) {
     throw new Error(
@@ -356,6 +369,18 @@ async function collectSkillTree(
     depth: 0,
     rootPath: args.sourceRootPath,
     state,
+  });
+
+  return state;
+}
+
+async function collectSkillTree(
+  args: CollectSkillTreeArgs,
+): Promise<CollectedSkillTree> {
+  const state = await collectSkillDirectory({
+    name: args.source.name,
+    sourceRootPath: args.sourceRootPath,
+    skillFilePath: args.skillFilePath,
   });
 
   return {
@@ -410,6 +435,24 @@ async function copyCollectedTree(args: StageTreeArgs): Promise<void> {
     await fs.writeFile(destinationPath, file.bytes, { mode: file.mode });
     await fs.chmod(destinationPath, file.mode);
   }
+}
+
+/**
+ * Copy one complete skill tree through the same bounded, symlink-rejecting
+ * collector used for provider runtime staging.
+ */
+export async function copyInjectedSkillSource(
+  args: CopyInjectedSkillSourceArgs,
+): Promise<void> {
+  const tree = await collectSkillDirectory({
+    name: args.name,
+    sourceRootPath: args.sourceRootPath,
+    skillFilePath: args.skillFilePath,
+  });
+  await copyCollectedTree({
+    skillDirectoryPath: args.destinationPath,
+    tree,
+  });
 }
 
 function createClaudePluginManifest(

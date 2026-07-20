@@ -226,6 +226,7 @@ type ExpectedBbSdkKey =
   | "plugins"
   | "projects"
   | "providers"
+  | "skills"
   | "status"
   | "subscribe"
   | "system"

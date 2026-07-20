@@ -93,6 +93,13 @@ export interface ResolvedSkillCatalogEntry {
   runtimeSource: HostDaemonInjectedSkillSource;
 }
 
+export interface ResolveServerOwnedSkillCatalogEntriesArgs {
+  builtinSkillsRootPath: string;
+  dataDir: string;
+  logger: ServerLogger;
+  skillTreeRegistry: SkillTreeRegistry;
+}
+
 export type ProjectInjectedSkillSource = Extract<
   HostDaemonInjectedSkillSource,
   { kind: "workspace-path" }
@@ -509,6 +516,36 @@ function readSkillsRoot(
   }
 
   return sources;
+}
+
+/**
+ * Resolve the two roots whose lifecycle is owned by the server process. Unlike
+ * runtime catalog resolution, this intentionally preserves both rows when a
+ * user skill shadows a built-in: the management surface describes installed
+ * resources, while runtime precedence is applied separately.
+ */
+export function resolveServerOwnedSkillCatalogEntries(
+  args: ResolveServerOwnedSkillCatalogEntriesArgs,
+): ResolvedSkillCatalogEntry[] {
+  const builtin = readSkillsRoot({
+    logger: args.logger,
+    skillTreeRegistry: args.skillTreeRegistry,
+    skillsRootPath: args.builtinSkillsRootPath,
+    sourceType: "builtin",
+  }).map((runtimeSource) => ({
+    provenance: { kind: "builtin" } as const,
+    runtimeSource,
+  }));
+  const user = readSkillsRoot({
+    logger: args.logger,
+    skillTreeRegistry: args.skillTreeRegistry,
+    skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
+    sourceType: "data-dir",
+  }).map((runtimeSource) => ({
+    provenance: { kind: "user" } as const,
+    runtimeSource,
+  }));
+  return [...builtin, ...user];
 }
 
 interface ExcludeOverriddenBuiltinsArgs {

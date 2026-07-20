@@ -1,15 +1,8 @@
 import { matchPath, useLocation } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
-import {
-  usePluginList,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
-  SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -28,7 +21,6 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
-  { icon: "Layers", id: "plugins", label: "Plugins" },
   { icon: "MessageSquare", id: "community", label: "Community" },
   { icon: "Archive", id: "archived", label: "Archived threads" },
 ] as const satisfies readonly {
@@ -57,18 +49,14 @@ export function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export interface SettingsNavState {
-  /** Plugin id from /settings/plugins/:pluginId, else null. */
-  activePluginId: string | null;
   /** Provider id from /settings/providers/:providerId, else null. */
   activeProviderId: SettingsProviderId | null;
-  /** Selected bucket; null while a plugin page is active. */
+  /** Selected bucket; null while a provider page is active. */
   activeSection: SettingsSectionId | null;
   /** True when the :section URL segment is unknown (the view redirects). */
   hasUnknownSection: boolean;
-  /** Enabled plugins that declared settings or settingsSection slots. */
-  pluginEntries: PluginListItem[];
   providerEntries: typeof SETTINGS_PROVIDER_ENTRIES;
-  /** Buckets visible on this host (files/plugins hide when irrelevant). */
+  /** Buckets visible on this host. */
   sections: readonly SettingsNavSection[];
 }
 
@@ -80,17 +68,7 @@ export interface SettingsNavState {
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
-  const { fileOpeners, settingsSections } = usePluginSlots();
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const settingsSectionPluginIds = new Set(
-    settingsSections.map((section) => section.pluginId),
-  );
-  const pluginListQuery = usePluginList({
-    enabled: pluginsEnabled || settingsSectionPluginIds.size > 0,
-  });
-
-  const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
+  const { fileOpeners } = usePluginSlots();
   const providerMatch = matchPath(
     SETTINGS_PROVIDER_ROUTE_PATH,
     location.pathname,
@@ -99,21 +77,18 @@ export function useSettingsNavState(): SettingsNavState {
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
-  const activePluginId = pluginMatch?.params.pluginId ?? null;
   const providerParam = providerMatch?.params.providerId;
   const activeProviderId =
     providerParam !== undefined && isSettingsProviderId(providerParam)
       ? providerParam
       : null;
   const sectionParam =
-    activePluginId === null && providerMatch === null
-      ? sectionMatch?.params.section
-      : undefined;
+    providerMatch === null ? sectionMatch?.params.section : undefined;
   const hasUnknownSection =
     (sectionParam !== undefined && !isSettingsSectionId(sectionParam)) ||
     (providerParam !== undefined && !isSettingsProviderId(providerParam));
   const activeSection: SettingsSectionId | null =
-    activePluginId !== null || providerMatch !== null
+    providerMatch !== null
       ? null
       : sectionParam !== undefined && isSettingsSectionId(sectionParam)
         ? sectionParam
@@ -123,28 +98,13 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
-    if (section.id === "plugins") {
-      return pluginsEnabled;
-    }
     return true;
   });
-  const pluginEntries = (pluginListQuery.data?.plugins ?? []).filter(
-    (plugin) =>
-      plugin.enabled &&
-      (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
-  );
-
   return {
-    activePluginId,
     activeProviderId,
     activeSection,
     hasUnknownSection,
-    pluginEntries,
     providerEntries: SETTINGS_PROVIDER_ENTRIES,
     sections,
   };
-}
-
-export function PluginNavIcon({ plugin }: { plugin: PluginListItem }) {
-  return <PluginIcon pluginId={plugin.id} icon={plugin.icon ?? "Layers"} />;
 }

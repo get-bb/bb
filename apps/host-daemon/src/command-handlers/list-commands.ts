@@ -162,7 +162,7 @@ const claudePluginManifestSchema = z
   .passthrough();
 type ClaudePluginManifest = z.infer<typeof claudePluginManifestSchema>;
 
-function resolveCodexHome(homeDir: string): string {
+export function resolveCodexHome(homeDir: string): string {
   return process.env.CODEX_HOME?.trim() || path.join(homeDir, ".codex");
 }
 

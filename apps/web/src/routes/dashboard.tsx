@@ -549,9 +549,7 @@ function SetupCodePanel({
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Paste in{" "}
-        <span className="font-medium text-foreground">
-          Settings → Remote access
-        </span>{" "}
+        <span className="font-medium text-foreground">Plugins → connect</span>{" "}
         on your bb{" · "}
         <button
           className="text-foreground underline underline-offset-2 hover:text-muted-foreground"
@@ -598,9 +596,7 @@ function RepairCodeBlock({ serverId }: { serverId: string }) {
       <BigCode code={code?.code ?? "····–····"} disabled={!code} />
       <p className="mt-2.5 text-xs text-subtle-foreground">
         Re-pairing replaces this bb&rsquo;s credential. Paste in{" "}
-        <span className="font-medium text-foreground">
-          Settings → Remote access
-        </span>
+        <span className="font-medium text-foreground">Plugins → connect</span>
         {code ? ` · expires in ${minutes(code.expiresInMs)} min` : ""}
       </p>
     </div>

@@ -859,11 +859,7 @@ export function ParentChildSystemMessages() {
   return (
     <StoryCard>
       {parentChildSystemMessageFixtures.map((fixture) => (
-        <StoryRow
-          key={fixture.label}
-          label={fixture.label}
-          hint={fixture.hint}
-        >
+        <StoryRow key={fixture.label} label={fixture.label} hint={fixture.hint}>
           <TimelineStage>
             <ConversationMessageContent
               role="user"

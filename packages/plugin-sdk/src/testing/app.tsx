@@ -79,11 +79,25 @@ export type NavigateCall =
   | {
       method: "toPluginPanel";
       path: string;
-      options?: { subPath?: string; replace?: boolean };
+      options?: {
+        subPath?: string;
+        replace?: boolean;
+        returnOnExit?: boolean;
+      };
+    }
+  | {
+      method: "exitPluginPanel";
+      path: string;
+      options?: { subPath?: string };
     }
   | {
       method: "toCompose";
-      options?: { initialPrompt?: string; focusPrompt?: boolean };
+      options?: {
+        initialPrompt?: string;
+        focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
+        replace?: boolean;
+      };
     };
 
 export interface ComposerLog {
@@ -732,6 +746,13 @@ export function renderSlot<
     toPluginPanel(path, panelOptions) {
       navigateCalls.push({
         method: "toPluginPanel",
+        path,
+        ...(panelOptions !== undefined ? { options: panelOptions } : {}),
+      });
+    },
+    exitPluginPanel(path, panelOptions) {
+      navigateCalls.push({
+        method: "exitPluginPanel",
         path,
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
       });

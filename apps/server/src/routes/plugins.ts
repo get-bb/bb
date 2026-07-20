@@ -623,10 +623,20 @@ export function registerPluginRoutes(
   });
 
   app.delete("/plugins/:id", async (context) => {
-    if (!gateAllowsPlugin(context.req.param("id"))) {
+    const id = context.req.param("id");
+    if (!gateAllowsPlugin(id)) {
       return context.json(DISABLED, 422);
     }
-    const removed = await plugins.remove(context.req.param("id"));
+    if (plugins.isBuiltin(id)) {
+      return context.json(
+        {
+          ok: false,
+          error: "Built-in plugins can be disabled, but not deleted.",
+        },
+        409,
+      );
+    }
+    const removed = await plugins.remove(id);
     if (!removed)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
     return context.json({ ok: true });

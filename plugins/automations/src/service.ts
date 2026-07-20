@@ -43,35 +43,36 @@ import {
 } from "./schedule-helpers.js";
 import {
   deleteAutomationScriptDir,
+  readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
 import { executeAgentRun, executeScriptRun } from "./run.js";
 
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
-    projects: {
-      get(args: Parameters<BbPluginApi["sdk"]["projects"]["get"]>[0]): Promise<unknown>;
-      list(args?: Parameters<BbPluginApi["sdk"]["projects"]["list"]>[0]): Promise<unknown>;
-    };
-    threads: {
-      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
-      spawn(
-        args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
-      ): Promise<unknown>;
-    };
+    projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
+    threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: { projectId: string }): AutomationResponse[];
-  get(input: { projectId: string; automationId: string }): AutomationResponse;
+  get(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
-  delete(input: { projectId: string; automationId: string }): Promise<{ ok: true }>;
+  delete(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<{ ok: true }>;
   pause(input: { projectId: string; automationId: string }): AutomationResponse;
-  resume(input: { projectId: string; automationId: string }): AutomationResponse;
+  resume(input: {
+    projectId: string;
+    automationId: string;
+  }): AutomationResponse;
   run(input: RunAutomationInput): Promise<AutomationRunRpcResponse>;
   runs(input: ResolvedAutomationRunsInput): AutomationRunListResponse;
 }
@@ -143,6 +144,31 @@ async function resolveStoredExecution(args: {
   return args.execution;
 }
 
+async function toEditableAutomationResponse(args: {
+  pluginDataDir: string;
+  row: AutomationRow;
+}): Promise<AutomationResponse> {
+  const automation = toAutomationResponse(args.row);
+  if (
+    automation.execution.mode !== "script" ||
+    automation.execution.scriptFile === undefined
+  ) {
+    return automation;
+  }
+  const { scriptFile, ...execution } = automation.execution;
+  return {
+    ...automation,
+    execution: {
+      ...execution,
+      script: await readAutomationScript({
+        dataDir: args.pluginDataDir,
+        automationId: automation.id,
+        scriptFile,
+      }),
+    },
+  };
+}
+
 function encodeRunCursor(startedAt: number, id: string): string {
   return Buffer.from(`${startedAt}:${id}`, "utf8").toString("base64url");
 }
@@ -166,10 +192,15 @@ async function projectNameById(
   bb: Pick<ServiceApi, "sdk" | "log">,
 ): Promise<Map<string, string>> {
   try {
-    const projects = projectSummaryListSchema.parse(await bb.sdk.projects.list());
+    const projects = projectSummaryListSchema.parse(
+      await bb.sdk.projects.list({ includePersonal: true }),
+    );
     return new Map(
       projects
-        .filter((project) => project.deletedAt === undefined || project.deletedAt === null)
+        .filter(
+          (project) =>
+            project.deletedAt === undefined || project.deletedAt === null,
+        )
         .map((project) => [project.id, project.name ?? project.id]),
     );
   } catch (error) {
@@ -183,15 +214,14 @@ async function projectNameById(
 }
 
 const projectAvailableSchema = z.object({ id: z.string() }).passthrough();
-const projectSummaryListSchema = z.array(
-  z
-    .object({
-      id: z.string(),
-      name: z.string().optional(),
-      deletedAt: z.number().nullable().optional(),
-    })
-    .passthrough(),
-);
+const projectSummarySchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    deletedAt: z.number().nullable().optional(),
+  })
+  .passthrough();
+const projectSummaryListSchema = z.array(projectSummarySchema);
 
 async function requireProjectAvailable(
   bb: Pick<ServiceApi, "sdk">,
@@ -219,34 +249,45 @@ export function createAutomationService(args: {
   return {
     async overview() {
       const projects = await projectNameById(bb);
-      const automations = listAllAutomations(db).flatMap((row) => {
-        const projectName = projects.get(row.projectId);
-        if (projects.size > 0 && projectName === undefined) return [];
-        try {
-          return [
-            {
-              automation: toAutomationResponse(row),
-              project: { id: row.projectId, name: projectName ?? row.projectId },
-            },
-          ];
-        } catch (error) {
-          bb.log.warn(
-            `Skipping malformed automation ${row.id}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          return [];
-        }
-      });
+      const rows = listAllAutomations(db);
+      const automations = (
+        await Promise.all(
+          rows.map(async (row) => {
+            const projectName = projects.get(row.projectId);
+            if (projects.size > 0 && projectName === undefined) return null;
+            try {
+              return {
+                automation: toAutomationResponse(row),
+                project: {
+                  id: row.projectId,
+                  name: projectName ?? row.projectId,
+                },
+              };
+            } catch (error) {
+              bb.log.warn(
+                `Skipping malformed automation ${row.id}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+              return null;
+            }
+          }),
+        )
+      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
       return automationsOverviewResponseSchema.parse({ automations });
     },
 
     list(input) {
-      return listAutomationsForProject(db, input.projectId).map(toAutomationResponse);
+      return listAutomationsForProject(db, input.projectId).map(
+        toAutomationResponse,
+      );
     },
 
     get(input) {
-      return toAutomationResponse(requireProjectAutomation(db, input));
+      return toEditableAutomationResponse({
+        pluginDataDir,
+        row: requireProjectAutomation(db, input),
+      });
     },
 
     async create(payload) {
@@ -289,7 +330,9 @@ export function createAutomationService(args: {
       if (input.trigger !== undefined) {
         validateTrigger(input.trigger, now);
         patch.trigger = input.trigger;
-        patch.nextRunAt = current.enabled ? computeNextRunAt(input.trigger, now) : null;
+        patch.nextRunAt = current.enabled
+          ? computeNextRunAt(input.trigger, now)
+          : null;
       }
       if (input.execution !== undefined) {
         patch.execution = await resolveStoredExecution({
@@ -311,7 +354,10 @@ export function createAutomationService(args: {
     async delete(input) {
       const automation = requireProjectAutomation(db, input);
       deleteAutomation(db, input);
-      await deleteAutomationScriptDir({ dataDir: pluginDataDir, automationId: automation.id });
+      await deleteAutomationScriptDir({
+        dataDir: pluginDataDir,
+        automationId: automation.id,
+      });
       publishAutomationChange(bb, input.projectId, [
         "automations-changed",
         "automation-runs-changed",
@@ -418,7 +464,8 @@ export function createAutomationService(args: {
       const last = page[page.length - 1];
       return automationRunListResponseSchema.parse({
         runs: page.map(toAutomationRunResponse),
-        nextCursor: hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
+        nextCursor:
+          hasMore && last ? encodeRunCursor(last.startedAt, last.id) : null,
       });
     },
   };

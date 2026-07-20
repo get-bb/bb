@@ -1,3 +1,4 @@
+export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
 import type { PromptMentionResource } from "@bb/domain";
 
 export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";

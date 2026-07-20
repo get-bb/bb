@@ -295,6 +295,7 @@ export type PluginCatalogStatusResponse = z.infer<
 
 export const pluginCatalogSearchResultSchema = z.object({
   entryId: z.string(),
+  pluginId: z.string(),
   displayName: z.string(),
   description: z.string(),
   icon: z.string().nullable(),

@@ -34,6 +34,7 @@ import {
   resolveRootComposeProviderRouting,
   resolveRootComposeProjectRouting,
   resolveRootComposePanelThreadId,
+  shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
@@ -256,6 +257,23 @@ describe("readInitialPromptFromLocationState", () => {
     expect(
       readInitialPromptFromLocationState({ initialPrompt: 42 }),
     ).toBeNull();
+  });
+});
+
+describe("shouldReplaceInitialPromptFromLocationState", () => {
+  it("returns true only for explicit replacement seed intents", () => {
+    expect(
+      shouldReplaceInitialPromptFromLocationState({
+        initialPrompt: "Create a new bb skill to review PRs.",
+        replaceInitialPrompt: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldReplaceInitialPromptFromLocationState({
+        initialPrompt: "Create a new bb skill to review PRs.",
+      }),
+    ).toBe(false);
+    expect(shouldReplaceInitialPromptFromLocationState(null)).toBe(false);
   });
 });
 

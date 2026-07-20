@@ -37,10 +37,6 @@ import {
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
-import {
-  PluginSettingsDetailSection,
-  PluginsSettingsSection,
-} from "@/components/settings/PluginsSettingsSection";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
@@ -948,16 +944,14 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeProviderId, activeSection, hasUnknownSection } =
+  const { activeProviderId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
   }
 
   let content: ReactNode = null;
-  if (activePluginId !== null) {
-    content = <PluginSettingsDetailSection pluginId={activePluginId} />;
-  } else if (activeProviderId !== null) {
+  if (activeProviderId !== null) {
     const isCodex = activeProviderId === "codex";
     content = (
       <ProviderSettingsSection
@@ -1081,8 +1075,6 @@ export function SettingsView() {
         pluginsEnabled={experiments.plugins}
       />
     );
-  } else if (activeSection === "plugins") {
-    content = <PluginsSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {

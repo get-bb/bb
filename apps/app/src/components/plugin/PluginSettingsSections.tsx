@@ -3,10 +3,14 @@ import {
   type PluginSettingsSectionSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
+import {
+  ResourceDetailPanel,
+  ResourceDetailConfigurationSection,
+} from "@bb/shared-ui/resource-list";
 
 /**
- * Plugin `settingsSection` slot mounts, rendered on that plugin's
- * Settings -> Plugins detail page below the host-rendered declarative form.
+ * Plugin `settingsSection` slot mounts, rendered on that plugin's canonical
+ * Plugins detail page below the host-rendered declarative form.
  * Each section is contained in its own per-plugin error boundary.
  */
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
@@ -26,25 +30,16 @@ function PluginSettingsSectionList({
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
       {sections.map((section) => (
-        <section
+        <ResourceDetailConfigurationSection
           key={`${section.pluginId}/${section.id}/${section.generation}`}
-          className="space-y-3"
+          label={section.title ?? "Plugin settings"}
         >
-          {section.title !== undefined ? (
-            // Built-in SettingsSection header idiom (title + optional
-            // description) above the card, so a plugin section reads native.
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">
-                {section.title}
-              </h2>
-              {section.description !== undefined ? (
-                <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                  {section.description}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+          <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+            {section.description !== undefined ? (
+              <p className="mb-3 text-xs leading-snug text-subtle-foreground/75">
+                {section.description}
+              </p>
+            ) : null}
             <PluginSlotMount
               pluginId={section.pluginId}
               slotKind="settingsSection"
@@ -52,8 +47,8 @@ function PluginSettingsSectionList({
             >
               <section.component />
             </PluginSlotMount>
-          </div>
-        </section>
+          </ResourceDetailPanel>
+        </ResourceDetailConfigurationSection>
       ))}
     </div>
   );

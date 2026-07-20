@@ -49,12 +49,21 @@ type NavigateCall = {
     options?: {
         subPath?: string;
         replace?: boolean;
+        returnOnExit?: boolean;
+    };
+} | {
+    method: "exitPluginPanel";
+    path: string;
+    options?: {
+        subPath?: string;
     };
 } | {
     method: "toCompose";
     options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
+        replace?: boolean;
     };
 };
 interface ComposerLog {

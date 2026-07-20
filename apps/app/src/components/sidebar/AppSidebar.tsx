@@ -7,7 +7,7 @@ import {
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -22,7 +22,11 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import {
+  ProjectList,
+  ProjectListActionButtons,
+  type ProjectListToolActionId,
+} from "./ProjectList";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -35,7 +39,15 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
+  getAutomationsRoutePath,
+  getPluginsRoutePath,
+  getRootComposeRoutePath,
+  getSkillsRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -97,6 +109,7 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const location = useLocation();
   const threadSplitsEnabled = useThreadSplitsEnabled();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
@@ -201,6 +214,33 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
+
+  const handleOpenSkills = useCallback(() => {
+    closeOnMobile();
+    void navigate(getSkillsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenPlugins = useCallback(() => {
+    closeOnMobile();
+    void navigate(getPluginsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenAutomations = useCallback(() => {
+    closeOnMobile();
+    void navigate(getAutomationsRoutePath());
+  }, [closeOnMobile, navigate]);
+
+  const activeTool: ProjectListToolActionId | null =
+    location.pathname.startsWith(getPluginsRoutePath())
+      ? "plugins"
+      : location.pathname.startsWith(getAutomationsRoutePath()) ||
+          location.pathname === LEGACY_AUTOMATIONS_ROUTE_PATH
+        ? "automations"
+        : location.pathname.startsWith(getSkillsRoutePath()) ||
+            location.pathname === LEGACY_SKILLS_ROUTE_PATH ||
+            location.pathname === "/tools"
+          ? "skills"
+          : null;
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
@@ -382,6 +422,10 @@ export function AppSidebar({
             splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
+            onOpenSkills={handleOpenSkills}
+            onOpenPlugins={handleOpenPlugins}
+            onOpenAutomations={handleOpenAutomations}
+            activeTool={activeTool}
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,

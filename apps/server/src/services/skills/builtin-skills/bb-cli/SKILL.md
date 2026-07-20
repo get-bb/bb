@@ -73,6 +73,21 @@ message agents, or inspect projects, providers, and environments.
   `bb guide agent-configuration` for details (it also covers project
   `.bb/skills/`).
 
+## Skills
+
+- Use `bb skill list` to inspect installed and discovered skills. It defaults to
+  `BB_PROJECT_ID`, then the personal project; pass `--project` or
+  `--environment` to select another workspace.
+- Copy the opaque ID from `bb skill list`, then use `bb skill show <skill-id>`
+  or `bb skill files <skill-id>` to read that exact skill.
+- `bb skill show <skill-id> --json` returns the revision. Pass that revision,
+  plus `--file`, to `bb skill update <skill-id>`. Use update or delete only when
+  the list says editable.
+- Use `bb skill search [query]` for live skills.sh results. Inspect metadata and
+  the bounded file preview with `bb skill registry detail <registry-skill-id>`.
+  Install with `bb skill install <registry-skill-id>`; never infer an install
+  source from a display name.
+
 ## Spawning Threads
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
@@ -104,12 +119,12 @@ message agents, or inspect projects, providers, and environments.
   the resolved host plus `hostId`, `hostName`, `port`, and `url` per row.
   `bb connect servers` lists every bb on the paired account (handle,
   name, url, live) so callers can discover siblings; `--json` includes
-  `selfHandle` for deduping this server. When you start a local server the user should open
-  remotely, expose the port and give them the share URL. Remote access is owned
-  by the builtin `connect` plugin: `bb plugin disable connect` cuts it off
-  entirely; with bb connect still enabled, `bb plugin enable connect` restores
-  the command. Settings → Connect shows the current URL, QR code, shared ports,
-  re-pair form, and disconnect control.
+  `selfHandle` for deduping this server. When you start a local server the user
+  should open remotely, expose the port and give them the share URL. Remote
+  access is owned by the builtin `connect` plugin: `bb plugin disable connect`
+  cuts it off entirely; with bb connect still enabled, `bb plugin enable
+  connect` restores the command. Plugins → Connect shows the current URL, QR
+  code, shared ports, re-pair form, and disconnect control.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
@@ -408,6 +423,11 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
+- Use `bb automation update <id> --project <id>` with `--name` or schedule
+  flags for metadata changes. To change what runs, provide a complete
+  replacement execution: `--prompt` + `--provider` + `--model` for an agent,
+  or `--script`/`--script-file` for a script. Script replacements also accept
+  `--interpreter`, `--timeout`, and `--env-json '{"KEY":"value"}'`.
 - Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
   automations plugin should be installed and running.
 
@@ -577,7 +597,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     useSettings, useBbContext, useBbNavigate, and useComposer for scoped text
     editing, quote/mention insertion, focus, and scope-owned progress visuals);
     components are vendored shadcn source the plugin owns. Installed
-    plugins and their settings also appear under Settings → Plugins.
+    plugins and their settings also appear in the Plugins surface.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins
   and proxied to the server. Core command names always win. In agent threads,

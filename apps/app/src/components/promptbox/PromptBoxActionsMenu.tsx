@@ -45,7 +45,7 @@ const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
 const PROMPT_ACTION_PRESENTATION = {
   skills: {
     label: "Skills",
-    icon: "Explore",
+    icon: "Zap",
   },
   plan: {
     label: "Plan",

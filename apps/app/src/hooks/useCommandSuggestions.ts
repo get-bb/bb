@@ -203,13 +203,16 @@ export function useCommandSuggestions(
       return [];
     }
     const discoveredSuggestions = filterCommandSuggestions(
-      (commandsQuery.data?.commands ?? []).map(toProviderCommandSuggestion),
+      (commandsQuery.data?.commands ?? []).map((command) =>
+        toProviderCommandSuggestion(command, args.providerId),
+      ),
       trimmedQuery,
     );
     return orderCommandSuggestionsBySection(
       mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
     );
   }, [
+    args.providerId,
     commandsQuery.data?.commands,
     isActive,
     promptActionSuggestions,

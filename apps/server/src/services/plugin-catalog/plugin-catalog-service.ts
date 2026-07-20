@@ -73,6 +73,7 @@ export function createPluginCatalogService(deps: {
     const problem = compatibilityProblem(manifest);
     return {
       entryId: entry.name,
+      pluginId: entry.pluginId,
       displayName: manifest.name,
       description: manifest.description,
       icon: manifest.branding.icon ?? null,

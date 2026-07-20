@@ -139,12 +139,13 @@ describe("plugin catalog queries", () => {
     expect(status).toEqual({ pluginCount: 4 });
   });
 
-  it("parses search results without source-catalog identity", async () => {
+  it("preserves canonical plugin identity without source-catalog fields", async () => {
     const entries = await searchPluginCatalog(
       fetchReturning({
         results: [
           {
             entryId: "todoist",
+            pluginId: "todoist",
             displayName: "Todoist",
             description: "Personal task capture",
             icon: "CheckList",
@@ -161,6 +162,7 @@ describe("plugin catalog queries", () => {
     expect(entries).toEqual([
       {
         entryId: "todoist",
+        pluginId: "todoist",
         displayName: "Todoist",
         description: "Personal task capture",
         icon: "CheckList",

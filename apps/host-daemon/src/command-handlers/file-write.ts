@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
@@ -10,6 +11,30 @@ import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
 import { NON_IMAGE_FILE_SIZE_LIMIT_BYTES, sha256Hex } from "./file-read.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
+
+const guardedWriteTails = new Map<string, Promise<void>>();
+
+async function serializeGuardedWrite<T>(
+  writePath: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = guardedWriteTails.get(writePath) ?? Promise.resolve();
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => gate);
+  guardedWriteTails.set(writePath, tail);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (guardedWriteTails.get(writePath) === tail) {
+      guardedWriteTails.delete(writePath);
+    }
+  }
+}
 
 export interface ResolvedWriteTarget {
   /** Real (symlink-resolved) path to write, existing or not. */
@@ -101,6 +126,15 @@ export async function writeHostFile(
   const resolvedPath = path.resolve(command.path);
   const target = await resolveWriteTarget(resolvedPath, command.path);
 
+  const write = () => writeResolvedHostFile(command, contents, target);
+  return serializeGuardedWrite(target.writePath, write);
+}
+
+async function writeResolvedHostFile(
+  command: CommandOf<"host.write_file">,
+  contents: Buffer,
+  target: ResolvedWriteTarget,
+): Promise<HostDaemonOnlineRpcResult<"host.write_file">> {
   if (command.rootPath !== undefined) {
     let realRootPath: string;
     try {
@@ -127,6 +161,7 @@ export async function writeHostFile(
   }
 
   let currentContents: Buffer | null = null;
+  let currentMode: number | undefined;
   try {
     const stat = await fs.stat(target.writePath);
     if (stat.isDirectory()) {
@@ -135,6 +170,7 @@ export async function writeHostFile(
         "Path is a directory, not a file",
       );
     }
+    currentMode = stat.mode & 0o777;
     currentContents = await fs.readFile(target.writePath);
   } catch (error) {
     if (!isFsErrorWithCode(error, "ENOENT")) {
@@ -154,10 +190,55 @@ export async function writeHostFile(
   if (command.createParents) {
     await fs.mkdir(path.dirname(target.writePath), { recursive: true });
   }
+  const writeOptions = {
+    ...(command.mode !== undefined
+      ? { mode: command.mode }
+      : currentMode !== undefined
+        ? { mode: currentMode }
+        : {}),
+  };
+  let temporaryPath: string | null = null;
   try {
-    await fs.writeFile(target.writePath, contents, {
-      ...(command.mode !== undefined ? { mode: command.mode } : {}),
-    });
+    if (command.expectedSha256 === undefined) {
+      await fs.writeFile(target.writePath, contents, writeOptions);
+    } else {
+      temporaryPath = `${target.writePath}.bb-write-${randomUUID()}`;
+      const handle = await fs.open(temporaryPath, "wx", writeOptions.mode);
+      try {
+        await handle.writeFile(contents);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+
+      if (command.expectedSha256 === null) {
+        try {
+          // Linking is an atomic no-replace create on every supported host.
+          await fs.link(temporaryPath, target.writePath);
+        } catch (error) {
+          if (isFsErrorWithCode(error, "EEXIST")) {
+            const latest = await fs
+              .readFile(target.writePath)
+              .catch(() => null);
+            return {
+              outcome: "conflict",
+              currentSha256: latest === null ? null : sha256Hex(latest),
+            };
+          }
+          throw error;
+        }
+      } else {
+        // Recheck after preparing the complete replacement, then swap it into
+        // place with one rename so readers never observe partial content.
+        const latest = await fs.readFile(target.writePath).catch(() => null);
+        const latestSha256 = latest === null ? null : sha256Hex(latest);
+        if (latestSha256 !== command.expectedSha256) {
+          return { outcome: "conflict", currentSha256: latestSha256 };
+        }
+        await fs.rename(temporaryPath, target.writePath);
+        temporaryPath = null;
+      }
+    }
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       throw createMissingTargetError(path.dirname(command.path));
@@ -172,6 +253,10 @@ export async function writeHostFile(
       );
     }
     throw error;
+  } finally {
+    if (temporaryPath !== null) {
+      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+    }
   }
 
   return {

@@ -410,7 +410,7 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(1);
   });
 
-  it("keeps a builtin tombstoned after remove and restart", async () => {
+  it("keeps a removed built-in plugin uninstalled across restarts", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });
     await service.start();
 

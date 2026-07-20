@@ -8,8 +8,34 @@ export const SETTINGS_ROUTE_PATH = "/settings";
 // static "plugins" segment wins over :section, so /settings/plugins is the
 // plugin management bucket and /settings/plugins/:id a plugin's own page.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
+export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
+export const TOOLS_ROUTE_PATH = "/tools";
+export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
+export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
+  "/tools/skills/installed/:skillId";
+export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
+export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
+  "/tools/skills/registry/:registrySkillId";
+export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
+export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/tools/plugins/browse";
+export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
+export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
+export const TOOLS_AUTOMATION_BROWSE_ROUTE_PATH = "/tools/automations/browse";
+export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
+  "/tools/automations/:projectId/:automationId";
+export const TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
+  "/tools/automations/:projectId/:automationId/edit";
+export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
+export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
+export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
+  "/automations/:projectId/:automationId";
+export const AUTOMATIONS_PLUGIN_ID = "automations";
+export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
+export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
+export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
+export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
@@ -75,6 +101,78 @@ export function getSettingsProviderRoutePath(providerId: string): string {
   return `/settings/providers/${encodeURIComponent(providerId)}`;
 }
 
+export function getToolsRoutePath(): string {
+  return TOOLS_ROUTE_PATH;
+}
+
+export function getSkillsRoutePath(): string {
+  return SKILLS_ROUTE_PATH;
+}
+
+export function getRegistrySkillsRoutePath(): string {
+  return TOOLS_REGISTRY_SKILLS_ROUTE_PATH;
+}
+
+export interface SkillDetailRoutePathArgs {
+  skillId: string;
+}
+
+export function getSkillDetailRoutePath({
+  skillId,
+}: SkillDetailRoutePathArgs): string {
+  return `${TOOLS_SKILLS_ROUTE_PATH}/installed/${encodeURIComponent(skillId)}`;
+}
+
+export interface RegistrySkillDetailRoutePathArgs {
+  registrySkillId: string;
+}
+
+export function getRegistrySkillDetailRoutePath({
+  registrySkillId,
+}: RegistrySkillDetailRoutePathArgs): string {
+  return `${TOOLS_SKILLS_ROUTE_PATH}/registry/${encodeURIComponent(
+    registrySkillId,
+  )}`;
+}
+
+export function getPluginsRoutePath(): string {
+  return TOOLS_PLUGINS_ROUTE_PATH;
+}
+
+export interface PluginDetailRoutePathArgs {
+  pluginId: string;
+}
+
+export function getPluginDetailRoutePath({
+  pluginId,
+}: PluginDetailRoutePathArgs): string {
+  return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+}
+
+export function getAutomationsRoutePath(): string {
+  return AUTOMATIONS_ROUTE_PATH;
+}
+
+export interface AutomationDetailRoutePathArgs {
+  projectId: string;
+  automationId: string;
+}
+
+export function getAutomationDetailRoutePath({
+  projectId,
+  automationId,
+}: AutomationDetailRoutePathArgs): string {
+  return `${TOOLS_AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
+    projectId,
+  )}/${encodeURIComponent(automationId)}`;
+}
+
+export function getAutomationEditRoutePath(
+  args: AutomationDetailRoutePathArgs,
+): string {
+  return `${getAutomationDetailRoutePath(args)}/edit`;
+}
+
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
 }
@@ -115,8 +213,24 @@ const baseRoutePatterns: readonly string[] = [
   AUTH_CALLBACK_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
+  TOOLS_SKILLS_ROUTE_PATH,
+  TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
+  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATIONS_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 61 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 62 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -687,6 +687,147 @@ const hostListCommandsCommandSchema = z
   .strict();
 
 /**
+ * Which scan root a discovered skill came from, as raw root identity — not a
+ * product scope. The server maps `(providerId, rootKind)` to the user-facing
+ * scope (e.g. `provider-user` under `claude-code` → `claude-user`, under
+ * `codex` → `codex`) and decides `manageable`. Kept here, not derived on the
+ * daemon, because only the server knows which provider it queried.
+ */
+export const skillRootKindSchema = z.enum([
+  "bb-project",
+  "bb-data-dir",
+  "bb-builtin",
+  "provider-project",
+  "provider-user",
+  "plugin",
+]);
+export type SkillRootKind = z.infer<typeof skillRootKindSchema>;
+
+/**
+ * A discovered skill for the Skills management page. Unlike
+ * `hostProviderCommandSchema` (typeahead) this carries the absolute `filePath`
+ * (backs View / Delete) and the originating `rootKind`. Skill-only — legacy
+ * `command`-source entries are not surfaced here.
+ */
+export const discoveredSkillSchema = z.object({
+  id: z.string().regex(/^skill_[a-f0-9]{64}$/u),
+  name: z.string(),
+  description: z.string().nullable(),
+  filePath: z.string(),
+  rootKind: skillRootKindSchema,
+});
+export type DiscoveredSkill = z.infer<typeof discoveredSkillSchema>;
+
+/**
+ * List discoverable skills (not legacy commands) for a provider, classified by
+ * originating root. Same root-resolution rules as `host.list_commands`:
+ * `cwd: null` skips the project roots and returns only user-home/bb scopes.
+ */
+const hostListSkillsCommandSchema = z.object({
+  type: z.literal("host.list_skills"),
+  providerId: z.string().min(1),
+  cwd: z.string().min(1).nullable(),
+});
+
+const registrySkillNamePattern =
+  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const registryPackageRefPattern = /^(?!-)\S+$/u;
+
+/**
+ * Import one skills.sh package into bb's host-local user skill root. The daemon
+ * owns extraction, validation, confinement, and the final atomic filesystem
+ * write; the server supplies only registry identity selected by product policy.
+ */
+const hostInstallRegistrySkillCommandSchema = z
+  .object({
+    type: z.literal("host.install_registry_skill"),
+    packageRef: z.string().min(1).max(2_048).regex(registryPackageRefPattern),
+    skillId: z.string().max(64).regex(registrySkillNamePattern),
+  })
+  .strict();
+
+/** User-owned local skill scopes that can be deleted after path confinement. */
+export const deletableSkillScopeSchema = z.enum([
+  "bb-user",
+  "bb-project",
+  "claude-user",
+  "claude-project",
+  "codex-user",
+  "codex-project",
+]);
+export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
+
+/**
+ * Delete a local user-owned skill directory. bb roots are derived from scope;
+ * provider roots are resolved from authoritative discovery by the server and
+ * supplied explicitly. The daemon realpath-confines the target to the named
+ * direct child of that root and refuses symlink escapes.
+ */
+const hostDeleteSkillCommandSchema = z
+  .object({
+    type: z.literal("host.delete_skill"),
+    scope: deletableSkillScopeSchema,
+    name: z.string().min(1),
+    cwd: z.string().min(1).nullable(),
+    rootPath: z.string().min(1).nullable(),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.scope === "bb-project" && command.cwd === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["cwd"],
+        message: "cwd is required to delete a bb-project skill",
+      });
+    }
+    const isBbScope =
+      command.scope === "bb-user" || command.scope === "bb-project";
+    if (isBbScope && command.rootPath !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["rootPath"],
+        message: "rootPath must be null for a bb skill",
+      });
+    }
+    if (!isBbScope && command.rootPath === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["rootPath"],
+        message: "rootPath is required for a provider skill",
+      });
+    }
+  });
+
+/**
+ * Overwrite an existing bb skill's SKILL.md. Same confinement as delete: the
+ * path is built host-side from `(scope, name, cwd)` (never a client path), the
+ * name must be a single safe segment, and the resolved target must be exactly
+ * `<bb-root>/<name>/SKILL.md` of an already-existing skill. Edits only — it
+ * never creates new skills (creation is via prompt).
+ */
+const writableBbSkillScopeSchema = z.enum(["bb-user", "bb-project"]);
+
+const hostWriteSkillCommandSchema = z
+  .object({
+    type: z.literal("host.write_skill"),
+    scope: writableBbSkillScopeSchema,
+    name: z.string().min(1),
+    cwd: z.string().min(1).nullable(),
+    content: z.string().min(1).max(1_000_000),
+    expectedSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.scope === "bb-project" && command.cwd === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["cwd"],
+        message: "cwd is required to edit a bb-project skill",
+      });
+    }
+  });
+
+/**
  * List a bounded page of git branches at an absolute host path. Path-only
  * sibling of `host.list_files`. Does not require an environment row, does not
  * provision anything, and does not create daemon-side workspace state.
@@ -1073,6 +1214,35 @@ const hostCaffeinateResultSchema = z
 const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
 });
+
+// Like `commandListResultSchema`: the daemon returns the full raw set across
+// all roots; the server owns scope-mapping, de-dup, and sort.
+const skillListResultSchema = z.object({
+  skills: z.array(discoveredSkillSchema),
+});
+
+const installRegistrySkillResultSchema = z.object({
+  filePath: z.string(),
+});
+
+const deleteSkillResultSchema = z.object({
+  deletedPath: z.string(),
+});
+
+const writeSkillResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("written"),
+    filePath: z.string(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  }),
+  z.object({
+    outcome: z.literal("conflict"),
+    currentSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .nullable(),
+  }),
+]);
 
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
@@ -1528,6 +1698,49 @@ export const hostDaemonCommandRegistry = {
     resultSchema: commandListResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_skills": defineHostDaemonCommandDescriptor({
+    type: "host.list_skills",
+    schema: hostListSkillsCommandSchema,
+    resultSchema: skillListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Host-local bb-user skill import. Non-retryable because a transient failure
+  // must not silently re-run an external package install or filesystem write.
+  "host.install_registry_skill": defineHostDaemonCommandDescriptor({
+    type: "host.install_registry_skill",
+    schema: hostInstallRegistrySkillCommandSchema,
+    resultSchema: installRegistrySkillResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Destructive host-local FS write (the second after `host.run_script`). Not
+  // env-scoped, so `envLane: null`; non-retryable so a transient failure never
+  // silently re-issues a delete.
+  "host.delete_skill": defineHostDaemonCommandDescriptor({
+    type: "host.delete_skill",
+    schema: hostDeleteSkillCommandSchema,
+    resultSchema: deleteSkillResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Host-local FS write (edit an existing bb skill's SKILL.md). Not env-scoped;
+  // non-retryable so a transient failure never silently re-issues the write.
+  "host.write_skill": defineHostDaemonCommandDescriptor({
+    type: "host.write_skill",
+    schema: hostWriteSkillCommandSchema,
+    resultSchema: writeSkillResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

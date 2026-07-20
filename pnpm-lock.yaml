@@ -378,6 +378,9 @@ importers:
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0
+      bb-plugin-automations:
+        specifier: workspace:*
+        version: link:../../plugins/automations
       eslint:
         specifier: ^9.39.3
         version: 9.39.3(jiti@2.7.0)

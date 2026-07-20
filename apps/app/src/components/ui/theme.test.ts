@@ -283,6 +283,19 @@ describe("theme.css neutral ramp", () => {
         expect(block).toMatch(/--ink:\s*oklch\(/);
       });
 
+      it("uses an opaque frame token for resource-card hover", () => {
+        const percentage = mode === "light" ? 24 : 30;
+        expect(
+          variableValue(
+            block,
+            "resource-source-shelf-card-hover-border",
+          ).replace(/\s+/g, " "),
+        ).toContain(
+          `in oklch, var(--ink) ${percentage}%, var(--canvas)`,
+        );
+        expect(block).not.toMatch(/--resource-source-shelf-card-hover:/);
+      });
+
       it("derives every neutral-ramp token from the anchors", () => {
         for (const token of REQUIRED_RAMP_TOKENS) {
           expect(

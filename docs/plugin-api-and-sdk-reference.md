@@ -388,14 +388,14 @@ The packaged runtime module, app shim, and bundled declaration expose exactly th
 
 ### Navigation hook
 
-| Method          | Signature                                         |
-| --------------- | ------------------------------------------------- |
-| `toThread`      | `(threadId: string) => void`                      |
-| `toProject`     | `(projectId: string) => void`                     |
-| `toPluginPanel` | `(path: string, { subPath?, replace? }?) => void` |
-| `toCompose`     | `({ initialPrompt?, focusPrompt? }?) => void`     |
+| Method          | Signature                                                                      |
+| --------------- | ------------------------------------------------------------------------------ |
+| `toThread`      | `(threadId: string) => void`                                                   |
+| `toProject`     | `(projectId: string) => void`                                                  |
+| `toPluginPanel` | `(path: string, { subPath?, replace? }?) => void`                              |
+| `toCompose`     | `({ initialPrompt?, focusPrompt?, replaceInitialPrompt?, replace? }?) => void` |
 
-`toPluginPanel` targets a nav panel owned by the calling plugin. `replace` replaces history instead of pushing. `toCompose` opens the root new-thread surface and may seed/focus the prompt.
+`toPluginPanel` targets a nav panel owned by the calling plugin. `replace` replaces history instead of pushing. `toCompose` opens the root new-thread surface and may seed or focus the prompt. Set `replaceInitialPrompt` when an explicit action, such as editing a selected resource, must replace a stale root-composer draft; otherwise the initial prompt only fills an empty draft. Set `replace` when redirecting from an intermediary route so browser Back skips that route.
 
 ### Composer hook
 

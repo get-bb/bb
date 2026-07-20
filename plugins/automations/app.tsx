@@ -4,16 +4,11 @@
 // views. The panel root lists every automation across projects (rpc
 // automations.overview); the detail subPath (/:projectId/:automationId)
 // shows one automation's full config plus its cursor-paginated run history.
-// Realtime "automations" signals refetch in place. Creation/editing is
-// deliberately absent — parity with the kernel, where automations are made
-// via the CLI or by agents.
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+// Realtime "automations" signals refetch in place. Creation and editing start
+// from chat with enough resource context for the agent to do the work.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { buildAutomationEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import {
   definePluginApp,
   useBbNavigate,
@@ -24,12 +19,17 @@ import {
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
-  AutomationExecution,
   AutomationResponse,
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "@/src/rpc-types";
+import {
+  AutomationDetailView,
+  AutomationLifecycleControl,
+  automationIconName,
+  automationScheduleLabel,
+} from "./detail-view";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -39,33 +39,79 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Pill } from "@bb/shared-ui/pill";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  RESOURCE_LIST_PAGE_SIZE,
+  ResourcePagination,
+  useResourcePagination,
+} from "@bb/shared-ui/resource-pagination";
+import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  ResourceBrowseGrid,
+  ResourceCollectionPage,
+  ResourceCreateButton,
+  ResourceListPanel,
+  ResourceListState,
+  ResourceLocationMeta,
+  ResourceMeta,
+  ResourceMultiSelectMenu,
+  ResourceRow,
+  ResourceRowDetailChevron,
+  ResourceSortMenu,
+  ResourceTemplateBrowseCard,
+  ResourceToolbar,
+} from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
-  formatScheduleRunTime,
-  formatScheduleStatusLabel,
-  isCompletedOneShotAutomation,
+  getOneShotLifecycle,
+  oneShotLifecycleAllowsToggle,
 } from "@/lib/format-schedule";
 
 const PANEL_PATH = "automations";
 const PERSONAL_PROJECT_ID = "proj_personal";
 
 // Prefill text for the "Create via chat" entry point — an agent turns this
-// into a real automation. Inlined here (the kernel kept it in
-// apps/app/src/lib/automation-prompt.ts) so the plugin bundle stays self-contained.
+// into a real automation. Inlined here so the plugin bundle stays
+// self-contained.
 const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
+const AUTOMATION_CREATE_TEMPLATES = [
+  {
+    label: "CI failure triage",
+    icon: "AlertCircle",
+    description:
+      "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
+    prompt: `${CREATE_AUTOMATION_PROMPT}runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures.`,
+  },
+  {
+    label: "Dependency drift",
+    icon: "ElectricPlugs",
+    description:
+      "checks weekly for stale dependencies and opens an update thread when risk is low",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks weekly for stale dependencies and opens an update thread when risk is low.`,
+  },
+  {
+    label: "Release readiness",
+    icon: "Target",
+    description:
+      "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
+  },
+  {
+    label: "Stale worktrees",
+    icon: "FolderGit",
+    description:
+      "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
+  },
+] as const;
 
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
+type AutomationProjectFilter = `project:${string}`;
+type AutomationSortMode = "project" | "alpha";
+type AutomationSortDirection = "asc" | "desc";
+type AutomationCollectionMode = "installed" | "browse";
 
 // ---------------------------------------------------------------------------
 // rpc boundary — the backend validates every response with zod, so the wire
@@ -86,10 +132,18 @@ interface DetailRoute {
   automationId: string;
 }
 
-function parseSubPath(subPath: string): DetailRoute | null {
+interface ParsedDetailRoute {
+  route: DetailRoute;
+  editing: boolean;
+}
+
+function parseSubPath(subPath: string): ParsedDetailRoute | null {
   const parts = subPath.split("/").filter((p) => p.length > 0);
-  if (parts.length === 2) {
-    return { projectId: parts[0], automationId: parts[1] };
+  if (parts.length === 2 || (parts.length === 3 && parts[2] === "edit")) {
+    return {
+      route: { projectId: parts[0], automationId: parts[1] },
+      editing: parts[2] === "edit",
+    };
   }
   return null;
 }
@@ -121,6 +175,7 @@ function asSignal(payload: unknown): AutomationSignal | null {
 function useOverview(): {
   entries: OverviewEntry[] | null;
   error: string | null;
+  refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const [state, setState] = useState<{
@@ -128,16 +183,44 @@ function useOverview(): {
     error: string | null;
   }>({ entries: null, error: null });
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestInFlightRef = useRef(false);
+  const trailingRefetchRef = useRef(false);
 
-  const refetch = useCallback(() => {
-    rpc.call("automations_overview").then(
-      (result) => {
-        const data = result as AutomationsOverviewResponse;
-        setState({ entries: data.automations, error: null });
-      },
-      (error: unknown) => setState({ entries: null, error: errorText(error) }),
-    );
-  }, [rpc]);
+  const runRefetch = useCallback(
+    function requestOverview(showLoading: boolean) {
+      if (requestInFlightRef.current) {
+        trailingRefetchRef.current = true;
+        return;
+      }
+      requestInFlightRef.current = true;
+      if (showLoading) {
+        setState({ entries: null, error: null });
+      }
+      rpc
+        .call("automations_overview")
+        .then(
+          (result) => {
+            const data = result as AutomationsOverviewResponse;
+            setState({ entries: data.automations, error: null });
+          },
+          (error: unknown) =>
+            setState((current) =>
+              !showLoading && current.entries !== null
+                ? current
+                : { entries: null, error: errorText(error) },
+            ),
+        )
+        .finally(() => {
+          requestInFlightRef.current = false;
+          if (trailingRefetchRef.current) {
+            trailingRefetchRef.current = false;
+            requestOverview(false);
+          }
+        });
+    },
+    [rpc],
+  );
+  const refetch = useCallback(() => runRefetch(true), [runRefetch]);
 
   useEffect(() => {
     refetch();
@@ -151,24 +234,29 @@ function useOverview(): {
     [],
   );
   const scheduleRefetch = useCallback(() => {
+    if (requestInFlightRef.current) {
+      trailingRefetchRef.current = true;
+      return;
+    }
     if (refetchTimerRef.current !== null) return;
     refetchTimerRef.current = setTimeout(() => {
       refetchTimerRef.current = null;
-      refetch();
+      runRefetch(false);
     }, 75);
-  }, [refetch]);
+  }, [runRefetch]);
   // Any create/update/pause/resume/run/delete or run-completion touches the
   // overview (rows show last-run status), so refetch on either kind.
   useRealtime("automations", (payload) => {
     if (asSignal(payload) !== null) scheduleRefetch();
   });
-  return state;
+  return { ...state, refetch };
 }
 
 function useAutomation(route: DetailRoute): {
   automation: AutomationResponse | null;
   error: string | null;
   missing: boolean;
+  refetch: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
@@ -177,10 +265,14 @@ function useAutomation(route: DetailRoute): {
     error: string | null;
     missing: boolean;
   }>({ automation: null, error: null, missing: false });
+  const requestRef = useRef(0);
 
   const refetch = useCallback(() => {
+    const requestId = ++requestRef.current;
+    setState((current) => ({ ...current, error: null, missing: false }));
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
+        if (requestRef.current !== requestId) return;
         const automation = result as AutomationResponse | null;
         setState({
           automation: automation ?? null,
@@ -188,20 +280,25 @@ function useAutomation(route: DetailRoute): {
           missing: automation === null,
         });
       },
-      (error: unknown) =>
-        setState({ automation: null, error: errorText(error), missing: false }),
+      (error: unknown) => {
+        if (requestRef.current !== requestId) return;
+        setState({ automation: null, error: errorText(error), missing: false });
+      },
     );
   }, [rpc, projectId, automationId]);
 
   useEffect(() => {
     setState({ automation: null, error: null, missing: false });
     refetch();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [refetch]);
   useRealtime("automations", (payload) => {
     const signal = asSignal(payload);
     if (signal !== null && signal.projectId === projectId) refetch();
   });
-  return state;
+  return { ...state, refetch };
 }
 
 interface RunsState {
@@ -212,7 +309,9 @@ interface RunsState {
   error: string | null;
 }
 
-function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
+function useRuns(
+  route: DetailRoute,
+): RunsState & { loadMore: () => void; retry: () => void } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const [state, setState] = useState<RunsState>({
@@ -267,25 +366,28 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
     const requestId = requestRef.current;
     loadMoreInFlightRef.current = true;
     setState((prev) => ({ ...prev, loadingMore: true }));
-    rpc.call("automations_runs", { projectId, automationId, cursor }).then(
-      (result) => {
-        if (requestRef.current !== requestId) return;
-        const page = result as AutomationRunListResponse;
-        setState((current) => ({
-          ...current,
-          runs: [...current.runs, ...page.runs],
-          nextCursor: page.nextCursor,
-          loadingMore: false,
-        }));
-      },
-      (error: unknown) => {
-        if (requestRef.current !== requestId) return;
-        toast.error(errorText(error));
-        setState((current) => ({ ...current, loadingMore: false }));
-      },
-    ).finally(() => {
-      loadMoreInFlightRef.current = false;
-    });
+    rpc
+      .call("automations_runs", { projectId, automationId, cursor })
+      .then(
+        (result) => {
+          if (requestRef.current !== requestId) return;
+          const page = result as AutomationRunListResponse;
+          setState((current) => ({
+            ...current,
+            runs: [...current.runs, ...page.runs],
+            nextCursor: page.nextCursor,
+            loadingMore: false,
+          }));
+        },
+        (error: unknown) => {
+          if (requestRef.current !== requestId) return;
+          toast.error(errorText(error));
+          setState((current) => ({ ...current, loadingMore: false }));
+        },
+      )
+      .finally(() => {
+        loadMoreInFlightRef.current = false;
+      });
   }, [rpc, projectId, automationId, state.nextCursor, state.loadingMore]);
 
   useEffect(() => {
@@ -303,7 +405,7 @@ function useRuns(route: DetailRoute): RunsState & { loadMore: () => void } {
       loadFirstPage();
     }
   });
-  return { ...state, loadMore };
+  return { ...state, loadMore, retry: loadFirstPage };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,136 +435,73 @@ function routeOf(automation: AutomationResponse): DetailRoute {
   return { projectId: automation.projectId, automationId: automation.id };
 }
 
-// ---------------------------------------------------------------------------
-// Formatting helpers (run history) — ported from the kernel detail view.
-// ---------------------------------------------------------------------------
-
-function formatRunTimestamp(timestamp: number): string {
-  return formatScheduleRunTime(timestamp);
-}
-
-function formatRunDuration(run: AutomationRunResponse): string | null {
-  if (run.finishedAt === null) return null;
-  const seconds = (run.finishedAt - run.startedAt) / 1000;
-  if (seconds < 0) return null;
-  return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-}
-
-/** A succeeded script run that produced no surfaced output reads as "silent". */
-function isSilentRun(run: AutomationRunResponse): boolean {
-  return (
-    run.status === "succeeded" &&
-    run.runMode === "script" &&
-    (run.output === null || run.output.trim().length === 0)
-  );
-}
-
-interface RunStatusLabel {
-  label: string;
-  tone: "ok" | "fail" | "muted";
-}
-
-function getRunStatusLabel(run: AutomationRunResponse): RunStatusLabel {
-  switch (run.status) {
-    case "running":
-      return { label: "Running", tone: "muted" };
-    case "failed":
-      return { label: "Failed", tone: "fail" };
-    case "skipped":
-      return { label: "Skipped", tone: "muted" };
-    case "succeeded":
-      return isSilentRun(run)
-        ? { label: "Succeeded · silent", tone: "muted" }
-        : { label: "Succeeded", tone: "ok" };
-    default: {
-      const _exhaustive: never = run.status;
-      return _exhaustive;
-    }
-  }
-}
-
-const RUN_STATUS_TONE_CLASS: Record<RunStatusLabel["tone"], string> = {
-  ok: "text-foreground",
-  fail: "text-destructive",
-  muted: "text-muted-foreground",
-};
-
-function describeExecution(execution: AutomationExecution): string {
-  if (execution.mode === "agent") {
-    const permission = {
-      "accept-edits": "Accept Edits",
-      auto: "Approve for me",
-      full: "Full Access",
-    }[execution.permissionMode];
-    return `Agent · ${execution.providerId}/${execution.model} · ${permission}`;
-  }
-  const interpreter = execution.interpreter ?? "bash";
-  const target = execution.scriptFile ?? "inline script";
-  const timeoutSeconds = Math.round(execution.timeoutMs / 1000);
-  return `Script · ${interpreter} ${target} · ${timeoutSeconds}s timeout`;
-}
-
-function describeEnvironment(execution: AutomationExecution): string | null {
-  if (execution.mode !== "agent") return null;
-  const environment = execution.environment;
-  switch (environment.type) {
-    case "reuse":
-      return "Reuses an existing environment";
-    case "project-default":
-      return "Project default environment";
-    case "host":
-      switch (environment.workspace.type) {
-        case "personal":
-          return "Personal workspace";
-        case "managed-worktree":
-          return "Managed worktree";
-        case "unmanaged":
-          return environment.workspace.path
-            ? `Workspace: ${environment.workspace.path}`
-            : "Unmanaged workspace";
-        default: {
-          const _exhaustive: never = environment.workspace;
-          return _exhaustive;
-        }
-      }
-    default: {
-      const _exhaustive: never = environment;
-      return _exhaustive;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Shared bits.
 // ---------------------------------------------------------------------------
 
-function StatusDot({ enabled }: { enabled: boolean }) {
+function AutomationRowLeading({
+  automation,
+}: {
+  automation: AutomationResponse;
+}) {
+  if (automation.lastRunStatus === "failed") {
+    return (
+      <Icon
+        name="CircleX"
+        className={cn(
+          "text-destructive",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
+        aria-label="Failed"
+      />
+    );
+  }
+  if (automation.lastRunStatus === "running") {
+    return (
+      <Icon
+        name="Loading"
+        className={cn(
+          "animate-spin text-muted-foreground/50",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
+        aria-label="Running"
+      />
+    );
+  }
   return (
-    <span
-      aria-hidden="true"
+    <Icon
+      name={automationIconName(automation)}
       className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        enabled ? "bg-success" : "bg-muted-foreground/50",
+        "text-muted-foreground",
+        COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
       )}
+      aria-hidden
     />
   );
 }
 
-function AutomationBadges({ automation }: { automation: AutomationResponse }) {
-  return (
-    <>
-      {automation.execution.mode === "script" ? (
-        <Pill variant="outline" className="shrink-0">
-          Script
-        </Pill>
-      ) : null}
-      {automation.origin === "agent" ? (
-        <Pill variant="secondary" className="shrink-0">
-          API
-        </Pill>
-      ) : null}
-    </>
-  );
+function automationProjectLabel(
+  project: OverviewEntry["project"] | null | undefined,
+): string {
+  if (project == null) return "Workspace";
+  return project.id === PERSONAL_PROJECT_ID ? "Personal" : project.name;
+}
+
+function automationProjectContextLabel(projectLabel: string): string {
+  return projectLabel === "Personal" ? "Personal" : `Project ${projectLabel}`;
+}
+
+function automationProjectFilterId(
+  entry: OverviewEntry,
+): AutomationProjectFilter {
+  const projectId = entry.project?.id ?? entry.automation.projectId;
+  return `project:${projectId}`;
+}
+
+function applyAutomationSortDirection(
+  result: number,
+  direction: AutomationSortDirection,
+): number {
+  return direction === "asc" ? result : -result;
 }
 
 /**
@@ -527,303 +566,332 @@ function DeleteAutomationDialog({
 // List view (panel root): the cross-project overview.
 // ---------------------------------------------------------------------------
 
-interface StatusGroup {
-  status: "active" | "paused";
-  label: string;
-  entries: OverviewEntry[];
-}
-
-function groupByStatus(entries: readonly OverviewEntry[]): StatusGroup[] {
-  const active: OverviewEntry[] = [];
-  const paused: OverviewEntry[] = [];
-  for (const entry of entries) {
-    (entry.automation.enabled ? active : paused).push(entry);
-  }
-  const groups: StatusGroup[] = [];
-  if (active.length > 0)
-    groups.push({ status: "active", label: "Active", entries: active });
-  if (paused.length > 0)
-    groups.push({ status: "paused", label: "Paused", entries: paused });
-  return groups;
-}
-
 function OverviewRow({
   entry,
   onNavigate,
-  onAction,
-  onDelete,
+  onEnabledChange,
 }: {
   entry: OverviewEntry;
   onNavigate: (route: DetailRoute) => void;
-  onAction: (method: "pause" | "resume" | "run", route: DetailRoute) => void;
-  onDelete: (entry: OverviewEntry) => void;
+  onEnabledChange: (enabled: boolean, route: DetailRoute) => Promise<void>;
 }) {
-  const { automation, project } = entry;
+  const { automation } = entry;
+  const [togglePending, setTogglePending] = useState(false);
   const route = routeOf(automation);
-  const projectLabel =
-    project.id === PERSONAL_PROJECT_ID ? null : project.name;
-  const completedOneShot = isCompletedOneShotAutomation({
+  const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
     trigger: automation.trigger,
     runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
   });
+  const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+  const triggerLabel = formatAutomationTrigger(automation.trigger);
+  const lifecycleLabel = automationScheduleLabel(automation);
+  const projectLabel = automationProjectLabel(entry.project);
 
   return (
-    <div className="group flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-state-hover">
-      <StatusDot enabled={automation.enabled} />
-      <button
-        type="button"
-        onClick={() => onNavigate(route)}
-        className="min-w-0 flex-1 truncate text-left hover:underline"
-      >
-        {automation.name}
-      </button>
-      {projectLabel ? (
-        <Pill variant="outline" className="shrink-0">
-          {projectLabel}
-        </Pill>
-      ) : null}
-      <AutomationBadges automation={automation} />
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {formatScheduleStatusLabel({
-          enabled: automation.enabled,
-          nextRunAt: automation.nextRunAt,
-          trigger: automation.trigger,
-          runCount: automation.runCount,
-        })}
-      </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0 rounded-md p-0 text-muted-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-            aria-label={`${automation.name} actions`}
-          >
-            <Icon name="MoreHorizontal" className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-40"
-          mobileTitle={`${automation.name} actions`}
-        >
-          {automation.enabled ? (
-            <DropdownMenuItem onSelect={() => onAction("pause", route)}>
-              Pause
-            </DropdownMenuItem>
-          ) : completedOneShot ? null : (
-            <DropdownMenuItem onSelect={() => onAction("resume", route)}>
-              Resume
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onSelect={() => onAction("run", route)}>
-            Run now
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onSelect={() => onDelete(entry)}
-          >
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    <ResourceRow
+      leading={<AutomationRowLeading automation={automation} />}
+      title={automation.name}
+      description={
+        <ResourceMeta
+          items={[
+            triggerLabel,
+            ...(lifecycleLocked ? [lifecycleLabel] : []),
+            <ResourceLocationMeta
+              label={automationProjectContextLabel(projectLabel)}
+            />,
+          ]}
+        />
+      }
+      muted={lifecycleLocked}
+      onOpen={() => onNavigate(route)}
+      persistentActions={
+        <AutomationLifecycleControl
+          checked={automation.enabled && !lifecycleLocked}
+          disabled={lifecycleLocked || togglePending}
+          disabledReason={
+            lifecycleLocked
+              ? oneShotLifecycle === "expired"
+                ? "This one-time automation expired. Open it and edit the schedule to run it again."
+                : "This one-time automation has completed. Open it and edit the schedule to run it again."
+              : undefined
+          }
+          label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
+          onCheckedChange={(enabled) => {
+            setTogglePending(true);
+            void onEnabledChange(enabled, route).finally(() =>
+              setTogglePending(false),
+            );
+          }}
+        />
+      }
+      trailingVisual={<ResourceRowDetailChevron />}
+    />
   );
 }
 
 function OverviewView({
   onOpenDetail,
+  activeMode,
+  onModeChange,
 }: {
-  onOpenDetail: (route: DetailRoute) => void;
+  onOpenDetail: (route: DetailRoute, options?: { editing?: boolean }) => void;
+  activeMode: AutomationCollectionMode;
+  onModeChange: (mode: AutomationCollectionMode) => void;
 }) {
   const navigate = useBbNavigate();
-  const { entries, error } = useOverview();
+  const { entries, error, refetch } = useOverview();
   const mutations = useMutations();
-  const [deleteTarget, setDeleteTarget] = useState<OverviewEntry | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [query, setQuery] = useState("");
+  const [projectFilters, setProjectFilters] = useState<
+    AutomationProjectFilter[]
+  >([]);
+  const [sortMode, setSortMode] = useState<AutomationSortMode>("alpha");
+  const [sortDirection, setSortDirection] =
+    useState<AutomationSortDirection>("asc");
 
-  const runAction = useCallback(
-    (method: "pause" | "resume" | "run", route: DetailRoute) => {
-      const label =
-        method === "run" ? "run" : method === "pause" ? "pause" : "resume";
-      mutations[method](route).then(
-        () => {
-          if (method === "run") toast.success("Run started");
-        },
-        (rpcError: unknown) =>
-          toast.error(`Failed to ${label} automation: ${errorText(rpcError)}`),
-      );
+  const changeEnabled = useCallback(
+    async (enabled: boolean, route: DetailRoute) => {
+      const method = enabled ? "resume" : "pause";
+      try {
+        await mutations[method](route);
+      } catch (rpcError: unknown) {
+        toast.error(`Failed to ${method} automation: ${errorText(rpcError)}`);
+      }
     },
     [mutations],
   );
 
-  const confirmDelete = useCallback(() => {
-    if (deleteTarget === null) return;
-    setDeleting(true);
-    mutations
-      .delete(routeOf(deleteTarget.automation))
-      .then(
-        () => {
-          toast.success("Automation deleted");
-          setDeleteTarget(null);
-        },
-        (rpcError: unknown) =>
-          toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
-      )
-      .finally(() => setDeleting(false));
-  }, [deleteTarget, mutations]);
-
-  const createViaChat = useCallback(() => {
-    navigate.toCompose({
-      focusPrompt: true,
-      initialPrompt: CREATE_AUTOMATION_PROMPT,
-    });
-  }, [navigate]);
-
-  const groups = useMemo(
-    () => (entries === null ? [] : groupByStatus(entries)),
-    [entries],
+  const createViaChat = useCallback(
+    (prompt?: string) => {
+      navigate.toCompose({
+        focusPrompt: true,
+        initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
+        replaceInitialPrompt: true,
+      });
+    },
+    [navigate],
   );
 
-  let body: React.ReactNode;
+  const normalizedQuery = query.trim().toLowerCase();
+  const projectCounts = useMemo(() => {
+    const counts = new Map<AutomationProjectFilter, number>();
+    for (const entry of entries ?? []) {
+      const project = automationProjectFilterId(entry);
+      counts.set(project, (counts.get(project) ?? 0) + 1);
+    }
+    return counts;
+  }, [entries]);
+  const projectBucketCount = projectCounts.size;
+  const projectOptions = useMemo(() => {
+    const options = new Map<AutomationProjectFilter, string>();
+    for (const entry of entries ?? []) {
+      const projectLabel = automationProjectLabel(entry.project);
+      options.set(automationProjectFilterId(entry), projectLabel);
+    }
+    return [...options].map(([id, label]) => ({ id, label }));
+  }, [entries]);
+  useEffect(() => {
+    setProjectFilters((current) =>
+      current.filter((project) => projectCounts.has(project)),
+    );
+  }, [projectCounts]);
+  useEffect(() => {
+    if (sortMode === "project" && projectBucketCount <= 1) {
+      setSortMode("alpha");
+      setSortDirection("asc");
+    }
+  }, [projectBucketCount, sortMode]);
+  const filteredEntries = useMemo(() => {
+    if (entries === null) return [];
+    return entries.filter((entry) => {
+      const { automation, project } = entry;
+      if (
+        projectFilters.length > 0 &&
+        !projectFilters.includes(automationProjectFilterId(entry))
+      ) {
+        return false;
+      }
+      if (normalizedQuery.length === 0) return true;
+      return [
+        automation.name,
+        project.name,
+        automationScheduleLabel(automation),
+        formatAutomationTrigger(automation.trigger),
+      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+    });
+  }, [entries, normalizedQuery, projectFilters]);
+  const visibleEntries = useMemo(() => {
+    return [...filteredEntries].sort((left, right) => {
+      const base =
+        sortMode === "project"
+          ? automationProjectLabel(left.project).localeCompare(
+              automationProjectLabel(right.project),
+            ) || left.automation.name.localeCompare(right.automation.name)
+          : left.automation.name.localeCompare(right.automation.name);
+      return applyAutomationSortDirection(base, sortDirection);
+    });
+  }, [filteredEntries, sortDirection, sortMode]);
+  const installedPagination = useResourcePagination(visibleEntries, {
+    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    resetKey: [
+      normalizedQuery,
+      projectFilters.join(","),
+      sortMode,
+      sortDirection,
+    ].join("\u0000"),
+  });
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      if (nextSort !== "project" && nextSort !== "alpha") return;
+      if (nextSort === "project" && projectBucketCount <= 1) return;
+      if (nextSort === sortMode) {
+        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortMode(nextSort);
+      setSortDirection("asc");
+    },
+    [projectBucketCount, sortMode],
+  );
+
+  let body: ReactNode;
   if (error !== null) {
-    body = <p className="text-sm text-destructive">Failed to load automations.</p>;
+    body = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load automations."
+        onRetry={refetch}
+      />
+    );
   } else if (entries === null) {
-    body = <p className="text-sm text-muted-foreground">Loading...</p>;
+    body = <ResourceListState state="loading" message="Loading automations" />;
   } else if (entries.length === 0) {
     body = (
-      <EmptyStatePanel className="py-6">No automations yet.</EmptyStatePanel>
+      <ResourceListState state="empty" message="No automations installed." />
+    );
+  } else if (visibleEntries.length === 0) {
+    body = (
+      <ResourceListState
+        state="empty"
+        message={
+          normalizedQuery === ""
+            ? "No automations match these projects."
+            : `No automations match "${query}"`
+        }
+      />
     );
   } else {
     body = (
-      <div className="space-y-6">
-        {groups.map((group) => (
-          <section key={group.status}>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              {group.label}
-            </p>
-            <div className="mt-1.5 space-y-1">
-              {group.entries.map((entry) => (
-                <OverviewRow
-                  key={entry.automation.id}
-                  entry={entry}
-                  onNavigate={onOpenDetail}
-                  onAction={runAction}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </div>
-          </section>
+      <ResourceListPanel>
+        {installedPagination.items.map((entry) => (
+          <OverviewRow
+            key={entry.automation.id}
+            entry={entry}
+            onNavigate={onOpenDetail}
+            onEnabledChange={changeEnabled}
+          />
         ))}
-      </div>
+      </ResourceListPanel>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <div className="flex items-center justify-end">
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          onClick={createViaChat}
-        >
-          <Icon name="MessageSquarePlus" className="size-4" />
-          Create via chat
-        </Button>
-      </div>
-      {body}
-      <DeleteAutomationDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-        name={deleteTarget?.automation.name ?? ""}
-        pending={deleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Detail view: one automation's config, actions, and run history.
-// ---------------------------------------------------------------------------
-
-function RunRow({
-  run,
-  onOpenThread,
-}: {
-  run: AutomationRunResponse;
-  onOpenThread: (threadId: string) => void;
-}) {
-  const status = getRunStatusLabel(run);
-  const duration = formatRunDuration(run);
-  const silent = isSilentRun(run);
-  const showOutput =
-    run.runMode === "script" &&
-    (run.output !== null || run.error !== null || silent);
-
-  return (
-    <div className="overflow-hidden rounded-md border border-border">
-      <div className="flex items-center gap-2 px-3 py-2 text-sm">
-        <span className={cn("font-medium", RUN_STATUS_TONE_CLASS[status.tone])}>
-          {status.label}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {formatRunTimestamp(run.startedAt)}
-          {duration ? ` · ${duration}` : ""}
-        </span>
-        {run.runMode === "agent" && run.threadId ? (
-          <button
-            type="button"
-            onClick={() => onOpenThread(run.threadId!)}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground hover:underline"
-          >
-            View thread
-          </button>
-        ) : run.runMode === "script" && run.exitCode !== null ? (
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
-            exit {run.exitCode}
-          </span>
-        ) : null}
-      </div>
-      {run.skipReason ? (
-        <p className="border-t border-border-seam px-3 py-2 text-xs text-muted-foreground">
-          {run.skipReason}
-        </p>
-      ) : null}
-      {showOutput ? (
-        <pre
-          className={cn(
-            "whitespace-pre-wrap border-t border-border-seam bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
-            run.error ? "text-destructive" : "text-foreground",
-            silent && "italic text-subtle-foreground",
-          )}
-        >
-          {run.error ??
-            (silent
-              ? "no output — silent gate, nothing surfaced"
-              : (run.output ?? ""))}
-        </pre>
-      ) : null}
-    </div>
+    <ResourceCollectionPage
+      id="automations-collection"
+      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+      modes={[
+        {
+          id: "installed",
+          label: "Installed",
+          count: entries?.length ?? undefined,
+        },
+        { id: "browse", label: "Browse" },
+      ]}
+      activeMode={activeMode}
+      onModeChange={onModeChange}
+      actions={
+        <ResourceCreateButton
+          label="New automation"
+          templates={AUTOMATION_CREATE_TEMPLATES}
+          onCreate={createViaChat}
+        />
+      }
+    >
+      {activeMode === "browse" ? (
+        <ResourceBrowseGrid>
+          {AUTOMATION_CREATE_TEMPLATES.map((template) => (
+            <ResourceTemplateBrowseCard
+              key={template.label}
+              title={template.label}
+              description={template.description}
+              onUse={() => createViaChat(template.prompt)}
+            />
+          ))}
+        </ResourceBrowseGrid>
+      ) : (
+        <div id="automations-installed-results" className="space-y-3">
+          <ResourceToolbar
+            searchValue={query}
+            searchPlaceholder="Search automations"
+            onSearchChange={setQuery}
+            controls={
+              <>
+                <ResourceMultiSelectMenu
+                  label="Projects"
+                  icon="Layers"
+                  selectedValues={projectFilters}
+                  options={projectOptions}
+                  onChange={(values) =>
+                    setProjectFilters(values as AutomationProjectFilter[])
+                  }
+                />
+                <ResourceSortMenu
+                  value={sortMode}
+                  direction={sortDirection}
+                  options={[
+                    {
+                      id: "project",
+                      label: "Project",
+                      disabled: projectBucketCount <= 1,
+                    },
+                    { id: "alpha", label: "Automation name" },
+                  ]}
+                  onChange={handleSortChange}
+                />
+              </>
+            }
+          />
+          {body}
+          {error === null && entries !== null && visibleEntries.length > 0 ? (
+            <ResourcePagination
+              page={installedPagination.page}
+              pageSize={installedPagination.pageSize}
+              total={installedPagination.total}
+              visibleCount={installedPagination.visibleCount}
+              onPageChange={installedPagination.setPage}
+              scrollTargetId="automations-installed-results"
+            />
+          ) : null}
+        </div>
+      )}
+    </ResourceCollectionPage>
   );
 }
 
 function DetailView({
   route,
+  initialEditing,
   onBack,
 }: {
   route: DetailRoute;
+  initialEditing: boolean;
   onBack: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { automation, error, missing } = useAutomation(route);
+  const { automation, error, missing, refetch } = useAutomation(route);
+  const overviewState = useOverview();
   const runsState = useRuns(route);
   const mutations = useMutations();
   const [actionPending, setActionPending] = useState(false);
@@ -835,6 +903,27 @@ function DetailView({
     [navigate],
   );
 
+  const editViaThread = useCallback(
+    (target: AutomationResponse, replace = false) => {
+      navigate.toCompose({
+        focusPrompt: true,
+        initialPrompt: buildAutomationEditThreadPrompt({
+          name: target.name,
+          projectId: route.projectId,
+          automationId: route.automationId,
+        }),
+        replaceInitialPrompt: true,
+        replace,
+      });
+    },
+    [navigate, route],
+  );
+
+  useEffect(() => {
+    if (!initialEditing || automation === null) return;
+    editViaThread(automation, true);
+  }, [automation, editViaThread, initialEditing]);
+
   const runAction = useCallback(
     (method: "pause" | "resume" | "run") => {
       setActionPending(true);
@@ -844,12 +933,19 @@ function DetailView({
             if (method === "run") toast.success("Run started");
           },
           (rpcError: unknown) =>
-            toast.error(`Failed to ${method} automation: ${errorText(rpcError)}`),
+            toast.error(
+              `Failed to ${method} automation: ${errorText(rpcError)}`,
+            ),
         )
         .finally(() => setActionPending(false));
     },
     [mutations, route],
   );
+
+  const openEdit = useCallback(() => {
+    if (automation === null) return;
+    editViaThread(automation);
+  }, [automation, editViaThread]);
 
   const confirmDelete = useCallback(() => {
     setDeleting(true);
@@ -870,9 +966,15 @@ function DetailView({
   if (error !== null || missing) {
     return (
       <div className="mx-auto w-full max-w-3xl">
-        <p className="text-sm text-destructive">
-          {missing ? "Automation not found." : "Failed to load automation."}
-        </p>
+        <ResourceListState
+          state="error"
+          message={
+            missing
+              ? "Automation not found."
+              : `Couldn't load automation: ${error}`
+          }
+          onRetry={refetch}
+        />
       </div>
     );
   }
@@ -885,131 +987,48 @@ function DetailView({
     );
   }
 
-  const completedOneShot = isCompletedOneShotAutomation({
-    enabled: automation.enabled,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-  });
-  const environmentLabel = describeEnvironment(automation.execution);
+  if (initialEditing) {
+    return (
+      <div className="mx-auto w-full max-w-3xl">
+        <p className="text-sm text-muted-foreground">Opening composer…</p>
+      </div>
+    );
+  }
+
+  const overviewEntry = overviewState.entries?.find(
+    (entry) =>
+      entry.automation.projectId === route.projectId &&
+      entry.automation.id === route.automationId,
+  );
+  const projectLabel =
+    overviewEntry !== undefined
+      ? automationProjectLabel(overviewEntry.project)
+      : route.projectId === PERSONAL_PROJECT_ID
+        ? "Personal"
+        : route.projectId;
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <StatusDot enabled={automation.enabled} />
-          <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
-            {automation.name}
-          </h1>
-          <AutomationBadges automation={automation} />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {formatAutomationTrigger(automation.trigger)}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {describeExecution(automation.execution)}
-        </p>
-        {environmentLabel ? (
-          <p className="text-xs text-muted-foreground">{environmentLabel}</p>
-        ) : null}
-        {automation.execution.mode === "agent" ? (
-          <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
-            {automation.execution.prompt}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="flex items-center gap-2">
-        {automation.enabled ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Pause"
-            disabled={actionPending}
-            onClick={() => runAction("pause")}
-          >
-            <Icon name="Pause" className="size-4" />
-            Pause
-          </Button>
-        ) : completedOneShot ? null : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Resume"
-            disabled={actionPending}
-            onClick={() => runAction("resume")}
-          >
-            <Icon name="Play" className="size-4" />
-            Resume
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-label="Run now"
-          disabled={actionPending}
-          onClick={() => runAction("run")}
-        >
-          <Icon name="Zap" className="size-4" />
-          Run now
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          aria-label="Delete automation"
-          disabled={actionPending}
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Icon name="Trash2" className="size-4" />
-          Delete
-        </Button>
-      </div>
-
-      <section className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          Run history
-        </p>
-        {runsState.error !== null ? (
-          <p className="text-sm text-destructive">Failed to load runs.</p>
-        ) : runsState.loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : runsState.runs.length === 0 ? (
-          <EmptyStatePanel className="py-6">No runs yet.</EmptyStatePanel>
-        ) : (
-          <div className="space-y-2">
-            {runsState.runs.map((run) => (
-              <RunRow key={run.id} run={run} onOpenThread={openThread} />
-            ))}
-            {runsState.nextCursor !== null ? (
-              <div className="flex justify-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={runsState.loadingMore}
-                  onClick={runsState.loadMore}
-                >
-                  {runsState.loadingMore ? "Loading…" : "Load more"}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </section>
-
-      <DeleteAutomationDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        name={automation.name}
-        pending={deleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteOpen(false)}
-      />
-    </div>
+    <AutomationDetailView
+      automation={automation}
+      projectLabel={projectLabel}
+      runsState={runsState}
+      actionPending={actionPending}
+      onToggle={(checked) => runAction(checked ? "resume" : "pause")}
+      onEdit={openEdit}
+      onRunNow={() => runAction("run")}
+      onDelete={() => setDeleteOpen(true)}
+      onOpenThread={openThread}
+      footer={
+        <DeleteAutomationDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          name={automation.name}
+          pending={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteOpen(false)}
+        />
+      }
+    />
   );
 }
 
@@ -1019,12 +1038,15 @@ function DetailView({
 
 function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
-  const route = useMemo(() => parseSubPath(subPath), [subPath]);
-
+  const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
+  const collectionMode: AutomationCollectionMode =
+    subPath === "browse" ? "browse" : "installed";
   const openDetail = useCallback(
-    (next: DetailRoute) => {
+    (next: DetailRoute, options?: { editing?: boolean }) => {
       navigate.toPluginPanel(PANEL_PATH, {
-        subPath: `${next.projectId}/${next.automationId}`,
+        subPath: `${next.projectId}/${next.automationId}${
+          options?.editing ? "/edit" : ""
+        }`,
       });
     },
     [navigate],
@@ -1032,15 +1054,29 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const backToList = useCallback(() => {
     navigate.toPluginPanel(PANEL_PATH, { subPath: "" });
   }, [navigate]);
-
+  const changeCollectionMode = useCallback(
+    (mode: AutomationCollectionMode) => {
+      navigate.toPluginPanel(PANEL_PATH, {
+        subPath: mode === "browse" ? "browse" : "",
+      });
+    },
+    [navigate],
+  );
+  if (parsedRoute !== null) {
+    return (
+      <DetailView
+        route={parsedRoute.route}
+        initialEditing={parsedRoute.editing}
+        onBack={backToList}
+      />
+    );
+  }
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
-      {route !== null ? (
-        <DetailView route={route} onBack={backToList} />
-      ) : (
-        <OverviewView onOpenDetail={openDetail} />
-      )}
-    </div>
+    <OverviewView
+      onOpenDetail={openDetail}
+      activeMode={collectionMode}
+      onModeChange={changeCollectionMode}
+    />
   );
 }
 
@@ -1048,9 +1084,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "automations",
     title: "Automations",
-    // Matches the original ProjectList Automations row (Icon name="Clock");
-    // the host resolves this hint through its own Icon set to the same glyph.
-    icon: "Clock",
+    icon: "TimeSchedule",
     path: PANEL_PATH,
     component: AutomationsPanel,
   });

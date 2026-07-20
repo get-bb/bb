@@ -147,7 +147,7 @@ Remote access (bb connect):
   `bb connect status` shows all shares with host + URL. `shares --json` returns
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
-  Remote access is owned by the builtin "connect" plugin (Settings → Connect
+  Remote access is owned by the builtin "connect" plugin (Plugins → connect
   shows the URL, QR code, and shared ports). Disabling the plugin
   (`bb plugin disable connect`) cuts off all remote access; re-enable with
   `bb plugin enable connect`.

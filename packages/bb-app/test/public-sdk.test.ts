@@ -11,6 +11,7 @@ describe("bb-app public SDK", () => {
     expect(typeof sdk.files.read).toBe("function");
     expect(typeof sdk.plugins.callRpc).toBe("function");
     expect(typeof sdk.projects.attachments.upload).toBe("function");
+    expect(typeof sdk.skills.list).toBe("function");
     expect(typeof sdk.system.config).toBe("function");
     expect(typeof sdk.terminals.rename).toBe("function");
     expect(typeof sdk.threadSections.create).toBe("function");

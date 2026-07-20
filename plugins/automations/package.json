@@ -4,6 +4,10 @@
   "description": "Schedule recurring and one-shot agent or script work.",
   "private": true,
   "type": "module",
+  "exports": {
+    "./detail-view": "./detail-view.tsx",
+    "./rpc-types": "./src/rpc-types.ts"
+  },
   "engines": {
     "bb": ">=0.0"
   },

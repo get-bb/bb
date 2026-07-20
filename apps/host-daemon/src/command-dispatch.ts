@@ -24,7 +24,13 @@ import {
   type CaffeinateManager,
 } from "./command-handlers/caffeinate.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
+import { installHostRegistrySkill } from "./command-handlers/install-registry-skill.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
+import {
+  deleteHostSkill,
+  listHostSkills,
+  writeHostSkill,
+} from "./command-handlers/list-skills.js";
 import {
   browseHostDirectory,
   checkHostPathsExist,
@@ -410,6 +416,10 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.caffeinate": async (command, options) =>
     getCaffeinateManager(options).setEnabled(command.enabled),
   "host.list_commands": listHostCommands,
+  "host.list_skills": listHostSkills,
+  "host.install_registry_skill": installHostRegistrySkill,
+  "host.delete_skill": deleteHostSkill,
+  "host.write_skill": writeHostSkill,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,

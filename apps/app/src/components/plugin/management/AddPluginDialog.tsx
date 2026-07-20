@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { InstalledPlugin } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
+  applyInstalledPlugin,
   invalidatePluginCatalogSearch,
   invalidatePluginList,
 } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -37,6 +39,7 @@ export type AddPluginInitial = {
 export interface AddPluginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onInstalled?: (plugin: InstalledPlugin) => void;
   initial?: AddPluginInitial | null;
 }
 
@@ -50,6 +53,7 @@ export interface AddPluginDialogProps {
 export function AddPluginDialog({
   open,
   onOpenChange,
+  onInstalled,
   initial,
 }: AddPluginDialogProps) {
   return (
@@ -59,6 +63,7 @@ export function AddPluginDialog({
           <AddPluginDialogContent
             initial={initial ?? null}
             onOpenChange={onOpenChange}
+            onInstalled={onInstalled}
           />
         ) : null}
       </DialogContent>
@@ -86,9 +91,11 @@ function buildRequest(
 function AddPluginDialogContent({
   initial,
   onOpenChange,
+  onInstalled,
 }: {
   initial: AddPluginInitial | null;
   onOpenChange: (open: boolean) => void;
+  onInstalled?: (plugin: InstalledPlugin) => void;
 }) {
   const queryClient = useQueryClient();
   const [sourceText, setSourceText] = useState("");
@@ -99,12 +106,14 @@ function AddPluginDialogContent({
       body.kind === "catalog"
         ? installCatalogPlugin(fetch, { entryId: body.entryId })
         : installPlugin(fetch, body.source),
-    onSuccess: () => {
+    onSuccess: (plugin) => {
+      applyInstalledPlugin({ queryClient, plugin });
       invalidatePluginList({ queryClient });
       // Search rows carry installed flags; a fresh install flips them.
       invalidatePluginCatalogSearch({ queryClient });
       appToast.success(`${initial?.displayName ?? "Plugin"} installed`);
       onOpenChange(false);
+      onInstalled?.(plugin);
     },
     onError: (error) => {
       appToast.error("Installing the plugin failed", {

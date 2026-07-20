@@ -1532,6 +1532,41 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
+  it("selects a slash typeahead command as a command pill", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("/re", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "review",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await selectCommandSuggestion("review");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/review "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "/review".length,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "review",
+          source: "command",
+          origin: "user",
+          label: "review",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
   it("keeps typed content after a prompt action when selecting another action", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 

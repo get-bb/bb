@@ -86,6 +86,7 @@ describe("bundled plugin catalog service", () => {
     );
     const docs = results.find((entry) => entry.entryId === "docs");
     expect(docs).toMatchObject({
+      pluginId: "simple-notes",
       displayName: "Docs",
       icon: "FileText",
       category: "Productivity",

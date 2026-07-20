@@ -40,9 +40,11 @@ describe("plugin catalog contracts", () => {
         displayName: "Notes",
         description: "Notes",
         icon: null,
+        category: "Productivity",
         source: "builtin:notes",
         installed: false,
         compatible: true,
+        incompatibleReason: null,
       }),
     ).toThrow();
   });

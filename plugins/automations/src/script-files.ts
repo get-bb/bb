@@ -1,4 +1,12 @@
-import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { basename, extname, join, resolve, relative } from "node:path";
 import type { AutomationScriptInterpreter } from "./rpc-types.js";
 
@@ -24,7 +32,10 @@ export function scriptsRoot(dataDir: string): string {
   return join(dataDir, SCRIPT_DIR_NAME);
 }
 
-export function automationScriptDir(dataDir: string, automationId: string): string {
+export function automationScriptDir(
+  dataDir: string,
+  automationId: string,
+): string {
   return join(scriptsRoot(dataDir), automationId);
 }
 
@@ -56,13 +67,29 @@ export async function writeInlineAutomationScript(args: {
   );
   const dir = automationScriptDir(args.dataDir, args.automationId);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, storedName), args.content, { mode: 0o700 });
+  const target = join(dir, storedName);
+  const tmp = join(dir, `.${storedName}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(tmp, args.content, { mode: 0o700 });
+    await rename(tmp, target);
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw error;
+  }
   return storedName;
 }
 
-function ensureContained(rootPath: string, candidatePath: string): string | null {
+function ensureContained(
+  rootPath: string,
+  candidatePath: string,
+): string | null {
   const rel = relative(rootPath, candidatePath);
-  if (rel === "" || (!rel.startsWith("..") && !rel.startsWith("/") && !resolve(rel).startsWith(".."))) {
+  if (
+    rel === "" ||
+    (!rel.startsWith("..") &&
+      !rel.startsWith("/") &&
+      !resolve(rel).startsWith(".."))
+  ) {
     return candidatePath;
   }
   return null;
@@ -91,6 +118,14 @@ export async function resolveAutomationScriptPath(args: {
     throw new Error("Script file path escapes the automation script directory");
   }
   return reContained;
+}
+
+export async function readAutomationScript(args: {
+  dataDir: string;
+  automationId: string;
+  scriptFile: string;
+}): Promise<string> {
+  return readFile(await resolveAutomationScriptPath(args), "utf8");
 }
 
 export async function deleteAutomationScriptDir(args: {

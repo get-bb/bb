@@ -54,6 +54,7 @@
   --color-ring: var(--ring);
   --color-surface-recessed: var(--surface-recessed);
   --color-surface-recessed-solid: var(--surface-recessed-solid);
+  --color-surface-recessed-soft-solid: var(--surface-recessed-soft-solid);
   --color-surface-raised: var(--surface-raised);
   --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
@@ -334,7 +335,7 @@
   --card-foreground: var(--ink);
   --popover: var(--canvas);
   --popover-foreground: var(--ink);
-  --primary: oklch(0.4891 0 0);
+  --primary: oklch(0.27 0 0);
   --primary-foreground: oklch(1 0 0);
   /* Subtle fill. secondary and accent share one low-emphasis step a touch more
    * prominent than the card; they stay separate tokens for their distinct
@@ -357,8 +358,16 @@
   /* Interactive-state fills: translucent ink so the same hover/active step
    * reads consistently on canvas, cards, and recessed surfaces alike. Over the
    * canvas these match an opaque ink-over-canvas mix exactly; on elevated
-   * surfaces they composite for real, visible contrast. */
+  * surfaces they composite for real, visible contrast. */
   --state-hover: color-mix(in oklab, var(--ink) 5.9%, transparent);
+  --resource-source-shelf-card-hover-border: color-mix(
+    in oklch,
+    var(--ink) 24%,
+    var(--canvas)
+  );
+  --resource-source-shelf-card-hover-shadow:
+    -1px 2px 0 0 color-mix(in oklab, var(--ink) 8%, transparent),
+    -4px 6px 10px -5px color-mix(in oklab, var(--ink) 10%, transparent);
   --state-active: color-mix(in oklab, var(--ink) 11.8%, transparent);
   --destructive: oklch(0.45 0.19 25.8625);
   --destructive-foreground: oklch(1 0 0);
@@ -392,6 +401,13 @@
   /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  /* Opaque equivalent of the 70% recessed treatment used by compact controls;
+   * it stays visually fixed when the card beneath it changes on hover. */
+  --surface-recessed-soft-solid: color-mix(
+    in oklch,
+    var(--ink) 4.2%,
+    var(--canvas)
+  );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
   --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
@@ -486,6 +502,19 @@
   --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 20% / 0.38);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  /* Resource shelves share one spacing contract so their header, cards,
+   * horizontal rhythm, and overflow affordance cannot drift independently. */
+  --resource-source-shelf-inset: calc(var(--spacing) * 3);
+  --resource-source-shelf-section-gap: calc(var(--spacing) * 2);
+  --resource-source-shelf-label-gap: calc(var(--spacing) * 1.5);
+  --resource-source-shelf-item-gap: var(--spacing);
+  --resource-source-shelf-item-width: 31.25%;
+  --resource-source-shelf-card-action-gap: calc(var(--spacing) * 2);
+  --resource-source-shelf-action-inline: calc(var(--spacing) * 1.5);
+  --resource-source-shelf-action-block: var(--spacing);
+  --resource-source-shelf-fade-ramp: calc(var(--spacing) * 4);
+  --resource-source-shelf-shadow-bleed: calc(var(--spacing) * 5);
+  --resource-source-shelf-shadow-left-bleed: var(--spacing);
   --icon-stroke-width: 1.75;
   /* ANSI 16-color palette (light mode) tuned for readable terminal output. */
   --ansi-0: #000000;
@@ -551,7 +580,7 @@
   --card-foreground: var(--ink);
   --popover: var(--canvas);
   --popover-foreground: var(--ink);
-  --primary: oklch(0.7058 0 0);
+  --primary: oklch(0.82 0 0);
   --primary-foreground: oklch(0.2178 0 0);
   /* Subtle fill: secondary and accent share one step; muted is a distinct step
    * more prominent (in light too), so the ramp reads the same in both themes. */
@@ -568,8 +597,18 @@
   --timeline-accent: oklch(0.72 0.09 250);
   --file-accent: var(--timeline-accent);
   /* Interactive-state fills: translucent ink so the same hover/active step
-   * reads consistently on canvas, cards, and recessed surfaces alike. */
+  * reads consistently on canvas, cards, and recessed surfaces alike. */
   --state-hover: color-mix(in oklab, var(--ink) 13.8%, transparent);
+  /* Intentionally close to --input: shadows contribute little on the dark
+   * canvas, so this border carries the card's complete hover signal. */
+  --resource-source-shelf-card-hover-border: color-mix(
+    in oklch,
+    var(--ink) 30%,
+    var(--canvas)
+  );
+  --resource-source-shelf-card-hover-shadow:
+    -1px 2px 0 0 color-mix(in oklab, var(--canvas) 22%, transparent),
+    -4px 6px 10px -5px color-mix(in oklab, var(--canvas) 45%, transparent);
   --state-active: color-mix(in oklab, var(--ink) 22.5%, transparent);
   --destructive: oklch(0.56 0.19 22.1703);
   --destructive-foreground: oklch(1 0 0);
@@ -599,6 +638,11 @@
   /* Opaque twin of --surface-recessed over the page bg, for overlays (e.g. the
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
+  --surface-recessed-soft-solid: color-mix(
+    in oklch,
+    var(--ink) 4.2%,
+    var(--canvas)
+  );
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
   --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);

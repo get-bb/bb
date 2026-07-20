@@ -130,6 +130,7 @@ const commandSuggestions: ProviderCommandSuggestion[] = [
     name: "moss-hardening-review",
     source: "skill",
     origin: "user",
+    providerId: "claude-code",
     description: "Run a hardening review for Moss persistence paths",
     argumentHint: "[branch | staged] [base=<ref>]",
   },
@@ -138,6 +139,7 @@ const commandSuggestions: ProviderCommandSuggestion[] = [
     name: "github:gh-fix-ci",
     source: "skill",
     origin: "user",
+    providerId: "codex",
     description: "Debug failing GitHub Actions checks",
     argumentHint: null,
   },
@@ -165,6 +167,7 @@ const longCommandSuggestions: ProviderCommandSuggestion[] = [
     name: "moss-skills:moss-formulas-variables",
     source: "skill",
     origin: "user",
+    providerId: "codex",
     description:
       "Create or edit Moss formulas and variables, including anchors, derived values, and table-cell usage",
     argumentHint: "<note-path> [--fix]",

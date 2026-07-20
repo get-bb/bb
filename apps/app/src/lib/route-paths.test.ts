@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
+  getPluginDetailRoutePath,
+  getPluginsRoutePath,
+  getRegistrySkillDetailRoutePath,
+  getSkillDetailRoutePath,
+  getSkillsRoutePath,
   getThreadRoutePath,
+  getToolsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
+  LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_SKILLS_ROUTE_PATH,
   resolveRouteHref,
 } from "./route-paths";
 
@@ -46,6 +58,67 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
+  });
+
+  it("builds and recognizes the Tools routes", () => {
+    expect(getToolsRoutePath()).toBe("/tools");
+    expect(getSkillsRoutePath()).toBe("/tools/skills");
+    expect(
+      getSkillDetailRoutePath({
+        skillId: "skill_abc123",
+      }),
+    ).toBe("/tools/skills/installed/skill_abc123");
+    expect(
+      getRegistrySkillDetailRoutePath({
+        registrySkillId: "moss-skills/moss-notes",
+      }),
+    ).toBe("/tools/skills/registry/moss-skills%2Fmoss-notes");
+    expect(getPluginsRoutePath()).toBe("/tools/plugins");
+    expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
+      "/tools/plugins/github",
+    );
+    expect(getAutomationsRoutePath()).toBe("/tools/automations");
+    expect(
+      getAutomationDetailRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/tools/automations/proj_standard/auto_standard");
+    expect(
+      getAutomationEditRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/tools/automations/proj_standard/auto_standard/edit");
+
+    for (const path of [
+      "/tools",
+      "/tools/skills",
+      "/tools/skills/installed/skill_abc123",
+      "/tools/skills/registry/moss-skills%2Fmoss-notes",
+      "/tools/plugins",
+      "/tools/plugins/browse",
+      "/tools/plugins/github",
+      "/tools/automations",
+      "/tools/automations/browse",
+      "/tools/automations/proj_standard/auto_standard",
+      "/tools/automations/proj_standard/auto_standard/edit",
+    ]) {
+      expect(isRoutePath({ path })).toBe(true);
+    }
+  });
+
+  it("keeps old Skills and Automations paths recognizable for redirects", () => {
+    expect(LEGACY_SKILLS_ROUTE_PATH).toBe("/skills");
+    expect(LEGACY_AUTOMATIONS_ROUTE_PATH).toBe("/automations");
+    expect(LEGACY_AUTOMATION_DETAIL_ROUTE_PATH).toBe(
+      "/automations/:projectId/:automationId",
+    );
+    expect(isRoutePath({ path: "/skills" })).toBe(true);
+    expect(isRoutePath({ path: "/automations" })).toBe(true);
+    expect(
+      isRoutePath({ path: "/automations/proj_standard/auto_standard" }),
+    ).toBe(true);
   });
 
   it("does not mistake deeper filesystem-like paths for routes", () => {

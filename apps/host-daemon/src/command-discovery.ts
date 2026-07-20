@@ -1,11 +1,14 @@
 import type { Dirent } from "node:fs";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import type {
+  DiscoveredSkill,
   HostCommandOrigin,
   HostCommandSource,
   HostProviderCommand,
+  SkillRootKind,
 } from "@bb/host-daemon-contract";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -446,6 +449,148 @@ export async function discoverProviderCommands(
   const records: HostProviderCommand[] = [];
   for (const root of args.roots) {
     records.push(...(await scanRoot({ root })));
+  }
+  return records;
+}
+
+/**
+ * A scan root tagged with the originating-root identity the skills page needs.
+ * The typeahead path (`discoverProviderCommands`) ignores `rootKind`; only
+ * `discoverSkills` consumes it, so the shared scan helpers stay untouched.
+ */
+export type SkillScanRoot = CommandScanRoot & {
+  /** Logical root identity used to keep IDs stable when host paths move. */
+  identitySeed: string;
+  rootKind: SkillRootKind;
+};
+
+export interface DiscoverSkillsArgs {
+  roots: readonly SkillScanRoot[];
+}
+
+function buildSkillRecord(
+  root: SkillScanRoot,
+  filePath: string,
+  name: string,
+  frontmatter: ParsedFrontmatter,
+): DiscoveredSkill {
+  const rootPath =
+    "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
+  const logicalPath = path
+    .relative(rootPath, filePath)
+    .split(path.sep)
+    .join("/");
+  return {
+    id: `skill_${createHash("sha256")
+      .update(`${root.identitySeed}\0${logicalPath}`)
+      .digest("hex")}`,
+    name: `${root.namePrefix}${name}`,
+    description: frontmatter.description,
+    filePath,
+    rootKind: root.rootKind,
+  };
+}
+
+async function scanSkillRootForSkills(
+  root: SkillScanRoot,
+): Promise<DiscoveredSkill[]> {
+  if (root.shape !== "skill") {
+    throw new Error("scanSkillRootForSkills requires a skill root");
+  }
+  const entries = await readDirEntries(root.rootPath);
+  if (entries === null) {
+    return [];
+  }
+  const records: DiscoveredSkill[] = [];
+  for (const entry of entries) {
+    const skillDirPath = path.join(root.rootPath, entry.name);
+    if (!(await isSkillDirectory({ entry, entryPath: skillDirPath, root }))) {
+      continue;
+    }
+    if (await hasPluginManifest(skillDirPath)) {
+      continue;
+    }
+    const skillFilePath = path.join(skillDirPath, SKILL_FILE_NAME);
+    if (!(await isSkillFile(skillFilePath, root))) {
+      continue;
+    }
+    const frontmatter = await parseFrontmatter(skillFilePath);
+    records.push(
+      buildSkillRecord(root, skillFilePath, entry.name, frontmatter),
+    );
+  }
+  return records;
+}
+
+async function scanSingleSkillDirectoryForSkills(
+  root: SkillScanRoot,
+): Promise<DiscoveredSkill[]> {
+  if (root.shape !== "skill-directory") {
+    throw new Error(
+      "scanSingleSkillDirectoryForSkills requires a skill-directory root",
+    );
+  }
+  const skillFilePath = path.join(root.rootPath, SKILL_FILE_NAME);
+  if (!(await isSkillFile(skillFilePath, root))) {
+    return [];
+  }
+  const frontmatter = await parseFrontmatter(skillFilePath);
+  return [
+    buildSkillRecord(
+      root,
+      skillFilePath,
+      path.basename(root.rootPath),
+      frontmatter,
+    ),
+  ];
+}
+
+async function scanSkillFileForSkills(
+  root: SkillScanRoot,
+): Promise<DiscoveredSkill[]> {
+  if (root.shape !== "skill-file") {
+    throw new Error("scanSkillFileForSkills requires a skill-file root");
+  }
+  if (!(await isSkillFile(root.filePath, root))) {
+    return [];
+  }
+  const frontmatter = await parseFrontmatter(root.filePath);
+  return [
+    buildSkillRecord(
+      root,
+      root.filePath,
+      frontmatter.name ?? root.fallbackName,
+      frontmatter,
+    ),
+  ];
+}
+
+/**
+ * Skill-only sibling of {@link discoverProviderCommands}: walks the same SKILL.md
+ * structures but emits the absolute `filePath` and originating `rootKind` the
+ * management page needs. Legacy `command`-source roots contribute nothing. Like
+ * the command walk, this never throws on a bad/locked root — it degrades to a
+ * partial list.
+ */
+export async function discoverSkills(
+  args: DiscoverSkillsArgs,
+): Promise<DiscoveredSkill[]> {
+  const records: DiscoveredSkill[] = [];
+  for (const root of args.roots) {
+    switch (root.shape) {
+      case "skill":
+        records.push(...(await scanSkillRootForSkills(root)));
+        break;
+      case "skill-directory":
+        records.push(...(await scanSingleSkillDirectoryForSkills(root)));
+        break;
+      case "skill-file":
+        records.push(...(await scanSkillFileForSkills(root)));
+        break;
+      case "command":
+      case "command-file":
+        break;
+    }
   }
   return records;
 }

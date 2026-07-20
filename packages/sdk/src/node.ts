@@ -102,6 +102,7 @@ export {
   ThreadWaitUnreachableError,
 } from "./areas/threads.js";
 export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
+export type * from "./areas/skills.js";
 export type {
   BbRealtimeSocket,
   BbRealtimeSocketFactory,

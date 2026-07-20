@@ -23,6 +23,7 @@ const guideChapters: Record<string, TemplateId> = {
   terminals: "bbGuideTerminals",
   customization: "bbGuideCustomization",
   plugins: "bbGuidePlugins",
+  automations: "bbGuideAutomations",
 };
 
 const templateBodyById = new Map(

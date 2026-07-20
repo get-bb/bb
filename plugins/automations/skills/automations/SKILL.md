@@ -7,8 +7,8 @@ description: Create and manage bb automations from the first-party automations p
 
 An automation is a scheduled task. When due it runs in one of two modes:
 
-  agent    Spawn a thread or re-prompt a target thread with a configured prompt.
-  script   Run a stored server-side script and capture stdout/stderr/exit.
+agent Spawn a thread or re-prompt a target thread with a configured prompt.
+script Run a stored server-side script and capture stdout/stderr/exit.
 
 Use `bb plugin run automations ...` while the kernel `bb automation` command still exists; once the kernel command is removed, `bb automation ...` will route to this plugin command.
 
@@ -61,6 +61,7 @@ Script mode flags:
 --script-file <path>           Read script content from a local file
 --interpreter <name>           bash, sh, node, or python3
 --timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
+--env-json <json>              Script variables as a string-to-string JSON object
 ```
 
 Script environment variables:
@@ -79,12 +80,17 @@ Managing:
 ```bash
 bb plugin run automations list --project <id>
 bb plugin run automations show <automationId> --project <id>
-bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags]
+bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [mode flags]
 bb plugin run automations pause <automationId> --project <id>
 bb plugin run automations resume <automationId> --project <id>
 bb plugin run automations run <automationId> --project <id> [--idempotency-key <key>]
 bb plugin run automations runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb plugin run automations delete <automationId> --project <id> --yes
 ```
+
+An execution update is a complete replacement. Provide `--prompt`, `--provider`,
+and `--model` together to replace the execution with an agent, or provide
+`--script`/`--script-file` to replace it with a script. Include every desired
+mode-specific setting; settings from the previous execution do not carry over.
 
 Every command supports `--json`.

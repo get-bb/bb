@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type {
   BbContext,
@@ -25,6 +25,11 @@ import {
 } from "@/hooks/usePromptDraftStorage";
 import { appendQuoteAndAttachmentsToDraft } from "@/lib/prompt-draft";
 import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
@@ -249,8 +254,27 @@ export function useBbContext(): BbContext {
   );
 }
 
+export function getAutomationPluginPanelRoutePath(subPath: string): string {
+  const parts = subPath.split("/").filter((part) => part.length > 0);
+  if (parts.length === 0) return getAutomationsRoutePath();
+  if (parts.length === 1 && parts[0] === "browse") {
+    return `${getAutomationsRoutePath()}?view=browse`;
+  }
+  if (parts.length !== 2 && !(parts.length === 3 && parts[2] === "edit")) {
+    return getAutomationsRoutePath();
+  }
+  const [projectId, automationId, mode] = parts;
+  if (projectId === undefined || automationId === undefined) {
+    return getAutomationsRoutePath();
+  }
+  return mode === "edit"
+    ? getAutomationEditRoutePath({ projectId, automationId })
+    : getAutomationDetailRoutePath({ projectId, automationId });
+}
+
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
+  const location = useLocation();
   const navigate = useNavigate();
   const toThread = useCallback(
     (threadId: string) => {
@@ -275,7 +299,30 @@ export function useBbNavigate(): BbNavigate {
     [navigate],
   );
   const toPluginPanel = useCallback(
-    (path: string, options?: { subPath?: string; replace?: boolean }) => {
+    (
+      path: string,
+      options?: {
+        subPath?: string;
+        replace?: boolean;
+        returnOnExit?: boolean;
+      },
+    ) => {
+      const navigateOptions = {
+        ...(options?.replace ? { replace: true } : {}),
+        ...(options?.returnOnExit
+          ? { state: { bbPluginPanelReturnOnExit: true } }
+          : {}),
+      };
+      if (
+        pluginId === AUTOMATIONS_PLUGIN_ID &&
+        path === AUTOMATIONS_PLUGIN_PANEL_PATH
+      ) {
+        void navigate(
+          getAutomationPluginPanelRoutePath(options?.subPath ?? ""),
+          navigateOptions,
+        );
+        return;
+      }
       void navigate(
         getPluginPanelRoutePath({
           pluginId,
@@ -284,27 +331,50 @@ export function useBbNavigate(): BbNavigate {
             ? { subPath: options.subPath }
             : {}),
         }),
-        options?.replace ? { replace: true } : undefined,
+        navigateOptions,
       );
     },
     [navigate, pluginId],
   );
+  const exitPluginPanel = useCallback(
+    (path: string, options?: { subPath?: string }) => {
+      const state = location.state;
+      if (
+        state !== null &&
+        typeof state === "object" &&
+        "bbPluginPanelReturnOnExit" in state &&
+        state.bbPluginPanelReturnOnExit === true
+      ) {
+        void navigate(-1);
+        return;
+      }
+      toPluginPanel(path, { ...options, replace: true });
+    },
+    [location.state, navigate, toPluginPanel],
+  );
   const toCompose = useCallback(
-    (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
+    (options?: {
+      initialPrompt?: string;
+      focusPrompt?: boolean;
+      replaceInitialPrompt?: boolean;
+      replace?: boolean;
+    }) => {
       // RootComposeView reads `focusPrompt`/`initialPrompt` off the location
       // state to seed and focus the composer (single-use, cleared after read).
       void navigate(getRootComposeRoutePath(), {
+        ...(options?.replace ? { replace: true } : {}),
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",
+          replaceInitialPrompt: options?.replaceInitialPrompt ?? false,
         },
       });
     },
     [navigate],
   );
   return useMemo(
-    () => ({ toThread, toProject, toPluginPanel, toCompose }),
-    [toThread, toProject, toPluginPanel, toCompose],
+    () => ({ toThread, toProject, toPluginPanel, exitPluginPanel, toCompose }),
+    [toThread, toProject, toPluginPanel, exitPluginPanel, toCompose],
   );
 }
 

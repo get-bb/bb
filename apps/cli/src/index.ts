@@ -12,6 +12,7 @@ import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerTerminalCommands } from "./commands/terminal.js";
 import { registerSettingsCommands } from "./commands/settings.js";
+import { registerSkillCommands } from "./commands/skill.js";
 import { registerThemeCommands } from "./commands/theme.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
 import { registerUpdatesCommands } from "./commands/updates.js";
@@ -94,6 +95,7 @@ registerEnvironmentCommands(program, getUrl);
 registerFileCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
+registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
 
@@ -130,10 +132,7 @@ async function tryPluginCommandProxy(): Promise<void> {
     // when the name matches an installed-but-disabled plugin's id.
     const disabled = await findDisabledPluginForCommand(getUrl(), candidate);
     if (disabled !== null) {
-      if (
-        disabled.enabled &&
-        disabled.statusDetail?.includes("Plugins")
-      ) {
+      if (disabled.enabled && disabled.statusDetail?.includes("Plugins")) {
         console.error(
           `bb ${candidate} is behind the "Plugins" experiment — ` +
             "enable it in Settings → Experiments.",
@@ -141,7 +140,7 @@ async function tryPluginCommandProxy(): Promise<void> {
       } else {
         console.error(
           `bb ${candidate} is provided by the "${disabled.id}" plugin, which is disabled — ` +
-            `run \`bb plugin enable ${disabled.id}\` or enable it in Settings → Plugins.`,
+            `run \`bb plugin enable ${disabled.id}\` or enable it in Plugins.`,
         );
       }
       process.exit(1);

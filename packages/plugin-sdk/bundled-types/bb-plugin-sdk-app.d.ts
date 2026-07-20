@@ -290,8 +290,8 @@ interface PluginPendingInteractionRegistration {
 /** Context handed to a `sidebarFooterAction`'s `run`. */
 interface PluginSidebarFooterActionContext {
     /**
-     * Navigate to this plugin's Settings detail page
-     * (`/settings/plugins/<pluginId>`), where declarative settings and
+     * Navigate to this plugin's Plugins detail page
+     * (`/tools/plugins/<pluginId>`), where declarative settings and
      * `settingsSection` slots render.
      */
     openSettings(): void;
@@ -502,16 +502,30 @@ interface BbNavigate {
     toPluginPanel(path: string, options?: {
         subPath?: string;
         replace?: boolean;
+        /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
+        returnOnExit?: boolean;
+    }): void;
+    /**
+     * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
+     * direct entries replace themselves with this fallback location.
+     */
+    exitPluginPanel(path: string, options?: {
+        subPath?: string;
     }): void;
     /**
      * Navigate to the root compose surface (the new-thread screen). Pass
      * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
      * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
+     * points that drop the user into chat with a prefilled prompt. Set
+     * `replaceInitialPrompt` for an explicit resource action whose context must
+     * replace any stale root-composer draft. Set `replace` for redirects so the
+     * intermediary route does not trap browser Back navigation.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
+        replaceInitialPrompt?: boolean;
+        replace?: boolean;
     }): void;
 }
 /**

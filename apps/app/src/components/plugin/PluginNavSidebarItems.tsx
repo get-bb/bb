@@ -2,7 +2,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
-import { getPluginPanelRoutePath } from "@/lib/route-paths";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getPluginPanelRoutePath,
+} from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -23,10 +27,17 @@ export function PluginNavSidebarItems(props: {
   splitEnabled?: boolean;
 }) {
   const { navPanels } = usePluginSlots();
+  const visibleNavPanels = navPanels.filter(
+    (panel) =>
+      !(
+        panel.pluginId === AUTOMATIONS_PLUGIN_ID &&
+        panel.path === AUTOMATIONS_PLUGIN_PANEL_PATH
+      ),
+  );
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
-  if (navPanels.length === 0) return null;
-  return <PluginNavSidebarItemList {...props} navPanels={navPanels} />;
+  if (visibleNavPanels.length === 0) return null;
+  return <PluginNavSidebarItemList {...props} navPanels={visibleNavPanels} />;
 }
 
 function PluginNavSidebarItemList({

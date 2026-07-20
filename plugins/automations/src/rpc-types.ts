@@ -32,7 +32,9 @@ export const workspaceArgsSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("managed-worktree"),
       baseBranch: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("named"), name: z.string().min(1) }).strict(),
+        z
+          .object({ kind: z.literal("named"), name: z.string().min(1) })
+          .strict(),
         z.object({ kind: z.literal("default") }).strict(),
       ]),
     })
@@ -159,7 +161,10 @@ function requireExactlyOneScriptSource(
   exec: z.infer<typeof automationExecutionSchema>,
   ctx: z.RefinementCtx,
 ): void {
-  if (exec.mode === "script" && (exec.script != null) === (exec.scriptFile != null)) {
+  if (
+    exec.mode === "script" &&
+    (exec.script != null) === (exec.scriptFile != null)
+  ) {
     ctx.addIssue({
       code: "custom",
       message: "provide exactly one of script | scriptFile",
@@ -218,7 +223,9 @@ export const projectAutomationInputSchema = z
     automationId: z.string().min(1),
   })
   .strict();
-export type ProjectAutomationInput = z.infer<typeof projectAutomationInputSchema>;
+export type ProjectAutomationInput = z.infer<
+  typeof projectAutomationInputSchema
+>;
 
 export const listAutomationsInputSchema = z
   .object({ projectId: z.string().min(1) })
@@ -287,7 +294,9 @@ export type ResolvedAutomationRunsInput = z.output<
 >;
 
 export const automationListResponseSchema = z.array(automationResponseSchema);
-export type AutomationListResponse = z.infer<typeof automationListResponseSchema>;
+export type AutomationListResponse = z.infer<
+  typeof automationListResponseSchema
+>;
 
 export const automationRunListResponseSchema = z
   .object({

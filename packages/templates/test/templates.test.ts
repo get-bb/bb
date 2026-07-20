@@ -46,6 +46,14 @@ describe("@bb/templates", () => {
     expect(guide).toContain("local CLI machine fallback");
   });
 
+  it("documents complete automation execution replacement", () => {
+    const guide = renderTemplate("bbGuideAutomations", {});
+
+    expect(guide).toContain("bb automation update <automationId>");
+    expect(guide).toContain("replace the previous execution completely");
+    expect(guide).toContain("--env-json");
+  });
+
   it("renders agent thread messages without inline reply guidance", () => {
     const rendered = renderTemplate("agentThreadMessage", {
       senderThreadId: "thr_sender",

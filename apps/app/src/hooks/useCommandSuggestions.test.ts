@@ -61,6 +61,14 @@ describe("promptActionCommandSuggestions", () => {
     expect(
       promptActionCommandSuggestions({
         promptActions,
+        query: "pl",
+        trigger: "/",
+      }).map((suggestion) => suggestion.name),
+    ).toEqual(["plan"]);
+
+    expect(
+      promptActionCommandSuggestions({
+        promptActions,
         query: "auto",
         trigger: "/",
       }).map((suggestion) => suggestion.name),

@@ -1,0 +1,142 @@
+import type { PluginRuntimeStatus } from "@bb/server-contract";
+import type { IconName } from "@bb/shared-ui/icon";
+import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+
+export interface PluginRuntimeStatusPresentation {
+  icon: IconName;
+  label: string;
+  tone: "error" | "warning";
+  recovery: string;
+}
+
+export type PluginRuntimeStatusDefinition = Omit<
+  PluginRuntimeStatusPresentation,
+  "recovery"
+>;
+
+/**
+ * Canonical user-facing projection of plugin runtime health. Enabled/disabled
+ * remains lifecycle state, while updates remain release state; neither is
+ * folded into this health vocabulary.
+ */
+export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
+  PluginRuntimeStatus,
+  PluginRuntimeStatusDefinition | null
+> = {
+  running: null,
+  error: { icon: "CircleX", label: "Error", tone: "error" },
+  incompatible: {
+    icon: "AlertCircle",
+    label: "Incompatible",
+    tone: "error",
+  },
+  missing: { icon: "FileQuestion", label: "Missing", tone: "error" },
+  disabled: null,
+  "needs-configuration": {
+    icon: "Settings",
+    label: "Setup required",
+    tone: "warning",
+  },
+  degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
+};
+
+export function pluginRuntimeStatusDefinition(
+  status: PluginRuntimeStatus,
+): PluginRuntimeStatusDefinition | null {
+  return PLUGIN_RUNTIME_STATUS_DEFINITIONS[status];
+}
+
+function pluginRuntimeRecovery(plugin: PluginListItem): string {
+  switch (plugin.status) {
+    case "error":
+      if (plugin.source.startsWith("path:")) {
+        return "Edit the plugin, then reload it.";
+      }
+      if (plugin.provenance === "builtin") {
+        return "Reload the plugin. If the error continues, restart bb.";
+      }
+      return "Reload the plugin. If the error continues, reinstall it.";
+    case "incompatible":
+      return plugin.provenance === "builtin"
+        ? "Update bb to load a compatible bundled plugin."
+        : "Install a plugin version compatible with this version of bb.";
+    case "missing":
+      return "Reinstall the plugin or remove this entry.";
+    case "needs-configuration":
+      return plugin.hasSettings
+        ? "Complete the Settings section; bb reloads the plugin after you save."
+        : "Add the required configuration, then reload the plugin.";
+    case "degraded":
+      return "Reload the plugin. If it remains degraded, restart bb.";
+    default:
+      return "";
+  }
+}
+
+export function pluginRuntimeStatusPresentation(
+  plugin: PluginListItem,
+): PluginRuntimeStatusPresentation | null {
+  const definition = pluginRuntimeStatusDefinition(plugin.status);
+  if (definition === null) return null;
+  return { ...definition, recovery: pluginRuntimeRecovery(plugin) };
+}
+
+/**
+ * A plugin row earns at most one signal. Updates use a pill; abnormal runtime
+ * health uses a specific icon action that opens plugin details. A failed update
+ * that rolled back outranks an available update — the user should know a
+ * rollback happened before applying anything else. Newer-but-incompatible
+ * releases and pinned sources never signal the list; they surface on the detail
+ * page.
+ */
+export type PluginRowSignal =
+  | { kind: "update"; version: string }
+  | {
+      kind: "status";
+      icon: IconName;
+      label: string;
+      tone: "error" | "warning";
+      detail: string | null;
+    };
+
+export function pluginRowSignal(
+  plugin: PluginListItem,
+): PluginRowSignal | null {
+  const state = plugin.updateState;
+  // A rollback wins the row's single signal slot even when the same plugin
+  // still has an available candidate.
+  if (state.lastFailure !== null) {
+    return {
+      kind: "status",
+      icon: "RotateCcw",
+      label: "Update failed",
+      tone: "error",
+      detail:
+        state.lastFailure.detail.length > 0
+          ? state.lastFailure.detail
+          : `Update to ${state.lastFailure.version} failed and was rolled back.`,
+    };
+  }
+  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
+  if (runtimeStatus !== null) {
+    return {
+      kind: "status",
+      icon: runtimeStatus.icon,
+      label: runtimeStatus.label,
+      tone: runtimeStatus.tone,
+      detail: plugin.statusDetail,
+    };
+  }
+  if (state.availableVersion !== null) {
+    return { kind: "update", version: state.availableVersion };
+  }
+  return null;
+}
+
+/** The detail-page banner mirrors the row pill's update case. */
+export function pluginUpdateAvailableVersion(
+  plugin: PluginListItem,
+): string | null {
+  const signal = pluginRowSignal(plugin);
+  return signal?.kind === "update" ? signal.version : null;
+}

@@ -36,7 +36,7 @@ export interface UpdatePluginDialogProps {
  * collapsed, rollback promise always visible. The incompatible variant
  * arrives with details pre-expanded and Update disabled — the details are
  * the story. A "rolled-back" outcome renders in place instead of closing,
- * pointing at the row's Needs-attention state.
+ * pointing at the row's specific Update-failed state.
  */
 export function UpdatePluginDialog({
   plugin,
@@ -119,7 +119,7 @@ function UpdatePluginDialogContent({
             </p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            The plugin is marked &ldquo;Needs attention&rdquo; in the installed
+            The plugin is marked &ldquo;Update failed&rdquo; in the installed
             list until an update succeeds.
           </p>
         </div>

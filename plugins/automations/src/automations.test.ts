@@ -21,7 +21,10 @@ import {
   computeNextScheduledTime,
   validateOnceDefinition,
 } from "./schedule-helpers.js";
-import { isWakeAgentSuppressed, mapScriptResultToRun } from "./script-runner.js";
+import {
+  isWakeAgentSuppressed,
+  mapScriptResultToRun,
+} from "./script-runner.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 
@@ -179,7 +182,9 @@ describe("automation data access", () => {
     });
     expect(first.advanced).toBe(true);
     expect(second.advanced).toBe(false);
-    expect(listAutomationRuns(db, { automationId: "auto_test", limit: 10 })).toHaveLength(1);
+    expect(
+      listAutomationRuns(db, { automationId: "auto_test", limit: 10 }),
+    ).toHaveLength(1);
   });
 
   it("rolls schedule state back after dispatch failure", () => {
@@ -281,7 +286,9 @@ describe("automation data access", () => {
     });
 
     expect(getAutomation(db, automation.id)?.runCount).toBe(0);
-    expect(listAutomationRuns(db, { automationId: automation.id, limit: 10 })).toHaveLength(0);
+    expect(
+      listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
+    ).toHaveLength(0);
   });
 
   it("dedupes manual runs by idempotency key", () => {
@@ -339,6 +346,9 @@ describe("automation service", () => {
           },
           list: async () => [],
         },
+        threadSections: {
+          list: async () => [],
+        },
         threads: {
           get: async () => {
             throw new Error("not expected");
@@ -389,8 +399,8 @@ describe("automation service", () => {
 
 describe("script wake gate", () => {
   it("suppresses only a trailing wakeAgent false object", () => {
-    expect(isWakeAgentSuppressed("hello\n{\"wakeAgent\": false}\n")).toBe(true);
-    expect(isWakeAgentSuppressed("{\"wakeAgent\": true}\n")).toBe(false);
+    expect(isWakeAgentSuppressed('hello\n{"wakeAgent": false}\n')).toBe(true);
+    expect(isWakeAgentSuppressed('{"wakeAgent": true}\n')).toBe(false);
     expect(isWakeAgentSuppressed("not json\n")).toBe(false);
   });
 
@@ -401,7 +411,7 @@ describe("script wake gate", () => {
     expect(
       mapScriptResultToRun({
         exitCode: 0,
-        output: "nothing\n{\"wakeAgent\": false}",
+        output: 'nothing\n{"wakeAgent": false}',
         timedOut: false,
       }),
     ).toMatchObject({ status: "skipped", skipReason: "wakeAgent false" });

@@ -28,6 +28,7 @@ export interface PluginUpdateState {
 
 export interface PluginListItem {
   id: string;
+  rootDir: string;
   version: string;
   enabled: boolean;
   status: InstalledPlugin["status"];
@@ -38,9 +39,15 @@ export interface PluginListItem {
   logoUrl: string | null;
   logoDarkUrl: string | null;
   hasSettings: boolean;
+  handlerStats: InstalledPlugin["handlerStats"];
+  services: InstalledPlugin["services"];
+  schedules: InstalledPlugin["schedules"];
+  cliCommand: InstalledPlugin["cliCommand"];
+  app: InstalledPlugin["app"];
   provenance: PluginProvenance;
   source: string;
   isOrphanedBuiltin: boolean;
+  catalogEntryId: string | null;
   sourceDisplay: string;
   updateState: PluginUpdateState;
 }
@@ -69,10 +76,11 @@ export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   lastFailure: null,
 };
 
-function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
+export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
   const state = plugin.updateState;
   return {
     id: plugin.id,
+    rootDir: plugin.rootDir,
     version: plugin.version,
     enabled: plugin.enabled,
     status: plugin.status,
@@ -83,9 +91,15 @@ function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     logoUrl: plugin.logoUrl,
     logoDarkUrl: plugin.logoDarkUrl,
     hasSettings: plugin.hasSettings,
+    handlerStats: plugin.handlerStats,
+    services: plugin.services,
+    schedules: plugin.schedules,
+    cliCommand: plugin.cliCommand,
+    app: plugin.app,
     provenance: plugin.provenance,
     source: plugin.source,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
+    catalogEntryId: plugin.catalogEntryId ?? null,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {
       outcome: state.outcome ?? null,
@@ -108,12 +122,8 @@ function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
 export async function fetchPluginList(
   fetchImpl: FetchLike,
 ): Promise<PluginListResult> {
-  try {
-    const result = await createPluginsClient(fetchImpl).list();
-    return { plugins: result.plugins.map(toPluginListItem) };
-  } catch {
-    return { plugins: [] };
-  }
+  const result = await createPluginsClient(fetchImpl).list();
+  return { plugins: result.plugins.map(toPluginListItem) };
 }
 
 export type PluginSettingFieldDescriptor = PluginSettingDescriptor;

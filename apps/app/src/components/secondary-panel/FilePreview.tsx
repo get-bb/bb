@@ -886,15 +886,14 @@ function MarkdownFilePreview({
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
   return (
-    // Render the markdown document on a faint "paper" wash so the rendered
-    // viewer reads as a distinct surface from the white chat — one tonal step
-    // lighter than the recessed header (matching the raised-body / recessed-
-    // header pairing used elsewhere in this panel).
+    // Keep rendered Markdown on the ordinary document background. Its parent
+    // owns the boundary, so another raised "paper" layer would make nested
+    // file viewers feel like cards stacked inside cards.
     <SecondaryPanelSelectionActions
       className="contents"
       onSelectionAddToChat={onSelectionAddToChat}
     >
-      <div className="flex-auto bg-surface-raised px-4 py-4">
+      <div className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
           content={file.contents}

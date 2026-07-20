@@ -1,8 +1,10 @@
 # Plugin 1.0 end-to-end test plan
 
-Status: completed against the consolidated Plugin 1.0 branch  
-Branch: `bb/plugin-1-0-consolidated`  
-Pull request: #716  
+Status: completed against the consolidated Plugin 1.0 branch
+
+Branch: `bb/plugin-1-0-consolidated`
+
+Pull request: #716
 Test instance: isolated `scripts/bb-dev-app` data directory; never the user's normal `~/.bb`
 
 > Historical record: this plan documents the former configurable marketplace

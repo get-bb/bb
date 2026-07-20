@@ -44,3 +44,4 @@ Run `bb guide <chapter>` for command details:
   terminals            Persistent PTY sessions across all supported scopes
   customization        Theming the app palette
   plugins              Installing plugins and their contributed bb commands
+  automations          Scheduling and editing recurring or one-shot work

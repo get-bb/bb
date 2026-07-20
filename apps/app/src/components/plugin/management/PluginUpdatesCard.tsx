@@ -2,9 +2,13 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  ResourceActionButton,
+  ResourceDetailFact,
+  ResourceDetailFacts,
+} from "@bb/shared-ui/resource-list";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   checkPluginUpdates,
@@ -12,7 +16,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { pluginUpdateAvailableVersion } from "./plugin-update-signals";
+import { pluginUpdateAvailableVersion } from "./plugin-status";
 import {
   KeyValueGrid,
   SUCCESS_BANNER_STYLE,
@@ -100,10 +104,19 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
 export function PluginUpdatesSourceCard({
   plugin,
+  showHeading = true,
+  embedded = false,
+  releaseVersion,
 }: {
   plugin: PluginListItem;
+  showHeading?: boolean;
+  /** Removes the nested card when this content lives in a detail-stack row. */
+  embedded?: boolean;
+  /** Includes release identity in the same fact table on a detail page. */
+  releaseVersion?: string;
 }) {
   const queryClient = useQueryClient();
+  const [renderedAt] = useState(() => Date.now());
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const sourceQuery = usePluginSource(plugin.id, { enabled: detailsOpen });
@@ -127,35 +140,38 @@ export function PluginUpdatesSourceCard({
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-foreground">
-        Updates &amp; source
-      </h3>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-        <div className="divide-y divide-border">
-          <div className="pb-3">
-            <SettingsWithControl
-              label="Source"
-              description={plugin.sourceDisplay}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                aria-expanded={detailsOpen}
-                onClick={() => setDetailsOpen((current) => !current)}
-              >
-                Details
-              </Button>
-            </SettingsWithControl>
-            {detailsOpen ? (
+      {showHeading ? (
+        <h3 className="text-sm font-semibold text-foreground">
+          Updates &amp; source
+        </h3>
+      ) : null}
+      <ResourceDetailFacts className={embedded ? undefined : "bg-card"}>
+        {releaseVersion ? (
+          <ResourceDetailFact label="Version" mono>
+            {releaseVersion}
+          </ResourceDetailFact>
+        ) : null}
+        <ResourceDetailFact
+          label="Source"
+          mono
+          action={
+            <ResourceActionButton
+              label={
+                detailsOpen ? "Hide source details" : "Show source details"
+              }
+              icon="Info"
+              onClick={() => setDetailsOpen((current) => !current)}
+            />
+          }
+          details={
+            detailsOpen ? (
               <div
-                className="mt-2 rounded-md border border-border-seam bg-muted/30 px-3 py-2.5"
+                className="rounded-md border border-border-seam bg-muted/30 px-3 py-2.5"
                 data-testid="plugin-source-details"
               >
                 {sourceQuery.isPending ? (
                   <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Icon name="Spinner" className="size-3.5 animate-spin" />
+                    <Icon name="Loading" className="size-3.5 animate-spin" />
                     Loading source details…
                   </p>
                 ) : source === null ? (
@@ -217,64 +233,54 @@ export function PluginUpdatesSourceCard({
                   />
                 )}
               </div>
-            ) : null}
-          </div>
-
-          <div className={blockedVersion !== null ? "py-3" : "pt-3"}>
-            <SettingsWithControl
-              label="Last checked"
-              description={
-                state.lastCheckAt !== null
-                  ? formatRelativeTime({
-                      timestamp: state.lastCheckAt,
-                      now: Date.now(),
-                    })
-                  : "Never checked"
-              }
-            >
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={checkNow.isPending}
-                aria-busy={checkNow.isPending}
-                onClick={() => checkNow.mutate()}
-              >
-                {checkNow.isPending ? (
-                  <Icon name="Spinner" className="size-3.5 animate-spin" />
-                ) : null}
-                Check now
-              </Button>
-            </SettingsWithControl>
-          </div>
-
-          {blockedVersion !== null ? (
-            // Newer-but-incompatible surfaces here, never on the list
-            // (locked design): nothing is actionable, so no pill and no
-            // toast — just the explanation one click away.
-            <div className="pt-3">
-              <SettingsWithControl
-                label={`${blockedVersion} isn't compatible with this bb`}
-                description={
-                  plugin.updateState.blockedReasons[0] ??
-                  `Staying on ${plugin.version}.`
-                }
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setBlockedOpen(true)}
-                >
-                  Details
-                </Button>
-              </SettingsWithControl>
-            </div>
-          ) : null}
-        </div>
-      </div>
+            ) : undefined
+          }
+        >
+          {plugin.sourceDisplay}
+        </ResourceDetailFact>
+        <ResourceDetailFact
+          label="Last checked"
+          action={
+            <ResourceActionButton
+              label="Check for updates now"
+              tooltipLabel="Check now"
+              icon="RotateCcw"
+              loading={checkNow.isPending}
+              disabled={checkNow.isPending}
+              onClick={() => checkNow.mutate()}
+            />
+          }
+        >
+          <span className="text-muted-foreground">
+            {state.lastCheckAt !== null
+              ? formatRelativeTime({
+                  timestamp: state.lastCheckAt,
+                  now: renderedAt,
+                })
+              : "Never checked"}
+          </span>
+        </ResourceDetailFact>
+        {blockedVersion !== null ? (
+          <ResourceDetailFact
+            label="Compatibility"
+            action={
+              <ResourceActionButton
+                label="View compatibility details"
+                icon="Info"
+                onClick={() => setBlockedOpen(true)}
+              />
+            }
+          >
+            <span className="block">
+              {blockedVersion} isn&apos;t compatible with this bb
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {plugin.updateState.blockedReasons[0] ??
+                `Staying on ${plugin.version}.`}
+            </span>
+          </ResourceDetailFact>
+        ) : null}
+      </ResourceDetailFacts>
       {blockedVersion !== null ? (
         <UpdatePluginDialog
           plugin={plugin}

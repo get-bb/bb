@@ -628,6 +628,17 @@ export function readInitialPromptFromLocationState(
   return null;
 }
 
+export function shouldReplaceInitialPromptFromLocationState(
+  state: unknown,
+): boolean {
+  return (
+    state !== null &&
+    typeof state === "object" &&
+    "replaceInitialPrompt" in state &&
+    state.replaceInitialPrompt === true
+  );
+}
+
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
   if (thread.environmentId === null) return false;
   return (
@@ -1410,15 +1421,27 @@ export function RootComposeView() {
   // in-progress draft, then cleared from
   // location.state so a refresh starts from the persisted draft.
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
+  const replaceInitialPrompt = promptDraft.setDraft;
   useEffect(() => {
     const initialPrompt = readInitialPromptFromLocationState(location.state);
     if (initialPrompt === null) return;
-    seedInitialPrompt({ text: initialPrompt, mentions: [], attachments: [] });
+    const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
+    if (shouldReplaceInitialPromptFromLocationState(location.state)) {
+      replaceInitialPrompt(nextDraft);
+    } else {
+      seedInitialPrompt(nextDraft);
+    }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
     });
-  }, [location.search, location.state, navigate, seedInitialPrompt]);
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    replaceInitialPrompt,
+    seedInitialPrompt,
+  ]);
 
   const mobileRecentThreads = useMemo(
     () =>

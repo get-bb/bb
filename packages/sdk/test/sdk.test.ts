@@ -1205,6 +1205,7 @@ describe("@bb/sdk", () => {
           results: [
             {
               entryId: "notes",
+              pluginId: "notes",
               displayName: "Notes",
               description: "Notes",
               icon: null,
@@ -1251,7 +1252,9 @@ describe("@bb/sdk", () => {
     await expect(sdk.plugins.catalog.status()).resolves.toEqual(catalog);
     await expect(
       sdk.plugins.catalog.search({ query: "notes" }),
-    ).resolves.toMatchObject([{ entryId: "notes", compatible: true }]);
+    ).resolves.toMatchObject([
+      { entryId: "notes", pluginId: "notes", compatible: true },
+    ]);
 
     expect(queue.requests).toEqual([
       {
@@ -1399,5 +1402,164 @@ describe("@bb/sdk", () => {
         pollIntervalMs: 1,
       }),
     ).rejects.toBeInstanceOf(ThreadWaitTimeoutError);
+  });
+
+  it("exposes installed skills and canonical registry installation", async () => {
+    const registrySkill = {
+      id: "owner/repo/useful-skill",
+      source: "owner/repo",
+      skillId: "useful-skill",
+      name: "Useful skill",
+      installs: 12,
+      stars: null,
+      installUrl: "https://github.com/owner/repo",
+      url: "https://www.skills.sh/owner/repo/useful-skill",
+      topic: null,
+      summary: null,
+    };
+    const queue = createFetchQueue([
+      {
+        body: {
+          skills: [
+            {
+              id: `skill_${"a".repeat(64)}`,
+              name: "local-skill",
+              description: null,
+              provider: null,
+              scope: "bb-user",
+              pluginId: null,
+              filePath: "/skills/local-skill/SKILL.md",
+              manageable: true,
+            },
+          ],
+        },
+      },
+      {
+        body: {
+          skills: [registrySkill],
+          pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+        },
+      },
+      { body: { ok: true, filePath: "/skills/useful-skill/SKILL.md" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.skills.list({ projectId: "proj_123", environmentId: null }),
+    ).resolves.toMatchObject({ skills: [{ name: "local-skill" }] });
+    await expect(sdk.skills.registry.search()).resolves.toMatchObject({
+      skills: [registrySkill],
+    });
+    await expect(
+      sdk.skills.registry.install({
+        registrySkillId: registrySkill.id,
+        projectId: "proj_123",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      filePath: "/skills/useful-skill/SKILL.md",
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        method: "GET",
+        url: "http://bb.test/api/v1/projects/proj_123/skills?environmentId=",
+        bodyText: undefined,
+      },
+      {
+        method: "GET",
+        url: "http://bb.test/api/v1/skills-registry?page=0&perPage=24",
+        bodyText: undefined,
+      },
+      {
+        method: "POST",
+        url: "http://bb.test/api/v1/skills-registry/install",
+        bodyText: JSON.stringify({
+          registrySkillId: registrySkill.id,
+          projectId: "proj_123",
+        }),
+      },
+    ]);
+  });
+
+  it("uses opaque skill identities and compare-and-swap revisions", async () => {
+    const skillId = `skill_${"a".repeat(64)}`;
+    const revision = "b".repeat(64);
+    const queue = createFetchQueue([
+      { body: { content: "# Review", revision } },
+      { body: { files: ["SKILL.md"], truncated: false } },
+      {
+        body: {
+          filePath: "/skills/review/SKILL.md",
+          revision: "c".repeat(64),
+        },
+      },
+      { body: { deletedPath: "/skills/review" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.skills.getContent({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+      path: "SKILL.md",
+    });
+    await sdk.skills.listFiles({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+    });
+    await sdk.skills.update({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+      content: "# Updated",
+      revision,
+    });
+    await sdk.skills.remove({
+      projectId: "proj_123",
+      environmentId: null,
+      skillId,
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        method: "GET",
+        url: `http://bb.test/api/v1/projects/proj_123/skills/content?skillId=${skillId}&path=SKILL.md&environmentId=`,
+        bodyText: undefined,
+      },
+      {
+        method: "GET",
+        url: `http://bb.test/api/v1/projects/proj_123/skills/files?skillId=${skillId}&environmentId=`,
+        bodyText: undefined,
+      },
+      {
+        method: "PATCH",
+        url: "http://bb.test/api/v1/projects/proj_123/skills/content",
+        bodyText: JSON.stringify({
+          skillId,
+          environmentId: null,
+          content: "# Updated",
+          revision,
+        }),
+      },
+      {
+        method: "DELETE",
+        url: "http://bb.test/api/v1/projects/proj_123/skills",
+        bodyText: JSON.stringify({ skillId, environmentId: null }),
+      },
+    ]);
   });
 });

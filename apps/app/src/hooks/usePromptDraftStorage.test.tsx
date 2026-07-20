@@ -112,6 +112,19 @@ describe("usePromptDraftStorage", () => {
       "bb.promptbox.contents-proj_prompt-thr_followup-3",
     );
   });
+
+  it("keeps automation edit drafts scoped to the automation", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({
+        kind: "automation-edit",
+        automationId: "auto_watchdog",
+      }),
+    );
+
+    expect(result.current.storageKey).toBe(
+      "bb.promptbox.contents-automation-edit-auto_watchdog-3",
+    );
+  });
 });
 
 describe("usePromptDraftStorage addQuote", () => {
