@@ -7,10 +7,10 @@
 // messages, and an "Open as full thread" promotion affordance.
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import Markdown from "react-markdown";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   definePluginApp,
+  Markdown,
   ThreadChat,
   useBbNavigate,
   useRpc,
@@ -211,8 +211,11 @@ function ReplyingTo({ anchorText }: { anchorText: string }) {
         Replying to
       </span>
       <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
-        <div className="max-h-20 overflow-hidden break-words [&_blockquote]:my-1 [&_h1]:mb-1 [&_h1]:mt-0 [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:mt-0 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-0 [&_h3]:text-xs [&_li]:mb-0 [&_ol]:mb-1 [&_p]:mb-1 [&_ul]:mb-1">
-          <Markdown>{trimmed}</Markdown>
+        <div className="max-h-20 overflow-hidden break-words">
+          <Markdown
+            content={trimmed}
+            className="text-xs leading-5 [&_blockquote]:my-1 [&_h1]:mb-1 [&_h1]:mt-0 [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:mt-0 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-0 [&_h3]:text-xs [&_li]:mb-0 [&_ol]:mb-1 [&_p]:mb-1 [&_ul]:mb-1"
+          />
         </div>
       </div>
     </div>

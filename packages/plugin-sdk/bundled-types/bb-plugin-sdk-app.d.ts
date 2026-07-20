@@ -600,6 +600,18 @@ interface ThreadChatProps {
      */
     messageActions?: readonly ThreadChatMessageAction[];
 }
+/**
+ * Props of the host-owned `Markdown` component — bb's chat message renderer
+ * (the same typography, spacing, and code styling as timeline messages).
+ * Use it wherever plugin UI quotes or previews message content so it reads
+ * like the rest of the chat. Like `ThreadChat`, this is a stable product
+ * capability, not a UI kit; renderer internals stay private.
+ */
+interface MarkdownProps {
+    /** Markdown source, rendered exactly like a chat message body. */
+    content: string;
+    className?: string;
+}
 /** Current app selection, derived from the route. */
 interface BbContext {
     projectId: string | null;
@@ -650,14 +662,21 @@ interface PluginSdkApp {
     useBbNavigate(): BbNavigate;
     useComposer(): PluginComposerApi;
     /**
-     * The host-owned chat component (see {@link ThreadChatProps}) — the one
-     * component the SDK ships. Everything else stays vendored per §5.5.
+     * The host-owned chat component (see {@link ThreadChatProps}). Together
+     * with `Markdown`, the only components the SDK ships — everything else
+     * stays vendored per §5.5.
      */
     ThreadChat: ComponentType<ThreadChatProps>;
+    /**
+     * The host-owned chat-message markdown renderer (see
+     * {@link MarkdownProps}).
+     */
+    Markdown: ComponentType<MarkdownProps>;
 }
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
 declare const ThreadChat: react.ComponentType<ThreadChatProps>;
+declare const Markdown: react.ComponentType<MarkdownProps>;
 declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useRealtimeConnectionState: () => PluginRealtimeConnectionState;
@@ -666,5 +685,5 @@ declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
-export { ThreadChat, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { Markdown, ThreadChat, definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export type { BbContext, BbNavigate, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

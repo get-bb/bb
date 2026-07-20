@@ -6,7 +6,10 @@ import {
 } from "@/lib/thread-read-state";
 
 type FaviconSidebarThread = ThreadReadState &
-  Pick<ThreadListEntry, "originKind" | "childOrigin" | "hasPendingInteraction">;
+  Pick<
+    ThreadListEntry,
+    "originKind" | "childOrigin" | "hasPendingInteraction" | "visibility"
+  >;
 
 interface ShouldShowFaviconAttentionDotArgs {
   // Whether the thread currently in view is blocked on a pending interaction.

@@ -78,7 +78,7 @@ export type ThreadComparator = ((
 type WorktreeDisplayKind = "managed-worktree" | "unmanaged-worktree";
 type SidebarProjectThreadShape = Pick<
   ThreadListEntry,
-  "originKind" | "childOrigin"
+  "originKind" | "childOrigin" | "visibility"
 >;
 
 interface BuildThreadNodeArgs {
@@ -431,7 +431,10 @@ export function buildSectionThreadList(
 export function isSidebarProjectThread(
   thread: SidebarProjectThreadShape,
 ): boolean {
-  return (thread.originKind ?? thread.childOrigin) !== "side-chat";
+  return (
+    (thread.originKind ?? thread.childOrigin) !== "side-chat" &&
+    thread.visibility !== "hidden"
+  );
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group

@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@bb/shared-ui": "workspace:*",
-    "react-markdown": "^10.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

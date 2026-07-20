@@ -222,9 +222,10 @@ describe("SideChatPanel", () => {
 
     const leading = slot.getByTestId("bb-thread-chat-leading-content");
     expect(leading.textContent).toContain("Replying to");
-    expect(leading.textContent).toContain("anchor");
-    // react-markdown rendered the bold anchor as an element, not literal `**`.
-    expect(leading.querySelector("strong")?.textContent).toBe("anchor");
+    // The anchor renders through the host Markdown component (SDK stub emits
+    // the raw source) so the header matches chat-message typography.
+    const markdown = leading.querySelector("[data-testid='bb-markdown']");
+    expect(markdown?.textContent).toContain("**anchor**");
 
     const action = slot.getByTestId("bb-thread-chat-action-send-to-main");
     expect(action.getAttribute("data-roles")).toBe("assistant");

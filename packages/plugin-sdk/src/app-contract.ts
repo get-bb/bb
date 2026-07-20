@@ -604,6 +604,19 @@ export interface ThreadChatProps {
   messageActions?: readonly ThreadChatMessageAction[];
 }
 
+/**
+ * Props of the host-owned `Markdown` component — bb's chat message renderer
+ * (the same typography, spacing, and code styling as timeline messages).
+ * Use it wherever plugin UI quotes or previews message content so it reads
+ * like the rest of the chat. Like `ThreadChat`, this is a stable product
+ * capability, not a UI kit; renderer internals stay private.
+ */
+export interface MarkdownProps {
+  /** Markdown source, rendered exactly like a chat message body. */
+  content: string;
+  className?: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -667,8 +680,14 @@ export interface PluginSdkApp {
   useBbNavigate(): BbNavigate;
   useComposer(): PluginComposerApi;
   /**
-   * The host-owned chat component (see {@link ThreadChatProps}) — the one
-   * component the SDK ships. Everything else stays vendored per §5.5.
+   * The host-owned chat component (see {@link ThreadChatProps}). Together
+   * with `Markdown`, the only components the SDK ships — everything else
+   * stays vendored per §5.5.
    */
   ThreadChat: ComponentType<ThreadChatProps>;
+  /**
+   * The host-owned chat-message markdown renderer (see
+   * {@link MarkdownProps}).
+   */
+  Markdown: ComponentType<MarkdownProps>;
 }

@@ -913,6 +913,12 @@ leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
+- `Markdown` — bb's chat-message markdown renderer (same typography,
+  spacing, and code styling as timeline messages). Props:
+  `{ content, className? }`. Use it wherever plugin UI quotes or previews
+  message content (e.g. a reply header) so it reads like the rest of the
+  chat instead of a differently-styled bundled renderer. Renderer options
+  beyond content/className stay host-internal.
 
 Hooks:
 

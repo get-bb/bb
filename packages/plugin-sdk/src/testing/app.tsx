@@ -37,6 +37,7 @@ import {
   type PluginRpcContract,
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
+  type MarkdownProps,
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
@@ -231,6 +232,19 @@ function TestThreadChat({
   );
 }
 
+/**
+ * Stand-in for the host-owned Markdown renderer: emits the raw source in a
+ * recognizable wrapper so plugin tests can assert what content they passed
+ * without the real renderer.
+ */
+function TestMarkdown({ content, className }: MarkdownProps) {
+  return (
+    <div data-testid="bb-markdown" className={className}>
+      {content}
+    </div>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -287,6 +301,7 @@ const testPluginSdkApp = {
     return useMemo(() => ({ ...composer.api, text }), [composer, text]);
   },
   ThreadChat: TestThreadChat,
+  Markdown: TestMarkdown,
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
