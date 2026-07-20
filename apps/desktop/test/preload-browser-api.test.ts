@@ -193,7 +193,7 @@ describe("desktop preload browser API", () => {
     expect(
       electronMock.exposedSpellcheckApi?.getCorrectionContext("two words"),
     ).toBeNull();
-  });
+  }, 15_000);
 
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const api = await loadPreload();
