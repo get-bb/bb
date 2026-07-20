@@ -55,7 +55,7 @@ describe("built-in sidebar section renderer", () => {
 
     expect(screen.getByText("Pinned content")).not.toBeNull();
     expect(screen.getByText("Threads content")).not.toBeNull();
-    expect(result.container.querySelector('[data-icon="Pin"]')).not.toBeNull();
+    expect(result.container.querySelector('[data-icon="Pin"]')).toBeNull();
   });
 
   it("surfaces shared activity when Threads is collapsed", () => {

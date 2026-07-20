@@ -26,11 +26,10 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
-  it("renders the disclosure and optional icon before the section label", () => {
+  it("renders the disclosure after the section label without a leading icon", () => {
     const result = render(
       <TopLevelSidebarSection
         label="Pinned"
-        leadingIcon="Pin"
         collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
       >
         <div>Pinned thread</div>
@@ -43,13 +42,9 @@ describe("TopLevelSidebarSection", () => {
     const icon = result.container.querySelector('[data-icon="Pin"]');
     const label = screen.getByTitle("Pinned");
 
-    expect(icon).not.toBeNull();
+    expect(icon).toBeNull();
     expect(
-      disclosure.compareDocumentPosition(icon as Element) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(
-      (icon as Element).compareDocumentPosition(label) &
+      label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
   });

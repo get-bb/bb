@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
@@ -34,7 +34,6 @@ export interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
-  leadingIcon?: IconName;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -55,7 +54,6 @@ export interface TopLevelSidebarSectionProps {
 export function TopLevelSidebarSection({
   label,
   children,
-  leadingIcon,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -129,6 +127,9 @@ export function TopLevelSidebarSection({
         {...(dragBindings?.listeners ?? {})}
       >
         <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
+          <span className="min-w-0 truncate" title={label}>
+            {label}
+          </span>
           {collapseControl ? (
             <button
               type="button"
@@ -142,6 +143,7 @@ export function TopLevelSidebarSection({
                   : `Collapse ${label} section`
               }
               className={cn(
+                !collapseControl.isCollapsed && SIDEBAR_HOVER_ACTIONS_CLASS,
                 "relative z-20 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2",
                 LIST_HOVER_TRANSITION,
               )}
@@ -159,16 +161,6 @@ export function TopLevelSidebarSection({
               />
             </button>
           ) : null}
-          {leadingIcon ? (
-            <Icon
-              name={leadingIcon}
-              className="size-3.5 shrink-0 text-subtle-foreground"
-              aria-hidden="true"
-            />
-          ) : null}
-          <span className="min-w-0 truncate" title={label}>
-            {label}
-          </span>
         </span>
         {collapseControl?.isCollapsed && collapsedActivity ? (
           <span className="pointer-events-none relative z-20 inline-flex shrink-0 items-center text-subtle-foreground">

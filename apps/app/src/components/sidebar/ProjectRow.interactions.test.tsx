@@ -156,7 +156,7 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("places the project disclosure before its label and indents root threads", () => {
+  it("places the project disclosure after its label and indents root threads", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
       threads: [makeThread()],
@@ -171,7 +171,7 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(
-      disclosure.compareDocumentPosition(label) &
+      label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(

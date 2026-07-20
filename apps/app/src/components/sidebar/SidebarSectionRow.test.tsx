@@ -8,8 +8,8 @@ import { SidebarSectionRow } from "./SidebarSectionRow";
 afterEach(() => cleanup());
 
 describe("SidebarSectionRow", () => {
-  it("renders the disclosure before the section name at the requested depth", () => {
-    render(
+  it("renders the section icon and name before the disclosure at the requested depth", () => {
+    const result = render(
       <SidebarSectionRow
         name="Nested work"
         label="Nested work"
@@ -23,11 +23,17 @@ describe("SidebarSectionRow", () => {
     const disclosure = screen.getByRole("button", {
       name: "Collapse Nested work section",
     });
+    const icon = result.container.querySelector('[data-icon="ListView"]');
     const label = screen.getByText("Nested work");
     const row = label.parentElement?.parentElement as HTMLElement | null;
 
+    expect(icon).not.toBeNull();
     expect(
-      disclosure.compareDocumentPosition(label) &
+      (icon as Element).compareDocumentPosition(label) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(row?.style.paddingLeft).toBe("32px");
