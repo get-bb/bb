@@ -437,14 +437,16 @@ export function useComposer(): PluginComposerApi {
 
   const composerScope = composerHost?.scope;
   const threadRowStatusThreadId =
-    composerScope?.kind === "side-chat"
-      ? (composerScope.childThreadId ?? composerScope.parentThreadId)
-      : composerScope?.kind === "thread" ||
-          composerScope?.kind === "queued-message"
-        ? composerScope.threadId
-        : composerScope === undefined && threadId !== undefined
-          ? threadId
-          : null;
+    composerHost?.threadRowStatusThreadId !== undefined
+      ? composerHost.threadRowStatusThreadId
+      : composerScope?.kind === "side-chat"
+        ? (composerScope.childThreadId ?? composerScope.parentThreadId)
+        : composerScope?.kind === "thread" ||
+            composerScope?.kind === "queued-message"
+          ? composerScope.threadId
+          : composerScope === undefined && threadId !== undefined
+            ? threadId
+            : null;
   const threadRowStatusScopeKey =
     composerScope?.kind === "queued-message"
       ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`

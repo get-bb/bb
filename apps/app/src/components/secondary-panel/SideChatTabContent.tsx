@@ -469,6 +469,12 @@ export function SideChatTabContent({
     parentThreadId: sourceThread.id,
     tabId: tab.id,
   });
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(
+    childThreadId ?? "",
+    {
+      enabled: childThreadId !== null,
+    },
+  );
   const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
@@ -508,8 +514,20 @@ export function SideChatTabContent({
     action: QueuedMessageProcessingAction;
     id: string;
   } | null>(null);
-  const [inlineEditingQueuedMessage, setInlineEditingQueuedMessage] =
+  const [inlineEditingQueuedMessageState, setInlineEditingQueuedMessage] =
     useState<InlineQueuedMessageEditState | null>(null);
+  const inlineEditingQueuedMessage = useMemo(
+    () =>
+      inlineEditingQueuedMessageState !== null &&
+      inlineEditingQueuedMessageState.ownerThreadId === childThreadId &&
+      queuedMessages.some(
+        (message) =>
+          message.id === inlineEditingQueuedMessageState.queuedMessageId,
+      )
+        ? inlineEditingQueuedMessageState
+        : null,
+    [childThreadId, inlineEditingQueuedMessageState, queuedMessages],
+  );
   const inlineEditSessionIdRef = useRef(0);
   const [inlineComposerTarget, setInlineComposerTarget] =
     useState<HTMLDivElement | null>(null);
@@ -612,6 +630,7 @@ export function SideChatTabContent({
               queuedMessageId: queuedEdit.queuedMessageId,
             },
       textEffectKey: identity,
+      threadRowStatusThreadId: sourceThread.id,
       getCurrent: () => {
         if (activeComposerIdentityRef.current !== identity) {
           return initialDraft;
@@ -781,12 +800,6 @@ export function SideChatTabContent({
     surfaceKey: childThreadId !== null ? `side-chat:${childThreadId}` : tab.id,
     threadId: childThreadId ?? "",
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(
-    childThreadId ?? "",
-    {
-      enabled: childThreadId !== null,
-    },
-  );
   const childHasUserMessage = useMemo(
     () => timelineRowsContainUserMessage(childTimeline.timelineRows),
     [childTimeline.timelineRows],
@@ -816,20 +829,15 @@ export function SideChatTabContent({
   }, [queuedMessages]);
   useEffect(() => {
     if (
-      inlineEditingQueuedMessage &&
-      (inlineEditingQueuedMessage.ownerThreadId !== childThreadId ||
-        !queuedMessages.some(
-          (message) =>
-            message.id === inlineEditingQueuedMessage.queuedMessageId,
-        ))
+      inlineEditingQueuedMessageState &&
+      inlineEditingQueuedMessage === null
     ) {
       dismissInlineQueuedMessageEditor();
     }
   }, [
-    childThreadId,
     dismissInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,
-    queuedMessages,
+    inlineEditingQueuedMessageState,
   ]);
 
   childThreadIdRef.current = childThreadId;

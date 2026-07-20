@@ -786,6 +786,9 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       childThreadId: null,
     });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
 
     expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
@@ -819,6 +822,9 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       childThreadId: "thr_side",
     });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
     expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
       "value",
       "Plugin replacement",
@@ -1047,6 +1053,9 @@ describe("SideChatTabContent", () => {
       threadId: "thr_side",
       queuedMessageId: "qmsg_side_1",
     });
+    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
+      "thr_parent",
+    );
 
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Edited side queue" },
@@ -1093,27 +1102,55 @@ describe("SideChatTabContent", () => {
       target: { value: "Bottom side draft" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const staleChildQueuedHost = mocks.latestPluginComposerHost;
 
     rerender(
       buildSideChatElement({ onSetThreadId, threadId: "thr_side_next" }),
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
-        "value",
-        "Bottom side draft",
-      ),
+    act(() => {
+      staleChildQueuedHost?.setDraft({
+        text: "Stale child replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Bottom side draft",
     );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toMatchObject({
+      kind: "side-chat",
+      childThreadId: "thr_side_next",
+    });
 
     rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
+    const staleRemovedRowHost = mocks.latestPluginComposerHost;
     mocks.queuedMessages = [];
     rerender(buildSideChatElement({ onSetThreadId, threadId: "thr_side" }));
-    await waitFor(() =>
-      expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
-        "value",
-        "Bottom side draft",
-      ),
+    act(() => {
+      staleRemovedRowHost?.setDraft({
+        text: "Stale removed-row replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
+      "value",
+      "Bottom side draft",
     );
+    expect(
+      JSON.parse(
+        screen.getByTestId("side-chat-plugin-scope").textContent ?? "",
+      ),
+    ).toMatchObject({
+      kind: "side-chat",
+      childThreadId: "thr_side",
+    });
   });
 
   it("does not move a delayed side-queue upload into a later editor or bottom draft", async () => {

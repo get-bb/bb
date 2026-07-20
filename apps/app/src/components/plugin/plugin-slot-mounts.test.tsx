@@ -683,6 +683,7 @@ describe("useComposer", () => {
           },
           draft,
           textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
+          threadRowStatusThreadId: "thr_parent",
           getCurrent: () => draftRef.current,
           setDraft,
           focus: () => {},
@@ -758,6 +759,13 @@ describe("useComposer", () => {
     expect(screen.getByTestId("side-composer-text").textContent).toBe(
       "replacement",
     );
+    fireEvent.click(screen.getByText("side-start-row-status"));
+    expect(getPluginThreadRowStatus("thr_parent")).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+    expect(getPluginThreadRowStatus("thr_side")).toBeNull();
   });
 
   it("targets the new-thread composer without leaking replacements to thread drafts", () => {

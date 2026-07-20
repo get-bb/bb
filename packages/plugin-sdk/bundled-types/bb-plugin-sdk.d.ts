@@ -440,10 +440,10 @@ interface PluginComposerMention {
  * Programmatic access to the chat composer draft — the same shared draft the
  * built-in "Add to chat" affordances (file preview, diff, terminal selections)
  * write to. While a queued message is being edited, writes land in that
- * message's inline editor. Otherwise, inside a thread context writes land in
- * that thread's draft; anywhere else (nav panel, homepage section) they seed
- * the new-thread composer draft, which persists until the user sends or clears
- * it.
+ * message's inline editor. In a side chat, writes land in the visible side-chat
+ * draft. Otherwise, inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread composer
+ * draft, which persists until the user sends or clears it.
  */
 interface PluginComposerApi {
     scope: PluginComposerScope;
@@ -471,8 +471,9 @@ interface PluginComposerApi {
     /**
      * Replace this composer's thread-row draft glyph with a host-rendered status,
      * or clear it. New-thread composers have no row, so calls are a no-op.
-     * Status is scoped to the calling plugin and automatically clears when the
-     * slot unmounts or its composer scope changes.
+     * Side-chat and queued side-chat scopes decorate the visible parent-thread
+     * row. Status is scoped to the calling plugin and automatically clears when
+     * the slot unmounts or its composer scope changes.
      */
     setThreadRowStatus(status: PluginComposerThreadRowStatus | null): void;
     /**
