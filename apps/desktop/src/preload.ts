@@ -69,6 +69,7 @@ function getDesktopVersion(version: string | undefined): string {
 
 function createInitialDesktopInfo(): BbDesktopInfo {
   return {
+    downloadState: "idle",
     lastCheckedAt: null,
     latestVersion: null,
     pendingVersion: null,

@@ -92,6 +92,7 @@ export interface DesktopAutoUpdateService extends DesktopUpdateService {
 
 function createBaseInfo(currentVersion: string): BbDesktopInfo {
   return {
+    downloadState: "idle",
     lastCheckedAt: null,
     latestVersion: null,
     pendingVersion: null,
@@ -128,6 +129,7 @@ function areDesktopInfoValuesEqual(
 ): boolean {
   return (
     left.lastCheckedAt === right.lastCheckedAt &&
+    left.downloadState === right.downloadState &&
     left.latestVersion === right.latestVersion &&
     left.pendingVersion === right.pendingVersion &&
     left.platform === right.platform &&
@@ -232,6 +234,7 @@ export function createDesktopAutoUpdateService(
   ): BbDesktopInfo {
     updateInfo({
       ...currentInfo,
+      downloadState: "downloaded",
       lastCheckedAt: applyArgs.checkedAt,
       latestVersion: applyArgs.version,
       pendingVersion: applyArgs.version,
@@ -246,6 +249,7 @@ export function createDesktopAutoUpdateService(
   ): BbDesktopInfo {
     updateInfo({
       ...currentInfo,
+      downloadState: "idle",
       lastCheckedAt: applyArgs.checkedAt,
       latestVersion: applyArgs.version,
       pendingVersion: null,
@@ -259,9 +263,30 @@ export function createDesktopAutoUpdateService(
     if (downloadInFlight !== null) {
       return;
     }
-    downloadInFlight = args.updater.downloadUpdate();
+    updateInfo({
+      ...currentInfo,
+      downloadState: "downloading",
+    });
+    try {
+      downloadInFlight = args.updater.downloadUpdate();
+    } catch (error: unknown) {
+      updateInfo({
+        ...currentInfo,
+        downloadState: "failed",
+      });
+      logger.error(
+        `Desktop auto-update download failed; preserving current update state: ${formatErrorMessage(
+          error,
+        )}`,
+      );
+      return;
+    }
     void downloadInFlight
       .catch((error: unknown) => {
+        updateInfo({
+          ...currentInfo,
+          downloadState: "failed",
+        });
         logger.error(
           `Desktop auto-update download failed; preserving current update state: ${formatErrorMessage(
             error,
@@ -366,6 +391,12 @@ export function createDesktopAutoUpdateService(
           errorArgs.error,
         )}`,
       );
+      if (currentInfo.downloadState === "downloading") {
+        updateInfo({
+          ...currentInfo,
+          downloadState: "failed",
+        });
+      }
     });
   }
 

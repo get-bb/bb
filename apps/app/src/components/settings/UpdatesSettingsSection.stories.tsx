@@ -57,7 +57,9 @@ function providerStatus(
     executableName,
     executablePath: installed ? `/usr/local/bin/${executableName}` : null,
     installed,
-    installSource: installed ? ("npmGlobal" as const) : ("notInstalled" as const),
+    installSource: installed
+      ? ("npmGlobal" as const)
+      : ("notInstalled" as const),
     currentVersion:
       overrides.currentVersion !== undefined
         ? overrides.currentVersion
@@ -166,6 +168,7 @@ export function WebAppUpdateAvailable() {
             }}
             desktopInfo={null}
             onRelaunchDesktop={null}
+            onRetryDesktop={null}
           />
         </UpdatesRowList>
       </SettingsSection>
@@ -181,6 +184,7 @@ export function DesktopUpdateReady() {
           <BbAppUpdateRows
             systemVersion={undefined}
             desktopInfo={{
+              downloadState: "downloaded",
               lastCheckedAt: "2026-07-19T00:00:00.000Z",
               latestVersion: "0.0.33",
               pendingVersion: "0.0.33",
@@ -190,6 +194,7 @@ export function DesktopUpdateReady() {
               version: "0.0.32",
             }}
             onRelaunchDesktop={noop}
+            onRetryDesktop={noop}
           />
         </UpdatesRowList>
       </SettingsSection>
@@ -205,6 +210,7 @@ export function DesktopDownloading() {
           <BbAppUpdateRows
             systemVersion={undefined}
             desktopInfo={{
+              downloadState: "downloading",
               lastCheckedAt: "2026-07-19T00:00:00.000Z",
               latestVersion: "0.0.33",
               pendingVersion: null,
@@ -214,6 +220,7 @@ export function DesktopDownloading() {
               version: "0.0.32",
             }}
             onRelaunchDesktop={noop}
+            onRetryDesktop={noop}
           />
         </UpdatesRowList>
       </SettingsSection>

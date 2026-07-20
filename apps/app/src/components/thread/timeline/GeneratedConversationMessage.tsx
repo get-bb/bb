@@ -485,8 +485,7 @@ export const GeneratedConversationMessage = memo(
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
-    const renderMessageMarkdown =
-      sourceKind === "system" || sourceIsSideChat;
+    const renderMessageMarkdown = sourceKind === "system" || sourceIsSideChat;
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
@@ -524,57 +523,62 @@ export const GeneratedConversationMessage = memo(
       rangeStart: 0,
       text: collapsedPreviewLine,
     });
-    const collapsedPreview = !titleOnly && collapsedPreviewBody.text ? (
-      <div
-        className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
-      >
-        <div className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground">
-          {renderMessageMarkdown ? (
-            // Render the collapsed first line as markdown too (inline
-            // formatting + @thread pills), clamped to a single line, so a
-            // not-yet-expanded system or side-chat message shows formatted
-            // text rather than raw markdown. Block nodes are flattened to inline via
-            // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
-            <div
-              ref={setCollapsedPreviewTextRef}
-              className="min-w-0 truncate"
-            >
-              <MarkdownPreview
-                content={collapsedPreviewLine}
-                linkRouting={linkRouting}
-                threadMentions={
-                  resolveSegmentLinkHref
-                    ? {
-                        mentions: collapsedPreviewBody.mentions,
-                        resolveLinkHref: resolveSegmentLinkHref,
-                      }
-                    : undefined
-                }
-                className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
-              />
-            </div>
-          ) : (
-            <span ref={setCollapsedPreviewTextRef} className="min-w-0 truncate">
-              {renderMentionTextSegments({
-                mentions: collapsedPreviewBody.mentions,
-                resolveMentionLink,
-                text: collapsedPreviewBody.text,
-              })}
-            </span>
-          )}
-          {renderManualContinuation ? (
-            <span
-              className={cn(
-                "shrink-0 text-muted-foreground",
-                hideManualContinuation && "invisible",
-              )}
-            >
-              ...
-            </span>
-          ) : null}
+    const collapsedPreview =
+      !titleOnly && collapsedPreviewBody.text ? (
+        <div
+          className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
+        >
+          <div className="flex min-w-0 items-baseline truncate pl-2 text-sm leading-relaxed text-foreground">
+            {renderMessageMarkdown ? (
+              // Render the collapsed first line as markdown too (inline
+              // formatting + @thread pills), clamped to a single line, so a
+              // not-yet-expanded system or side-chat message shows formatted
+              // text rather than raw markdown. Block nodes are flattened to inline via
+              // COLLAPSED_MARKDOWN_PREVIEW_CLASS.
+              <div
+                ref={setCollapsedPreviewTextRef}
+                className="min-w-0 truncate"
+              >
+                <MarkdownPreview
+                  content={collapsedPreviewLine}
+                  linkRouting={linkRouting}
+                  threadMentions={
+                    resolveSegmentLinkHref
+                      ? {
+                          mentions: collapsedPreviewBody.mentions,
+                          preserveSoftBreaks: true,
+                          resolveLinkHref: resolveSegmentLinkHref,
+                        }
+                      : undefined
+                  }
+                  className={COLLAPSED_MARKDOWN_PREVIEW_CLASS}
+                />
+              </div>
+            ) : (
+              <span
+                ref={setCollapsedPreviewTextRef}
+                className="min-w-0 truncate"
+              >
+                {renderMentionTextSegments({
+                  mentions: collapsedPreviewBody.mentions,
+                  resolveMentionLink,
+                  text: collapsedPreviewBody.text,
+                })}
+              </span>
+            )}
+            {renderManualContinuation ? (
+              <span
+                className={cn(
+                  "shrink-0 text-muted-foreground",
+                  hideManualContinuation && "invisible",
+                )}
+              >
+                ...
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
-    ) : null;
+      ) : null;
     const renderBody = useCallback(
       () => (
         <div className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}>
@@ -592,6 +596,7 @@ export const GeneratedConversationMessage = memo(
                     resolveSegmentLinkHref
                       ? {
                           mentions: messageMentions,
+                          preserveSoftBreaks: true,
                           resolveLinkHref: resolveSegmentLinkHref,
                         }
                       : undefined

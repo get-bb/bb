@@ -7,7 +7,10 @@ import type {
 import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { MarkdownPreview } from "../../ui/markdown-preview.js";
+import {
+  MarkdownPreview,
+  type MarkdownThreadMentions,
+} from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import {
   parseLocalFileHref,
@@ -113,6 +116,11 @@ const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
     "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
   WebkitMaskImage:
     "linear-gradient(to bottom, black calc(100% - 2.5rem), transparent)",
+};
+
+const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
+  mentions: [],
+  preserveSoftBreaks: false,
 };
 
 export interface ConversationMessageContentAssistantProps
@@ -273,6 +281,13 @@ function CollapsibleMessageText({
     }),
     [body.mentions, resolveSegmentLinkHref, resolveMentionLink],
   );
+  const rawThreadMentions = useMemo<MarkdownThreadMentions>(
+    () => ({
+      mentions: body.mentions,
+      preserveSoftBreaks: true,
+    }),
+    [body.mentions],
+  );
   const linkRouting = useMemo<MarkdownLinkRouting | undefined>(
     () => (onOpenLink ? { onOpenLink } : undefined),
     [onOpenLink],
@@ -311,6 +326,7 @@ function CollapsibleMessageText({
         <MarkdownPreview
           content={body.text}
           promptMentions={promptMentions}
+          threadMentions={rawThreadMentions}
           linkRouting={linkRouting}
         />
         {isExpanded && isTruncated ? (
@@ -614,6 +630,7 @@ function AssistantConversationMessage({
           content={text}
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
+          threadMentions={ASSISTANT_THREAD_MENTIONS}
         />
       </SelectableMessageProse>
       <ConversationAttachments

@@ -49,11 +49,14 @@ import {
 } from "../../services/threads/thread-send.js";
 import {
   buildExecutionOptions,
+  buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
+  prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
+  getThreadPromptBannerActivity,
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
@@ -65,6 +68,10 @@ import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
 } from "../../services/threads/thread-command-environment.js";
+import {
+  LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  runLiveHostCommand,
+} from "../../services/hosts/live-command.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -406,6 +413,112 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             thread,
           });
     requestThreadStopForCurrentState(deps, thread, environment);
+    return context.json({ ok: true });
+  });
+
+  post(routes.cancelPlan, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const activity = getThreadPromptBannerActivity(deps, thread);
+    if (activity.activePlanModeCount === 0) {
+      throw new ApiError(409, "invalid_request", "Plan mode is not active");
+    }
+    if (activity.activePlanTurnId === null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The active Plan turn could not be identified",
+      );
+    }
+    const environment = requireThreadHostCommandEnvironment({
+      db: deps.db,
+      thread,
+    });
+    await runLiveHostCommand(deps, {
+      command: {
+        ...buildThreadStopCommand({
+          environmentId: environment.id,
+          hostId: environment.hostId,
+          threadId: thread.id,
+        }),
+        type: "thread.plan.cancel",
+        expectedTurnId: activity.activePlanTurnId,
+      },
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    const updatedThread = requirePublicThread(deps.db, thread.id);
+    if (
+      getThreadPromptBannerActivity(deps, updatedThread).activePlanModeCount > 0
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The provider did not confirm that Plan mode exited",
+      );
+    }
+    return context.json({ ok: true });
+  });
+
+  post(routes.clearGoal, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (thread.providerId !== "codex") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "This provider does not support active Goals",
+      );
+    }
+    const activity = getThreadPromptBannerActivity(deps, thread);
+    if (activity.activeGoalCount === 0) {
+      throw new ApiError(409, "invalid_request", "No active Goal to clear");
+    }
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread,
+    });
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      { threadId: thread.id },
+      "client/turn/requested",
+    );
+    const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      input: [],
+      permissionEscalation: "deny",
+      target: { mode: "auto", expectedTurnId: null },
+      thread,
+    });
+    const result = await runLiveHostCommand(deps, {
+      command: {
+        type: "thread.goal.clear",
+        environmentId: environment.id,
+        threadId: thread.id,
+        options: preparedRuntimeCommand.options,
+        resumeContext: preparedRuntimeCommand.resumeContext,
+        ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
+          ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
+          : {}),
+      },
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    const updatedThread = requirePublicThread(deps.db, thread.id);
+    const updatedActivity = getThreadPromptBannerActivity(deps, updatedThread);
+    if (updatedActivity.activeGoalCount > 0 && !result.cleared) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The provider did not clear the active Goal",
+      );
+    }
+    if (updatedActivity.activeGoalCount > 0) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The provider did not confirm that the active Goal was cleared",
+      );
+    }
     return context.json({ ok: true });
   });
 

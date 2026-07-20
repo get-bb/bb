@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import type { ExistingThreadExecutionInputSources } from "@bb/server-contract";
+import type {
+  ExistingThreadExecutionInputSources,
+  ThreadTimelineResponse,
+} from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { threadQueuedMessagesQueryKey } from "../queries/query-keys";
 import {
+  threadQueuedMessagesQueryKey,
+  threadTimelineQueryKey,
+} from "../queries/query-keys";
+import {
+  useCancelThreadPlan,
+  useClearThreadGoal,
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
   useSetThreadQueuedMessageGroupBoundary,
@@ -20,6 +28,8 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
     ...actual,
     sdk: {
       threads: {
+        cancelPlan: vi.fn(),
+        clearGoal: vi.fn(),
         queuedMessages: {
           create: vi.fn(),
           delete: vi.fn(),
@@ -54,6 +64,47 @@ function makeQueuedMessage(
   };
 }
 
+function makeBannerTimeline(): ThreadTimelineResponse {
+  return {
+    rows: [],
+    activePromptMode: {
+      mode: "plan",
+      providerId: "codex",
+      prompt: "Plan the work",
+    },
+    activeThinking: null,
+    activeWorkflow: null,
+    activeBackgroundCommands: [],
+    pendingTodos: null,
+    goal: {
+      sourceSeq: 1,
+      updatedAt: 100,
+      objective: "Finish the work",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 100,
+      timeUsedSeconds: 10,
+    },
+    modelFallback: null,
+    maxSeq: 0,
+    timelinePage: {
+      kind: "latest",
+      segmentLimit: 20,
+      returnedSegmentCount: 0,
+      hasOlderRows: false,
+      olderCursor: null,
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 const executionInputSources = {
   model: "explicit",
   serviceTier: "client-preference",
@@ -62,6 +113,8 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
+  vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
@@ -76,6 +129,81 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
+  it.each([
+    ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
+    ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],
+  ] as const)(
+    "invalidates persisted banner state only after successful %s cancellation",
+    async (_label, useMutationHook, getSdkMethod) => {
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+      const cancellation = deferred<{ ok: true }>();
+      vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
+      queryClient.setQueryData(
+        threadTimelineQueryKey("thread-1"),
+        makeBannerTimeline(),
+      );
+      const { result } = renderHook(() => useMutationHook(), { wrapper });
+
+      let cancellationPromise!: Promise<unknown>;
+      act(() => {
+        cancellationPromise = result.current.mutateAsync("thread-1");
+      });
+      await waitFor(() => expect(getSdkMethod()).toHaveBeenCalledOnce());
+      expect(
+        queryClient.getQueryData<ThreadTimelineResponse>(
+          threadTimelineQueryKey("thread-1"),
+        ),
+      ).toMatchObject({
+        activePromptMode: { mode: "plan" },
+        goal: { status: "active" },
+      });
+
+      cancellation.resolve({ ok: true });
+      await act(async () => {
+        await cancellationPromise;
+      });
+      expect(getSdkMethod()).toHaveBeenCalledWith({ threadId: "thread-1" });
+      expect(invalidateQueries).toHaveBeenCalled();
+      const timelineAfterSuccess =
+        queryClient.getQueryData<ThreadTimelineResponse>(
+          threadTimelineQueryKey("thread-1"),
+        );
+      if (_label === "Plan") {
+        expect(timelineAfterSuccess?.activePromptMode).toBeNull();
+        expect(timelineAfterSuccess?.goal).toMatchObject({ status: "active" });
+      } else {
+        expect(timelineAfterSuccess?.activePromptMode).toMatchObject({
+          mode: "plan",
+        });
+        expect(timelineAfterSuccess?.goal).toBeNull();
+      }
+
+      invalidateQueries.mockClear();
+      queryClient.setQueryData(
+        threadTimelineQueryKey("thread-1"),
+        makeBannerTimeline(),
+      );
+      vi.mocked(getSdkMethod()).mockRejectedValueOnce(
+        new Error("provider rejected cancellation"),
+      );
+      await act(async () => {
+        await expect(result.current.mutateAsync("thread-1")).rejects.toThrow(
+          "provider rejected cancellation",
+        );
+      });
+      expect(invalidateQueries).not.toHaveBeenCalled();
+      expect(
+        queryClient.getQueryData<ThreadTimelineResponse>(
+          threadTimelineQueryKey("thread-1"),
+        ),
+      ).toMatchObject({
+        activePromptMode: { mode: "plan" },
+        goal: { status: "active" },
+      });
+    },
+  );
+
   it("forwards execution input sources when sending a thread message", async () => {
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(() => useSendThreadMessage(), { wrapper });

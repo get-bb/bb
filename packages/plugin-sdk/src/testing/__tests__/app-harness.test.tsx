@@ -127,7 +127,7 @@ function ComposerProbe() {
         onClick={() =>
           composer.setThreadRowStatus({
             icon: "AiContentGenerator01",
-            label: "Prompt Shaper improving prompt",
+            label: "Plugin improving draft",
             effect: "shimmer",
           })
         }
@@ -387,7 +387,7 @@ describe("renderSlot", () => {
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
     expect(slot.composer.threadRowStatus?.label).toBe(
-      "Prompt Shaper improving prompt",
+      "Plugin improving draft",
     );
   });
 
@@ -420,7 +420,7 @@ describe("renderSlot", () => {
     fireEvent.click(slot.getByText("set row status"));
     expect(slot.composer.threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
-      label: "Prompt Shaper improving prompt",
+      label: "Plugin improving draft",
       effect: "shimmer",
     });
 
@@ -455,7 +455,7 @@ describe("renderSlot", () => {
       setters.setTextEffect("shimmer");
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
-        label: "Prompt Shaper improving prompt",
+        label: "Plugin improving draft",
         effect: "shimmer",
         tone: "success",
       });
@@ -478,5 +478,37 @@ describe("renderSlot", () => {
       expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
       expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
     }
+  });
+
+  it("invalidates visual-state setters when Testing Library cleans up the root", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setters = capturedComposerVisualSetters;
+    if (setters === null) throw new Error("composer setters were not captured");
+
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      effect: "shimmer",
+    });
+    cleanup();
+
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "late status",
+      effect: "shimmer",
+    });
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

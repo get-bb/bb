@@ -244,6 +244,7 @@ describe("desktop auto-update service", () => {
 
     expect(updater.downloadUpdateCalls).toBe(1);
     expect(service.getInfo()).toEqual({
+      downloadState: "downloading",
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
@@ -256,6 +257,7 @@ describe("desktop auto-update service", () => {
     updater.emitUpdateDownloaded(createDownloadedEvent("0.0.2"));
 
     expect(service.getInfo()).toEqual({
+      downloadState: "downloaded",
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: "0.0.2",
@@ -322,6 +324,7 @@ describe("desktop auto-update service", () => {
     expect(messages.errors[0]).toContain("download failed");
     expect(messages.errors[0]).toContain("signature rejected");
     expect(service.getInfo()).toEqual({
+      downloadState: "failed",
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
@@ -348,6 +351,7 @@ describe("desktop auto-update service", () => {
 
     expect(updater.checkForUpdatesCalls).toBe(1);
     expect(info).toEqual({
+      downloadState: "idle",
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,

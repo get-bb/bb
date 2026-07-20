@@ -41,6 +41,7 @@ export const PLUGIN_THEME_CSS = `@theme inline {
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-diff-added: var(--diff-added);
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */

@@ -161,6 +161,7 @@ function createWorkspace(): HostWorkspace {
 interface FakeDispatchRuntime extends AgentRuntime {
   /** Test-only mutator for the runtime-owned per-thread turn state. */
   setActiveTurn: (threadId: string, turnId: string) => void;
+  setIdle: (threadId: string) => void;
 }
 
 function createRuntime(): FakeDispatchRuntime {
@@ -182,6 +183,7 @@ function createRuntime(): FakeDispatchRuntime {
       activeTurnsByThreadId.delete(args.threadId);
       hostedThreadIds.delete(args.threadId);
     }),
+    clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
@@ -204,6 +206,10 @@ function createRuntime(): FakeDispatchRuntime {
     setActiveTurn: (threadId, turnId) => {
       hostedThreadIds.add(threadId);
       activeTurnsByThreadId.set(threadId, turnId);
+    },
+    setIdle: (threadId: string) => {
+      hostedThreadIds.add(threadId);
+      activeTurnsByThreadId.delete(threadId);
     },
   };
 }
@@ -255,6 +261,175 @@ describe("dispatchCommand", () => {
 
     expect(resolved).toBe(true);
     expect(runtime.hasThread("thread-1")).toBe(false);
+  });
+
+  it("cancels Plan through the active provider runtime before flushing events", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setActiveTurn("thread-1", "turn-1");
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.plan.cancel",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ cancelled: true });
+    expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("does not cancel Plan after its turn has already ended", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.plan.cancel",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-plan-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ cancelled: false });
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel a newer turn when the Plan cancellation is stale", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setActiveTurn("thread-1", "turn-newer-2");
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(
+      {
+        type: "thread.plan.cancel",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-plan-1",
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ cancelled: false });
+    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-newer-2");
+    expect(runtime.stopThread).not.toHaveBeenCalled();
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it("resumes a reaped Codex runtime before clearing its Goal", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const flush = vi.fn(async () => undefined);
+    const command: CommandOf<"thread.goal.clear"> = {
+      type: "thread.goal.clear",
+      environmentId: "env-1",
+      threadId: "thread-1",
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      resumeContext: {
+        workspaceContext: {
+          workspacePath: WORKSPACE_PATH,
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "proj-1",
+        providerId: "codex",
+        providerThreadId: "provider-thread-1",
+        instructions: "Be concise.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+    };
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ cleared: true });
+    expect(runtime.resumeThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "codex",
+        providerThreadId: "provider-thread-1",
+        threadId: "thread-1",
+      }),
+    );
+    expect(runtime.clearThreadGoal).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+    expect(flush).toHaveBeenCalledOnce();
   });
 
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {

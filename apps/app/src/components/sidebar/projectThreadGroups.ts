@@ -86,6 +86,7 @@ interface BuildThreadNodeArgs {
   childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
   compareThreads: ThreadComparator;
   depth: number;
+  draftThreadIds: ReadonlySet<string>;
   groupEnvironmentThreads: boolean;
   thread: ThreadListEntry;
   visitedThreadIds: Set<string>;
@@ -176,10 +177,10 @@ function compareProjectThreadItems(
 function getNodeAndDescendantThreads(
   node: ProjectThreadNode,
 ): ThreadListEntry[] {
-  return [node.thread, ...getItemThreadDescendants(node.children)];
+  return [node.thread, ...getProjectThreadItemDescendants(node.children)];
 }
 
-function getItemThreadDescendants(
+export function getProjectThreadItemDescendants(
   items: readonly ProjectThreadItem[],
 ): ThreadListEntry[] {
   return items.flatMap((item) => {
@@ -189,29 +190,31 @@ function getItemThreadDescendants(
       case "environment":
         return item.group.nodes.flatMap(getNodeAndDescendantThreads);
       case "section":
-        return getItemThreadDescendants(item.group.items);
+        return getProjectThreadItemDescendants(item.group.items);
     }
   });
 }
 
 function buildStatsForHiddenThreads(
   threads: readonly ThreadListEntry[],
+  draftThreadIds: ReadonlySet<string>,
 ): ProjectThreadNodeStats {
   return {
     childCount: threads.length,
-    childActivity: getCollapsedChildActivity(threads),
+    childActivity: getCollapsedChildActivity(threads, draftThreadIds),
   };
 }
 
 function buildEnvironmentThreadGroup(
   environmentId: string,
   nodes: EnvironmentThreadGroupNodes,
+  draftThreadIds: ReadonlySet<string>,
 ): EnvironmentThreadGroup {
   const hiddenThreads = nodes.flatMap(getNodeAndDescendantThreads);
   return {
     environmentId,
     nodes,
-    stats: buildStatsForHiddenThreads(hiddenThreads),
+    stats: buildStatsForHiddenThreads(hiddenThreads, draftThreadIds),
   };
 }
 
@@ -229,6 +232,7 @@ function buildSortedItems(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
+  draftThreadIds: ReadonlySet<string>,
 ): ProjectThreadItem[] {
   if (!groupEnvironmentThreads) {
     nodes.sort((left, right) => compareThreads(left.thread, right.thread));
@@ -236,7 +240,7 @@ function buildSortedItems(
   }
 
   const { environmentThreadGroups, looseNodes } =
-    bucketWorktreeEnvironmentGroups(nodes, compareThreads);
+    bucketWorktreeEnvironmentGroups(nodes, compareThreads, draftThreadIds);
   const items = [
     ...looseNodes.map(buildThreadItem),
     ...environmentThreadGroups.map(buildEnvironmentItem),
@@ -252,6 +256,7 @@ function buildThreadNode({
   childrenByParentId,
   compareThreads,
   depth,
+  draftThreadIds,
   groupEnvironmentThreads,
   thread,
   visitedThreadIds,
@@ -271,6 +276,7 @@ function buildThreadNode({
         childrenByParentId,
         compareThreads,
         depth: depth + 1,
+        draftThreadIds,
         groupEnvironmentThreads,
         thread: childThread,
         visitedThreadIds,
@@ -282,12 +288,16 @@ function buildThreadNode({
     childNodes,
     compareThreads,
     groupEnvironmentThreads,
+    draftThreadIds,
   );
   return {
     thread,
     children,
     depth,
-    stats: buildStatsForHiddenThreads(getItemThreadDescendants(children)),
+    stats: buildStatsForHiddenThreads(
+      getProjectThreadItemDescendants(children),
+      draftThreadIds,
+    ),
   };
 }
 
@@ -304,15 +314,22 @@ function isRootThread(
 export function buildProjectThreadGroups(
   allProjectThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
+  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
   // Project sections group worktree siblings into synthetic environment rows.
-  return buildThreadTreeItems(allProjectThreads, compareThreads, true);
+  return buildThreadTreeItems(
+    allProjectThreads,
+    compareThreads,
+    true,
+    draftThreadIds,
+  );
 }
 
 function buildThreadTreeItems(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator,
   groupEnvironmentThreads: boolean,
+  draftThreadIds: ReadonlySet<string>,
 ): ProjectThreadItem[] {
   const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
@@ -343,6 +360,7 @@ function buildThreadTreeItems(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        draftThreadIds,
         groupEnvironmentThreads,
         thread,
         visitedThreadIds,
@@ -361,6 +379,7 @@ function buildThreadTreeItems(
         childrenByParentId,
         compareThreads,
         depth: 0,
+        draftThreadIds,
         groupEnvironmentThreads,
         thread,
         visitedThreadIds,
@@ -368,7 +387,12 @@ function buildThreadTreeItems(
     );
   }
 
-  return buildSortedItems(rootNodes, compareThreads, groupEnvironmentThreads);
+  return buildSortedItems(
+    rootNodes,
+    compareThreads,
+    groupEnvironmentThreads,
+    draftThreadIds,
+  );
 }
 
 // Chronological Threads bucket: root threads are globally ordered by the
@@ -377,8 +401,14 @@ function buildThreadTreeItems(
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
+  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
-  return buildThreadTreeItems(allThreads, compareThreads, false);
+  return buildThreadTreeItems(
+    allThreads,
+    compareThreads,
+    false,
+    draftThreadIds,
+  );
 }
 
 // The global Sections view uses the chronological root tree, then buckets those
@@ -387,12 +417,14 @@ export function buildSectionThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
+  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
   return bucketIntoSections(
-    buildChronologicalThreadList(allThreads, compareThreads),
+    buildChronologicalThreadList(allThreads, compareThreads, draftThreadIds),
     CHRONOLOGICAL_CONTAINER_ID,
     compareThreads,
     sections,
+    draftThreadIds,
   );
 }
 
@@ -408,6 +440,7 @@ export function isSidebarProjectThread(
 function bucketWorktreeEnvironmentGroups(
   nodes: ProjectThreadNode[],
   compareThreads: ThreadComparator,
+  draftThreadIds: ReadonlySet<string>,
 ): BucketWorktreeEnvironmentGroupsResult {
   const nodesByEnvironmentId = new Map<string, ProjectThreadNode[]>();
   for (const node of nodes) {
@@ -430,7 +463,7 @@ function bucketWorktreeEnvironmentGroups(
     bucket.sort((left, right) => compareThreads(left.thread, right.thread));
     groupedEnvironmentIds.add(environmentId);
     environmentThreadGroups.push(
-      buildEnvironmentThreadGroup(environmentId, bucket),
+      buildEnvironmentThreadGroup(environmentId, bucket, draftThreadIds),
     );
   }
 
@@ -461,7 +494,7 @@ function getItemOrderingThread(
     case "environment":
       return item.group.nodes[0].thread;
     case "section": {
-      const descendants = getItemThreadDescendants(item.group.items);
+      const descendants = getProjectThreadItemDescendants(item.group.items);
       if (descendants.length === 0) {
         return null;
       }
@@ -539,15 +572,16 @@ function buildSectionGroup(
   containerId: string,
   section: SidebarSectionDefinition,
   items: ProjectThreadItem[],
+  draftThreadIds: ReadonlySet<string>,
 ): SidebarSectionGroup {
-  const descendantThreads = getItemThreadDescendants(items);
+  const descendantThreads = getProjectThreadItemDescendants(items);
   return {
     id: section.id,
     key: buildSectionKey(containerId, section.id),
     name: section.name,
     items,
     threadCount: descendantThreads.length,
-    activity: getCollapsedChildActivity(descendantThreads),
+    activity: getCollapsedChildActivity(descendantThreads, draftThreadIds),
   };
 }
 
@@ -557,6 +591,7 @@ function bucketIntoSections(
   containerId: string,
   compareThreads: ThreadComparator = compareStandardThreads,
   sections: readonly SidebarSectionDefinition[] = [],
+  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
   const sectionDefinitionsById = new Map<string, SidebarSectionDefinition>();
   const orderedSections: SidebarSectionDefinition[] = [];
@@ -601,7 +636,12 @@ function bucketIntoSections(
       );
       return {
         kind: "section",
-        group: buildSectionGroup(containerId, section, children),
+        group: buildSectionGroup(
+          containerId,
+          section,
+          children,
+          draftThreadIds,
+        ),
       };
     },
   );

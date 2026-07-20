@@ -291,7 +291,7 @@ describe("useComposer", () => {
             onClick={() =>
               composer.setThreadRowStatus({
                 icon: "AiContentGenerator01",
-                label: "Prompt Shaper improving prompt",
+                label: "Plugin improving draft",
                 effect: "shimmer",
               })
             }
@@ -551,7 +551,7 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("queued-start-row-status"));
     expect(getPluginThreadRowStatus("thr_queue")).toEqual({
       icon: "AiContentGenerator01",
-      label: "Prompt Shaper improving prompt",
+      label: "Plugin improving draft",
       effect: "shimmer",
     });
     fireEvent.click(screen.getByText("change-queued-scope"));
@@ -737,7 +737,7 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("side-start-row-status"));
     expect(getPluginThreadRowStatus("thr_parent")).toEqual({
       icon: "AiContentGenerator01",
-      label: "Prompt Shaper improving prompt",
+      label: "Plugin improving draft",
       effect: "shimmer",
     });
 

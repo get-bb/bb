@@ -40,6 +40,7 @@
   --color-warning: var(--warning);
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-diff-added: var(--diff-added);
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */
@@ -369,6 +370,11 @@
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
+  --success-foreground: color-mix(
+    in oklab,
+    var(--success) 45%,
+    var(--ink)
+  );
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
   --diff-removed: oklch(0.4 0.17 28);
@@ -578,6 +584,11 @@
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
+  --success-foreground: color-mix(
+    in oklab,
+    var(--success) 45%,
+    var(--ink)
+  );
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);

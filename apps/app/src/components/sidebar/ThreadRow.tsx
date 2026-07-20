@@ -36,11 +36,13 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
-  isBusyThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
+  getThreadListIndicatorLabel,
   NO_COLLAPSED_CHILD_ACTIVITY,
+  resolveThreadListIndicator,
   type CollapsedChildActivity,
+  type ThreadListIndicatorState,
 } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -56,7 +58,6 @@ import {
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
   getSidebarThreadRowPaddingLeft,
-  type SidebarUnreadDotTone,
 } from "./sidebarRowClasses";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
@@ -121,7 +122,16 @@ interface ThreadRowContainerArgs {
   style: CSSProperties;
 }
 
-function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
+function ThreadDraftIndicator({
+  hideIdleLabel = false,
+  isWorking,
+}: {
+  hideIdleLabel?: boolean;
+  isWorking: boolean;
+}) {
+  const label = getThreadListIndicatorLabel(
+    isWorking ? "working-draft" : "draft",
+  );
   return (
     <Icon
       name="Edit"
@@ -132,9 +142,9 @@ function ThreadDraftIndicator({ isWorking }: { isWorking: boolean }) {
           ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
           : "text-muted-foreground",
       )}
-      {...(isWorking
-        ? { "aria-label": "Thread working with unsubmitted draft" }
-        : { "aria-hidden": true })}
+      {...(!isWorking && hideIdleLabel
+        ? { "aria-hidden": true }
+        : { "aria-label": label ?? undefined })}
     />
   );
 }
@@ -216,283 +226,186 @@ function renderThreadRowContainer({
   );
 }
 
-interface ThreadStatusGlyphProps {
-  hasPendingInteraction: boolean;
-  isBackgroundAgentActive: boolean;
-  isBackgroundCommandActive: boolean;
-  isForegroundAgentWorking: boolean;
-  isGoalActive: boolean;
-  isPlanModeActive: boolean;
-  isBusy: boolean;
-  isWorkflowActive: boolean;
-  showUnreadBadge: boolean;
-  unreadBadgeTone: SidebarUnreadDotTone;
-}
-
-interface ThreadUnreadBadgeLabelArgs {
-  tone: SidebarUnreadDotTone;
+interface ThreadStatusGlyphProps extends ThreadListIndicatorState {
+  hideIdleDraftLabel?: boolean;
 }
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
+  hasUnsubmittedDraft,
+  hasUnreadError,
+  hasUnreadSuccess,
+  hideIdleDraftLabel = false,
   isBackgroundAgentActive,
   isBackgroundCommandActive,
-  isForegroundAgentWorking,
   isGoalActive,
   isPlanModeActive,
-  isBusy,
+  isRuntimeActive,
   isWorkflowActive,
-  showUnreadBadge,
-  unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
-  if (showUnreadBadge && unreadBadgeTone === "error") {
-    const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
-    return (
-      <Icon
-        name="CircleX"
-        className={cn("text-destructive", COARSE_POINTER_ICON_SIZE_CLASS)}
-        aria-label={label}
-      />
-    );
-  }
+  const kind = resolveThreadListIndicator({
+    hasPendingInteraction,
+    hasUnsubmittedDraft,
+    hasUnreadError,
+    hasUnreadSuccess,
+    isBackgroundAgentActive,
+    isBackgroundCommandActive,
+    isGoalActive,
+    isPlanModeActive,
+    isRuntimeActive,
+    isWorkflowActive,
+  });
 
-  if (hasPendingInteraction) {
-    return (
-      <Icon
-        name="CircleQuestion"
-        className={cn(
-          "text-muted-foreground/75",
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Thread needs user input"
-      />
-    );
+  switch (kind) {
+    case "unread-error":
+      return (
+        <Icon
+          name="CircleX"
+          className={cn("text-destructive", COARSE_POINTER_ICON_SIZE_CLASS)}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "waiting-for-input":
+      return (
+        <Icon
+          name="CircleQuestion"
+          className={cn(
+            "text-muted-foreground/75",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "working-draft":
+      return <ThreadDraftIndicator isWorking />;
+    case "workflow":
+      return (
+        <Icon
+          name="Workflow"
+          className={cn(
+            "animate-shine-icon",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "background-agent":
+      return (
+        <Icon
+          name="UserRoundPlus"
+          className={cn(
+            "animate-shine-icon",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "background-command":
+      return (
+        <Icon
+          name="Terminal"
+          className={cn(
+            "animate-shine-icon",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "plan-mode":
+      return (
+        <Icon
+          name="ListTodo"
+          className={cn(
+            "animate-shine-icon",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "goal":
+      return (
+        <Icon
+          name="Target"
+          className={cn(
+            "animate-shine-icon",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "runtime":
+      return (
+        <Icon
+          name="Loading"
+          className={cn(
+            "animate-spin",
+            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "draft":
+      return (
+        <ThreadDraftIndicator
+          hideIdleLabel={hideIdleDraftLabel}
+          isWorking={false}
+        />
+      );
+    case "unread-success":
+      return (
+        <span
+          className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
+    case "none":
+      return null;
   }
-
-  if (isForegroundAgentWorking) {
-    return (
-      <Icon
-        name="Loading"
-        className={cn(
-          "animate-spin",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Agent working"
-      />
-    );
-  }
-
-  if (isWorkflowActive) {
-    return (
-      <Icon
-        name="Workflow"
-        className={cn(
-          "animate-shine-icon",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Workflow running"
-      />
-    );
-  }
-
-  if (isBackgroundAgentActive) {
-    return (
-      <Icon
-        name="UserRoundPlus"
-        className={cn(
-          "animate-shine-icon",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Background agent running"
-      />
-    );
-  }
-
-  if (isBackgroundCommandActive) {
-    return (
-      <Icon
-        name="Terminal"
-        className={cn(
-          "animate-shine-icon",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Background command running"
-      />
-    );
-  }
-
-  if (isPlanModeActive) {
-    return (
-      <Icon
-        name="ListTodo"
-        className={cn(
-          "animate-shine-icon",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Plan mode active"
-      />
-    );
-  }
-
-  if (isGoalActive) {
-    return (
-      <Icon
-        name="Target"
-        className={cn(
-          "animate-shine-icon",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Goal active"
-      />
-    );
-  }
-
-  if (showUnreadBadge) {
-    const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
-    return (
-      <span className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS} aria-label={label} />
-    );
-  }
-
-  if (isBusy) {
-    return (
-      <Icon
-        name="Loading"
-        className={cn(
-          "animate-spin",
-          SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-          COARSE_POINTER_ICON_SIZE_CLASS,
-        )}
-        aria-label="Thread working"
-      />
-    );
-  }
-
-  return null;
 }
 
 interface CollapsedThreadStatusGlyphProps {
   activity: CollapsedChildActivity;
-  isBusy: boolean;
 }
 
 export function CollapsedThreadStatusGlyph({
   activity,
-  isBusy,
 }: CollapsedThreadStatusGlyphProps) {
   return (
     <ThreadStatusGlyph
       hasPendingInteraction={activity.pending}
+      hasUnsubmittedDraft={activity.hasUnsubmittedDraft}
+      hasUnreadError={activity.unreadError}
+      hasUnreadSuccess={activity.unread}
       isBackgroundAgentActive={activity.backgroundAgent}
       isBackgroundCommandActive={activity.backgroundCommand}
-      isForegroundAgentWorking={activity.runtimeWorking}
       isGoalActive={activity.goal}
       isPlanModeActive={activity.planMode}
-      isBusy={isBusy}
+      isRuntimeActive={activity.runtimeWorking}
       isWorkflowActive={activity.workflow}
-      showUnreadBadge={activity.unread}
-      unreadBadgeTone={activity.unreadError ? "error" : "default"}
     />
   );
 }
-
-function getThreadUnreadBadgeLabel({
-  tone,
-}: ThreadUnreadBadgeLabelArgs): string {
-  return tone === "error" ? "Unread thread failed" : "Unread thread succeeded";
-}
-
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
-  hasComposerDraft: boolean;
   pluginStatus: PluginComposerThreadRowStatus | null;
 };
 
-function isThreadWorkingGlyphVisible({
-  hasPendingInteraction,
-  isBackgroundAgentActive,
-  isBackgroundCommandActive,
-  isForegroundAgentWorking,
-  isGoalActive,
-  isPlanModeActive,
-  isBusy,
-  isWorkflowActive,
-  showUnreadBadge,
-  unreadBadgeTone,
-}: ThreadStatusGlyphProps): boolean {
-  if (
-    (showUnreadBadge && unreadBadgeTone === "error") ||
-    hasPendingInteraction
-  ) {
-    return false;
-  }
-  if (isForegroundAgentWorking) {
-    return true;
-  }
-  if (
-    isWorkflowActive ||
-    isBackgroundAgentActive ||
-    isBackgroundCommandActive ||
-    isPlanModeActive ||
-    isGoalActive
-  ) {
-    return true;
-  }
-  if (showUnreadBadge) {
-    return false;
-  }
-  return isBusy;
-}
-
 function ThreadTrailingIndicator({
-  hasComposerDraft,
   pluginStatus,
-  hasPendingInteraction,
-  isBackgroundAgentActive,
-  isBackgroundCommandActive,
-  isForegroundAgentWorking,
-  isGoalActive,
-  isPlanModeActive,
-  isBusy,
-  isWorkflowActive,
-  showUnreadBadge,
-  unreadBadgeTone,
+  ...statusProps
 }: ThreadTrailingIndicatorProps) {
-  const statusProps: ThreadStatusGlyphProps = {
-    hasPendingInteraction,
-    isBackgroundAgentActive,
-    isBackgroundCommandActive,
-    isForegroundAgentWorking,
-    isGoalActive,
-    isPlanModeActive,
-    isBusy,
-    isWorkflowActive,
-    showUnreadBadge,
-    unreadBadgeTone,
-  };
-  const showStatusGlyph =
-    hasPendingInteraction ||
-    isBackgroundAgentActive ||
-    isBackgroundCommandActive ||
-    isForegroundAgentWorking ||
-    isGoalActive ||
-    isPlanModeActive ||
-    isBusy ||
-    isWorkflowActive ||
-    showUnreadBadge;
-  const draftIsWorking =
-    hasComposerDraft && isThreadWorkingGlyphVisible(statusProps);
-  const hasCriticalStatus =
-    (showUnreadBadge && unreadBadgeTone === "error") || hasPendingInteraction;
-  const showDraftIndicator =
-    (hasComposerDraft || pluginStatus !== null) && !hasCriticalStatus;
+  const indicatorKind = resolveThreadListIndicator(statusProps);
+  const pluginStatusIsVisible =
+    pluginStatus !== null &&
+    indicatorKind !== "unread-error" &&
+    indicatorKind !== "waiting-for-input";
 
-  if (!showStatusGlyph && !showDraftIndicator) {
+  if (indicatorKind === "none" && !pluginStatusIsVisible) {
     return null;
   }
 
@@ -504,12 +417,8 @@ function ThreadTrailingIndicator({
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
-      {showDraftIndicator ? (
-        pluginStatus === null ? (
-          <ThreadDraftIndicator isWorking={draftIsWorking} />
-        ) : (
-          <PluginThreadRowStatusIndicator status={pluginStatus} />
-        )
+      {pluginStatusIsVisible ? (
+        <PluginThreadRowStatusIndicator status={pluginStatus} />
       ) : (
         <ThreadStatusGlyph {...statusProps} />
       )}
@@ -536,27 +445,16 @@ function ThreadRowComponent({
   const pluginThreadRowStatus = usePluginThreadRowStatus(thread.id);
   const showActive = isActive;
   const hasPendingInteraction = thread.hasPendingInteraction;
-  const threadRuntimeBusy =
-    isRuntimeBusyThread(thread) && !hasPendingInteraction;
-  const threadWorkflowActive =
-    !hasPendingInteraction && hasActiveWorkflowActivity(thread);
-  const threadBackgroundAgentActive =
-    !hasPendingInteraction && hasActiveBackgroundAgentActivity(thread);
+  const threadRuntimeBusy = isRuntimeBusyThread(thread);
+  const threadWorkflowActive = hasActiveWorkflowActivity(thread);
+  const threadBackgroundAgentActive = hasActiveBackgroundAgentActivity(thread);
   const threadBackgroundCommandActive =
-    !hasPendingInteraction && hasActiveBackgroundCommandActivity(thread);
-  const threadPlanModeActive =
-    !hasPendingInteraction && hasActivePlanModeActivity(thread);
-  const threadGoalActive =
-    !hasPendingInteraction && hasActiveGoalActivity(thread);
-  const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
+    hasActiveBackgroundCommandActivity(thread);
+  const threadPlanModeActive = hasActivePlanModeActivity(thread);
+  const threadGoalActive = hasActiveGoalActivity(thread);
   const threadUnreadDone = isUnreadDoneThread(thread);
   const threadUnreadError = threadUnreadDone && thread.status === "error";
-  const showUnreadBadge =
-    threadUnreadError ||
-    (!hasPendingInteraction && !threadIsBusy && threadUnreadDone);
-  const unreadBadgeTone: SidebarUnreadDotTone = threadUnreadError
-    ? "error"
-    : "default";
+  const threadUnreadSuccess = threadUnreadDone && !threadUnreadError;
   const threadTitle = getThreadDisplayTitle(thread);
   // Inside a section the row shows the leaf but keeps the full path for a11y.
   const visibleTitle = displayTitle ?? threadTitle;
@@ -607,14 +505,30 @@ function ThreadRowComponent({
   const trailingGoalActive = hasHiddenChildren
     ? threadGoalActive || childActivity.goal
     : threadGoalActive;
-  const trailingIsBusy = hasHiddenChildren
-    ? threadIsBusy || childActivity.working
-    : threadIsBusy;
-  const trailingShowUnreadBadge = hasHiddenChildren
-    ? showUnreadBadge || childActivity.unread
-    : showUnreadBadge;
-  const trailingUnreadBadgeTone: SidebarUnreadDotTone =
-    hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
+  const trailingHasUnreadError = hasHiddenChildren
+    ? threadUnreadError || childActivity.unreadError
+    : threadUnreadError;
+  const trailingHasUnreadSuccess = hasHiddenChildren
+    ? threadUnreadSuccess || childActivity.unread
+    : threadUnreadSuccess;
+  const trailingHasUnsubmittedDraft = hasHiddenChildren
+    ? hasComposerDraft || childActivity.hasUnsubmittedDraft
+    : hasComposerDraft;
+  const trailingIndicatorState: ThreadListIndicatorState = {
+    hasPendingInteraction: trailingHasPendingInteraction,
+    hasUnsubmittedDraft: trailingHasUnsubmittedDraft,
+    hasUnreadError: trailingHasUnreadError,
+    hasUnreadSuccess: trailingHasUnreadSuccess,
+    isBackgroundAgentActive: trailingBackgroundAgentActive,
+    isBackgroundCommandActive: trailingBackgroundCommandActive,
+    isGoalActive: trailingGoalActive,
+    isPlanModeActive: trailingPlanModeActive,
+    isRuntimeActive: trailingRuntimeBusy,
+    isWorkflowActive: trailingIsWorkflowActive,
+  };
+  const trailingIndicatorKind = resolveThreadListIndicator(
+    trailingIndicatorState,
+  );
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
@@ -696,7 +610,9 @@ function ThreadRowComponent({
             label={`${labelTitle} — open in split`}
           />
         ) : null}
-        {shortcut ? (
+        {shortcut &&
+        trailingIndicatorKind === "none" &&
+        pluginThreadRowStatus === null ? (
           <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
             {shortcut.label}
           </kbd>
@@ -723,18 +639,11 @@ function ThreadRowComponent({
                 )}
               >
                 <ThreadTrailingIndicator
-                  hasComposerDraft={hasComposerDraft}
+                  {...trailingIndicatorState}
+                  hideIdleDraftLabel={
+                    !hasHiddenChildren && trailingIndicatorKind === "draft"
+                  }
                   pluginStatus={pluginThreadRowStatus}
-                  hasPendingInteraction={trailingHasPendingInteraction}
-                  isBackgroundAgentActive={trailingBackgroundAgentActive}
-                  isBackgroundCommandActive={trailingBackgroundCommandActive}
-                  isForegroundAgentWorking={trailingRuntimeBusy}
-                  isGoalActive={trailingGoalActive}
-                  isPlanModeActive={trailingPlanModeActive}
-                  isBusy={trailingIsBusy}
-                  isWorkflowActive={trailingIsWorkflowActive}
-                  showUnreadBadge={trailingShowUnreadBadge}
-                  unreadBadgeTone={trailingUnreadBadgeTone}
                 />
               </span>
               <div

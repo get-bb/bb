@@ -4,7 +4,23 @@ import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
+export const bbDesktopDownloadStateSchema = z.enum([
+  "idle",
+  "downloading",
+  "downloaded",
+  "failed",
+]);
+export type BbDesktopDownloadState = z.infer<
+  typeof bbDesktopDownloadStateSchema
+>;
+
 export const bbDesktopInfoSchema = z.object({
+  /**
+   * Native updater state. Older desktop shells omit this field, which means
+   * the renderer knows only that an update is available, not that a download
+   * has actually started.
+   */
+  downloadState: bbDesktopDownloadStateSchema.optional(),
   lastCheckedAt: isoUtcDateTimeSchema.nullable(),
   latestVersion: z.string().min(1).nullable(),
   pendingVersion: z.string().min(1).nullable(),

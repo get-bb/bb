@@ -24,6 +24,9 @@ const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
   reset: vi.fn(),
 }));
+const mockDraftThreadIds = vi.hoisted(() => ({
+  current: new Set<string>(),
+}));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
@@ -54,6 +57,7 @@ vi.mock("@/hooks/useCreateThreadInWorktree", () => ({
 
 vi.mock("@/hooks/usePromptDraftStorage", () => ({
   usePromptDraftHasInput: () => false,
+  usePromptDraftInputThreadIds: () => mockDraftThreadIds.current,
 }));
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
@@ -148,10 +152,11 @@ function renderProjectRow(
 describe("ProjectRow interactions", () => {
   afterEach(() => {
     cleanup();
+    mockDraftThreadIds.current = new Set();
     vi.clearAllMocks();
   });
 
-  it("shows foreground agent rollup before workflow activity", () => {
+  it("shows named workflow rollup before generic runtime activity", () => {
     renderProjectRow(
       vi.fn(),
       {
@@ -194,12 +199,49 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
-  it("shows active thread status when a top-level section is collapsed", () => {
+  it("shows a working draft before named work for a collapsed environment", () => {
+    mockDraftThreadIds.current = new Set(["thr_worktree_draft"]);
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            id: "thr_worktree_plan",
+            environmentId: "env_draft",
+            environmentName: "Draft workspace",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 1,
+              activeGoalCount: 0,
+            },
+          }),
+          makeThread({
+            id: "thr_worktree_draft",
+            environmentId: "env_draft",
+            environmentName: "Draft workspace",
+            environmentWorkspaceDisplayKind: "managed-worktree",
+          }),
+        ],
+      },
+      false,
+      new Set(["env_draft"]),
+    );
+
+    expect(
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("uses shared Plan precedence when a top-level section is collapsed", () => {
     const store = createStore();
     const queryClient = new QueryClient();
     const sectionId = "sec_active";
@@ -210,6 +252,13 @@ describe("ProjectRow interactions", () => {
       runtime: {
         displayStatus: "active",
         hostReconnectGraceExpiresAt: null,
+      },
+      activity: {
+        activeWorkflowCount: 0,
+        activeBackgroundAgentCount: 0,
+        activeBackgroundCommandCount: 0,
+        activePlanModeCount: 1,
+        activeGoalCount: 1,
       },
     });
 
@@ -243,7 +292,142 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getByLabelText("Agent working")).not.toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Goal active")).toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows a working draft before Plan for a collapsed section", () => {
+    const store = createStore();
+    const queryClient = new QueryClient();
+    const sectionId = "sec_draft";
+    const activeThread = makeThread({
+      id: "thr_section_draft",
+      sectionId,
+      activity: {
+        activeWorkflowCount: 0,
+        activeBackgroundAgentCount: 0,
+        activeBackgroundCommandCount: 0,
+        activePlanModeCount: 1,
+        activeGoalCount: 1,
+      },
+    });
+    mockDraftThreadIds.current = new Set([activeThread.id]);
+
+    render(
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ChronologicalSectionThreadSections
+              threadListState={{ status: "ready", threads: [activeThread] }}
+              compareThreads={() => 0}
+              sections={[{ id: sectionId, name: "Draft work" }]}
+              collapsedThreadIds={new Set()}
+              collapsedEnvironmentIds={new Set()}
+              onToggleThreadCollapsed={vi.fn()}
+              onToggleEnvironmentCollapsed={vi.fn()}
+              topLevelSectionOrder={[
+                buildSidebarEntitySectionId("section", sectionId),
+              ]}
+              onTopLevelSectionOrderChange={vi.fn()}
+              pinnedReorderPending={false}
+              pinnedThreads={[]}
+              onReorderPinnedThread={vi.fn()}
+            />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse Draft work section" }),
+    );
+
+    expect(
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+  });
+
+  it("surfaces named activity when the project is collapsed", () => {
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 0,
+              activeGoalCount: 1,
+            },
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(screen.queryByText("Test thread")).toBeNull();
+    expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
+  });
+
+  it("shows an idle draft before unread success for a collapsed project", () => {
+    mockDraftThreadIds.current = new Set(["thr_project_draft"]);
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            id: "thr_project_draft",
+            lastReadAt: 100,
+            latestAttentionAt: 200,
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(
+      screen.getAllByLabelText("Thread has unsubmitted draft"),
+    ).not.toHaveLength(0);
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
+
+  it("excludes hidden side-chat activity from a collapsed project", () => {
+    mockDraftThreadIds.current = new Set(["thr_side_chat"]);
+    renderProjectRow(
+      vi.fn(),
+      {
+        status: "ready",
+        threads: [
+          makeThread({
+            id: "thr_side_chat",
+            originKind: "side-chat",
+            childOrigin: "side-chat",
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 0,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 1,
+              activeGoalCount: 0,
+            },
+          }),
+        ],
+      },
+      false,
+      new Set(),
+      true,
+    );
+
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
   });
 
   it("closes the worktree actions menu after selecting rename", async () => {

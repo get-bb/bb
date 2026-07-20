@@ -58,13 +58,91 @@ export function isBusyThread(
   );
 }
 
+export interface ThreadListIndicatorState {
+  hasPendingInteraction: boolean;
+  hasUnsubmittedDraft: boolean;
+  hasUnreadError: boolean;
+  hasUnreadSuccess: boolean;
+  isBackgroundAgentActive: boolean;
+  isBackgroundCommandActive: boolean;
+  isGoalActive: boolean;
+  isPlanModeActive: boolean;
+  isRuntimeActive: boolean;
+  isWorkflowActive: boolean;
+}
+
+export type ThreadListIndicatorKind =
+  | "unread-error"
+  | "waiting-for-input"
+  | "working-draft"
+  | "workflow"
+  | "background-agent"
+  | "background-command"
+  | "plan-mode"
+  | "goal"
+  | "runtime"
+  | "draft"
+  | "unread-success"
+  | "none";
+
+const THREAD_LIST_INDICATOR_LABELS: Record<
+  Exclude<ThreadListIndicatorKind, "none">,
+  string
+> = {
+  "unread-error": "Unread thread failed",
+  "waiting-for-input": "Thread needs user input",
+  "working-draft": "Thread working with unsubmitted draft",
+  workflow: "Workflow running",
+  "background-agent": "Background agent running",
+  "background-command": "Background command running",
+  "plan-mode": "Plan mode active",
+  goal: "Goal active",
+  runtime: "Thread working",
+  draft: "Thread has unsubmitted draft",
+  "unread-success": "Unread thread succeeded",
+};
+
+export function getThreadListIndicatorLabel(
+  kind: ThreadListIndicatorKind,
+): string | null {
+  return kind === "none" ? null : THREAD_LIST_INDICATOR_LABELS[kind];
+}
+
+/**
+ * Resolves the one trailing indicator slot from independent, unsuppressed
+ * thread state. Keep all precedence here so every thread-list surface makes
+ * the same choice when activities overlap.
+ */
+export function resolveThreadListIndicator(
+  state: ThreadListIndicatorState,
+): ThreadListIndicatorKind {
+  if (state.hasUnreadError) return "unread-error";
+  if (state.hasPendingInteraction) return "waiting-for-input";
+
+  const hasActiveWork =
+    state.isRuntimeActive ||
+    state.isWorkflowActive ||
+    state.isBackgroundAgentActive ||
+    state.isBackgroundCommandActive ||
+    state.isPlanModeActive ||
+    state.isGoalActive;
+  if (state.hasUnsubmittedDraft && hasActiveWork) return "working-draft";
+  if (state.isWorkflowActive) return "workflow";
+  if (state.isBackgroundAgentActive) return "background-agent";
+  if (state.isBackgroundCommandActive) return "background-command";
+  if (state.isPlanModeActive) return "plan-mode";
+  if (state.isGoalActive) return "goal";
+  if (state.isRuntimeActive) return "runtime";
+  if (state.hasUnsubmittedDraft) return "draft";
+  if (state.hasUnreadSuccess) return "unread-success";
+  return "none";
+}
+
 /**
  * The signals a collapsed parent row surfaces on behalf of its hidden children.
  * A collapsed row renders these through its single trailing status glyph, using
- * the same priority as a leaf row: failed unread work is loudest, then pending
- * user input, then foreground runtime work, then workflow work, then background
- * agent work, then background commands, then plan/goal banner modes, then
- * unread success, then generic runtime work. Expanded rows show their own status,
+ * the same priority as a leaf row through `resolveThreadListIndicator`.
+ * Expanded rows show their own status,
  * since the children are then visible with their own glyphs. Background
  * agent, command, and workflow work are tracked separately from runtime work so
  * the sidebar can use task-specific signals instead of collapsing them into a
@@ -75,6 +153,8 @@ export interface CollapsedChildActivity {
   pending: boolean;
   /** At least one child is actively working, including workflow work. */
   working: boolean;
+  /** At least one child has an unsubmitted composer draft. */
+  hasUnsubmittedDraft: boolean;
   /** At least one child is actively running a foreground/runtime turn. */
   runtimeWorking: boolean;
   /** At least one idle child has a provider workflow still running. */
@@ -87,11 +167,7 @@ export interface CollapsedChildActivity {
   planMode: boolean;
   /** At least one child is showing the active-goal banner above the composer. */
   goal: boolean;
-  /**
-   * At least one finished child is unread. Only top-level worktree children
-   * qualify — `isUnreadDoneThread` is false for parented threads, so manager
-   * and managed-subgroup rollups never set this.
-   */
+  /** At least one successfully finished child is unread. */
   unread: boolean;
   /** At least one unread child has reached the terminal error state. */
   unreadError: boolean;
@@ -100,6 +176,7 @@ export interface CollapsedChildActivity {
 export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
+  hasUnsubmittedDraft: false,
   runtimeWorking: false,
   workflow: false,
   backgroundAgent: false,
@@ -112,14 +189,18 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
 
 type ThreadActivityShape = ThreadStatusShape &
   ThreadRuntimeShape &
-  Pick<ThreadListEntry, "activity" | "hasPendingInteraction">;
+  Pick<ThreadListEntry, "id" | "activity" | "hasPendingInteraction">;
+
+const EMPTY_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
 
 /** Rolls a child thread list up to the set of activity signals present in it. */
 export function getCollapsedChildActivity(
   threads: readonly ThreadActivityShape[],
+  draftThreadIds: ReadonlySet<string> = EMPTY_DRAFT_THREAD_IDS,
 ): CollapsedChildActivity {
   let pending = false;
   let working = false;
+  let hasUnsubmittedDraft = false;
   let runtimeWorking = false;
   let workflow = false;
   let backgroundAgent = false;
@@ -129,16 +210,18 @@ export function getCollapsedChildActivity(
   let unread = false;
   let unreadError = false;
   for (const thread of threads) {
+    if (draftThreadIds.has(thread.id)) {
+      hasUnsubmittedDraft = true;
+    }
     const childUnreadDone = isUnreadDoneThread(thread);
     if (childUnreadDone && thread.status === "error") {
-      unread = true;
       unreadError = true;
+    } else if (childUnreadDone) {
+      unread = true;
     }
 
     if (thread.hasPendingInteraction) {
-      // Mirror leaf rows: a blocked thread reads as pending, not also working.
       pending = true;
-      continue;
     }
     const childRuntimeWorking = isRuntimeBusyThread(thread);
     const childWorkflowActive = hasActiveWorkflowActivity(thread);
@@ -171,21 +254,11 @@ export function getCollapsedChildActivity(
       goal = true;
       working = true;
     }
-    if (
-      !childRuntimeWorking &&
-      !childWorkflowActive &&
-      !childBackgroundAgentActive &&
-      !childBackgroundCommandActive &&
-      !childPlanModeActive &&
-      !childGoalActive &&
-      childUnreadDone
-    ) {
-      unread = true;
-    }
   }
   return {
     pending,
     working,
+    hasUnsubmittedDraft,
     runtimeWorking,
     workflow,
     backgroundAgent,

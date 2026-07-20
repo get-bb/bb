@@ -55,6 +55,7 @@ interface CloseTestSessionArgs {
 interface CreateThreadWithEnvironmentArgs {
   db: DbConnection;
   hostId: string;
+  providerId?: string;
   status?: Thread["status"];
 }
 
@@ -192,7 +193,7 @@ function createThreadWithEnvironment(args: CreateThreadWithEnvironmentArgs) {
   const thread = createThread(args.db, noopNotifier, {
     projectId: project.id,
     environmentId: environment.id,
-    providerId: "codex",
+    providerId: args.providerId ?? "codex",
     status: args.status ?? "active",
   });
 
@@ -386,11 +387,23 @@ describe("thread runtime display", () => {
     const completedPlan = createThreadWithEnvironment({ db, hostId });
     const activeGoal = createThreadWithEnvironment({ db, hostId });
     const clearedGoal = createThreadWithEnvironment({ db, hostId });
+    const concurrentPlanGoal = createThreadWithEnvironment({ db, hostId });
+    const claudePlan = createThreadWithEnvironment({
+      db,
+      hostId,
+      providerId: "claude-code",
+    });
     const activePlanRequestId = formatClientTurnRequestIdSuffix({
       suffix: "23456789ab",
     });
     const completedPlanRequestId = formatClientTurnRequestIdSuffix({
       suffix: "23456789ac",
+    });
+    const concurrentPlanRequestId = formatClientTurnRequestIdSuffix({
+      suffix: "23456789ad",
+    });
+    const claudePlanRequestId = formatClientTurnRequestIdSuffix({
+      suffix: "23456789ae",
     });
 
     appendStoredThreadEvent(db, noopNotifier, {
@@ -478,6 +491,48 @@ describe("thread runtime display", () => {
       type: "thread/goal/cleared",
       data: { providerThreadId: "provider-cleared-goal" },
     });
+    for (const [target, requestId, turnId, providerThreadId] of [
+      [
+        concurrentPlanGoal,
+        concurrentPlanRequestId,
+        "turn-concurrent-plan-goal",
+        "provider-concurrent-plan-goal",
+      ],
+      [
+        claudePlan,
+        claudePlanRequestId,
+        "turn-claude-plan",
+        "provider-claude-plan",
+      ],
+    ] as const) {
+      appendStoredThreadEvent(db, noopNotifier, {
+        threadId: target.thread.id,
+        scope: threadScope(),
+        type: "client/turn/requested",
+        data: turnRequestData({ input: planPromptInput, requestId }),
+      });
+      appendStoredThreadEvent(db, noopNotifier, {
+        threadId: target.thread.id,
+        scope: turnScope(turnId),
+        providerThreadId,
+        type: "turn/input/accepted",
+        data: { providerThreadId, clientRequestId: requestId },
+      });
+    }
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: concurrentPlanGoal.thread.id,
+      scope: threadScope(),
+      providerThreadId: "provider-concurrent-plan-goal",
+      type: "thread/goal/updated",
+      data: {
+        providerThreadId: "provider-concurrent-plan-goal",
+        objective: "Keep working while planning",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 64,
+        timeUsedSeconds: 5,
+      },
+    });
 
     const entries = toThreadListEntryResponses(
       { db, hub },
@@ -498,6 +553,14 @@ describe("thread runtime display", () => {
           createThreadListEntry({
             environmentHostId: hostId,
             thread: clearedGoal.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: concurrentPlanGoal.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: claudePlan.thread,
           }),
         ],
       },
@@ -520,6 +583,14 @@ describe("thread runtime display", () => {
     });
     expect(activityByThreadId.get(clearedGoal.thread.id)).toMatchObject({
       activePlanModeCount: 0,
+      activeGoalCount: 0,
+    });
+    expect(activityByThreadId.get(concurrentPlanGoal.thread.id)).toMatchObject({
+      activePlanModeCount: 1,
+      activeGoalCount: 1,
+    });
+    expect(activityByThreadId.get(claudePlan.thread.id)).toMatchObject({
+      activePlanModeCount: 1,
       activeGoalCount: 0,
     });
   });

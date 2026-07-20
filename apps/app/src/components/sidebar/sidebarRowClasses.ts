@@ -29,7 +29,7 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
 
 export const SIDEBAR_WORKING_STATUS_COLOR_CLASS = "text-muted-foreground/50";
 
-export const SIDEBAR_SUCCESS_STATUS_COLOR_CLASS = "text-success";
+export const SIDEBAR_SUCCESS_STATUS_COLOR_CLASS = "text-success-foreground";
 
 export const SIDEBAR_SUCCESS_STATUS_DOT_CLASS =
   "size-[5px] rounded-full bg-muted-foreground/60 max-md:pointer-coarse:size-1.5";
