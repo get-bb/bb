@@ -196,11 +196,23 @@ async function createAndOpenSideChat({
 
 function ReplyingTo({ anchorText }: { anchorText: string }) {
   const trimmed = anchorText.trim();
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  // Overflow is measured (not assumed from length) so the fade and the
+  // expand affordance only appear when the clamp actually cuts content.
+  const measureRef = useCallback((node: HTMLDivElement | null) => {
+    if (node !== null) {
+      setOverflows(node.scrollHeight > node.clientHeight + 1);
+    }
+  }, []);
   if (trimmed.length === 0) {
     return null;
   }
+  const clamped = !expanded;
   // Mirrors the legacy side-chat header: a "Replying to" label above a
-  // recessed bubble rendering the anchor as markdown.
+  // recessed bubble rendering the anchor as markdown. Long anchors clamp
+  // with a bottom fade instead of a hard mid-line cut; clicking the bubble
+  // toggles the full quote.
   return (
     <div className="mx-1 mb-2 flex flex-col items-start gap-1">
       <span className="text-xs leading-none text-muted-foreground">
@@ -210,8 +222,27 @@ function ReplyingTo({ anchorText }: { anchorText: string }) {
         />
         Replying to
       </span>
-      <div className="max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground">
-        <div className="max-h-20 overflow-hidden break-words">
+      <div
+        className={`max-w-full rounded-md bg-surface-recessed p-1.5 text-xs leading-5 text-foreground ${
+          overflows ? "cursor-pointer" : ""
+        }`}
+        role={overflows ? "button" : undefined}
+        title={
+          overflows ? (expanded ? "Collapse" : "Show full message") : undefined
+        }
+        onClick={overflows ? () => setExpanded((value) => !value) : undefined}
+      >
+        <div
+          ref={measureRef}
+          className={
+            clamped
+              ? "max-h-20 overflow-hidden break-words " +
+                (overflows
+                  ? "[mask-image:linear-gradient(to_bottom,black_calc(100%-1.25rem),transparent)]"
+                  : "")
+              : "break-words"
+          }
+        >
           <Markdown
             content={trimmed}
             className="text-xs leading-5 [&_blockquote]:my-1 [&_h1]:mb-1 [&_h1]:mt-0 [&_h1]:text-sm [&_h2]:mb-1 [&_h2]:mt-0 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-0 [&_h3]:text-xs [&_li]:mb-0 [&_ol]:mb-1 [&_p]:mb-1 [&_ul]:mb-1"
