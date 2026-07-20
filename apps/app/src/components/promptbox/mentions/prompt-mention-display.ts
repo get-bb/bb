@@ -55,7 +55,7 @@ export function promptMentionIconName(
     return "Folder";
   }
   if (resource.kind === "section") {
-    return null;
+    return "Rows3";
   }
   if (resource.kind === "command") {
     return promptCommandIconName(resource);
