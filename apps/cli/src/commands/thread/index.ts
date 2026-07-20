@@ -7,6 +7,7 @@ import { registerPaneCommand } from "./pane.js";
 import { registerOrganizationCommands } from "./organization.js";
 import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
+import { registerForkCommand } from "./fork.js";
 import { registerWaitCommand } from "./wait.js";
 
 export function registerThreadCommands(
@@ -16,6 +17,7 @@ export function registerThreadCommands(
   const thread = program.command("thread").description("Manage threads");
   registerWaitCommand(thread, getUrl);
   registerSpawnCommand(thread, getUrl);
+  registerForkCommand(thread, getUrl);
   registerListCommand(thread, getUrl);
   registerShowCommand(thread, getUrl);
   registerOpenCommand(thread, getUrl);

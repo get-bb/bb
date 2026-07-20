@@ -118,6 +118,7 @@ describe("plugin bb.sdk bind gate", () => {
     );
 
     service.bindSdk({ baseUrl: "http://127.0.0.1:9" });
+    expect(typeof api.sdk.threads.fork).toBe("function");
     expect(typeof api.sdk.threads.spawn).toBe("function");
   });
 
@@ -282,6 +283,9 @@ describe("plugin bb.sdk against a running server", () => {
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
         api.sdk.threads.list({ projectId: project.id }),
+      ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
+      await expect(
+        api.sdk.threads.list({ projectId: project.id, includeHidden: true }),
       ).resolves.toContainEqual(expect.objectContaining({ id: thread.id }));
 
       const operable = seedThread(server.deps, {
@@ -296,6 +300,15 @@ describe("plugin bb.sdk against a running server", () => {
         inputText: "Initial turn",
         providerThreadId: "provider-hidden-plugin-thread",
         threadId: operable.id,
+      });
+      const fork = await api.sdk.threads.fork({
+        sourceThreadId: operable.id,
+        workspace: "reuse",
+      });
+      expect(fork).toMatchObject({
+        originKind: "fork",
+        originPluginId: "spawner",
+        sourceThreadId: operable.id,
       });
       await expect(
         api.sdk.threads.wait({

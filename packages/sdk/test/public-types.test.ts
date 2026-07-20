@@ -349,6 +349,7 @@ type ExpectedThreadsKey =
   | "defaultExecutionOptions"
   | "delete"
   | "events"
+  | "fork"
   | "get"
   | "interactions"
   | "list"

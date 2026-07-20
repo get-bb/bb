@@ -13,6 +13,7 @@ interface ThreadListCommandOptions {
   section?: string;
   unsectioned?: boolean;
   json?: boolean;
+  includeHidden?: boolean;
 }
 
 export function registerListCommand(
@@ -27,6 +28,7 @@ export function registerListCommand(
     .option("--section <id>", "Filter by thread section ID")
     .option("--unsectioned", "Show only threads outside sections")
     .option("--archived", "Show only archived threads")
+    .option("--include-hidden", "Include hidden threads")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ThreadListCommandOptions) => {
@@ -52,6 +54,7 @@ export function registerListCommand(
           ...(opts.archived ? { archived: true } : {}),
           ...(sectionId ? { sectionId } : {}),
           ...(opts.unsectioned ? { unsectioned: true } : {}),
+          ...(opts.includeHidden ? { includeHidden: true } : {}),
         });
         if (outputJson(opts, threads)) return;
         if (threads.length === 0) {

@@ -53,7 +53,7 @@ import type {
   PluginUi,
   StandardSchemaV1,
 } from "@bb/plugin-sdk";
-import type { BbSdk, ThreadSpawnArgs } from "@bb/sdk";
+import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
@@ -485,7 +485,7 @@ function summarizeParseIssues(error: unknown): string {
 }
 
 /**
- * Wrap the shared server-bound SDK for one plugin: `threads.spawn` gets
+ * Wrap the shared server-bound SDK for one plugin: thread creation gets
  * default attribution (`origin: "plugin"`, `originPluginId: <plugin id>`)
  * unless the plugin sets those fields explicitly.
  */
@@ -494,6 +494,16 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
     ...sdk,
     threads: {
       ...sdk.threads,
+      fork(args: ThreadForkArgs) {
+        const origin = args.origin ?? "plugin";
+        return sdk.threads.fork({
+          ...args,
+          origin,
+          ...(origin === "plugin"
+            ? { originPluginId: args.originPluginId ?? pluginId }
+            : {}),
+        });
+      },
       spawn(args: ThreadSpawnArgs) {
         const origin = args.origin ?? "plugin";
         return sdk.threads.spawn({

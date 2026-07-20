@@ -949,6 +949,75 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("fills thread fork defaults and preserves an agent-only context seed", async () => {
+    const queue = createFetchQueue([{ body: { id: "thr_fork" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.fork({
+      sourceThreadId: "thr_source",
+      agentContextSeed: [
+        {
+          type: "text",
+          text: "Selected reply anchor",
+          mentions: [],
+          visibility: "agent-only",
+        },
+      ],
+    });
+
+    expect(queue.requests[0]).toMatchObject({
+      method: "POST",
+      url: "http://bb.test/api/v1/threads/fork",
+    });
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toEqual({
+      sourceThreadId: "thr_source",
+      agentContextSeed: [
+        {
+          type: "text",
+          text: "Selected reply anchor",
+          mentions: [],
+          visibility: "agent-only",
+        },
+      ],
+      origin: "sdk",
+      visibility: "visible",
+      workspace: "isolated",
+    });
+  });
+
+  it("forwards includeHidden list filtering and visibility updates", async () => {
+    const queue = createFetchQueue([
+      { body: [] },
+      { body: { id: "thr_hidden", visibility: "hidden" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.list({ includeHidden: true });
+    await sdk.threads.update({
+      threadId: "thr_hidden",
+      visibility: "hidden",
+    });
+
+    expect(queue.requests[0]?.url).toBe(
+      "http://bb.test/api/v1/threads?includeHidden=true",
+    );
+    expect(JSON.parse(queue.requests[1]?.bodyText ?? "{}")).toEqual({
+      visibility: "hidden",
+    });
+  });
+
   it("forwards every public permission mode through thread surfaces", async () => {
     const queue = createFetchQueue([
       { body: { id: "thr_auto" }, status: 201 },

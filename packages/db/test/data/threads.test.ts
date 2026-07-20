@@ -134,7 +134,7 @@ describe("threads", () => {
     expect(fetched).toMatchObject({ id: thread.id });
   });
 
-  it("keeps hidden threads out of sidebar and attention queries only", () => {
+  it("supports an explicit visible-only list with a hidden opt-in", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -165,7 +165,12 @@ describe("threads", () => {
 
     expect(getThread(db, hidden.id)?.visibility).toBe("hidden");
     expect(
-      listThreads(db, { projectId: project.id })
+      listThreads(db, { projectId: project.id, includeHidden: false }).map(
+        (thread) => thread.id,
+      ),
+    ).not.toContain(hidden.id);
+    expect(
+      listThreads(db, { projectId: project.id, includeHidden: true })
         .map((thread) => thread.id)
         .sort(),
     ).toEqual([hidden.id, visible.id, parent.id].sort());
@@ -965,7 +970,11 @@ describe("threads", () => {
     });
 
     expect(
-      listThreads(db, { projectId: project.id, sectionId: section.id })
+      listThreads(db, {
+        projectId: project.id,
+        sectionId: section.id,
+        includeHidden: true,
+      })
         .map((thread) => thread.id)
         .sort(),
     ).toEqual([visible.id, hidden.id].sort());

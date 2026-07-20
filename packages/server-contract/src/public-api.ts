@@ -55,6 +55,7 @@ import type {
   CreateQueuedMessageRequest,
   CreateThreadSectionRequest,
   CreateThreadRequest,
+  ForkThreadRequest,
   DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
@@ -208,6 +209,7 @@ import {
   createQueuedMessageRequestSchema,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
+  forkThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
@@ -829,6 +831,14 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<EmptyInput, CreateThreadRequest>(
         createThreadRequestSchema,
+      ),
+      response: jsonResponse<ThreadResponse>({ status: 201 }),
+    }),
+    fork: defineRoute({
+      path: "/threads/fork",
+      method: "post",
+      request: jsonRequest<EmptyInput, ForkThreadRequest>(
+        forkThreadRequestSchema,
       ),
       response: jsonResponse<ThreadResponse>({ status: 201 }),
     }),

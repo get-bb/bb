@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import {
+  threadVisibilitySchema,
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
+  type ThreadVisibility,
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
@@ -35,6 +37,7 @@ interface ThreadUpdateCommandOptions {
   clearSection?: boolean;
   model?: string;
   reasoningLevel?: string;
+  visibility?: string;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -103,6 +106,7 @@ interface ThreadUpdateBody {
   parentThreadId?: string | null;
   model?: string;
   reasoningLevel?: ReasoningLevel;
+  visibility?: ThreadVisibility;
 }
 
 export function registerActionsCommands(
@@ -127,6 +131,7 @@ export function registerActionsCommands(
       "--reasoning-level <level>",
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     )
+    .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
@@ -139,6 +144,10 @@ export function registerActionsCommands(
             throw new Error("Cannot combine --section with --clear-section.");
           }
           const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
+          const visibility =
+            opts.visibility === undefined
+              ? undefined
+              : threadVisibilitySchema.parse(opts.visibility);
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
@@ -146,10 +155,11 @@ export function registerActionsCommands(
             !opts.clearSection &&
             !opts.title &&
             !opts.model &&
-            !reasoningLevel
+            !reasoningLevel &&
+            !visibility
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, or --reasoning-level.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, or --visibility.",
             );
           }
 
@@ -181,6 +191,9 @@ export function registerActionsCommands(
           if (reasoningLevel) {
             body.reasoningLevel = reasoningLevel;
           }
+          if (visibility) {
+            body.visibility = visibility;
+          }
 
           const sdk = createCliBbSdk(getUrl());
           const thread = await sdk.threads.update({ threadId, ...body });
@@ -206,6 +219,9 @@ export function registerActionsCommands(
           }
           if (reasoningLevel) {
             console.log(`Reasoning level: ${reasoningLevel}`);
+          }
+          if (visibility) {
+            console.log(`Visibility: ${visibility}`);
           }
         },
       ),

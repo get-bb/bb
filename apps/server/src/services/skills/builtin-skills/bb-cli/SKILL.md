@@ -83,11 +83,17 @@ message agents, or inspect projects, providers, and environments.
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Use `bb thread fork <source-thread-id>` to clone a provider session. It
+  creates an idle fork by default; add `--prompt`, select `--workspace
+isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
+  the source thread unless explicitly overridden.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
-  attention or native parent notifications. Hidden threads otherwise retain
-  ordinary list, search, prompt-history, section, lifecycle, parent-operation,
-  and direct-open behavior. Visible is the default.
+  attention or native parent notifications. `bb thread list` excludes them by
+  default; pass `--include-hidden` when a hidden worker must be discovered.
+  Direct-ID lifecycle and messaging operations remain available. Visible is
+  the default. Promote or hide an existing thread with `bb thread update <id>
+--visibility visible|hidden`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the

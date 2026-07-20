@@ -53,6 +53,8 @@ interface RequestThreadProvisionArgs {
   // server at create time (originKind/provider capability/source session/host).
   fork: ThreadForkDescriptor | null;
   input: PromptInput[];
+  /** Input sent to the provider when the persisted start input is seed-only. */
+  providerInput?: PromptInput[];
   // Non-null ⇒ the thread-start turn is attributed to another agent/thread and
   // the provider run is deferred until the user's first message (fork /
   // side-chat anchors). null ⇒ a normal user-initiated start.
@@ -285,6 +287,7 @@ export function requestThreadProvision(
   const context = createMetadataPendingContext({
     ...args,
     clientRequestId: request.requestId,
+    input: args.providerInput ?? args.input,
     seedWithoutRun: args.startedOnBehalfOf !== null,
   });
   saveThreadProvisionContext({

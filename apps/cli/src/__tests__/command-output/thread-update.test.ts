@@ -53,6 +53,36 @@ describe("bb thread update command output", () => {
     );
   });
 
+  it("bb thread update changes visibility", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-update-visibility",
+      projectId: "proj-1",
+      providerId: "codex",
+      visibility: "hidden",
+    });
+    const patch = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.:id.$patch": patch });
+
+    await runCommand(
+      [
+        "thread",
+        "update",
+        "thread-update-visibility",
+        "--visibility",
+        "hidden",
+      ],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "thread-update-visibility" },
+      json: { visibility: "hidden" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Visibility: hidden",
+    );
+  });
+
   it("bb thread update rejects invalid parent-thread values", async () => {
     const patch = vi.fn(async () =>
       fixtures.makeThread({

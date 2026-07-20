@@ -86,6 +86,7 @@ interface CreateProvisioningThreadArgs {
   >[2]["projectDefaults"];
   fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
+  providerInput?: ThreadCreateServiceRequestInput["input"];
 }
 
 interface ResolveForkDescriptorArgs {
@@ -437,6 +438,9 @@ async function createProvisioningThread(
       execution,
       fork: args.fork,
       input: args.request.input,
+      ...(args.providerInput !== undefined
+        ? { providerInput: args.providerInput }
+        : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     });
@@ -467,6 +471,10 @@ async function createProvisioningThread(
 export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
+  options: {
+    /** Provider-facing input when it differs from the persisted start seed. */
+    providerInput?: ThreadCreateServiceRequestInput["input"];
+  } = {},
 ) {
   const normalizedRequestInput: ThreadCreateServiceRequestInput & {
     visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
@@ -522,13 +530,6 @@ export async function createThreadFromRequest(
     (originKind !== null ? requestInput.parentThreadId : undefined);
   const hierarchyParentThreadId =
     originKind === null ? requestInput.parentThreadId : undefined;
-  if (originKind === "fork" && requestInput.input.length === 0) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "fork input must contain at least one entry",
-    );
-  }
   const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
         parentThreadId: hierarchyParentThreadId,
@@ -784,6 +785,9 @@ export async function createThreadFromRequest(
     environmentIntent,
     executionDefaults,
     fork,
+    ...(options.providerInput !== undefined
+      ? { providerInput: options.providerInput }
+      : {}),
     request,
   });
   deps.telemetry.capture({

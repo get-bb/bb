@@ -339,6 +339,8 @@ export interface ListThreadsOptions {
   childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
+  /** False applies a visible-only filter; undefined preserves internal callers. */
+  includeHidden?: boolean;
 }
 
 type ThreadRow = typeof threads.$inferSelect;
@@ -631,6 +633,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     isNull(threads.deletedAt),
+    options.includeHidden === false ? eq(threads.visibility, "visible") : undefined,
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
       : undefined,
@@ -1591,6 +1594,7 @@ export interface UpdateThreadInput {
   lastReadAt?: number | null;
   parentThreadId?: string | null;
   title?: string | null;
+  visibility?: ThreadVisibility;
 }
 
 export function updateThread(
@@ -1607,6 +1611,14 @@ export function updateThread(
   const changes: ThreadChangeKind[] = [];
   if ("title" in input || "sectionId" in input) changes.push("title-changed");
   if ("lastReadAt" in input) changes.push("read-state-changed");
+  if (
+    "visibility" in input &&
+    input.visibility !== existing.visibility
+  ) {
+    // title-changed is the existing organization-metadata invalidation used
+    // for section changes as well as titles.
+    changes.push("title-changed");
+  }
   if (
     "parentThreadId" in input &&
     input.parentThreadId !== existing.parentThreadId
@@ -1630,6 +1642,7 @@ export function updateThread(
     set.lastReadAt = input.lastReadAt;
   }
   if ("parentThreadId" in input) set.parentThreadId = input.parentThreadId;
+  if ("visibility" in input) set.visibility = input.visibility;
 
   const updated = db
     .update(threads)
