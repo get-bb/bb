@@ -15,6 +15,12 @@ declare module "proper-lockfile" {
     /** Interval at which the held lock's mtime is refreshed. */
     update?: number;
     lockfilePath?: string;
+    /**
+     * Called when the held lock can no longer be refreshed (mtime update
+     * failed or drifted). Default rethrows, which crashes the process from
+     * inside a timer callback.
+     */
+    onCompromised?: (error: Error) => void;
   }
 
   export type ReleaseFn = () => Promise<void>;

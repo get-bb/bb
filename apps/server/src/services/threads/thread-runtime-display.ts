@@ -27,7 +27,7 @@ import {
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
-import { DAEMON_DISCONNECT_GRACE_MS } from "../../constants.js";
+import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
@@ -107,6 +107,12 @@ function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   }
 }
 
+/**
+ * Only computed for `active` threads: an active turn survives a daemon
+ * disconnect until the active-work grace elapses, so that is the reconnect
+ * window the DTO advertises. The shorter DAEMON_DISCONNECT_GRACE_MS window
+ * only settles pending interactions and background tasks.
+ */
 function getDaemonDisconnectGraceExpiresAt(
   session: HostDaemonSessionRow,
 ): number | null {
@@ -119,7 +125,7 @@ function getDaemonDisconnectGraceExpiresAt(
   if (session.closedAt === null) {
     return null;
   }
-  return session.closedAt + DAEMON_DISCONNECT_GRACE_MS;
+  return session.closedAt + DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS;
 }
 
 function hasOpenDaemonSessionForHost(
