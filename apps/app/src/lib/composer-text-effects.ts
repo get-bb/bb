@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
 
 type ComposerTextEffectListener = () => void;
 type ComposerTextEffectOwner = string | symbol;
@@ -8,7 +8,7 @@ const effectsByStorageKey = new Map<
   string,
   Map<
     ComposerTextEffectOwner,
-    { pluginId: string; effect: PluginComposerTextEffect }
+    { pluginId: string; effect: experimental_PluginComposerTextEffect }
   >
 >();
 const listenersByStorageKey = new Map<
@@ -26,7 +26,7 @@ function notify(storageKey: string): void {
 
 export function getComposerTextEffect(
   storageKey: string | null,
-): PluginComposerTextEffect | null {
+): experimental_PluginComposerTextEffect | null {
   if (storageKey === null) return null;
   const effects = effectsByStorageKey.get(storageKey);
   if (!effects || effects.size === 0) return null;
@@ -36,7 +36,7 @@ export function getComposerTextEffect(
 export function setComposerTextEffect(
   storageKey: string | null,
   pluginId: string,
-  effect: PluginComposerTextEffect | null,
+  effect: experimental_PluginComposerTextEffect | null,
   owner: ComposerTextEffectOwner = pluginId,
 ): void {
   if (storageKey === null) return;
@@ -82,7 +82,7 @@ export function subscribeComposerTextEffect(
 
 export function useComposerTextEffect(
   storageKey: string | null,
-): PluginComposerTextEffect | null {
+): experimental_PluginComposerTextEffect | null {
   const subscribe = useCallback(
     (listener: ComposerTextEffectListener) =>
       subscribeComposerTextEffect(storageKey, listener),

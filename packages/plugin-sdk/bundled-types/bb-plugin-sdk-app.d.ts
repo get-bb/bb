@@ -389,35 +389,39 @@ interface PluginSettingsState {
 }
 /** State of the app's shared realtime connection to the bb server. */
 type PluginRealtimeConnectionState = "connecting" | "connected" | "reconnecting";
-/** Where `useComposer()` writes. */
-type PluginComposerScope = {
-    kind: "thread";
-    threadId: string;
-} | {
+/** @experimental Composer scope for an inline queued-message editor. */
+interface experimental_PluginComposerQueuedMessageScope {
     kind: "queued-message";
     threadId: string;
     queuedMessageId: string;
-} | {
+}
+/** @experimental Composer scope for a side-chat draft. */
+interface experimental_PluginComposerSideChatScope {
     kind: "side-chat";
     projectId: string;
     parentThreadId: string;
     tabId: string;
     childThreadId: string | null;
-} | {
+}
+/** Where `useComposer()` writes. */
+type PluginComposerScope = {
+    kind: "thread";
+    threadId: string;
+} | experimental_PluginComposerQueuedMessageScope | experimental_PluginComposerSideChatScope | {
     kind: "new-thread";
     /** Root compose's effective selected project; null only while unresolved. */
     projectId: string | null;
 };
-/** Host-rendered paint applied to the editable composer text. */
-type PluginComposerTextEffect = "shimmer";
-/** Host-rendered status that temporarily replaces a thread's draft glyph. */
-interface PluginComposerThreadRowStatus {
+/** @experimental Host-rendered paint applied to the editable composer text. */
+type experimental_PluginComposerTextEffect = "shimmer";
+/** @experimental Status that temporarily replaces a thread's draft glyph. */
+interface experimental_PluginComposerThreadRowStatus {
     /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
     icon: string;
     /** Accessible label for the status glyph. */
     label: string;
     /** Host-rendered motion treatment for the status glyph, or null. */
-    effect: PluginComposerTextEffect | null;
+    effect: experimental_PluginComposerTextEffect | null;
     /** Semantic host color for the status glyph. */
     tone: "default" | "success";
 }
@@ -457,19 +461,23 @@ interface PluginComposerApi {
     /** Clear plain text without clearing independently attached files. */
     clear(): void;
     /**
+     * @experimental
+     *
      * Apply a host-rendered effect to this composer's editable text, or clear it.
      * Effects are scoped to the calling plugin and automatically clear when the
      * slot unmounts or its composer scope changes.
      */
-    setTextEffect(effect: PluginComposerTextEffect | null): void;
+    experimental_setTextEffect(effect: experimental_PluginComposerTextEffect | null): void;
     /**
+     * @experimental
+     *
      * Replace this composer's thread-row draft glyph with a host-rendered status,
      * or clear it. New-thread composers have no row, so calls are a no-op.
      * Side-chat and queued side-chat scopes decorate the visible parent-thread
      * row. Status is scoped to the calling plugin and automatically clears when
      * the slot unmounts or its composer scope changes.
      */
-    setThreadRowStatus(status: PluginComposerThreadRowStatus | null): void;
+    experimental_setThreadRowStatus(status: experimental_PluginComposerThreadRowStatus | null): void;
     /**
      * Append text to the draft as a `> ` blockquote block and focus the
      * composer. Blank text is a no-op. This is the "reference this selection
@@ -502,14 +510,16 @@ interface BbNavigate {
     toPluginPanel(path: string, options?: {
         subPath?: string;
         replace?: boolean;
-        /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
-        returnOnExit?: boolean;
+        /** @experimental Mark this entry so the experimental exit API returns to its predecessor. */
+        experimental_returnOnExit?: boolean;
     }): void;
     /**
-     * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
-     * direct entries replace themselves with this fallback location.
+     * @experimental
+     *
+     * Leave a panel subroute. Entries opened with `experimental_returnOnExit`
+     * pop back; direct entries replace themselves with this fallback location.
      */
-    exitPluginPanel(path: string, options?: {
+    experimental_exitPluginPanel(path: string, options?: {
         subPath?: string;
     }): void;
     /**
@@ -517,15 +527,16 @@ interface BbNavigate {
      * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
      * composer on arrival — the pairing behind "Create via chat" style entry
      * points that drop the user into chat with a prefilled prompt. Set
-     * `replaceInitialPrompt` for an explicit resource action whose context must
-     * replace any stale root-composer draft. Set `replace` for redirects so the
-     * intermediary route does not trap browser Back navigation.
+     * `experimental_replaceInitialPrompt` for an explicit resource action whose
+     * context must replace any stale root-composer draft. Set
+     * `experimental_replace` for redirects so the intermediary route does not
+     * trap browser Back navigation.
      */
     toCompose(options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
-        replaceInitialPrompt?: boolean;
-        replace?: boolean;
+        experimental_replaceInitialPrompt?: boolean;
+        experimental_replace?: boolean;
     }): void;
 }
 /**
@@ -560,4 +571,4 @@ declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 
 export { definePluginApp, useBbContext, useBbNavigate, useComposer, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
+export type { BbContext, BbNavigate, JsonValue, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, experimental_PluginComposerQueuedMessageScope, experimental_PluginComposerSideChatScope, experimental_PluginComposerTextEffect, experimental_PluginComposerThreadRowStatus };

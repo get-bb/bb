@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginComposerScope } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, experimental_PluginComposerTextEffect, experimental_PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginComposerScope } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -49,10 +49,10 @@ type NavigateCall = {
     options?: {
         subPath?: string;
         replace?: boolean;
-        returnOnExit?: boolean;
+        experimental_returnOnExit?: boolean;
     };
 } | {
-    method: "exitPluginPanel";
+    method: "experimental_exitPluginPanel";
     path: string;
     options?: {
         subPath?: string;
@@ -62,19 +62,19 @@ type NavigateCall = {
     options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
-        replaceInitialPrompt?: boolean;
-        replace?: boolean;
+        experimental_replaceInitialPrompt?: boolean;
+        experimental_replace?: boolean;
     };
 };
 interface ComposerLog {
     /** Latest plain text in this isolated composer scope. */
     readonly text: string;
-    /** Latest host-rendered text effect requested by the plugin. */
-    textEffect: PluginComposerTextEffect | null;
-    textEffectCalls: Array<PluginComposerTextEffect | null>;
-    /** Latest host-rendered thread-row status requested by the plugin. */
-    threadRowStatus: PluginComposerThreadRowStatus | null;
-    threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
+    /** @experimental Latest host-rendered text effect requested by the plugin. */
+    experimental_textEffect: experimental_PluginComposerTextEffect | null;
+    experimental_textEffectCalls: Array<experimental_PluginComposerTextEffect | null>;
+    /** @experimental Latest host-rendered thread-row status requested by the plugin. */
+    experimental_threadRowStatus: experimental_PluginComposerThreadRowStatus | null;
+    experimental_threadRowStatusCalls: Array<experimental_PluginComposerThreadRowStatus | null>;
     quotes: string[];
     mentions: PluginComposerMention[];
     focusCount: number;
@@ -142,8 +142,8 @@ interface RenderedSlotBehaviorDrivers {
     emitRealtime(channel: string, payload: unknown): Promise<void>;
     /** Drive the lifecycle of the same connection used by realtime events. */
     setRealtimeConnectionState(state: PluginRealtimeConnectionState): Promise<void>;
-    /** Move to another composer scope, optionally replacing its draft text. */
-    setComposerScope(scope: PluginComposerScope, text?: string): Promise<void>;
+    /** @experimental Move scopes, optionally replacing the draft text. */
+    experimental_setComposerScope(scope: PluginComposerScope, text?: string): Promise<void>;
 }
 /** Read-only call/write logs produced while the slot is mounted. */
 interface RenderedSlotInspectionState {

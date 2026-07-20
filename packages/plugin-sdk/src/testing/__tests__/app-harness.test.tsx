@@ -76,7 +76,7 @@ function RealtimeConnectionProbe() {
 
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "setTextEffect" | "setThreadRowStatus"
+  "experimental_setTextEffect" | "experimental_setThreadRowStatus"
 > | null = null;
 
 function InlineVis({
@@ -100,8 +100,8 @@ function InlineVis({
 function ComposerProbe() {
   const composer = useComposer();
   capturedComposerVisualSetters = {
-    setTextEffect: composer.setTextEffect,
-    setThreadRowStatus: composer.setThreadRowStatus,
+    experimental_setTextEffect: composer.experimental_setTextEffect,
+    experimental_setThreadRowStatus: composer.experimental_setThreadRowStatus,
   };
   return (
     <div>
@@ -134,7 +134,7 @@ function ComposerProbe() {
       <button
         type="button"
         onClick={() =>
-          composer.setThreadRowStatus({
+          composer.experimental_setThreadRowStatus({
             icon: "AiContentGenerator01",
             label: "Plugin improving draft",
             effect: "shimmer",
@@ -144,7 +144,10 @@ function ComposerProbe() {
       >
         set row status
       </button>
-      <button type="button" onClick={() => composer.setThreadRowStatus(null)}>
+      <button
+        type="button"
+        onClick={() => composer.experimental_setThreadRowStatus(null)}
+      >
         clear row status
       </button>
       <button type="button" onClick={() => composer.addQuote("picked text")}>
@@ -396,17 +399,22 @@ describe("renderSlot", () => {
       ),
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
+      "Plugin improving draft",
+    );
 
     const childScope = { ...sideChatScope, childThreadId: "thr_child" };
-    await slot.behavior.setComposerScope(childScope, "child draft");
+    await slot.behavior.experimental_setComposerScope(
+      childScope,
+      "child draft",
+    );
     expect(
       JSON.parse(
         slot.getByTestId("composer-scope-details").textContent ?? "{}",
       ),
     ).toEqual(childScope);
     expect(slot.getByTestId("composer-text").textContent).toBe("child draft");
-    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
@@ -436,7 +444,7 @@ describe("renderSlot", () => {
     );
 
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus).toEqual({
+    expect(slot.composer.experimental_threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
@@ -445,18 +453,20 @@ describe("renderSlot", () => {
     const visualSetters = capturedComposerVisualSetters;
     if (visualSetters === null)
       throw new Error("composer setters not captured");
-    visualSetters.setThreadRowStatus({
+    visualSetters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "   ",
       effect: "shimmer",
       tone: "default",
     });
-    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
+      "Plugin improving draft",
+    );
+    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
 
     fireEvent.click(slot.getByText("clear row status"));
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(2);
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(2);
   });
 
   it("ignores thread-row status changes outside a thread composer", () => {
@@ -467,8 +477,8 @@ describe("renderSlot", () => {
     );
 
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toEqual([]);
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_threadRowStatusCalls).toEqual([]);
   });
 
   it("models queued-message scope independently from route context", () => {
@@ -492,7 +502,7 @@ describe("renderSlot", () => {
     );
     expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_1");
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.tone).toBe("default");
+    expect(slot.composer.experimental_threadRowStatus?.tone).toBe("default");
   });
 
   it("clears visual state and invalidates stale setters across scope changes", async () => {
@@ -505,15 +515,15 @@ describe("renderSlot", () => {
     if (staleSetters === null) {
       throw new Error("composer setters were not captured");
     }
-    staleSetters.setTextEffect("shimmer");
-    staleSetters.setThreadRowStatus({
+    staleSetters.experimental_setTextEffect("shimmer");
+    staleSetters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Old scope",
       effect: "shimmer",
       tone: "success",
     });
 
-    await slot.behavior.setComposerScope(
+    await slot.behavior.experimental_setComposerScope(
       {
         kind: "queued-message",
         threadId: "thr_1",
@@ -531,28 +541,30 @@ describe("renderSlot", () => {
     );
     expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_2");
     expect(slot.getByTestId("composer-text").textContent).toBe("queued draft");
-    expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_textEffect).toBeNull();
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
 
-    staleSetters.setTextEffect("shimmer");
-    staleSetters.setThreadRowStatus({
+    staleSetters.experimental_setTextEffect("shimmer");
+    staleSetters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Late old scope",
       effect: "shimmer",
       tone: "success",
     });
-    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
 
-    currentSetters.setTextEffect("shimmer");
-    currentSetters.setThreadRowStatus({
+    currentSetters.experimental_setTextEffect("shimmer");
+    currentSetters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Current scope",
       effect: "shimmer",
       tone: "success",
     });
-    expect(slot.composer.textEffect).toBe("shimmer");
-    expect(slot.composer.threadRowStatus?.label).toBe("Current scope");
+    expect(slot.composer.experimental_textEffect).toBe("shimmer");
+    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
+      "Current scope",
+    );
   });
 
   it("releases visual ownership when only the hook consumer unmounts", () => {
@@ -563,8 +575,8 @@ describe("renderSlot", () => {
     );
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
-    setters.setTextEffect("shimmer");
-    setters.setThreadRowStatus({
+    setters.experimental_setTextEffect("shimmer");
+    setters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Mounted",
       effect: "shimmer",
@@ -572,18 +584,18 @@ describe("renderSlot", () => {
     });
 
     slot.lifecycle.rerender(null);
-    expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_textEffect).toBeNull();
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
 
-    setters.setTextEffect("shimmer");
-    setters.setThreadRowStatus({
+    setters.experimental_setTextEffect("shimmer");
+    setters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Late unmounted",
       effect: "shimmer",
       tone: "default",
     });
-    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {
@@ -597,32 +609,32 @@ describe("renderSlot", () => {
       if (setters === null)
         throw new Error("composer setters were not captured");
 
-      setters.setTextEffect("shimmer");
-      setters.setThreadRowStatus({
+      setters.experimental_setTextEffect("shimmer");
+      setters.experimental_setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
         effect: "shimmer",
         tone: "success",
       });
-      expect(slot.composer.textEffect).toBe("shimmer");
-      expect(slot.composer.threadRowStatus?.tone).toBe("success");
+      expect(slot.composer.experimental_textEffect).toBe("shimmer");
+      expect(slot.composer.experimental_threadRowStatus?.tone).toBe("success");
 
       if (control === "top-level") slot.unmount();
       else slot.lifecycle.unmount();
-      expect(slot.composer.textEffect).toBeNull();
-      expect(slot.composer.threadRowStatus).toBeNull();
+      expect(slot.composer.experimental_textEffect).toBeNull();
+      expect(slot.composer.experimental_threadRowStatus).toBeNull();
 
-      setters.setTextEffect("shimmer");
-      setters.setThreadRowStatus({
+      setters.experimental_setTextEffect("shimmer");
+      setters.experimental_setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "late status",
         effect: "shimmer",
         tone: "default",
       });
-      expect(slot.composer.textEffect).toBeNull();
-      expect(slot.composer.threadRowStatus).toBeNull();
-      expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
-      expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+      expect(slot.composer.experimental_textEffect).toBeNull();
+      expect(slot.composer.experimental_threadRowStatus).toBeNull();
+      expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
+      expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
     }
   });
 
@@ -635,8 +647,8 @@ describe("renderSlot", () => {
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
 
-    setters.setTextEffect("shimmer");
-    setters.setThreadRowStatus({
+    setters.experimental_setTextEffect("shimmer");
+    setters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
@@ -644,19 +656,19 @@ describe("renderSlot", () => {
     });
     cleanup();
 
-    expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_textEffect).toBeNull();
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
 
-    setters.setTextEffect("shimmer");
-    setters.setThreadRowStatus({
+    setters.experimental_setTextEffect("shimmer");
+    setters.experimental_setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "late status",
       effect: "shimmer",
       tone: "default",
     });
-    expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.experimental_textEffect).toBeNull();
+    expect(slot.composer.experimental_threadRowStatus).toBeNull();
+    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
   });
 });

@@ -378,38 +378,44 @@ export type PluginRealtimeConnectionState =
   | "connected"
   | "reconnecting";
 
+/** @experimental Composer scope for an inline queued-message editor. */
+export interface experimental_PluginComposerQueuedMessageScope {
+  kind: "queued-message";
+  threadId: string;
+  queuedMessageId: string;
+}
+
+/** @experimental Composer scope for a side-chat draft. */
+export interface experimental_PluginComposerSideChatScope {
+  kind: "side-chat";
+  projectId: string;
+  parentThreadId: string;
+  tabId: string;
+  childThreadId: string | null;
+}
+
 /** Where `useComposer()` writes. */
 export type PluginComposerScope =
   | { kind: "thread"; threadId: string }
-  | {
-      kind: "queued-message";
-      threadId: string;
-      queuedMessageId: string;
-    }
-  | {
-      kind: "side-chat";
-      projectId: string;
-      parentThreadId: string;
-      tabId: string;
-      childThreadId: string | null;
-    }
+  | experimental_PluginComposerQueuedMessageScope
+  | experimental_PluginComposerSideChatScope
   | {
       kind: "new-thread";
       /** Root compose's effective selected project; null only while unresolved. */
       projectId: string | null;
     };
 
-/** Host-rendered paint applied to the editable composer text. */
-export type PluginComposerTextEffect = "shimmer";
+/** @experimental Host-rendered paint applied to the editable composer text. */
+export type experimental_PluginComposerTextEffect = "shimmer";
 
-/** Host-rendered status that temporarily replaces a thread's draft glyph. */
-export interface PluginComposerThreadRowStatus {
+/** @experimental Status that temporarily replaces a thread's draft glyph. */
+export interface experimental_PluginComposerThreadRowStatus {
   /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
   icon: string;
   /** Accessible label for the status glyph. */
   label: string;
   /** Host-rendered motion treatment for the status glyph, or null. */
-  effect: PluginComposerTextEffect | null;
+  effect: experimental_PluginComposerTextEffect | null;
   /** Semantic host color for the status glyph. */
   tone: "default" | "success";
 }
@@ -451,19 +457,27 @@ export interface PluginComposerApi {
   /** Clear plain text without clearing independently attached files. */
   clear(): void;
   /**
+   * @experimental
+   *
    * Apply a host-rendered effect to this composer's editable text, or clear it.
    * Effects are scoped to the calling plugin and automatically clear when the
    * slot unmounts or its composer scope changes.
    */
-  setTextEffect(effect: PluginComposerTextEffect | null): void;
+  experimental_setTextEffect(
+    effect: experimental_PluginComposerTextEffect | null,
+  ): void;
   /**
+   * @experimental
+   *
    * Replace this composer's thread-row draft glyph with a host-rendered status,
    * or clear it. New-thread composers have no row, so calls are a no-op.
    * Side-chat and queued side-chat scopes decorate the visible parent-thread
    * row. Status is scoped to the calling plugin and automatically clears when
    * the slot unmounts or its composer scope changes.
    */
-  setThreadRowStatus(status: PluginComposerThreadRowStatus | null): void;
+  experimental_setThreadRowStatus(
+    status: experimental_PluginComposerThreadRowStatus | null,
+  ): void;
   /**
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
@@ -500,29 +514,35 @@ export interface BbNavigate {
     options?: {
       subPath?: string;
       replace?: boolean;
-      /** Mark this entry so `exitPluginPanel` returns to its predecessor. */
-      returnOnExit?: boolean;
+      /** @experimental Mark this entry so the experimental exit API returns to its predecessor. */
+      experimental_returnOnExit?: boolean;
     },
   ): void;
   /**
-   * Leave a panel subroute. Entries opened with `returnOnExit` pop back;
-   * direct entries replace themselves with this fallback location.
+   * @experimental
+   *
+   * Leave a panel subroute. Entries opened with `experimental_returnOnExit`
+   * pop back; direct entries replace themselves with this fallback location.
    */
-  exitPluginPanel(path: string, options?: { subPath?: string }): void;
+  experimental_exitPluginPanel(
+    path: string,
+    options?: { subPath?: string },
+  ): void;
   /**
    * Navigate to the root compose surface (the new-thread screen). Pass
    * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
    * composer on arrival — the pairing behind "Create via chat" style entry
    * points that drop the user into chat with a prefilled prompt. Set
-   * `replaceInitialPrompt` for an explicit resource action whose context must
-   * replace any stale root-composer draft. Set `replace` for redirects so the
-   * intermediary route does not trap browser Back navigation.
+   * `experimental_replaceInitialPrompt` for an explicit resource action whose
+   * context must replace any stale root-composer draft. Set
+   * `experimental_replace` for redirects so the intermediary route does not
+   * trap browser Back navigation.
    */
   toCompose(options?: {
     initialPrompt?: string;
     focusPrompt?: boolean;
-    replaceInitialPrompt?: boolean;
-    replace?: boolean;
+    experimental_replaceInitialPrompt?: boolean;
+    experimental_replace?: boolean;
   }): void;
 }
 

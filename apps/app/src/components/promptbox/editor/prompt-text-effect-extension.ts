@@ -2,13 +2,14 @@ import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
 
 export const PROMPT_TEXT_SHIMMER_CLASS = "prompt-text-shimmer";
 
-const promptTextEffectPluginKey = new PluginKey<PluginComposerTextEffect | null>(
-  "promptTextEffect",
-);
+const promptTextEffectPluginKey =
+  new PluginKey<experimental_PluginComposerTextEffect | null>(
+    "promptTextEffect",
+  );
 
 export function findPromptTextRanges(
   doc: ProseMirrorNode,
@@ -23,7 +24,7 @@ export function findPromptTextRanges(
 
 export function setPromptTextEffect(
   editor: Editor,
-  effect: PluginComposerTextEffect | null,
+  effect: experimental_PluginComposerTextEffect | null,
 ): void {
   editor.view.dispatch(
     editor.state.tr.setMeta(promptTextEffectPluginKey, effect),
@@ -34,7 +35,7 @@ export const PromptTextEffectExtension = Extension.create({
   name: "promptTextEffect",
   addProseMirrorPlugins() {
     return [
-      new Plugin<PluginComposerTextEffect | null>({
+      new Plugin<experimental_PluginComposerTextEffect | null>({
         key: promptTextEffectPluginKey,
         state: {
           init: () => null,

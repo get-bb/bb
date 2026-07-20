@@ -15,7 +15,7 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -203,7 +203,7 @@ export interface FollowUpPromptBoxProps {
   suppressPluginComposerAccessories?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
-  textEffect?: PluginComposerTextEffect | null;
+  textEffect?: experimental_PluginComposerTextEffect | null;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**

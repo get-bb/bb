@@ -8,7 +8,7 @@ import {
   type Ref,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -165,7 +165,7 @@ export interface NewThreadPromptBoxUIProps {
   disabled: boolean;
   /** Active root-composer binding for plugin composer hooks and accessories. */
   pluginComposerHost?: PluginComposerHost | null;
-  textEffect?: PluginComposerTextEffect | null;
+  textEffect?: experimental_PluginComposerTextEffect | null;
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
 

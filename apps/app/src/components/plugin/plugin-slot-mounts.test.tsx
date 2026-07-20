@@ -223,16 +223,18 @@ describe("useComposer", () => {
         setText: composer.setText,
         updateText: composer.updateText,
         clear: composer.clear,
-        setTextEffect: composer.setTextEffect,
-        setThreadRowStatus: composer.setThreadRowStatus,
+        experimental_setTextEffect: composer.experimental_setTextEffect,
+        experimental_setThreadRowStatus:
+          composer.experimental_setThreadRowStatus,
       });
       const methodsAreStable =
         initialMethods.current.setText === composer.setText &&
         initialMethods.current.updateText === composer.updateText &&
         initialMethods.current.clear === composer.clear &&
-        initialMethods.current.setTextEffect === composer.setTextEffect &&
-        initialMethods.current.setThreadRowStatus ===
-          composer.setThreadRowStatus;
+        initialMethods.current.experimental_setTextEffect ===
+          composer.experimental_setTextEffect &&
+        initialMethods.current.experimental_setThreadRowStatus ===
+          composer.experimental_setThreadRowStatus;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
@@ -279,17 +281,20 @@ describe("useComposer", () => {
           </button>
           <button
             type="button"
-            onClick={() => composer.setTextEffect("shimmer")}
+            onClick={() => composer.experimental_setTextEffect("shimmer")}
           >
             {label}-start-effect
           </button>
-          <button type="button" onClick={() => composer.setTextEffect(null)}>
+          <button
+            type="button"
+            onClick={() => composer.experimental_setTextEffect(null)}
+          >
             {label}-clear-effect
           </button>
           <button
             type="button"
             onClick={() =>
-              composer.setThreadRowStatus({
+              composer.experimental_setThreadRowStatus({
                 icon: "AiContentGenerator01",
                 label: "Plugin improving draft",
                 effect: "shimmer",
@@ -301,14 +306,14 @@ describe("useComposer", () => {
           </button>
           <button
             type="button"
-            onClick={() => composer.setThreadRowStatus(null)}
+            onClick={() => composer.experimental_setThreadRowStatus(null)}
           >
             {label}-clear-row-status
           </button>
           <button
             type="button"
             onClick={() =>
-              composer.setThreadRowStatus({
+              composer.experimental_setThreadRowStatus({
                 icon: "AiContentGenerator01",
                 label: "   ",
                 effect: "shimmer",
@@ -321,7 +326,7 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.setThreadRowStatus(
+              composer.experimental_setThreadRowStatus(
                 JSON.parse(
                   '{"icon":false,"label":42,"effect":"pulse","tone":"loud"}',
                 ),
@@ -605,7 +610,7 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("invalid-status-set-blank-row-status"));
     expect(getPluginThreadRowStatus("thr_invalid_status")).toEqual(validStatus);
     expect(warn).toHaveBeenCalledWith(
-      '[plugin:demo] useComposer().setThreadRowStatus: "label" must be a non-empty string',
+      '[plugin:demo] useComposer().experimental_setThreadRowStatus: "label" must be a non-empty string',
     );
 
     fireEvent.click(
@@ -613,7 +618,7 @@ describe("useComposer", () => {
     );
     expect(getPluginThreadRowStatus("thr_invalid_status")).toEqual(validStatus);
     expect(warn).toHaveBeenCalledWith(
-      "[plugin:demo] useComposer().setThreadRowStatus: invalid status",
+      "[plugin:demo] useComposer().experimental_setThreadRowStatus: invalid status",
     );
   });
 
@@ -1051,21 +1056,25 @@ describe("useComposer", () => {
   it("keeps a same-plugin hook owner's visual state when its sibling unmounts", () => {
     const captured = new Map<
       string,
-      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+      Pick<
+        PluginComposerApi,
+        "experimental_setTextEffect" | "experimental_setThreadRowStatus"
+      >
     >();
 
     function VisualOwner({ label }: { label: string }) {
       const composer = useComposer();
       captured.set(label, {
-        setTextEffect: composer.setTextEffect,
-        setThreadRowStatus: composer.setThreadRowStatus,
+        experimental_setTextEffect: composer.experimental_setTextEffect,
+        experimental_setThreadRowStatus:
+          composer.experimental_setThreadRowStatus,
       });
       return (
         <button
           type="button"
           onClick={() => {
-            composer.setTextEffect("shimmer");
-            composer.setThreadRowStatus({
+            composer.experimental_setTextEffect("shimmer");
+            composer.experimental_setThreadRowStatus({
               icon: "AiContentGenerator01",
               label: `${label} status`,
               effect: "shimmer",
@@ -1116,8 +1125,8 @@ describe("useComposer", () => {
     );
 
     act(() => {
-      staleFirst?.setTextEffect(null);
-      staleFirst?.setThreadRowStatus(null);
+      staleFirst?.experimental_setTextEffect(null);
+      staleFirst?.experimental_setThreadRowStatus(null);
     });
     expect(getComposerTextEffect(storageKey)).toBe("shimmer");
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
@@ -1133,19 +1142,27 @@ describe("useComposer", () => {
     };
 
     function ScopedVisualWriter() {
-      const { scope, setTextEffect, setThreadRowStatus } = useComposer();
+      const {
+        scope,
+        experimental_setTextEffect,
+        experimental_setThreadRowStatus,
+      } = useComposer();
       const queuedMessageId =
         scope.kind === "queued-message" ? scope.queuedMessageId : "unexpected";
 
       useLayoutEffect(() => {
-        setTextEffect("shimmer");
-        setThreadRowStatus({
+        experimental_setTextEffect("shimmer");
+        experimental_setThreadRowStatus({
           icon: "AiContentGenerator01",
           label: `${queuedMessageId} status`,
           effect: "shimmer",
           tone: "success",
         });
-      }, [queuedMessageId, setTextEffect, setThreadRowStatus]);
+      }, [
+        queuedMessageId,
+        experimental_setTextEffect,
+        experimental_setThreadRowStatus,
+      ]);
 
       return null;
     }
@@ -1231,17 +1248,23 @@ describe("useComposer", () => {
 
   it("rejects captured effect and status setters after scope cleanup or unmount", () => {
     const captured: Array<
-      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+      Pick<
+        PluginComposerApi,
+        "experimental_setTextEffect" | "experimental_setThreadRowStatus"
+      >
     > = [];
     registerComposerProbe("owned", (composer) => {
       const previous = captured.at(-1);
       if (
-        previous?.setTextEffect !== composer.setTextEffect ||
-        previous.setThreadRowStatus !== composer.setThreadRowStatus
+        previous?.experimental_setTextEffect !==
+          composer.experimental_setTextEffect ||
+        previous.experimental_setThreadRowStatus !==
+          composer.experimental_setThreadRowStatus
       ) {
         captured.push({
-          setTextEffect: composer.setTextEffect,
-          setThreadRowStatus: composer.setThreadRowStatus,
+          experimental_setTextEffect: composer.experimental_setTextEffect,
+          experimental_setThreadRowStatus:
+            composer.experimental_setThreadRowStatus,
         });
       }
     });
@@ -1279,8 +1302,8 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
 
     act(() => {
-      staleScopeSetters.setTextEffect("shimmer");
-      staleScopeSetters.setThreadRowStatus({
+      staleScopeSetters.experimental_setTextEffect("shimmer");
+      staleScopeSetters.experimental_setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "stale status",
         effect: "shimmer",
@@ -1292,8 +1315,8 @@ describe("useComposer", () => {
 
     const currentSetters = captured.at(-1)!;
     act(() => {
-      currentSetters.setTextEffect("shimmer");
-      currentSetters.setThreadRowStatus({
+      currentSetters.experimental_setTextEffect("shimmer");
+      currentSetters.experimental_setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "current status",
         effect: "shimmer",
@@ -1309,8 +1332,8 @@ describe("useComposer", () => {
     expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
     act(() => {
-      currentSetters.setTextEffect("shimmer");
-      currentSetters.setThreadRowStatus({
+      currentSetters.experimental_setTextEffect("shimmer");
+      currentSetters.experimental_setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "unmounted status",
         effect: "shimmer",

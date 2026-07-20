@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -320,7 +320,7 @@ export interface PromptBoxInternalProps {
   placeholder?: string;
   className?: string;
   /** Optional host-rendered paint applied only to editable draft text. */
-  textEffect?: PluginComposerTextEffect | null;
+  textEffect?: experimental_PluginComposerTextEffect | null;
   /** Content rendered inside the prompt box card, above the text area. Use
    * for prominent context that should be impossible to miss — e.g. a
    * "Reusing existing worktree" banner when env mode is set to reuse. */

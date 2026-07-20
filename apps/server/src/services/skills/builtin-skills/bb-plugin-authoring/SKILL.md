@@ -883,7 +883,15 @@ Hooks:
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt).
+- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
+options?), experimental_exitPluginPanel(path, options?), toCompose(options?) }`.
+  `toPluginPanel` accepts stable `subPath` and `replace` options plus
+  `experimental_returnOnExit`; pair the latter with
+  `experimental_exitPluginPanel` when a panel subroute should return to the
+  route that opened it. `toCompose` opens the root compose screen; pass
+  `initialPrompt` to seed the draft and `focusPrompt: true` to focus it. Its
+  `experimental_replaceInitialPrompt` option overwrites an existing root draft,
+  while `experimental_replace` replaces the browser history entry.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;
@@ -898,16 +906,17 @@ Hooks:
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
   fresh context at send time; `focus()` focuses the caret. `scope` reports
   where writes land: `{ kind: "thread", threadId }` for a thread draft,
-  `{ kind: "queued-message", threadId, queuedMessageId }` for the active
-  inline queue editor, `{ kind: "side-chat", projectId, parentThreadId, tabId,
-childThreadId }` for the visible side-chat draft, or
+  experimental `{ kind: "queued-message", threadId, queuedMessageId }` for the
+  active inline queue editor, experimental
+  `{ kind: "side-chat", projectId, parentThreadId, tabId, childThreadId }` for
+  the visible side-chat draft, or
   `{ kind: "new-thread", projectId }` for root and nav-panel compose surfaces.
-  `setTextEffect("shimmer" | null)` paints the active draft;
-  `setThreadRowStatus({ icon, label, effect, tone } | null)` replaces the
-  visible thread's draft glyph (a side chat targets its parent row; `tone` is
-  `"default"` or `"success"` and `label` must be non-blank). Both visuals
-  belong to the calling hook instance and clear automatically when it unmounts
-  or its composer scope changes.
+  `experimental_setTextEffect("shimmer" | null)` paints the active draft;
+  `experimental_setThreadRowStatus({ icon, label, effect, tone } | null)`
+  replaces the visible thread's draft glyph (a side chat targets its parent
+  row; `tone` is `"default"` or `"success"` and `label` must be non-blank).
+  Both visuals belong to the calling hook instance and clear automatically
+  when it unmounts or its composer scope changes.
 
 ```tsx
 const composer = useComposer();
@@ -1076,7 +1085,7 @@ const slot = renderSlot(
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
-await slot.behavior.setComposerScope(
+await slot.behavior.experimental_setComposerScope(
   { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
   "queued draft",
 );

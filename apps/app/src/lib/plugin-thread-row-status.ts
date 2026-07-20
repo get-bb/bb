@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { experimental_PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 
 type ThreadRowStatusListener = () => void;
 type ThreadRowStatusOwner = string | symbol;
@@ -8,7 +8,7 @@ const statusesByThreadId = new Map<
   string,
   Map<
     ThreadRowStatusOwner,
-    { pluginId: string; status: PluginComposerThreadRowStatus }
+    { pluginId: string; status: experimental_PluginComposerThreadRowStatus }
   >
 >();
 const listenersByThreadId = new Map<string, Set<ThreadRowStatusListener>>();
@@ -23,7 +23,7 @@ function notify(threadId: string): void {
 
 export function getPluginThreadRowStatus(
   threadId: string,
-): PluginComposerThreadRowStatus | null {
+): experimental_PluginComposerThreadRowStatus | null {
   const statuses = statusesByThreadId.get(threadId);
   if (!statuses || statuses.size === 0) return null;
   return statuses.values().next().value?.status ?? null;
@@ -32,7 +32,7 @@ export function getPluginThreadRowStatus(
 export function setPluginThreadRowStatus(
   threadId: string | null,
   pluginId: string,
-  status: PluginComposerThreadRowStatus | null,
+  status: experimental_PluginComposerThreadRowStatus | null,
   owner: ThreadRowStatusOwner = pluginId,
 ): void {
   if (threadId === null) return;
@@ -77,7 +77,7 @@ export function subscribePluginThreadRowStatus(
 
 export function usePluginThreadRowStatus(
   threadId: string,
-): PluginComposerThreadRowStatus | null {
+): experimental_PluginComposerThreadRowStatus | null {
   const subscribe = useCallback(
     (listener: ThreadRowStatusListener) =>
       subscribePluginThreadRowStatus(threadId, listener),

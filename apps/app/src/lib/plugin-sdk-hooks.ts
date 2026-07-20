@@ -7,7 +7,7 @@ import type {
   BbNavigate,
   PluginComposerApi,
   PluginComposerMention,
-  PluginComposerThreadRowStatus,
+  experimental_PluginComposerThreadRowStatus,
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
@@ -304,12 +304,12 @@ export function useBbNavigate(): BbNavigate {
       options?: {
         subPath?: string;
         replace?: boolean;
-        returnOnExit?: boolean;
+        experimental_returnOnExit?: boolean;
       },
     ) => {
       const navigateOptions = {
         ...(options?.replace ? { replace: true } : {}),
-        ...(options?.returnOnExit
+        ...(options?.experimental_returnOnExit
           ? { state: { bbPluginPanelReturnOnExit: true } }
           : {}),
       };
@@ -336,7 +336,7 @@ export function useBbNavigate(): BbNavigate {
     },
     [navigate, pluginId],
   );
-  const exitPluginPanel = useCallback(
+  const experimental_exitPluginPanel = useCallback(
     (path: string, options?: { subPath?: string }) => {
       const state = location.state;
       if (
@@ -356,25 +356,38 @@ export function useBbNavigate(): BbNavigate {
     (options?: {
       initialPrompt?: string;
       focusPrompt?: boolean;
-      replaceInitialPrompt?: boolean;
-      replace?: boolean;
+      experimental_replaceInitialPrompt?: boolean;
+      experimental_replace?: boolean;
     }) => {
       // RootComposeView reads `focusPrompt`/`initialPrompt` off the location
       // state to seed and focus the composer (single-use, cleared after read).
       void navigate(getRootComposeRoutePath(), {
-        ...(options?.replace ? { replace: true } : {}),
+        ...(options?.experimental_replace ? { replace: true } : {}),
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",
-          replaceInitialPrompt: options?.replaceInitialPrompt ?? false,
+          replaceInitialPrompt:
+            options?.experimental_replaceInitialPrompt ?? false,
         },
       });
     },
     [navigate],
   );
   return useMemo(
-    () => ({ toThread, toProject, toPluginPanel, exitPluginPanel, toCompose }),
-    [toThread, toProject, toPluginPanel, exitPluginPanel, toCompose],
+    () => ({
+      toThread,
+      toProject,
+      toPluginPanel,
+      experimental_exitPluginPanel,
+      toCompose,
+    }),
+    [
+      toThread,
+      toProject,
+      toPluginPanel,
+      experimental_exitPluginPanel,
+      toCompose,
+    ],
   );
 }
 
@@ -439,8 +452,8 @@ function createComposerScopeOwnership(scopeKey: string) {
 
 function normalizePluginThreadRowStatus(
   pluginId: string,
-  status: PluginComposerThreadRowStatus | null,
-): PluginComposerThreadRowStatus | null | undefined {
+  status: experimental_PluginComposerThreadRowStatus | null,
+): experimental_PluginComposerThreadRowStatus | null | undefined {
   if (status === null) return null;
   if (
     typeof status !== "object" ||
@@ -450,14 +463,14 @@ function normalizePluginThreadRowStatus(
     (status.tone !== "default" && status.tone !== "success")
   ) {
     console.warn(
-      `[plugin:${pluginId}] useComposer().setThreadRowStatus: invalid status`,
+      `[plugin:${pluginId}] useComposer().experimental_setThreadRowStatus: invalid status`,
     );
     return undefined;
   }
   const label = status.label.trim();
   if (label.length === 0) {
     console.warn(
-      `[plugin:${pluginId}] useComposer().setThreadRowStatus: "label" must be a non-empty string`,
+      `[plugin:${pluginId}] useComposer().experimental_setThreadRowStatus: "label" must be a non-empty string`,
     );
     return undefined;
   }
@@ -577,15 +590,17 @@ export function useComposer(): PluginComposerApi {
     () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
     [pluginId, scopeOwnershipKey],
   );
-  const setTextEffect = useCallback(
-    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
+  const experimental_setTextEffect = useCallback(
+    (
+      effect: Parameters<PluginComposerApi["experimental_setTextEffect"]>[0],
+    ) => {
       if (!scopeOwnership.isActive()) return;
       setComposerTextEffect(textEffectKey, pluginId, effect, visualStateOwner);
     },
     [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
   );
-  const setThreadRowStatus = useCallback(
-    (status: PluginComposerThreadRowStatus | null) => {
+  const experimental_setThreadRowStatus = useCallback(
+    (status: experimental_PluginComposerThreadRowStatus | null) => {
       if (
         !scopeOwnership.isActive() ||
         threadRowStatusScopeKey === "new-thread"
@@ -699,8 +714,8 @@ export function useComposer(): PluginComposerApi {
       setText,
       updateText,
       clear,
-      setTextEffect,
-      setThreadRowStatus,
+      experimental_setTextEffect,
+      experimental_setThreadRowStatus,
       addQuote,
       insertMention,
       focus,
@@ -714,8 +729,8 @@ export function useComposer(): PluginComposerApi {
       insertMention,
       projectId,
       setText,
-      setTextEffect,
-      setThreadRowStatus,
+      experimental_setTextEffect,
+      experimental_setThreadRowStatus,
       threadId,
       updateText,
     ],

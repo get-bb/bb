@@ -19,8 +19,8 @@ import {
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
-  type PluginComposerTextEffect,
-  type PluginComposerThreadRowStatus,
+  type experimental_PluginComposerTextEffect,
+  type experimental_PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageDirectiveRegistration,
@@ -82,11 +82,11 @@ export type NavigateCall =
       options?: {
         subPath?: string;
         replace?: boolean;
-        returnOnExit?: boolean;
+        experimental_returnOnExit?: boolean;
       };
     }
   | {
-      method: "exitPluginPanel";
+      method: "experimental_exitPluginPanel";
       path: string;
       options?: { subPath?: string };
     }
@@ -95,20 +95,20 @@ export type NavigateCall =
       options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
-        replaceInitialPrompt?: boolean;
-        replace?: boolean;
+        experimental_replaceInitialPrompt?: boolean;
+        experimental_replace?: boolean;
       };
     };
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
-  /** Latest host-rendered text effect requested by the plugin. */
-  textEffect: PluginComposerTextEffect | null;
-  textEffectCalls: Array<PluginComposerTextEffect | null>;
-  /** Latest host-rendered thread-row status requested by the plugin. */
-  threadRowStatus: PluginComposerThreadRowStatus | null;
-  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
+  /** @experimental Latest host-rendered text effect requested by the plugin. */
+  experimental_textEffect: experimental_PluginComposerTextEffect | null;
+  experimental_textEffectCalls: Array<experimental_PluginComposerTextEffect | null>;
+  /** @experimental Latest host-rendered thread-row status requested by the plugin. */
+  experimental_threadRowStatus: experimental_PluginComposerThreadRowStatus | null;
+  experimental_threadRowStatusCalls: Array<experimental_PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -133,8 +133,8 @@ interface TestComposerStore {
 }
 
 function normalizeTestComposerThreadRowStatus(
-  status: PluginComposerThreadRowStatus | null,
-): PluginComposerThreadRowStatus | null | undefined {
+  status: experimental_PluginComposerThreadRowStatus | null,
+): experimental_PluginComposerThreadRowStatus | null | undefined {
   if (status === null) return null;
   const label = status.label.trim();
   return label.length === 0
@@ -607,8 +607,11 @@ export interface RenderedSlotBehaviorDrivers {
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
   ): Promise<void>;
-  /** Move to another composer scope, optionally replacing its draft text. */
-  setComposerScope(scope: PluginComposerScope, text?: string): Promise<void>;
+  /** @experimental Move scopes, optionally replacing the draft text. */
+  experimental_setComposerScope(
+    scope: PluginComposerScope,
+    text?: string,
+  ): Promise<void>;
 }
 
 /** Read-only call/write logs produced while the slot is mounted. */
@@ -750,9 +753,9 @@ export function renderSlot<
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
       });
     },
-    exitPluginPanel(path, panelOptions) {
+    experimental_exitPluginPanel(path, panelOptions) {
       navigateCalls.push({
-        method: "exitPluginPanel",
+        method: "experimental_exitPluginPanel",
         path,
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
       });
@@ -791,22 +794,26 @@ export function renderSlot<
     get text() {
       return composerText;
     },
-    textEffect: null,
-    textEffectCalls: [],
-    threadRowStatus: null,
-    threadRowStatusCalls: [],
+    experimental_textEffect: null,
+    experimental_textEffectCalls: [],
+    experimental_threadRowStatus: null,
+    experimental_threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
   };
-  const textEffectsByOwner = new Map<symbol, PluginComposerTextEffect>();
+  const textEffectsByOwner = new Map<
+    symbol,
+    experimental_PluginComposerTextEffect
+  >();
   const threadRowStatusesByOwner = new Map<
     symbol,
-    PluginComposerThreadRowStatus
+    experimental_PluginComposerThreadRowStatus
   >();
   const syncComposerVisualState = () => {
-    composerLog.textEffect = textEffectsByOwner.values().next().value ?? null;
-    composerLog.threadRowStatus =
+    composerLog.experimental_textEffect =
+      textEffectsByOwner.values().next().value ?? null;
+    composerLog.experimental_threadRowStatus =
       threadRowStatusesByOwner.values().next().value ?? null;
   };
   interface ComposerBindingOwnership {
@@ -851,14 +858,14 @@ export function renderSlot<
           clear() {
             commitComposerText("");
           },
-          setTextEffect(effect) {
+          experimental_setTextEffect(effect) {
             if (!ownership.active) return;
             if (effect === null) textEffectsByOwner.delete(ownership.owner);
             else textEffectsByOwner.set(ownership.owner, effect);
-            composerLog.textEffectCalls.push(effect);
+            composerLog.experimental_textEffectCalls.push(effect);
             syncComposerVisualState();
           },
-          setThreadRowStatus(status) {
+          experimental_setThreadRowStatus(status) {
             if (!ownership.active || scope.kind === "new-thread") return;
             const normalizedStatus =
               normalizeTestComposerThreadRowStatus(status);
@@ -870,7 +877,9 @@ export function renderSlot<
                 ...normalizedStatus,
               });
             }
-            composerLog.threadRowStatusCalls.push(normalizedStatus);
+            composerLog.experimental_threadRowStatusCalls.push(
+              normalizedStatus,
+            );
             syncComposerVisualState();
           },
           addQuote(text) {
@@ -987,7 +996,7 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
-  const setComposerScope = async (
+  const experimental_setComposerScope = async (
     scope: PluginComposerScope,
     text?: string,
   ): Promise<void> => {
@@ -1004,10 +1013,14 @@ export function renderSlot<
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
-    setComposerScope,
+    experimental_setComposerScope,
     navigateCalls,
     composer: composerLog,
-    behavior: { emitRealtime, setRealtimeConnectionState, setComposerScope },
+    behavior: {
+      emitRealtime,
+      setRealtimeConnectionState,
+      experimental_setComposerScope,
+    },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };

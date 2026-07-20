@@ -668,7 +668,7 @@ function OverviewView({
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
-        replaceInitialPrompt: true,
+        experimental_replaceInitialPrompt: true,
       });
     },
     [navigate],
@@ -912,8 +912,8 @@ function DetailView({
           projectId: route.projectId,
           automationId: route.automationId,
         }),
-        replaceInitialPrompt: true,
-        replace,
+        experimental_replaceInitialPrompt: true,
+        experimental_replace: replace,
       });
     },
     [navigate, route],

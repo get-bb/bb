@@ -105,7 +105,7 @@ function PluginNavigationHarness() {
         onClick={() =>
           pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
-            returnOnExit: true,
+            experimental_returnOnExit: true,
           })
         }
       >
@@ -126,7 +126,7 @@ function PluginNavigationHarness() {
         onClick={() =>
           pluginNavigate.toCompose({
             initialPrompt: "Edit this automation",
-            replace: true,
+            experimental_replace: true,
           })
         }
       >
@@ -135,9 +135,12 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.exitPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
-            subPath: detailSubPath,
-          })
+          pluginNavigate.experimental_exitPluginPanel(
+            AUTOMATIONS_PLUGIN_PANEL_PATH,
+            {
+              subPath: detailSubPath,
+            },
+          )
         }
       >
         Exit edit
@@ -210,10 +213,7 @@ describe("useRouteStateHistoryNavigation", () => {
       "Back",
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
     );
-    await clickAndExpectPath(
-      "Back",
-      TOOL_SKILL_DETAIL_ROUTE,
-    );
+    await clickAndExpectPath("Back", TOOL_SKILL_DETAIL_ROUTE);
     await clickAndExpectPath("Back", "/tools/skills/registry");
     await clickAndExpectPath("Back", "/tools/skills");
     await clickAndExpectPath("Back", "/");
@@ -223,10 +223,7 @@ describe("useRouteStateHistoryNavigation", () => {
 
     await clickAndExpectPath("Forward", "/tools/skills");
     await clickAndExpectPath("Forward", "/tools/skills/registry");
-    await clickAndExpectPath(
-      "Forward",
-      TOOL_SKILL_DETAIL_ROUTE,
-    );
+    await clickAndExpectPath("Forward", TOOL_SKILL_DETAIL_ROUTE);
     await clickAndExpectPath(
       "Forward",
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
@@ -259,10 +256,7 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go back", false);
     await expectSidebarButtonState("Go forward", true);
 
-    await clickAndExpectPath(
-      TOOL_SKILL_DETAIL_ROUTE,
-      TOOL_SKILL_DETAIL_ROUTE,
-    );
+    await clickAndExpectPath(TOOL_SKILL_DETAIL_ROUTE, TOOL_SKILL_DETAIL_ROUTE);
     await clickAndExpectPath("Go back", "/tools/skills");
 
     await expectSidebarButtonState("Go forward", false);

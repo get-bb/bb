@@ -388,29 +388,32 @@ The packaged runtime module, app shim, and bundled declaration expose exactly th
 
 ### Navigation hook
 
-| Method          | Signature                                                                      |
-| --------------- | ------------------------------------------------------------------------------ |
-| `toThread`      | `(threadId: string) => void`                                                   |
-| `toProject`     | `(projectId: string) => void`                                                  |
-| `toPluginPanel` | `(path: string, { subPath?, replace? }?) => void`                              |
-| `toCompose`     | `({ initialPrompt?, focusPrompt?, replaceInitialPrompt?, replace? }?) => void` |
+| Method                         | Signature                                                                                                |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `toThread`                     | `(threadId: string) => void`                                                                             |
+| `toProject`                    | `(projectId: string) => void`                                                                            |
+| `toPluginPanel`                | `(path: string, { subPath?, replace?, experimental_returnOnExit? }?) => void`                            |
+| `experimental_exitPluginPanel` | `(path: string, { subPath? }?) => void`                                                                  |
+| `toCompose`                    | `({ initialPrompt?, focusPrompt?, experimental_replaceInitialPrompt?, experimental_replace? }?) => void` |
 
-`toPluginPanel` targets a nav panel owned by the calling plugin. `replace` replaces history instead of pushing. `toCompose` opens the root new-thread surface and may seed or focus the prompt. Set `replaceInitialPrompt` when an explicit action, such as editing a selected resource, must replace a stale root-composer draft; otherwise the initial prompt only fills an empty draft. Set `replace` when redirecting from an intermediary route so browser Back skips that route.
+`toPluginPanel` targets a nav panel owned by the calling plugin. Its stable `replace` option replaces history instead of pushing. `experimental_returnOnExit` marks a panel entry so `experimental_exitPluginPanel` returns to its predecessor; direct entries instead replace themselves with the supplied fallback panel location.
+
+`toCompose` opens the root new-thread surface and may seed or focus the prompt. Set `experimental_replaceInitialPrompt` when an explicit action, such as editing a selected resource, must replace a stale root-composer draft; otherwise the initial prompt only fills an empty draft. Set `experimental_replace` when redirecting from an intermediary route so browser Back skips that route.
 
 ### Composer hook
 
-| Member                                   | Contract                                                                                                                                                                                                                                             |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scope`                                  | thread, queued-message, side-chat (`projectId`, parent/child thread ids, tab id), or new-thread identity.                                                                                                                                            |
-| `text`                                   | current plain-text draft snapshot for the scope.                                                                                                                                                                                                     |
-| `setText(next)`                          | replaces plain text; preserves attachments and rebases unaffected inline mentions, removing only mentions overlapped by the edit.                                                                                                                    |
-| `updateText(updater)`                    | computes a replacement from the latest committed text using the same reconciliation.                                                                                                                                                                 |
-| `clear()`                                | clears text and inline mentions without clearing independently attached files.                                                                                                                                                                       |
-| `setTextEffect(effect)`                  | applies `"shimmer"` to the active editable text or clears it with `null`; ownership ends when this hook unmounts or changes scope.                                                                                                                   |
-| `setThreadRowStatus(status)`             | replaces the visible thread's draft glyph or clears it with `null`; new-thread calls are no-ops, side chats target their visible parent row, and non-null status requires icon, non-blank label, nullable effect, and explicit default/success tone. |
-| `addQuote(text)`                         | appends text as a blockquote block and focuses the composer; blank text is a no-op.                                                                                                                                                                  |
-| `insertMention({ provider, id, label })` | inserts a pill bound to one of this plugin's backend mention providers.                                                                                                                                                                              |
-| `focus()`                                | focuses the caret at the end of the draft.                                                                                                                                                                                                           |
+| Member                                    | Contract                                                                                                                                                                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scope`                                   | thread, queued-message, side-chat (`projectId`, parent/child thread ids, tab id), or new-thread identity.                                                                                                                                            |
+| `text`                                    | current plain-text draft snapshot for the scope.                                                                                                                                                                                                     |
+| `setText(next)`                           | replaces plain text; preserves attachments and rebases unaffected inline mentions, removing only mentions overlapped by the edit.                                                                                                                    |
+| `updateText(updater)`                     | computes a replacement from the latest committed text using the same reconciliation.                                                                                                                                                                 |
+| `clear()`                                 | clears text and inline mentions without clearing independently attached files.                                                                                                                                                                       |
+| `experimental_setTextEffect(effect)`      | applies `"shimmer"` to the active editable text or clears it with `null`; ownership ends when this hook unmounts or changes scope.                                                                                                                   |
+| `experimental_setThreadRowStatus(status)` | replaces the visible thread's draft glyph or clears it with `null`; new-thread calls are no-ops, side chats target their visible parent row, and non-null status requires icon, non-blank label, nullable effect, and explicit default/success tone. |
+| `addQuote(text)`                          | appends text as a blockquote block and focuses the composer; blank text is a no-op.                                                                                                                                                                  |
+| `insertMention({ provider, id, label })`  | inserts a pill bound to one of this plugin's backend mention providers.                                                                                                                                                                              |
+| `focus()`                                 | focuses the caret at the end of the draft.                                                                                                                                                                                                           |
 
 ### Slot registrations
 
@@ -922,18 +925,18 @@ Unstubbed methods throw with the exact path to stub. Recorded `threads.spawn` ca
 
 ### `@bb/plugin-sdk/testing/app`
 
-| Export/member                                         | Purpose                                                                                                                                |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `installTestPluginRuntime()`                          | installs the fake frontend runtime globally before importing an app entry.                                                             |
-| `loadPluginApp(source)`                               | resolves a definition/module/import thunk, validates registrations with host rules, and returns `CapturedPluginApp`.                   |
-| `renderSlot(registration, props, options?)`           | mounts a component using Testing Library and fake hook backends.                                                                       |
-| rendered `inspection.rpcCalls`                        | ordered `{ method, input }[]`.                                                                                                         |
-| rendered `behavior.emitRealtime(channel, payload)`    | pushes a JSON-round-tripped signal inside React `act`.                                                                                 |
-| rendered `behavior.setRealtimeConnectionState(state)` | drives the shared realtime lifecycle inside React `act`.                                                                               |
-| rendered `behavior.setComposerScope(scope, text?)`    | transitions the fake composer scope, optionally replaces draft text, invalidates stale visual setters, and clears scope-owned visuals. |
-| rendered `inspection.navigateCalls`                   | discriminated call log for every navigation method.                                                                                    |
-| rendered `inspection.composer`                        | current text/visuals plus quote, mention, focus, text-effect, and thread-row-status call logs.                                         |
-| rendered `lifecycle.rerender(ui)` / `unmount()`       | Testing Library mount controls separated from behavior/logs.                                                                           |
+| Export/member                                                   | Purpose                                                                                                                                |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `installTestPluginRuntime()`                                    | installs the fake frontend runtime globally before importing an app entry.                                                             |
+| `loadPluginApp(source)`                                         | resolves a definition/module/import thunk, validates registrations with host rules, and returns `CapturedPluginApp`.                   |
+| `renderSlot(registration, props, options?)`                     | mounts a component using Testing Library and fake hook backends.                                                                       |
+| rendered `inspection.rpcCalls`                                  | ordered `{ method, input }[]`.                                                                                                         |
+| rendered `behavior.emitRealtime(channel, payload)`              | pushes a JSON-round-tripped signal inside React `act`.                                                                                 |
+| rendered `behavior.setRealtimeConnectionState(state)`           | drives the shared realtime lifecycle inside React `act`.                                                                               |
+| rendered `behavior.experimental_setComposerScope(scope, text?)` | transitions the fake composer scope, optionally replaces draft text, invalidates stale visual setters, and clears scope-owned visuals. |
+| rendered `inspection.navigateCalls`                             | discriminated call log for every navigation method.                                                                                    |
+| rendered `inspection.composer`                                  | current text/visuals plus quote, mention, focus, text-effect, and thread-row-status call logs.                                         |
+| rendered `lifecycle.rerender(ui)` / `unmount()`                 | Testing Library mount controls separated from behavior/logs.                                                                           |
 
 `CapturedPluginApp` contains `homepageSections`, `settingsSections`, `navPanels`, `threadPanelActions`, `composerAccessories`, `pendingInteractions`, `sidebarFooterActions`, `fileOpeners`, and `messageDirectives`.
 
@@ -955,7 +958,7 @@ The root `@bb/plugin-sdk` declaration exports these public type families:
 - RPC/JSON: `JsonValue`, `PluginRpcCallArgs`, `PluginRpcContract`, `PluginRpcError`, `PluginRpcErrorCode`, `PluginRpcHandlers`, `PluginRpcIssuePathSegment`, `PluginRpcMethodContract`, `PluginRpcResult`, `PluginRpcValidationIssue`, `StandardSchemaV1`, `StandardSchemaV1InferInput`, `StandardSchemaV1InferOutput`, `StandardSchemaV1Issue`, and `StandardSchemaV1Result`;
 - app definition: `PluginSdkApp`, `PluginAppBuilder`, `PluginAppSlots`, `PluginAppSetup`, and `PluginAppDefinition`;
 - slot props/registrations: homepage, settings, nav panel, thread panel action, composer accessory, pending interaction, sidebar footer action, file opener, and message directive types documented above;
-- hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`, `PluginComposerTextEffect`, `PluginComposerThreadRowStatus`.
+- hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`, `experimental_PluginComposerQueuedMessageScope`, `experimental_PluginComposerSideChatScope`, `experimental_PluginComposerTextEffect`, `experimental_PluginComposerThreadRowStatus`.
 
 The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract` plus the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` constant. The `/app` runtime subpath exports exactly the eight hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
 
