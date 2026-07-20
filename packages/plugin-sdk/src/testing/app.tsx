@@ -23,6 +23,7 @@ import {
   type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
@@ -36,6 +37,7 @@ import {
   type PluginRpcContract,
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
+  type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
 
@@ -172,6 +174,32 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
 const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
+/**
+ * Stand-in for the host-owned ThreadChat component: a recognizable stub that
+ * records every public prop as a data attribute so plugin tests can assert
+ * what their slot component passed without the real chat engine.
+ */
+function TestThreadChat({
+  threadId,
+  variant = "full",
+  layout = "contained",
+  focusRequest,
+  className,
+}: ThreadChatProps) {
+  return (
+    <div
+      data-testid="bb-thread-chat"
+      data-thread-id={threadId}
+      data-variant={variant}
+      data-layout={layout}
+      data-focus-request={focusRequest ?? 0}
+      className={className}
+    >
+      ThreadChat stub ({threadId})
+    </div>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -227,6 +255,7 @@ const testPluginSdkApp = {
     );
     return useMemo(() => ({ ...composer.api, text }), [composer, text]);
   },
+  ThreadChat: TestThreadChat,
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -260,6 +289,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
+  messageActions: PluginMessageActionRegistration[];
 }
 
 type PluginAppModule = { default: unknown };
@@ -344,6 +374,7 @@ function collectRegistrations(
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
+    messageActions: [],
   };
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -355,6 +386,7 @@ function collectRegistrations(
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
+    messageAction: new Set<string>(),
   };
 
   definition.setup({
@@ -499,6 +531,22 @@ function collectRegistrations(
         captured.messageDirectives.push({
           id,
           component: requireComponent(kind, registration.component),
+        });
+      },
+      messageAction(registration) {
+        const kind = "slots.messageAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        captured.messageActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+            : {}),
+          run: registration.run,
         });
       },
     },

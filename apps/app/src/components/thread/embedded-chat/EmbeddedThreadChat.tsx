@@ -20,6 +20,7 @@ import type {
   HistoryConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
@@ -165,6 +166,12 @@ export interface EmbeddedThreadChatComposerProps {
   onDraftSubmitted?: (input: PromptInput[]) => void;
   /** Called when a bottom-draft submit fails, before the draft restores. */
   onDraftSubmitError?: () => void;
+  /**
+   * External focus nonce: every change focuses the composer caret at the end
+   * of the draft (the initial value does not). Combined with the component's
+   * own internal focus nonce.
+   */
+  focusRequestKey?: number;
 }
 
 interface EmbeddedThreadChatSharedProps {
@@ -186,6 +193,17 @@ interface EmbeddedThreadChatSharedProps {
   labels?: Partial<EmbeddedThreadChatLabels>;
   showLoadOlderRows?: boolean;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
+  /**
+   * "contained" (default) fills and scrolls inside a bounded parent;
+   * "document" grows with its content and defers scrolling to the page (no
+   * bottom-anchored scroll body, so no follow-the-stream behavior).
+   */
+  layout?: "contained" | "document";
+  /**
+   * Content measure: "panel" (default) is the edge-to-edge side-panel
+   * presentation; "page" centers the conversation at reading width.
+   */
+  measure?: "panel" | "page";
 }
 
 export interface EmbeddedThreadChatComposerModeProps
@@ -269,6 +287,8 @@ function EmbeddedThreadChatWithComposer({
   labels: labelOverrides,
   showLoadOlderRows = true,
   onSendToMainMessage,
+  layout = "contained",
+  measure = "panel",
   composer,
 }: EmbeddedThreadChatComposerModeProps) {
   const labels = { ...DEFAULT_LABELS, ...labelOverrides };
@@ -1074,54 +1094,88 @@ function EmbeddedThreadChatWithComposer({
           promptActions={promptActions}
           suppressPluginComposerAccessories={!isActive}
           zenModeResetKey={surfaceKey}
-          focusEndKey={composerFocusNonce}
+          focusEndKey={
+            // Composite only when an external nonce is supplied, so existing
+            // consumers keep the plain internal-nonce key.
+            composer.focusRequestKey === undefined
+              ? composerFocusNonce
+              : `${composerFocusNonce}:${composer.focusRequestKey}`
+          }
           isPrimaryComposer={composer.isPrimaryComposer ?? true}
         />
       </div>
     </div>
   );
 
+  const maxWidthClassName = measure === "page" ? "max-w-[760px]" : "max-w-none";
+  const timelineBody =
+    threadId !== null ? (
+      <ThreadTimelinePanelContent
+        isTurnSubmitting={isTurnSubmitting}
+        leadingContent={leadingContent}
+        missingThreadLabel={labels.missingThread}
+        onSendToMainMessage={onSendToMainMessage}
+        onMessageAddToChat={handleAddToChat}
+        onSelectionAddToChat={handleAddToChat}
+        provisioningLabel={labels.provisioning}
+        rowFilter={rowFilter}
+        showLoadOlderRows={showLoadOlderRows}
+        threadId={threadId}
+        timeline={timeline}
+        timelineErrorLabel={labels.timelineError}
+      />
+    ) : (
+      <ThreadTimelineSurface
+        activeThinking={null}
+        leadingContent={leadingContent}
+        isThreadTimelinePending={false}
+        timelineError={false}
+        showOngoingIndicator={isTurnSubmitting}
+        ongoingIndicatorLabel={labels.draftSubmitting}
+        timelineRows={draftModeTimelineRows ? [...draftModeTimelineRows] : []}
+        threadId={surfaceKey}
+        threadRuntimeDisplayStatus="starting"
+        workspaceRootPath={undefined}
+      />
+    );
+
+  if (layout === "document") {
+    // Normal document flow: the page (or panel) scrolls, not this component.
+    // The sticky footer keeps the composer visible while the transcript is in
+    // view without capturing scroll ownership.
+    return (
+      <div
+        key={surfaceKey}
+        data-thread-window=""
+        className="flex min-w-0 flex-col bg-background"
+      >
+        <div
+          className={cn(
+            "mx-auto flex w-full min-w-0 flex-col",
+            measure === "page" ? "px-4 pb-3 pt-3" : "px-2 pb-3 pt-3",
+            maxWidthClassName,
+          )}
+        >
+          {timelineBody}
+        </div>
+        <div className="sticky bottom-0 z-20">{footer}</div>
+      </div>
+    );
+  }
+
   return (
     <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
       <BottomAnchoredScrollBody
         key={surfaceKey}
         scrollAreaClassName="bg-background"
-        contentClassName="!px-2 !pb-3 !pt-3"
-        maxWidthClassName="max-w-none"
+        contentClassName={
+          measure === "page" ? "!pb-3 !pt-3" : "!px-2 !pb-3 !pt-3"
+        }
+        maxWidthClassName={maxWidthClassName}
         footer={footer}
         scrollAnchorThreadId={threadId ?? undefined}
       >
-        {threadId !== null ? (
-          <ThreadTimelinePanelContent
-            isTurnSubmitting={isTurnSubmitting}
-            leadingContent={leadingContent}
-            missingThreadLabel={labels.missingThread}
-            onSendToMainMessage={onSendToMainMessage}
-            onMessageAddToChat={handleAddToChat}
-            onSelectionAddToChat={handleAddToChat}
-            provisioningLabel={labels.provisioning}
-            rowFilter={rowFilter}
-            showLoadOlderRows={showLoadOlderRows}
-            threadId={threadId}
-            timeline={timeline}
-            timelineErrorLabel={labels.timelineError}
-          />
-        ) : (
-          <ThreadTimelineSurface
-            activeThinking={null}
-            leadingContent={leadingContent}
-            isThreadTimelinePending={false}
-            timelineError={false}
-            showOngoingIndicator={isTurnSubmitting}
-            ongoingIndicatorLabel={labels.draftSubmitting}
-            timelineRows={
-              draftModeTimelineRows ? [...draftModeTimelineRows] : []
-            }
-            threadId={surfaceKey}
-            threadRuntimeDisplayStatus="starting"
-            workspaceRootPath={undefined}
-          />
-        )}
+        {timelineBody}
       </BottomAnchoredScrollBody>
     </div>
   );

@@ -1,4 +1,5 @@
 import type { PluginSdkApp } from "@bb/plugin-sdk";
+import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
@@ -34,4 +35,7 @@ export const pluginSdkAppImplementation = {
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  // The one host-owned component in the SDK (plugin design: deliberate
+  // exception to §5.5) — a stable product capability, not a UI kit.
+  ThreadChat: PluginThreadChat,
 } satisfies PluginSdkApp;

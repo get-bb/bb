@@ -93,6 +93,21 @@ export type ThreadTimelineSelectionReplyInSideChatHandler = (
   target: ThreadTimelineSelectionReplyInSideChatTarget,
 ) => void;
 
+/**
+ * A plugin-contributed per-message action, resolved by the timeline root
+ * (which owns the slot subscription and the invocation context) and rendered
+ * by the per-message action bar / selection menu as host chrome.
+ */
+export interface ThreadTimelinePluginMessageAction {
+  /** Unique render key across plugins and reload generations. */
+  key: string;
+  pluginId: string;
+  /** Icon hint (BB icon name) or null for the plugin's generic icon. */
+  icon: string | null;
+  label: string;
+  onSelect: () => void;
+}
+
 export type ThreadTimelineUnreadDividerPlacement =
   | {
       kind: "after-cutoff";

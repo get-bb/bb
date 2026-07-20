@@ -58,6 +58,7 @@ import {
   SelectableMessageProse,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
+import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
@@ -65,6 +66,8 @@ interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
+  /** Plugin-contributed per-message actions, resolved by the timeline root. */
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
@@ -180,6 +183,7 @@ interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   childOrigin: ThreadChildOrigin | null;
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
@@ -202,6 +206,7 @@ interface UserConversationMessageProps {
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
   onSideChat?: () => void;
@@ -377,6 +382,7 @@ function UserConversationMessage({
   onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
+  pluginActions = [],
   projectId,
   resolveMentionLink,
   resolveSegmentLinkHref,
@@ -489,7 +495,9 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {messageText || addToChatAttachments.length > 0 ? (
+        {messageText ||
+        addToChatAttachments.length > 0 ||
+        pluginActions.length > 0 ? (
           <div className="mt-1 flex justify-end">
             <MessageActionBar
               messageText={messageText}
@@ -497,6 +505,7 @@ function UserConversationMessage({
               mobileActionDisplay={mobileActionDisplay}
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
+              pluginActions={pluginActions}
             />
           </div>
         ) : null}
@@ -518,6 +527,7 @@ function AssistantConversationMessage({
   onOpenLink,
   onOpenLocalFileLink,
   onOpenPluginPanel,
+  pluginActions,
   projectId,
   showActions,
   mobileActionDisplay,
@@ -664,6 +674,7 @@ function AssistantConversationMessage({
               onSideChat={onSideChat}
               onSendToMain={onSendToMain}
               disabled={forkDisabled}
+              pluginActions={pluginActions}
             />
           </div>
         </div>
@@ -703,6 +714,7 @@ export function ConversationMessageContent(
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         childOrigin={props.childOrigin}
+        pluginActions={props.pluginActions}
         initiator={props.initiator}
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
@@ -729,6 +741,7 @@ export function ConversationMessageContent(
       addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}
+      pluginActions={props.pluginActions}
       onAddToChat={props.onAddToChat}
       onFork={props.onFork}
       onSideChat={props.onSideChat}

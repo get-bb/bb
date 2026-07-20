@@ -10,7 +10,9 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { usePortalScopeProps } from "@/lib/portal-scope";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
+import type { ThreadTimelinePluginMessageAction } from "./types.js";
 
 // Labeled horizontal action button for the floating selection menu. Unlike the
 // hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
@@ -22,6 +24,10 @@ const SELECTION_MENU_CONTENT_CLASS =
 
 interface SelectionAction {
   icon: IconName;
+  /** Set on plugin-contributed actions; renders PluginIcon over `icon`. */
+  plugin?: { pluginId: string; icon: string | null };
+  /** Render key when `label` may not be unique (plugin actions). */
+  key?: string;
   label: string;
   onSelect: (selection: MessageProseSelection) => void;
 }
@@ -30,6 +36,11 @@ export interface TimelineSelectionMenuProps {
   selection: MessageProseSelection | null;
   onAddToChat?: (text: string) => void;
   onReplyInSideChat?: (selection: MessageProseSelection) => void;
+  /**
+   * Plugin-contributed actions for the current selection, resolved by the
+   * timeline root (each `onSelect` already carries the selection context).
+   */
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onDismiss: () => void;
 }
 
@@ -88,11 +99,19 @@ function ActionButton({
         activate();
       }}
     >
-      <Icon
-        name={action.icon}
-        className="size-3.5 text-muted-foreground"
-        aria-hidden="true"
-      />
+      {action.plugin ? (
+        <PluginIcon
+          pluginId={action.plugin.pluginId}
+          icon={action.plugin.icon}
+          className="size-3.5 text-muted-foreground"
+        />
+      ) : (
+        <Icon
+          name={action.icon}
+          className="size-3.5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      )}
       {action.label}
     </button>
   );
@@ -107,6 +126,7 @@ export function TimelineSelectionMenu({
   selection,
   onAddToChat,
   onReplyInSideChat,
+  pluginActions = [],
   onDismiss,
 }: TimelineSelectionMenuProps) {
   const open = selection !== null;
@@ -167,6 +187,14 @@ export function TimelineSelectionMenu({
           },
         ]
       : []),
+    ...pluginActions.map((action) => ({
+      // Unused when `plugin` is set; a valid member keeps the type narrow.
+      icon: "MessageSquarePlus" as const,
+      plugin: { pluginId: action.pluginId, icon: action.icon },
+      key: action.key,
+      label: action.label,
+      onSelect: () => action.onSelect(),
+    })),
   ];
   if (actions.length === 0) return null;
 
@@ -201,7 +229,7 @@ export function TimelineSelectionMenu({
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           {actions.map((action, index) => (
-            <div key={action.label} className="flex items-center">
+            <div key={action.key ?? action.label} className="flex items-center">
               {index > 0 ? (
                 <span
                   aria-hidden="true"

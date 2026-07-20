@@ -46,6 +46,7 @@ const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
   ?.pluginSdkApp ?? {}) as Partial<PluginSdkApp> as PluginSdkApp;
 
 export const definePluginApp = runtime.definePluginApp;
+export const ThreadChat = runtime.ThreadChat;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;

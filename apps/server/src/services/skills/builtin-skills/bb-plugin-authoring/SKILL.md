@@ -869,6 +869,36 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
+- `messageAction` → an action on chat messages: an icon button in the
+  per-message action bar (user and assistant messages) and an entry in the
+  assistant-message text-selection menu. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, icon?, run }`. Activating it calls
+  `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
+  `message` is a narrow stable reference
+  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd }` (never
+  an internal timeline row); `selectedText` is present only for
+  selection-menu invocations and holds the exact highlighted text; and
+  `openPanel({ actionId, title?, params? })` opens one of the same plugin's
+  registered `threadPanelAction` components in the current thread's side
+  panel — same semantics and boolean return as the message-directive
+  `openThreadPanel`. Errors from `run` (sync or async) are contained and
+  logged, never breaking the timeline.
+
+Host components:
+
+- `ThreadChat` — bb's complete chat surface for an existing thread, rendered
+  wherever plugin React runs (nav panels, thread-panel tabs, homepage and
+  settings sections). This is the deliberate exception to the
+  no-host-components rule: a stable product capability, not a UI kit. Props:
+  `{ threadId, variant?, layout?, focusRequest?, className? }` —
+  `variant` is `"full"` (standard chat controls, default), `"compact"`
+  (side-panel presentation), or `"timeline"` (transcript without a
+  composer); `layout` is `"contained"` (fills and scrolls within the
+  parent, default) or `"document"` (grows with page content);
+  `focusRequest` is a change-detected nonce that focuses the composer. The
+  host owns timeline loading, streaming, drafts, send/queue/steer/stop,
+  attachments, execution controls, pending interactions, and read tracking —
+  do not proxy thread data through your own RPC or rebuild the composer.
 
 Hooks:
 

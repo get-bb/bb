@@ -9,6 +9,8 @@ import {
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
+  type PluginMessageActionContext,
+  type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
@@ -150,6 +152,7 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
+  messageAction: PluginMessageActionContext;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -172,6 +175,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openWorkspaceFile",
     "openThreadPanel",
   ],
+  messageAction: ["threadId", "message", "selectedText", "openPanel"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -225,6 +229,22 @@ const _assertAllSidebarFooterActionRegistrationFieldsListed: MissingSidebarFoote
   ? true
   : never = true;
 void _assertAllSidebarFooterActionRegistrationFieldsListed;
+
+const MESSAGE_ACTION_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "run",
+] as const satisfies readonly (keyof PluginMessageActionRegistration)[];
+
+type MissingMessageActionRegistrationField = Exclude<
+  keyof PluginMessageActionRegistration,
+  (typeof MESSAGE_ACTION_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllMessageActionRegistrationFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
@@ -296,6 +316,16 @@ describe("bb-plugin-authoring skill", () => {
       ).toContain(field);
     }
     expect(skill).toContain("openSettings");
+  });
+
+  it("documents every messageAction registration field", () => {
+    for (const field of MESSAGE_ACTION_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `messageAction registration field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+    expect(skill).toContain("sourceSeqEnd");
   });
 
   it("documents the explicit plugin branding contract", () => {
