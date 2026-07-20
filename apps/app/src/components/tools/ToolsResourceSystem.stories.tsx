@@ -255,10 +255,6 @@ function resolveSecretsPluginDetailPath(): Promise<string> {
   return resolvePluginDetailPath("secrets");
 }
 
-function resolveUserAuthoredPluginDetailPath(): Promise<string> {
-  return resolvePluginDetailPath("design-loop");
-}
-
 function resolvePatternAtlasPluginDetailPath(): Promise<string> {
   return resolvePluginDetailPath("ui-patterns");
 }
@@ -365,10 +361,6 @@ export function PluginDetailInlineVisualizations() {
 
 export function PluginDetailSecrets() {
   return <LiveToolsPage target={resolveSecretsPluginDetailPath} />;
-}
-
-export function PluginDetailUserAuthored() {
-  return <LiveToolsPage target={resolveUserAuthoredPluginDetailPath} />;
 }
 
 export function PluginDetailPatternAtlas() {
