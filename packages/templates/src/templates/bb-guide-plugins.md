@@ -35,13 +35,12 @@ Settings → Plugins or run `bb plugin enable workflows` before using:
   bb workflows list [--limit <1-50>]
   bb workflows stop <run-id>
 
-Commands must run from a BB project thread. Workflows has seven plugin
+Commands must run from a BB project thread. Workflows has six plugin
 settings, configurable with `bb plugin config workflows set <key> <value>`:
 `maxActiveRuns` (default 4, range 1–32), `maxConcurrentAgents` (8, 1–64),
-`maxAgentCalls` (100, 1–1000), `workerStallTimeoutMs` (1800000,
-60000–86400000), `totalRunTimeoutMs` (86400000, 60000–604800000),
+`maxAgentCalls` (100, 1–1000), `totalRunTimeoutMs` (86400000, 60000–604800000),
 `retentionDays` (30, 1–3650), and `maxNotificationBytes` (16384,
-1024–262144). `maxActiveRuns` applies live; the other six are snapshotted for
+1024–262144). `maxActiveRuns` applies live; the other five are snapshotted for
 each new run. Settings changes do not require a plugin reload.
 
 `status` is a bounded polling summary, and `list` returns only compact run

@@ -16,7 +16,6 @@ function rawSettings(
     maxActiveRuns: "4",
     maxConcurrentAgents: "8",
     maxAgentCalls: "100",
-    workerStallTimeoutMs: "1800000",
     totalRunTimeoutMs: "86400000",
     retentionDays: "30",
     maxNotificationBytes: "16384",
@@ -31,8 +30,6 @@ describe("workflow settings policy", () => {
       maxConcurrentAgents:
         WORKFLOW_SETTING_DESCRIPTORS.maxConcurrentAgents.default,
       maxAgentCalls: WORKFLOW_SETTING_DESCRIPTORS.maxAgentCalls.default,
-      workerStallTimeoutMs:
-        WORKFLOW_SETTING_DESCRIPTORS.workerStallTimeoutMs.default,
       totalRunTimeoutMs: WORKFLOW_SETTING_DESCRIPTORS.totalRunTimeoutMs.default,
       retentionDays: WORKFLOW_SETTING_DESCRIPTORS.retentionDays.default,
       maxNotificationBytes:
@@ -50,7 +47,6 @@ describe("workflow settings policy", () => {
       maxActiveRuns: "  12\t",
       maxConcurrentAgents: "16",
       maxAgentCalls: "750",
-      workerStallTimeoutMs: "120000",
       totalRunTimeoutMs: "172800000",
       retentionDays: "90",
       maxNotificationBytes: "65536",
@@ -60,7 +56,6 @@ describe("workflow settings policy", () => {
       maxActiveRuns: 12,
       maxConcurrentAgents: 16,
       maxAgentCalls: 750,
-      workerStallTimeoutMs: 120_000,
       totalRunTimeoutMs: 172_800_000,
       retentionDays: 90,
       maxNotificationBytes: 65_536,
@@ -95,7 +90,6 @@ describe("workflow settings policy", () => {
     ["maxActiveRuns", "0", "33", "Maximum active runs"],
     ["maxConcurrentAgents", "0", "65", "Per-run agent concurrency"],
     ["maxAgentCalls", "0", "1001", "Maximum agent calls"],
-    ["workerStallTimeoutMs", "59999", "86400001", "Worker stall timeout"],
     ["totalRunTimeoutMs", "59999", "604800001", "Total run timeout"],
     ["retentionDays", "0", "3651", "Retention days"],
     ["maxNotificationBytes", "1023", "262145", "Maximum notification bytes"],
@@ -176,12 +170,24 @@ describe("workflow settings policy", () => {
     });
   });
 
-  it("round-trips explicit persisted snapshots and rejects incomplete policy", () => {
+  it("round-trips current snapshots and tolerates the removed stall timeout", () => {
     expect(parseStoredWorkflowSettings(DEFAULT_WORKFLOW_SETTINGS)).toEqual(
       DEFAULT_WORKFLOW_SETTINGS,
     );
+    expect(
+      parseStoredWorkflowSettings({
+        ...DEFAULT_WORKFLOW_SETTINGS,
+        workerStallTimeoutMs: 1_800_000,
+      }),
+    ).toEqual(DEFAULT_WORKFLOW_SETTINGS);
     expect(() => parseStoredWorkflowSettings({ maxActiveRuns: 4 })).toThrow(
       "unexpected fields",
     );
+    expect(() =>
+      parseStoredWorkflowSettings({
+        ...DEFAULT_WORKFLOW_SETTINGS,
+        unknownPolicy: 1,
+      }),
+    ).toThrow("unexpected fields");
   });
 });

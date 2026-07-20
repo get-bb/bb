@@ -112,20 +112,19 @@ and phase/progress record. A child cannot invoke a grandchild.
 
 ## Settings
 
-Workflows declares seven plugin settings:
+Workflows declares six plugin settings:
 
 - `maxActiveRuns` limits runs dispatched at once across the plugin.
 - `maxConcurrentAgents` limits live agent calls within one run, including its
   child workflow.
 - `maxAgentCalls` bounds the shared parent/child call count.
-- `workerStallTimeoutMs` stops and fails workers with no persisted activity.
 - `totalRunTimeoutMs` fails a run independently of explicit cancellation.
 - `retentionDays` controls terminal-run cleanup while preserving active runs
   and retained resume ancestors.
 - `maxNotificationBytes` bounds completion messages by UTF-8 byte length.
 
 `maxActiveRuns` is live plugin-global dispatch policy: changing it immediately
-changes how many queued runs the worker may claim. The other six values are
+changes how many queued runs the worker may claim. The other five values are
 snapshotted into each new run and remain fixed for that run, including a resumed
 run. Saving settings does not require a plugin reload.
 Polling the compact `status` summary remains authoritative when a completion message is truncated
