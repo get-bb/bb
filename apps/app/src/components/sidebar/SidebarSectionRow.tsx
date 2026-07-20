@@ -17,7 +17,6 @@ import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -133,27 +132,14 @@ function SidebarSectionRowComponent({
         onClick={onToggleCollapsed}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span
-        className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
-        aria-hidden="true"
-      >
-        <Icon
-          name="ListView"
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-          aria-hidden="true"
-        />
-      </span>
-      <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-        <span className="min-w-0 truncate">{name}</span>
+      <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
           expandLabel={`Expand ${label} section`}
           collapseLabel={`Collapse ${label} section`}
           onToggle={onToggleCollapsed}
         />
+        <span className="min-w-0 truncate">{name}</span>
       </span>
       <span
         className={cn(

@@ -80,7 +80,7 @@ const PinnedRootItem = memo(function PinnedRootItem({
     <ThreadTreeNodeRow
       projectId={node.thread.projectId}
       node={node}
-      depthOffset={0}
+      depthOffset={1}
       isEnvGrouped={false}
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
@@ -202,7 +202,7 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
             />
           ))}
         </SortableContext>
-        <DropPreviewRow depth={0} visible={showDropPreview} />
+        <DropPreviewRow depth={1} visible={showDropPreview} />
       </div>
     );
   }

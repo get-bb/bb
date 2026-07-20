@@ -156,6 +156,29 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
+  it("places the project disclosure before its label and indents root threads", () => {
+    const result = renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [makeThread()],
+    });
+
+    const disclosure = screen.getByRole("button", {
+      name: "Collapse Test project section",
+    });
+    const label = screen.getByTitle("Test project");
+    const threadLink = result.container.querySelector(
+      '[data-sidebar-thread-id="thr_test"]',
+    );
+
+    expect(
+      disclosure.compareDocumentPosition(label) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
+    ).toBe("32px");
+  });
+
   it("shows named workflow rollup before generic runtime activity", () => {
     renderProjectRow(
       vi.fn(),

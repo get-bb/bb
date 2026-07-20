@@ -90,6 +90,7 @@ function BuiltInSidebarSection({
     <SortableSidebarSection
       id={id}
       label={label}
+      leadingIcon={id === "pinned" ? "Pin" : undefined}
       disabled={disabled}
       actions={actions}
       actionsOpen={actionsOpen}
