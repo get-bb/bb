@@ -124,8 +124,43 @@ interface OpenSideChatArgs {
   openPanel(options: { title: string; params: SideChatPanelParams }): unknown;
 }
 
+/**
+ * Single-flight guard: launcher/message-action activations are not debounced
+ * by the host, so a double click before the first createSideChat resolves
+ * would mint two hidden forks. Equivalent opens (same source/anchor/seq)
+ * share the in-flight promise; the map entry clears on settle so a later
+ * deliberate re-open still works.
+ */
+const inFlightOpens = new Map<string, Promise<void>>();
+
+function openKey({
+  sourceThreadId,
+  anchorText,
+  sourceSeqEnd,
+}: Pick<
+  OpenSideChatArgs,
+  "sourceThreadId" | "anchorText" | "sourceSeqEnd"
+>): string {
+  return `${sourceThreadId}|${sourceSeqEnd ?? "tip"}|${anchorText}`;
+}
+
 /** Create the idle hidden fork, then open the panel tab pointing at it. */
-async function openSideChat({
+function openSideChat(args: OpenSideChatArgs): Promise<void> {
+  const key = openKey(args);
+  const pending = inFlightOpens.get(key);
+  if (pending !== undefined) {
+    return pending;
+  }
+  const run = createAndOpenSideChat(args);
+  inFlightOpens.set(key, run);
+  run.then(
+    () => inFlightOpens.delete(key),
+    () => inFlightOpens.delete(key),
+  );
+  return run;
+}
+
+async function createAndOpenSideChat({
   sourceThreadId,
   anchorText,
   sourceSeqEnd,

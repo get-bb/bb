@@ -466,11 +466,22 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     usePaneContext();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
+  const systemConfigQuery = useSystemConfig();
+  // While the sideChatPlugin experiment is ON, every legacy side-chat surface
+  // (tab entries, deck, active routing, reopen actions) is suppressed without
+  // touching the persisted tab state — turning it OFF restores them unchanged.
+  const sideChatPluginEnabled =
+    systemConfigQuery.data?.experiments.sideChatPlugin === true;
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
-  const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
+  const persistedActiveFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
+  const activeFixedSecondaryTab =
+    sideChatPluginEnabled &&
+    persistedActiveFixedSecondaryTab?.kind === "side-chat"
+      ? null
+      : persistedActiveFixedSecondaryTab;
   const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
     isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
@@ -607,6 +618,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environmentId: thread?.environmentId,
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
+    suppressSideChatTabs: sideChatPluginEnabled,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
   const pluginPanelActions = usePluginPanelActions({
@@ -820,7 +832,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       ),
     [hostsQuery.data],
   );
-  const systemConfigQuery = useSystemConfig();
   // Name the thread's machine on multi-machine setups so offline notices and
   // metadata say which computer is involved instead of a generic "host".
   const threadEnvironmentHost = useMemo(() => {
@@ -849,8 +860,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const isForkAvailable = isThreadForkable(thread ?? null);
   const canStartSideChat = canStartNativeSideChat({
     canSpawnChild: thread?.canSpawnChild ?? false,
-    sideChatPluginEnabled:
-      systemConfigQuery.data?.experiments.sideChatPlugin === true,
+    sideChatPluginEnabled,
   });
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
@@ -1964,6 +1974,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             openSecondaryPanelDiffFile(action.path);
           };
         case "open-side-chat":
+          // The plugin owns side chats while its experiment is ON: the legacy
+          // reopen affordance goes inert (plain text) instead of opening a
+          // suppressed tab.
+          if (sideChatPluginEnabled) return null;
           return () => {
             openExistingSideChatTab(action.threadId);
           };
@@ -1989,6 +2003,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       openSecondaryPanelDiffFile,
       openExistingSideChatTab,
       handleOpenTimelinePluginPanel,
+      sideChatPluginEnabled,
       threadId,
     ],
   );
@@ -2512,7 +2527,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // deck self-collapses when no side-chat tab is active, and suppresses the
   // normal file-content slot when one is.
   const isSideChatTabActive = activeSideChatTabId !== null;
-  const sideChatDeck = (
+  // While the sideChatPlugin experiment is ON the legacy deck never renders
+  // (its tab list and active id are already suppressed at the hook, so this
+  // also drops the keep-mounted per-tab conversation surfaces).
+  const sideChatDeck = sideChatPluginEnabled ? null : (
     <SideChatTabDeck
       sideChatTabs={sideChatTabs}
       activeSideChatTabId={activeSideChatTabId}

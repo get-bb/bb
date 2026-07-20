@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
+  createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
@@ -610,6 +611,93 @@ describe("useThreadFileTabs file opener diversion", () => {
       pluginId: "notes",
       actionId: "file-opener:editor",
       title: "other.md",
+    });
+  });
+});
+
+describe("useThreadFileTabs side-chat suppression (sideChatPlugin experiment)", () => {
+  it("suppresses legacy side-chat surfaces while ON and restores them unchanged when OFF", () => {
+    const threadId = "side-chat-suppression";
+    const sideChatTab = {
+      ...createSideChatFixedPanelTab({
+        sourceMessageText: "anchor message",
+        title: "Side chat",
+      }),
+      threadId: "thr_child",
+    };
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: sideChatTab.id,
+        isOpen: true,
+        tabs: [sideChatTab],
+      },
+      lastUsedAt: Date.now(),
+    });
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      serializeFixedPanelTabsState({ state }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ suppress }: { suppress: boolean }) =>
+        useThreadFileTabs({
+          panelStateId: threadId,
+          syncThreadId: threadId,
+          environmentId: "env_current",
+          storageFiles: undefined,
+          suppressSideChatTabs: suppress,
+          terminalSessions: undefined,
+        }),
+      { wrapper: QueryWrapper, initialProps: { suppress: false } },
+    );
+
+    // Experiment OFF: the persisted legacy tab is listed and active.
+    expect(result.current.sideChatTabs.map((tab) => tab.id)).toEqual([
+      sideChatTab.id,
+    ]);
+    expect(result.current.activeSideChatTabId).toBe(sideChatTab.id);
+    expect(
+      result.current.orderedSecondaryFileTabs.some(
+        (tab) => tab.kind === "side-chat",
+      ),
+    ).toBe(true);
+
+    // Live toggle ON: every legacy read surface goes inert...
+    rerender({ suppress: true });
+    expect(result.current.sideChatTabs).toEqual([]);
+    expect(result.current.activeSideChatTabId).toBeNull();
+    expect(
+      result.current.orderedSecondaryFileTabs.some(
+        (tab) => tab.kind === "side-chat",
+      ),
+    ).toBe(false);
+
+    // ...and the open/activate mutations are no-ops instead of resurrecting
+    // suppressed tabs.
+    act(() => {
+      result.current.activateSideChatTab(sideChatTab.id);
+      result.current.openExistingSideChatTab("thr_other_child");
+      result.current.openSideChat({
+        sourceThreadId: threadId,
+        sourceMessageText: "new side chat",
+      });
+    });
+    expect(result.current.sideChatTabs).toEqual([]);
+    expect(result.current.activeSideChatTabId).toBeNull();
+
+    // Live toggle OFF: the persisted tab state was never touched, so the
+    // legacy tab comes back exactly as it was — same id, still active.
+    rerender({ suppress: false });
+    expect(result.current.sideChatTabs.map((tab) => tab.id)).toEqual([
+      sideChatTab.id,
+    ]);
+    expect(result.current.activeSideChatTabId).toBe(sideChatTab.id);
+    expect(
+      result.current.sideChatTabs[0],
+    ).toMatchObject({
+      sourceMessageText: "anchor message",
+      threadId: "thr_child",
+      title: "Side chat",
     });
   });
 });

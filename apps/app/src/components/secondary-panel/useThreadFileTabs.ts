@@ -66,6 +66,14 @@ interface UseThreadFileTabsParams {
   projectId?: string | null;
   retainedTerminalId?: string | null;
   storageFiles: readonly ThreadStorageFileListItem[] | undefined;
+  /**
+   * Hide legacy side-chat tabs from every read surface (tab entries, deck
+   * list, active routing) and turn the side-chat open/activate mutations into
+   * no-ops — WITHOUT touching the persisted tab state, so flipping it back
+   * restores the tabs unchanged. Used while the `sideChatPlugin` experiment
+   * hands side chats to the builtin plugin.
+   */
+  suppressSideChatTabs?: boolean;
   terminalSessions: readonly TerminalSession[] | undefined;
 }
 
@@ -256,6 +264,7 @@ export function useThreadFileTabs({
   projectId = null,
   retainedTerminalId = null,
   storageFiles,
+  suppressSideChatTabs = false,
   terminalSessions,
 }: UseThreadFileTabsParams) {
   const fixedPanelTabsState = useFixedPanelTabsState(
@@ -541,6 +550,7 @@ export function useThreadFileTabs({
       sourceMessageText,
       sourceSeqEnd,
     }: OpenSideChatArgs) => {
+      if (suppressSideChatTabs) return;
       const nextTab = createSideChatFixedPanelTab({
         sourceMessageText,
         sourceSeqEnd,
@@ -556,7 +566,7 @@ export function useThreadFileTabs({
         return openSecondaryPanelTabInState({ state, tab: nextTab });
       });
     },
-    [updateFixedPanelTabsState],
+    [suppressSideChatTabs, updateFixedPanelTabsState],
   );
 
   // Opens an EXISTING side-chat child thread as a tab (e.g. from the "Message
@@ -565,6 +575,7 @@ export function useThreadFileTabs({
   // anchor message — the conversation is already there).
   const openExistingSideChatTab = useCallback(
     (childThreadId: string) => {
+      if (suppressSideChatTabs) return;
       updateFixedPanelTabsState((state) => {
         const existing = state.secondary.tabs.find(
           (tab) => isSideChatTab(tab) && tab.threadId === childThreadId,
@@ -582,7 +593,7 @@ export function useThreadFileTabs({
         return openSecondaryPanelTabInState({ state, tab: nextTab });
       });
     },
-    [updateFixedPanelTabsState],
+    [suppressSideChatTabs, updateFixedPanelTabsState],
   );
 
   // Records the child thread id once first send creates it, so later turns
@@ -612,6 +623,7 @@ export function useThreadFileTabs({
 
   const activateSideChatTab = useCallback(
     (tabId: string) => {
+      if (suppressSideChatTabs) return;
       updateFixedPanelTabsState((state) => {
         const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
         if (!tab || !isSideChatTab(tab)) {
@@ -620,7 +632,7 @@ export function useThreadFileTabs({
         return activateSecondaryPanelTabInState(state, tabId);
       });
     },
-    [updateFixedPanelTabsState],
+    [suppressSideChatTabs, updateFixedPanelTabsState],
   );
 
   const closeSideChatTab = useCallback(
@@ -699,11 +711,16 @@ export function useThreadFileTabs({
   );
 
   const activeTab = getActiveSecondaryPanelTab(fixedPanelTabsState);
-  const orderedSecondaryFileTabs = buildOrderedSecondaryPanelFileTabs({
+  const allOrderedSecondaryFileTabs = buildOrderedSecondaryPanelFileTabs({
     includeWorkspaceTabsOutsideEnvironment: preserveWorkspaceTabsAcrossContexts,
     tabs: fixedPanelTabsState.secondary.tabs,
     resolvedEnvironmentId,
   });
+  // Suppression only masks the read surfaces — persisted tabs are untouched,
+  // so turning suppression back off restores them unchanged.
+  const orderedSecondaryFileTabs = suppressSideChatTabs
+    ? allOrderedSecondaryFileTabs.filter((tab) => !isSideChatTab(tab))
+    : allOrderedSecondaryFileTabs;
   const browserTabs = useMemo(
     () => fixedPanelTabsState.secondary.tabs.filter(isBrowserTab),
     [fixedPanelTabsState.secondary.tabs],
@@ -713,8 +730,11 @@ export function useThreadFileTabs({
   // so streaming survives tab switches — the same keep-mounted deck pattern as
   // browser tabs.
   const sideChatTabs = useMemo(
-    () => fixedPanelTabsState.secondary.tabs.filter(isSideChatTab),
-    [fixedPanelTabsState.secondary.tabs],
+    () =>
+      suppressSideChatTabs
+        ? []
+        : fixedPanelTabsState.secondary.tabs.filter(isSideChatTab),
+    [fixedPanelTabsState.secondary.tabs, suppressSideChatTabs],
   );
   const activeWorkspaceFileTab =
     activeTab?.kind === "workspace-file-preview" &&
@@ -729,7 +749,9 @@ export function useThreadFileTabs({
   const activeBrowserTab = activeTab?.kind === "browser" ? activeTab : null;
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
   const activeSideChatTab =
-    activeTab?.kind === "side-chat" ? activeTab : null;
+    activeTab?.kind === "side-chat" && !suppressSideChatTabs
+      ? activeTab
+      : null;
   const activePluginPanelTab =
     activeTab?.kind === "plugin-panel" ? activeTab : null;
 

@@ -127,6 +127,50 @@ describe("reply-in-side-chat message action", () => {
     });
   });
 
+  it("single-flights a double invocation while the first fork RPC is pending", async () => {
+    let resolveRpc!: (value: unknown) => void;
+    const deferred = new Promise((resolve) => {
+      resolveRpc = resolve;
+    });
+    const fetchMock = vi.fn(async () => {
+      await deferred;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { threadId: "thr_fork" } }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const openPanel = vi.fn(() => true);
+    const context = {
+      threadId: "thr_src",
+      message: {
+        id: "msg_1",
+        threadId: "thr_src",
+        role: "assistant" as const,
+        text: "whole message text",
+        sourceSeqEnd: 42,
+      },
+      openPanel,
+    };
+
+    // Double click before the backend responds: both invocations share one
+    // in-flight open, so exactly one fork is created and one tab opened.
+    const first = app.messageActions[0]!.run(context);
+    const second = app.messageActions[0]!.run(context);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveRpc(undefined);
+    await Promise.all([first, second]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
+
+    // Settled: a later deliberate re-open is a fresh flight again.
+    await app.messageActions[0]!.run(context);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("anchors on the selection when invoked from the selection menu", async () => {
     stubRpcFetch(() => ({ threadId: "thr_fork" }));
     const openPanel = vi.fn(() => true);

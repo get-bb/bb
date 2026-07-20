@@ -912,6 +912,7 @@ function listThreadSearchLimitedThreadRows(
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
+        AND t.visibility = 'visible'
         AND ${archiveFilter}
       GROUP BY threadId
       HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}

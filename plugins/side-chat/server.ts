@@ -244,7 +244,10 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // Empty-fork cleanup: hourly sweep archiving this plugin's hidden forks
-  // that never received a user message and are older than 24h.
+  // that never received a user message and are older than 24h. Queued-but-
+  // unsent input is user work too and never appears in timeline rows, so a
+  // fork with pending queued messages is not empty. Both reads fail closed:
+  // when either fails the fork is skipped rather than risked.
   bb.background.schedule("empty-fork-cleanup", "13 * * * *", async () => {
     const now = Date.now();
     const threads = await bb.sdk.threads.list({
@@ -268,6 +271,21 @@ export default async function plugin(bb: BbPluginApi) {
           })`,
         );
         continue;
+      }
+      if (!hasUserMessage) {
+        try {
+          const queued = await bb.sdk.threads.queuedMessages.list({
+            threadId: thread.id,
+          });
+          if (queued.length > 0) continue;
+        } catch (error) {
+          bb.log.warn(
+            `empty-fork sweep skipped ${thread.id} (queued-message read failed: ${
+              error instanceof Error ? error.message : String(error)
+            })`,
+          );
+          continue;
+        }
       }
       if (
         !shouldSweepEmptyFork({

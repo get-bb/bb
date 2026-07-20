@@ -345,7 +345,12 @@ describe("empty-fork sweep", () => {
     const archive = vi.fn(async (_args: { threadId: string }) => ({
       ok: true,
     }));
-    const { harness } = await loadPlugin({ list, timeline, archive });
+    const { harness } = await loadPlugin({
+      list,
+      timeline,
+      archive,
+      queuedMessages: { list: async () => [] },
+    });
 
     await harness.runSchedule("empty-fork-cleanup");
 
@@ -361,5 +366,59 @@ describe("empty-fork sweep", () => {
       "thr_empty_old",
       "thr_replied_old",
     ]);
+  });
+
+  it("keeps an old empty-timeline fork that has queued-but-unsent input", async () => {
+    const now = Date.now();
+    const fork = makeThreadResponse({
+      id: "thr_queued_only",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      visibility: "hidden",
+      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 60_000,
+    });
+    const archive = vi.fn(async (_args: { threadId: string }) => ({
+      ok: true,
+    }));
+    const { harness } = await loadPlugin({
+      list: async () => [fork],
+      timeline: async () => timelineResult([]),
+      archive,
+      queuedMessages: {
+        list: vi.fn(async () => [{ id: "qm_1" }]),
+      },
+    });
+
+    await harness.runSchedule("empty-fork-cleanup");
+
+    expect(archive).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the queued-message read fails", async () => {
+    const now = Date.now();
+    const fork = makeThreadResponse({
+      id: "thr_unreadable_queue",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      visibility: "hidden",
+      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 60_000,
+    });
+    const archive = vi.fn(async (_args: { threadId: string }) => ({
+      ok: true,
+    }));
+    const { harness } = await loadPlugin({
+      list: async () => [fork],
+      timeline: async () => timelineResult([]),
+      archive,
+      queuedMessages: {
+        list: vi.fn(async () => {
+          throw new Error("queue read boom");
+        }),
+      },
+    });
+
+    await harness.runSchedule("empty-fork-cleanup");
+
+    expect(archive).not.toHaveBeenCalled();
   });
 });
