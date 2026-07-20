@@ -241,6 +241,10 @@ function SkillPath({ path, href }: { path: string; href?: string }) {
   );
 }
 
+function getSkillDirectoryPath(path: string): string {
+  return path.replace(/[\\/]SKILL\.md$/i, "");
+}
+
 function SkillFileList({
   files,
   selectedPath,
@@ -283,6 +287,7 @@ export function SkillDetailView({
   editor,
   footer,
 }: SkillDetailViewProps) {
+  const directoryPath = getSkillDirectoryPath(path);
   const lifecycleControl =
     headerControl?.kind === "install" ? (
       headerControl.onUninstall ? (
@@ -321,7 +326,7 @@ export function SkillDetailView({
           />
         ) : undefined
       }
-      metadata={<SkillPath path={path} href={pathHref} />}
+      metadata={<SkillPath path={directoryPath} href={pathHref} />}
       lifecycleControl={lifecycleControl}
       overflowMenu={overflowMenu}
     >

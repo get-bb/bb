@@ -224,6 +224,25 @@ async function resolveMultiFileSkillDetailPath(): Promise<string> {
   return getSkillDetailRoutePath({ skillId: skill.id });
 }
 
+async function resolveCodexComputerUseSkillDetailPath(): Promise<string> {
+  const response = await sdk.skills.list({
+    projectId: PERSONAL_PROJECT_ID,
+    environmentId: null,
+  });
+  const skill = response.skills.find(
+    (candidate) =>
+      candidate.provider === "codex" &&
+      candidate.scope === "plugin" &&
+      candidate.pluginId === "computer-use",
+  );
+  if (skill === undefined) {
+    throw new Error(
+      "The live server does not have the Codex Computer Use skill installed.",
+    );
+  }
+  return getSkillDetailRoutePath({ skillId: skill.id });
+}
+
 async function resolveRegistrySkillDetailPath(): Promise<string> {
   const response = await fetchRegistrySkills({ query: "", page: 0 });
   const skill = response.skills[0];
@@ -338,6 +357,10 @@ export function SkillDetail() {
 
 export function SkillDetailMultipleFiles() {
   return <LiveToolsPage target={resolveMultiFileSkillDetailPath} />;
+}
+
+export function SkillDetailCodexComputerUse() {
+  return <LiveToolsPage target={resolveCodexComputerUseSkillDetailPath} />;
 }
 
 export function RegistrySkillDetail() {

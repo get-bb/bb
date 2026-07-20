@@ -656,7 +656,7 @@ describe("SkillDetailDialogView", () => {
     );
 
     const pathButton = screen.getByRole("button", {
-      name: `Copy skill path: ${skill.filePath}`,
+      name: "Copy skill path: /home/u/.bb/skills/bb-skill",
     });
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
     expect(pathButton.className).toContain("cursor-pointer");
