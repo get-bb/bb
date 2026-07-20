@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BB-71 — Composer Plugin API Design</title>
+<style>
+  :root {
+    --canvas: #fdfdfc;
+    --ink: #1a1a18;
+    --muted: color-mix(in oklab, var(--ink) 62%, var(--canvas));
+    --subtle: color-mix(in oklab, var(--ink) 45%, var(--canvas));
+    --line: color-mix(in oklab, var(--ink) 12%, var(--canvas));
+    --raise: color-mix(in oklab, var(--ink) 4%, var(--canvas));
+    --raise2: color-mix(in oklab, var(--ink) 7%, var(--canvas));
+    --accent: #4f6df5;
+    --accent-soft: color-mix(in oklab, var(--accent) 12%, var(--canvas));
+    --good: #2f9e6e;
+    --good-soft: color-mix(in oklab, var(--good) 12%, var(--canvas));
+    --warn: #c07a1a;
+    --warn-soft: color-mix(in oklab, var(--warn) 13%, var(--canvas));
+    --bad: #cf4a3d;
+    --bad-soft: color-mix(in oklab, var(--bad) 10%, var(--canvas));
+    --purple: #8a5cd6;
+    --purple-soft: color-mix(in oklab, var(--purple) 12%, var(--canvas));
+    --code-bg: color-mix(in oklab, var(--ink) 5%, var(--canvas));
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #16171a;
+      --ink: #e8e8e4;
+      --accent: #7c93ff;
+      --good: #4cc38a;
+      --warn: #e0a44c;
+      --bad: #e5695c;
+      --purple: #ab87ec;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font: 15px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 28px 80px; }
+  h1 { font-size: 27px; line-height: 1.25; margin: 8px 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 20px; margin: 48px 0 12px; letter-spacing: -0.01em; padding-top: 18px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+  p { margin: 10px 0; }
+  .kicker { color: var(--subtle); font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .lede { color: var(--muted); font-size: 16px; margin: 6px 0 0; }
+  a { color: var(--accent); }
+  code { font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--code-bg); padding: 1.5px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; padding: 0; }
+  .cm { color: var(--subtle); font-style: italic; }
+  .kw { color: var(--accent); }
+  .st { color: var(--good); }
+  .ty { color: var(--purple); }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--subtle); font-weight: 600; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { white-space: nowrap; font-weight: 600; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 9px; border-radius: 999px; vertical-align: 2px; }
+  .pill.a { background: var(--accent-soft); color: var(--accent); }
+  .pill.g { background: var(--good-soft); color: var(--good); }
+  .pill.w { background: var(--warn-soft); color: var(--warn); }
+  .pill.p { background: var(--purple-soft); color: var(--purple); }
+  .pill.b { background: var(--bad-soft); color: var(--bad); }
+  .callout { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--raise); border-radius: 8px; padding: 10px 16px; margin: 14px 0; }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.good { border-left-color: var(--good); }
+  ul { padding-left: 22px; margin: 8px 0; }
+  li { margin: 5px 0; }
+  li::marker { color: var(--subtle); }
+
+  /* ---- composer mock diagram ---- */
+  .mock { margin: 20px 0 8px; }
+  .mock .stack-card, .mock .box {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--raise);
+  }
+  .mock .stack-card { padding: 8px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .mock .stack-card.plugin { border-color: color-mix(in oklab, var(--purple) 45%, var(--canvas)); background: var(--purple-soft); }
+  .mock .box { padding: 0; overflow: hidden; }
+  .mock .editor { padding: 14px 16px 26px; color: var(--subtle); font-size: 14px; }
+  .mock .editor .hl { background: var(--accent-soft); border-radius: 3px; padding: 0 2px; color: var(--accent); }
+  .mock .row { display: flex; align-items: center; gap: 8px; padding: 8px 10px 10px 12px; }
+  .mock .btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--canvas); font-size: 13px; color: var(--muted); }
+  .mock .btn.primary { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+  .mock .btn.plugin { border-color: color-mix(in oklab, var(--purple) 45%, var(--canvas)); background: var(--purple-soft); color: var(--purple); font-weight: 600; }
+  .mock .spacer { flex: 1; }
+  .tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; }
+  .tag.native { background: var(--raise2); color: var(--subtle); }
+  .tag.plugin { background: var(--purple-soft); color: var(--purple); }
+  .legend { display: flex; gap: 18px; font-size: 12.5px; color: var(--subtle); margin: 6px 2px 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .dot.n { background: var(--raise2); border: 1px solid var(--line); }
+  .dot.p { background: var(--purple-soft); border: 1px solid color-mix(in oklab, var(--purple) 45%, var(--canvas)); }
+
+  .qa dt { font-weight: 650; margin-top: 16px; }
+  .qa dd { margin: 4px 0 0 0; color: var(--muted); }
+  .num { color: var(--subtle); font-variant-numeric: tabular-nums; padding-right: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="kicker">BB-71 · API design v2 · 2026-07-20</div>
+<h1>Composer Plugin API — <em>components in slots, hooks for behavior</em></h1>
+<p class="lede">Replace the single <code>composerAccessory</code> footer slot with
+<code>app.composer.customize()</code>: plugin <b>React components</b> mounted in semantic composer
+slots (right-side actions, banner stack), small <b>data contracts</b> only where the host must own
+interaction (the <code>+</code> menu, editor text decorations), and behavior expressed through the
+existing <code>useComposer()</code> hooks — context-bound to the composer instance that mounted the slot.</p>
+
+<h2>1 · Decisions at a glance</h2>
+<table>
+<tr><th style="width:220px">Design question</th><th>Decision</th></tr>
+<tr><td>Core primitive</td><td><b>Components in slots + imperative hooks.</b> Action buttons and banners are plugin React components; onClick → plugin state → hook calls (<code>setText</code>, <code>setTextEffect</code>, <code>setInputLock</code>) → cleanup. No <code>transform(original)</code> pipeline, no host-rendered action contract, no <code>state()</code>/<code>run()</code> vocabulary. Rationale in §3.</td></tr>
+<tr><td>Where components <em>can't</em> go</td><td>Two places, for mechanical reasons: <b><code>+</code> menu items</b> (Radix owns keyboard nav, focus restore, and the mobile sheet — items are a small data contract) and <b>inside the editor text</b> (ProseMirror owns those nodes — paint goes through declarative decoration rules).</td></tr>
+<tr><td>Composer identity</td><td><b>Context binding, not ids.</b> A slot component's <code>useComposer()</code> / <code>useComposerView()</code> are bound to the composer instance that mounted it (the existing <code>PluginComposerHost</code> mechanism). Nothing to pass around; calls from outside a composer subtree keep today's scope-resolution fallbacks.</td></tr>
+<tr><td>Native controls</td><td><b>Not removable, hideable, or reorderable.</b> Submit / stop / queue / voice / attach / native menu items and cards are host-owned invariants — structurally, since there is no API through which they could be dropped.</td></tr>
+<tr><td>Text effects</td><td><b>One decoration engine, two sources, zero vocabulary.</b> An effect is a <b>class name from the plugin's own stylesheet</b> applied to decoration spans. Content-derived: declarative rules (<code>match(text) → ranges</code>). State-derived: imperative <code>setTextEffect({ className })</code> (widened from today's <code>"shimmer"</code> enum). BB's shimmer + ultracode highlight become host-registered users of the same engine. Decorations never mutate the document.</td></tr>
+<tr><td>Input lock</td><td>New <code>composer.setInputLock(locked)</code>: host makes the editor read-only + <code>aria-busy</code>, keeping cancel reachable. Auto-released on unmount / scope change / reload, so a crashed plugin cannot wedge the composer. Closes Improve Prompt's type-during-rewrite race.</td></tr>
+<tr><td>Chrome consistency</td><td>Via the SDK's existing philosophy: plugins vendor BB components (<code>npx shadcn add @bb/&lt;name&gt;</code>) — the docs ship an icon-button recipe matching native sizing and coarse-pointer targets. Accessibility of custom components is the plugin's responsibility.</td></tr>
+<tr><td>Ordering</td><td>Plugins sorted by <code>pluginId</code> asc (existing snapshot order), registrations in call order within a plugin, entries in array order. Deterministic; no priorities.</td></tr>
+<tr><td>Isolation</td><td>Every slot mounts inside its own <code>PluginSlotMount</code> error boundary; a crashing action button or banner collapses only itself. Menu-item <code>run</code> errors toast + log. The native composer never degrades.</td></tr>
+<tr><td><code>pendingInteraction</code></td><td>Replaces the editor as today: action slots, <code>+</code> entries, and decoration rules suspend with it; <b>banners stay mounted</b> (they annotate the thread, not the editor).</td></tr>
+<tr><td><code>composerAccessory</code></td><td>Kept for one compatibility window as a mapped legacy <code>footer</code> slot, <code>@deprecated</code>; removed next SDK major. <code>useComposer()</code> is not deprecated — it's the backbone of the design, gaining <code>setInputLock</code> and the widened <code>setTextEffect</code>.</td></tr>
+<tr><td>Wire impact</td><td>Frontend-only (SDK contract + app). No server/daemon payload changes ⇒ no <code>HOST_DAEMON_PROTOCOL_VERSION</code> bump.</td></tr>
+</table>
+
+<h2>2 · The regions</h2>
+<p>Everything a plugin can touch, drawn on the real composer layout
+(<code>PromptBoxInternal</code> action row + <code>FollowUpPromptBox</code> stack):</p>
+
+<div class="mock" role="img" aria-label="Composer diagram showing native and plugin regions">
+  <div class="stack-card"><span class="tag native">native</span> Running background command — <code>pnpm dev</code></div>
+  <div class="stack-card plugin"><span class="tag plugin">plugin</span> <b>Banner slot</b> — e.g. Omegacode workflow card <span class="spacer"></span><span style="font-size:12px">component in host card chrome</span></div>
+  <div class="box">
+    <div class="editor">Fix the flaky test in <span class="hl">auth-session.test.ts</span> and…&nbsp; <span style="float:right;font-size:11px" class="tag plugin">decoration rules (className)</span></div>
+    <div class="row">
+      <span class="btn" title="Plus menu">＋</span><span class="tag plugin" style="margin-left:-4px">+ menu items (data)</span>
+      <span class="tag native">footer (legacy accessory)</span>
+      <span class="spacer"></span>
+      <span class="btn plugin" title="Plugin action">✦</span>
+      <span class="btn plugin" title="Plugin action">⌁</span><span class="tag plugin" style="margin-left:-4px">action slots (components)</span>
+      <span class="btn" title="Voice">🎙</span>
+      <span class="btn primary" title="Submit">↵</span>
+    </div>
+  </div>
+  <div class="legend">
+    <span><span class="dot n"></span> host-owned, untouchable</span>
+    <span><span class="dot p"></span> plugin-extensible region</span>
+  </div>
+</div>
+
+<h2>3 · Why components + hooks (and why not a transform)</h2>
+<p><b>Components fit the SDK BB already has.</b> The plugin SDK deliberately removed frozen component
+prop types in favor of vendored components plugins own; <code>composerAccessory</code>, banners, panels,
+and settings sections are already components; and <code>useComposer()</code> already carries the safe
+imperative operations. Making action buttons components too means one mental model everywhere —
+"render UI in a slot, call hooks for behavior, hold your own state" — instead of a parallel
+data-contract vocabulary (<code>state()</code> selectors, <code>run()</code> contexts, pending-effect
+declarations) that this design's earlier drafts kept accreting.</p>
+<p><b>A literal <code>transform(original)</code> was still rejected</b> as the outer shape: an arbitrary
+function over the whole composer definition makes "preserve native entries" a runtime-diffing policy
+problem, lets one plugin's corrupt output poison the next plugin's input, and freezes the entire
+composer definition as public API. Slots make preservation structural — there is no field through
+which submit or voice could be dropped — and one plugin failing removes exactly its own mounts.</p>
+<p><b>The two non-component regions are mechanical, not stylistic.</b> Menu items must be
+host-rendered <code>DropdownMenuItem</code>s or Radix's keyboard navigation, focus restoration, and
+mobile bottom-sheet rendering break. Editor text paint must be ProseMirror decorations issued from
+inside the editor, or the view/state mapping corrupts — no component can wrap text ranges the editor
+owns.</p>
+
+<h2>4 · Authoring model — Improve Prompt, complete</h2>
+<pre><code class="ts">app.composer.customize({
+  id: "improve-prompt",
+  scopes: ["thread", "new-thread", "side-chat"],   // optional; default: all scopes
+  actions: [{ id: "improve", component: ImproveAction }],
+});
+
+function ImproveAction() {
+  const composer = useComposer();       // bound to THIS composer instance via context
+  const view = useComposerView();       // reactive: scope, layout, draft, run state
+  const [busy, setBusy] = useState(null);   // AbortController | null
+
+  async function improveNow() {
+    const ctl = new AbortController();
+    setBusy(ctl);
+    composer.setTextEffect({ className: "ip-shimmer" });   // class from this plugin's CSS
+    composer.setInputLock(true);                           // read-only + aria-busy
+    try {
+      const better = await improve(composer.text, { signal: ctl.signal });
+      composer.setText(better);                            // mention-safe replace
+    } finally {
+      composer.setInputLock(false);
+      composer.setTextEffect(null);
+      setBusy(null);
+    }
+  }
+
+  // Vendored BB icon button — same chrome as the native mic/submit controls.
+  return (
+    &lt;PromptIconButton
+      icon={busy ? "Spinner" : "Sparkles"}
+      label={busy ? "Cancel improve" : "Improve prompt"}
+      disabled={view.draft.isEmpty &amp;&amp; !busy}
+      onClick={() =&gt; (busy ? busy.abort() : improveNow())}
+    /&gt;
+  );
+}
+</code></pre>
+<p>No registration-level behavior contract: visibility, disabled state, progress, and cancellation are
+ordinary React state. If the slot unmounts mid-run (scope change, reload), the lock and effect
+auto-release and the component's own cleanup aborts the fetch.</p>
+
+<h2>5 · Contract types (SDK surface)</h2>
+<pre><code class="ts">interface ComposerCustomization {
+  id: string;                                        // unique within the plugin
+  scopes?: readonly PluginComposerScope["kind"][];   // omit = everywhere
+  actions?: readonly { id: string; component: ComponentType }[];
+  banners?: readonly {
+    id: string;
+    chrome?: "card" | "bare";                        // default "card": PromptStackCard shell
+    component: ComponentType;
+  }[];
+  plusMenu?: readonly ComposerPlusMenuItem[];
+  richText?: ComposerRichTextSpec;
+}
+
+/** Host-rendered menu row — the one UI surface plugins don't render themselves. */
+interface ComposerPlusMenuItem {
+  id: string;
+  label: string;
+  icon?: string;                                     // BB icon name; unknown ⇒ generic
+  description?: string;                              // accessible description
+  disabled?: boolean | ((view: ComposerView) => boolean);
+  run(ctx: { composer: PluginComposerApi; view: ComposerView }): void | Promise<void>;
+}
+
+/** Reactive read-side of the composer a slot is mounted in (useComposerView). */
+interface ComposerView {
+  scope: PluginComposerScope;                        // existing SDK type
+  layout: "expanded" | "compact" | "zen";
+  draft: { text: string; isEmpty: boolean; attachmentCount: number };
+  run: { isRunning: boolean; isSubmitting: boolean };
+}
+
+interface ComposerRichTextSpec {
+  /** Content-derived paint: match ⇒ className, never mutate. */
+  effects?: readonly {
+    id: string;
+    match(text: string): readonly { from: number; to: number }[];  // plain-text offsets
+    className: string;                               // from the plugin's own stylesheet
+  }[];
+  /** Debounced, read-only observation of the structured draft. */
+  onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
+}
+interface ComposerStructuredDraft {
+  text: string;
+  mentions: readonly {
+    from: number; to: number; provider: string; id: string; label: string;
+  }[];
+}
+
+// useComposer() additions (PluginComposerApi):
+//   setTextEffect(effect: { className: string } | null)   // widened from "shimmer"
+//   setInputLock(locked: boolean)                          // auto-released on unmount/scope change
+// New hook: useComposerView(): ComposerView
+</code></pre>
+
+<h2>6 · Region specs</h2>
+
+<h3>6.1 Action slots <span class="pill p">plugin components</span></h3>
+<ul>
+  <li><b>Placement.</b> A slot zone in the right control group, before the mic; voice and submit/queue/stop always render after it, untouchable. Order across plugins follows composition order.</li>
+  <li><b>Chrome.</b> Plugins vendor the documented <code>PromptIconButton</code> recipe (BB registry) for native-matching size, coarse-pointer targets, and tooltip behavior — or render anything else at their own visual risk. The host constrains the slot to the action-row height so a misbehaving component cannot distort the composer's geometry.</li>
+  <li><b>Compact layout</b> renders only the submit/stop control today; plugin action slots are not mounted there (same suppression as accessories). Components can adapt short of that via <code>useComposerView().layout</code>.</li>
+  <li><b>Isolation.</b> Each slot is its own <code>PluginSlotMount</code>; a crash collapses that button alone, remounting on the next plugin generation.</li>
+</ul>
+
+<h3>6.2 Plus menu <span class="pill a">host-rendered data</span></h3>
+<ul>
+  <li><b>Placement.</b> After the native items (Attach files · Skills · Plan · Goal · Automation), behind a separator; with ≥2 contributing plugins, each plugin's items get a group header (plugin display name).</li>
+  <li><b>Behavior.</b> <code>run</code> receives the bound composer API + view snapshot. Selection reuses the native <code>selectedItemRef</code> close path, so the caret lands wherever <code>run</code> put it; dismissal restores focus like native items. Errors toast + log.</li>
+  <li><b>Compact layout</b> has no <code>+</code> trigger; items are unavailable there by construction (documented, no error).</li>
+</ul>
+
+<h3>6.3 Banner slots <span class="pill p">plugin components · host chrome</span></h3>
+<ul>
+  <li><b>Placement.</b> A plugin row in the existing stack, below native cards and immediately above the composer. Ordered by (pluginId, registration order, array order).</li>
+  <li><b>Chrome.</b> Default <code>"card"</code> wraps the component in <code>PromptStackCard</code> (border, radius, raised surface, labeled section) so plugin cards match "Running background command"; <code>"bare"</code> opts out while staying inside the measured stack.</li>
+  <li><b>Layout physics for free.</b> The stack already measures itself (<code>useLayoutEffect</code> + <code>ResizeObserver</code>) and feeds height compensation, so plugin banners participate in scroll anchoring and narrow layouts with zero plugin code — no portals, <code>MutationObserver</code>, <code>closest()</code>, or host class names. This deletes the Omegacode workaround outright.</li>
+  <li><b>Visibility &amp; cleanup.</b> Render <code>null</code> to hide (row collapses). Scope filtering via <code>scopes</code>; mounts key on (pluginId, generation, scope), so scope changes and reloads remount cleanly.</li>
+</ul>
+
+<h3>6.4 Text effects <span class="pill w">the one non-React surface</span></h3>
+<p>ProseMirror owns the editor's text nodes, so range paint cannot be a component — it goes through
+<b>one host-owned decoration engine</b> with two sources:</p>
+<ul>
+  <li><b>Content-derived rules</b> (<code>richText.effects</code>) — the ultracode-highlight pattern made public: <code>match(text)</code> returns plain-text ranges (mentions count as their text form), recomputed on edits, painted with the rule's <code>className</code>. <b>Match ⇒ paint, never mutate</b>: serialization, mentions, attachments, paste, undo/redo, selection, and plain-text mode are structurally safe. A throwing <code>match()</code> disables that rule for the generation.</li>
+  <li><b>State-derived paint</b> — <code>setTextEffect({ className })</code> for anything driven by plugin state (an in-flight improve call, an RPC event). Ranges aren't needed here in v1: it paints the whole draft, like today's shimmer.</li>
+</ul>
+<p><b>Styling.</b> The class comes from the plugin's own bundled CSS — animations, gradients, colors
+included. Paint-only is a documented convention, not an enforced rule; violating it (metric changes)
+makes the caret jump in that plugin's own feature while the document and host structure remain
+untouchable. A small set of theme tokens (<code>--ink</code>, <code>--canvas</code>,
+<code>--accent</code>, …) is documented as public SDK API so effects follow custom palettes.</p>
+<p><b>Dogfooding guarantee.</b> <code>PromptUltracodeHighlightExtension</code> and
+<code>PromptTextEffectExtension</code> are deleted and re-registered as host sources on this engine —
+one code path, and proof the public shape needs no privileged escape hatch. Host sources paint first,
+then plugins in composition order; overlapping paint stacks.</p>
+<div class="callout"><b>v2 candidates, explicitly deferred:</b> ranged imperative effects,
+match-and-<em>transform</em> input rules (text-to-text rewrites applied by the host as proper editor
+transactions), semantic inline renderers, paste transformers. Each is additive.</div>
+
+<h2>7 · Composition, lifecycle, isolation</h2>
+<table>
+<tr><th style="width:190px">Concern</th><th>Rule</th></tr>
+<tr><td>Order</td><td>Plugins by <code>pluginId</code> asc → registrations in call order → entries in array order. Deterministic across reloads.</td></tr>
+<tr><td>Registry</td><td><code>plugin-slots.ts</code> snapshot grows <code>composerCustomizations</code> with the same wholesale-replace + generation semantics; per-entry validation at interpretation (id shape, duplicate ids, scope names) rejects invalid entries individually with a logged reason.</td></tr>
+<tr><td>Crash containment</td><td>Action/banner components crash inside their own boundary; menu <code>run</code> and rule <code>match</code> errors are caught, logged, and disable only that entry. The native composer never degrades.</td></tr>
+<tr><td>Effect &amp; lock lifetime</td><td><code>setTextEffect</code>, <code>setInputLock</code>, and <code>setThreadRowStatus</code> are scoped to the calling slot's plugin + composer instance and auto-clear on unmount, scope change, reload, and disable — a crashed plugin cannot leave the composer painted or locked.</td></tr>
+<tr><td>Scope change</td><td>New scope = new mount keys: slots remount, effects/locks clear, <code>useComposerView()</code> reflects the new instance.</td></tr>
+<tr><td><code>pendingInteraction</code></td><td>Suspends action slots, menu items, and decoration rules along with the editor it replaces; banners stay mounted.</td></tr>
+<tr><td>Unsupported regions</td><td>A registration targeting a surface without that region (e.g. <code>+</code> menu in compact) is silently skipped there, with a one-time dev-mode console note.</td></tr>
+</table>
+
+<h2>8 · Migration</h2>
+<table>
+<tr><th style="width:230px">Existing surface</th><th>Plan</th></tr>
+<tr><td><code>slots.composerAccessory</code></td><td><span class="pill w">deprecated</span> Internally re-mapped as a legacy <code>footer</code> slot rendering exactly where it does today; <code>@deprecated</code> JSDoc + docs banner now, removal at the next SDK major.</td></tr>
+<tr><td><code>useComposer()</code></td><td><span class="pill g">kept &amp; extended</span> Gains <code>setInputLock</code>; <code>setTextEffect</code> widens from <code>"shimmer"</code> to <code>{ className }</code> (the string form stays as sugar for one window). <code>setThreadRowStatus</code> unchanged.</td></tr>
+<tr><td>Improve Prompt</td><td>Becomes the §4 component: same draft transforms, shimmer (now its own CSS), thread-row status; gains the input lock and per-scope correctness.</td></tr>
+<tr><td>Omegacode</td><td>Becomes one banner component; deletes its portal, ancestor walk, and <code>MutationObserver</code> entirely.</td></tr>
+</table>
+
+<h2>9 · Implementation map</h2>
+<table>
+<tr><th style="width:56px"></th><th style="width:250px">Area</th><th>Work</th></tr>
+<tr><td class="num">P1</td><td><code>packages/plugin-sdk</code></td><td><code>app-contract.ts</code>: types above, <code>composer</code> namespace on <code>PluginAppBuilder</code>, <code>useComposerView</code>, <code>setInputLock</code>, widened <code>setTextEffect</code>; bundled declarations + exports; testing harness captures customizations and gains slot render/assert helpers.</td></tr>
+<tr><td class="num">P1</td><td><code>apps/app/src/lib/plugin-slots.ts</code> + collector</td><td><code>composerCustomizations</code> in registration set/snapshot; per-entry validation; interpretation-time rejection with logging.</td></tr>
+<tr><td class="num">P2</td><td><code>PromptBoxInternal.tsx</code></td><td>Action slot zone in the right group (height-constrained container, per-slot boundaries), <code>ComposerView</code> context, input-lock plumbing (read-only editor + <code>aria-busy</code>), plugin section in <code>PromptBoxActionsMenu</code>.</td></tr>
+<tr><td class="num">P3</td><td><code>FollowUpPromptBox</code> / <code>NewThreadPromptBox</code> / side-chat &amp; queued hosts</td><td>Shared <code>&lt;PluginComposerBanners scope=…/&gt;</code> appended to each host's <code>stack</code>; card/bare chrome; scope filtering.</td></tr>
+<tr><td class="num">P4</td><td><code>editor/</code></td><td>Unified decoration engine replacing <code>PromptUltracodeHighlightExtension</code> + <code>PromptTextEffectExtension</code> (re-registered as host sources); rule offset mapping; class-based spans; debounced draft observer.</td></tr>
+<tr><td class="num">P5</td><td>Migration + docs</td><td><code>composerAccessory</code> shim, deprecation notes, <code>PromptIconButton</code> registry recipe, plugin-authoring skill/docs/scaffold updates, and an example plugin exercising every region (doubles as the QA vehicle).</td></tr>
+</table>
+
+<h2>10 · Test plan (focused, per repo guidelines)</h2>
+<ul>
+  <li><b>Registration/validation</b> — duplicate ids rejected individually, invalid scope names, wholesale replace on reload never duplicates, deterministic cross-plugin order.</li>
+  <li><b>Action slots</b> — mount/order in the right group, crash isolation per slot, height containment, not mounted in compact, native voice/submit untouched (extending <code>PromptBoxInternal.test.tsx</code>).</li>
+  <li><b>Input lock</b> — editor read-only + <code>aria-busy</code> while locked; auto-release on unlock, unmount, scope change, and plugin reload; submit/stop still reachable.</li>
+  <li><b>Plus menu</b> — plugin section ordering + separators, focus restoration parity with native items, disabled callback, run error containment.</li>
+  <li><b>Banners</b> — card vs bare chrome, null-render collapse, crash isolation per card, stack height measurement including plugin rows, scope-change remount cleanup.</li>
+  <li><b>Text effects</b> — decorations across rich/plain modes, offsets correct around mentions, serialization byte-identical with rules active, classes applied/removed across edits and remounts, shimmer/ultracode parity as host-registered sources, throwing match() disabled.</li>
+  <li><b>Cross-cutting</b> — two plugins composing without interference, pendingInteraction suspension, testing-harness capture snapshots.</li>
+</ul>
+
+<h2>11 · Open questions for review</h2>
+<dl class="qa">
+  <dt>1 · Slot geometry enforcement</dt>
+  <dd>The host constrains action slots to the action-row height; should it also cap width (e.g. <code>max-width</code> per slot) so a runaway component can't push voice/submit off-row, or is the boundary + docs recipe enough?</dd>
+  <dt>2 · Left-footer region</dt>
+  <dd>v1 maps legacy accessories to a frozen <code>footer</code> slot but offers no new API for it. Keep frozen (push everything to actions/menu/banners), or expose <code>footer</code> as a first-class slot?</dd>
+  <dt>3 · Ranged imperative effects</dt>
+  <dd><code>setTextEffect</code> paints the whole draft in v1 (parity with today's shimmer). Add <code>range</code> support now, or wait for a motivating plugin?</dd>
+  <dt>4 · Input rules in v1?</dt>
+  <dd>Match-and-transform stays v2. Pull forward if a plugin needs live text rewriting rather than paint.</dd>
+</dl>
+
+</div>
+<script>
+  // Minimal comment/string/keyword tinting for the code blocks.
+  for (const block of document.querySelectorAll("pre code")) {
+    let h = block.textContent
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/(\/\/[^\n]*|\/\*\*[\s\S]*?\*\/|\/\* [\s\S]*?\*\/)/g, '<span class="cm">$1</span>')
+      .replace(/("[^"\n]*")/g, '<span class="st">$1</span>')
+      .replace(/\b(interface|readonly|extends|async|await|return|const|function|try|finally|void|null)\b/g, '<span class="kw">$1</span>');
+    block.innerHTML = h;
+  }
+</script>
+</body>
+</html>

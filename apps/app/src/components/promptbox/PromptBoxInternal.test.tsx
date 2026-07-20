@@ -19,7 +19,19 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import { useComposer } from "@/lib/plugin-sdk-hooks";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+  type PluginRegistrationSet,
+} from "@/lib/plugin-slots";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -46,6 +58,25 @@ vi.mock("@/components/plugin/PluginComposerAccessories", () => ({
 }));
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
+
+function pluginRegistrationSet(
+  composerCustomizations: NonNullable<
+    PluginRegistrationSet["composerCustomizations"]
+  >,
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels: [],
+    threadPanelActions: [],
+    composerAccessories: [],
+    composerCustomizations,
+    pendingInteractions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
 
 interface PromptChange {
   mentions: PromptTextMention[];
@@ -403,6 +434,8 @@ function mockPointerCoarse(matches: boolean): () => void {
 afterEach(() => {
   cleanup();
   resetPluginLogoStoreForTest();
+  resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
   vi.clearAllMocks();
 });
 
@@ -454,17 +487,39 @@ describe("suppressPromptEditorAnchorActivation", () => {
 
 describe("PromptBoxInternal controlled value sync", () => {
   it("suppresses and restores plugin accessories without remounting the editor", () => {
+    setPluginSlotRegistrations(
+      "pending-test",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "action", component: () => <button>Plugin action</button> },
+          ],
+          plusMenu: [
+            {
+              id: "menu",
+              label: "Plugin menu item",
+              run: () => {},
+            },
+          ],
+        },
+      ]),
+    );
     const props = createPromptBoxProps({ value: "Retained draft" });
     const view = render(<PromptBoxInternal {...props} />);
     const editor = getPromptEditorElement();
 
     expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
 
     view.rerender(
       <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
     );
 
     expect(screen.queryByTestId("plugin-composer-accessories")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(getPromptEditorElement()).toBe(editor);
 
     view.rerender(
@@ -475,6 +530,8 @@ describe("PromptBoxInternal controlled value sync", () => {
     );
 
     expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
     expect(getPromptEditorElement()).toBe(editor);
   });
 
@@ -497,6 +554,98 @@ describe("PromptBoxInternal controlled value sync", () => {
     await waitFor(() => {
       expect(view.container.querySelector(".prompt-text-shimmer")).toBeNull();
     });
+  });
+
+  it("wires scoped plugin rich-text rules and draft observers without rebuilding the editor", async () => {
+    const onDraftChange = vi.fn();
+    setPluginSlotRegistrations(
+      "rich-text",
+      pluginRegistrationSet([
+        {
+          id: "active",
+          scopes: ["new-thread"],
+          richText: {
+            effects: [
+              {
+                id: "paint",
+                className: "plugin-draft-paint",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+            onDraftChange,
+          },
+        },
+        {
+          id: "wrong-scope",
+          scopes: ["thread"],
+          richText: {
+            effects: [
+              {
+                id: "hidden",
+                className: "wrong-scope-paint",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const props = createPromptBoxProps({ value: "Decorate this draft" });
+    const view = render(<PromptBoxInternal {...props} />);
+    const editor = getPromptEditorElement();
+
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".plugin-draft-paint")?.textContent,
+      ).toBe("Decorate this draft");
+    });
+    expect(view.container.querySelector(".wrong-scope-paint")).toBeNull();
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: "Decorate this draft", mentions: [] },
+        expect.objectContaining({
+          scope: { kind: "new-thread", projectId: null },
+          draft: expect.objectContaining({ text: "Decorate this draft" }),
+        }),
+      );
+    });
+
+    act(() => {
+      setPluginSlotRegistrations(
+        "rich-text",
+        pluginRegistrationSet([
+          {
+            id: "replacement",
+            richText: {
+              effects: [
+                {
+                  id: "paint-next",
+                  className: "plugin-draft-paint-next",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
+          },
+        ]),
+      );
+    });
+    await waitFor(() => {
+      expect(view.container.querySelector(".plugin-draft-paint")).toBeNull();
+      expect(
+        view.container.querySelector(".plugin-draft-paint-next")?.textContent,
+      ).toBe("Decorate this draft");
+    });
+    expect(getPromptEditorElement()).toBe(editor);
+
+    view.rerender(
+      <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
+    );
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".plugin-draft-paint-next"),
+      ).toBeNull();
+    });
+    expect(getPromptEditorElement()).toBe(editor);
   });
 
   it("honors early focusEnd requests once the editor is ready", async () => {
@@ -742,6 +891,189 @@ describe("PromptBoxInternal zen mode layout", () => {
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
     window.localStorage.removeItem(storageKey);
+  });
+});
+
+describe("PromptBoxInternal plugin composer actions", () => {
+  it("mounts scope-matched actions in deterministic order before voice", () => {
+    setPluginSlotRegistrations(
+      "zeta",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "zeta", component: () => <button>Zeta action</button> },
+          ],
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "alpha",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          scopes: ["new-thread"],
+          actions: [
+            { id: "first", component: () => <button>Alpha first</button> },
+            { id: "second", component: () => <button>Alpha second</button> },
+          ],
+        },
+        {
+          id: "thread-only",
+          scopes: ["thread"],
+          actions: [
+            { id: "hidden", component: () => <button>Hidden action</button> },
+          ],
+        },
+      ]),
+    );
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "idle",
+            isSupported: true,
+            stream: null,
+            start: vi.fn(),
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    expect(
+      Array.from(
+        document.querySelectorAll("[data-plugin-composer-action] button"),
+        (element) => element.textContent,
+      ),
+    ).toEqual(["Alpha first", "Alpha second", "Zeta action"]);
+    expect(screen.queryByRole("button", { name: "Hidden action" })).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Zeta action" })
+        .compareDocumentPosition(
+          screen.getByRole("button", { name: "Start voice input" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
+  it("contains a crashing action without hiding its sibling", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      throw new Error("action crashed");
+    }
+    setPluginSlotRegistrations(
+      "actions",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "broken", component: Crashes },
+            { id: "fine", component: () => <button>Still available</button> },
+          ],
+        },
+      ]),
+    );
+
+    render(<PromptBoxInternal {...createPromptBoxProps()} />);
+
+    expect(
+      screen.getByRole("button", { name: "Still available" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/plugin actions crashed/u)).toBeNull();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it("makes the editor read-only while locked and restores it on unlock", async () => {
+    function LockAction() {
+      const composer = useComposer();
+      const [locked, setLocked] = useState(false);
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            composer.setInputLock(!locked);
+            setLocked(!locked);
+          }}
+        >
+          Toggle lock
+        </button>
+      );
+    }
+    setPluginSlotRegistrations(
+      "locker",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [{ id: "lock", component: LockAction }],
+        },
+      ]),
+    );
+    const draft = emptyPromptDraftState();
+    const host: PluginComposerHost = {
+      scope: { kind: "new-thread", projectId: null },
+      draft,
+      textEffectKey: "promptbox-lock-test",
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={host}>
+          <PromptBoxInternal {...createPromptBoxProps()} />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    const editor = getPromptEditorElement();
+    expect(editor.getAttribute("contenteditable")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle lock" }));
+    await waitFor(() => {
+      expect(editor.getAttribute("contenteditable")).toBe("false");
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.getAttribute("aria-busy"),
+      ).toBe("true");
+    });
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle lock" }));
+    await waitFor(() => {
+      expect(editor.getAttribute("contenteditable")).toBe("true");
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.hasAttribute("aria-busy"),
+      ).toBe(false);
+    });
+  });
+
+  it("does not mount plugin actions in compact layout", () => {
+    setPluginSlotRegistrations(
+      "compact",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "hidden", component: () => <button>Plugin action</button> },
+          ],
+        },
+      ]),
+    );
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ compact: { isCompact: true } })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
   });
 });
 

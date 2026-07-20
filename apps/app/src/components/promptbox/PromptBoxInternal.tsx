@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerTextEffect } from "@bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -42,6 +42,16 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
 import {
+  PluginComposerActions,
+  usePluginComposerPlusMenuContributions,
+} from "@/components/plugin/PluginComposerActions";
+import {
+  PluginComposerViewProvider,
+  usePluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
@@ -70,8 +80,13 @@ import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
+import {
+  refreshPromptDecorations,
+  setPromptTextEffect,
+  type PromptDecorationSource,
+  type PromptDraftObserver,
+} from "./editor/prompt-decoration-extension";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
-import { setPromptTextEffect } from "./editor/prompt-text-effect-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
@@ -344,7 +359,7 @@ export interface PromptBoxInternalProps {
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
-  /** Suppress plugin-rendered composer accessories without unmounting the editor. */
+  /** Suppress plugin composer regions without unmounting the editor. */
   suppressPluginComposerAccessories?: boolean;
   zenMode?: PromptBoxZenModeConfig;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
@@ -1178,6 +1193,90 @@ export function PromptBoxInternal({
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
+  const pluginComposerHost = usePluginComposerHost();
+  const { composerCustomizations } = usePluginSlots();
+  const composerInputLocked = useComposerInputLock(
+    pluginComposerHost?.textEffectKey ?? null,
+  );
+  const composerView = useMemo<ComposerView>(
+    () => ({
+      scope: pluginComposerHost?.scope ?? {
+        kind: "new-thread",
+        projectId: null,
+      },
+      layout: showCompactLayout
+        ? "compact"
+        : showZenLayout
+          ? "zen"
+          : "expanded",
+      draft: {
+        text: value,
+        isEmpty: value.trim().length === 0 && attachments.length === 0,
+        attachmentCount: attachments.length,
+      },
+      run: { isRunning, isSubmitting },
+    }),
+    [
+      attachments.length,
+      isRunning,
+      isSubmitting,
+      pluginComposerHost?.scope,
+      showCompactLayout,
+      showZenLayout,
+      value,
+    ],
+  );
+  const composerViewRef = useRef(composerView);
+  composerViewRef.current = composerView;
+  const pluginRichTextContributions = useMemo(() => {
+    if (suppressPluginComposerAccessories) {
+      return {
+        sources: [] as readonly PromptDecorationSource[],
+        observers: [] as readonly PromptDraftObserver[],
+      };
+    }
+
+    const sources: PromptDecorationSource[] = [];
+    const observers: PromptDraftObserver[] = [];
+    for (const customization of composerCustomizations) {
+      if (
+        customization.scopes !== undefined &&
+        !customization.scopes.includes(composerView.scope.kind)
+      ) {
+        continue;
+      }
+      const richText = customization.richText;
+      if (richText === undefined) continue;
+      const sourceId = `${customization.pluginId}/${customization.id}`;
+      if (richText.effects !== undefined && richText.effects.length > 0) {
+        sources.push({
+          id: sourceId,
+          generation: customization.generation,
+          effects: richText.effects,
+        });
+      }
+      if (richText.onDraftChange !== undefined) {
+        observers.push({
+          id: sourceId,
+          getView: () => composerViewRef.current,
+          onDraftChange: richText.onDraftChange,
+        });
+      }
+    }
+    return { sources, observers };
+  }, [
+    composerCustomizations,
+    composerView.scope,
+    suppressPluginComposerAccessories,
+  ]);
+  const pluginDecorationSourcesRef = useRef(
+    pluginRichTextContributions.sources,
+  );
+  pluginDecorationSourcesRef.current = pluginRichTextContributions.sources;
+  const pluginDraftObserversRef = useRef(pluginRichTextContributions.observers);
+  pluginDraftObserversRef.current = pluginRichTextContributions.observers;
+  const pluginPlusMenuItems =
+    usePluginComposerPlusMenuContributions(composerView);
   const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
 
@@ -1324,6 +1423,10 @@ export function PromptBoxInternal({
       promptEditorExtensions({
         richTextEditing,
         getPlaceholder: () => placeholderRef.current,
+        getDecorationSources: () => ({
+          plugins: pluginDecorationSourcesRef.current,
+        }),
+        getDraftObservers: () => pluginDraftObserversRef.current,
       }),
     [richTextEditing],
   );
@@ -1478,8 +1581,19 @@ export function PromptBoxInternal({
   );
 
   useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const editable = !composerInputLocked;
+    if (editor.isEditable !== editable) editor.setEditable(editable);
+  }, [composerInputLocked, editor]);
+
+  useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    refreshPromptDecorations(editor);
+  }, [editor, pluginRichTextContributions]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -2702,6 +2816,7 @@ export function PromptBoxInternal({
             <div
               ref={editorScrollContainerRef}
               data-promptbox-editor-scroll=""
+              aria-busy={composerInputLocked || undefined}
               className={cn(
                 "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
                 COARSE_POINTER_TEXT_BASE_CLASS,
@@ -2834,16 +2949,23 @@ export function PromptBoxInternal({
                 className="flex min-w-0 flex-1 flex-row items-center gap-1"
                 aria-live="polite"
               >
-                <PromptBoxActionsMenu
-                  actions={promptActions}
-                  isAttaching={isAttaching}
-                  onAttach={
-                    onAttachFiles
-                      ? () => attachmentInputRef.current?.click()
-                      : undefined
-                  }
-                  onAction={applyPromptAction}
-                />
+                <PluginComposerViewProvider value={composerView}>
+                  <PromptBoxActionsMenu
+                    actions={promptActions}
+                    isAttaching={isAttaching}
+                    onAttach={
+                      onAttachFiles
+                        ? () => attachmentInputRef.current?.click()
+                        : undefined
+                    }
+                    onAction={applyPromptAction}
+                    pluginItems={
+                      suppressPluginComposerAccessories
+                        ? []
+                        : pluginPlusMenuItems
+                    }
+                  />
+                </PluginComposerViewProvider>
                 {footerStart}
                 {!suppressPluginComposerAccessories ? (
                   <PluginComposerAccessories />
@@ -2853,6 +2975,11 @@ export function PromptBoxInternal({
             <div className="flex shrink-0 flex-row items-center gap-1">
               {!showCompactLayout ? (
                 <>
+                  {!suppressPluginComposerAccessories ? (
+                    <PluginComposerViewProvider value={composerView}>
+                      <PluginComposerActions view={composerView} />
+                    </PluginComposerViewProvider>
+                  ) : null}
                   {voice && !showVoiceActionGroup ? (
                     <Button
                       data-promptbox-expanded-only=""

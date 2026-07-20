@@ -41,7 +41,7 @@ import {
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
-import { useComposer } from "@/lib/plugin-sdk-hooks";
+import { getComposerInputLock, useComposer } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffect } from "@/lib/composer-text-effects";
 import {
@@ -1076,9 +1076,7 @@ describe("useComposer", () => {
     function ScopedVisualWriter() {
       const { scope, setTextEffect, setThreadRowStatus } = useComposer();
       const queuedMessageId =
-        scope.kind === "queued-message"
-          ? scope.queuedMessageId
-          : "unexpected";
+        scope.kind === "queued-message" ? scope.queuedMessageId : "unexpected";
 
       useLayoutEffect(() => {
         setTextEffect("shimmer");
@@ -1117,10 +1115,7 @@ describe("useComposer", () => {
         <PluginContext.Provider value="demo">
           <PluginComposerHostProvider value={host}>
             <ScopedVisualWriter />
-            <button
-              type="button"
-              onClick={() => setQueuedMessageId("qmsg_2")}
-            >
+            <button type="button" onClick={() => setQueuedMessageId("qmsg_2")}>
               change-visual-scope
             </button>
           </PluginComposerHostProvider>
@@ -1175,17 +1170,22 @@ describe("useComposer", () => {
     expect(getComposerTextEffect(storageKey)).toBeNull();
   });
 
-  it("rejects captured effect and status setters after scope cleanup or unmount", () => {
+  it("clears and rejects captured lock, effect, and status setters after scope cleanup or unmount", () => {
     const captured: Array<
-      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+      Pick<
+        PluginComposerApi,
+        "setInputLock" | "setTextEffect" | "setThreadRowStatus"
+      >
     > = [];
     registerComposerProbe("owned", (composer) => {
       const previous = captured.at(-1);
       if (
+        previous?.setInputLock !== composer.setInputLock ||
         previous?.setTextEffect !== composer.setTextEffect ||
         previous.setThreadRowStatus !== composer.setThreadRowStatus
       ) {
         captured.push({
+          setInputLock: composer.setInputLock,
           setTextEffect: composer.setTextEffect,
           setThreadRowStatus: composer.setThreadRowStatus,
         });
@@ -1216,15 +1216,19 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("owned-start-effect"));
     fireEvent.click(screen.getByText("owned-start-row-status"));
+    act(() => captured[0]!.setInputLock(true));
+    expect(getComposerInputLock(initialStorageKey ?? null)).toBe(true);
     expect(getComposerTextEffect(initialStorageKey ?? null)).toBe("shimmer");
     expect(getPluginThreadRowStatus("thr_owned")).not.toBeNull();
 
     const staleScopeSetters = captured[0]!;
     fireEvent.click(screen.getByText("change-owned-scope"));
+    expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
     expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
     expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
 
     act(() => {
+      staleScopeSetters.setInputLock(true);
       staleScopeSetters.setTextEffect("shimmer");
       staleScopeSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
@@ -1233,11 +1237,13 @@ describe("useComposer", () => {
         tone: "success",
       });
     });
+    expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
     expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
     expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
 
     const currentSetters = captured.at(-1)!;
     act(() => {
+      currentSetters.setInputLock(true);
       currentSetters.setTextEffect("shimmer");
       currentSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
@@ -1246,15 +1252,18 @@ describe("useComposer", () => {
         tone: "success",
       });
     });
+    expect(getComposerInputLock(nextStorageKey ?? null)).toBe(true);
     expect(getComposerTextEffect(nextStorageKey ?? null)).toBe("shimmer");
     expect(getPluginThreadRowStatus("thr_owned_next")?.label).toBe(
       "current status",
     );
 
     view.unmount();
+    expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
     expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
     act(() => {
+      currentSetters.setInputLock(true);
       currentSetters.setTextEffect("shimmer");
       currentSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
@@ -1262,6 +1271,7 @@ describe("useComposer", () => {
         effect: "shimmer",
       });
     });
+    expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
     expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
   });

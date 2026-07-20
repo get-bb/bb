@@ -397,8 +397,13 @@ export interface PluginAppSlots {
   experimental_messageAction(registration: PluginMessageActionRegistration): void;
 }
 
+export interface PluginAppComposer {
+  customize(registration: ComposerCustomization): void;
+}
+
 export interface PluginAppBuilder {
   slots: PluginAppSlots;
+  composer: PluginAppComposer;
 }
 
 export type PluginAppSetup = (app: PluginAppBuilder) => void;
@@ -469,8 +474,74 @@ export type PluginComposerScope =
       projectId: string | null;
     };
 
+/** One plugin-owned composer customization registration. */
+export interface ComposerCustomization {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Composer kinds where this customization is active; omit for all kinds. */
+  scopes?: readonly PluginComposerScope["kind"][];
+  actions?: readonly { id: string; component: ComponentType }[];
+  banners?: readonly {
+    id: string;
+    /** Host chrome around the banner. Defaults to `"card"`. */
+    chrome?: "card" | "bare";
+    component: ComponentType;
+  }[];
+  plusMenu?: readonly ComposerPlusMenuItem[];
+  richText?: ComposerRichTextSpec;
+}
+
+/** Host-rendered menu row in the composer's `+` menu. */
+export interface ComposerPlusMenuItem {
+  id: string;
+  label: string;
+  /** BB icon name; unknown names fall back to the generic plugin icon. */
+  icon?: string;
+  /** Accessible description for the host-rendered row. */
+  description?: string;
+  disabled?: boolean | ((view: ComposerView) => boolean);
+  run(context: {
+    composer: PluginComposerApi;
+    view: ComposerView;
+  }): void | Promise<void>;
+}
+
+/** Reactive read-side of the composer a plugin surface is mounted in. */
+export interface ComposerView {
+  scope: PluginComposerScope;
+  layout: "expanded" | "compact" | "zen";
+  draft: { text: string; isEmpty: boolean; attachmentCount: number };
+  run: { isRunning: boolean; isSubmitting: boolean };
+}
+
+export interface ComposerRichTextSpec {
+  /** Content-derived paint: match ranges receive `className`; text is never mutated. */
+  effects?: readonly {
+    id: string;
+    /** Plain-text offsets into the current structured draft. */
+    match(text: string): readonly { from: number; to: number }[];
+    className: string;
+  }[];
+  /** Debounced, read-only observation of the structured draft. */
+  onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
+}
+
+export interface ComposerStructuredDraft {
+  text: string;
+  mentions: readonly {
+    from: number;
+    to: number;
+    provider: string;
+    id: string;
+    label: string;
+  }[];
+}
+
 /** Host-rendered paint applied to the editable composer text. */
-export type PluginComposerTextEffect = "shimmer";
+export type PluginComposerTextEffect =
+  | { className: string }
+  /** @deprecated Use `{ className }`; `"shimmer"` remains compatibility sugar. */
+  | "shimmer";
 
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 export interface PluginComposerThreadRowStatus {
@@ -479,7 +550,7 @@ export interface PluginComposerThreadRowStatus {
   /** Accessible label for the status glyph. */
   label: string;
   /** Host-rendered motion treatment for the status glyph, or null. */
-  effect: PluginComposerTextEffect | null;
+  effect: "shimmer" | null;
   /** Semantic host color for the status glyph. Defaults to the neutral tone. */
   tone?: "default" | "success";
 }
@@ -526,6 +597,12 @@ export interface PluginComposerApi {
    * slot unmounts or its composer scope changes.
    */
   setTextEffect(effect: PluginComposerTextEffect | null): void;
+  /**
+   * Lock or unlock editing for this composer. Locks are scoped to the calling
+   * plugin and automatically release when the slot unmounts or its composer
+   * scope changes.
+   */
+  setInputLock(locked: boolean): void;
   /**
    * Replace this composer's thread-row draft glyph with a host-rendered status,
    * or clear it. New-thread composers have no row, so calls are a no-op.
@@ -699,4 +776,5 @@ export interface PluginSdkApp {
    * {@link MarkdownProps}).
    */
   experimental_Markdown: ComponentType<MarkdownProps>;
+  useComposerView(): ComposerView;
 }

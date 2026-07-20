@@ -79,6 +79,11 @@ describe("collectPluginAppRegistrations", () => {
         icon: "Zap",
         run,
       });
+      app.composer.customize({
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: Component }],
+      });
     });
 
     const registrations = collectPluginAppRegistrations(definition);
@@ -134,6 +139,39 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.messageActions).toEqual([
       { id: "summarize", title: "Summarize", icon: "Zap", run },
+    ]);
+    expect(registrations.composerCustomizations).toEqual([
+      {
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: Component }],
+      },
+    ]);
+  });
+
+  it("rejects invalid composer customizations individually while siblings survive", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({ id: "valid-first" });
+      app.composer.customize({ id: "has space" });
+      app.composer.customize({ id: "valid-first" });
+      app.composer.customize({
+        id: "bad-scope",
+        scopes: ["modal" as never],
+      });
+      app.composer.customize({ id: "valid-last", scopes: ["side-chat"] });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, rejected);
+
+    expect(registrations.composerCustomizations).toEqual([
+      { id: "valid-first" },
+      { id: "valid-last", scopes: ["side-chat"] },
+    ]);
+    expect(rejected.mock.calls.map(([reason]) => reason)).toEqual([
+      expect.stringContaining('"id" must match'),
+      expect.stringContaining('duplicate id "valid-first"'),
+      expect.stringContaining('invalid scope kind "modal"'),
     ]);
   });
 
@@ -474,5 +512,35 @@ describe("interpretPluginFrontends", () => {
       error: "setup exploded",
     });
     expect(setRegistrations).not.toHaveBeenCalled();
+  });
+
+  it("logs an invalid composer customization without failing the plugin", () => {
+    const setRegistrations = vi.fn();
+    const warn = vi.fn();
+    const records = new Map<string, PluginFrontendRecord>([
+      [
+        "composer-plugin",
+        loadedRecord(
+          "composer-plugin",
+          definePluginApp((app) => {
+            app.composer.customize({ id: "bad id" });
+            app.composer.customize({ id: "good" });
+          }),
+        ),
+      ],
+    ]);
+
+    interpretPluginFrontends(records, { setRegistrations, warn });
+
+    expect(records.get("composer-plugin")?.status).toBe("loaded");
+    expect(setRegistrations).toHaveBeenCalledWith(
+      "composer-plugin",
+      expect.objectContaining({ composerCustomizations: [{ id: "good" }] }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[plugin:composer-plugin] composer customization rejected",
+      ),
+    );
   });
 });

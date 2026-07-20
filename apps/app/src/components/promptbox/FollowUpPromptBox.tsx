@@ -15,7 +15,11 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type {
+  PluginComposerScope,
+  PluginComposerTextEffect,
+} from "@bb/plugin-sdk";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -203,6 +207,8 @@ export interface FollowUpPromptBoxProps {
   suppressPluginComposerAccessories?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
+  /** Active scope used to filter and lifecycle-key plugin banner slots. */
+  pluginComposerScope?: PluginComposerScope | null;
   textEffect?: PluginComposerTextEffect | null;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
@@ -231,13 +237,25 @@ type FollowUpPromptBoxWithComposerProps = Omit<
 
 function FollowUpPromptBoxStackOnly({
   stack,
-}: Pick<FollowUpPromptBoxProps, "stack">) {
-  if (!stack) {
+  pluginComposerHost,
+  pluginComposerScope,
+}: Pick<
+  FollowUpPromptBoxProps,
+  "stack" | "pluginComposerHost" | "pluginComposerScope"
+>) {
+  if (!stack && !pluginComposerScope) {
     return null;
   }
   return (
     <div data-promptbox-shell="" className="space-y-2">
-      <div className="space-y-2">{stack}</div>
+      <div className="space-y-2">
+        {stack}
+        {pluginComposerScope ? (
+          <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+            <PluginComposerBanners scope={pluginComposerScope} />
+          </PluginComposerHostProvider>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -260,6 +278,7 @@ function FollowUpPromptBoxWithComposer({
   promptActions,
   suppressPluginComposerAccessories,
   pluginComposerHost,
+  pluginComposerScope,
   textEffect,
   zenModeResetKey,
   focusEndKey,
@@ -629,6 +648,11 @@ function FollowUpPromptBoxWithComposer({
       >
         <div ref={stackRef} className="space-y-2">
           {stack}
+          {pluginComposerScope ? (
+            <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+              <PluginComposerBanners scope={pluginComposerScope} />
+            </PluginComposerHostProvider>
+          ) : null}
         </div>
         <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
         {createPortal(
@@ -646,7 +670,13 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox(
   props: FollowUpPromptBoxProps,
 ) {
   if (props.composer === null) {
-    return <FollowUpPromptBoxStackOnly stack={props.stack} />;
+    return (
+      <FollowUpPromptBoxStackOnly
+        stack={props.stack}
+        pluginComposerHost={props.pluginComposerHost}
+        pluginComposerScope={props.pluginComposerScope}
+      />
+    );
   }
   return <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />;
 });

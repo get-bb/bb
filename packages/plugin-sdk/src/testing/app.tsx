@@ -13,6 +13,8 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type BbContext,
   type BbNavigate,
+  type ComposerCustomization,
+  type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
@@ -95,6 +97,9 @@ export interface ComposerLog {
   /** Latest host-rendered text effect requested by the plugin. */
   textEffect: PluginComposerTextEffect | null;
   textEffectCalls: Array<PluginComposerTextEffect | null>;
+  /** Whether this plugin currently holds the composer input lock. */
+  inputLocked: boolean;
+  inputLockCalls: boolean[];
   /** Latest host-rendered thread-row status requested by the plugin. */
   threadRowStatus: PluginComposerThreadRowStatus | null;
   threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
@@ -302,6 +307,23 @@ const testPluginSdkApp = {
   },
   experimental_ThreadChat: TestThreadChat,
   experimental_Markdown: TestMarkdown,
+  useComposerView(): ComposerView {
+    const composer = useSlotEnv("useComposerView").composer;
+    const text = useSyncExternalStore(
+      composer.subscribe,
+      composer.getSnapshot,
+      composer.getSnapshot,
+    );
+    return useMemo(
+      () => ({
+        scope: composer.api.scope,
+        layout: "expanded",
+        draft: { text, isEmpty: text.length === 0, attachmentCount: 0 },
+        run: { isRunning: false, isSubmitting: false },
+      }),
+      [composer.api.scope, text],
+    );
+  },
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -331,6 +353,7 @@ export interface CapturedPluginApp {
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
+  composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -416,6 +439,7 @@ function collectRegistrations(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
@@ -428,6 +452,7 @@ function collectRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -604,6 +629,40 @@ function collectRegistrations(
             : {}),
           run: registration.run,
         });
+      },
+    },
+    composer: {
+      customize(registration) {
+        const kind = "composer.customize";
+        try {
+          const id = requireSlotId(kind, registration?.id);
+          const scopes = registration?.scopes;
+          if (scopes !== undefined) {
+            if (!Array.isArray(scopes)) {
+              throw new Error(`${kind}: "scopes" must be an array when set`);
+            }
+            for (const scope of scopes) {
+              if (
+                scope !== "thread" &&
+                scope !== "queued-message" &&
+                scope !== "side-chat" &&
+                scope !== "new-thread"
+              ) {
+                throw new Error(
+                  `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
+                );
+              }
+            }
+          }
+          requireUniqueId(kind, seenIds.composerCustomization, id);
+          captured.composerCustomizations.push({
+            ...registration,
+            id,
+            ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
+          });
+        } catch (error) {
+          console.warn(error instanceof Error ? error.message : String(error));
+        }
       },
     },
   });
@@ -846,6 +905,8 @@ export function renderSlot<
     },
     textEffect: null,
     textEffectCalls: [],
+    inputLocked: false,
+    inputLockCalls: [],
     threadRowStatus: null,
     threadRowStatusCalls: [],
     quotes: [],
@@ -874,6 +935,11 @@ export function renderSlot<
         if (!composerOwnership.active) return;
         composerLog.textEffect = effect;
         composerLog.textEffectCalls.push(effect);
+      },
+      setInputLock(locked) {
+        if (!composerOwnership.active) return;
+        composerLog.inputLocked = locked;
+        composerLog.inputLockCalls.push(locked);
       },
       setThreadRowStatus(status) {
         if (!composerOwnership.active || composerScope.kind === "new-thread") {
@@ -927,6 +993,7 @@ export function renderSlot<
     if (!composerOwnership.active) return;
     composerOwnership.active = false;
     composerLog.textEffect = null;
+    composerLog.inputLocked = false;
     composerLog.threadRowStatus = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (

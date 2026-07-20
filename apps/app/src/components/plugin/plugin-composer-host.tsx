@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 /**
@@ -30,6 +30,25 @@ export interface PluginComposerHost {
 const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);
+
+/** Reactive composer state supplied by the concrete prompt-box host. */
+export const PluginComposerViewContext = createContext<
+  ComposerView | undefined
+>(undefined);
+
+export function PluginComposerViewProvider({
+  children,
+  value,
+}: {
+  children: ReactNode;
+  value: ComposerView;
+}) {
+  return (
+    <PluginComposerViewContext.Provider value={value}>
+      {children}
+    </PluginComposerViewContext.Provider>
+  );
+}
 
 interface PluginComposerHostStore {
   getSnapshot(): PluginComposerHost | null;

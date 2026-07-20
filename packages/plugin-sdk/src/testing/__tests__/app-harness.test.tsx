@@ -19,6 +19,7 @@ const {
   definePluginApp,
   experimental_ThreadChat: ThreadChat,
   useComposer,
+  useComposerView,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -77,7 +78,7 @@ function RealtimeConnectionProbe() {
 
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "setTextEffect" | "setThreadRowStatus"
+  "setTextEffect" | "setInputLock" | "setThreadRowStatus"
 > | null = null;
 
 function InlineVis({
@@ -100,8 +101,10 @@ function InlineVis({
 
 function ComposerProbe() {
   const composer = useComposer();
+  const view = useComposerView();
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
+    setInputLock: composer.setInputLock,
     setThreadRowStatus: composer.setThreadRowStatus,
   };
   return (
@@ -111,6 +114,7 @@ function ComposerProbe() {
         {JSON.stringify(composer.scope)}
       </span>
       <span data-testid="composer-text">{composer.text}</span>
+      <span data-testid="composer-view-text">{view.draft.text}</span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -223,6 +227,11 @@ const app = await loadPluginApp(
       title: "Realtime connection",
       component: RealtimeConnectionProbe,
     });
+    builder.composer.customize({
+      id: "improve-prompt",
+      scopes: ["thread", "new-thread"],
+      actions: [{ id: "improve", component: ComposerProbe }],
+    });
   }),
 );
 
@@ -249,6 +258,16 @@ describe("loadPluginApp", () => {
   it("captures messageDirective registrations", () => {
     expect(app.messageDirectives).toEqual([
       { id: "inline-vis", component: InlineVis },
+    ]);
+  });
+
+  it("captures composer customizations", () => {
+    expect(app.composerCustomizations).toEqual([
+      {
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: ComposerProbe }],
+      },
     ]);
   });
 
@@ -521,9 +540,7 @@ describe("renderSlot", () => {
       ),
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.label).toBe(
-      "Plugin improving draft",
-    );
+    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
@@ -587,22 +604,28 @@ describe("renderSlot", () => {
       if (setters === null)
         throw new Error("composer setters were not captured");
 
-      setters.setTextEffect("shimmer");
+      setters.setTextEffect({ className: "improve-shimmer" });
+      setters.setInputLock(true);
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
         effect: "shimmer",
         tone: "success",
       });
-      expect(slot.composer.textEffect).toBe("shimmer");
+      expect(slot.composer.textEffect).toEqual({
+        className: "improve-shimmer",
+      });
+      expect(slot.composer.inputLocked).toBe(true);
       expect(slot.composer.threadRowStatus?.tone).toBe("success");
 
       if (control === "top-level") slot.unmount();
       else slot.lifecycle.unmount();
       expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.inputLocked).toBe(false);
       expect(slot.composer.threadRowStatus).toBeNull();
 
       setters.setTextEffect("shimmer");
+      setters.setInputLock(true);
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "late status",
@@ -610,7 +633,10 @@ describe("renderSlot", () => {
       });
       expect(slot.composer.textEffect).toBeNull();
       expect(slot.composer.threadRowStatus).toBeNull();
-      expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+      expect(slot.composer.textEffectCalls).toEqual([
+        { className: "improve-shimmer" },
+      ]);
+      expect(slot.composer.inputLockCalls).toEqual([true]);
       expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
     }
   });

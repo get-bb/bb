@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { ComponentType, ReactNode } from 'react';
+import { ComponentType } from 'react';
 import Database from 'better-sqlite3';
 import { Context } from 'hono';
 import * as z from 'zod';
@@ -276,15 +276,6 @@ interface PluginThreadPanelActionRegistration {
     /** Rendered inside every panel tab this action opens. */
     component: ComponentType<PluginThreadPanelProps>;
     /**
-     * How the host frames the tab content. "padded" (default) wraps the
-     * component in the panel's scroll container with standard padding —
-     * right for document-like content. "flush" gives the component the full
-     * tab area (no padding, definite height, no host scrolling) — right for
-     * app-like content that manages its own layout, such as
-     * `experimental_ThreadChat`.
-     */
-    layout?: "padded" | "flush";
-    /**
      * Runs when the user activates the action: call your RPC methods, show a
      * toast, and/or open panel tabs via `context.openPanel`. Omitted =
      * immediately open a panel tab with defaults. Errors (sync or async) are
@@ -360,62 +351,6 @@ interface PluginMessageDirectiveRegistration {
     id: string;
     component: ComponentType<PluginMessageDirectiveProps>;
 }
-/**
- * A narrow, stable reference to one rendered chat message — NOT an internal
- * timeline row. `sourceSeqEnd` is the last source event sequence the message
- * covers, the anchor the server accepts for provider-history forks.
- */
-interface ThreadChatMessageReference {
-    id: string;
-    threadId: string;
-    role: "user" | "assistant";
-    /** Visible text of the message. */
-    text: string;
-    sourceSeqEnd: number;
-}
-interface PluginMessageActionThreadPanelOptions {
-    /** A `threadPanelAction` id registered by this same plugin. */
-    actionId: string;
-    title?: string;
-    params?: JsonValue$1;
-}
-/** Context handed to a `messageAction`'s `run`. */
-interface PluginMessageActionContext {
-    /** The thread whose timeline surfaced the action. */
-    threadId: string;
-    message: ThreadChatMessageReference;
-    /**
-     * Present only when the action was invoked from the text-selection menu;
-     * the exact text the user highlighted inside `message`.
-     */
-    selectedText?: string;
-    /**
-     * Open one of this plugin's `threadPanelAction` components in the current
-     * thread's side panel — same semantics as the message-directive
-     * `openThreadPanel`. Returns true when the host accepted (the action id
-     * exists and the surface has a panel); false otherwise.
-     */
-    openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
-}
-/**
- * An action on chat messages: an icon button in the per-message action bar
- * (user and assistant messages) and an entry in the assistant-message
- * text-selection menu. Host-rendered chrome — the plugin supplies title,
- * icon hint, and `run` behavior only.
- */
-interface PluginMessageActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(context: PluginMessageActionContext): void | Promise<void>;
-}
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
     settingsSection(registration: PluginSettingsSectionRegistration): void;
@@ -426,10 +361,13 @@ interface PluginAppSlots {
     sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
-    experimental_messageAction(registration: PluginMessageActionRegistration): void;
+}
+interface PluginAppComposer {
+    customize(registration: ComposerCustomization): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
+    composer: PluginAppComposer;
 }
 type PluginAppSetup = (app: PluginAppBuilder) => void;
 /**
@@ -480,8 +418,83 @@ type PluginComposerScope = {
     /** Root compose's effective selected project; null only while unresolved. */
     projectId: string | null;
 };
+/** One plugin-owned composer customization registration. */
+interface ComposerCustomization {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Composer kinds where this customization is active; omit for all kinds. */
+    scopes?: readonly PluginComposerScope["kind"][];
+    actions?: readonly {
+        id: string;
+        component: ComponentType;
+    }[];
+    banners?: readonly {
+        id: string;
+        /** Host chrome around the banner. Defaults to `"card"`. */
+        chrome?: "card" | "bare";
+        component: ComponentType;
+    }[];
+    plusMenu?: readonly ComposerPlusMenuItem[];
+    richText?: ComposerRichTextSpec;
+}
+/** Host-rendered menu row in the composer's `+` menu. */
+interface ComposerPlusMenuItem {
+    id: string;
+    label: string;
+    /** BB icon name; unknown names fall back to the generic plugin icon. */
+    icon?: string;
+    /** Accessible description for the host-rendered row. */
+    description?: string;
+    disabled?: boolean | ((view: ComposerView) => boolean);
+    run(context: {
+        composer: PluginComposerApi;
+        view: ComposerView;
+    }): void | Promise<void>;
+}
+/** Reactive read-side of the composer a plugin surface is mounted in. */
+interface ComposerView {
+    scope: PluginComposerScope;
+    layout: "expanded" | "compact" | "zen";
+    draft: {
+        text: string;
+        isEmpty: boolean;
+        attachmentCount: number;
+    };
+    run: {
+        isRunning: boolean;
+        isSubmitting: boolean;
+    };
+}
+interface ComposerRichTextSpec {
+    /** Content-derived paint: match ranges receive `className`; text is never mutated. */
+    effects?: readonly {
+        id: string;
+        /** Plain-text offsets into the current structured draft. */
+        match(text: string): readonly {
+            from: number;
+            to: number;
+        }[];
+        className: string;
+    }[];
+    /** Debounced, read-only observation of the structured draft. */
+    onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
+}
+interface ComposerStructuredDraft {
+    text: string;
+    mentions: readonly {
+        from: number;
+        to: number;
+        provider: string;
+        id: string;
+        label: string;
+    }[];
+}
 /** Host-rendered paint applied to the editable composer text. */
-type PluginComposerTextEffect = "shimmer";
+type PluginComposerTextEffect = {
+    className: string;
+}
+/** @deprecated Use `{ className }`; `"shimmer"` remains compatibility sugar. */
+ | "shimmer";
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 interface PluginComposerThreadRowStatus {
     /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
@@ -489,7 +502,7 @@ interface PluginComposerThreadRowStatus {
     /** Accessible label for the status glyph. */
     label: string;
     /** Host-rendered motion treatment for the status glyph, or null. */
-    effect: PluginComposerTextEffect | null;
+    effect: "shimmer" | null;
     /** Semantic host color for the status glyph. Defaults to the neutral tone. */
     tone?: "default" | "success";
 }
@@ -535,6 +548,12 @@ interface PluginComposerApi {
      */
     setTextEffect(effect: PluginComposerTextEffect | null): void;
     /**
+     * Lock or unlock editing for this composer. Locks are scoped to the calling
+     * plugin and automatically release when the slot unmounts or its composer
+     * scope changes.
+     */
+    setInputLock(locked: boolean): void;
+    /**
      * Replace this composer's thread-row draft glyph with a host-rendered status,
      * or clear it. New-thread composers have no row, so calls are a no-op.
      * Side-chat and queued side-chat scopes decorate the visible parent-thread
@@ -556,75 +575,6 @@ interface PluginComposerApi {
     insertMention(mention: PluginComposerMention): void;
     /** Focus the composer caret at the end of the draft. */
     focus(): void;
-}
-/**
- * A consumer-supplied action on the messages of one `ThreadChat` instance,
- * rendered in the embedded timeline's per-message action bar alongside the
- * native and slot-registered actions. Unlike the `messageAction` slot this is
- * scoped to the rendering component, not registered globally.
- */
-interface ThreadChatMessageAction {
-    /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Message roles the action applies to. Omitted = both user and assistant
-     * messages.
-     */
-    roles?: readonly ("user" | "assistant")[];
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(message: ThreadChatMessageReference): void | Promise<void>;
-}
-/**
- * Props of the host-owned `ThreadChat` component — one thread's chat
- * (timeline, and for the composer variants the full send/queue/draft
- * engine), rendered by the BB app inside a plugin slot. This is the
- * deliberate exception to the no-host-components rule (§5.5): a stable
- * product capability, not a UI kit. Versioned additive like slot props;
- * internal timeline rows, query hooks, and prompt-box configuration are
- * deliberately not exposed.
- */
-interface ThreadChatProps {
-    threadId: string;
-    /**
-     * "full" (default) is the page presentation (centered reading width);
-     * "compact" is the side-panel presentation; "timeline" renders the
-     * transcript without a composer.
-     */
-    variant?: "full" | "compact" | "timeline";
-    /**
-     * "contained" (default) fills and scrolls inside a bounded parent;
-     * "document" grows with its content and defers scrolling to the page.
-     */
-    layout?: "contained" | "document";
-    /** Bump to focus the composer (ignored by `variant: "timeline"`). */
-    focusRequest?: number;
-    className?: string;
-    /** Rendered above the conversation, scrolling with it. */
-    leadingContent?: ReactNode;
-    /**
-     * Actions rendered in this instance's per-message action bar (see
-     * {@link ThreadChatMessageAction}).
-     */
-    messageActions?: readonly ThreadChatMessageAction[];
-}
-/**
- * Props of the host-owned `Markdown` component — bb's chat message renderer
- * (the same typography, spacing, and code styling as timeline messages).
- * Use it wherever plugin UI quotes or previews message content so it reads
- * like the rest of the chat. Like `ThreadChat`, this is a stable product
- * capability, not a UI kit; renderer internals stay private.
- */
-interface MarkdownProps {
-    /** Markdown source, rendered exactly like a chat message body. */
-    content: string;
-    className?: string;
 }
 /** Current app selection, derived from the route. */
 interface BbContext {
@@ -675,17 +625,7 @@ interface PluginSdkApp {
     useBbContext(): BbContext;
     useBbNavigate(): BbNavigate;
     useComposer(): PluginComposerApi;
-    /**
-     * The host-owned chat component (see {@link ThreadChatProps}). Together
-     * with `Markdown`, the only components the SDK ships — everything else
-     * stays vendored per §5.5.
-     */
-    experimental_ThreadChat: ComponentType<ThreadChatProps>;
-    /**
-     * The host-owned chat-message markdown renderer (see
-     * {@link MarkdownProps}).
-     */
-    experimental_Markdown: ComponentType<MarkdownProps>;
+    useComposerView(): ComposerView;
 }
 
 /**
@@ -917,7 +857,6 @@ type Environment = z$1.infer<typeof environmentSchema>;
 declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
     plugins: z$1.ZodBoolean;
-    sideChatPlugin: z$1.ZodBoolean;
 }, z$1.core.$strip>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
 
@@ -3486,10 +3425,10 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
-                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
+                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -3509,13 +3448,13 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
-            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
             conflicts: "conflicts";
+            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -3934,8 +3873,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            replace: "replace";
             append: "append";
+            replace: "replace";
         }>;
         type: z$1.ZodLiteral<"thread.start">;
         requestId: z$1.ZodString;
@@ -4423,8 +4362,8 @@ declare const hostDaemonCommandRegistry: {
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
-                replace: "replace";
                 append: "append";
+                replace: "replace";
             }>;
             projectId: z$1.ZodString;
             providerId: z$1.ZodString;
@@ -4719,8 +4658,8 @@ declare const hostDaemonCommandRegistry: {
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
-                replace: "replace";
                 append: "append";
+                replace: "replace";
             }>;
             projectId: z$1.ZodString;
             providerId: z$1.ZodString;
@@ -5622,9 +5561,9 @@ declare const hostDaemonCommandRegistry: {
         executablePath: z$1.ZodNullable<z$1.ZodString>;
         installed: z$1.ZodBoolean;
         installSource: z$1.ZodEnum<{
+            external: "external";
             notInstalled: "notInstalled";
             npmGlobal: "npmGlobal";
-            external: "external";
         }>;
         currentVersion: z$1.ZodNullable<z$1.ZodString>;
         latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -5797,13 +5736,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5847,13 +5786,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5909,13 +5848,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5957,13 +5896,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
-                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
+                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6081,9 +6020,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
+        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
-        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -6234,11 +6173,11 @@ type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
     id: z$1.ZodString;
     outcome: z$1.ZodEnum<{
+        unavailable: "unavailable";
         incompatible: "incompatible";
         current: "current";
         "update-available": "update-available";
         pinned: "pinned";
-        unavailable: "unavailable";
     }>;
     devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
     installed: z$1.ZodObject<{
@@ -6305,11 +6244,11 @@ declare const installedPluginSchema: z$1.ZodObject<{
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            unavailable: "unavailable";
             incompatible: "incompatible";
             current: "current";
             "update-available": "update-available";
             pinned: "pinned";
-            unavailable: "unavailable";
         }>>;
         availableVersion: z$1.ZodOptional<z$1.ZodString>;
         blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6398,11 +6337,11 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6492,11 +6431,11 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6999,7 +6938,6 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     experiments: z$1.ZodObject<{
         claudeCodeMockCliTraffic: z$1.ZodBoolean;
         plugins: z$1.ZodBoolean;
-        sideChatPlugin: z$1.ZodBoolean;
     }, z$1.core.$strip>;
     appearance: z$1.ZodObject<{
         themeId: z$1.ZodString;
@@ -8023,196 +7961,6 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
     }>>>;
 }, z$1.core.$strip>;
 type CreateThreadRequest = z$1.infer<typeof createThreadRequestSchema>;
-declare const forkThreadRequestSchema: z$1.ZodObject<{
-    sourceThreadId: z$1.ZodString;
-    sourceSeqEnd: z$1.ZodOptional<z$1.ZodNumber>;
-    input: z$1.ZodOptional<z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"text">;
-        text: z$1.ZodString;
-        mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
-            start: z$1.ZodNumber;
-            end: z$1.ZodNumber;
-            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"thread">;
-                threadId: z$1.ZodString;
-                projectId: z$1.ZodOptional<z$1.ZodString>;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"project">;
-                projectId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"section">;
-                sectionId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"path">;
-                source: z$1.ZodEnum<{
-                    workspace: "workspace";
-                    "thread-storage": "thread-storage";
-                }>;
-                entryKind: z$1.ZodEnum<{
-                    file: "file";
-                    directory: "directory";
-                }>;
-                path: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"command">;
-                trigger: z$1.ZodEnum<{
-                    "/": "/";
-                }>;
-                name: z$1.ZodString;
-                source: z$1.ZodEnum<{
-                    command: "command";
-                    skill: "skill";
-                }>;
-                origin: z$1.ZodEnum<{
-                    user: "user";
-                    project: "project";
-                    builtin: "builtin";
-                }>;
-                label: z$1.ZodString;
-                argumentHint: z$1.ZodNullable<z$1.ZodString>;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"plugin">;
-                pluginId: z$1.ZodString;
-                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
-                itemId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">>;
-        }, z$1.core.$strip>>>;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"image">;
-        url: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"localImage">;
-        path: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"localFile">;
-        path: z$1.ZodString;
-        name: z$1.ZodOptional<z$1.ZodString>;
-        sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
-        mimeType: z$1.ZodOptional<z$1.ZodString>;
-    }, z$1.core.$strip>], "type">>>;
-    agentContextSeed: z$1.ZodOptional<z$1.ZodArray<z$1.ZodIntersection<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"text">;
-        text: z$1.ZodString;
-        mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
-            start: z$1.ZodNumber;
-            end: z$1.ZodNumber;
-            resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"thread">;
-                threadId: z$1.ZodString;
-                projectId: z$1.ZodOptional<z$1.ZodString>;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"project">;
-                projectId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"section">;
-                sectionId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"path">;
-                source: z$1.ZodEnum<{
-                    workspace: "workspace";
-                    "thread-storage": "thread-storage";
-                }>;
-                entryKind: z$1.ZodEnum<{
-                    file: "file";
-                    directory: "directory";
-                }>;
-                path: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"command">;
-                trigger: z$1.ZodEnum<{
-                    "/": "/";
-                }>;
-                name: z$1.ZodString;
-                source: z$1.ZodEnum<{
-                    command: "command";
-                    skill: "skill";
-                }>;
-                origin: z$1.ZodEnum<{
-                    user: "user";
-                    project: "project";
-                    builtin: "builtin";
-                }>;
-                label: z$1.ZodString;
-                argumentHint: z$1.ZodNullable<z$1.ZodString>;
-            }, z$1.core.$strip>, z$1.ZodObject<{
-                kind: z$1.ZodLiteral<"plugin">;
-                pluginId: z$1.ZodString;
-                icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
-                itemId: z$1.ZodString;
-                label: z$1.ZodString;
-            }, z$1.core.$strip>], "kind">>;
-        }, z$1.core.$strip>>>;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"image">;
-        url: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"localImage">;
-        path: z$1.ZodString;
-    }, z$1.core.$strip>, z$1.ZodObject<{
-        visibility: z$1.ZodOptional<z$1.ZodEnum<{
-            "agent-only": "agent-only";
-        }>>;
-        type: z$1.ZodLiteral<"localFile">;
-        path: z$1.ZodString;
-        name: z$1.ZodOptional<z$1.ZodString>;
-        sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
-        mimeType: z$1.ZodOptional<z$1.ZodString>;
-    }, z$1.core.$strip>], "type">, z$1.ZodObject<{
-        visibility: z$1.ZodLiteral<"agent-only">;
-    }, z$1.core.$strip>>>>;
-    title: z$1.ZodOptional<z$1.ZodString>;
-    permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
-        "accept-edits": "accept-edits";
-        full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
-    visibility: z$1.ZodDefault<z$1.ZodEnum<{
-        visible: "visible";
-        hidden: "hidden";
-    }>>;
-    workspace: z$1.ZodDefault<z$1.ZodEnum<{
-        reuse: "reuse";
-        isolated: "isolated";
-    }>>;
-    origin: z$1.ZodDefault<z$1.ZodEnum<{
-        plugin: "plugin";
-        app: "app";
-        cli: "cli";
-        sdk: "sdk";
-    }>>;
-    originPluginId: z$1.ZodOptional<z$1.ZodString>;
-}, z$1.core.$strip>;
-type ForkThreadRequest = z$1.infer<typeof forkThreadRequestSchema>;
 declare const sendMessageRequestSchema: z$1.ZodObject<{
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -9378,10 +9126,6 @@ declare const updateThreadRequestSchema: z$1.ZodObject<{
         max: "max";
         ultra: "ultra";
     }>>>;
-    visibility: z$1.ZodOptional<z$1.ZodEnum<{
-        visible: "visible";
-        hidden: "hidden";
-    }>>;
 }, z$1.core.$strip>;
 type UpdateThreadRequest = z$1.infer<typeof updateThreadRequestSchema>;
 declare const reorderPinnedThreadRequestSchema: z$1.ZodObject<{
@@ -9462,10 +9206,6 @@ declare const threadListQuerySchema: z$1.ZodObject<{
     childOrigin: z$1.ZodOptional<z$1.ZodEnum<{
         "side-chat": "side-chat";
         fork: "fork";
-    }>>;
-    includeHidden: z$1.ZodOptional<z$1.ZodEnum<{
-        true: "true";
-        false: "false";
     }>>;
     limit: z$1.ZodOptional<z$1.ZodString>;
     offset: z$1.ZodOptional<z$1.ZodString>;
@@ -10743,7 +10483,6 @@ interface ThreadListArgs {
     excludeSideChats?: boolean;
     sectionId?: string;
     hasParent?: boolean;
-    includeHidden?: boolean;
     limit?: number;
     offset?: number;
     originKind?: ThreadListQuery["originKind"];
@@ -10769,7 +10508,6 @@ interface ThreadOutputResponse {
 }
 type ThreadMutationResult = ThreadResponse;
 type ThreadSpawnResult = ThreadResponse;
-type ThreadForkResult = ThreadResponse;
 type ThreadInteractionGetResult = PendingInteraction;
 type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 type ThreadInteractionResolveResult = PendingInteraction;
@@ -10830,11 +10568,6 @@ type ThreadSpawnArgs = ThreadSpawnBaseArgs & ({
     input?: never;
     prompt: string;
 });
-interface ThreadForkArgs extends Omit<ForkThreadRequest, "origin" | "visibility" | "workspace"> {
-    origin?: ForkThreadRequest["origin"];
-    visibility?: ForkThreadRequest["visibility"];
-    workspace?: ForkThreadRequest["workspace"];
-}
 interface ThreadUpdateArgs extends UpdateThreadRequest {
     threadId: string;
 }
@@ -11003,7 +10736,6 @@ interface ThreadsArea {
     defaultExecutionOptions(args: ThreadStatusArgs): Promise<ThreadDefaultExecutionOptionsResult>;
     delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
     events: ThreadEventsArea;
-    fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
     get(args: ThreadGetArgs): Promise<ThreadGetResult>;
     interactions: ThreadInteractionsArea;
     list(args?: ThreadListArgs): Promise<ThreadListResult>;
@@ -11178,10 +10910,6 @@ interface PluginThreadEventPayloads {
     "thread.failed": {
         thread: ThreadResponse;
         error: string | null;
-    };
-    /** Fired after a thread is archived (including cascade archives). */
-    "thread.archived": {
-        thread: ThreadResponse;
     };
     /** Fired after a thread is soft-deleted. */
     "thread.deleted": {
@@ -11664,4 +11392,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, JsonValue$1 as JsonValue, MarkdownProps, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue$1 as JsonValue, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };

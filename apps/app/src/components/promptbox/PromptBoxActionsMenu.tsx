@@ -8,6 +8,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import {
+  PluginComposerPlusMenuEntry,
+  type PluginComposerPlusMenuContribution,
+} from "@/components/plugin/PluginComposerActions";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
@@ -27,6 +31,7 @@ interface PromptBoxActionsMenuProps {
   isAttaching?: boolean;
   onAttach?: () => void;
   onAction: (action: PromptBoxAction) => void;
+  pluginItems?: readonly PluginComposerPlusMenuContribution[];
 }
 
 export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
@@ -87,6 +92,7 @@ export function PromptBoxActionsMenu({
   isAttaching = false,
   onAttach,
   onAction,
+  pluginItems = [],
 }: PromptBoxActionsMenuProps) {
   const selectedItemRef = useRef(false);
   const visibleActions = orderedPromptActions(actions).filter(
@@ -103,7 +109,7 @@ export function PromptBoxActionsMenu({
     setTimeout(clear, 0);
   }, []);
 
-  if (visibleActions.length === 0 && !onAttach) {
+  if (visibleActions.length === 0 && !onAttach && pluginItems.length === 0) {
     return null;
   }
 
@@ -188,6 +194,26 @@ export function PromptBoxActionsMenu({
               />
               {action.label ?? presentation.label}
             </DropdownMenuItem>
+          );
+        })}
+        {pluginItems.length > 0 ? <DropdownMenuSeparator /> : null}
+        {pluginItems.map((contribution, index) => {
+          const contributingPluginCount = new Set(
+            pluginItems.map((candidate) => candidate.pluginId),
+          ).size;
+          const previous = pluginItems[index - 1];
+          const startsPluginGroup =
+            contributingPluginCount >= 2 &&
+            previous?.pluginId !== contribution.pluginId;
+          return (
+            <PluginComposerPlusMenuEntry
+              key={`${contribution.pluginId}/${contribution.customizationId}/${contribution.item.id}/${contribution.generation}`}
+              contribution={contribution}
+              showPluginLabel={startsPluginGroup}
+              onSelected={() => {
+                selectedItemRef.current = true;
+              }}
+            />
           );
         })}
       </DropdownMenuContent>

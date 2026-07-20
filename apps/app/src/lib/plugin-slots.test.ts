@@ -32,6 +32,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    composerCustomizations: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -98,6 +99,29 @@ describe("plugin slot store", () => {
     // The generation bumps per replacement so mount sites can remount slot
     // components (fresh error-boundary state) on reload.
     expect(snapshot.homepageSections[0]?.generation).toBe(2);
+  });
+
+  it("replaces composer customizations wholesale with generation metadata", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [{ id: "first" }, { id: "second" }],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        composerCustomizations: [{ id: "replacement" }],
+      }),
+    );
+
+    expect(
+      getPluginSlotSnapshot().composerCustomizations.map((registration) => ({
+        id: registration.id,
+        pluginId: registration.pluginId,
+        generation: registration.generation,
+      })),
+    ).toEqual([{ id: "replacement", pluginId: "demo", generation: 2 }]);
   });
 
   it("removes a plugin's registrations and notifies subscribers", () => {

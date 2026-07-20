@@ -1,4 +1,5 @@
 import {
+  type ComposerCustomization,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
@@ -8,6 +9,7 @@ import {
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
+  type PluginComposerScope,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
@@ -45,6 +47,17 @@ export function isPluginAppDefinition(
 
 const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
+function isPluginComposerScopeKind(
+  value: unknown,
+): value is PluginComposerScope["kind"] {
+  return (
+    value === "thread" ||
+    value === "queued-message" ||
+    value === "side-chat" ||
+    value === "new-thread"
+  );
+}
 
 function requireSlotId(kind: string, value: unknown): string {
   if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
@@ -110,12 +123,15 @@ function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
  */
 export function collectPluginAppRegistrations(
   definition: PluginAppDefinition,
+  onComposerCustomizationRejected: (reason: string) => void = (reason) =>
+    console.warn(reason),
 ): PluginRegistrationSet {
   const homepageSections: PluginHomepageSectionRegistration[] = [];
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
+  const composerCustomizations: ComposerCustomization[] = [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
@@ -127,6 +143,7 @@ export function collectPluginAppRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -309,6 +326,37 @@ export function collectPluginAppRegistrations(
         });
       },
     },
+    composer: {
+      customize(registration) {
+        const kind = "composer.customize";
+        try {
+          const id = requireSlotId(kind, registration?.id);
+          const scopes = registration?.scopes;
+          if (scopes !== undefined) {
+            if (!Array.isArray(scopes)) {
+              throw new Error(`${kind}: "scopes" must be an array when set`);
+            }
+            for (const scope of scopes) {
+              if (!isPluginComposerScopeKind(scope)) {
+                throw new Error(
+                  `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
+                );
+              }
+            }
+          }
+          requireUniqueId(kind, seenIds.composerCustomization, id);
+          composerCustomizations.push({
+            ...registration,
+            id,
+            ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
+          });
+        } catch (error) {
+          onComposerCustomizationRejected(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+    },
   });
 
   return {
@@ -317,6 +365,7 @@ export function collectPluginAppRegistrations(
     navPanels,
     threadPanelActions,
     composerAccessories,
+    composerCustomizations,
     pendingInteractions,
     sidebarFooterActions,
     fileOpeners,
@@ -355,7 +404,11 @@ export function interpretPluginFrontends(
       }
       deps.setRegistrations(
         pluginId,
-        collectPluginAppRegistrations(definition),
+        collectPluginAppRegistrations(definition, (reason) => {
+          deps.warn(
+            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
+          );
+        }),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

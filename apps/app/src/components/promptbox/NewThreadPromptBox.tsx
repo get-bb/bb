@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
 import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -280,10 +281,15 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       data-promptbox-shell=""
       className="w-full"
     >
-      {modeConfig.banner ? (
-        <div className="mb-2">{modeConfig.banner}</div>
-      ) : null}
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        {modeConfig.banner || pluginComposerHost ? (
+          <div className="mb-2 space-y-2">
+            {modeConfig.banner}
+            {pluginComposerHost ? (
+              <PluginComposerBanners scope={pluginComposerHost.scope} />
+            ) : null}
+          </div>
+        ) : null}
         <PromptBoxInternal
           id={id}
           promptBoxRef={promptBoxRef}

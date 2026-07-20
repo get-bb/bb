@@ -17,6 +17,23 @@ export interface PromptEditorValue {
   mentions: PromptTextMention[];
 }
 
+/**
+ * One contiguous piece of serialized prompt text that maps back to editable
+ * ProseMirror content. Markdown delimiters and block/list prefixes deliberately
+ * have no segment because they do not occupy document positions.
+ */
+export interface PromptEditorOffsetSegment {
+  textFrom: number;
+  textTo: number;
+  docFrom: number;
+  docTo: number;
+  kind: "text" | "mention";
+}
+
+export interface PromptEditorSerialization extends PromptEditorValue {
+  offsetMapping: PromptEditorOffsetSegment[];
+}
+
 export interface PromptEditorContentOptions {
   /**
    * Parse the Markdown surface forms emitted by promptEditorValueFromDoc back
@@ -814,13 +831,15 @@ function markdownDelimitersForMarks(
   return { open, close };
 }
 
-export function promptEditorValueFromDoc(
+function serializePromptEditorNode(
   doc: ProseMirrorNode,
-): PromptEditorValue {
+  rootPosition: number,
+): PromptEditorSerialization {
   let text = "";
   let previousSerializedBlockWasBlockquote: boolean | null = null;
   let activeInlineDelimiters: { close: string; key: string } | null = null;
   const mentions: PromptTextMention[] = [];
+  const offsetMapping: PromptEditorOffsetSegment[] = [];
 
   const closeActiveInlineDelimiters = () => {
     if (activeInlineDelimiters === null) {
@@ -833,6 +852,9 @@ export function promptEditorValueFromDoc(
   const appendMarkedInlineText = (
     value: string,
     marks: readonly ProseMirrorNode["marks"][number][],
+    docFrom: number,
+    docTo: number,
+    kind: PromptEditorOffsetSegment["kind"],
   ): { end: number; start: number } => {
     const { open, close } = markdownDelimitersForMarks(marks);
     const key = `${open}\0${close}`;
@@ -845,6 +867,13 @@ export function promptEditorValueFromDoc(
     }
     const start = text.length;
     text += value;
+    offsetMapping.push({
+      textFrom: start,
+      textTo: text.length,
+      docFrom,
+      docTo,
+      kind,
+    });
     return { start, end: text.length };
   };
 
@@ -859,13 +888,19 @@ export function promptEditorValueFromDoc(
     previousSerializedBlockWasBlockquote = blockIsBlockquote;
   };
 
-  const appendInline = (node: ProseMirrorNode) => {
+  const appendInline = (node: ProseMirrorNode, nodePosition: number) => {
     if (node.type.name === "text") {
       const value = node.text ?? "";
       if (value.length === 0) {
         return;
       }
-      appendMarkedInlineText(value, node.marks);
+      appendMarkedInlineText(
+        value,
+        node.marks,
+        nodePosition,
+        nodePosition + node.nodeSize,
+        "text",
+      );
       return;
     }
     if (node.type.name === "hardBreak") {
@@ -876,7 +911,13 @@ export function promptEditorValueFromDoc(
     if (node.type.name === "mention") {
       const attrs = mentionAttrsFromNode(node);
       if (attrs) {
-        const span = appendMarkedInlineText(attrs.serializedText, node.marks);
+        const span = appendMarkedInlineText(
+          attrs.serializedText,
+          node.marks,
+          nodePosition,
+          nodePosition + node.nodeSize,
+          "mention",
+        );
         mentions.push({
           start: span.start,
           end: span.end,
@@ -885,14 +926,14 @@ export function promptEditorValueFromDoc(
       }
       return;
     }
-    appendChildren(node);
+    appendChildren(node, nodePosition);
   };
 
   // Serialize a blockquote: build its inner value via a fresh walk, then emit
   // each inner line with a "> "/">" prefix. The prefix characters count toward
   // text.length, so inner mention offsets are shifted to reflect the prefixes.
-  const appendBlockquote = (node: ProseMirrorNode) => {
-    const inner = promptEditorValueFromDoc(node);
+  const appendBlockquote = (node: ProseMirrorNode, nodePosition: number) => {
+    const inner = serializePromptEditorNode(node, nodePosition);
     const lines = inner.text.split("\n");
     const lineGlobalStarts: number[] = [];
     let innerOffset = 0;
@@ -907,25 +948,37 @@ export function promptEditorValueFromDoc(
     );
     text += prefixedLines.join("\n");
 
-    for (const innerMention of inner.mentions) {
-      // Find which inner line the mention sits on, then add the cumulative
-      // prefix length up to and including that line.
-      let lineIndex = 0;
-      for (let i = 0; i < lines.length; i += 1) {
-        const lineStart = lineGlobalStarts[i]!;
-        if (innerMention.start >= lineStart) {
-          lineIndex = i;
-        } else {
+    const prefixedOffset = (offset: number): number => {
+      let lineIndex = lines.length - 1;
+      for (let index = 0; index < lines.length; index += 1) {
+        if (offset <= lineGlobalStarts[index]! + lines[index]!.length) {
+          lineIndex = index;
           break;
         }
       }
       const prefixDelta = prefixedLines
         .slice(0, lineIndex + 1)
-        .reduce((sum, p, i) => sum + (p.length - lines[i]!.length), 0);
+        .reduce(
+          (sum, prefixedLine, index) =>
+            sum + (prefixedLine.length - lines[index]!.length),
+          0,
+        );
+      return offset + prefixDelta;
+    };
+
+    for (const segment of inner.offsetMapping) {
+      offsetMapping.push({
+        ...segment,
+        textFrom: blockStart + prefixedOffset(segment.textFrom),
+        textTo: blockStart + prefixedOffset(segment.textTo),
+      });
+    }
+
+    for (const innerMention of inner.mentions) {
       mentions.push({
         ...innerMention,
-        start: blockStart + innerMention.start + prefixDelta,
-        end: blockStart + innerMention.end + prefixDelta,
+        start: blockStart + prefixedOffset(innerMention.start),
+        end: blockStart + prefixedOffset(innerMention.end),
       });
     }
   };
@@ -936,6 +989,7 @@ export function promptEditorValueFromDoc(
   // Nested lists recurse with deeper indentation.
   const appendListItems = (
     listNode: ProseMirrorNode,
+    listPosition: number,
     ordered: boolean,
     depth: number,
   ) => {
@@ -943,6 +997,7 @@ export function promptEditorValueFromDoc(
       ordered && typeof listNode.attrs.start === "number"
         ? listNode.attrs.start
         : 1;
+    let itemPosition = listPosition + 1;
     for (let index = 0; index < listNode.childCount; index += 1) {
       const item = listNode.child(index);
       if (depth === 0 && index === 0) {
@@ -954,35 +1009,43 @@ export function promptEditorValueFromDoc(
       const indent = "  ".repeat(depth);
       const marker = ordered ? `${itemNumber}. ` : "- ";
       text += `${indent}${marker}`;
+      let blockPosition = itemPosition + 1;
       for (let childIndex = 0; childIndex < item.childCount; childIndex += 1) {
         const block = item.child(childIndex);
         if (
           block.type.name === "bulletList" ||
           block.type.name === "orderedList"
         ) {
-          appendListItems(block, block.type.name === "orderedList", depth + 1);
+          appendListItems(
+            block,
+            blockPosition,
+            block.type.name === "orderedList",
+            depth + 1,
+          );
         } else {
           // Paragraph (or other inline block) shares the marker line.
-          appendChildren(block);
+          appendChildren(block, blockPosition);
         }
+        blockPosition += block.nodeSize;
       }
       itemNumber += 1;
+      itemPosition += item.nodeSize;
     }
   };
 
-  const appendNode = (node: ProseMirrorNode) => {
+  const appendNode = (node: ProseMirrorNode, nodePosition: number) => {
     if (
       node.type.name === "text" ||
       node.type.name === "hardBreak" ||
       node.type.name === "mention"
     ) {
-      appendInline(node);
+      appendInline(node, nodePosition);
       return;
     }
 
     if (node.type.name === "blockquote") {
       appendBlockBoundary(true);
-      appendBlockquote(node);
+      appendBlockquote(node, nodePosition);
       return;
     }
 
@@ -991,32 +1054,54 @@ export function promptEditorValueFromDoc(
       const level = typeof node.attrs.level === "number" ? node.attrs.level : 1;
       const clampedLevel = Math.min(Math.max(level, 1), 6);
       text += `${"#".repeat(clampedLevel)} `;
-      appendChildren(node);
+      appendChildren(node, nodePosition);
       return;
     }
 
     if (node.type.name === "bulletList" || node.type.name === "orderedList") {
-      appendListItems(node, node.type.name === "orderedList", 0);
+      appendListItems(node, nodePosition, node.type.name === "orderedList", 0);
       return;
     }
 
     if (node.isBlock && node.type.name !== "doc") {
       appendBlockBoundary(false);
-      appendChildren(node);
+      appendChildren(node, nodePosition);
       return;
     }
-    appendChildren(node);
+    appendChildren(node, nodePosition);
   };
 
-  const appendChildren = (node: ProseMirrorNode) => {
+  const appendChildren = (node: ProseMirrorNode, nodePosition: number) => {
+    let childPosition =
+      node.type.name === "doc" ? nodePosition : nodePosition + 1;
     for (let index = 0; index < node.childCount; index += 1) {
-      appendNode(node.child(index));
+      const child = node.child(index);
+      appendNode(child, childPosition);
+      childPosition += child.nodeSize;
     }
     closeActiveInlineDelimiters();
   };
 
-  appendChildren(doc);
+  appendChildren(doc, rootPosition);
 
+  return { text, mentions, offsetMapping };
+}
+
+/**
+ * Serialize the editor document and retain the exact plain-text-to-document
+ * mapping used by decoration rules. Mention pills map their complete text
+ * representation to the single atomic mention node.
+ */
+export function promptEditorSerializationFromDoc(
+  doc: ProseMirrorNode,
+): PromptEditorSerialization {
+  return serializePromptEditorNode(doc, 0);
+}
+
+export function promptEditorValueFromDoc(
+  doc: ProseMirrorNode,
+): PromptEditorValue {
+  const { text, mentions } = promptEditorSerializationFromDoc(doc);
   return { text, mentions };
 }
 

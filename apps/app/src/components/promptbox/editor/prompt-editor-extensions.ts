@@ -1,11 +1,13 @@
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import type { AnyExtension } from "@tiptap/react";
+import {
+  PromptDecorationExtension,
+  type PromptDecorationExtensionOptions,
+} from "./prompt-decoration-extension";
 import { PromptMentionExtension } from "./prompt-mention-extension";
-import { PromptTextEffectExtension } from "./prompt-text-effect-extension";
-import { PromptUltracodeHighlightExtension } from "./prompt-ultracode-highlight-extension";
 
-export interface PromptEditorExtensionsOptions {
+export interface PromptEditorExtensionsOptions extends PromptDecorationExtensionOptions {
   /**
    * When true, the composer enables Markdown rich-text formatting (headings,
    * lists, bold/italic/inline code) with StarterKit's live input rules. When
@@ -38,6 +40,11 @@ export interface PromptEditorExtensionsOptions {
 export function promptEditorExtensions({
   richTextEditing,
   getPlaceholder,
+  getDecorationSources,
+  getDraftObservers,
+  draftObserverDebounceMs,
+  onRuleError,
+  onDraftObserverError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -61,7 +68,14 @@ export function promptEditorExtensions({
       placeholder: () => getPlaceholder(),
     }),
     PromptMentionExtension,
-    PromptTextEffectExtension,
-    PromptUltracodeHighlightExtension,
+    PromptDecorationExtension.configure({
+      ...(getDecorationSources !== undefined ? { getDecorationSources } : {}),
+      ...(getDraftObservers !== undefined ? { getDraftObservers } : {}),
+      ...(draftObserverDebounceMs !== undefined
+        ? { draftObserverDebounceMs }
+        : {}),
+      ...(onRuleError !== undefined ? { onRuleError } : {}),
+      ...(onDraftObserverError !== undefined ? { onDraftObserverError } : {}),
+    }),
   ];
 }

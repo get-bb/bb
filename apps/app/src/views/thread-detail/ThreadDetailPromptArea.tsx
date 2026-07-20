@@ -25,7 +25,9 @@ import type {
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
+  PluginComposerHostProvider,
   type PluginComposerHost,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
@@ -1149,13 +1151,20 @@ export function ThreadDetailPromptArea({
         threadId={thread.id}
       />
     );
-    if (!activePromptMode && !goal) {
-      return pendingInteractionComposer;
-    }
     return (
       <div className="space-y-2">
-        {activePromptModeCard}
-        {activeGoalCard}
+        {activePromptMode ? activePromptModeCard : null}
+        {goal ? activeGoalCard : null}
+        <PluginComposerHostProvider value={pluginComposerHost}>
+          <PluginComposerBanners
+            scope={
+              pluginComposerHost?.scope ?? {
+                kind: "thread",
+                threadId: thread.id,
+              }
+            }
+          />
+        </PluginComposerHostProvider>
         {pendingInteractionComposer}
       </div>
     );
@@ -1169,6 +1178,9 @@ export function ThreadDetailPromptArea({
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : composerConfig}
       pluginComposerHost={pluginComposerHost}
+      pluginComposerScope={
+        pluginComposerHost?.scope ?? { kind: "thread", threadId: thread.id }
+      }
       textEffect={
         inlineEditingQueuedMessage ? queuedComposerTextEffect : promptTextEffect
       }

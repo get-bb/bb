@@ -5,8 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import * as react from 'react';
-import { ComponentType, ReactNode } from 'react';
+import { ComponentType } from 'react';
 
 /** A JSON-safe path segment reported by a Standard Schema validation issue. */
 type PluginRpcIssuePathSegment = string | number;
@@ -271,15 +270,6 @@ interface PluginThreadPanelActionRegistration {
     /** Rendered inside every panel tab this action opens. */
     component: ComponentType<PluginThreadPanelProps>;
     /**
-     * How the host frames the tab content. "padded" (default) wraps the
-     * component in the panel's scroll container with standard padding —
-     * right for document-like content. "flush" gives the component the full
-     * tab area (no padding, definite height, no host scrolling) — right for
-     * app-like content that manages its own layout, such as
-     * `experimental_ThreadChat`.
-     */
-    layout?: "padded" | "flush";
-    /**
      * Runs when the user activates the action: call your RPC methods, show a
      * toast, and/or open panel tabs via `context.openPanel`. Omitted =
      * immediately open a panel tab with defaults. Errors (sync or async) are
@@ -355,62 +345,6 @@ interface PluginMessageDirectiveRegistration {
     id: string;
     component: ComponentType<PluginMessageDirectiveProps>;
 }
-/**
- * A narrow, stable reference to one rendered chat message — NOT an internal
- * timeline row. `sourceSeqEnd` is the last source event sequence the message
- * covers, the anchor the server accepts for provider-history forks.
- */
-interface ThreadChatMessageReference {
-    id: string;
-    threadId: string;
-    role: "user" | "assistant";
-    /** Visible text of the message. */
-    text: string;
-    sourceSeqEnd: number;
-}
-interface PluginMessageActionThreadPanelOptions {
-    /** A `threadPanelAction` id registered by this same plugin. */
-    actionId: string;
-    title?: string;
-    params?: JsonValue;
-}
-/** Context handed to a `messageAction`'s `run`. */
-interface PluginMessageActionContext {
-    /** The thread whose timeline surfaced the action. */
-    threadId: string;
-    message: ThreadChatMessageReference;
-    /**
-     * Present only when the action was invoked from the text-selection menu;
-     * the exact text the user highlighted inside `message`.
-     */
-    selectedText?: string;
-    /**
-     * Open one of this plugin's `threadPanelAction` components in the current
-     * thread's side panel — same semantics as the message-directive
-     * `openThreadPanel`. Returns true when the host accepted (the action id
-     * exists and the surface has a panel); false otherwise.
-     */
-    openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
-}
-/**
- * An action on chat messages: an icon button in the per-message action bar
- * (user and assistant messages) and an entry in the assistant-message
- * text-selection menu. Host-rendered chrome — the plugin supplies title,
- * icon hint, and `run` behavior only.
- */
-interface PluginMessageActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(context: PluginMessageActionContext): void | Promise<void>;
-}
 interface PluginAppSlots {
     homepageSection(registration: PluginHomepageSectionRegistration): void;
     settingsSection(registration: PluginSettingsSectionRegistration): void;
@@ -421,10 +355,13 @@ interface PluginAppSlots {
     sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
-    experimental_messageAction(registration: PluginMessageActionRegistration): void;
+}
+interface PluginAppComposer {
+    customize(registration: ComposerCustomization): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
+    composer: PluginAppComposer;
 }
 type PluginAppSetup = (app: PluginAppBuilder) => void;
 /**
@@ -475,8 +412,83 @@ type PluginComposerScope = {
     /** Root compose's effective selected project; null only while unresolved. */
     projectId: string | null;
 };
+/** One plugin-owned composer customization registration. */
+interface ComposerCustomization {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Composer kinds where this customization is active; omit for all kinds. */
+    scopes?: readonly PluginComposerScope["kind"][];
+    actions?: readonly {
+        id: string;
+        component: ComponentType;
+    }[];
+    banners?: readonly {
+        id: string;
+        /** Host chrome around the banner. Defaults to `"card"`. */
+        chrome?: "card" | "bare";
+        component: ComponentType;
+    }[];
+    plusMenu?: readonly ComposerPlusMenuItem[];
+    richText?: ComposerRichTextSpec;
+}
+/** Host-rendered menu row in the composer's `+` menu. */
+interface ComposerPlusMenuItem {
+    id: string;
+    label: string;
+    /** BB icon name; unknown names fall back to the generic plugin icon. */
+    icon?: string;
+    /** Accessible description for the host-rendered row. */
+    description?: string;
+    disabled?: boolean | ((view: ComposerView) => boolean);
+    run(context: {
+        composer: PluginComposerApi;
+        view: ComposerView;
+    }): void | Promise<void>;
+}
+/** Reactive read-side of the composer a plugin surface is mounted in. */
+interface ComposerView {
+    scope: PluginComposerScope;
+    layout: "expanded" | "compact" | "zen";
+    draft: {
+        text: string;
+        isEmpty: boolean;
+        attachmentCount: number;
+    };
+    run: {
+        isRunning: boolean;
+        isSubmitting: boolean;
+    };
+}
+interface ComposerRichTextSpec {
+    /** Content-derived paint: match ranges receive `className`; text is never mutated. */
+    effects?: readonly {
+        id: string;
+        /** Plain-text offsets into the current structured draft. */
+        match(text: string): readonly {
+            from: number;
+            to: number;
+        }[];
+        className: string;
+    }[];
+    /** Debounced, read-only observation of the structured draft. */
+    onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
+}
+interface ComposerStructuredDraft {
+    text: string;
+    mentions: readonly {
+        from: number;
+        to: number;
+        provider: string;
+        id: string;
+        label: string;
+    }[];
+}
 /** Host-rendered paint applied to the editable composer text. */
-type PluginComposerTextEffect = "shimmer";
+type PluginComposerTextEffect = {
+    className: string;
+}
+/** @deprecated Use `{ className }`; `"shimmer"` remains compatibility sugar. */
+ | "shimmer";
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 interface PluginComposerThreadRowStatus {
     /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
@@ -484,7 +496,7 @@ interface PluginComposerThreadRowStatus {
     /** Accessible label for the status glyph. */
     label: string;
     /** Host-rendered motion treatment for the status glyph, or null. */
-    effect: PluginComposerTextEffect | null;
+    effect: "shimmer" | null;
     /** Semantic host color for the status glyph. Defaults to the neutral tone. */
     tone?: "default" | "success";
 }
@@ -530,6 +542,12 @@ interface PluginComposerApi {
      */
     setTextEffect(effect: PluginComposerTextEffect | null): void;
     /**
+     * Lock or unlock editing for this composer. Locks are scoped to the calling
+     * plugin and automatically release when the slot unmounts or its composer
+     * scope changes.
+     */
+    setInputLock(locked: boolean): void;
+    /**
      * Replace this composer's thread-row draft glyph with a host-rendered status,
      * or clear it. New-thread composers have no row, so calls are a no-op.
      * Side-chat and queued side-chat scopes decorate the visible parent-thread
@@ -551,75 +569,6 @@ interface PluginComposerApi {
     insertMention(mention: PluginComposerMention): void;
     /** Focus the composer caret at the end of the draft. */
     focus(): void;
-}
-/**
- * A consumer-supplied action on the messages of one `ThreadChat` instance,
- * rendered in the embedded timeline's per-message action bar alongside the
- * native and slot-registered actions. Unlike the `messageAction` slot this is
- * scoped to the rendering component, not registered globally.
- */
-interface ThreadChatMessageAction {
-    /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Message roles the action applies to. Omitted = both user and assistant
-     * messages.
-     */
-    roles?: readonly ("user" | "assistant")[];
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(message: ThreadChatMessageReference): void | Promise<void>;
-}
-/**
- * Props of the host-owned `ThreadChat` component — one thread's chat
- * (timeline, and for the composer variants the full send/queue/draft
- * engine), rendered by the BB app inside a plugin slot. This is the
- * deliberate exception to the no-host-components rule (§5.5): a stable
- * product capability, not a UI kit. Versioned additive like slot props;
- * internal timeline rows, query hooks, and prompt-box configuration are
- * deliberately not exposed.
- */
-interface ThreadChatProps {
-    threadId: string;
-    /**
-     * "full" (default) is the page presentation (centered reading width);
-     * "compact" is the side-panel presentation; "timeline" renders the
-     * transcript without a composer.
-     */
-    variant?: "full" | "compact" | "timeline";
-    /**
-     * "contained" (default) fills and scrolls inside a bounded parent;
-     * "document" grows with its content and defers scrolling to the page.
-     */
-    layout?: "contained" | "document";
-    /** Bump to focus the composer (ignored by `variant: "timeline"`). */
-    focusRequest?: number;
-    className?: string;
-    /** Rendered above the conversation, scrolling with it. */
-    leadingContent?: ReactNode;
-    /**
-     * Actions rendered in this instance's per-message action bar (see
-     * {@link ThreadChatMessageAction}).
-     */
-    messageActions?: readonly ThreadChatMessageAction[];
-}
-/**
- * Props of the host-owned `Markdown` component — bb's chat message renderer
- * (the same typography, spacing, and code styling as timeline messages).
- * Use it wherever plugin UI quotes or previews message content so it reads
- * like the rest of the chat. Like `ThreadChat`, this is a stable product
- * capability, not a UI kit; renderer internals stay private.
- */
-interface MarkdownProps {
-    /** Markdown source, rendered exactly like a chat message body. */
-    content: string;
-    className?: string;
 }
 /** Current app selection, derived from the route. */
 interface BbContext {
@@ -670,22 +619,10 @@ interface PluginSdkApp {
     useBbContext(): BbContext;
     useBbNavigate(): BbNavigate;
     useComposer(): PluginComposerApi;
-    /**
-     * The host-owned chat component (see {@link ThreadChatProps}). Together
-     * with `Markdown`, the only components the SDK ships — everything else
-     * stays vendored per §5.5.
-     */
-    experimental_ThreadChat: ComponentType<ThreadChatProps>;
-    /**
-     * The host-owned chat-message markdown renderer (see
-     * {@link MarkdownProps}).
-     */
-    experimental_Markdown: ComponentType<MarkdownProps>;
+    useComposerView(): ComposerView;
 }
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
-declare const experimental_ThreadChat: react.ComponentType<ThreadChatProps>;
-declare const experimental_Markdown: react.ComponentType<MarkdownProps>;
 declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useRealtimeConnectionState: () => PluginRealtimeConnectionState;
@@ -693,6 +630,7 @@ declare const useSettings: () => PluginSettingsState;
 declare const useBbContext: () => BbContext;
 declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
+declare const useComposerView: () => ComposerView;
 
-export { definePluginApp, experimental_Markdown, experimental_ThreadChat, useBbContext, useBbNavigate, useComposer, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { definePluginApp, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, PluginAppBuilder, PluginAppComposer, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerAccessoryProps, PluginComposerAccessoryRegistration, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result };
