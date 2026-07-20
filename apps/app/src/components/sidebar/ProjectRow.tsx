@@ -467,7 +467,7 @@ function getProjectThreadTreeEmptyStateIcon(
 }
 
 function getProjectThreadTreeEmptyStateClassName(): string {
-  return cn("py-0.5", "pl-8 pr-2", "group-data-[collapsible=icon]:hidden");
+  return cn("py-0.5", "pl-4 pr-2", "group-data-[collapsible=icon]:hidden");
 }
 
 function getProjectThreadTreeEmptyStateMessageClassName(): string {

@@ -41,15 +41,23 @@ export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
 
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
+// Top-level group headers need only a small child cue. After that first inset,
+// preserve the full step so genuinely nested threads and sections stay legible.
+const SIDEBAR_THREAD_ROW_FIRST_CHILD_INDENT_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;
 const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
 export function getSidebarThreadRowPaddingLeft(depth: number): number {
+  if (depth === 0) {
+    return SIDEBAR_THREAD_ROW_BASE_PADDING_PX;
+  }
+
   return (
     SIDEBAR_THREAD_ROW_BASE_PADDING_PX +
-    depth * SIDEBAR_THREAD_ROW_DEPTH_STEP_PX
+    SIDEBAR_THREAD_ROW_FIRST_CHILD_INDENT_PX +
+    (depth - 1) * SIDEBAR_THREAD_ROW_DEPTH_STEP_PX
   );
 }
 
