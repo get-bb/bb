@@ -609,23 +609,23 @@ export function PluginDetail({
               {hasUpdateManagement ? (
                 <PluginUpdateBanner plugin={plugin} />
               ) : null}
-              <ResourceDetailFacts>
-                <ResourceDetailFact label="Version" mono>
-                  {plugin.version}
-                </ResourceDetailFact>
-                {!hasUpdateManagement ? (
-                  <ResourceDetailFact label="Updates">
-                    Included with bb releases
-                  </ResourceDetailFact>
-                ) : null}
-              </ResourceDetailFacts>
               {hasUpdateManagement ? (
                 <PluginUpdatesSourceCard
                   plugin={plugin}
                   showHeading={false}
                   embedded
+                  releaseVersion={plugin.version}
                 />
-              ) : null}
+              ) : (
+                <ResourceDetailFacts>
+                  <ResourceDetailFact label="Version" mono>
+                    {plugin.version}
+                  </ResourceDetailFact>
+                  <ResourceDetailFact label="Updates">
+                    Included with bb releases
+                  </ResourceDetailFact>
+                </ResourceDetailFacts>
+              )}
             </div>
           ),
         },

@@ -1008,7 +1008,7 @@ export function ResourceDetailCollection({
     <ResourceDetailList
       surface="flat"
       className={cn(
-        "divide-y divide-border border-y border-border p-0",
+        "divide-y divide-border overflow-hidden rounded-md border border-border bg-background p-0",
         className,
       )}
     >
@@ -1197,7 +1197,7 @@ export function ResourceDetailFacts({
   return (
     <dl
       className={cn(
-        "grid grid-cols-[repeat(auto-fit,minmax(min(11rem,100%),1fr))] gap-x-8 gap-y-3",
+        "divide-y divide-border overflow-hidden rounded-md border border-border bg-background",
         className,
       )}
     >
@@ -1210,21 +1210,35 @@ export function ResourceDetailFact({
   label,
   children,
   mono = false,
+  action,
+  details,
 }: {
   label: ReactNode;
   children: ReactNode;
   mono?: boolean;
+  action?: ReactNode;
+  details?: ReactNode;
 }) {
   return (
-    <div className="min-w-0 space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd
-        className={cn(
-          "min-w-0 break-words text-sm text-foreground",
-          mono && "font-mono text-xs",
-        )}
-      >
-        {children}
+    <div className="grid min-w-0 sm:grid-cols-[9rem_minmax(0,1fr)]">
+      <dt className="bg-surface-recessed/55 px-3 py-2.5 text-xs font-medium text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="min-w-0 px-3 py-2.5">
+        <div className="flex min-w-0 items-start gap-3">
+          <div
+            className={cn(
+              "min-w-0 flex-1 break-words text-sm text-foreground",
+              mono && "font-mono text-xs",
+            )}
+          >
+            {children}
+          </div>
+          {action ? (
+            <div className="-my-1 flex shrink-0 items-center">{action}</div>
+          ) : null}
+        </div>
+        {details ? <div className="mt-2">{details}</div> : null}
       </dd>
     </div>
   );
