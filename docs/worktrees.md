@@ -21,8 +21,8 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
 - It gets its own branch so multiple threads can run in parallel.
 - It lives at `<BB_DATA_DIR>/worktrees/<environment-id>/<repo-name>` — for
   example, `~/.bb/worktrees/env_abc.../myrepo`.
-- When the owning thread is archived or deleted, bb cleans the worktree up
-  (`git worktree remove --force`) along with the branch.
+- Once every thread using the environment is archived or deleted, bb cleans the
+  worktree up (`git worktree remove --force`) along with the branch.
 
 ## Start a thread in a worktree
 
@@ -61,7 +61,7 @@ cp ~/.config/myapp/.env .
 
 Contract:
 
-- The script runs with `bash`, working directory set to the new worktree.
+- The script runs with `env bash`, working directory set to the new worktree.
 - stdin is closed. stdout and stderr stream into the thread's provisioning
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and
@@ -71,8 +71,9 @@ Contract:
 
 ## Cleanup
 
-You don't need to clean up worktrees by hand — bb removes them when the
-owning thread is archived or deleted, and the branch goes with it. If you
+You don't need to clean up worktrees by hand — bb removes them once every
+thread using the environment is archived or deleted, and the branch goes with
+it. If you
 want to keep work the agent did, commit and push (or open a PR) from inside
 the worktree before letting the thread go.
 

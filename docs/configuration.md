@@ -413,8 +413,8 @@ proxying relayed requests to the server's own loopback (which serves the SPA
   `url`; `shares --json` also includes the resolved `host`. A machine without
   a live Connect enrollment fails fast with instructions to remove and re-add
   it in Settings → Machines. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; with the bb connect
-  experiment still enabled, `bb plugin enable connect` restores it.
+  (`bb plugin disable connect`) cuts off all remote access;
+  `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
@@ -425,9 +425,9 @@ ports).
 User-installed plugins are gated behind the "Plugins" experiment (Settings →
 Experiments, off by default). While the experiment is off, user plugin code
 does not load and `bb plugin` commands for user plugins report that plugins are
-disabled. Builtin plugins ship with bb and can remain available; the builtin
-connect plugin is separately gated by "bb connect". Toggling these
-experiments applies live.
+disabled. Builtin plugins, including connect, ship with bb and remain available
+when the Plugins experiment is off. Toggling the Plugins experiment applies
+live to user-installed plugins.
 
 Plugin state lives under the data dir:
 
@@ -533,12 +533,8 @@ npx bb-app --server-port 48886 --host-daemon-port 48887
 ## Source Development
 
 For source development only, `pnpm dev` and `pnpm start` load the repo-root
-dotenv cascade. Contributors can start from [`.env.example`](../.env.example)
-for a local development template:
-
-```bash
-cp .env.example .env
-```
+dotenv cascade. Add a repo-root `.env` only when you need to override the
+defaults described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,
