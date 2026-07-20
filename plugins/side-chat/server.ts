@@ -184,25 +184,44 @@ export default async function plugin(bb: BbPluginApi) {
         anchorText,
         sourceTimelineRows: timeline.rows,
       });
-      const fork = await bb.sdk.threads.fork({
+      const forkArgs = {
         sourceThreadId,
-        ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
-        visibility: "hidden",
-        workspace: "isolated",
+        visibility: "hidden" as const,
+        workspace: "isolated" as const,
         ...(seedText !== null
           ? {
               agentContextSeed: [
                 {
-                  type: "text",
+                  type: "text" as const,
                   text: `${REPLY_SEED_PREFIX}${seedText}`,
                   mentions: [],
-                  visibility: "agent-only",
+                  visibility: "agent-only" as const,
                 },
               ],
             }
           : {}),
-      });
-      return { threadId: fork.id };
+      };
+      try {
+        const fork = await bb.sdk.threads.fork({
+          ...forkArgs,
+          ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
+        });
+        return { threadId: fork.id };
+      } catch (error) {
+        // Messages earlier than the source's first provider session (e.g. the
+        // opening user message) have no point-in-time session to clone. The
+        // legacy side chat always forked from the tip; fall back to that so
+        // those anchors keep working — the reply seed still marks the anchor.
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          sourceSeqEnd === undefined ||
+          !message.includes("no active session to clone")
+        ) {
+          throw error;
+        }
+        const fork = await bb.sdk.threads.fork(forkArgs);
+        return { threadId: fork.id };
+      }
     },
     async sendToMain({ sourceThreadId, senderThreadId, text }) {
       await bb.sdk.threads.queuedMessages.create({

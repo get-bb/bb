@@ -480,7 +480,14 @@ export async function createThreadFromRequest(
     visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
   } = {
     ...rawRequestInput,
-    visibility: rawRequestInput.visibility ?? "visible",
+    // Side chats are hidden from navigation; the 0079 backfill applied the
+    // same default to pre-existing rows.
+    visibility:
+      rawRequestInput.visibility ??
+      ((rawRequestInput.originKind ?? rawRequestInput.childOrigin) ===
+      "side-chat"
+        ? "hidden"
+        : "visible"),
   };
   const project = requirePublicProjectForThreadCreate(
     deps,

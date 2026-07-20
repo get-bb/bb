@@ -124,6 +124,55 @@ describe("createSideChat rpc", () => {
     });
   });
 
+  it("falls back to a tip fork when the anchor predates any provider session", async () => {
+    const fork = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("HTTP 400: Cannot fork: source has no active session to clone"),
+      )
+      .mockResolvedValueOnce(makeThreadResponse({ id: "thr_tip_fork" }));
+    const { harness } = await loadPlugin({
+      timeline: async () =>
+        timelineResult([
+          conversationRow("earlier answer"),
+          conversationRow("latest answer"),
+        ]),
+      fork,
+    });
+
+    const result = await harness.callRpc("createSideChat", {
+      sourceThreadId: "thr_src",
+      sourceSeqEnd: 1,
+      anchorText: "earlier answer",
+    });
+
+    expect(result).toEqual({ threadId: "thr_tip_fork" });
+    expect(fork).toHaveBeenCalledTimes(2);
+    expect(fork.mock.calls[1]?.[0]).not.toHaveProperty("sourceSeqEnd");
+    expect(fork.mock.calls[1]?.[0].agentContextSeed?.[0]?.text).toContain(
+      "earlier answer",
+    );
+  });
+
+  it("rethrows point-fork failures that are not missing-session errors", async () => {
+    const fork = vi
+      .fn()
+      .mockRejectedValue(new Error("HTTP 403: forbidden"));
+    const { harness } = await loadPlugin({
+      timeline: async () => timelineResult([conversationRow("latest answer")]),
+      fork,
+    });
+
+    await expect(
+      harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_src",
+        sourceSeqEnd: 3,
+        anchorText: "x",
+      }),
+    ).rejects.toThrow("forbidden");
+    expect(fork).toHaveBeenCalledTimes(1);
+  });
+
   it("forks without a seed when the anchor is the last conversation message", async () => {
     const fork = vi.fn(async () => makeThreadResponse({ id: "thr_fork" }));
     const { harness } = await loadPlugin({
