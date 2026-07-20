@@ -387,6 +387,13 @@ export interface PluginAppSlots {
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
+  /**
+   * @deprecated Use `app.composer.customize(...)` instead: `actions` for
+   * composer buttons, `plusMenu` for host-rendered menu commands, and
+   * `banners` for content above the composer. This legacy footer slot remains
+   * available for one compatibility window and will be removed in the next
+   * plugin SDK major.
+   */
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(

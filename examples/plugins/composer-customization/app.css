@@ -1,0 +1,38 @@
+.composer-reference-action {
+  align-items: center;
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--ink) 14%, var(--canvas));
+  border-radius: 0.5rem;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  height: 2rem;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0 0.5rem;
+}
+
+.composer-reference-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.composer-reference-banner {
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+.composer-reference-highlight {
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  border-radius: 0.2rem;
+}
+
+.composer-reference-busy {
+  animation: composer-reference-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes composer-reference-pulse {
+  to {
+    opacity: 0.45;
+  }
+}

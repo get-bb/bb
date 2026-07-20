@@ -246,8 +246,7 @@ zero-padding full-bleed body, including its scrolling),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with recursive `JsonValue` params; restored
-components read `JsonValue | null`), composerAccessory (prompt box
-footer), pendingInteraction (temporarily replace a thread composer with a
+components read `JsonValue | null`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -262,10 +261,11 @@ useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
-useBbNavigate, and useComposer (read/replace/update/clear scoped composer
-text, quote selections, insert mention pills, and focus the composer;
-plain-text edits preserve attachments and reconcile only inline mentions
-overlapped by the edit). Define RPC methods with `defineRpcContract`
+useBbNavigate, useComposer (read/replace/update/clear scoped composer text,
+apply a class-based text effect, lock input, quote selections, insert mention
+pills, and focus the composer), and useComposerView (reactive bound scope,
+layout, draft, and run state). Plain-text edits preserve attachments and
+reconcile only inline mentions overlapped by the edit. Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),
 register via `bb.rpc.register(contract, handlers)`, then use a type-only
 backend contract import with `useRpc<typeof contract>()` for exact frontend
@@ -370,8 +370,13 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, composerAccessory, fileOpener,
-messageDirective) via
+navPanel, threadPanelAction, fileOpener, messageDirective) and composer
+customizations via `app.composer.customize({ actions, plusMenu, banners,
+richText })`; action/banner components use `useComposer()` and
+`useComposerView()`, while the host renders plus-menu rows and editor
+decorations. The legacy `slots.composerAccessory` footer remains functional
+for one compatibility window but is deprecated; migrate controls to actions or
+the plus menu and larger content to banners. Register all frontend surfaces via
 definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and
@@ -386,6 +391,6 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `official-plugins/` directory contains the BB Official GitHub, Docs,
-Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
-(webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
-(host-rendered UI).
+Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins
+cover slack-bot (webhook bot), agent-enrichment (agent surfaces), small-ux-pack
+(host-rendered UI), and composer-customization (all composer regions).

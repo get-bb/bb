@@ -970,6 +970,21 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
 
+  examples/plugins/composer-customization:
+    devDependencies:
+      '@bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   examples/plugins/slack-bot:
     devDependencies:
       '@bb/plugin-sdk':
