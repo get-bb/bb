@@ -200,19 +200,28 @@ async function resolveMultiFileSkillDetailPath(): Promise<string> {
     projectId: PERSONAL_PROJECT_ID,
     environmentId: null,
   });
-  for (const skill of response.skills) {
-    const files = await sdk.skills.listFiles({
-      projectId: PERSONAL_PROJECT_ID,
-      environmentId: null,
-      skillId: skill.id,
-    });
-    if (files.files.length > 1) {
-      return getSkillDetailRoutePath({ skillId: skill.id });
-    }
-  }
-  throw new Error(
-    "The live server has no installed skill with multiple files.",
+  const skill = response.skills.find(
+    (candidate) => candidate.name === "bb-thread-status-report",
   );
+  if (skill === undefined) {
+    throw new Error(
+      "The live server does not have bb-thread-status-report installed.",
+    );
+  }
+  const files = await sdk.skills.listFiles({
+    projectId: PERSONAL_PROJECT_ID,
+    environmentId: null,
+    skillId: skill.id,
+  });
+  if (
+    files.files.length < 5 ||
+    !files.files.some((path) => path.split("/").length >= 3)
+  ) {
+    throw new Error(
+      "bb-thread-status-report does not have the nested file structure required by this story.",
+    );
+  }
+  return getSkillDetailRoutePath({ skillId: skill.id });
 }
 
 async function resolveRegistrySkillDetailPath(): Promise<string> {

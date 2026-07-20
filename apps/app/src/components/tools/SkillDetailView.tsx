@@ -258,12 +258,9 @@ function SkillFileList({
           type="button"
           aria-pressed={path === selectedPath}
           onClick={() => onSelectFile(path)}
-          className="grid w-full min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-stretch text-left font-mono text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-pressed:bg-surface-recessed/45 aria-pressed:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          className="flex w-full min-w-0 items-center px-3 py-2 text-left font-mono text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-pressed:bg-surface-recessed/45 aria-pressed:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
         >
-          <span className="flex items-center justify-center bg-surface-recessed/55">
-            <Icon name="FileText" className="size-3.5" aria-hidden />
-          </span>
-          <span className="min-w-0 truncate px-3 py-2">{path}</span>
+          <span className="min-w-0 truncate">{path}</span>
         </button>
       ))}
     </ResourceDetailCollection>
