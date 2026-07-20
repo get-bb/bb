@@ -782,7 +782,7 @@ export async function createThreadFromRequest(
   if (request.originKind !== null && fork === null) {
     throw new ApiError(
       400,
-      "invalid_request",
+      "fork_source_session_unavailable",
       "Cannot fork: source has no active session to clone",
     );
   }

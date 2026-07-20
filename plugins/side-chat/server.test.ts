@@ -125,11 +125,13 @@ describe("createSideChat rpc", () => {
   });
 
   it("falls back to a tip fork when the anchor predates any provider session", async () => {
+    const sessionUnavailable = Object.assign(
+      new Error("HTTP 400: Cannot fork: source has no active session to clone"),
+      { code: "fork_source_session_unavailable" },
+    );
     const fork = vi
       .fn()
-      .mockRejectedValueOnce(
-        new Error("HTTP 400: Cannot fork: source has no active session to clone"),
-      )
+      .mockRejectedValueOnce(sessionUnavailable)
       .mockResolvedValueOnce(makeThreadResponse({ id: "thr_tip_fork" }));
     const { harness } = await loadPlugin({
       timeline: async () =>
@@ -170,6 +172,26 @@ describe("createSideChat rpc", () => {
         anchorText: "x",
       }),
     ).rejects.toThrow("forbidden");
+    expect(fork).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back on message text alone — only the structured code triggers it", async () => {
+    const messageOnly = new Error(
+      "HTTP 400: Cannot fork: source has no active session to clone",
+    );
+    const fork = vi.fn().mockRejectedValue(messageOnly);
+    const { harness } = await loadPlugin({
+      timeline: async () => timelineResult([conversationRow("latest answer")]),
+      fork,
+    });
+
+    await expect(
+      harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_src",
+        sourceSeqEnd: 3,
+        anchorText: "x",
+      }),
+    ).rejects.toThrow("no active session");
     expect(fork).toHaveBeenCalledTimes(1);
   });
 

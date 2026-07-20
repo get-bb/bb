@@ -106,6 +106,22 @@ export interface SideChatForkCandidate {
   createdAt: number;
 }
 
+/**
+ * Whether a fork failure is the server's machine-readable
+ * `fork_source_session_unavailable` (no provider session snapshot at or
+ * before the requested fork point) — the only failure the tip-fork fallback
+ * may swallow. Narrows on the structured `code` the SDK's HTTP error
+ * carries, never on message text.
+ */
+export function isSessionUnavailableError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: unknown }).code === "fork_source_session_unavailable"
+  );
+}
+
 /** Whether a thread is one of this plugin's live hidden side-chat forks. */
 export function isOwnLiveHiddenFork(
   thread: SideChatForkCandidate,
@@ -212,11 +228,7 @@ export default async function plugin(bb: BbPluginApi) {
         // opening user message) have no point-in-time session to clone. The
         // legacy side chat always forked from the tip; fall back to that so
         // those anchors keep working — the reply seed still marks the anchor.
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          sourceSeqEnd === undefined ||
-          !message.includes("no active session to clone")
-        ) {
+        if (sourceSeqEnd === undefined || !isSessionUnavailableError(error)) {
           throw error;
         }
         const fork = await bb.sdk.threads.fork(forkArgs);

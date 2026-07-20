@@ -16,7 +16,12 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function seedForkSource(
   harness: TestAppHarness,
-  args: { permissionMode?: "accept-edits" | "auto" | "full" } = {},
+  args: {
+    model?: string;
+    permissionMode?: "accept-edits" | "auto" | "full";
+    reasoningLevel?: string;
+    serviceTier?: string;
+  } = {},
 ) {
   const { host } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
@@ -34,8 +39,15 @@ function seedForkSource(
   });
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
+    ...(args.model === undefined ? {} : { model: args.model }),
     permissionMode: args.permissionMode ?? "full",
     providerThreadId: "provider-fork-source",
+    ...(args.reasoningLevel === undefined
+      ? {}
+      : { reasoningLevel: args.reasoningLevel }),
+    ...(args.serviceTier === undefined
+      ? {}
+      : { serviceTier: args.serviceTier }),
     threadId: sourceThread.id,
   });
   seedTurnStarted(harness.deps, {
@@ -193,6 +205,37 @@ describe("public thread fork route", () => {
         throw new Error("Expected thread.start");
       }
       expect(queued.command.options.permissionMode).toBe("accept-edits");
+    });
+  });
+
+  it("inherits the source's recorded model, reasoning level, and service tier", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness, {
+        model: "gpt-5-mini",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (queued.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(queued.command.options).toMatchObject({
+        model: "gpt-5-mini",
+        reasoningLevel: "high",
+        serviceTier: "fast",
+      });
     });
   });
 

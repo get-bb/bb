@@ -788,6 +788,9 @@ describe("thread creation child-thread boundary validation", () => {
         expect(persistedSideChat?.originKind).toBe("side-chat");
         expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
         expect(persistedSideChat?.parentThreadId).toBeNull();
+        // Side chats default to hidden when the request omits visibility —
+        // the same policy migration 0079 backfilled onto pre-existing rows.
+        expect(persistedSideChat?.visibility).toBe("hidden");
       },
     );
   });
@@ -941,7 +944,7 @@ describe("thread creation child-thread boundary validation", () => {
           }),
         );
         expect(error.status).toBe(400);
-        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.code).toBe("fork_source_session_unavailable");
         expect(error.body.message).toBe(
           "Cannot fork: source has no active session to clone",
         );
@@ -970,7 +973,7 @@ describe("thread creation child-thread boundary validation", () => {
           }),
         );
         expect(error.status).toBe(400);
-        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.code).toBe("fork_source_session_unavailable");
         expect(error.body.message).toBe(
           "Cannot fork: source has no active session to clone",
         );
