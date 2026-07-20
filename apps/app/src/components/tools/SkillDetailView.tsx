@@ -252,38 +252,20 @@ function SkillFileList({
 }) {
   return (
     <ResourceDetailCollection className="max-h-48 overflow-auto">
-      <div
-        className="grid grid-cols-[minmax(0,1fr)_7rem] bg-surface-recessed/55 px-3 py-2 text-2xs font-medium text-muted-foreground"
-        aria-hidden
-      >
-        <span>File</span>
-        <span>Location</span>
-      </div>
-      {files.map((path) => {
-        const separatorIndex = path.lastIndexOf("/");
-        const fileName =
-          separatorIndex === -1 ? path : path.slice(separatorIndex + 1);
-        const location =
-          separatorIndex === -1 ? "Root" : path.slice(0, separatorIndex);
-
-        return (
-          <button
-            key={path}
-            type="button"
-            aria-pressed={path === selectedPath}
-            onClick={() => onSelectFile(path)}
-            className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-pressed:bg-state-active aria-pressed:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <span className="flex min-w-0 items-center gap-2 font-mono">
-              <Icon name="FileText" className="size-3.5 shrink-0" aria-hidden />
-              <span className="min-w-0 truncate">{fileName}</span>
-            </span>
-            <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground">
-              {location}
-            </span>
-          </button>
-        );
-      })}
+      {files.map((path) => (
+        <button
+          key={path}
+          type="button"
+          aria-pressed={path === selectedPath}
+          onClick={() => onSelectFile(path)}
+          className="grid w-full min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-stretch text-left font-mono text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground aria-pressed:bg-surface-recessed/45 aria-pressed:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span className="flex items-center justify-center bg-surface-recessed/55">
+            <Icon name="FileText" className="size-3.5" aria-hidden />
+          </span>
+          <span className="min-w-0 truncate px-3 py-2">{path}</span>
+        </button>
+      ))}
     </ResourceDetailCollection>
   );
 }

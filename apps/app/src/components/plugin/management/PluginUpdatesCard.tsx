@@ -137,6 +137,14 @@ export function PluginUpdatesSourceCard({
   const source = sourceQuery.data ?? null;
   const blockedVersion =
     state.availableVersion === null ? state.blockedVersion : null;
+  const lastChecked =
+    state.lastCheckAt !== null
+      ? `Last checked ${formatRelativeTime({
+          timestamp: state.lastCheckAt,
+          now: renderedAt,
+        })}`
+      : "Never checked";
+  const checkUpdatesLabel = `Check for updates · ${lastChecked}`;
 
   return (
     <div className="space-y-3">
@@ -155,13 +163,23 @@ export function PluginUpdatesSourceCard({
           label="Source"
           mono
           action={
-            <ResourceActionButton
-              label={
-                detailsOpen ? "Hide source details" : "Show source details"
-              }
-              icon="Info"
-              onClick={() => setDetailsOpen((current) => !current)}
-            />
+            <div className="flex items-center gap-1">
+              <ResourceActionButton
+                label={
+                  detailsOpen ? "Hide source details" : "Show source details"
+                }
+                icon="Info"
+                onClick={() => setDetailsOpen((current) => !current)}
+              />
+              <ResourceActionButton
+                label="Check for updates now"
+                tooltipLabel={checkUpdatesLabel}
+                icon="RotateCcw"
+                loading={checkNow.isPending}
+                disabled={checkNow.isPending}
+                onClick={() => checkNow.mutate()}
+              />
+            </div>
           }
           details={
             detailsOpen ? (
@@ -237,28 +255,6 @@ export function PluginUpdatesSourceCard({
           }
         >
           {plugin.sourceDisplay}
-        </ResourceDetailFact>
-        <ResourceDetailFact
-          label="Last checked"
-          action={
-            <ResourceActionButton
-              label="Check for updates now"
-              tooltipLabel="Check now"
-              icon="RotateCcw"
-              loading={checkNow.isPending}
-              disabled={checkNow.isPending}
-              onClick={() => checkNow.mutate()}
-            />
-          }
-        >
-          <span className="text-muted-foreground">
-            {state.lastCheckAt !== null
-              ? formatRelativeTime({
-                  timestamp: state.lastCheckAt,
-                  now: renderedAt,
-                })
-              : "Never checked"}
-          </span>
         </ResourceDetailFact>
         {blockedVersion !== null ? (
           <ResourceDetailFact

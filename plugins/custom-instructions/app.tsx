@@ -104,7 +104,7 @@ function CustomInstructionsSettings() {
         maxLength={maxLength}
         disabled={isLoading}
         placeholder="Add your custom instructions…"
-        className="min-h-40 resize-y text-sm"
+        className="min-h-40 resize-y bg-background text-sm"
         onChange={(event) => {
           setDraft(event.target.value);
           setError(null);
