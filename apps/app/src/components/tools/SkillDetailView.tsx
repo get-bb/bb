@@ -288,6 +288,7 @@ export function SkillDetailView({
   footer,
 }: SkillDetailViewProps) {
   const directoryPath = getSkillDirectoryPath(path);
+  const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const lifecycleControl =
     headerControl?.kind === "install" ? (
       headerControl.onUninstall ? (
@@ -374,7 +375,11 @@ export function SkillDetailView({
             ) : (
               <ResourceDetailPanel
                 surface="recessed"
-                className="max-h-[60dvh] overflow-auto shadow-none"
+                className={
+                  selectedFileIsMarkdown
+                    ? "h-[min(72dvh,52rem)] min-h-80 overflow-auto shadow-none"
+                    : "max-h-[60dvh] overflow-auto shadow-none"
+                }
               >
                 <FilePreview
                   path={selectedPath}
@@ -386,9 +391,7 @@ export function SkillDetailView({
                       contents: contentState.content,
                     },
                     lineRange: null,
-                    textPreviewKind: selectedPath.endsWith(".md")
-                      ? "markdown"
-                      : null,
+                    textPreviewKind: selectedFileIsMarkdown ? "markdown" : null,
                   }}
                 />
               </ResourceDetailPanel>
