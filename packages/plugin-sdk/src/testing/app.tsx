@@ -300,8 +300,8 @@ const testPluginSdkApp = {
     );
     return useMemo(() => ({ ...composer.api, text }), [composer, text]);
   },
-  ThreadChat: TestThreadChat,
-  Markdown: TestMarkdown,
+  experimental_ThreadChat: TestThreadChat,
+  experimental_Markdown: TestMarkdown,
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -579,8 +579,8 @@ function collectRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
-      messageAction(registration) {
-        const kind = "slots.messageAction";
+      experimental_messageAction(registration) {
+        const kind = "slots.experimental_messageAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageAction, id);
         if (typeof registration.run !== "function") {

@@ -10,8 +10,8 @@ import { toast } from "sonner";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   definePluginApp,
-  Markdown,
-  ThreadChat,
+  experimental_Markdown as Markdown,
+  experimental_ThreadChat as ThreadChat,
   useBbNavigate,
   useRpc,
   type PluginMessageActionContext,
@@ -345,7 +345,7 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.messageAction({
+  app.slots.experimental_messageAction({
     id: "reply-in-side-chat",
     title: "Reply in side chat",
     icon: "SideChat",

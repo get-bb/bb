@@ -73,7 +73,7 @@ describe("collectPluginAppRegistrations", () => {
         id: "inline-vis",
         component: Component,
       });
-      app.slots.messageAction({
+      app.slots.experimental_messageAction({
         id: "summarize",
         title: "Summarize",
         icon: "Zap",
@@ -175,7 +175,7 @@ describe("collectPluginAppRegistrations", () => {
       "message action without a run function",
       () =>
         definePluginApp((app) => {
-          app.slots.messageAction({
+          app.slots.experimental_messageAction({
             id: "no-run",
             title: "No run",
             run: undefined as never,
@@ -187,8 +187,8 @@ describe("collectPluginAppRegistrations", () => {
       "duplicate message action id",
       () =>
         definePluginApp((app) => {
-          app.slots.messageAction({ id: "a", title: "A", run: () => {} });
-          app.slots.messageAction({ id: "a", title: "B", run: () => {} });
+          app.slots.experimental_messageAction({ id: "a", title: "A", run: () => {} });
+          app.slots.experimental_messageAction({ id: "a", title: "B", run: () => {} });
         }),
       /duplicate id "a"/,
     ],

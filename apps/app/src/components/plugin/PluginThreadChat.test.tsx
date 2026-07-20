@@ -66,7 +66,7 @@ const THREAD_FIXTURE = {
  * pluginSdkAppImplementation), not the adapter import directly.
  */
 function DemoPluginPage({ threadId }: { threadId: string }) {
-  const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+  const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;
   return <ThreadChat threadId={threadId} variant="compact" />;
 }
 
@@ -77,7 +77,7 @@ function DemoPluginPageWithExtensions({
   threadId: string;
   run: () => void;
 }) {
-  const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+  const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;
   return (
     <ThreadChat
       threadId={threadId}
@@ -150,7 +150,7 @@ describe("PluginThreadChat", () => {
 
   it("maps variant timeline to a composer-less transcript", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
-    const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+    const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;
     render(
       <Wrapper>
         <MemoryRouter>
@@ -205,7 +205,7 @@ describe("PluginThreadChat", () => {
 
   it("maps variant full to the page measure and forwards focus requests", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
-    const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+    const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;
     render(
       <Wrapper>
         <MemoryRouter>

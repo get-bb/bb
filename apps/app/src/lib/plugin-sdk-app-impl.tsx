@@ -38,8 +38,8 @@ export const pluginSdkAppImplementation = {
   useSettings,
   // The host-owned components in the SDK (plugin design: deliberate
   // exception to §5.5) — stable product capabilities, not a UI kit.
-  ThreadChat: PluginThreadChat,
-  Markdown: PluginMarkdown,
+  experimental_ThreadChat: PluginThreadChat,
+  experimental_Markdown: PluginMarkdown,
 } satisfies PluginSdkApp;
 
 /**

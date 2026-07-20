@@ -155,7 +155,7 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
-  messageAction: PluginMessageActionContext;
+  experimental_messageAction: PluginMessageActionContext;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -178,7 +178,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openWorkspaceFile",
     "openThreadPanel",
   ],
-  messageAction: ["threadId", "message", "selectedText", "openPanel"],
+  experimental_messageAction: ["threadId", "message", "selectedText", "openPanel"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };

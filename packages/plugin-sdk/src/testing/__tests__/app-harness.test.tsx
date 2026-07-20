@@ -17,7 +17,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
-  ThreadChat,
+  experimental_ThreadChat: ThreadChat,
   useComposer,
   useRealtime,
   useRealtimeConnectionState,
@@ -202,7 +202,7 @@ const app = await loadPluginApp(
       path: "chat",
       component: ThreadChatPage,
     });
-    builder.slots.messageAction({
+    builder.slots.experimental_messageAction({
       id: "summarize",
       title: "Summarize",
       icon: "Zap",
@@ -289,7 +289,7 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.messageAction({
+          builder.slots.experimental_messageAction({
             id: "no-run",
             title: "No run",
             // @ts-expect-error deliberately invalid: run is required
@@ -297,23 +297,23 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow('slots.messageAction: "run" must be a function');
+    ).rejects.toThrow('slots.experimental_messageAction: "run" must be a function');
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.messageAction({
+          builder.slots.experimental_messageAction({
             id: "dup",
             title: "One",
             run: () => {},
           });
-          builder.slots.messageAction({
+          builder.slots.experimental_messageAction({
             id: "dup",
             title: "Two",
             run: () => {},
           });
         }),
       ),
-    ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
+    ).rejects.toThrow('slots.experimental_messageAction: duplicate id "dup"');
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {

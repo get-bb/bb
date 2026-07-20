@@ -872,7 +872,7 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
-- `messageAction` → an action on chat messages: an icon button in the
+- `experimental_messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, run }`. Activating it calls
@@ -889,7 +889,7 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
 
 Host components:
 
-- `ThreadChat` — bb's complete chat surface for an existing thread, rendered
+- `experimental_ThreadChat` — bb's complete chat surface for an existing thread, rendered
   wherever plugin React runs (nav panels, thread-panel tabs, homepage and
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
@@ -913,7 +913,7 @@ leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
-- `Markdown` — bb's chat-message markdown renderer (same typography,
+- `experimental_Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
   message content (e.g. a reply header) so it reads like the rest of the

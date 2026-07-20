@@ -417,7 +417,7 @@ interface PluginAppSlots {
     sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
-    messageAction(registration: PluginMessageActionRegistration): void;
+    experimental_messageAction(registration: PluginMessageActionRegistration): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
@@ -671,12 +671,12 @@ interface PluginSdkApp {
      * with `Markdown`, the only components the SDK ships — everything else
      * stays vendored per §5.5.
      */
-    ThreadChat: ComponentType<ThreadChatProps>;
+    experimental_ThreadChat: ComponentType<ThreadChatProps>;
     /**
      * The host-owned chat-message markdown renderer (see
      * {@link MarkdownProps}).
      */
-    Markdown: ComponentType<MarkdownProps>;
+    experimental_Markdown: ComponentType<MarkdownProps>;
 }
 
 /**
