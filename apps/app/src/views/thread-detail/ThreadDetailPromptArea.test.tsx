@@ -37,11 +37,13 @@ const mocks = vi.hoisted(() => ({
     addAttachment: vi.fn(),
     attachments: [],
     clearIfCurrentMatches: vi.fn(),
+    getCurrent: vi.fn(),
     mentions: [],
     removeAttachment: vi.fn(),
     restoreIfEmpty: vi.fn(),
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),
+    storageKey: "bb.promptbox.contents-proj_1-thr_1-3",
     text: "",
   },
   queuedMessages: [] as ThreadQueuedMessage[],
@@ -130,7 +132,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
           ? `${pluginComposerHost.scope.kind}:${
               pluginComposerHost.scope.kind === "queued-message"
                 ? pluginComposerHost.scope.queuedMessageId
-                : ""
+                : pluginComposerHost.scope.kind === "thread"
+                  ? pluginComposerHost.scope.threadId
+                  : (pluginComposerHost.scope.projectId ?? "null")
             }`
           : "route"}
       </div>
@@ -645,6 +649,11 @@ beforeEach(() => {
   mocks.defaultExecutionOptions = null;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
+  mocks.promptDraft.getCurrent.mockImplementation(() => ({
+    attachments: mocks.promptDraft.attachments,
+    mentions: mocks.promptDraft.mentions,
+    text: mocks.promptDraft.text,
+  }));
   mocks.queuedMessages = [];
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
@@ -684,6 +693,20 @@ describe("ThreadDetailPromptArea", () => {
       }),
     );
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
+  });
+
+  it("binds the normal plugin composer host to the rendered pane thread", () => {
+    renderPromptArea({ thread: makeThread({ id: "thr_nonfocused" }) });
+
+    expect(screen.getByTestId("plugin-composer-scope").textContent).toBe(
+      "thread:thr_nonfocused",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Simulate plugin replacement" }),
+    );
+    expect(mocks.promptDraft.setDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Plugin-enhanced queued message" }),
+    );
   });
 
   it("updates an inline-edited queue item without touching the bottom draft", async () => {
@@ -873,7 +896,11 @@ describe("ThreadDetailPromptArea", () => {
     );
 
     act(() => {
-      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", null);
+      setComposerTextEffect(
+        firstHost.textEffectKey,
+        "composer-effect-test",
+        null,
+      );
       setComposerTextEffect(
         secondHost.textEffectKey,
         "composer-effect-test",

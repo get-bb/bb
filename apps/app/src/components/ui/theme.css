@@ -370,11 +370,7 @@
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
-  --success-foreground: color-mix(
-    in oklab,
-    var(--success) 45%,
-    var(--ink)
-  );
+  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
   --diff-removed: oklch(0.4 0.17 28);
@@ -584,11 +580,7 @@
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
-  --success-foreground: color-mix(
-    in oklab,
-    var(--success) 45%,
-    var(--ink)
-  );
+  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
@@ -806,21 +798,29 @@ body.sidebar-resizing [data-sidebar="panel"] {
    * across). The longer cycle keeps this small status cue from pulling focus.
    */
   .animate-shine-icon {
+    --shine-icon-edge-opacity: 0.45;
     -webkit-mask-image: linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.45) 0%,
+      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 0%,
       rgba(0, 0, 0, 1) 50%,
-      rgba(0, 0, 0, 0.45) 100%
+      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 100%
     );
     mask-image: linear-gradient(
       90deg,
-      rgba(0, 0, 0, 0.45) 0%,
+      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 0%,
       rgba(0, 0, 0, 1) 50%,
-      rgba(0, 0, 0, 0.45) 100%
+      rgb(0 0 0 / var(--shine-icon-edge-opacity)) 100%
     );
     -webkit-mask-size: 200% 100%;
     mask-size: 200% 100%;
     animation: shine-mask 2.6s linear infinite;
+  }
+
+  /* Plugin status glyphs are the only visible progress cue. Keep their sweep
+     above the 3:1 graphical-object floor instead of dimming to the generic
+     decorative-icon edge opacity. */
+  .animate-shine-icon-status {
+    --shine-icon-edge-opacity: 0.93;
   }
 
   /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent

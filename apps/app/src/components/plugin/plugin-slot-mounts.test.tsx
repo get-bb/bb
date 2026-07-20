@@ -293,6 +293,7 @@ describe("useComposer", () => {
                 icon: "AiContentGenerator01",
                 label: "Plugin improving draft",
                 effect: "shimmer",
+                tone: "default",
               })
             }
           >
@@ -303,6 +304,19 @@ describe("useComposer", () => {
             onClick={() => composer.setThreadRowStatus(null)}
           >
             {label}-clear-row-status
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.setThreadRowStatus({
+                icon: "AiContentGenerator01",
+                label: "   ",
+                effect: "shimmer",
+                tone: "default",
+              })
+            }
+          >
+            {label}-set-blank-row-status
           </button>
           <button type="button" onClick={() => composer.focus()}>
             {label}-focus
@@ -553,11 +567,34 @@ describe("useComposer", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
     fireEvent.click(screen.getByText("change-queued-scope"));
     expect(screen.getByText("scope: queued-message")).toBeDefined();
     expect(getComposerTextEffect(firstEffectKey)).toBeNull();
     expect(getPluginThreadRowStatus("thr_queue")).toBeNull();
+  });
+
+  it("rejects a blank thread-row status label at the plugin boundary", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerComposerProbe("invalid-status");
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_invalid_status"]}>
+        <PluginComposerAccessories />
+        <ThreadDraftViewer threadId="thr_invalid_status" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("invalid-status-start-row-status"));
+    const validStatus = getPluginThreadRowStatus("thr_invalid_status");
+    expect(validStatus?.label).toBe("Plugin improving draft");
+
+    fireEvent.click(screen.getByText("invalid-status-set-blank-row-status"));
+    expect(getPluginThreadRowStatus("thr_invalid_status")).toEqual(validStatus);
+    expect(warn).toHaveBeenCalledWith(
+      '[plugin:demo] useComposer().setThreadRowStatus: "label" must be a non-empty string',
+    );
   });
 
   it("shares a queued-message host with sibling plugin surfaces in the pane", () => {
@@ -740,6 +777,7 @@ describe("useComposer", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
 
     fireEvent.click(screen.getByText("create-side-child"));
@@ -764,6 +802,7 @@ describe("useComposer", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
     expect(getPluginThreadRowStatus("thr_side")).toBeNull();
   });
@@ -1076,9 +1115,7 @@ describe("useComposer", () => {
     function ScopedVisualWriter() {
       const { scope, setTextEffect, setThreadRowStatus } = useComposer();
       const queuedMessageId =
-        scope.kind === "queued-message"
-          ? scope.queuedMessageId
-          : "unexpected";
+        scope.kind === "queued-message" ? scope.queuedMessageId : "unexpected";
 
       useLayoutEffect(() => {
         setTextEffect("shimmer");
@@ -1117,10 +1154,7 @@ describe("useComposer", () => {
         <PluginContext.Provider value="demo">
           <PluginComposerHostProvider value={host}>
             <ScopedVisualWriter />
-            <button
-              type="button"
-              onClick={() => setQueuedMessageId("qmsg_2")}
-            >
+            <button type="button" onClick={() => setQueuedMessageId("qmsg_2")}>
               change-visual-scope
             </button>
           </PluginComposerHostProvider>
@@ -1260,6 +1294,7 @@ describe("useComposer", () => {
         icon: "AiContentGenerator01",
         label: "unmounted status",
         effect: "shimmer",
+        tone: "default",
       });
     });
     expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();

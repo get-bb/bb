@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.0" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.5.0" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -80,7 +80,7 @@ The manifest is `package.json`:
   a dark variant when needed).
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.0`; the scaffold writes `"^0.4.0"`). Absent means a legacy
+  (currently `0.5.0`; the scaffold writes `"^0.5.0"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -896,10 +896,18 @@ Hooks:
   the composer — the "reference this selection in chat" primitive;
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret; `scope` reports
-  where writes land (`{ kind: "thread", threadId }` inside a thread
-  context, `{ kind: "new-thread", projectId }` from nav panels and
-  homepage sections — those seed the composer the user lands on next).
+  fresh context at send time; `focus()` focuses the caret. `scope` reports
+  where writes land: `{ kind: "thread", threadId }` for a thread draft,
+  `{ kind: "queued-message", threadId, queuedMessageId }` for the active
+  inline queue editor, `{ kind: "side-chat", projectId, parentThreadId, tabId,
+childThreadId }` for the visible side-chat draft, or
+  `{ kind: "new-thread", projectId }` for root and nav-panel compose surfaces.
+  `setTextEffect("shimmer" | null)` paints the active draft;
+  `setThreadRowStatus({ icon, label, effect, tone } | null)` replaces the
+  visible thread's draft glyph (a side chat targets its parent row; `tone` is
+  `"default"` or `"success"` and `label` must be non-blank). Both visuals
+  belong to the calling hook instance and clear automatically when it unmounts
+  or its composer scope changes.
 
 ```tsx
 const composer = useComposer();
@@ -1068,9 +1076,13 @@ const slot = renderSlot(
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
+await slot.behavior.setComposerScope(
+  { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
+  "queued draft",
+);
 slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
-slot.inspection.composer.quotes; // recorded hook activity
+slot.inspection.composer; // text, visuals, quotes, mentions, and focus activity
 slot.lifecycle.unmount();
 ```
 

@@ -30,10 +30,7 @@ const appCss = readFileSync(
 function modeBlock(scheme: "light" | "dark", source = css): string {
   const at = source.indexOf(`color-scheme: ${scheme};`);
   if (at === -1) throw new Error(`no ${scheme} block in theme.css`);
-  return source.slice(
-    source.lastIndexOf("{", at) + 1,
-    source.indexOf("}", at),
-  );
+  return source.slice(source.lastIndexOf("{", at) + 1, source.indexOf("}", at));
 }
 
 function builtInPaletteModeBlock(
@@ -153,9 +150,7 @@ function parseHexToLinearRgb(value: string): LinearRgb {
   if (!match) throw new Error(`expected six-digit hex color, got ${value}`);
   const toLinear = (channel: string): number => {
     const srgb = Number.parseInt(channel, 16) / 255;
-    return srgb <= 0.04045
-      ? srgb / 12.92
-      : ((srgb + 0.055) / 1.055) ** 2.4;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
   };
   return {
     red: toLinear(match[1]),
@@ -198,24 +193,48 @@ function oklabToLinearRgb({ lightness, a, b }: OklabColor): LinearRgb {
   };
 }
 
-function mixOklab(
+function mixOklch(
   foreground: LinearRgb,
   background: LinearRgb,
   foregroundWeight: number,
 ): LinearRgb {
   const foregroundLab = linearRgbToOklab(foreground);
   const backgroundLab = linearRgbToOklab(background);
+  const foregroundChroma = Math.hypot(foregroundLab.a, foregroundLab.b);
+  const backgroundChroma = Math.hypot(backgroundLab.a, backgroundLab.b);
+  const rawForegroundHue =
+    (Math.atan2(foregroundLab.b, foregroundLab.a) * 180) / Math.PI;
+  const rawBackgroundHue =
+    (Math.atan2(backgroundLab.b, backgroundLab.a) * 180) / Math.PI;
+  const foregroundHue =
+    foregroundChroma < 0.000001 ? rawBackgroundHue : rawForegroundHue;
+  const backgroundHue =
+    backgroundChroma < 0.000001 ? foregroundHue : rawBackgroundHue;
+  const shortestHueDelta = ((backgroundHue - foregroundHue + 540) % 360) - 180;
+  const hueDegrees = foregroundHue + shortestHueDelta * (1 - foregroundWeight);
+  const chroma =
+    foregroundChroma * foregroundWeight +
+    backgroundChroma * (1 - foregroundWeight);
+  const hueRadians = (hueDegrees * Math.PI) / 180;
   return oklabToLinearRgb({
     lightness:
       foregroundLab.lightness * foregroundWeight +
       backgroundLab.lightness * (1 - foregroundWeight),
-    a:
-      foregroundLab.a * foregroundWeight +
-      backgroundLab.a * (1 - foregroundWeight),
-    b:
-      foregroundLab.b * foregroundWeight +
-      backgroundLab.b * (1 - foregroundWeight),
+    a: chroma * Math.cos(hueRadians),
+    b: chroma * Math.sin(hueRadians),
   });
+}
+
+function compositeLinearRgb(
+  foreground: LinearRgb,
+  background: LinearRgb,
+  opacity: number,
+): LinearRgb {
+  return {
+    red: foreground.red * opacity + background.red * (1 - opacity),
+    green: foreground.green * opacity + background.green * (1 - opacity),
+    blue: foreground.blue * opacity + background.blue * (1 - opacity),
+  };
 }
 
 function relativeLuminance(color: OklchColor): number {
@@ -376,14 +395,14 @@ describe("composer text shimmer", () => {
     expect(shimmerRule).toContain("color: var(--success-foreground);");
     expect(
       shimmerRule?.match(
-        /color-mix\(in oklab, var\(--success-foreground\) 78%, var\(--ink\)\)/g,
+        /color-mix\(in oklch, var\(--success-foreground\) 78%, var\(--ink\)\)/g,
       ),
     ).toHaveLength(2);
     expect(shimmerRule).not.toMatch(/color-mix\([^;]*transparent/);
 
     for (const mode of MODES) {
       expect(modeBlock(mode)).toMatch(
-        /--success-foreground:\s*color-mix\(\s*in oklab,\s*var\(--success\) 45%,\s*var\(--ink\)\s*\);/,
+        /--success-foreground:\s*color-mix\(\s*in oklch,\s*var\(--success\) 45%,\s*var\(--ink\)\s*\);/,
       );
     }
 
@@ -401,19 +420,13 @@ describe("composer text shimmer", () => {
           palette.name === "default"
             ? modeBlock(mode)
             : builtInPaletteModeBlock(mode, palette.source);
-        const canvas = parseCssColorToLinearRgb(
-          variableValue(block, "canvas"),
-        );
+        const canvas = parseCssColorToLinearRgb(variableValue(block, "canvas"));
         const ink = parseCssColorToLinearRgb(variableValue(block, "ink"));
         const success = parseCssColorToLinearRgb(
           variableValue(block, "success"),
         );
-        const successForeground = mixOklab(success, ink, 0.45);
-        const darkestShimmerStop = mixOklab(
-          successForeground,
-          ink,
-          0.78,
-        );
+        const successForeground = mixOklch(success, ink, 0.45);
+        const darkestShimmerStop = mixOklch(successForeground, ink, 0.78);
 
         expect(
           linearContrastRatio(successForeground, canvas),
@@ -436,6 +449,93 @@ describe("composer text shimmer", () => {
     expect(reducedMotionRule).toContain(
       "-webkit-text-fill-color: currentColor;",
     );
+  });
+
+  it("restores readable text when forced colors suppress the gradient", () => {
+    const forcedColorsRule = appCss.match(
+      /@media \(forced-colors: active\)\s*\{\s*\.prompt-text-shimmer\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(forcedColorsRule).toContain("animation: none;");
+    expect(forcedColorsRule).toContain("background: none;");
+    expect(forcedColorsRule).toContain(
+      "-webkit-text-fill-color: currentColor;",
+    );
+  });
+});
+
+describe("plugin thread-row status shimmer", () => {
+  it("keeps every masked status tone above the graphical contrast floor", () => {
+    const shimmerRule = css.match(/\.animate-shine-icon\s*\{([^}]*)\}/)?.[1];
+    const statusRule = css.match(
+      /\.animate-shine-icon-status\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(shimmerRule).toContain("--shine-icon-edge-opacity: 0.45;");
+    expect(shimmerRule).toContain("var(--shine-icon-edge-opacity)");
+    expect(statusRule).toContain("--shine-icon-edge-opacity: 0.93;");
+
+    const palettes = [
+      { name: "default", source: css },
+      { name: "nord", source: nordThemeCss },
+      { name: "dracula", source: draculaThemeCss },
+      { name: "solarized", source: solarizedThemeCss },
+      { name: "gruvbox", source: gruvboxThemeCss },
+      { name: "catppuccin", source: catppuccinThemeCss },
+    ];
+    for (const palette of palettes) {
+      for (const mode of MODES) {
+        const paletteBlock =
+          palette.name === "default"
+            ? modeBlock(mode)
+            : builtInPaletteModeBlock(mode, palette.source);
+        const canvas = parseCssColorToLinearRgb(
+          variableValue(paletteBlock, "canvas"),
+        );
+        const ink = parseCssColorToLinearRgb(
+          variableValue(paletteBlock, "ink"),
+        );
+        const success = parseCssColorToLinearRgb(
+          variableValue(paletteBlock, "success"),
+        );
+        const steps = rampSteps(modeBlock(mode));
+        const backgrounds = [
+          { name: "canvas", color: canvas },
+          {
+            name: "hover",
+            color: mixOklch(
+              ink,
+              canvas,
+              (steps.get("sidebar-accent") ?? 0) / 100,
+            ),
+          },
+          {
+            name: "selected",
+            color: mixOklch(
+              ink,
+              canvas,
+              (steps.get("sidebar-border") ?? 0) / 100,
+            ),
+          },
+        ];
+        const successForeground = mixOklch(success, ink, 0.45);
+
+        for (const background of backgrounds) {
+          expect(
+            linearContrastRatio(
+              compositeLinearRgb(ink, background.color, 0.93),
+              background.color,
+            ),
+            `${palette.name} ${mode} default on ${background.name}`,
+          ).toBeGreaterThanOrEqual(3);
+          expect(
+            linearContrastRatio(
+              compositeLinearRgb(successForeground, background.color, 0.93),
+              background.color,
+            ),
+            `${palette.name} ${mode} success on ${background.name}`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
   });
 });
 

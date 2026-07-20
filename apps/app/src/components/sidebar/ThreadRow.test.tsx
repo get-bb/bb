@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
+  SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -194,21 +195,26 @@ describe("ThreadRow", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const runningIcon = screen.getByLabelText("Plugin improving draft");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(runningIcon.classList)).toContain(
+      "animate-shine-icon-status",
+    );
+    expect(Array.from(runningIcon.classList)).toContain(
+      SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
+    );
     expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
 
     act(() => {
       setPluginThreadRowStatus("thr_test", "composer-status-test", null);
     });
 
-    expect(
-      screen.queryByLabelText("Plugin improving draft"),
-    ).toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
@@ -217,6 +223,7 @@ describe("ThreadRow", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
 
     renderThreadRow({ shortcutKey: "3" });
@@ -250,6 +257,7 @@ describe("ThreadRow", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
     const { container } = renderThreadRow({
       hasComposerDraft: false,

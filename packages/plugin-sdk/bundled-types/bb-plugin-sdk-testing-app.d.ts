@@ -118,7 +118,7 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
     };
     /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
     realtimeConnectionState?: PluginRealtimeConnectionState;
-    /** Initial state for this render's isolated `useComposer()` scope. */
+    /** Isolated `useComposer()` state; scope defaults to the supplied route context. */
     composer?: {
         text?: string;
         scope?: PluginComposerScope;
@@ -133,6 +133,8 @@ interface RenderedSlotBehaviorDrivers {
     emitRealtime(channel: string, payload: unknown): Promise<void>;
     /** Drive the lifecycle of the same connection used by realtime events. */
     setRealtimeConnectionState(state: PluginRealtimeConnectionState): Promise<void>;
+    /** Move to another composer scope, optionally replacing its draft text. */
+    setComposerScope(scope: PluginComposerScope, text?: string): Promise<void>;
 }
 /** Read-only call/write logs produced while the slot is mounted. */
 interface RenderedSlotInspectionState {

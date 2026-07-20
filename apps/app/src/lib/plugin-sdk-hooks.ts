@@ -367,14 +367,40 @@ function createComposerScopeOwnership(scopeKey: string) {
   };
 }
 
+function normalizePluginThreadRowStatus(
+  pluginId: string,
+  status: PluginComposerThreadRowStatus | null,
+): PluginComposerThreadRowStatus | null | undefined {
+  if (status === null) return null;
+  if (
+    typeof status !== "object" ||
+    typeof status.icon !== "string" ||
+    typeof status.label !== "string" ||
+    (status.effect !== null && status.effect !== "shimmer") ||
+    (status.tone !== "default" && status.tone !== "success")
+  ) {
+    console.warn(
+      `[plugin:${pluginId}] useComposer().setThreadRowStatus: invalid status`,
+    );
+    return undefined;
+  }
+  const label = status.label.trim();
+  if (label.length === 0) {
+    console.warn(
+      `[plugin:${pluginId}] useComposer().setThreadRowStatus: "label" must be a non-empty string`,
+    );
+    return undefined;
+  }
+  return label === status.label ? status : { ...status, label };
+}
+
 /**
  * Programmatic composer-draft access (plugin design §5.2): the same shared
  * localStorage-backed draft store the built-in "Add to chat" affordances
- * write to. A transient host takes precedence while a queued message is being
- * edited; otherwise thread context targets that thread's draft and every
- * other surface targets the new-thread draft. Focus requests ride the
- * composer-focus bus when the active composer does not provide its own focus
- * primitive.
+ * write to. An explicit pane-local host is authoritative for root, thread,
+ * queued-message, and side-chat composers; without one, the current route
+ * selects a thread or new-thread draft. Focus requests ride the composer-focus
+ * bus when the active composer does not provide its own focus primitive.
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
@@ -496,10 +522,12 @@ export function useComposer(): PluginComposerApi {
       ) {
         return;
       }
+      const normalizedStatus = normalizePluginThreadRowStatus(pluginId, status);
+      if (normalizedStatus === undefined) return;
       setPluginThreadRowStatus(
         threadRowStatusThreadId,
         pluginId,
-        status,
+        normalizedStatus,
         visualStateOwner,
       );
     },

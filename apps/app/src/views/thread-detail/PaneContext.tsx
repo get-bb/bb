@@ -13,6 +13,7 @@ import {
   getThreadRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 
 export interface PaneContextValue {
   paneId: string;
@@ -73,6 +74,8 @@ export interface PaneContextValue {
 
 export interface PaneSecondaryPanelViewModel {
   collapsedRail: ReactNode | null;
+  /** Composer owned by this pane, restored where the hosted panel renders. */
+  composerHost: PluginComposerHost | null;
   /**
    * Identity of the content backing this panel (threadId, or a surface name
    * for non-thread panes). The workspace host uses it to tell "the focused

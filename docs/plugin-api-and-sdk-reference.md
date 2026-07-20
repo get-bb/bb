@@ -1,9 +1,9 @@
 # bb plugin API and SDK reference
 
 Status: final Plugin 1.0 contract reference<br>
-Snapshot date: 2026-07-14<br>
-Integrated source base: `e185d27094eab68b2f39d5ca50923c009e773d45`<br>
-Plugin SDK and product versions at this source snapshot: `@bb/plugin-sdk` is `0.4.0`; this document fixes the contract selected for the eventual 1.0 compatibility boundary while keeping it on a pre-1.0 compatibility line.
+Snapshot date: 2026-07-19<br>
+Integrated source base: `6e72cd0276947b400b4e5862668d855051ba2060`<br>
+Plugin SDK and product versions at this source snapshot: `@bb/plugin-sdk` is `0.5.0`; this document fixes the contract selected for the eventual 1.0 compatibility boundary while keeping it on a pre-1.0 compatibility line.
 
 ## Purpose and coverage
 
@@ -52,9 +52,10 @@ The committed root/app declarations under `packages/plugin-sdk/bundled-types/` a
 
 - Plugins are full-trust TypeScript packages loaded in-process by the bb server.
 - `engines.bb` describes compatible bb product versions.
-- `engines.bbPluginSdk` describes compatible plugin SDK versions. The current advertised version is `0.4.0`; the scaffold emits `^0.4.0`.
-- This release line does not publish 1.0. It advances the pre-1.0 SDK compatibility boundary from `0.3.x` to `0.4.x`; the source snapshot remains `0.x`.
+- `engines.bbPluginSdk` describes compatible plugin SDK versions. The current advertised version is `0.5.0`; the scaffold emits `^0.5.0`.
+- This release line does not publish 1.0. It advances the pre-1.0 SDK compatibility boundary from `0.4.x` to `0.5.x`; the source snapshot remains `0.x`.
 - SDK `0.4.0` makes the thread-group rename explicit: `threadFolders` becomes `threadSections`, `folderId` becomes `sectionId`, `unfiled` becomes `unsectioned`, and folder mention resources become section resources. These old public names are removed rather than silently aliased; plugins must declare `engines.bbPluginSdk: ^0.4.0` after migrating.
+- SDK `0.5.0` adds queued-message and side-chat composer scopes plus scope-owned composer/thread-row visual methods. `PluginComposerThreadRowStatus.tone` is required so the semantic host color is explicit; plugins using the composer contract must declare `engines.bbPluginSdk: ^0.5.0` after migrating.
 - Before 1.0 there is no compatibility promise: additions may land in a minor release, and breaking removals, renames, DTO changes, validation changes, or host-behavior changes require a documented deprecation/removal decision and the appropriate pre-1.0 minor bump. Never silently reinterpret an existing field or routing default.
 - Once 1.0 is declared, additive optional fields and new methods are compatible; removing or renaming a symbol, making an optional input required, narrowing accepted values, changing a result's meaning, error code, lifecycle ordering, security boundary, routing classification, or documented fallback is breaking and requires the next major. Deprecations remain functional for at least one documented migration window before removal.
 - **D1 — SDK scope:** all of `BbSdk` reachable as `bb.sdk`, including administrative areas, is the supported full-trust plugin contract. There is no narrower capability facade.
@@ -239,17 +240,17 @@ Commands should still page or otherwise bound naturally growing collections;
 the shared ceiling is the final safety boundary, not a substitute for efficient
 queries. The repository-owned command audit is:
 
-| Plugin command | Potential growth | Bounded contract / remediation |
-| --- | --- | --- |
-| `bb automation` | automation lists, run history, stored script output | `runs` defaults to 50 and accepts `--limit`; stored script output is capped; all remaining responses fail atomically at the shared ceiling. |
-| `bb connect` | servers and shared ports | Account and host share inventories are externally bounded; the shared ceiling remains the final guard. |
-| `bb instructions` | one configured instruction document | Single-record output; an oversized value fails atomically at the shared ceiling. |
-| `bb workflows` | run lists, status payloads, call history | `list` is capped at 50, `history` is cursor-paged at 1–100 records, and status/list fields and inline results have byte caps. |
-| `bb secret` | request metadata | Secret values are never returned; output is fixed-size request/reconciliation metadata. |
-| `bb github` | repositories and cached issues/PRs | Issue/PR output can be narrowed to one `owner/repo`; any still-oversized cache response fails atomically with guidance to narrow the query. |
-| `bb docs` | vault trees, note content, status/diffs | Discovery can be scoped by vault/path and large content should use `pull` to a workspace; oversized inline responses fail atomically with file/streaming guidance. |
-| `bb memory` | catalog/search results, record history, one large record | Catalog/search and history use `--limit` with a 1–100 range; a single oversized record fails atomically. |
-| `bb tasks` | task collections and rich task detail | `list` uses SQL keyset pagination (`--limit` 1–500, opaque `--cursor`); detail/scoped auxiliary lists remain protected by the shared ceiling. |
+| Plugin command    | Potential growth                                         | Bounded contract / remediation                                                                                                                                     |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bb automation`   | automation lists, run history, stored script output      | `runs` defaults to 50 and accepts `--limit`; stored script output is capped; all remaining responses fail atomically at the shared ceiling.                        |
+| `bb connect`      | servers and shared ports                                 | Account and host share inventories are externally bounded; the shared ceiling remains the final guard.                                                             |
+| `bb instructions` | one configured instruction document                      | Single-record output; an oversized value fails atomically at the shared ceiling.                                                                                   |
+| `bb workflows`    | run lists, status payloads, call history                 | `list` is capped at 50, `history` is cursor-paged at 1–100 records, and status/list fields and inline results have byte caps.                                      |
+| `bb secret`       | request metadata                                         | Secret values are never returned; output is fixed-size request/reconciliation metadata.                                                                            |
+| `bb github`       | repositories and cached issues/PRs                       | Issue/PR output can be narrowed to one `owner/repo`; any still-oversized cache response fails atomically with guidance to narrow the query.                        |
+| `bb docs`         | vault trees, note content, status/diffs                  | Discovery can be scoped by vault/path and large content should use `pull` to a workspace; oversized inline responses fail atomically with file/streaming guidance. |
+| `bb memory`       | catalog/search results, record history, one large record | Catalog/search and history use `--limit` with a 1–100 range; a single oversized record fails atomically.                                                           |
+| `bb tasks`        | task collections and rich task detail                    | `list` uses SQL keyset pagination (`--limit` 1–500, opaque `--cursor`); detail/scoped auxiliary lists remain protected by the shared ceiling.                      |
 
 ### `bb.ui.requestInput`
 
@@ -381,7 +382,7 @@ These are the eight intended runtime exports:
 | `useSettings`                | `() => { values, isLoading }`                         | reads effective non-secret settings.                                                                                                        |
 | `useBbContext`               | `() => { projectId, threadId }`                       | reads current route selection; ids may be null.                                                                                             |
 | `useBbNavigate`              | `() => BbNavigate`                                    | navigates to bb and plugin routes.                                                                                                          |
-| `useComposer`                | `() => PluginComposerApi`                             | reads and arbitrarily edits the scoped shared composer draft.                                                                               |
+| `useComposer`                | `() => PluginComposerApi`                             | reads/edits the scoped shared composer draft and owns its temporary host-rendered progress visuals.                                         |
 
 The packaged runtime module, app shim, and bundled declaration expose exactly these eight values; registration regexes are host-internal implementation details, not author-importable runtime values.
 
@@ -398,16 +399,18 @@ The packaged runtime module, app shim, and bundled declaration expose exactly th
 
 ### Composer hook
 
-| Member                                   | Contract                                                                                                                          |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `scope`                                  | `{ kind: 'thread', threadId }` or `{ kind: 'new-thread', projectId }`                                                             |
-| `text`                                   | current plain-text draft snapshot for the scope.                                                                                  |
-| `setText(next)`                          | replaces plain text; preserves attachments and rebases unaffected inline mentions, removing only mentions overlapped by the edit. |
-| `updateText(updater)`                    | computes a replacement from the latest committed text using the same reconciliation.                                              |
-| `clear()`                                | clears text and inline mentions without clearing independently attached files.                                                    |
-| `addQuote(text)`                         | appends text as a blockquote block and focuses the composer; blank text is a no-op.                                               |
-| `insertMention({ provider, id, label })` | inserts a pill bound to one of this plugin's backend mention providers.                                                           |
-| `focus()`                                | focuses the caret at the end of the draft.                                                                                        |
+| Member                                   | Contract                                                                                                                                                                                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scope`                                  | thread, queued-message, side-chat (`projectId`, parent/child thread ids, tab id), or new-thread identity.                                                                                                                                            |
+| `text`                                   | current plain-text draft snapshot for the scope.                                                                                                                                                                                                     |
+| `setText(next)`                          | replaces plain text; preserves attachments and rebases unaffected inline mentions, removing only mentions overlapped by the edit.                                                                                                                    |
+| `updateText(updater)`                    | computes a replacement from the latest committed text using the same reconciliation.                                                                                                                                                                 |
+| `clear()`                                | clears text and inline mentions without clearing independently attached files.                                                                                                                                                                       |
+| `setTextEffect(effect)`                  | applies `"shimmer"` to the active editable text or clears it with `null`; ownership ends when this hook unmounts or changes scope.                                                                                                                   |
+| `setThreadRowStatus(status)`             | replaces the visible thread's draft glyph or clears it with `null`; new-thread calls are no-ops, side chats target their visible parent row, and non-null status requires icon, non-blank label, nullable effect, and explicit default/success tone. |
+| `addQuote(text)`                         | appends text as a blockquote block and focuses the composer; blank text is a no-op.                                                                                                                                                                  |
+| `insertMention({ provider, id, label })` | inserts a pill bound to one of this plugin's backend mention providers.                                                                                                                                                                              |
+| `focus()`                                | focuses the caret at the end of the draft.                                                                                                                                                                                                           |
 
 ### Slot registrations
 
@@ -919,17 +922,18 @@ Unstubbed methods throw with the exact path to stub. Recorded `threads.spawn` ca
 
 ### `@bb/plugin-sdk/testing/app`
 
-| Export/member                                         | Purpose                                                                                                              |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `installTestPluginRuntime()`                          | installs the fake frontend runtime globally before importing an app entry.                                           |
-| `loadPluginApp(source)`                               | resolves a definition/module/import thunk, validates registrations with host rules, and returns `CapturedPluginApp`. |
-| `renderSlot(registration, props, options?)`           | mounts a component using Testing Library and fake hook backends.                                                     |
-| rendered `inspection.rpcCalls`                        | ordered `{ method, input }[]`.                                                                                       |
-| rendered `behavior.emitRealtime(channel, payload)`    | pushes a JSON-round-tripped signal inside React `act`.                                                               |
-| rendered `behavior.setRealtimeConnectionState(state)` | drives the shared realtime lifecycle inside React `act`.                                                             |
-| rendered `inspection.navigateCalls`                   | discriminated call log for every navigation method.                                                                  |
-| rendered `inspection.composer`                        | `{ text, quotes, mentions, focusCount }` write log.                                                                  |
-| rendered `lifecycle.rerender(ui)` / `unmount()`       | Testing Library mount controls separated from behavior/logs.                                                         |
+| Export/member                                         | Purpose                                                                                                                                |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `installTestPluginRuntime()`                          | installs the fake frontend runtime globally before importing an app entry.                                                             |
+| `loadPluginApp(source)`                               | resolves a definition/module/import thunk, validates registrations with host rules, and returns `CapturedPluginApp`.                   |
+| `renderSlot(registration, props, options?)`           | mounts a component using Testing Library and fake hook backends.                                                                       |
+| rendered `inspection.rpcCalls`                        | ordered `{ method, input }[]`.                                                                                                         |
+| rendered `behavior.emitRealtime(channel, payload)`    | pushes a JSON-round-tripped signal inside React `act`.                                                                                 |
+| rendered `behavior.setRealtimeConnectionState(state)` | drives the shared realtime lifecycle inside React `act`.                                                                               |
+| rendered `behavior.setComposerScope(scope, text?)`    | transitions the fake composer scope, optionally replaces draft text, invalidates stale visual setters, and clears scope-owned visuals. |
+| rendered `inspection.navigateCalls`                   | discriminated call log for every navigation method.                                                                                    |
+| rendered `inspection.composer`                        | current text/visuals plus quote, mention, focus, text-effect, and thread-row-status call logs.                                         |
+| rendered `lifecycle.rerender(ui)` / `unmount()`       | Testing Library mount controls separated from behavior/logs.                                                                           |
 
 `CapturedPluginApp` contains `homepageSections`, `settingsSections`, `navPanels`, `threadPanelActions`, `composerAccessories`, `pendingInteractions`, `sidebarFooterActions`, `fileOpeners`, and `messageDirectives`.
 
@@ -951,7 +955,7 @@ The root `@bb/plugin-sdk` declaration exports these public type families:
 - RPC/JSON: `JsonValue`, `PluginRpcCallArgs`, `PluginRpcContract`, `PluginRpcError`, `PluginRpcErrorCode`, `PluginRpcHandlers`, `PluginRpcIssuePathSegment`, `PluginRpcMethodContract`, `PluginRpcResult`, `PluginRpcValidationIssue`, `StandardSchemaV1`, `StandardSchemaV1InferInput`, `StandardSchemaV1InferOutput`, `StandardSchemaV1Issue`, and `StandardSchemaV1Result`;
 - app definition: `PluginSdkApp`, `PluginAppBuilder`, `PluginAppSlots`, `PluginAppSetup`, and `PluginAppDefinition`;
 - slot props/registrations: homepage, settings, nav panel, thread panel action, composer accessory, pending interaction, sidebar footer action, file opener, and message directive types documented above;
-- hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`.
+- hooks: `PluginRpcClient`, `PluginSettingsState`, `PluginRealtimeConnectionState`, `BbContext`, `BbNavigate`, `PluginComposerApi`, `PluginComposerScope`, `PluginComposerMention`, `PluginComposerTextEffect`, `PluginComposerThreadRowStatus`.
 
 The root declaration is side-effect-free for app/backend types and also exports `defineRpcContract` plus the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` constant. The `/app` runtime subpath exports exactly the eight hook/setup functions listed above plus app types; slot/directive validation regexes and the runtime export-name list are host-internal and are not declared author imports.
 
@@ -969,7 +973,7 @@ The root declaration is side-effect-free for app/backend types and also exports 
 ## Final 1.0 audit closure
 
 - **D1 / full trust:** `bb.sdk` is deliberately the complete `BbSdk`, including plugin administration, global settings/experiments/keybindings, hosts, projects, files, terminals, themes, and mutations. Compatibility applies to every reachable area, nested method, exported DTO/result, routing classification, and documented fallback.
-- **D2 / portable distribution:** package version and `PLUGIN_SDK_VERSION` are both `0.4.0` at this snapshot. Root, `/app`, `/testing`, and `/testing/app` have distributable runtime files and bundled declarations. External scaffold tests run with `skipLibCheck: false` and read representative result fields.
+- **D2 / portable distribution:** package version and `PLUGIN_SDK_VERSION` are both `0.5.0` at this snapshot. Root, `/app`, `/testing`, and `/testing/app` have distributable runtime files and bundled declarations. External scaffold tests run with `skipLibCheck: false` and read representative result fields.
 - **Declaration/runtime parity:** the `/app` declaration and runtime both expose exactly eight values. Validation regexes remain internal. Root exposes the schema helper intentionally.
 - **JSON boundary:** panel parameters, RPC payloads/results, interaction values, and composer/directive data use the shared static `JsonValue` boundary where they cross persistence or transport. Realtime deliberately accepts `unknown`; the host applies a `JSON.stringify`/`JSON.parse` round trip, normalizes top-level `undefined` to `null`, preserves normal JSON coercions, and throws when no JSON representation can be produced.
 - **RPC contract:** Standard Schema v1 input/output schemas, `defineRpcContract`, inferred handlers/client calls, stable error codes, validation issue paths, and strict JSON serialization are the supported contract.

@@ -410,8 +410,8 @@ export interface PluginComposerThreadRowStatus {
   label: string;
   /** Host-rendered motion treatment for the status glyph, or null. */
   effect: PluginComposerTextEffect | null;
-  /** Semantic host color for the status glyph. Defaults to the neutral tone. */
-  tone?: "default" | "success";
+  /** Semantic host color for the status glyph. */
+  tone: "default" | "success";
 }
 
 /** An @-mention pill bound to one of the calling plugin's mention providers. */

@@ -30,6 +30,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
+import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   useOptionalPaneContext,
@@ -86,6 +87,7 @@ export function RootComposeSecondaryContent({
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
+  const composerHost = usePluginComposerHost();
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
@@ -257,13 +259,19 @@ export function RootComposeSecondaryContent({
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
       collapsedRail: null,
+      composerHost,
       contentKey: "new-thread",
       isMainCollapsed: false,
       isOpen: isSecondaryPanelOpen,
       panel: inlineSecondaryPanelContent,
       onToggle: onToggleSecondaryPanel,
     }),
-    [inlineSecondaryPanelContent, isSecondaryPanelOpen, onToggleSecondaryPanel],
+    [
+      composerHost,
+      inlineSecondaryPanelContent,
+      isSecondaryPanelOpen,
+      onToggleSecondaryPanel,
+    ],
   );
   usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
 

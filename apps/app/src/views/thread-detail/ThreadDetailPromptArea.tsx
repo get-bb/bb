@@ -307,6 +307,9 @@ export function ThreadDetailPromptArea({
     [],
   );
   const [editFocusNonce, setEditFocusNonce] = useState(0);
+  const focusPluginComposer = useCallback(() => {
+    setEditFocusNonce((nonce) => nonce + 1);
+  }, []);
   const [inlineComposerTarget, setInlineComposerTarget] =
     useState<HTMLDivElement | null>(null);
   const dismissInlineQueuedMessageEditor = useCallback(() => {
@@ -617,7 +620,25 @@ export function ThreadDetailPromptArea({
     },
     [commitInlineQueuedMessage, setStoredPromptDraft],
   );
-  const pluginComposerHostBinding = useMemo<Omit<
+  const normalPluginComposerHostBinding = useMemo<
+    Omit<PluginComposerHost, "draft">
+  >(
+    () => ({
+      scope: { kind: "thread", threadId: thread.id },
+      textEffectKey: promptDraft.storageKey,
+      getCurrent: promptDraft.getCurrent,
+      setDraft: setStoredPromptDraft,
+      focus: focusPluginComposer,
+    }),
+    [
+      focusPluginComposer,
+      promptDraft.getCurrent,
+      promptDraft.storageKey,
+      setStoredPromptDraft,
+      thread.id,
+    ],
+  );
+  const queuedPluginComposerHostBinding = useMemo<Omit<
     PluginComposerHost,
     "draft"
   > | null>(() => {
@@ -651,18 +672,22 @@ export function ThreadDetailPromptArea({
           commitInlineQueuedMessage({ ...current, draft });
         }
       },
-      focus: () => setEditFocusNonce((nonce) => nonce + 1),
+      focus: focusPluginComposer,
     };
-  }, [inlineEditingQueuedMessage, commitInlineQueuedMessage, thread.id]);
-  const pluginComposerHost = useMemo<PluginComposerHost | null>(
-    () =>
-      pluginComposerHostBinding && inlineEditingQueuedMessage
-        ? {
-            ...pluginComposerHostBinding,
-            draft: inlineEditingQueuedMessage.draft,
-          }
-        : null,
-    [inlineEditingQueuedMessage, pluginComposerHostBinding],
+  }, [
+    inlineEditingQueuedMessage,
+    commitInlineQueuedMessage,
+    focusPluginComposer,
+    thread.id,
+  ]);
+  const pluginComposerHostBinding =
+    queuedPluginComposerHostBinding ?? normalPluginComposerHostBinding;
+  const pluginComposerHost = useMemo<PluginComposerHost>(
+    () => ({
+      ...pluginComposerHostBinding,
+      draft: activeComposerDraft,
+    }),
+    [activeComposerDraft, pluginComposerHostBinding],
   );
   usePublishPluginComposerHost(pluginComposerHost);
   const handleComposerMessageChange = useCallback(

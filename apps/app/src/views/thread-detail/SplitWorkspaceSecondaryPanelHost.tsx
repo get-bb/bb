@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -38,6 +37,7 @@ import {
   PANEL_RESIZE_HIT_AREA_MARGINS,
 } from "@/components/secondary-panel/panelTransitionTokens";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import {
   type PaneSecondaryPanelRegistry,
   usePaneSecondaryPanelModel,
@@ -300,7 +300,12 @@ export function SplitWorkspaceSecondaryPanelHost({
               </Panel>
             </>
           ) : (
-            <Fragment key={focusedPaneId}>{model.panel}</Fragment>
+            <PluginComposerHostProvider
+              key={focusedPaneId}
+              value={model.composerHost}
+            >
+              {model.panel}
+            </PluginComposerHostProvider>
           )}
         </PanelGroup>
       </div>

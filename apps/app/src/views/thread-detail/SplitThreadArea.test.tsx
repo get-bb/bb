@@ -29,6 +29,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import {
+  usePluginComposerHost,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { PaneContext, usePaneSecondaryPanelRegistration } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
 import { applyThreadOpenToLayout } from "./splitThreadNavigation";
@@ -53,6 +57,17 @@ const commandPresentationState = vi.hoisted(
     shortcut: ShortcutPresentationFixture | null;
   } => ({ isModifierHeld: false, shortcut: null }),
 );
+
+function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
+  const composerHost = usePluginComposerHost();
+  return (
+    <div data-testid={`hosted-composer-scope-${threadId}`}>
+      {composerHost?.scope.kind === "thread"
+        ? composerHost.scope.threadId
+        : "missing"}
+    </div>
+  );
+}
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
@@ -130,16 +145,32 @@ vi.mock("./ThreadDetailView", () => ({
   }) => {
     const pane = useContext(PaneContext);
     const [isPanelOpen, setIsPanelOpen] = useState(threadId === "thr-a");
+    const composerHost = useMemo<PluginComposerHost>(() => {
+      const draft = { attachments: [], mentions: [], text: "" };
+      return {
+        scope: { kind: "thread", threadId },
+        draft,
+        textEffectKey: `test-draft-${threadId}`,
+        getCurrent: () => draft,
+        setDraft: () => undefined,
+        focus: () => undefined,
+      };
+    }, [threadId]);
     const panelModel = useMemo(
       () => ({
         collapsedRail: null,
+        composerHost,
         contentKey: threadId,
         isMainCollapsed: false,
         isOpen: isPanelOpen,
-        panel: <div data-testid={`hosted-panel-${threadId}`} />,
+        panel: (
+          <div data-testid={`hosted-panel-${threadId}`}>
+            <HostedComposerScopeProbe threadId={threadId} />
+          </div>
+        ),
         onToggle: () => setIsPanelOpen((open) => !open),
       }),
-      [isPanelOpen, threadId],
+      [composerHost, isPanelOpen, threadId],
     );
     usePaneSecondaryPanelRegistration(
       pane?.secondaryPanelHost ?? null,
@@ -804,6 +835,9 @@ describe("SplitThreadArea", () => {
       screen.queryAllByTestId("split-workspace-panel-toggle"),
     ).toHaveLength(1);
     expect(screen.getByTestId("hosted-panel-thr-a")).toBeTruthy();
+    expect(screen.getByTestId("hosted-composer-scope-thr-a").textContent).toBe(
+      "thr-a",
+    );
     expect(screen.queryByTestId("hosted-panel-thr-b")).toBeNull();
     expect(toggle.querySelector("button")?.getAttribute("aria-pressed")).toBe(
       "true",
@@ -813,6 +847,9 @@ describe("SplitThreadArea", () => {
     // the panel's content without closing the window-level panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-b"));
     await screen.findByTestId("hosted-panel-thr-b");
+    expect(screen.getByTestId("hosted-composer-scope-thr-b").textContent).toBe(
+      "thr-b",
+    );
     expect(screen.queryByTestId("hosted-panel-thr-a")).toBeNull();
     expect(
       screen

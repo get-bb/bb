@@ -109,6 +109,15 @@ function ComposerProbe() {
       <span data-testid="composer-scope-details">
         {JSON.stringify(composer.scope)}
       </span>
+      <span data-testid="composer-scope-id">
+        {composer.scope.kind === "thread"
+          ? composer.scope.threadId
+          : composer.scope.kind === "queued-message"
+            ? composer.scope.queuedMessageId
+            : composer.scope.kind === "side-chat"
+              ? composer.scope.tabId
+              : (composer.scope.projectId ?? "null")}
+      </span>
       <span data-testid="composer-text">{composer.text}</span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
@@ -129,6 +138,7 @@ function ComposerProbe() {
             icon: "AiContentGenerator01",
             label: "Plugin improving draft",
             effect: "shimmer",
+            tone: "default",
           })
         }
       >
@@ -366,7 +376,7 @@ describe("renderSlot", () => {
     );
   });
 
-  it("exposes an explicit side-chat composer scope", () => {
+  it("exposes and transitions an explicit side-chat composer scope", async () => {
     const sideChatScope = {
       kind: "side-chat",
       projectId: "proj_1",
@@ -386,9 +396,17 @@ describe("renderSlot", () => {
       ),
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.label).toBe(
-      "Plugin improving draft",
-    );
+    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+
+    const childScope = { ...sideChatScope, childThreadId: "thr_child" };
+    await slot.behavior.setComposerScope(childScope, "child draft");
+    expect(
+      JSON.parse(
+        slot.getByTestId("composer-scope-details").textContent ?? "{}",
+      ),
+    ).toEqual(childScope);
+    expect(slot.getByTestId("composer-text").textContent).toBe("child draft");
+    expect(slot.composer.threadRowStatus).toBeNull();
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
@@ -422,7 +440,19 @@ describe("renderSlot", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
+    const visualSetters = capturedComposerVisualSetters;
+    if (visualSetters === null)
+      throw new Error("composer setters not captured");
+    visualSetters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "   ",
+      effect: "shimmer",
+      tone: "default",
+    });
+    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
 
     fireEvent.click(slot.getByText("clear row status"));
     expect(slot.composer.threadRowStatus).toBeNull();
@@ -439,6 +469,121 @@ describe("renderSlot", () => {
     fireEvent.click(slot.getByText("set row status"));
     expect(slot.composer.threadRowStatus).toBeNull();
     expect(slot.composer.threadRowStatusCalls).toEqual([]);
+  });
+
+  it("models queued-message scope independently from route context", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_route", threadId: null },
+      {
+        context: { projectId: "proj_route", threadId: null },
+        composer: {
+          scope: {
+            kind: "queued-message",
+            threadId: "thr_queue",
+            queuedMessageId: "qmsg_1",
+          },
+        },
+      },
+    );
+
+    expect(slot.getByTestId("composer-scope").textContent).toBe(
+      "queued-message",
+    );
+    expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_1");
+    fireEvent.click(slot.getByText("set row status"));
+    expect(slot.composer.threadRowStatus?.tone).toBe("default");
+  });
+
+  it("clears visual state and invalidates stale setters across scope changes", async () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const staleSetters = capturedComposerVisualSetters;
+    if (staleSetters === null) {
+      throw new Error("composer setters were not captured");
+    }
+    staleSetters.setTextEffect("shimmer");
+    staleSetters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Old scope",
+      effect: "shimmer",
+      tone: "success",
+    });
+
+    await slot.behavior.setComposerScope(
+      {
+        kind: "queued-message",
+        threadId: "thr_1",
+        queuedMessageId: "qmsg_2",
+      },
+      "queued draft",
+    );
+    const currentSetters = capturedComposerVisualSetters;
+    if (currentSetters === null || currentSetters === staleSetters) {
+      throw new Error("composer scope did not publish fresh setters");
+    }
+
+    expect(slot.getByTestId("composer-scope").textContent).toBe(
+      "queued-message",
+    );
+    expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_2");
+    expect(slot.getByTestId("composer-text").textContent).toBe("queued draft");
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+
+    staleSetters.setTextEffect("shimmer");
+    staleSetters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Late old scope",
+      effect: "shimmer",
+      tone: "success",
+    });
+    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
+
+    currentSetters.setTextEffect("shimmer");
+    currentSetters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Current scope",
+      effect: "shimmer",
+      tone: "success",
+    });
+    expect(slot.composer.textEffect).toBe("shimmer");
+    expect(slot.composer.threadRowStatus?.label).toBe("Current scope");
+  });
+
+  it("releases visual ownership when only the hook consumer unmounts", () => {
+    const slot = renderSlot(
+      app.composerAccessories[0]!,
+      { projectId: "proj_1", threadId: "thr_1" },
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setters = capturedComposerVisualSetters;
+    if (setters === null) throw new Error("composer setters were not captured");
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Mounted",
+      effect: "shimmer",
+      tone: "default",
+    });
+
+    slot.lifecycle.rerender(null);
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+
+    setters.setTextEffect("shimmer");
+    setters.setThreadRowStatus({
+      icon: "AiContentGenerator01",
+      label: "Late unmounted",
+      effect: "shimmer",
+      tone: "default",
+    });
+    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {
@@ -472,6 +617,7 @@ describe("renderSlot", () => {
         icon: "AiContentGenerator01",
         label: "late status",
         effect: "shimmer",
+        tone: "default",
       });
       expect(slot.composer.textEffect).toBeNull();
       expect(slot.composer.threadRowStatus).toBeNull();
@@ -494,6 +640,7 @@ describe("renderSlot", () => {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       effect: "shimmer",
+      tone: "default",
     });
     cleanup();
 
@@ -505,6 +652,7 @@ describe("renderSlot", () => {
       icon: "AiContentGenerator01",
       label: "late status",
       effect: "shimmer",
+      tone: "default",
     });
     expect(slot.composer.textEffect).toBeNull();
     expect(slot.composer.threadRowStatus).toBeNull();

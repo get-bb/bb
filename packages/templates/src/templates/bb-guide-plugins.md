@@ -264,9 +264,10 @@ connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
 useBbNavigate, and useComposer (read/replace/update/clear scoped composer
-text, quote selections, insert mention pills, and focus the composer;
-plain-text edits preserve attachments and reconcile only inline mentions
-overlapped by the edit). Define RPC methods with `defineRpcContract`
+text, quote selections, insert mention pills, focus the composer, and set
+scope-owned composer/thread-row progress visuals; queued-message and side-chat
+editors are reported as their own scopes; plain-text edits preserve attachments
+and reconcile only inline mentions overlapped by the edit). Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),
 register via `bb.rpc.register(contract, handlers)`, then use a type-only
 backend contract import with `useRpc<typeof contract>()` for exact frontend
@@ -312,7 +313,7 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.4.0"` for SDK 0.4.0). The plugin id is the package name minus
+writes `"^0.5.0"` for SDK 0.5.0). The plugin id is the package name minus
 `bb-plugin-`.
 
 Plugins can contribute palettes with `bb.themes`: an array of

@@ -44,7 +44,10 @@ import {
   shouldReserveMacosTrafficLights,
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
-import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
+import {
+  PluginComposerHostScopeProvider,
+  usePluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -114,6 +117,7 @@ function ThreadDetailSecondaryContentBody({
   timeline,
 }: ThreadDetailSecondaryContentProps) {
   const { isFocused, paneId, secondaryPanelHost } = usePaneContext();
+  const composerHost = usePluginComposerHost();
   const stableMetadata = metadata;
   const stableSecondaryPanel = secondaryPanel;
   const stableTimeline = timeline;
@@ -367,6 +371,7 @@ function ThreadDetailSecondaryContentBody({
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
       collapsedRail: hostedCollapsedRail,
+      composerHost,
       contentKey: stableTimeline.threadId,
       isMainCollapsed: isConversationCollapsedActive,
       isOpen: isSecondaryPanelOpen,
@@ -374,6 +379,7 @@ function ThreadDetailSecondaryContentBody({
       onToggle: onToggleSecondaryPanel,
     }),
     [
+      composerHost,
       hostedCollapsedRail,
       inlineSecondaryPanelContent,
       isConversationCollapsedActive,
