@@ -135,6 +135,11 @@ import {
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
+import {
+  canStartNativeSideChat,
+  SIDE_CHAT_PLUGIN_ID,
+  SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
+} from "@/lib/side-chat-plugin";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -842,7 +847,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [forkThreadFromMessage],
   );
   const isForkAvailable = isThreadForkable(thread ?? null);
-  const canStartSideChat = thread?.canSpawnChild ?? false;
+  const canStartSideChat = canStartNativeSideChat({
+    canSpawnChild: thread?.canSpawnChild ?? false,
+    sideChatPluginEnabled:
+      systemConfigQuery.data?.experiments.sideChatPlugin === true,
+  });
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
       return;
@@ -1958,6 +1967,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           return () => {
             openExistingSideChatTab(action.threadId);
           };
+        case "open-plugin-side-chat":
+          return () => {
+            handleOpenTimelinePluginPanel({
+              pluginId: SIDE_CHAT_PLUGIN_ID,
+              actionId: SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
+              params:
+                threadId === undefined
+                  ? { threadId: action.threadId }
+                  : { threadId: action.threadId, sourceThreadId: threadId },
+            });
+          };
         default:
           // Surfaces a compile-time error if a future TimelineTitleAction
           // variant is added without app-side handling, instead of silently
@@ -1965,7 +1985,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           return assertNever(action);
       }
     },
-    [openSecondaryPanelDiffFile, openExistingSideChatTab],
+    [
+      openSecondaryPanelDiffFile,
+      openExistingSideChatTab,
+      handleOpenTimelinePluginPanel,
+      threadId,
+    ],
   );
   const metadataStorage = useMemo(
     () => ({

@@ -592,6 +592,7 @@ export function createPluginApi(options: {
     "thread.active": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.archived": [],
     "thread.deleted": [],
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];

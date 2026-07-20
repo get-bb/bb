@@ -10,7 +10,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { preventOverlayTriggerSelection } from "@bb/shared-ui/overlay-trigger";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 
@@ -25,7 +25,7 @@ const SELECTION_MENU_CONTENT_CLASS =
 interface SelectionAction {
   icon: IconName;
   /** Set on plugin-contributed actions; renders PluginIcon over `icon`. */
-  plugin?: { pluginId: string; icon: string | null };
+  plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
   key?: string;
   label: string;
@@ -100,11 +100,19 @@ function ActionButton({
       }}
     >
       {action.plugin ? (
-        <PluginIcon
-          pluginId={action.plugin.pluginId}
-          icon={action.plugin.icon}
-          className="size-3.5 text-muted-foreground"
-        />
+        action.plugin.pluginId === null ? (
+          <Icon
+            name={pluginIconName(action.plugin.icon)}
+            className="size-3.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+        ) : (
+          <PluginIcon
+            pluginId={action.plugin.pluginId}
+            icon={action.plugin.icon}
+            className="size-3.5 text-muted-foreground"
+          />
+        )
       ) : (
         <Icon
           name={action.icon}

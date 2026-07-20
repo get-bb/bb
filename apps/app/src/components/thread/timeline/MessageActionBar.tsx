@@ -22,8 +22,29 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { usePortalScopeProps } from "@/lib/portal-scope";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
+
+/** Plugin-action icon: branding icon when the plugin is known, hint otherwise. */
+function PluginActionIcon({
+  pluginId,
+  icon,
+  className,
+}: {
+  pluginId: string | null;
+  icon: string | null;
+  className?: string;
+}) {
+  return pluginId === null ? (
+    <Icon
+      name={pluginIconName(icon)}
+      className={cn("size-4 shrink-0", className)}
+      aria-hidden="true"
+    />
+  ) : (
+    <PluginIcon pluginId={pluginId} icon={icon} className={className} />
+  );
+}
 
 interface MessageActionBarProps {
   messageText: string;
@@ -54,8 +75,8 @@ interface MessageOverflowAction {
     | "Fork"
     | "SideChat"
     | "ArrowTurnBackward";
-  /** Set on plugin-contributed actions; renders PluginIcon over `icon`. */
-  plugin?: { pluginId: string; icon: string | null };
+  /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
+  plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
   key?: string;
   label: string;
@@ -140,7 +161,7 @@ function MobileMessageOverflowPopover({
               }}
             >
               {action.plugin ? (
-                <PluginIcon
+                <PluginActionIcon
                   pluginId={action.plugin.pluginId}
                   icon={action.plugin.icon}
                   className="size-3.5"
@@ -442,7 +463,7 @@ export function MessageActionBar({
                 onClick={action.onSelect}
                 aria-label={action.label}
               >
-                <PluginIcon
+                <PluginActionIcon
                   pluginId={action.pluginId}
                   icon={action.icon}
                   className="size-3"
@@ -488,7 +509,7 @@ export function MessageActionBar({
                     textValue={action.label}
                   >
                     {action.plugin ? (
-                      <PluginIcon
+                      <PluginActionIcon
                         pluginId={action.plugin.pluginId}
                         icon={action.plugin.icon}
                       />

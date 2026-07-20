@@ -206,6 +206,39 @@ describe("comment notification delivery", () => {
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
   });
 
+  it("preserves side-chat privacy for the plugin's hidden forks too", async () => {
+    const { bb, harness, store, task } = setup((threadId) =>
+      makeThreadResponse({
+        id: threadId,
+        status: "idle",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
+      }),
+    );
+    store.createComment({
+      taskId: task.id,
+      kind: "agent",
+      authorName: "Side chat",
+      threadId: "thr_plugin_side_chat",
+      body: "Private reply",
+    });
+
+    await expect(
+      deliverCommentToLatestAgent(bb, store, { taskId: task.id, ...input }),
+    ).resolves.toEqual({
+      notifiedCount: 0,
+      outcomes: [
+        {
+          threadId: "thr_plugin_side_chat",
+          status: "skipped",
+          reason: "latest agent reply belongs to a side chat",
+        },
+      ],
+    });
+    expect(harness.sdk.callsTo("threads.send")).toEqual([]);
+  });
+
   it("records delivery failure without trying another agent", async () => {
     const { bb, harness, store, task } = setup();
     store.createComment({

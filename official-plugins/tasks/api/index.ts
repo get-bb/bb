@@ -12,6 +12,7 @@ import {
   removeAttachmentBlobs,
 } from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
+import { isSideChatShapedThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
   type Attachment as AttachmentMetadata,
@@ -391,9 +392,7 @@ async function resolveAgentThreadInfo(
     [...threadIds].map(async (threadId) => {
       try {
         const thread = await bb.sdk.threads.get({ threadId });
-        const isSideChat =
-          thread.originKind === "side-chat" ||
-          thread.childOrigin === "side-chat";
+        const isSideChat = isSideChatShapedThread(thread);
         // Prefer the first non-blank candidate: a whitespace-only primary
         // title must not suppress a useful fallback. Side chats never surface
         // a title/link, but still expose their provider.

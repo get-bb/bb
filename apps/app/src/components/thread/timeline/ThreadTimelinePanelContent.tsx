@@ -28,6 +28,7 @@ export interface ThreadTimelinePanelContentProps {
   onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
   onSelectionReplyInSideChat?: ThreadTimelineSurfaceProps["onSelectionReplyInSideChat"];
+  consumerMessageActions?: ThreadTimelineSurfaceProps["consumerMessageActions"];
   onOpenLink?: ThreadTimelineSurfaceProps["onOpenLink"];
   onOpenLocalFileLink?: ThreadTimelineSurfaceProps["onOpenLocalFileLink"];
   onOpenPluginPanel?: ThreadTimelineSurfaceProps["onOpenPluginPanel"];
@@ -56,6 +57,7 @@ export function ThreadTimelinePanelContent({
   onSendToMainMessage,
   onSelectionAddToChat,
   onSelectionReplyInSideChat,
+  consumerMessageActions,
   onOpenLink,
   onOpenLocalFileLink,
   onOpenPluginPanel,
@@ -144,6 +146,7 @@ export function ThreadTimelinePanelContent({
       onSendToMainMessage={onSendToMainMessage}
       onSelectionAddToChat={onSelectionAddToChat}
       onSelectionReplyInSideChat={onSelectionReplyInSideChat}
+      consumerMessageActions={consumerMessageActions}
       onLoadOlderRows={
         showLoadOlderRows ? resolvedTimeline.loadOlderTimelineRows : undefined
       }

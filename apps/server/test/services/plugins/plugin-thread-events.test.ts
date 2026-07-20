@@ -356,6 +356,36 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
+  it("delivers thread.archived from route-driven archiving", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__archivedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.archived", (payload: any) => {
+          (globalThis as any).__archivedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { project, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/archive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.thread.id).toBe(thread.id);
+      expect(recorded[0]?.thread.projectId).toBe(project.id);
+    } finally {
+      delete globals.__archivedEvents;
+      await cleanup();
+    }
+  });
+
   it("isolates a throwing thread.deleted handler and still deletes", async () => {
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {

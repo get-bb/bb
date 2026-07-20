@@ -1,3 +1,4 @@
+import type { ThreadChatMessageReference } from "@bb/plugin-sdk";
 import type {
   MarkdownPreviewLocalFileLink,
   MarkdownPreviewLocalFileLinkHandler,
@@ -101,11 +102,31 @@ export type ThreadTimelineSelectionReplyInSideChatHandler = (
 export interface ThreadTimelinePluginMessageAction {
   /** Unique render key across plugins and reload generations. */
   key: string;
-  pluginId: string;
+  /** Plugin whose branding icon labels the action; null renders `icon` alone. */
+  pluginId: string | null;
   /** Icon hint (BB icon name) or null for the plugin's generic icon. */
   icon: string | null;
   label: string;
   onSelect: () => void;
+}
+
+/**
+ * A consumer-supplied per-message action scoped to one embedded chat surface
+ * (the `ThreadChat` `messageActions` prop), rendered in the per-message
+ * action bar after the slot-registered plugin actions. Invocation errors are
+ * contained by the timeline; `run` can never break it.
+ */
+export interface ThreadTimelineConsumerMessageAction {
+  /** Unique within the surface's action list. */
+  id: string;
+  /** Plugin whose branding icon labels the action, when known. */
+  pluginId: string | null;
+  /** Icon hint (BB icon name) or null for a generic icon. */
+  icon: string | null;
+  label: string;
+  /** Message roles the action applies to. Omitted = both roles. */
+  roles?: readonly ("user" | "assistant")[];
+  run(message: ThreadChatMessageReference): void | Promise<void>;
 }
 
 export type ThreadTimelineUnreadDividerPlacement =

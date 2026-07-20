@@ -178,6 +178,10 @@ const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
  * records every public prop as a data attribute so plugin tests can assert
  * what their slot component passed without the real chat engine.
+ * `leadingContent` renders inside the stub; each `messageActions` entry
+ * renders as a button (`data-testid="bb-thread-chat-action-<id>"`) that
+ * invokes its `run` with a synthetic assistant message reference, so plugin
+ * tests can drive the action without the real timeline.
  */
 function TestThreadChat({
   threadId,
@@ -185,6 +189,8 @@ function TestThreadChat({
   layout = "contained",
   focusRequest,
   className,
+  leadingContent,
+  messageActions,
 }: ThreadChatProps) {
   return (
     <div
@@ -193,9 +199,34 @@ function TestThreadChat({
       data-variant={variant}
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
+      data-message-actions={(messageActions ?? [])
+        .map((action) => action.id)
+        .join(" ")}
       className={className}
     >
+      {leadingContent === undefined ? null : (
+        <div data-testid="bb-thread-chat-leading-content">{leadingContent}</div>
+      )}
       ThreadChat stub ({threadId})
+      {(messageActions ?? []).map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          data-testid={`bb-thread-chat-action-${action.id}`}
+          data-roles={action.roles === undefined ? "" : action.roles.join(" ")}
+          onClick={() => {
+            void action.run({
+              id: "test-message",
+              threadId,
+              role: action.roles?.[0] ?? "assistant",
+              text: "test message text",
+              sourceSeqEnd: 1,
+            });
+          }}
+        >
+          {action.title}
+        </button>
+      ))}
     </div>
   );
 }

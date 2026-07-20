@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
         plugins: false,
+        sideChatPlugin: false,
       });
     });
   });
@@ -26,16 +27,19 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
           plugins: false,
+          sideChatPlugin: false,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -44,6 +48,7 @@ describe("experiments settings", () => {
       ).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
     });
   });
@@ -59,6 +64,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           plugins: false,
+          sideChatPlugin: false,
         }),
       });
       expect(put.status).toBe(200);

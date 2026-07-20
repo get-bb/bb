@@ -70,6 +70,32 @@ function DemoPluginPage({ threadId }: { threadId: string }) {
   return <ThreadChat threadId={threadId} variant="compact" />;
 }
 
+function DemoPluginPageWithExtensions({
+  threadId,
+  run,
+}: {
+  threadId: string;
+  run: () => void;
+}) {
+  const ThreadChat = pluginSdkAppImplementation.ThreadChat;
+  return (
+    <ThreadChat
+      threadId={threadId}
+      variant="compact"
+      leadingContent={<div data-testid="replying-to">Replying to</div>}
+      messageActions={[
+        {
+          id: "send-to-main",
+          title: "Send to main thread",
+          icon: "ArrowTurnBackward",
+          roles: ["assistant"],
+          run,
+        },
+      ]}
+    />
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -139,6 +165,41 @@ describe("PluginThreadChat", () => {
     expect(mocks.embeddedChatProps).toHaveLength(0);
     expect(mocks.timelinePanelProps.at(-1)).toEqual(
       expect.objectContaining({ threadId: "thr_demo" }),
+    );
+  });
+
+  it("forwards leadingContent and maps messageActions to consumer actions", async () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const run = vi.fn();
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <PluginSlotMount pluginId="demo" slotKind="navPanel" slotId="page">
+            <DemoPluginPageWithExtensions threadId="thr_demo" run={run} />
+          </PluginSlotMount>
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+    );
+    const props = mocks.embeddedChatProps.at(-1)!;
+    expect(props.leadingContent).toBeTruthy();
+    const actions = props.consumerMessageActions as Array<
+      Record<string, unknown>
+    >;
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toEqual(
+      expect.objectContaining({
+        id: "send-to-main",
+        // The mounting plugin's id, so the action bar shows its branding icon.
+        pluginId: "demo",
+        icon: "ArrowTurnBackward",
+        label: "Send to main thread",
+        roles: ["assistant"],
+        run,
+      }),
     );
   });
 

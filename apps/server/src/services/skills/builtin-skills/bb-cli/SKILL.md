@@ -518,6 +518,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   default: turn on **"Plugins"** under Settings → Experiments. Auto-installed
   builtin plugins ship with bb and remain available even when the experiment
   is off (except `connect`, which is gated by the **"bb connect"**
+  experiment, and `side-chat`, which is gated by the **"Side chat plugin"**
   experiment); store-installed official plugins are a user opt-in and stay
   behind the Plugins experiment like other installs.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):

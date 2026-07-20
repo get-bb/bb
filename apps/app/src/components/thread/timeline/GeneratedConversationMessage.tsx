@@ -63,6 +63,9 @@ interface GeneratedConversationMessageProps {
   /** The source is a side chat: the linked name opens it as a tab in this
    * thread (a title action) rather than navigating to it as a standalone thread. */
   sourceIsSideChat: boolean;
+  /** The source is a side-chat plugin hidden fork: same affordance as a
+   * legacy side chat, but its title action opens the plugin's panel tab. */
+  sourceIsPluginSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
   text: string;
@@ -95,6 +98,7 @@ interface GeneratedConversationTitleArgs {
   sourceName: string;
   sourceThreadId: string | null;
   sourceIsSideChat: boolean;
+  sourceIsPluginSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
 }
@@ -221,6 +225,7 @@ export function generatedConversationTitle({
   sourceName,
   sourceThreadId,
   sourceIsSideChat,
+  sourceIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
 }: GeneratedConversationTitleArgs): TimelineTitle {
@@ -238,7 +243,9 @@ export function generatedConversationTitle({
   const sideChatAction =
     sourceIsSideChat && sourceThreadId !== null
       ? ({ kind: "open-side-chat", threadId: sourceThreadId } as const)
-      : null;
+      : sourceIsPluginSideChat && sourceThreadId !== null
+        ? ({ kind: "open-plugin-side-chat", threadId: sourceThreadId } as const)
+        : null;
   const sourceLink =
     sourceThreadId === null || sideChatAction !== null
       ? null
@@ -330,6 +337,7 @@ interface GeneratedAgentSourceTitleProps {
   onTitleAction?: TimelineTitleActionResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   sourceIsSideChat: boolean;
+  sourceIsPluginSideChat: boolean;
   sourceName: string;
   sourceThreadId: string | null;
   title: TimelineTitle;
@@ -339,6 +347,7 @@ function GeneratedAgentSourceTitle({
   onTitleAction,
   resolveSegmentLinkHref,
   sourceIsSideChat,
+  sourceIsPluginSideChat,
   sourceName,
   sourceThreadId,
   title,
@@ -347,7 +356,10 @@ function GeneratedAgentSourceTitle({
   const sourceTitleAction =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
   const sourceLinkHref =
-    sourceThreadId !== null && !sourceIsSideChat && resolveSegmentLinkHref
+    sourceThreadId !== null &&
+    !sourceIsSideChat &&
+    !sourceIsPluginSideChat &&
+    resolveSegmentLinkHref
       ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";
@@ -425,6 +437,7 @@ export const GeneratedConversationMessage = memo(
     sourceName,
     sourceThreadId,
     sourceIsSideChat,
+    sourceIsPluginSideChat,
     systemMessageKind,
     systemMessageSubject,
     text,
@@ -453,6 +466,7 @@ export const GeneratedConversationMessage = memo(
           sourceName,
           sourceThreadId,
           sourceIsSideChat,
+          sourceIsPluginSideChat,
           systemMessageKind,
           systemMessageSubject,
         }),
@@ -462,6 +476,7 @@ export const GeneratedConversationMessage = memo(
         sourceName,
         sourceThreadId,
         sourceIsSideChat,
+        sourceIsPluginSideChat,
         systemMessageKind,
         systemMessageSubject,
       ],
@@ -472,6 +487,7 @@ export const GeneratedConversationMessage = memo(
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveSegmentLinkHref}
           sourceIsSideChat={sourceIsSideChat}
+          sourceIsPluginSideChat={sourceIsPluginSideChat}
           sourceName={sourceName}
           sourceThreadId={sourceThreadId}
           title={title}
@@ -485,7 +501,8 @@ export const GeneratedConversationMessage = memo(
     // Title-only rows (ownership assigned/removed) restate their body in the
     // title; suppress the body, the collapsed preview, and expansion entirely.
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
-    const renderMessageMarkdown = sourceKind === "system" || sourceIsSideChat;
+    const renderMessageMarkdown =
+      sourceKind === "system" || sourceIsSideChat || sourceIsPluginSideChat;
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||

@@ -170,6 +170,18 @@ function ThreadChatPage({ subPath }: PluginNavPanelProps) {
       layout="document"
       focusRequest={2}
       className="demo-chat"
+      leadingContent={<div>Replying to something earlier</div>}
+      messageActions={[
+        {
+          id: "send-to-main",
+          title: "Send to main thread",
+          icon: "ArrowTurnBackward",
+          roles: ["assistant"],
+          run: (message) => {
+            messageActionRuns.push(message);
+          },
+        },
+      ]}
     />
   );
 }
@@ -334,7 +346,30 @@ describe("loadPluginApp", () => {
     expect(stub.getAttribute("data-variant")).toBe("compact");
     expect(stub.getAttribute("data-layout")).toBe("document");
     expect(stub.getAttribute("data-focus-request")).toBe("2");
+    expect(stub.getAttribute("data-message-actions")).toBe("send-to-main");
     expect(stub.className).toBe("demo-chat");
+  });
+
+  it("renders leadingContent and drives messageActions through the stub", () => {
+    messageActionRuns.length = 0;
+    const chatPanel = app.navPanels.find((panel) => panel.id === "chat")!;
+    const slot = renderSlot(chatPanel, { subPath: "thr_42" });
+    expect(
+      slot.getByTestId("bb-thread-chat-leading-content").textContent,
+    ).toContain("Replying to something earlier");
+
+    const action = slot.getByTestId("bb-thread-chat-action-send-to-main");
+    expect(action.getAttribute("data-roles")).toBe("assistant");
+    fireEvent.click(action);
+    expect(messageActionRuns).toEqual([
+      {
+        id: "test-message",
+        threadId: "thr_42",
+        role: "assistant",
+        text: "test message text",
+        sourceSeqEnd: 1,
+      },
+    ]);
   });
 });
 

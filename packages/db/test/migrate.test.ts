@@ -381,6 +381,16 @@ function closeConnection(db: DbConnection): void {
   db.$client.close();
 }
 
+// Migration 0080 adds the side_chat_plugin experiment column. Rewind
+// scenarios that clear its __drizzle_migrations row must also rewind the
+// schema: ALTER TABLE ADD is not re-appliable against a column that already
+// exists (unlike the idempotent UPDATE-only 0079 backfill).
+function dropSideChatPluginExperimentColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
+    .run();
+}
+
 // Thread-search replay scenarios start from a full `migrate(db)` and then roll
 // the thread-search migrations back to an earlier state. Any migration that
 // lands AFTER thread-search (e.g. the automations migration) stays applied with
@@ -1196,9 +1206,15 @@ describe("migrate", () => {
           inheritedQueue.id,
           fallbackQueue.id,
         );
+      // Roll back from the permission-modes migration onward so it replays;
+      // Drizzle only re-applies migrations newer than the latest applied row,
+      // so every later row (0079/0080) must be cleared with it.
       db.$client
-        .prepare("DELETE FROM __drizzle_migrations WHERE created_at IN (?, ?)")
-        .run(permissionModesMigrationWhen, latestMigrationWhen);
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(permissionModesMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       migrate(db);
 
@@ -1589,6 +1605,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       expect(
         db.$client
@@ -1676,6 +1693,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

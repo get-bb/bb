@@ -1,0 +1,243 @@
+// @vitest-environment jsdom
+// Frontend tests: slot registrations, the reply action's fork+open flow, and
+// the panel's ThreadChat wiring (ReplyingTo header, send-to-main action,
+// promotion affordance).
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+
+// Load through the thunk so the test runtime is installed before app.tsx
+// binds `definePluginApp`; pull the pure helpers from the same evaluation.
+const app = await loadPluginApp(() => import("./app"));
+const { panelTabTitle, parsePanelParams } = await import("./app");
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function stubRpcFetch(
+  handler: (method: string, input: unknown) => unknown,
+): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const method = String(url).split("/rpc/")[1] ?? "";
+    const input: unknown = init?.body ? JSON.parse(String(init.body)) : null;
+    const result = handler(decodeURIComponent(method), input);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result }),
+    } as unknown as Response;
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("registrations", () => {
+  it("registers the reply message action and the side-chat panel action", () => {
+    expect(app.messageActions.map((action) => action.id)).toEqual([
+      "reply-in-side-chat",
+    ]);
+    expect(app.threadPanelActions.map((action) => action.id)).toEqual([
+      "side-chat",
+    ]);
+  });
+});
+
+describe("panelTabTitle", () => {
+  it("uses the anchor's first line, truncated, with a fallback", () => {
+    expect(panelTabTitle("")).toBe("Side chat");
+    expect(panelTabTitle("short question")).toBe("short question");
+    expect(panelTabTitle("first line\nsecond line")).toBe("first line");
+    const long = "x".repeat(80);
+    expect(panelTabTitle(long).length).toBeLessThanOrEqual(32);
+    expect(panelTabTitle(long).endsWith("…")).toBe(true);
+  });
+});
+
+describe("parsePanelParams", () => {
+  it("narrows persisted params and rejects malformed values", () => {
+    expect(
+      parsePanelParams({
+        threadId: "thr_fork",
+        sourceThreadId: "thr_src",
+        sourceMessageText: "anchor",
+        sourceSeqEnd: 5,
+      }),
+    ).toEqual({
+      threadId: "thr_fork",
+      sourceThreadId: "thr_src",
+      sourceMessageText: "anchor",
+      sourceSeqEnd: 5,
+    });
+    expect(
+      parsePanelParams({ threadId: "thr_fork", sourceThreadId: "thr_src" }),
+    ).toEqual({
+      threadId: "thr_fork",
+      sourceThreadId: "thr_src",
+      sourceMessageText: "",
+      sourceSeqEnd: null,
+    });
+    expect(parsePanelParams(null)).toBeNull();
+    expect(parsePanelParams({ threadId: "thr_fork" })).toBeNull();
+  });
+});
+
+describe("reply-in-side-chat message action", () => {
+  it("creates the fork then opens the panel tab pointing at it", async () => {
+    const fetchMock = stubRpcFetch((method) => {
+      expect(method).toBe("createSideChat");
+      return { threadId: "thr_fork" };
+    });
+    const openPanel = vi.fn(() => true);
+
+    await app.messageActions[0]!.run({
+      threadId: "thr_src",
+      message: {
+        id: "msg_1",
+        threadId: "thr_src",
+        role: "assistant",
+        text: "whole message text",
+        sourceSeqEnd: 42,
+      },
+      openPanel,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/plugins/side-chat/rpc/createSideChat",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    );
+    expect(body).toEqual({
+      sourceThreadId: "thr_src",
+      sourceSeqEnd: 42,
+      anchorText: "whole message text",
+    });
+    expect(openPanel).toHaveBeenCalledWith({
+      actionId: "side-chat",
+      title: "whole message text",
+      params: {
+        threadId: "thr_fork",
+        sourceThreadId: "thr_src",
+        sourceMessageText: "whole message text",
+        sourceSeqEnd: 42,
+      },
+    });
+  });
+
+  it("anchors on the selection when invoked from the selection menu", async () => {
+    stubRpcFetch(() => ({ threadId: "thr_fork" }));
+    const openPanel = vi.fn(() => true);
+
+    await app.messageActions[0]!.run({
+      threadId: "thr_src",
+      message: {
+        id: "msg_1",
+        threadId: "thr_src",
+        role: "assistant",
+        text: "whole message text",
+        sourceSeqEnd: 42,
+      },
+      selectedText: "just this part",
+      openPanel,
+    });
+
+    expect(openPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "just this part",
+        params: expect.objectContaining({
+          sourceMessageText: "just this part",
+        }),
+      }),
+    );
+  });
+});
+
+describe("SideChatPanel", () => {
+  const params = {
+    threadId: "thr_fork",
+    sourceThreadId: "thr_src",
+    sourceMessageText: "the **anchor** message",
+    sourceSeqEnd: 7,
+  };
+
+  it("renders ThreadChat with the ReplyingTo header and send-to-main action", () => {
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_src", params },
+      { rpc: {} },
+    );
+
+    const chat = slot.getByTestId("bb-thread-chat");
+    expect(chat.getAttribute("data-thread-id")).toBe("thr_fork");
+    expect(chat.getAttribute("data-variant")).toBe("compact");
+    expect(chat.getAttribute("data-layout")).toBe("contained");
+    expect(chat.getAttribute("data-message-actions")).toBe("send-to-main");
+
+    const leading = slot.getByTestId("bb-thread-chat-leading-content");
+    expect(leading.textContent).toContain("Replying to");
+    expect(leading.textContent).toContain("anchor");
+    // react-markdown rendered the bold anchor as an element, not literal `**`.
+    expect(leading.querySelector("strong")?.textContent).toBe("anchor");
+
+    const action = slot.getByTestId("bb-thread-chat-action-send-to-main");
+    expect(action.getAttribute("data-roles")).toBe("assistant");
+  });
+
+  it("send-to-main queues the message text on the source thread", async () => {
+    const sendToMain = vi.fn(() => ({ ok: true }));
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_src", params },
+      { rpc: { sendToMain } },
+    );
+
+    fireEvent.click(slot.getByTestId("bb-thread-chat-action-send-to-main"));
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toEqual([
+        {
+          method: "sendToMain",
+          input: {
+            sourceThreadId: "thr_src",
+            senderThreadId: "thr_fork",
+            text: "test message text",
+          },
+        },
+      ]);
+    });
+  });
+
+  it("Open as full thread promotes the fork then navigates to it", async () => {
+    const openAsFullThread = vi.fn(() => ({ ok: true }));
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_src", params },
+      { rpc: { openAsFullThread } },
+    );
+
+    fireEvent.click(slot.getByText("Open as full thread"));
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toEqual([
+        { method: "openAsFullThread", input: { threadId: "thr_fork" } },
+      ]);
+      expect(slot.navigateCalls).toEqual([
+        { method: "toThread", threadId: "thr_fork" },
+      ]);
+    });
+  });
+
+  it("reports a missing thread reference for malformed params", () => {
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr_src", params: { bogus: true } },
+      { rpc: {} },
+    );
+    expect(slot.getByRole("alert").textContent).toContain(
+      "missing its thread reference",
+    );
+  });
+});

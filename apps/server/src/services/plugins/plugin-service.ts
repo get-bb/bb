@@ -1385,6 +1385,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           error: getLastThreadErrorMessage(deps.db, thread.id),
         }));
       },
+      emitThreadArchived(thread) {
+        emitThreadEvent("thread.archived", () => ({
+          thread: buildThreadDto(thread),
+        }));
+      },
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),

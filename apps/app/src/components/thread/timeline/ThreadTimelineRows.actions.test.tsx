@@ -1192,6 +1192,105 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 
+  it("renders consumer message actions filtered by role with the message reference", () => {
+    const run = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "user_row",
+            role: "user",
+            text: "A user request.",
+            sourceSeqEnd: 7,
+            threadId: "thr_main",
+          }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "An assistant answer.",
+            sourceSeqEnd: 9,
+            threadId: "thr_main",
+          }),
+        ]}
+        consumerMessageActions={[
+          {
+            id: "send-to-main",
+            pluginId: null,
+            icon: "ArrowTurnBackward",
+            label: "Send to main thread",
+            roles: ["assistant"],
+            run,
+          },
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const rowsWithAction = screen.getAllByRole("button", {
+      name: "Send to main thread",
+    });
+    expect(rowsWithAction).toHaveLength(1);
+    expect(
+      rowsWithAction[0]!.closest("[data-timeline-row-id]")?.getAttribute(
+        "data-timeline-row-id",
+      ),
+    ).toBe("assistant_row");
+
+    fireEvent.click(rowsWithAction[0]!);
+    expect(run).toHaveBeenCalledWith({
+      id: "assistant_row",
+      threadId: "thr_main",
+      role: "assistant",
+      text: "An assistant answer.",
+      sourceSeqEnd: 9,
+    });
+  });
+
+  it("renders roleless consumer actions on both roles and contains run errors", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "user_row",
+            role: "user",
+            text: "A user request.",
+            threadId: "thr_main",
+          }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "An assistant answer.",
+            threadId: "thr_main",
+          }),
+        ]}
+        consumerMessageActions={[
+          {
+            id: "explodes",
+            pluginId: null,
+            icon: null,
+            label: "Explodes",
+            run: () => {
+              throw new Error("kaboom");
+            },
+          },
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: "Explodes" });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]!);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('messageAction "explodes" failed: kaboom'),
+    );
+  });
+
   it("passes the highlighted text to plugin selection actions", async () => {
     const run = vi.fn();
     setPluginSlotRegistrations(

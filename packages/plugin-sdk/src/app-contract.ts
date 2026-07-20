@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
@@ -546,6 +546,31 @@ export interface PluginComposerApi {
 // ---------------------------------------------------------------------------
 
 /**
+ * A consumer-supplied action on the messages of one `ThreadChat` instance,
+ * rendered in the embedded timeline's per-message action bar alongside the
+ * native and slot-registered actions. Unlike the `messageAction` slot this is
+ * scoped to the rendering component, not registered globally.
+ */
+export interface ThreadChatMessageAction {
+  /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
+  id: string;
+  /** Tooltip / menu label for the action. */
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon?: string;
+  /**
+   * Message roles the action applies to. Omitted = both user and assistant
+   * messages.
+   */
+  roles?: readonly ("user" | "assistant")[];
+  /**
+   * Runs when the user activates the action. Errors (sync or async) are
+   * contained and logged; they never break the timeline.
+   */
+  run(message: ThreadChatMessageReference): void | Promise<void>;
+}
+
+/**
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
@@ -570,6 +595,13 @@ export interface ThreadChatProps {
   /** Bump to focus the composer (ignored by `variant: "timeline"`). */
   focusRequest?: number;
   className?: string;
+  /** Rendered above the conversation, scrolling with it. */
+  leadingContent?: ReactNode;
+  /**
+   * Actions rendered in this instance's per-message action bar (see
+   * {@link ThreadChatMessageAction}).
+   */
+  messageActions?: readonly ThreadChatMessageAction[];
 }
 
 /** Current app selection, derived from the route. */

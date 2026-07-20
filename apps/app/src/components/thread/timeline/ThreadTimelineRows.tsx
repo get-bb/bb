@@ -56,6 +56,7 @@ import type {
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineImageViewSrcResolver,
+  ThreadTimelineConsumerMessageAction,
   ThreadTimelinePluginMessageAction,
   ThreadTimelineTheme,
   ThreadTimelineUnreadDividerPlacement,
@@ -106,6 +107,7 @@ import {
   type PluginMessageActionSlot,
 } from "@/lib/plugin-slots.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import { isPluginSideChatSenderThread } from "@/lib/side-chat-plugin.js";
 import {
   buildMessageDirectiveRegistry,
   MessageDirectiveRegistryProvider,
@@ -149,6 +151,12 @@ export interface ThreadTimelineRowsProps {
    * floating selection menu's "Reply in side chat" action is unavailable.
    */
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
+  /**
+   * Consumer-supplied per-message actions scoped to this surface (the
+   * `ThreadChat` `messageActions` prop), rendered in the per-message action
+   * bar after the slot-registered plugin actions.
+   */
+  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -196,6 +204,8 @@ interface TimelineRendererStaticContextValue {
    * has no thread identity (plugin actions need a real thread context).
    */
   pluginMessageActions: readonly PluginMessageActionSlot[];
+  /** Surface-scoped consumer actions; empty when none were supplied. */
+  consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
   /**
    * Reports an assistant message's text selection to the timeline-level
    * controller. `undefined` when no selection action is wired (Add to chat /
@@ -780,6 +790,9 @@ export function findLastActionableUserMessageId(
   return lastMessageId;
 }
 
+const EMPTY_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
+  [];
+
 /**
  * Resolve the registered plugin `messageAction`s into concrete per-message
  * actions for one row. Undefined (no actions rendered) when the surface has
@@ -811,6 +824,45 @@ function buildRowPluginMessageActions(args: {
   }));
 }
 
+/**
+ * Resolve the surface-scoped consumer actions (the `ThreadChat`
+ * `messageActions` prop) for one row: filter by the row's role and contain
+ * `run` errors like the slot-registered plugin actions.
+ */
+function buildRowConsumerMessageActions(args: {
+  actions: readonly ThreadTimelineConsumerMessageAction[];
+  message: ThreadChatMessageReference;
+}): readonly ThreadTimelinePluginMessageAction[] {
+  const { actions, message } = args;
+  return actions
+    .filter(
+      (action) => action.roles === undefined || action.roles.includes(message.role),
+    )
+    .map((action) => ({
+      key: `consumer/${action.id}`,
+      pluginId: action.pluginId,
+      icon: action.icon,
+      label: action.label,
+      onSelect: () => {
+        const warn = (error: unknown) => {
+          console.warn(
+            `ThreadChat messageAction "${action.id}" failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        };
+        try {
+          const result = action.run(message);
+          if (result instanceof Promise) {
+            result.catch(warn);
+          }
+        } catch (error) {
+          warn(error);
+        }
+      },
+    }));
+}
+
 function ConversationRow({
   row,
   showAssistantMessageActions,
@@ -829,6 +881,7 @@ function ConversationRow({
     onSendToMainMessage,
     onSelectionAddToChat,
     pluginMessageActions,
+    consumerMessageActions,
     reportProseSelection,
     threadChildOrigin,
     onOpenLink,
@@ -852,12 +905,23 @@ function ConversationRow({
     text: row.text,
     sourceSeqEnd: row.sourceSeqEnd,
   };
-  const rowPluginActions = buildRowPluginMessageActions({
+  const rowSlotActions = buildRowPluginMessageActions({
     slots: pluginMessageActions,
     timelineThreadId: threadId,
     message: messageReference,
     openThreadPanel: onOpenPluginPanel,
   });
+  const rowConsumerActions =
+    consumerMessageActions.length === 0
+      ? []
+      : buildRowConsumerMessageActions({
+          actions: consumerMessageActions,
+          message: messageReference,
+        });
+  const rowPluginActions =
+    rowConsumerActions.length === 0
+      ? rowSlotActions
+      : [...(rowSlotActions ?? []), ...rowConsumerActions];
   if (row.role === "user") {
     const senderThreadMetadata =
       row.senderThreadId === null
@@ -888,6 +952,9 @@ function ConversationRow({
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
         senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}
+        senderIsPluginSideChat={isPluginSideChatSenderThread(
+          senderThreadMetadata,
+        )}
         systemMessageKind={row.systemMessageKind}
         systemMessageSubject={row.systemMessageSubject}
         pluginActions={rowPluginActions}
@@ -1965,6 +2032,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         timelineThreadId === undefined
           ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
           : messageActionSlots,
+      consumerMessageActions:
+        props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
@@ -1990,6 +2059,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onSendToMainMessage,
       selectionAddToChatHandler,
       messageActionSlots,
+      props.consumerMessageActions,
       reportProseSelection,
       props.threadChildOrigin,
       timelineThreadId,

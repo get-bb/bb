@@ -360,11 +360,14 @@ bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly five events. `thread.active` fires when an applied lifecycle
-transition enters the running `active` state. Observe-only handlers run
+Exactly six events. `thread.active` fires when an applied lifecycle
+transition enters the running `active` state. `thread.archived` fires after a
+thread is archived, including cascade archives (archiving a parent archives
+its children too, each with its own event). Observe-only handlers run
 fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
@@ -890,12 +893,23 @@ Host components:
   wherever plugin React runs (nav panels, thread-panel tabs, homepage and
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
-  `{ threadId, variant?, layout?, focusRequest?, className? }` —
+  `{ threadId, variant?, layout?, focusRequest?, className?,
+leadingContent?, messageActions? }` —
   `variant` is `"full"` (standard chat controls, default), `"compact"`
   (side-panel presentation), or `"timeline"` (transcript without a
   composer); `layout` is `"contained"` (fills and scrolls within the
   parent, default) or `"document"` (grows with page content);
-  `focusRequest` is a change-detected nonce that focuses the composer. The
+  `focusRequest` is a change-detected nonce that focuses the composer;
+  `leadingContent` is a `ReactNode` rendered above the conversation,
+  scrolling with it; `messageActions` is a list of
+  `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
+  rendered in this instance's per-message action bar after the native and
+  slot-registered actions — `roles` limits the action to `"user"` and/or
+  `"assistant"` messages (omitted = both), and `run(message)` receives the
+  same narrow `ThreadChatMessageReference` as the `messageAction` slot;
+  errors from `run` are contained and logged, never breaking the timeline.
+  Unlike the global `messageAction` slot, these actions are scoped to the
+  one `ThreadChat` instance that supplied them. The
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
@@ -1172,9 +1186,9 @@ Remaining reference examples in `examples/plugins/`:
   plugin is `needs-configuration`; `bb plugin reload <id>` remains available
   for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly five
+- Thread events are observe-only; there are exactly six
   (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
-  `thread.deleted`).
+  `thread.archived`, `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

@@ -5,7 +5,12 @@ import {
   type QueryCacheNotifyEvent,
   type QueryClient,
 } from "@tanstack/react-query";
-import type { ThreadChildOrigin, ThreadWithRuntime } from "@bb/domain";
+import type {
+  ThreadChildOrigin,
+  ThreadOriginKind,
+  ThreadVisibility,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import {
   allThreadQueryKeyPrefix,
   SIDEBAR_NAVIGATION_QUERY_KEY,
@@ -22,6 +27,9 @@ import {
 export interface SenderThreadMetadata {
   title: string | null;
   childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
+  originPluginId: string | null;
+  visibility: ThreadVisibility | null;
 }
 
 interface SenderThreadTitleSource {
@@ -32,6 +40,9 @@ interface SenderThreadTitleSource {
 interface SenderThreadMetadataSource extends SenderThreadTitleSource {
   id: string;
   childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
+  originPluginId: string | null;
+  visibility: ThreadVisibility;
 }
 
 function senderThreadTitle(source: SenderThreadTitleSource): string | null {
@@ -52,7 +63,13 @@ function addSenderThreadMetadata(
   if (existing && (existing.title !== null || title === null)) {
     return;
   }
-  metadataById.set(thread.id, { title, childOrigin: thread.childOrigin });
+  metadataById.set(thread.id, {
+    title,
+    childOrigin: thread.childOrigin,
+    originKind: thread.originKind,
+    originPluginId: thread.originPluginId,
+    visibility: thread.visibility,
+  });
 }
 
 function buildSenderThreadMetadataById(

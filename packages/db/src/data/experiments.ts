@@ -10,6 +10,7 @@ export function getExperiments(db: DbConnection): Experiments {
     .select({
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
       plugins: systemExperiments.plugins,
+      sideChatPlugin: systemExperiments.sideChatPlugin,
     })
     .from(systemExperiments)
     .where(eq(systemExperiments.id, SYSTEM_EXPERIMENTS_ROW_ID))
@@ -28,6 +29,7 @@ export function setExperiments(
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
       plugins: experiments.plugins,
+      sideChatPlugin: experiments.sideChatPlugin,
       updatedAt,
     })
     .onConflictDoUpdate({
@@ -35,6 +37,7 @@ export function setExperiments(
       set: {
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
         plugins: experiments.plugins,
+        sideChatPlugin: experiments.sideChatPlugin,
         updatedAt,
       },
     })

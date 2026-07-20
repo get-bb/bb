@@ -24,6 +24,11 @@ export function emitPluginThreadCreated(thread: Thread): void {
   emitter?.emitThreadCreated(thread);
 }
 
+/** Called after a thread is archived (archiveThreadWithLifecycleEffects). */
+export function emitPluginThreadArchived(thread: Thread): void {
+  emitter?.emitThreadArchived(thread);
+}
+
 /** Called after a thread is soft-deleted. */
 export function emitPluginThreadDeleted(thread: Thread): void {
   emitter?.emitThreadDeleted(thread);

@@ -39,6 +39,7 @@ import {
   ThreadTimelinePanelContent,
   ThreadTimelineSurface,
   type ThreadTimelineAddToChatHandler,
+  type ThreadTimelineConsumerMessageAction,
   type ThreadTimelineRowFilter,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSurfaceProps,
@@ -188,6 +189,8 @@ interface EmbeddedThreadChatSharedProps {
   timeline?: UseThreadTimelineControllerResult;
   rowFilter?: ThreadTimelineRowFilter;
   leadingContent?: ReactNode;
+  /** Surface-scoped consumer actions for the per-message action bar. */
+  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   /** Rows rendered while `threadId` is null (e.g. an optimistic first message). */
   draftModeTimelineRows?: readonly TimelineRow[];
   labels?: Partial<EmbeddedThreadChatLabels>;
@@ -283,6 +286,7 @@ function EmbeddedThreadChatWithComposer({
   timeline,
   rowFilter,
   leadingContent,
+  consumerMessageActions,
   draftModeTimelineRows,
   labels: labelOverrides,
   showLoadOlderRows = true,
@@ -1113,6 +1117,7 @@ function EmbeddedThreadChatWithComposer({
       <ThreadTimelinePanelContent
         isTurnSubmitting={isTurnSubmitting}
         leadingContent={leadingContent}
+        consumerMessageActions={consumerMessageActions}
         missingThreadLabel={labels.missingThread}
         onSendToMainMessage={onSendToMainMessage}
         onMessageAddToChat={handleAddToChat}

@@ -21,6 +21,8 @@ import {
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
+  type ThreadChatMessageAction,
+  type ThreadChatProps,
 } from "@bb/plugin-sdk";
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
@@ -119,6 +121,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
+  "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
@@ -246,6 +249,47 @@ const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegis
   : never = true;
 void _assertAllMessageActionRegistrationFieldsListed;
 
+/**
+ * Mirrors ThreadChatProps (app-contract.ts), compile-time checked in both
+ * directions like the registration guards above.
+ */
+const THREAD_CHAT_PROP_FIELDS = [
+  "threadId",
+  "variant",
+  "layout",
+  "focusRequest",
+  "className",
+  "leadingContent",
+  "messageActions",
+] as const satisfies readonly (keyof ThreadChatProps)[];
+
+type MissingThreadChatPropField = Exclude<
+  keyof ThreadChatProps,
+  (typeof THREAD_CHAT_PROP_FIELDS)[number]
+>;
+const _assertAllThreadChatPropFieldsListed: MissingThreadChatPropField extends never
+  ? true
+  : never = true;
+void _assertAllThreadChatPropFieldsListed;
+
+/** Mirrors ThreadChatMessageAction (app-contract.ts). */
+const THREAD_CHAT_MESSAGE_ACTION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "roles",
+  "run",
+] as const satisfies readonly (keyof ThreadChatMessageAction)[];
+
+type MissingThreadChatMessageActionField = Exclude<
+  keyof ThreadChatMessageAction,
+  (typeof THREAD_CHAT_MESSAGE_ACTION_FIELDS)[number]
+>;
+const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageActionField extends never
+  ? true
+  : never = true;
+void _assertAllThreadChatMessageActionFieldsListed;
+
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
 
@@ -326,6 +370,25 @@ describe("bb-plugin-authoring skill", () => {
       ).toContain(field);
     }
     expect(skill).toContain("sourceSeqEnd");
+  });
+
+  it("documents every ThreadChat prop", () => {
+    for (const field of THREAD_CHAT_PROP_FIELDS) {
+      expect(
+        skill,
+        `ThreadChat prop "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+  });
+
+  it("documents every ThreadChat message-action field", () => {
+    expect(skill).toContain("ThreadChatMessageAction");
+    for (const field of THREAD_CHAT_MESSAGE_ACTION_FIELDS) {
+      expect(
+        skill,
+        `ThreadChatMessageAction field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
   });
 
   it("documents the explicit plugin branding contract", () => {

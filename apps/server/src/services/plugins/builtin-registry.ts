@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Experiments } from "@bb/domain";
 
 export interface BundledPluginDefinition {
   /**
@@ -18,6 +19,11 @@ export interface BundledPluginDefinition {
   repoDirectory: "plugins" | "official-plugins";
   /** Browse-tab grouping; only meaningful for store entries. */
   category?: string;
+  /**
+   * Experiment key that must be on for this bundled plugin to load. Omitted =
+   * always loadable (builtins additionally bypass the `plugins` experiment).
+   */
+  experiment?: keyof Experiments;
 }
 
 export interface BundledPluginRegistration extends BundledPluginDefinition {
@@ -41,6 +47,12 @@ export const BUILTIN_PLUGINS = [
   },
   { name: "inline-vis", pluginId: "inline-vis", defaultEnabled: true },
   { name: "secrets", pluginId: "secrets", defaultEnabled: true },
+  {
+    name: "side-chat",
+    pluginId: "side-chat",
+    defaultEnabled: true,
+    experiment: "sideChatPlugin" as const,
+  },
   { name: "workflows", pluginId: "workflows", defaultEnabled: false },
 ].map(
   (plugin): BundledPluginDefinition => ({

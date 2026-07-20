@@ -149,7 +149,10 @@ export function registerSystemRoutes(
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
     const next = getExperiments(deps.db);
-    if (previous.plugins !== next.plugins) {
+    if (
+      previous.plugins !== next.plugins ||
+      previous.sideChatPlugin !== next.sideChatPlugin
+    ) {
       // Live toggle: plugin-affecting experiments load/unload matching rows.
       void pluginService.onExperimentsChanged().catch((error) => {
         deps.logger.error({ err: error }, "Plugin experiment toggle failed");

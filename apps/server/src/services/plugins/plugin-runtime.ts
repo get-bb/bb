@@ -5,16 +5,23 @@ import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
+import {
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Experiments,
+  type Thread,
+} from "@bb/domain";
 import { buildPluginApp } from "@bb/plugin-build";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
+  getExperiments,
   getInstalledPlugin,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
+import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
@@ -631,6 +638,26 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return row.provenance === "builtin";
   }
 
+  /**
+   * Per-plugin experiment gate declared in the bundled registry (e.g. the
+   * side-chat builtin behind `sideChatPlugin`). Open for every plugin whose
+   * registry entry names no experiment. Distinct from the global `plugins`
+   * experiment: a bundled plugin's own experiment gates it even when it is
+   * builtin-provenance exempt from the global one.
+   */
+  function pluginExperimentGate(pluginId: string): keyof Experiments | null {
+    const bundled = deps.bundledPlugins ?? BUNDLED_PLUGINS;
+    return (
+      bundled.find((plugin) => plugin.pluginId === pluginId)?.experiment ?? null
+    );
+  }
+
+  function pluginExperimentGateOpen(pluginId: string): boolean {
+    const experiment = pluginExperimentGate(pluginId);
+    if (experiment === null) return true;
+    return getExperiments(deps.db)[experiment];
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && experimentGateExempt(row);
@@ -639,6 +666,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
+    if (!pluginExperimentGateOpen(row.id)) {
+      return `disabled by the "${pluginExperimentGate(row.id)}" experiment`;
+    }
     if (!experimentGateExempt(row)) {
       return 'disabled by the "Plugins" experiment';
     }
@@ -646,11 +676,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    return experimentGateExempt(row) || deps.isEnabled();
+    return (
+      pluginExperimentGateOpen(row.id) &&
+      (experimentGateExempt(row) || deps.isEnabled())
+    );
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return plugin.experimentExempt || deps.isEnabled();
+    return (
+      pluginExperimentGateOpen(plugin.manifest.id) &&
+      (plugin.experimentExempt || deps.isEnabled())
+    );
   }
 
   function shouldExposePluginId(id: string): boolean {
