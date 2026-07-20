@@ -49,6 +49,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     attachments,
     composer,
+    composerTarget,
     execution,
     executionReadOnly,
     focusEndKey,
@@ -73,6 +74,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       | "onModifierSubmit"
       | "onSubmit"
     >;
+    composerTarget?: HTMLElement | null;
     execution: {
       model: {
         onChange: (value: string) => void;
@@ -115,6 +117,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     mocks.latestPluginComposerHost = pluginComposerHost ?? null;
     return (
       <div>
+        <span data-testid="side-chat-composer-location">
+          {composerTarget ? "inline" : "bottom"}
+        </span>
         <input
           data-testid="side-chat-composer"
           data-focus-end-key={focusEndKey}
@@ -1014,11 +1019,17 @@ describe("SideChatTabContent", () => {
       }),
     ];
     renderSideChat({ threadId: "thr_side" });
+    expect(screen.getByTestId("side-chat-composer-location").textContent).toBe(
+      "bottom",
+    );
     fireEvent.change(screen.getByTestId("side-chat-composer"), {
       target: { value: "Untouched bottom side draft" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Edit side queue 1" }));
 
+    expect(screen.getByTestId("side-chat-composer-location").textContent).toBe(
+      "bottom",
+    );
     expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
       "value",
       "Queued side message",
@@ -1088,6 +1099,9 @@ describe("SideChatTabContent", () => {
         "value",
         "Untouched bottom side draft",
       ),
+    );
+    expect(screen.getByTestId("side-chat-composer-location").textContent).toBe(
+      "bottom",
     );
     expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
   });

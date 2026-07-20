@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -53,6 +54,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
+import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   Tooltip,
   TooltipContent,
@@ -91,7 +93,6 @@ export interface QueuedMessageInlineEditor {
   queuedMessageId: string;
   queuedMessageIndex: number;
   ready: boolean;
-  onComposerTargetChange: (target: HTMLDivElement | null) => void;
   onDismiss: () => void;
 }
 
@@ -139,23 +140,39 @@ const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
-const INLINE_EDITOR_CHROME_HEIGHT = 200;
 const SURFACE_DRAG_THRESHOLD = 72;
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
 function getWorkspaceHeight({
-  inlineEditing,
   messageCount,
 }: {
-  inlineEditing: boolean;
   messageCount: number;
 }): number {
-  const estimatedHeight = inlineEditing
-    ? INLINE_EDITOR_CHROME_HEIGHT +
-      Math.max(0, messageCount - 1) * WORKSPACE_ROW_HEIGHT
-    : WORKSPACE_CHROME_HEIGHT +
-      Math.max(1, messageCount) * WORKSPACE_ROW_HEIGHT;
+  const estimatedHeight =
+    WORKSPACE_CHROME_HEIGHT + Math.max(1, messageCount) * WORKSPACE_ROW_HEIGHT;
   return clamp(estimatedHeight, WORKSPACE_MIN_HEIGHT, WORKSPACE_MAX_HEIGHT);
+}
+
+export function getInlineEditorSurfaceMaxHeight({
+  containerHeight,
+  surfaceHeight,
+  viewportHeight,
+}: {
+  containerHeight: number;
+  surfaceHeight: number;
+  viewportHeight: number;
+}): number {
+  // Measure everything that is not the queue — the real composer, prompt
+  // stack gaps, footer padding, and safe-area chrome — so edit mode adapts to
+  // the composer's occupied height instead of guessing at a bottom offset.
+  const occupiedHeightOutsideQueue = Math.max(
+    0,
+    containerHeight - surfaceHeight,
+  );
+  return Math.max(
+    COLLAPSED_HEIGHT,
+    Math.floor(viewportHeight - occupiedHeightOutsideQueue),
+  );
 }
 
 function queuedMarkdownPreviewClass(compact: boolean): string {
@@ -914,19 +931,17 @@ function QueuedMessageInlineEditorSlot({
             variant="ghost"
             className="ml-auto size-6 text-subtle-foreground"
             onClick={editor.onDismiss}
-            aria-label="Move editor back to the prompt box"
+            aria-label="Stop editing queued message"
           >
             <Icon name="X" className="size-3" aria-hidden />
           </Button>
         </div>
         {editor.ready ? (
-          <div
-            ref={editor.onComposerTargetChange}
-            className="relative min-h-28 duration-200 animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none"
-            data-queued-message-composer-target=""
-          />
+          <p className="pb-2 pl-1 text-xs text-muted-foreground">
+            Edit with the prompt box below.
+          </p>
         ) : (
-          <div className="flex min-h-28 items-center justify-center rounded-xl border border-border bg-background text-xs text-muted-foreground shadow-lift">
+          <div className="flex min-h-8 items-center pl-1 text-xs text-muted-foreground">
             Opening editor…
           </div>
         )}
@@ -969,7 +984,12 @@ export function QueuedMessagesList({
   );
   const [surfaceDragging, setSurfaceDragging] = useState(false);
   const [surfaceDragOffset, setSurfaceDragOffset] = useState(0);
+  const [inlineEditorMaxHeight, setInlineEditorMaxHeight] = useState<
+    number | null
+  >(null);
   const inlineEditorActive = inlineEditor !== undefined;
+  const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
+  const surfaceRef = useRef<HTMLElement>(null);
   const surfaceDragStartYRef = useRef(0);
   const surfaceDragOffsetRef = useRef(0);
   const surfaceDraggingRef = useRef(false);
@@ -985,6 +1005,57 @@ export function QueuedMessagesList({
   } = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
   });
+
+  const measureInlineEditorMaxHeight = useCallback(() => {
+    if (!inlineEditorActive) {
+      setInlineEditorMaxHeight(null);
+      return;
+    }
+    const viewport = getScrollElement?.();
+    const surface = surfaceRef.current;
+    const composerShell = surface?.closest<HTMLElement>("[data-app-composer]");
+    const container = composerShell?.parentElement;
+    if (!viewport || !surface || !container) {
+      setInlineEditorMaxHeight(null);
+      return;
+    }
+
+    const nextHeight = getInlineEditorSurfaceMaxHeight({
+      containerHeight: container.getBoundingClientRect().height,
+      surfaceHeight: surface.getBoundingClientRect().height,
+      viewportHeight: viewport.clientHeight,
+    });
+    setInlineEditorMaxHeight((currentHeight) =>
+      currentHeight === nextHeight ? currentHeight : nextHeight,
+    );
+  }, [getScrollElement, inlineEditorActive]);
+
+  useLayoutEffect(() => {
+    measureInlineEditorMaxHeight();
+    if (!inlineEditorActive) return;
+
+    const viewport = getScrollElement?.();
+    const surface = surfaceRef.current;
+    const composerShell = surface?.closest<HTMLElement>("[data-app-composer]");
+    const container = composerShell?.parentElement;
+    const animationFrame = window.requestAnimationFrame(
+      measureInlineEditorMaxHeight,
+    );
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measureInlineEditorMaxHeight);
+    if (viewport) resizeObserver?.observe(viewport);
+    if (surface) resizeObserver?.observe(surface);
+    if (composerShell) resizeObserver?.observe(composerShell);
+    if (container) resizeObserver?.observe(container);
+    window.addEventListener("resize", measureInlineEditorMaxHeight);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measureInlineEditorMaxHeight);
+    };
+  }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
@@ -1235,19 +1306,22 @@ export function QueuedMessagesList({
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
-          inlineEditing: inlineEditor !== undefined,
           messageCount: queuedMessages.length,
         })
       : mode === "drawer"
         ? Math.min(DRAWER_HEIGHT, 57 + Math.max(1, queuedMessages.length) * 33)
         : COLLAPSED_HEIGHT;
-  const surfaceHeight = surfaceDragging
+  const unconstrainedSurfaceHeight = surfaceDragging
     ? clamp(
         baseSurfaceHeight + surfaceDragOffset,
         COLLAPSED_HEIGHT,
         WORKSPACE_MAX_HEIGHT + 22,
       )
     : baseSurfaceHeight;
+  const surfaceHeight =
+    inlineEditor && inlineEditorMaxHeight !== null
+      ? Math.min(unconstrainedSurfaceHeight, inlineEditorMaxHeight)
+      : unconstrainedSurfaceHeight;
 
   const queueItems: ReactNode[] = [];
   let messageIndex = 0;
@@ -1330,6 +1404,7 @@ export function QueuedMessagesList({
 
   return (
     <PromptStackCard
+      rootRef={surfaceRef}
       ariaLabel="Queued messages"
       style={{ height: surfaceHeight }}
       className={cn(

@@ -529,10 +529,7 @@ export function SideChatTabContent({
     [childThreadId, inlineEditingQueuedMessageState, queuedMessages],
   );
   const inlineEditSessionIdRef = useRef(0);
-  const [inlineComposerTarget, setInlineComposerTarget] =
-    useState<HTMLDivElement | null>(null);
   const dismissInlineQueuedMessageEditor = useCallback(() => {
-    setInlineComposerTarget(null);
     setInlineEditingQueuedMessage(null);
   }, []);
   const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(
@@ -542,7 +539,6 @@ export function SideChatTabContent({
             queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
             queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
             ready: true,
-            onComposerTargetChange: setInlineComposerTarget,
             onDismiss: dismissInlineQueuedMessageEditor,
           }
         : undefined,
@@ -1735,7 +1731,6 @@ export function SideChatTabContent({
           composer={composerConfig}
           pluginComposerHost={activePluginComposerHost}
           textEffect={composerTextEffect}
-          composerTarget={inlineComposerTarget}
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
           execution={executionConfig}

@@ -73,6 +73,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     attachments,
     composer,
+    composerTarget,
     execution,
     executionReadOnly,
     permission,
@@ -91,6 +92,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       onSubmit: () => void;
       submitMode: { kind: string; reason?: string };
     } | null;
+    composerTarget?: HTMLElement | null;
     execution: {
       footerAction?: {
         label: string;
@@ -127,6 +129,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       </div>
       <div data-testid="attachment-count">{attachments.items.length}</div>
       <div data-testid="composer-text-effect">{textEffect ?? "none"}</div>
+      <div data-testid="composer-location">
+        {composerTarget ? "inline" : "bottom"}
+      </div>
       <div data-testid="plugin-composer-scope">
         {pluginComposerHost
           ? `${pluginComposerHost.scope.kind}:${
@@ -721,10 +726,12 @@ describe("ThreadDetailPromptArea", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
     renderPromptArea();
+    expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
 
+    expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
     expect(
       (
@@ -759,6 +766,7 @@ describe("ThreadDetailPromptArea", () => {
         ).value,
       ).toBe("Keep this bottom draft");
     });
+    expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
   });
 
   it("exposes the inline queued draft to plugins without dropping attachments", async () => {

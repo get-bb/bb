@@ -13,11 +13,25 @@ import type { Active, DroppableContainer } from "@dnd-kit/core";
 import {
   QueuedMessagesList,
   clampQueuedMessageDragTransform,
+  getInlineEditorSurfaceMaxHeight,
   queuedMessageCollisionDetection,
   queuedMessageSortingStrategy,
   resolveQueuedMessageDrag,
   snapGroupBoundaryDragTransform,
 } from "./QueuedMessagesList";
+
+const bottomAnchorMocks = vi.hoisted(() => ({
+  scrollElement: null as HTMLElement | null,
+}));
+
+vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
+  useBottomAnchoredScroll: () =>
+    bottomAnchorMocks.scrollElement === null
+      ? null
+      : {
+          getScrollElement: () => bottomAnchorMocks.scrollElement,
+        },
+}));
 
 const noop = () => {};
 
@@ -103,6 +117,8 @@ function renderQueuedMessagesWithOptions(
 
 afterEach(() => {
   cleanup();
+  bottomAnchorMocks.scrollElement = null;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -300,8 +316,7 @@ describe("QueuedMessagesList", () => {
     ).not.toBeNull();
   });
 
-  it("replaces the edited row with the real-composer target", () => {
-    const onComposerTargetChange = vi.fn();
+  it("replaces the edited row with a marker for the bottom composer", () => {
     const onDismiss = vi.fn();
     const queuedMessages = [
       makeQueuedMessage("q_one", "First queued message"),
@@ -317,7 +332,6 @@ describe("QueuedMessagesList", () => {
           // caller index arrives while the queue is changing.
           queuedMessageIndex: 0,
           ready: true,
-          onComposerTargetChange,
           onDismiss,
         }}
         sendDisabled={false}
@@ -359,7 +373,7 @@ describe("QueuedMessagesList", () => {
     ).toBe(true);
     const editingLabel = getByText(/Editing queued message/u);
     const dismissButton = getByRole("button", {
-      name: "Move editor back to the prompt box",
+      name: "Stop editing queued message",
     });
     expect(editingLabel.parentElement?.className).toContain(
       "text-subtle-foreground",
@@ -369,12 +383,13 @@ describe("QueuedMessagesList", () => {
     expect(
       dismissButton.querySelector('[data-icon="X"]')?.getAttribute("class"),
     ).toContain("size-3");
-    expect(onComposerTargetChange).toHaveBeenCalledWith(
+    expect(container.textContent).toContain("Edit with the prompt box below.");
+    expect(
       container.querySelector("[data-queued-message-composer-target]"),
-    );
+    ).toBeNull();
 
     fireEvent.click(
-      getByRole("button", { name: "Move editor back to the prompt box" }),
+      getByRole("button", { name: "Stop editing queued message" }),
     );
     expect(onDismiss).toHaveBeenCalledOnce();
   });
@@ -387,7 +402,6 @@ describe("QueuedMessagesList", () => {
           queuedMessageId: "q_missing",
           queuedMessageIndex: 0,
           ready: true,
-          onComposerTargetChange: noop,
           onDismiss: noop,
         }}
         sendDisabled={false}
@@ -440,7 +454,6 @@ describe("QueuedMessagesList", () => {
           queuedMessageId: "q_0",
           queuedMessageIndex: 0,
           ready: true,
-          onComposerTargetChange: noop,
           onDismiss: noop,
         }}
       />,
@@ -449,7 +462,7 @@ describe("QueuedMessagesList", () => {
       'section[aria-label="Queued messages"]',
     );
 
-    expect(surface?.style.height).toBe("320px");
+    expect(surface?.style.height).toBe("240px");
 
     rerender(<QueuedMessagesList {...sharedProps} />);
 
@@ -488,7 +501,6 @@ describe("QueuedMessagesList", () => {
           queuedMessageId: "q_one",
           queuedMessageIndex: 0,
           ready: true,
-          onComposerTargetChange: noop,
           onDismiss,
         }}
       />,
@@ -506,6 +518,101 @@ describe("QueuedMessagesList", () => {
           ?.getAttribute("data-queued-messages-mode"),
       ).toBe("collapsed");
     });
+  });
+
+  it("fits edit mode above the real composer at constrained heights and restores the drawer", async () => {
+    const viewport = document.createElement("div");
+    Object.defineProperty(viewport, "clientHeight", { value: 320 });
+    bottomAnchorMocks.scrollElement = viewport;
+
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-queue-test-footer")) {
+          return new DOMRect(0, 0, 600, 420);
+        }
+        if (this.getAttribute("aria-label") === "Queued messages") {
+          return new DOMRect(0, 0, 600, 240);
+        }
+        return nativeGetBoundingClientRect.call(this);
+      },
+    );
+
+    const queuedMessages = [
+      makeQueuedMessage("q_one", "First queued message"),
+      makeQueuedMessage("q_two", "Second queued message"),
+    ];
+    const sharedProps = {
+      queuedMessages,
+      sendDisabled: false,
+      actionDisabled: false,
+      processingMessageId: null,
+      processingAction: null,
+      onSendImmediately: noop,
+      onReorder: noop,
+      onSetGroupBoundary: noop,
+      onEdit: noop,
+      onDelete: noop,
+    } as const;
+    const renderSurface = (editing: boolean) => (
+      <div data-queue-test-footer="">
+        <div data-app-composer="">
+          <QueuedMessagesList
+            {...sharedProps}
+            inlineEditor={
+              editing
+                ? {
+                    queuedMessageId: "q_one",
+                    queuedMessageIndex: 0,
+                    ready: true,
+                    onDismiss: noop,
+                  }
+                : undefined
+            }
+          />
+          <div data-test-bottom-composer="">Bottom composer</div>
+        </div>
+      </div>
+    );
+    const { container, rerender } = render(renderSurface(true));
+    const surface = container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    );
+    const composer = container.querySelector("[data-test-bottom-composer]");
+
+    await waitFor(() => expect(surface?.style.height).toBe("140px"));
+    expect(surface?.compareDocumentPosition(composer as Node) ?? 0).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    rerender(renderSurface(false));
+
+    await waitFor(() => {
+      expect(surface?.style.height).toBe("123px");
+      expect(
+        container
+          .querySelector("[data-queued-messages-mode]")
+          ?.getAttribute("data-queued-messages-mode"),
+      ).toBe("drawer");
+    });
+  });
+
+  it("reserves the actual occupied composer and footer height", () => {
+    expect(
+      getInlineEditorSurfaceMaxHeight({
+        containerHeight: 420,
+        surfaceHeight: 240,
+        viewportHeight: 320,
+      }),
+    ).toBe(140);
+    expect(
+      getInlineEditorSurfaceMaxHeight({
+        containerHeight: 420,
+        surfaceHeight: 240,
+        viewportHeight: 200,
+      }),
+    ).toBe(44);
   });
 
   it("renders queued blockquote markdown as a compact quote preview", () => {

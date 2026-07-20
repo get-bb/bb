@@ -624,9 +624,6 @@ function Row({
     queuedMessageId: string;
     queuedMessageIndex: number;
   } | null>(null);
-  const [composerTarget, setComposerTarget] = useState<HTMLDivElement | null>(
-    null,
-  );
   const handleChangeMessage = (
     nextMessage: string,
     nextMentions: PromptTextMention[],
@@ -650,7 +647,6 @@ function Row({
     setMentionRanges(nextMentions);
   };
   const dismissInlineEditor = useCallback(() => {
-    setComposerTarget(null);
     setInlineEditingQueuedMessage(null);
   }, []);
   const handleEditQueuedMessage = useCallback(
@@ -674,7 +670,6 @@ function Row({
             queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
             queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
             ready: true,
-            onComposerTargetChange: setComposerTarget,
             onDismiss: dismissInlineEditor,
           }
         : undefined,
@@ -767,7 +762,6 @@ function Row({
                 threadRuntimeDisplayStatus,
               }
         }
-        composerTarget={composerTarget}
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
         execution={execution}

@@ -318,6 +318,18 @@ describe("useComposer", () => {
           >
             {label}-set-blank-row-status
           </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.setThreadRowStatus(
+                JSON.parse(
+                  '{"icon":false,"label":42,"effect":"pulse","tone":"loud"}',
+                ),
+              )
+            }
+          >
+            {label}-set-malformed-row-status
+          </button>
           <button type="button" onClick={() => composer.focus()}>
             {label}-focus
           </button>
@@ -575,7 +587,7 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_queue")).toBeNull();
   });
 
-  it("rejects a blank thread-row status label at the plugin boundary", () => {
+  it("rejects blank and malformed thread-row statuses at the plugin boundary", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     registerComposerProbe("invalid-status");
 
@@ -594,6 +606,14 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_invalid_status")).toEqual(validStatus);
     expect(warn).toHaveBeenCalledWith(
       '[plugin:demo] useComposer().setThreadRowStatus: "label" must be a non-empty string',
+    );
+
+    fireEvent.click(
+      screen.getByText("invalid-status-set-malformed-row-status"),
+    );
+    expect(getPluginThreadRowStatus("thr_invalid_status")).toEqual(validStatus);
+    expect(warn).toHaveBeenCalledWith(
+      "[plugin:demo] useComposer().setThreadRowStatus: invalid status",
     );
   });
 

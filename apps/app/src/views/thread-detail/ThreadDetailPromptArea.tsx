@@ -310,10 +310,7 @@ export function ThreadDetailPromptArea({
   const focusPluginComposer = useCallback(() => {
     setEditFocusNonce((nonce) => nonce + 1);
   }, []);
-  const [inlineComposerTarget, setInlineComposerTarget] =
-    useState<HTMLDivElement | null>(null);
   const dismissInlineQueuedMessageEditor = useCallback(() => {
-    setInlineComposerTarget(null);
     commitInlineQueuedMessage(null);
   }, [commitInlineQueuedMessage]);
   useEffect(() => {
@@ -340,7 +337,6 @@ export function ThreadDetailPromptArea({
             queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
             queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
             ready: true,
-            onComposerTargetChange: setInlineComposerTarget,
             onDismiss: dismissInlineQueuedMessageEditor,
           }
         : undefined,
@@ -1630,7 +1626,6 @@ export function ThreadDetailPromptArea({
       textEffect={
         inlineEditingQueuedMessage ? queuedComposerTextEffect : promptTextEffect
       }
-      composerTarget={inlineComposerTarget}
       zenModeResetKey={thread.id}
       focusEndKey={focusEndKey}
       environmentSummary={environmentSummary}

@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, type Ref } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
@@ -32,6 +32,7 @@ export interface PromptStackCardProps {
    */
   ariaLabel?: string;
   className?: string;
+  rootRef?: Ref<HTMLElement>;
   style?: CSSProperties;
   /**
    * Makes the card keyboard-focusable — set to 0 when the card is itself a
@@ -51,12 +52,14 @@ export function PromptStackCard({
   children,
   ariaLabel,
   className,
+  rootRef,
   style,
   tabIndex,
 }: PromptStackCardProps) {
   if (ariaLabel) {
     return (
       <section
+        ref={rootRef}
         aria-label={ariaLabel}
         className={cn(BASE_CHROME, className)}
         style={style}
@@ -68,6 +71,7 @@ export function PromptStackCard({
   }
   return (
     <div
+      ref={rootRef as Ref<HTMLDivElement>}
       className={cn(BASE_CHROME, className)}
       style={style}
       tabIndex={tabIndex}
