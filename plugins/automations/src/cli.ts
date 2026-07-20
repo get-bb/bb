@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { AutomationService } from "./service.js";
 import type {
   AgentEnvironment,
+  AgentExecutionUpdate,
   AutomationResponse,
   AutomationRunResponse,
   AutomationScriptInterpreter,
@@ -183,6 +184,30 @@ async function resolvePermissionMode(
   );
 }
 
+function validateAgentTargetOptions(args: ParsedArgs): void {
+  const targetOptionNames = [
+    "target-thread",
+    "environment",
+    "new-environment",
+  ] as const;
+  const providedTargetOptions = targetOptionNames.filter((name) =>
+    args.flags.has(name),
+  );
+  for (const name of providedTargetOptions) {
+    if (!flag(args, name)) {
+      throw new Error(`Missing required option --${name} <value>.`);
+    }
+  }
+  if (providedTargetOptions.length > 1) {
+    throw new Error(
+      "Cannot combine target options: --target-thread, --environment, and --new-environment.",
+    );
+  }
+  if (args.flags.has("base-branch") && !args.flags.has("new-environment")) {
+    throw new Error("--base-branch requires --new-environment worktree.");
+  }
+}
+
 function parseScriptInterpreter(
   value: string | undefined,
 ): AutomationScriptInterpreter | undefined {
@@ -327,6 +352,7 @@ async function buildExecution(
         "Agent automations require --provider and --model alongside --prompt.",
       );
     }
+    validateAgentTargetOptions(args);
     return {
       mode: "agent",
       prompt,
@@ -375,21 +401,54 @@ async function buildExecution(
   };
 }
 
-const EXECUTION_FLAG_NAMES = [
-  "prompt",
+const COMPLETE_EXECUTION_FLAG_NAMES = [
   "provider",
   "model",
-  "permission-mode",
-  "environment",
-  "new-environment",
-  "base-branch",
-  "target-thread",
   "script",
   "script-file",
   "interpreter",
   "timeout",
   "env-json",
 ] as const;
+
+async function buildAgentExecutionUpdate(
+  bb: Pick<BbPluginApi, "sdk">,
+  args: ParsedArgs,
+): Promise<AgentExecutionUpdate | undefined> {
+  const agentOptionNames = [
+    "prompt",
+    "permission-mode",
+    "target-thread",
+    "environment",
+    "new-environment",
+    "base-branch",
+  ] as const;
+  if (!agentOptionNames.some((name) => args.flags.has(name))) return undefined;
+
+  validateAgentTargetOptions(args);
+  const update: AgentExecutionUpdate = {};
+  if (args.flags.has("prompt")) update.prompt = requireFlag(args, "prompt");
+  if (args.flags.has("permission-mode")) {
+    update.permissionMode = parsePermissionMode(
+      requireFlag(args, "permission-mode"),
+    );
+  }
+  if (args.flags.has("target-thread")) {
+    update.target = {
+      type: "target-thread",
+      threadId: requireFlag(args, "target-thread"),
+    };
+  } else if (
+    args.flags.has("environment") ||
+    args.flags.has("new-environment")
+  ) {
+    update.target = {
+      type: "environment",
+      environment: await buildAgentEnvironment(bb, args),
+    };
+  }
+  return update;
+}
 
 async function buildUpdateRequest(
   bb: Pick<BbPluginApi, "sdk">,
@@ -409,16 +468,22 @@ async function buildUpdateRequest(
   ) {
     request.trigger = buildTrigger(args);
   }
-  if (EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))) {
+  if (COMPLETE_EXECUTION_FLAG_NAMES.some((name) => args.flags.has(name))) {
     request.execution = await buildExecution(bb, args);
+  } else {
+    const agentUpdate = await buildAgentExecutionUpdate(bb, args);
+    if (agentUpdate !== undefined) {
+      request.experimental_agent = agentUpdate;
+    }
   }
   if (
     request.name === undefined &&
     request.trigger === undefined &&
-    request.execution === undefined
+    request.execution === undefined &&
+    request.experimental_agent === undefined
   ) {
     throw new Error(
-      "No changes requested. Provide --name, schedule flags, or a complete agent/script execution.",
+      "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent update flags.",
     );
   }
   return request;
@@ -499,7 +564,7 @@ function helpText(): string {
 bb automation list --project <id>
 bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>)
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>] [--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>]
+bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete agent/script execution flags | partial agent update flags]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]

@@ -424,6 +424,13 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Use `bb automation list`, `bb automation show <id>`, and
   `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
   run's captured stdout.
+- Partially update an existing agent automation in place by omitting
+  `--provider` and `--model` and using `bb automation update <id> --project <id>
+--prompt "..."`, `--permission-mode accept-edits|auto|full`, or exactly one
+  target option:
+  `--target-thread <id>`, `--environment <id-or-path>`, or
+  `--new-environment worktree [--base-branch <branch>]`. Omitted execution
+  fields are preserved; target options are mutually exclusive.
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.

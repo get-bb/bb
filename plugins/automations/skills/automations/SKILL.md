@@ -80,7 +80,7 @@ Managing:
 ```bash
 bb plugin run automations list --project <id>
 bb plugin run automations show <automationId> --project <id>
-bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [mode flags]
+bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [complete execution flags | partial agent update flags]
 bb plugin run automations pause <automationId> --project <id>
 bb plugin run automations resume <automationId> --project <id>
 bb plugin run automations run <automationId> --project <id> [--idempotency-key <key>]
@@ -88,9 +88,29 @@ bb plugin run automations runs <automationId> --project <id> [--limit <count>] [
 bb plugin run automations delete <automationId> --project <id> --yes
 ```
 
-An execution update is a complete replacement. Provide `--prompt`, `--provider`,
-and `--model` together to replace the execution with an agent, or provide
-`--script`/`--script-file` to replace it with a script. Include every desired
-mode-specific setting; settings from the previous execution do not carry over.
+Choose one of two execution update forms:
+
+- A complete replacement uses `--prompt`, `--provider`, and `--model` together
+  to replace the execution with an agent, or `--script`/`--script-file` to
+  replace it with a script. Include every desired mode-specific setting;
+  settings from the previous execution do not carry over.
+- A partial agent update omits `--provider` and `--model`, preserves every
+  omitted execution field, and edits the existing agent automation in place.
+  Use any combination of `--prompt` and
+  `--permission-mode accept-edits|auto|full`, then choose at most one execution
+  target:
+
+```bash
+bb plugin run automations update <automationId> --project <id> \
+  --environment <environment-id-or-path>
+bb plugin run automations update <automationId> --project <id> \
+  --target-thread <thread-id>
+bb plugin run automations update <automationId> --project <id> \
+  --new-environment worktree [--base-branch <branch>]
+```
+
+`--target-thread`, `--environment`, and `--new-environment` are mutually
+exclusive. These flags apply only to agent automations; script automations have
+no execution environment.
 
 Every command supports `--json`.
