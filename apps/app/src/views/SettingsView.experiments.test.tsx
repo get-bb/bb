@@ -26,18 +26,35 @@ function renderSection(overrides?: {
 }
 
 describe("ExperimentsSettingsSection side-chat plugin toggle", () => {
-  it("is hidden while the Plugins experiment is off", () => {
-    renderSection({ pluginsEnabled: false });
-    expect(screen.queryByLabelText("Side chat plugin")).toBeNull();
+  it("is visible but disabled while the Plugins experiment is off", () => {
+    const onChange = vi.fn();
+    renderSection({
+      pluginsEnabled: false,
+      onSideChatPluginEnabledChange: onChange,
+    });
+    const toggle = screen.getByLabelText("Side chat plugin");
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.queryByText(/Requires the Plugins experiment/),
+    ).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("appears when the Plugins experiment is on and reports toggles", () => {
+  it("shows unchecked while Plugins is off even if the stored flag is on", () => {
+    renderSection({ pluginsEnabled: false, sideChatPluginEnabled: true });
+    const toggle = screen.getByLabelText("Side chat plugin");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("is enabled when the Plugins experiment is on and reports toggles", () => {
     const onChange = vi.fn();
     renderSection({
       pluginsEnabled: true,
       onSideChatPluginEnabledChange: onChange,
     });
     const toggle = screen.getByLabelText("Side chat plugin");
+    expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);
     expect(onChange).toHaveBeenCalledWith(true);
   });

@@ -1,8 +1,8 @@
 {
-  "id": "5540b14b-aff2-41f5-942d-bece66fde4cd",
-  "prevId": "36647369-2ebb-483c-a0b4-fa1a7beb098c",
   "version": "6",
   "dialect": "sqlite",
+  "id": "b216aca7-5dde-41a2-950c-c896509504e2",
+  "prevId": "36647369-2ebb-483c-a0b4-fa1a7beb098c",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -324,15 +324,15 @@
         "apikey_referenceId_user_id_fk": {
           "name": "apikey_referenceId_user_id_fk",
           "tableFrom": "apikey",
+          "tableTo": "user",
           "columnsFrom": [
             "referenceId"
           ],
-          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -561,28 +561,28 @@
         "environments_project_id_projects_id_fk": {
           "name": "environments_project_id_projects_id_fk",
           "tableFrom": "environments",
+          "tableTo": "projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "environments_host_id_hosts_id_fk": {
           "name": "environments_host_id_hosts_id_fk",
           "tableFrom": "environments",
+          "tableTo": "hosts",
           "columnsFrom": [
             "host_id"
           ],
-          "tableTo": "hosts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -731,36 +731,36 @@
             "created_at",
             "id"
           ],
-          "where": "\"events\".\"type\" = 'item/completed'",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"events\".\"type\" = 'item/completed'"
         }
       },
       "foreignKeys": {
         "events_thread_id_threads_id_fk": {
           "name": "events_thread_id_threads_id_fk",
           "tableFrom": "events",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "events_environment_id_environments_id_fk": {
           "name": "events_environment_id_environments_id_fk",
           "tableFrom": "events",
+          "tableTo": "environments",
           "columnsFrom": [
             "environment_id"
           ],
-          "tableTo": "environments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -914,15 +914,15 @@
         "host_daemon_sessions_host_id_hosts_id_fk": {
           "name": "host_daemon_sessions_host_id_hosts_id_fk",
           "tableFrom": "host_daemon_sessions",
+          "tableTo": "hosts",
           "columnsFrom": [
             "host_id"
           ],
-          "tableTo": "hosts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1254,15 +1254,15 @@
         "plugins_active_artifact_id_plugin_artifacts_id_fk": {
           "name": "plugins_active_artifact_id_plugin_artifacts_id_fk",
           "tableFrom": "plugins",
+          "tableTo": "plugin_artifacts",
           "columnsFrom": [
             "active_artifact_id"
           ],
-          "tableTo": "plugin_artifacts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1521,15 +1521,15 @@
         "pending_interactions_thread_id_threads_id_fk": {
           "name": "pending_interactions_thread_id_threads_id_fk",
           "tableFrom": "pending_interactions",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2021,15 +2021,15 @@
         "project_execution_defaults_project_id_projects_id_fk": {
           "name": "project_execution_defaults_project_id_projects_id_fk",
           "tableFrom": "project_execution_defaults",
+          "tableTo": "projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2125,28 +2125,28 @@
         "project_sources_project_id_projects_id_fk": {
           "name": "project_sources_project_id_projects_id_fk",
           "tableFrom": "project_sources",
+          "tableTo": "projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "project_sources_host_id_hosts_id_fk": {
           "name": "project_sources_host_id_hosts_id_fk",
           "tableFrom": "project_sources",
+          "tableTo": "hosts",
           "columnsFrom": [
             "host_id"
           ],
-          "tableTo": "hosts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2248,8 +2248,8 @@
           "columns": [
             "kind"
           ],
-          "where": "\"projects\".\"kind\" = 'personal'",
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"projects\".\"kind\" = 'personal'"
         }
       },
       "foreignKeys": {},
@@ -2346,28 +2346,28 @@
         "prompt_history_entries_project_id_projects_id_fk": {
           "name": "prompt_history_entries_project_id_projects_id_fk",
           "tableFrom": "prompt_history_entries",
+          "tableTo": "projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "prompt_history_entries_thread_id_threads_id_fk": {
           "name": "prompt_history_entries_thread_id_threads_id_fk",
           "tableFrom": "prompt_history_entries",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2501,15 +2501,15 @@
         "queued_thread_messages_thread_id_threads_id_fk": {
           "name": "queued_thread_messages_thread_id_threads_id_fk",
           "tableFrom": "queued_thread_messages",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2535,6 +2535,14 @@
         },
         "plugins": {
           "name": "plugins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "side_chat_plugin": {
+          "name": "side_chat_plugin",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2702,54 +2710,54 @@
         "terminal_sessions_thread_id_threads_id_fk": {
           "name": "terminal_sessions_thread_id_threads_id_fk",
           "tableFrom": "terminal_sessions",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "terminal_sessions_environment_id_environments_id_fk": {
           "name": "terminal_sessions_environment_id_environments_id_fk",
           "tableFrom": "terminal_sessions",
+          "tableTo": "environments",
           "columnsFrom": [
             "environment_id"
           ],
-          "tableTo": "environments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "terminal_sessions_host_id_hosts_id_fk": {
           "name": "terminal_sessions_host_id_hosts_id_fk",
           "tableFrom": "terminal_sessions",
+          "tableTo": "hosts",
           "columnsFrom": [
             "host_id"
           ],
-          "tableTo": "hosts",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "terminal_sessions_daemon_session_id_host_daemon_sessions_id_fk": {
           "name": "terminal_sessions_daemon_session_id_host_daemon_sessions_id_fk",
           "tableFrom": "terminal_sessions",
+          "tableTo": "host_daemon_sessions",
           "columnsFrom": [
             "daemon_session_id"
           ],
-          "tableTo": "host_daemon_sessions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2823,15 +2831,15 @@
         "thread_dynamic_context_file_states_thread_id_threads_id_fk": {
           "name": "thread_dynamic_context_file_states_thread_id_threads_id_fk",
           "tableFrom": "thread_dynamic_context_file_states",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2920,15 +2928,15 @@
         "thread_search_segments_thread_id_threads_id_fk": {
           "name": "thread_search_segments_thread_id_threads_id_fk",
           "tableFrom": "thread_search_segments",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3018,15 +3026,15 @@
         "thread_tabs_thread_id_threads_id_fk": {
           "name": "thread_tabs_thread_id_threads_id_fk",
           "tableFrom": "thread_tabs",
+          "tableTo": "threads",
           "columnsFrom": [
             "thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3234,8 +3242,8 @@
             "pin_sort_key",
             "id"
           ],
-          "where": "\"threads\".\"pinned_at\" IS NOT NULL",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"threads\".\"pinned_at\" IS NOT NULL"
         },
         "threads_environment_idx": {
           "name": "threads_environment_idx",
@@ -3291,75 +3299,75 @@
           "columns": [
             "status"
           ],
-          "where": "\"threads\".\"deleted_at\" IS NULL",
-          "isUnique": false
+          "isUnique": false,
+          "where": "\"threads\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {
         "threads_project_id_projects_id_fk": {
           "name": "threads_project_id_projects_id_fk",
           "tableFrom": "threads",
+          "tableTo": "projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "threads_environment_id_environments_id_fk": {
           "name": "threads_environment_id_environments_id_fk",
           "tableFrom": "threads",
+          "tableTo": "environments",
           "columnsFrom": [
             "environment_id"
           ],
-          "tableTo": "environments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "threads_section_id_thread_sections_id_fk": {
           "name": "threads_section_id_thread_sections_id_fk",
           "tableFrom": "threads",
+          "tableTo": "thread_sections",
           "columnsFrom": [
             "section_id"
           ],
-          "tableTo": "thread_sections",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "threads_parent_thread_id_threads_id_fk": {
           "name": "threads_parent_thread_id_threads_id_fk",
           "tableFrom": "threads",
+          "tableTo": "threads",
           "columnsFrom": [
             "parent_thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "threads_source_thread_id_threads_id_fk": {
           "name": "threads_source_thread_id_threads_id_fk",
           "tableFrom": "threads",
+          "tableTo": "threads",
           "columnsFrom": [
             "source_thread_id"
           ],
-          "tableTo": "threads",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3370,9 +3378,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {}

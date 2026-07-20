@@ -921,19 +921,21 @@ export function ExperimentsSettingsSection({
           />
         </SettingsWithControl>
 
-        {pluginsEnabled ? (
-          <SettingsWithControl
-            label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
-            description="Replace the native side chat with the builtin side-chat plugin. Hides the native Reply in side chat entry points while on."
-          >
-            <Switch
-              checked={sideChatPluginEnabled}
-              disabled={disabled}
-              onCheckedChange={onSideChatPluginEnabledChange}
-              aria-label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
-            />
-          </SettingsWithControl>
-        ) : null}
+        <SettingsWithControl
+          label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
+          description={
+            pluginsEnabled
+              ? "Replace the native side chat with the builtin side-chat plugin. Hides the native Reply in side chat entry points while on."
+              : "Replace the native side chat with the builtin side-chat plugin. Requires the Plugins experiment."
+          }
+        >
+          <Switch
+            checked={sideChatPluginEnabled && pluginsEnabled}
+            disabled={disabled || !pluginsEnabled}
+            onCheckedChange={onSideChatPluginEnabledChange}
+            aria-label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
       </div>
     </SettingsSection>
   );

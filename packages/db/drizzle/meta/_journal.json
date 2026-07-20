@@ -558,15 +558,8 @@
     {
       "idx": 79,
       "version": "6",
-      "when": 1784567709374,
-      "tag": "0079_side_chat_visibility_backfill",
-      "breakpoints": true
-    },
-    {
-      "idx": 80,
-      "version": "6",
-      "when": 1784571914329,
-      "tag": "0080_dusty_kingpin",
+      "when": 1784586995458,
+      "tag": "0079_side_chat_plugin",
       "breakpoints": true
     }
   ]

@@ -351,7 +351,7 @@ const sideChatVisibilityBackfillMigrationPath = resolve(
   __dirname,
   "..",
   "drizzle",
-  "0079_side_chat_visibility_backfill.sql",
+  "0079_side_chat_plugin.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -381,10 +381,11 @@ function closeConnection(db: DbConnection): void {
   db.$client.close();
 }
 
-// Migration 0080 adds the side_chat_plugin experiment column. Rewind
-// scenarios that clear its __drizzle_migrations row must also rewind the
-// schema: ALTER TABLE ADD is not re-appliable against a column that already
-// exists (unlike the idempotent UPDATE-only 0079 backfill).
+// Migration 0079 adds the side_chat_plugin experiment column alongside the
+// side-chat visibility backfill. Rewind scenarios that clear its
+// __drizzle_migrations row must also rewind the schema: ALTER TABLE ADD is
+// not re-appliable against a column that already exists (the backfill UPDATE
+// itself is idempotent).
 function dropSideChatPluginExperimentColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
@@ -1208,7 +1209,7 @@ describe("migrate", () => {
         );
       // Roll back from the permission-modes migration onward so it replays;
       // Drizzle only re-applies migrations newer than the latest applied row,
-      // so every later row (0079/0080) must be cleared with it.
+      // so every later row (0079) must be cleared with it.
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -4009,6 +4010,9 @@ describe("migrate", () => {
         .prepare("UPDATE threads SET child_origin = 'side-chat' WHERE id = ?")
         .run(childOriginSideChat.id);
 
+      // The merged 0079 also ADDs the experiment column; drop it first so the
+      // ALTER re-applies cleanly and the backfill UPDATE runs on seeded rows.
+      dropSideChatPluginExperimentColumn(db);
       runMigrationFile({
         db,
         migrationPath: sideChatVisibilityBackfillMigrationPath,

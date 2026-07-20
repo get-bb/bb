@@ -1,1 +1,0 @@
-ALTER TABLE `system_experiments` ADD `side_chat_plugin` integer DEFAULT false NOT NULL;
