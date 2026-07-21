@@ -831,6 +831,31 @@ describe("SkillDetailDialogView", () => {
 });
 
 describe("SkillDetailView registry states", () => {
+  it("lets short Markdown previews end with their content", () => {
+    renderDom(
+      <SkillDetailView
+        title="grill-me"
+        path="skills.sh/mattpocock/skills/grill-me"
+        files={["SKILL.md"]}
+        selectedPath="SKILL.md"
+        onSelectFile={() => {}}
+        contentState={{
+          kind: "ready",
+          content: "# grill-me\n\nRun a `/grilling` session.",
+        }}
+      />,
+    );
+
+    const definition = screen
+      .getByText("SKILL.md")
+      .closest("[data-resource-detail-section]");
+    const previewPanel = definition?.querySelector(".rounded-md.border");
+
+    expect(previewPanel).not.toBeNull();
+    expect(previewPanel?.className).not.toContain("min-h-80");
+    expect(previewPanel?.className).not.toContain("overflow-auto");
+  });
+
   it("omits social proof, links before install, and confirms uninstall", () => {
     const onInstall = vi.fn();
     const onUninstall = vi.fn();

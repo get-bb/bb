@@ -256,6 +256,19 @@ async function resolveRegistrySkillDetailPath(): Promise<string> {
   return getRegistrySkillDetailRoutePath({ registrySkillId: skill.id });
 }
 
+async function resolveShortRegistrySkillDetailPath(): Promise<string> {
+  const response = await fetchRegistrySkills({ query: "grill-me", page: 0 });
+  const skill = response.skills.find(
+    (candidate) => candidate.id === "mattpocock/skills/grill-me",
+  );
+  if (skill === undefined) {
+    throw new Error(
+      "The live registry does not include the short grill-me skill.",
+    );
+  }
+  return getRegistrySkillDetailRoutePath({ registrySkillId: skill.id });
+}
+
 async function resolvePluginDetailPath(pluginId: string): Promise<string> {
   const response = await fetchPluginList(fetch);
   const plugin = response.plugins.find(
@@ -369,6 +382,10 @@ export function SkillDetailCodexComputerUse() {
 
 export function RegistrySkillDetail() {
   return <LiveToolsPage target={resolveRegistrySkillDetailPath} />;
+}
+
+export function RegistrySkillDetailShortMarkdown() {
+  return <LiveToolsPage target={resolveShortRegistrySkillDetailPath} />;
 }
 
 export function PluginsInstalled() {

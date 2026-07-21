@@ -372,7 +372,7 @@ export function SkillDetailView({
                 surface="recessed"
                 className={
                   selectedFileIsMarkdown
-                    ? "min-h-80 shadow-none"
+                    ? "shadow-none"
                     : "max-h-[60dvh] overflow-auto shadow-none"
                 }
               >
