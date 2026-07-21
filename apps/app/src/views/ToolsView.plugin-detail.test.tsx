@@ -1,13 +1,24 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
+  pluginSettingsViewQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { PluginDetail, ToolsScrollPage } from "./ToolsView";
 
 const GITHUB_PLUGIN = {
@@ -37,7 +48,10 @@ const GITHUB_PLUGIN = {
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 } satisfies PluginListItem;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPluginSlotStoreForTest();
+});
 
 describe("ToolsScrollPage layout", () => {
   it("gives bounded collection pages a definite viewport height", () => {
@@ -151,5 +165,123 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(
       screen.queryByRole("button", { name: "Automations actions" }),
     ).toBeNull();
+  });
+});
+
+describe("PluginDetail capability inventory", () => {
+  it("names each contributed capability in roomy category groups", () => {
+    const EmptySlot = () => null;
+    setPluginSlotRegistrations("capability-demo", {
+      homepageSections: [],
+      settingsSections: [
+        {
+          id: "preferences",
+          title: "Advanced preferences",
+          component: EmptySlot,
+        },
+      ],
+      navPanels: [
+        {
+          id: "run-monitor",
+          title: "Run monitor",
+          icon: "Workflow",
+          path: "runs",
+          component: EmptySlot,
+        },
+      ],
+      threadPanelActions: [],
+      composerAccessories: [{ id: "enhance-prompt", component: EmptySlot }],
+      experimental_composerStatuses: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      messageActions: [],
+    });
+
+    const plugin = {
+      ...GITHUB_PLUGIN,
+      id: "capability-demo",
+      name: "Capability demo",
+      source: "path:/plugins/capability-demo",
+      provenance: "direct" as const,
+      catalogEntryId: null,
+      sourceDisplay: "Local path",
+      hasSettings: true,
+      cliCommand: {
+        name: "capability",
+        summary: "Inspect contributed capabilities.",
+      },
+      services: [
+        { name: "watch", state: "running" as const },
+        { name: "sync", state: "stopped" as const },
+      ],
+      schedules: [
+        {
+          name: "daily-cleanup",
+          cron: "0 9 * * *",
+          nextRunAt: 1_800_000_000_000,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+      ],
+    } satisfies PluginListItem;
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    queryClient.setQueryData(pluginSettingsViewQueryKey(plugin.id), {
+      schema: {
+        apiToken: {
+          type: "string",
+          label: "API token",
+          secret: true,
+        },
+      },
+      values: { apiToken: { set: true } },
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const includes = container.querySelector(
+      '[data-resource-detail-section="includes"]',
+    );
+    expect(includes).not.toBeNull();
+    const inventory = within(includes as HTMLElement);
+    expect(inventory.getByText("Run monitor")).toBeTruthy();
+    expect(inventory.getByText("Navigation panel")).toBeTruthy();
+    expect(inventory.getByText("enhance-prompt")).toBeTruthy();
+    expect(inventory.getByText("Composer accessory")).toBeTruthy();
+    expect(inventory.getByText("Advanced preferences")).toBeTruthy();
+    expect(inventory.getByText("Custom settings section")).toBeTruthy();
+    expect(inventory.getByText("API token")).toBeTruthy();
+    expect(inventory.getByText("apiToken")).toBeTruthy();
+    expect(inventory.getByText("bb capability")).toBeTruthy();
+    expect(inventory.getByText("watch")).toBeTruthy();
+    expect(inventory.getByText("sync")).toBeTruthy();
+    expect(inventory.getByText("daily-cleanup")).toBeTruthy();
+    expect(inventory.getByText("0 9 * * *")).toBeTruthy();
+    expect(includes?.textContent).not.toContain("2 background services");
+
+    const groups = includes?.querySelectorAll("[data-plugin-capability-group]");
+    expect(groups?.length).toBe(5);
+    for (const group of groups ?? []) {
+      const row = group.closest(".items-start");
+      expect(row?.classList).toContain("px-3");
+      expect(row?.classList).toContain("py-3");
+    }
   });
 });

@@ -54,6 +54,7 @@ import {
 import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import {
   usePluginList,
+  usePluginSettingsView,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePreferredTheme } from "@/hooks/useTheme";
@@ -62,7 +63,7 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
-import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
@@ -286,81 +287,267 @@ function PluginActivityState({
   );
 }
 
-function pluginIncludes(
-  plugin: PluginListItem,
-  hasSettings: boolean,
-): ReactNode[] {
+interface PluginCapabilityItem {
+  key: string;
+  label: ReactNode;
+  detail?: ReactNode;
+  mono?: boolean;
+}
+
+function capabilityDetail(kind: string, id?: string): ReactNode {
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+      <span>{kind}</span>
+      {id ? <span className="break-all font-mono">{id}</span> : null}
+    </span>
+  );
+}
+
+function namedSurface(
+  prefix: string,
+  id: string,
+  title: string | undefined,
+  kind: string,
+): PluginCapabilityItem {
+  const label = title?.trim() || id;
+  return {
+    key: `${prefix}:${id}`,
+    label,
+    detail: capabilityDetail(kind, label === id ? undefined : id),
+    mono: label === id,
+  };
+}
+
+function pluginAppSurfaceItems(
+  pluginId: string,
+  slots: PluginSlotSnapshot,
+): PluginCapabilityItem[] {
   return [
-    ...(plugin.app.hasApp
-      ? [
-          <ResourceDetailListItem
-            key="app"
-            leading={<Icon name="AppWindow" className="size-4" aria-hidden />}
-          >
-            App surfaces
-          </ResourceDetailListItem>,
-        ]
-      : []),
-    ...(plugin.cliCommand
-      ? [
-          <ResourceDetailListItem
-            key="cli"
-            leading={<Icon name="Terminal" className="size-4" aria-hidden />}
-          >
-            <span className="block">Command</span>
-            <span className="block text-xs text-muted-foreground">
-              <span className="font-mono">bb {plugin.cliCommand.name}</span>
-              {plugin.cliCommand.summary.length > 0
-                ? ` — ${plugin.cliCommand.summary}`
-                : ""}
+    ...slots.navPanels
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("nav", slot.id, slot.title, "Navigation panel"),
+      ),
+    ...slots.homepageSections
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("homepage", slot.id, slot.title, "Homepage section"),
+      ),
+    ...slots.threadPanelActions
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface(
+          "thread-panel",
+          slot.id,
+          slot.title,
+          "Thread panel action",
+        ),
+      ),
+    ...slots.composerAccessories
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("composer", slot.id, undefined, "Composer accessory"),
+      ),
+    ...slots.experimental_composerStatuses
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("composer-status", slot.id, undefined, "Composer status"),
+      ),
+    ...slots.pendingInteractions
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("input", slot.id, undefined, "Input renderer"),
+      ),
+    ...slots.sidebarFooterActions
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("sidebar", slot.id, slot.title, "Sidebar action"),
+      ),
+    ...slots.fileOpeners
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) => ({
+        ...namedSurface("file", slot.id, slot.title, "File opener"),
+        detail: (
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+            <span>File opener</span>
+            <span className="font-mono">
+              {slot.extensions.map((extension) => `.${extension}`).join(", ")}
             </span>
-          </ResourceDetailListItem>,
-        ]
-      : []),
-    ...(hasSettings
-      ? [
-          <ResourceDetailListItem
-            key="settings"
-            leading={<Icon name="Settings" className="size-4" aria-hidden />}
-          >
-            <span className="block">Settings</span>
-            <span className="block text-xs text-muted-foreground">
-              Configurable behavior
-            </span>
-          </ResourceDetailListItem>,
-        ]
-      : []),
-    ...(plugin.services.length > 0
-      ? [
-          <ResourceDetailListItem
-            key="services"
-            leading={<Icon name="Workflow" className="size-4" aria-hidden />}
-          >
-            <span className="block">Services</span>
-            <span className="block text-xs text-muted-foreground">
-              {plugin.services.length} background{" "}
-              {plugin.services.length === 1 ? "service" : "services"}
-            </span>
-          </ResourceDetailListItem>,
-        ]
-      : []),
-    ...(plugin.schedules.length > 0
-      ? [
-          <ResourceDetailListItem
-            key="schedules"
-            leading={
-              <Icon name="TimeSchedule" className="size-4" aria-hidden />
-            }
-          >
-            <span className="block">Schedules</span>
-            <span className="block text-xs text-muted-foreground">
-              {plugin.schedules.length} recurring{" "}
-              {plugin.schedules.length === 1 ? "schedule" : "schedules"}
-            </span>
-          </ResourceDetailListItem>,
-        ]
-      : []),
+          </span>
+        ),
+      })),
+    ...slots.messageDirectives
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) => ({
+        key: `directive:${slot.id}`,
+        label: `::${slot.id}`,
+        detail: "Message renderer",
+        mono: true,
+      })),
+    ...slots.messageActions
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) =>
+        namedSurface("message-action", slot.id, slot.title, "Message action"),
+      ),
   ];
+}
+
+function PluginCapabilityGroup({
+  icon,
+  label,
+  items,
+}: {
+  icon: IconName;
+  label: string;
+  items: readonly PluginCapabilityItem[];
+}) {
+  return (
+    <ResourceDetailListItem
+      className="items-start px-3 py-3"
+      leading={
+        <Icon
+          name={icon}
+          className="mt-0.5 size-4 text-muted-foreground"
+          aria-hidden
+        />
+      }
+    >
+      <span data-plugin-capability-group className="block font-medium">
+        {label}
+      </span>
+      <ul className="mt-2.5 space-y-2.5">
+        {items.map((item) => (
+          <li key={item.key} className="min-w-0">
+            <span
+              className={cn(
+                "block break-words text-sm leading-snug text-foreground",
+                item.mono && "break-all font-mono",
+              )}
+            >
+              {item.label}
+            </span>
+            {item.detail ? (
+              <span className="mt-0.5 block min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
+                {item.detail}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </ResourceDetailListItem>
+  );
+}
+
+function PluginIncludes({
+  plugin,
+  hasSettings,
+}: {
+  plugin: PluginListItem;
+  hasSettings: boolean;
+}) {
+  const slots = usePluginSlots();
+  const settingsQuery = usePluginSettingsView(plugin.id, {
+    enabled: plugin.hasSettings,
+  });
+  const settingsSections = slots.settingsSections.filter(
+    (slot) => slot.pluginId === plugin.id,
+  );
+  const appItems = pluginAppSurfaceItems(plugin.id, slots);
+  if (
+    plugin.app.hasApp &&
+    appItems.length === 0 &&
+    settingsSections.length === 0
+  ) {
+    appItems.push({
+      key: "frontend-app",
+      label: "Frontend app",
+      detail: "Surface names are available while the plugin app is loaded",
+    });
+  }
+
+  const settingsItems: PluginCapabilityItem[] = [
+    ...Object.entries(settingsQuery.data?.schema ?? {}).map(
+      ([key, descriptor]) => ({
+        key: `setting:${key}`,
+        label: descriptor.label,
+        detail: capabilityDetail("Setting", key),
+      }),
+    ),
+    ...settingsSections.map((slot) =>
+      namedSurface(
+        "settings-section",
+        slot.id,
+        slot.title,
+        "Custom settings section",
+      ),
+    ),
+  ];
+  if (hasSettings && settingsItems.length === 0) {
+    settingsItems.push({
+      key: "settings",
+      label: "Configurable behavior",
+      detail: settingsQuery.isLoading
+        ? "Loading setting names…"
+        : "Setting names are unavailable",
+    });
+  }
+
+  return (
+    <ResourceDetailCollection>
+      {appItems.length > 0 ? (
+        <PluginCapabilityGroup
+          icon="AppWindow"
+          label="App surfaces"
+          items={appItems}
+        />
+      ) : null}
+      {plugin.cliCommand ? (
+        <PluginCapabilityGroup
+          icon="Terminal"
+          label="Command"
+          items={[
+            {
+              key: plugin.cliCommand.name,
+              label: `bb ${plugin.cliCommand.name}`,
+              detail: plugin.cliCommand.summary || undefined,
+              mono: true,
+            },
+          ]}
+        />
+      ) : null}
+      {settingsItems.length > 0 ? (
+        <PluginCapabilityGroup
+          icon="Settings"
+          label="Settings"
+          items={settingsItems}
+        />
+      ) : null}
+      {plugin.services.length > 0 ? (
+        <PluginCapabilityGroup
+          icon="Workflow"
+          label="Services"
+          items={plugin.services.map((service) => ({
+            key: service.name,
+            label: service.name,
+            detail: "Background service",
+            mono: true,
+          }))}
+        />
+      ) : null}
+      {plugin.schedules.length > 0 ? (
+        <PluginCapabilityGroup
+          icon="TimeSchedule"
+          label="Schedules"
+          items={plugin.schedules.map((schedule) => ({
+            key: schedule.name,
+            label: schedule.name,
+            detail: capabilityDetail("Cron", schedule.cron),
+            mono: true,
+          }))}
+        />
+      ) : null}
+    </ResourceDetailCollection>
+  );
 }
 
 function PluginActivity({
@@ -568,7 +755,12 @@ export function PluginDetail({
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
-  const includes = pluginIncludes(plugin, hasSettings);
+  const hasIncludes =
+    plugin.app.hasApp ||
+    plugin.cliCommand !== null ||
+    hasSettings ||
+    plugin.services.length > 0 ||
+    plugin.schedules.length > 0;
   const hasActivity =
     (plugin.enabled && runtimeStatus !== null) ||
     plugin.handlerStats.errorCount > 0 ||
@@ -669,15 +861,13 @@ export function PluginDetail({
               },
             ]
           : []),
-        ...(includes.length > 0
+        ...(hasIncludes
           ? [
               {
                 label: "Includes",
                 kind: "includes" as const,
                 content: (
-                  <ResourceDetailCollection>
-                    {includes}
-                  </ResourceDetailCollection>
+                  <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
                 ),
               },
             ]
