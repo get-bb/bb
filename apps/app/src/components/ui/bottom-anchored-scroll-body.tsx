@@ -55,6 +55,7 @@ export interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
+  scrollSurfaceOverlay?: ReactNode;
   scrollAreaClassName?: string;
   contentClassName?: string;
   maxWidthClassName: string;
@@ -235,6 +236,7 @@ export function BottomAnchoredScrollBody({
   maxWidthClassName,
   footer,
   scrollOverlay,
+  scrollSurfaceOverlay,
   children,
   scrollAnchorThreadId,
 }: BottomAnchoredScrollBodyProps) {
@@ -806,6 +808,15 @@ export function BottomAnchoredScrollBody({
             ) : null}
           </div>
         </div>
+        {scrollSurfaceOverlay ? (
+          <div
+            aria-hidden="true"
+            data-scroll-surface-overlay=""
+            className="pointer-events-none z-10 col-start-1 row-start-1 min-h-0 min-w-0 overflow-hidden"
+          >
+            {scrollSurfaceOverlay}
+          </div>
+        ) : null}
         {scrollOverlay ? (
           <div
             data-scroll-overlay=""

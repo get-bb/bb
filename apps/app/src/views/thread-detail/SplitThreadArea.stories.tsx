@@ -99,7 +99,7 @@ const idleTimeline = storyTimeline(
     "The minimal change keeps the existing drag behavior intact and only prevents the stale finish callback from repainting the source row.",
     "The focused regression now exercises the delayed callback ordering that reproduced the issue in production.",
     "Type checking and the thread drag tests both pass with the fix applied.",
-    "The timeline stays at full contrast when this pane is idle, leaving the header to communicate which split currently has focus.",
+    "The timeline content stays at full opacity while a non-interactive glass layer marks this pane as inactive.",
   ],
 );
 
@@ -109,8 +109,8 @@ const activeTimeline = storyTimeline(
   [
     "The split seam is now one pixel with a wider invisible resize target. Pane content keeps full contrast while the focused header uses the raised surface treatment.",
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",
-    "Inactive panes no longer receive a translucent scrim; messages, status rows, and the composer remain readable at their normal contrast.",
-    "Focus is carried by the same raised header surface used by the top navigation instead of tinting the entire timeline.",
+    "Inactive panes no longer dim their content opacity; messages and status rows remain readable beneath a light glass surface.",
+    "The inactive timeline glass and the raised focused header trade places together as focus moves between panes.",
     "The timeline scrollbar now stays invisible at rest and returns briefly while the pane is actively scrolling.",
     "Its native scroll container and hit area remain intact, so wheel, trackpad, touch, and keyboard scrolling behave exactly as before.",
     "This story intentionally overflows both panes so the transient scrollbar behavior can be checked alongside the divider and focus states.",
