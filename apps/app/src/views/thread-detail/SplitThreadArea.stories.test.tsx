@@ -76,7 +76,8 @@ describe("SplitThreadArea stories", () => {
         ':scope > [aria-hidden="true"]',
       );
       expect(idleScrim?.classList).toContain("pointer-events-none");
-      expect(idleScrim?.classList).toContain("bg-background/20");
+      expect(idleScrim?.classList).toContain("bg-background/30");
+      expect(idleScrim?.classList).not.toContain("bg-background/20");
       expect(idleScrim?.classList).not.toContain("bg-background/40");
       expect(activeScrim?.classList).toContain("bg-transparent");
 
@@ -92,7 +93,7 @@ describe("SplitThreadArea stories", () => {
         expect(nextActiveComposer?.classList).not.toContain("opacity-50");
         expect(nextInactiveComposer?.classList).not.toContain("opacity-50");
         expect(idleScrim?.classList).toContain("bg-transparent");
-        expect(activeScrim?.classList).toContain("bg-background/20");
+        expect(activeScrim?.classList).toContain("bg-background/30");
       });
     },
   );

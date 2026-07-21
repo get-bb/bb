@@ -751,7 +751,7 @@ function SplitTree(props: SplitTreeProps) {
           aria-hidden
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "bg-transparent" : "bg-background/20",
+            isFocused ? "bg-transparent" : "bg-background/30",
           )}
         />
       </div>

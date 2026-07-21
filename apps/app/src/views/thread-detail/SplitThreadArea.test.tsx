@@ -741,7 +741,8 @@ describe("SplitThreadArea", () => {
     );
     expect(activeScrim?.classList).toContain("bg-transparent");
     expect(inactiveScrim?.classList).toContain("pointer-events-none");
-    expect(inactiveScrim?.classList).toContain("bg-background/20");
+    expect(inactiveScrim?.classList).toContain("bg-background/30");
+    expect(inactiveScrim?.classList).not.toContain("bg-background/20");
     expect(inactiveScrim?.classList).not.toContain("bg-background/40");
 
     const separator = screen.getByRole("separator");
