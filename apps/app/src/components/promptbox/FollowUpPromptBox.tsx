@@ -41,6 +41,7 @@ import {
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
@@ -231,11 +232,24 @@ type FollowUpPromptBoxWithComposerProps = Omit<
 function FollowUpPromptBoxStackOnly({
   stack,
 }: Pick<FollowUpPromptBoxProps, "stack">) {
+  const paneContext = useOptionalPaneContext();
+  const splitComposerState = paneContext?.isSplitPane
+    ? paneContext.isFocused
+      ? "active"
+      : "inactive"
+    : undefined;
   if (!stack) {
     return null;
   }
   return (
-    <div data-promptbox-shell="" className="space-y-2">
+    <div
+      data-promptbox-shell=""
+      data-split-composer-state={splitComposerState}
+      className={cn(
+        "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
+        splitComposerState === "inactive" && "opacity-50",
+      )}
+    >
       <div className="space-y-2">{stack}</div>
     </div>
   );
@@ -290,7 +304,13 @@ function FollowUpPromptBoxWithComposer({
   // mounted while hidden — so gating on both the focused pane and "primary"
   // keeps a hidden side chat from stealing the chord. Standalone/single-pane
   // surfaces have no pane context and default to focused.
-  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
+  const paneContext = useOptionalPaneContext();
+  const isFocusedPane = paneContext?.isFocused ?? true;
+  const splitComposerState = paneContext?.isSplitPane
+    ? isFocusedPane
+      ? "active"
+      : "inactive"
+    : undefined;
   useAppCommandContext("promptAvailable", true);
   useAppCommandHandler("composer.focus", () => {
     if (!isFocusedPane || !isPrimaryComposer) return false;
@@ -606,7 +626,11 @@ function FollowUpPromptBoxWithComposer({
         data-app-composer=""
         data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
         data-promptbox-shell=""
-        className="space-y-2"
+        data-split-composer-state={splitComposerState}
+        className={cn(
+          "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
+          splitComposerState === "inactive" && "opacity-50",
+        )}
       >
         <div ref={stackRef} className="space-y-2">
           {stack}

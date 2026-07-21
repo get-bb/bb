@@ -51,6 +51,8 @@ describe("SplitThreadArea stories", () => {
           "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
         ),
       ).toBeTruthy();
+      expect(idlePane.querySelector('[aria-label="Goal"]')).toBeTruthy();
+      expect(activePane.querySelector('[aria-label="Goal"]')).toBeTruthy();
 
       const idleComposer = idlePane.querySelector<HTMLElement>(
         '[data-split-composer-state="inactive"]',

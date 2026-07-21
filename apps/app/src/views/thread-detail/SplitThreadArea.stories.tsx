@@ -3,6 +3,7 @@ import type {
   ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import type { ThreadTimelineGoal } from "@bb/domain";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { makeThread } from "../../../.ladle/story-fixtures";
@@ -49,7 +50,18 @@ function storyTimeline(
   threadId: string,
   userMessage: string,
   assistantMessages: readonly string[],
+  goalObjective: string,
 ): ThreadTimelineResponse {
+  const goal: ThreadTimelineGoal = {
+    sourceSeq: assistantMessages.length + 2,
+    updatedAt: 1,
+    objective: goalObjective,
+    status: "active",
+    tokenBudget: null,
+    tokensUsed: 1_240,
+    timeUsedSeconds: 185,
+  };
+
   return {
     rows: [
       conversationRow({
@@ -76,9 +88,9 @@ function storyTimeline(
     activeWorkflow: null,
     activeBackgroundCommands: [],
     pendingTodos: null,
-    goal: null,
+    goal,
     modelFallback: null,
-    maxSeq: assistantMessages.length + 1,
+    maxSeq: goal.sourceSeq,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
@@ -99,8 +111,9 @@ const idleTimeline = storyTimeline(
     "The minimal change keeps the existing drag behavior intact and only prevents the stale finish callback from repainting the source row.",
     "The focused regression now exercises the delayed callback ordering that reproduced the issue in production.",
     "Type checking and the thread drag tests both pass with the fix applied.",
-    "A flat, non-interactive light-grey overlay marks this timeline as inactive without blocking it.",
+    "A subtle, non-interactive pane scrim marks this split as inactive without blocking it.",
   ],
+  "Keep the inactive pane readable while its composer and adjacent context read as idle.",
 );
 
 const activeTimeline = storyTimeline(
@@ -109,12 +122,13 @@ const activeTimeline = storyTimeline(
   [
     "The split seam is now one pixel with a wider invisible resize target. Pane content keeps full contrast while the focused header uses the raised surface treatment.",
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",
-    "Inactive timelines receive a light-grey overlay while messages and status rows remain readable and interactive.",
-    "The inactive overlay and the raised focused header trade places together as focus moves between panes.",
+    "Inactive panes receive a subtle background scrim while messages and status rows remain readable and interactive.",
+    "The inactive scrim and raised focused header trade places together as focus moves between panes.",
     "The timeline scrollbar now stays invisible at rest and returns briefly while the pane is actively scrolling.",
     "Its native scroll container and hit area remain intact, so wheel, trackpad, touch, and keyboard scrolling behave exactly as before.",
     "This story intentionally overflows both panes so the transient scrollbar behavior can be checked alongside the divider and focus states.",
   ],
+  "Refine split focus with a restrained inactive scrim and reversible pane states.",
 );
 
 const splitLayout: SplitLayout = {
