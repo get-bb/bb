@@ -81,6 +81,6 @@ describe("built-in sidebar section renderer", () => {
     );
 
     expect(screen.queryByText("Threads content")).toBeNull();
-    expect(screen.getByLabelText("Goal active")).not.toBeNull();
+    expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
   });
 });

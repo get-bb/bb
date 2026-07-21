@@ -149,6 +149,17 @@ function renderProjectRow(
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
+function expectCollapsedActivityAtSidebarEdge(label: string) {
+  const edgeSlot = screen
+    .getAllByLabelText(label)
+    .map((indicator) =>
+      indicator.closest("[data-sidebar-collapsed-activity-edge]"),
+    )
+    .find((slot) => slot !== null);
+
+  expect(edgeSlot).toBeInstanceOf(HTMLElement);
+}
+
 describe("ProjectRow interactions", () => {
   afterEach(() => {
     cleanup();
@@ -315,7 +326,8 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.getAllByLabelText("Thread working")).not.toHaveLength(0);
+    expectCollapsedActivityAtSidebarEdge("Thread working");
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
@@ -367,8 +379,8 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(
-      screen.getByLabelText("Thread working with unsubmitted draft"),
-    ).not.toBeNull();
+      screen.getAllByLabelText("Thread working with unsubmitted draft"),
+    ).not.toHaveLength(0);
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
@@ -396,6 +408,7 @@ describe("ProjectRow interactions", () => {
 
     expect(screen.queryByText("Test thread")).toBeNull();
     expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
+    expectCollapsedActivityAtSidebarEdge("Goal active");
   });
 
   it("shows an idle draft before unread success for a collapsed project", () => {

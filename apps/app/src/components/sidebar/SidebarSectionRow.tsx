@@ -155,6 +155,18 @@ function SidebarSectionRowComponent({
           onToggle={onToggleCollapsed}
         />
       </span>
+      {showRollupGlyph ? (
+        <span
+          data-sidebar-collapsed-activity-edge=""
+          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+          className={cn(
+            "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:hidden",
+            hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+          )}
+        >
+          <CollapsedThreadStatusGlyph activity={activity} />
+        </span>
+      ) : null}
       <span
         className={cn(
           "relative z-10 shrink-0",
@@ -163,18 +175,6 @@ function SidebarSectionRowComponent({
             : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
-        {showRollupGlyph ? (
-          <span
-            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-            className={cn(
-              SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "pointer-events-none absolute inset-0 flex items-center justify-end text-subtle-foreground",
-              hasActions && "max-md:pointer-coarse:hidden",
-            )}
-          >
-            <CollapsedThreadStatusGlyph activity={activity} />
-          </span>
-        ) : null}
         {hasActions ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
@@ -254,6 +254,10 @@ function SidebarSectionRowComponent({
                 <TooltipContent side="bottom">New thread</TooltipContent>
               </Tooltip>
             ) : null}
+          </span>
+        ) : showRollupGlyph ? (
+          <span className="hidden size-full items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
+            <CollapsedThreadStatusGlyph activity={activity} />
           </span>
         ) : null}
       </span>
