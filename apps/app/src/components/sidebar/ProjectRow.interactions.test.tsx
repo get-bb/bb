@@ -156,7 +156,7 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("places the project disclosure after its label and minimally indents root threads", () => {
+  it("places the project disclosure after its label and keeps root threads flush", () => {
     const result = renderProjectRow(vi.fn(), {
       status: "ready",
       threads: [makeThread()],
@@ -176,7 +176,7 @@ describe("ProjectRow interactions", () => {
     ).not.toBe(0);
     expect(
       (threadLink?.parentElement as HTMLElement | null)?.style.paddingLeft,
-    ).toBe("16px");
+    ).toBe("8px");
   });
 
   it("shows named workflow rollup before generic runtime activity", () => {

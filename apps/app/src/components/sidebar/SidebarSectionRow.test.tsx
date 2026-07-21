@@ -36,6 +36,6 @@ describe("SidebarSectionRow", () => {
       label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-    expect(row?.style.paddingLeft).toBe("16px");
+    expect(row?.style.paddingLeft).toBe("32px");
   });
 });

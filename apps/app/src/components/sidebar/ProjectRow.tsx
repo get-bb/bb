@@ -466,8 +466,14 @@ function getProjectThreadTreeEmptyStateIcon(
   return undefined;
 }
 
-function getProjectThreadTreeEmptyStateClassName(): string {
-  return cn("py-0.5", "pl-4 pr-2", "group-data-[collapsible=icon]:hidden");
+function getProjectThreadTreeEmptyStateClassName(
+  variant: ProjectThreadTreeVariant,
+): string {
+  return cn(
+    "py-0.5",
+    variant === "section" ? "px-2" : "pl-8 pr-2",
+    "group-data-[collapsible=icon]:hidden",
+  );
 }
 
 function getProjectThreadTreeEmptyStateMessageClassName(): string {
@@ -1351,7 +1357,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               projectId={getItemProjectId(item)}
               item={item}
               depthOffset={
-                variant === "section" && depthOffset === 0 ? 1 : depthOffset + 1
+                variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1
               }
               selectedThreadId={selectedThreadId}
               collapsedThreadIds={collapsedThreadIds}
@@ -1373,7 +1379,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
           visible={showDropPreview}
           depth={getThreadRowDepth({
             depthOffset:
-              variant === "section" && depthOffset === 0 ? 1 : depthOffset + 1,
+              variant === "section" && depthOffset === 0 ? 0 : depthOffset + 1,
             nodeDepth: 0,
             variant,
           })}
@@ -1802,7 +1808,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
             : "No threads"
         }
         icon={getProjectThreadTreeEmptyStateIcon(variant)}
-        className={getProjectThreadTreeEmptyStateClassName()}
+        className={getProjectThreadTreeEmptyStateClassName(variant)}
         iconClassName="size-3.5 text-subtle-foreground/50"
         messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
@@ -1826,7 +1832,6 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       items={rootItems}
       sectionDnd={null}
       variant={variant}
-      depthOffset={variant === "section" ? 1 : 0}
       projectId={projectId}
       sortableParentKey={projectId}
       selectedThreadId={selectedThreadId}
@@ -1970,15 +1975,11 @@ export const ChronologicalSectionThreadSections = memo(
 
     // No sortableParentKey: the outer SectionDndSortableList below provides the
     // SortableContext spanning both the sections and loose-threads sections.
-    const renderItems = (
-      items: readonly ProjectThreadItem[],
-      depthOffset = 0,
-    ) => (
+    const renderItems = (items: readonly ProjectThreadItem[]) => (
       <SectionThreadTreeItems
         items={items}
         sectionDnd={renderedSectionDnd}
         variant="section"
-        depthOffset={depthOffset}
         selectedThreadId={selectedThreadId}
         collapsedThreadIds={collapsedThreadIds}
         collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -2005,7 +2006,7 @@ export const ChronologicalSectionThreadSections = memo(
             : "No threads"
         }
         icon={getProjectThreadTreeEmptyStateIcon("section")}
-        className={getProjectThreadTreeEmptyStateClassName()}
+        className={getProjectThreadTreeEmptyStateClassName("section")}
         iconClassName="size-3.5 text-subtle-foreground/50"
         messageClassName={getProjectThreadTreeEmptyStateMessageClassName()}
       />
@@ -2018,7 +2019,7 @@ export const ChronologicalSectionThreadSections = memo(
           items={looseItems.map(getSidebarDndItemId)}
           strategy={verticalListSortingStrategy}
         >
-          {renderItems(looseItems, 1)}
+          {renderItems(looseItems)}
         </SortableContext>
       ) : renderedSectionDnd ? (
         <div className="grid">
@@ -2031,7 +2032,7 @@ export const ChronologicalSectionThreadSections = memo(
             {looseEmptyState}
           </div>
           <div className="col-start-1 row-start-1">
-            <DropPreviewRow depth={1} visible={showLoosePreview} />
+            <DropPreviewRow depth={0} visible={showLoosePreview} />
           </div>
         </div>
       ) : (
@@ -2047,7 +2048,7 @@ export const ChronologicalSectionThreadSections = memo(
           <DropPreviewRow
             visible={showLoosePreview}
             depth={getThreadRowDepth({
-              depthOffset: 1,
+              depthOffset: 0,
               nodeDepth: 0,
               variant: "section",
             })}
