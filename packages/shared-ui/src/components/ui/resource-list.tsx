@@ -13,6 +13,7 @@ import {
 import { Icon, type IconName } from "./icon";
 import { Input } from "./input";
 import { Skeleton } from "./skeleton";
+import { ScrollArea } from "./scroll-area";
 import { Textarea } from "./textarea";
 import {
   Tooltip,
@@ -1736,16 +1737,19 @@ export function ResourceCollectionViewport({
       data-resource-collection-viewport
     >
       {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
-      <div
-        id={scrollId}
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1",
-          contentClassName,
-        )}
-        data-resource-collection-scroll
+      <ScrollArea
+        type="scroll"
+        scrollHideDelay={600}
+        className="min-h-0 flex-1"
+        scrollbarClassName="w-2"
+        viewportProps={{
+          id: scrollId,
+          className: cn("overscroll-contain pr-1", contentClassName),
+          "data-resource-collection-scroll": true,
+        }}
       >
         {children}
-      </div>
+      </ScrollArea>
       {footer ? (
         <div
           className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3"

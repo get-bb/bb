@@ -230,6 +230,208 @@ async function writePluginSkillFixture(rootPath: string): Promise<{
 }
 
 describe("public project skills route", () => {
+  it("paginates the supported registry set before slicing pages", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = [
+        String.raw`\"source\":\"owner/first-repo\",\"skillId\":\"first-skill\",\"name\":\"First skill\",\"installs\":400`,
+        String.raw`\"source\":\"catalog.example.com\",\"skillId\":\"unsupported-skill\",\"name\":\"Unsupported skill\",\"installs\":300`,
+        String.raw`\"source\":\"owner/second-repo\",\"skillId\":\"second-skill\",\"name\":\"Second skill\",\"installs\":200`,
+        String.raw`\"source\":\"owner/third-repo\",\"skillId\":\"third-skill\",\"name\":\"Third skill\",\"installs\":100`,
+      ].join("\n");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url === "https://www.skills.sh/") {
+            return new Response(homepage, { status: 200 });
+          }
+          if (
+            url.startsWith("https://raw.githubusercontent.com/owner/") &&
+            url.endsWith("/SKILL.md")
+          ) {
+            return new Response("# Available skill\n", { status: 200 });
+          }
+          const match = url.match(
+            /^https:\/\/www\.skills\.sh\/owner\/(?<repo>[^/]+)\/(?<skillId>[^/]+)$/u,
+          );
+          if (match?.groups) {
+            return new Response(
+              registryHtml({
+                source: `owner/${match.groups.repo}`,
+                skillId: match.groups.skillId,
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(null, { status: 404 });
+        }),
+      );
+
+      const firstResponse = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=2",
+      );
+      const firstBody = (await readJson(firstResponse)) as {
+        skills: Array<{ id: string }>;
+        pagination: {
+          page: number;
+          perPage: number;
+          total: number;
+          hasMore: boolean;
+        };
+      };
+      expect(firstBody.skills.map((skill) => skill.id)).toEqual([
+        "owner/first-repo/first-skill",
+        "owner/second-repo/second-skill",
+      ]);
+      expect(firstBody.pagination).toEqual({
+        page: 0,
+        perPage: 2,
+        total: 3,
+        hasMore: true,
+      });
+
+      const secondResponse = await harness.app.request(
+        "/api/v1/skills-registry?page=1&perPage=2",
+      );
+      const secondBody = (await readJson(secondResponse)) as {
+        skills: Array<{ id: string }>;
+        pagination: {
+          page: number;
+          perPage: number;
+          total: number;
+          hasMore: boolean;
+        };
+      };
+      expect(secondBody.skills.map((skill) => skill.id)).toEqual([
+        "owner/third-repo/third-skill",
+      ]);
+      expect(secondBody.pagination).toEqual({
+        page: 1,
+        perPage: 2,
+        total: 3,
+        hasMore: false,
+      });
+    });
+  });
+
+  it("loads a nested GitHub skill path advertised by the registry", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = String.raw`\"source\":\"owner/nested-repo\",\"skillId\":\"nested-skill\",\"name\":\"Nested skill\",\"installs\":100`;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url === "https://www.skills.sh/") {
+            return new Response(homepage, { status: 200 });
+          }
+          if (
+            url ===
+            "https://api.github.com/repos/owner/nested-repo/git/trees/HEAD?recursive=1"
+          ) {
+            return Response.json({
+              tree: [
+                {
+                  path: "skills/productivity/nested-skill/SKILL.md",
+                  type: "blob",
+                },
+              ],
+            });
+          }
+          if (
+            url ===
+            "https://raw.githubusercontent.com/owner/nested-repo/HEAD/skills/productivity/nested-skill/SKILL.md"
+          ) {
+            return new Response("# Nested skill\n", { status: 200 });
+          }
+          if (url === "https://www.skills.sh/owner/nested-repo/nested-skill") {
+            return new Response(
+              registryHtml({
+                source: "owner/nested-repo",
+                skillId: "nested-skill",
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(null, { status: 404 });
+        }),
+      );
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=24",
+      );
+      const body = (await readJson(response)) as {
+        skills: Array<{ id: string }>;
+      };
+      expect(body.skills.map((skill) => skill.id)).toEqual([
+        "owner/nested-repo/nested-skill",
+      ]);
+    });
+  });
+
+  it("uses the real registry preview when a GitHub folder differs from the skill ID", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = String.raw`\"source\":\"owner/aliased-repo\",\"skillId\":\"public-name\",\"name\":\"Public name\",\"installs\":100`;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url === "https://www.skills.sh/") {
+            return new Response(homepage, { status: 200 });
+          }
+          if (url === "https://www.skills.sh/owner/aliased-repo/public-name") {
+            return new Response(
+              [
+                "<span>SKILL.md</span></div>",
+                '<div class="prose prose-invert"><h1>Public name</h1>',
+                "<p>Loaded from the real registry preview.</p></div>",
+                '</div></div><div class=" lg:col-span-3">',
+              ].join(""),
+              { status: 200 },
+            );
+          }
+          if (
+            url ===
+            "https://api.github.com/repos/owner/aliased-repo/git/trees/HEAD?recursive=1"
+          ) {
+            return Response.json({
+              tree: [
+                {
+                  path: "skills/internal-folder/SKILL.md",
+                  type: "blob",
+                },
+              ],
+            });
+          }
+          return new Response(null, { status: 404 });
+        }),
+      );
+
+      const listResponse = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=24",
+      );
+      const listBody = (await readJson(listResponse)) as {
+        skills: Array<{ id: string }>;
+      };
+      expect(listBody.skills.map((skill) => skill.id)).toEqual([
+        "owner/aliased-repo/public-name",
+      ]);
+
+      const detailResponse = await harness.app.request(
+        "/api/v1/skills-registry/detail?source=owner%2Faliased-repo&skillId=public-name",
+      );
+      const detailBody = (await readJson(detailResponse)) as {
+        files: Array<{ contents: string }>;
+      };
+      expect(detailBody.files[0]?.contents).toContain("# Public name");
+      expect(detailBody.files[0]?.contents).toContain(
+        "Loaded from the real registry preview.",
+      );
+    });
+  });
+
   it("omits registry entries whose real source has no loadable SKILL.md", async () => {
     await withTestHarness(async (harness) => {
       vi.stubEnv("VERCEL_OIDC_TOKEN", "");

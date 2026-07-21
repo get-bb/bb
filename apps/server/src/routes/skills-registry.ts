@@ -12,6 +12,7 @@ const MAX_SEARCH_RESULTS = 200;
 const DETAIL_PREVIEW_LIMIT = 10;
 const GITHUB_STARS_PREVIEW_LIMIT = 48;
 const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
+const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 const REGISTRY_FETCH_CONCURRENCY = 6;
@@ -84,6 +85,11 @@ const registryDetailCache = new Map<
   string,
   { detail: RegistrySkillDetail; expiresAt: number }
 >();
+const githubSkillPathCache = new Map<
+  string,
+  { paths: string[]; expiresAt: number }
+>();
+const githubSkillPathRequests = new Map<string, Promise<string[] | null>>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -103,6 +109,72 @@ function stripTags(value: string): string {
   return decodeHtml(value.replace(/<[^>]*>/gu, " "))
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+function renderedSkillHtmlToMarkdown(value: string): string {
+  return decodeHtml(
+    value
+      .replace(/<br\s*\/?\s*>/giu, "\n")
+      .replace(
+        /<h([1-6])[^>]*>/giu,
+        (_, level: string) => `${"#".repeat(Number(level))} `,
+      )
+      .replace(/<\/h[1-6]>/giu, "\n\n")
+      .replace(/<li[^>]*>/giu, "- ")
+      .replace(/<\/li>/giu, "\n")
+      .replace(/<\/?(?:ul|ol)[^>]*>/giu, "\n")
+      .replace(/<p[^>]*>/giu, "")
+      .replace(/<\/p>/giu, "\n\n")
+      .replace(/<code[^>]*>/giu, "`")
+      .replace(/<\/code>/giu, "`")
+      .replace(/<(?:strong|b)[^>]*>/giu, "**")
+      .replace(/<\/(?:strong|b)>/giu, "**")
+      .replace(/<(?:em|i)[^>]*>/giu, "_")
+      .replace(/<\/(?:em|i)>/giu, "_")
+      .replace(/<[^>]*>/gu, ""),
+  )
+    .replace(/[ \t]+\n/gu, "\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+function extractFirstDivContentsAfter(
+  html: string,
+  marker: string,
+): string | null {
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0) return null;
+
+  const divStart = html.indexOf('<div class="prose', markerIndex);
+  if (divStart < 0) return null;
+  const contentsStart = html.indexOf(">", divStart) + 1;
+  if (contentsStart === 0) return null;
+
+  let depth = 1;
+  const divPattern = /<\/?div\b[^>]*>/gu;
+  divPattern.lastIndex = contentsStart;
+  for (const match of html.matchAll(divPattern)) {
+    if (match[0].startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) return html.slice(contentsStart, match.index);
+    } else {
+      depth += 1;
+    }
+  }
+  return null;
+}
+
+function parsePublicSkillMarkdown(html: string): RegistrySkillFile[] | null {
+  const rendered = extractFirstDivContentsAfter(html, "<span>SKILL.md</span>");
+  if (!rendered) return null;
+  const contents = renderedSkillHtmlToMarkdown(rendered);
+  if (
+    contents.length === 0 ||
+    contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT
+  ) {
+    return null;
+  }
+  return [{ path: "SKILL.md", contents }];
 }
 
 function registrySkillUrl(id: string): string {
@@ -340,7 +412,100 @@ async function fetchGithubSkillMarkdown(
       }
     }),
   );
-  return candidates.find((candidate) => candidate !== null) ?? null;
+  const directMatch = candidates.find((candidate) => candidate !== null);
+  if (directMatch) return directMatch;
+
+  const repositoryPaths = await fetchGithubSkillPaths(repo);
+  if (repositoryPaths === null) return null;
+  const normalizedSkillId = skillId.toLowerCase();
+  const nestedPath = repositoryPaths
+    .filter((path) => {
+      const normalizedPath = path.replaceAll("\\", "/").toLowerCase();
+      return (
+        normalizedPath === `${normalizedSkillId}/skill.md` ||
+        normalizedPath.endsWith(`/${normalizedSkillId}/skill.md`)
+      );
+    })
+    .sort(
+      (left, right) =>
+        left.split("/").length - right.split("/").length ||
+        left.localeCompare(right),
+    )[0];
+  if (!nestedPath) return null;
+
+  try {
+    const response = await registryFetch(
+      `https://raw.githubusercontent.com/${repo}/HEAD/${nestedPath
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`,
+      { headers: { "user-agent": "bb-skills-registry" } },
+    );
+    if (!response.ok) return null;
+    const contents = await response.text();
+    if (contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT) return null;
+    return [{ path: "SKILL.md", contents }];
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPublicSkillMarkdown(
+  source: string,
+  skillId: string,
+): Promise<RegistrySkillFile[] | null> {
+  try {
+    const response = await registryFetch(
+      registrySkillUrl(`${source}/${skillId}`),
+    );
+    if (!response.ok) return null;
+    return parsePublicSkillMarkdown(await response.text());
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
+  const cached = githubSkillPathCache.get(repo);
+  if (cached && cached.expiresAt > Date.now()) return cached.paths;
+
+  const inFlight = githubSkillPathRequests.get(repo);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const response = await registryFetch(
+        `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
+        {
+          headers: {
+            accept: "application/vnd.github+json",
+            "user-agent": "bb-skills-registry",
+          },
+        },
+      );
+      if (!response.ok) return null;
+      const body: unknown = await response.json().catch(() => null);
+      if (!isRecord(body) || !Array.isArray(body.tree)) return null;
+      const paths = body.tree.flatMap((entry) =>
+        isRecord(entry) &&
+        entry.type === "blob" &&
+        typeof entry.path === "string"
+          ? [entry.path]
+          : [],
+      );
+      githubSkillPathCache.set(repo, {
+        paths,
+        expiresAt: Date.now() + GITHUB_SKILL_PATH_CACHE_TTL_MS,
+      });
+      return paths;
+    } catch {
+      return null;
+    } finally {
+      githubSkillPathRequests.delete(repo);
+    }
+  })();
+  githubSkillPathRequests.set(repo, request);
+  return request;
 }
 
 async function fetchRegistrySkillDetail(
@@ -351,16 +516,21 @@ async function fetchRegistrySkillDetail(
   const cached = registryDetailCache.get(id);
   if (cached && cached.expiresAt > Date.now()) return cached.detail;
   const authenticated = await fetchAuthenticatedRegistryDetail(source, skillId);
-  const detail =
-    authenticated && hasLoadableSkillContent(authenticated)
-      ? authenticated
-      : ({
-          id,
-          source,
-          skillId,
-          hash: null,
-          files: await fetchGithubSkillMarkdown(source, skillId),
-        } satisfies RegistrySkillDetail);
+  const authenticatedIsLoadable =
+    authenticated !== null && hasLoadableSkillContent(authenticated);
+  const publicFiles = authenticatedIsLoadable
+    ? null
+    : ((await fetchGithubSkillMarkdown(source, skillId)) ??
+      (await fetchPublicSkillMarkdown(source, skillId)));
+  const detail = authenticatedIsLoadable
+    ? authenticated
+    : ({
+        id,
+        source,
+        skillId,
+        hash: null,
+        files: publicFiles,
+      } satisfies RegistrySkillDetail);
   registryDetailCache.set(id, {
     detail,
     expiresAt: Date.now() + REGISTRY_DETAIL_CACHE_TTL_MS,
@@ -408,14 +578,20 @@ async function fetchPublicDirectorySkills(
     (left, right) =>
       right.installs - left.installs || left.name.localeCompare(right.name),
   );
+  // The public directory includes package hosts that only its authenticated
+  // API can resolve. Exclude those records before deriving page boundaries;
+  // filtering them after slicing produced sparse middle pages and false totals.
+  const supported = ranked.filter(
+    (skill) => githubRepoForSource(skill.source) !== null,
+  );
   const start = page * perPage;
   return {
-    skills: ranked.slice(start, start + perPage),
+    skills: supported.slice(start, start + perPage),
     pagination: {
       page,
       perPage,
-      total: ranked.length,
-      hasMore: start + perPage < ranked.length,
+      total: supported.length,
+      hasMore: start + perPage < supported.length,
     },
   };
 }
