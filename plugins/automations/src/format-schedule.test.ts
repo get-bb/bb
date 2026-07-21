@@ -34,6 +34,17 @@ describe("one-shot automation lifecycle", () => {
       }),
     ).toBeNull();
 
+    expect(
+      formatOverviewScheduleMetadata({
+        enabled: false,
+        nextRunAt: null,
+        trigger: { triggerType: "once", runAt: NOW - 1 },
+        runCount: 0,
+        lastRunStatus: null,
+        now: NOW,
+      }),
+    ).toBeNull();
+
     const next = formatOverviewScheduleMetadata({
       enabled: true,
       nextRunAt: NOW + 60_000,

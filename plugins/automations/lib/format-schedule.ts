@@ -177,7 +177,13 @@ export function formatOverviewScheduleMetadata(
   args: FormatScheduleStatusLabelArgs,
 ): OverviewScheduleMetadata | null {
   const label = formatScheduleStatusLabel(args);
-  if (label === "Failed" || label === "Paused") return null;
+  if (
+    label === "Failed" ||
+    label === "Paused" ||
+    label === "Expired — edit to reschedule"
+  ) {
+    return null;
+  }
   if (label.startsWith("Next ")) {
     return { emphasis: "Next", text: label.slice("Next ".length) };
   }
