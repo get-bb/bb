@@ -1564,6 +1564,7 @@ describe("PromptBoxInternal mention triggers", () => {
         [
           "github",
           {
+            displayName: "GitHub",
             icon: null,
             logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
             logoDarkUrl: null,

@@ -17,9 +17,16 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import type { PluginComposerPlusMenuContribution } from "@/components/plugin/PluginComposerActions";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { PromptBoxActionsMenu } from "./PromptBoxActionsMenu";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetPluginLogoStoreForTest();
+});
 
 describe("PromptBoxActionsMenu", () => {
   it("does not render when no prompt actions are provided", () => {
@@ -56,7 +63,67 @@ describe("PromptBoxActionsMenu", () => {
     expect(trigger.querySelector('[data-icon="Spinner"]')).not.toBeNull();
   });
 
-  it("renders grouped plugin items after native items and preserves run focus", async () => {
+  it("restores composer focus after an update-only plugin item", async () => {
+    const view: ComposerView = {
+      scope: { kind: "new-thread", projectId: null },
+      layout: "expanded",
+      draft: { text: "draft", isEmpty: false, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    const draft = { ...emptyPromptDraftState(), text: "draft" };
+    const setDraft = vi.fn();
+    const host: PluginComposerHost = {
+      scope: view.scope,
+      draft,
+      textEffectKey: "plus-menu-update-test",
+      getCurrent: () => draft,
+      setDraft,
+      focus: () => document.getElementById("composer-focus-target")?.focus(),
+    };
+    const pluginItems: readonly PluginComposerPlusMenuContribution[] = [
+      {
+        pluginId: "update-plugin",
+        customizationId: "tools",
+        generation: 1,
+        item: {
+          id: "update",
+          label: "Update prompt",
+          run: ({ composer }) =>
+            composer.updateText((current) => `${current}!`),
+        },
+      },
+    ];
+    render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={host}>
+          <PluginComposerViewProvider value={view}>
+            <input id="composer-focus-target" aria-label="Composer" />
+            <PromptBoxActionsMenu
+              onAction={() => {}}
+              pluginItems={pluginItems}
+            />
+          </PluginComposerViewProvider>
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Prompt actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Update prompt" }),
+    );
+
+    await waitFor(() => {
+      expect(setDraft).toHaveBeenCalledOnce();
+      expect(document.activeElement).toBe(
+        screen.getByRole("textbox", { name: "Composer" }),
+      );
+    });
+  });
+
+  it("renders display-name groups and preserves focus deliberately moved by a plugin", async () => {
     const focusedByPlugin = vi.fn();
     const view: ComposerView = {
       scope: { kind: "new-thread", projectId: null },
@@ -99,6 +166,28 @@ describe("PromptBoxActionsMenu", () => {
         },
       },
     ];
+    setPluginLogoUrls(
+      new Map([
+        [
+          "alpha",
+          {
+            displayName: "Alpha Assistant",
+            icon: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+          },
+        ],
+        [
+          "zeta",
+          {
+            displayName: "Zeta Writer",
+            icon: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
     render(
       <MemoryRouter>
         <PluginComposerHostProvider value={host}>
@@ -124,8 +213,8 @@ describe("PromptBoxActionsMenu", () => {
       "Improve prompt",
       "Rewrite prompt",
     ]);
-    expect(screen.getByText("alpha")).toBeTruthy();
-    expect(screen.getByText("zeta")).toBeTruthy();
+    expect(screen.getByText("Alpha Assistant")).toBeTruthy();
+    expect(screen.getByText("Zeta Writer")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Improve prompt" }));
     await waitFor(() => {

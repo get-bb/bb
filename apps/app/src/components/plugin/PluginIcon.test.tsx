@@ -20,6 +20,7 @@ it("uses branding.icon instead of the image logo or contribution hint", () => {
       [
         "docs",
         {
+          displayName: "Docs",
           icon: "FileText",
           logoUrl: "/api/v1/plugins/docs/assets/logo?h=abc",
           logoDarkUrl: "/api/v1/plugins/docs/assets/logo-dark?h=def",
@@ -40,6 +41,7 @@ it("uses the contribution hint when branding.icon is omitted", () => {
       [
         "github",
         {
+          displayName: "GitHub",
           icon: null,
           logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
           logoDarkUrl: null,
@@ -59,6 +61,7 @@ it("uses Zap compactly when a logo-only plugin has no contribution hint", () => 
       [
         "github",
         {
+          displayName: "GitHub",
           icon: null,
           logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
           logoDarkUrl: null,

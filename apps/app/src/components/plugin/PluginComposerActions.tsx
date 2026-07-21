@@ -14,6 +14,7 @@ import {
   usePluginSlots,
   type PluginComposerCustomizationSlot,
 } from "@/lib/plugin-slots";
+import { usePluginDisplayName } from "@/lib/plugin-logos";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { composerScopeIdentity } from "./plugin-composer-host";
@@ -23,6 +24,11 @@ export interface PluginComposerPlusMenuContribution {
   customizationId: string;
   generation: number;
   item: ComposerPlusMenuItem;
+}
+
+export interface PluginComposerPlusMenuSelection {
+  restoreComposerFocus(): void;
+  selectedElement: Element | null;
 }
 
 function matchesScope(
@@ -94,7 +100,7 @@ export function PluginComposerPlusMenuEntry({
 }: {
   contribution: PluginComposerPlusMenuContribution;
   showPluginLabel: boolean;
-  onSelected(): void;
+  onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const { pluginId, customizationId, generation, item } = contribution;
   return (
@@ -124,10 +130,11 @@ function PluginComposerPlusMenuEntryContent({
   pluginId: string;
   item: ComposerPlusMenuItem;
   showPluginLabel: boolean;
-  onSelected(): void;
+  onSelected(selection: PluginComposerPlusMenuSelection): void;
 }) {
   const composer = useComposer();
   const view = useComposerView();
+  const pluginDisplayName = usePluginDisplayName(pluginId);
   const disabled =
     typeof item.disabled === "function" ? item.disabled(view) : item.disabled;
 
@@ -148,14 +155,17 @@ function PluginComposerPlusMenuEntryContent({
     <>
       {showPluginLabel ? (
         <DropdownMenuLabel className="text-muted-foreground">
-          {pluginId}
+          {pluginDisplayName}
         </DropdownMenuLabel>
       ) : null}
       <DropdownMenuItem
         disabled={disabled}
         aria-description={item.description}
         onSelect={() => {
-          onSelected();
+          onSelected({
+            restoreComposerFocus: () => composer.focus(),
+            selectedElement: document.activeElement,
+          });
           void run();
         }}
       >

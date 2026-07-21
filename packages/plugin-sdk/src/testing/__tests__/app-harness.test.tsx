@@ -305,6 +305,62 @@ describe("loadPluginApp", () => {
     );
   });
 
+  it("does not reserve nested ids for malformed composer contributions", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warning.mockClear();
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "reused-after-malformed",
+          actions: [
+            { id: "same-action", component: null as never },
+            { id: "same-action", component: ComposerProbe },
+          ],
+          banners: [
+            {
+              id: "same-banner",
+              chrome: "dialog" as never,
+              component: ComposerProbe,
+            },
+            { id: "same-banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "same-menu", label: "", run: () => {} },
+            { id: "same-menu", label: "Valid menu", run: () => {} },
+          ],
+          richText: {
+            effects: [
+              { id: "same-effect", className: "", match: () => [] },
+              {
+                id: "same-effect",
+                className: "valid-effect",
+                match: () => [],
+              },
+            ],
+          },
+        });
+      }),
+    );
+
+    const [customization] = captured.composerCustomizations;
+    expect(customization?.actions?.map(({ id }) => id)).toEqual([
+      "same-action",
+    ]);
+    expect(customization?.banners?.map(({ id }) => id)).toEqual([
+      "same-banner",
+    ]);
+    expect(customization?.plusMenu?.map(({ id }) => id)).toEqual(["same-menu"]);
+    expect(customization?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "same-effect",
+    ]);
+    expect(warning).toHaveBeenCalledTimes(4);
+    expect(
+      warning.mock.calls.some(([reason]) =>
+        String(reason).includes("duplicate id"),
+      ),
+    ).toBe(false);
+  });
+
   it("rejects invalid and duplicate messageDirective ids like the host", async () => {
     await expect(
       loadPluginApp(

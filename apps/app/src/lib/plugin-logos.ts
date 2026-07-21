@@ -11,6 +11,8 @@ import { useSyncExternalStore } from "react";
 
 /** One plugin's logo asset URLs; either is null when that variant is absent. */
 export interface PluginLogoUrls {
+  /** User-facing manifest name; null when the inventory does not provide one. */
+  displayName: string | null;
   /** Compact identity and the fallback when a roomy image logo is unavailable. */
   icon: string | null;
   logoUrl: string | null;
@@ -43,6 +45,12 @@ export function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
 export function usePluginIconHint(pluginId: string): string | null {
   const entries = useSyncExternalStore(subscribePluginLogos, getPluginLogoUrls);
   return entries.get(pluginId)?.icon ?? null;
+}
+
+/** Manifest display name, with the stable plugin id as the unavailable fallback. */
+export function usePluginDisplayName(pluginId: string): string {
+  const entries = useSyncExternalStore(subscribePluginLogos, getPluginLogoUrls);
+  return entries.get(pluginId)?.displayName ?? pluginId;
 }
 
 /** Test-only. */

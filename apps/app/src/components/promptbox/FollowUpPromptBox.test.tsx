@@ -357,6 +357,78 @@ describe("FollowUpPromptBox", () => {
     target.remove();
   });
 
+  it.each([
+    ["main-thread", true],
+    ["side-chat", false],
+  ] as const)(
+    "moves queued-message banners immediately before the %s inline composer",
+    (_kind, isPrimaryComposer) => {
+      setPluginSlotRegistrations("queued-tools", {
+        homepageSections: [],
+        settingsSections: [],
+        navPanels: [],
+        threadPanelActions: [],
+        composerAccessories: [],
+        composerCustomizations: [
+          {
+            id: "queued-banner",
+            scopes: ["queued-message"],
+            banners: [
+              {
+                id: "status",
+                chrome: "bare",
+                component: () => (
+                  <div data-testid="queued-plugin-banner">Queued status</div>
+                ),
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      });
+      const target = document.createElement("div");
+      document.body.append(target);
+      const draft = { text: "Queued draft", mentions: [], attachments: [] };
+      const scope = {
+        kind: "queued-message" as const,
+        threadId: "thr_test",
+        queuedMessageId: "queued_1",
+      };
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      const { container } = render(
+        <FollowUpPromptBox
+          {...props}
+          composerTarget={target}
+          isPrimaryComposer={isPrimaryComposer}
+          pluginComposerHost={{
+            scope,
+            draft,
+            textEffectKey: "queued:queued_1",
+            getCurrent: () => draft,
+            setDraft: vi.fn(),
+            focus: vi.fn(),
+          }}
+          pluginComposerScope={scope}
+        />,
+      );
+
+      const banner = screen.getByTestId("queued-plugin-banner");
+      const promptBox = screen.getByTestId("prompt-box");
+      const bannerRoot = banner.closest("[data-bb-plugin-root]");
+      const composerRoot = promptBox.closest("[data-follow-up-composer]");
+      expect(target.contains(banner)).toBe(true);
+      expect(target.contains(promptBox)).toBe(true);
+      expect(composerRoot?.previousElementSibling).toBe(bannerRoot);
+      expect(container.contains(banner)).toBe(false);
+      expect(screen.getAllByTestId("queued-plugin-banner")).toHaveLength(1);
+
+      target.remove();
+    },
+  );
+
   it("forwards accessory suppression changes without remounting the composer", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(

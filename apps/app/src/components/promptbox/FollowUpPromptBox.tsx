@@ -702,7 +702,7 @@ function FollowUpPromptBoxWithComposer({
       >
         <div ref={stackRef} className="space-y-2">
           {stack}
-          {pluginComposerScope ? (
+          {pluginComposerScope && !composerTarget ? (
             <PluginComposerHostProvider value={pluginComposerHost ?? null}>
               <PluginComposerBanners view={bannerComposerView} />
             </PluginComposerHostProvider>
@@ -710,9 +710,22 @@ function FollowUpPromptBoxWithComposer({
         </div>
         <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
         {createPortal(
-          <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-            {composerElement}
-          </PluginComposerHostProvider>,
+          [
+            composerTarget && pluginComposerScope ? (
+              <PluginComposerHostProvider
+                key="queued-composer-banners"
+                value={pluginComposerHost ?? null}
+              >
+                <PluginComposerBanners view={bannerComposerView} />
+              </PluginComposerHostProvider>
+            ) : null,
+            <PluginComposerHostProvider
+              key="composer"
+              value={pluginComposerHost ?? null}
+            >
+              {composerElement}
+            </PluginComposerHostProvider>,
+          ],
           composerPortalHost,
         )}
       </div>

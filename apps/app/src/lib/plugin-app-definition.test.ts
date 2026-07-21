@@ -233,6 +233,60 @@ describe("collectPluginAppRegistrations", () => {
     );
   });
 
+  it("does not reserve nested ids for malformed contributions", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({
+        id: "reused-after-malformed",
+        actions: [
+          { id: "same-action", component: null as never },
+          { id: "same-action", component: Component },
+        ],
+        banners: [
+          {
+            id: "same-banner",
+            chrome: "dialog" as never,
+            component: Component,
+          },
+          { id: "same-banner", component: Component },
+        ],
+        plusMenu: [
+          { id: "same-menu", label: "", run: () => {} },
+          { id: "same-menu", label: "Valid menu", run: () => {} },
+        ],
+        richText: {
+          effects: [
+            { id: "same-effect", className: "", match: () => [] },
+            {
+              id: "same-effect",
+              className: "valid-effect",
+              match: () => [],
+            },
+          ],
+        },
+      });
+    });
+
+    const [customization] =
+      collectPluginAppRegistrations(definition, rejected)
+        .composerCustomizations ?? [];
+
+    expect(customization?.actions?.map(({ id }) => id)).toEqual([
+      "same-action",
+    ]);
+    expect(customization?.banners?.map(({ id }) => id)).toEqual([
+      "same-banner",
+    ]);
+    expect(customization?.plusMenu?.map(({ id }) => id)).toEqual(["same-menu"]);
+    expect(customization?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "same-effect",
+    ]);
+    expect(rejected).toHaveBeenCalledTimes(4);
+    expect(
+      rejected.mock.calls.some(([reason]) => reason.includes("duplicate id")),
+    ).toBe(false);
+  });
+
   it.each([
     [
       "settings section with a non-string title",

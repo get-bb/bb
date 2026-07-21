@@ -432,11 +432,11 @@ function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
   seen.add(id);
 }
 
-function parseComposerContributionArray<T>(
+function parseComposerContributionArray<T extends { id: string }>(
   kind: string,
   value: unknown,
   onRejected: (reason: string) => void,
-  parse: (entryKind: string, value: unknown, seenIds: Set<string>) => T,
+  parse: (entryKind: string, value: unknown) => T,
 ): readonly T[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
@@ -448,7 +448,9 @@ function parseComposerContributionArray<T>(
   for (const [index, entry] of value.entries()) {
     const entryKind = `${kind}[${index}]`;
     try {
-      parsed.push(parse(entryKind, entry, seenIds));
+      const parsedEntry = parse(entryKind, entry);
+      requireUniqueId(entryKind, seenIds, parsedEntry.id);
+      parsed.push(parsedEntry);
     } catch (error) {
       onRejected(error instanceof Error ? error.message : String(error));
     }
@@ -466,53 +468,40 @@ function parseComposerCustomizationRegions(
 > {
   const actions = parseComposerContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
-  >(
-    `${kind}.actions`,
-    registration.actions,
-    onRejected,
-    (entryKind, value, seen) => {
-      const entry = value as Record<string, unknown> | null;
-      const id = requireSlotId(entryKind, entry?.id);
-      requireUniqueId(entryKind, seen, id);
-      return {
-        id,
-        component: requireComponent(entryKind, entry?.component),
-      };
-    },
-  );
+  >(`${kind}.actions`, registration.actions, onRejected, (entryKind, value) => {
+    const entry = value as Record<string, unknown> | null;
+    const id = requireSlotId(entryKind, entry?.id);
+    return {
+      id,
+      component: requireComponent(entryKind, entry?.component),
+    };
+  });
   const banners = parseComposerContributionArray<
     NonNullable<ComposerCustomization["banners"]>[number]
-  >(
-    `${kind}.banners`,
-    registration.banners,
-    onRejected,
-    (entryKind, value, seen) => {
-      const entry = value as Record<string, unknown> | null;
-      const id = requireSlotId(entryKind, entry?.id);
-      requireUniqueId(entryKind, seen, id);
-      const chrome = entry?.chrome;
-      if (chrome !== undefined && chrome !== "card" && chrome !== "bare") {
-        throw new Error(
-          `${entryKind}: "chrome" must be "card" or "bare" when set`,
-        );
-      }
-      return {
-        id,
-        ...(chrome !== undefined ? { chrome } : {}),
-        component: requireComponent(entryKind, entry?.component),
-      };
-    },
-  );
+  >(`${kind}.banners`, registration.banners, onRejected, (entryKind, value) => {
+    const entry = value as Record<string, unknown> | null;
+    const id = requireSlotId(entryKind, entry?.id);
+    const chrome = entry?.chrome;
+    if (chrome !== undefined && chrome !== "card" && chrome !== "bare") {
+      throw new Error(
+        `${entryKind}: "chrome" must be "card" or "bare" when set`,
+      );
+    }
+    return {
+      id,
+      ...(chrome !== undefined ? { chrome } : {}),
+      component: requireComponent(entryKind, entry?.component),
+    };
+  });
   const plusMenu = parseComposerContributionArray<
     NonNullable<ComposerCustomization["plusMenu"]>[number]
   >(
     `${kind}.plusMenu`,
     registration.plusMenu,
     onRejected,
-    (entryKind, value, seen) => {
+    (entryKind, value) => {
       const entry = value as Record<string, unknown> | null;
       const id = requireSlotId(entryKind, entry?.id);
-      requireUniqueId(entryKind, seen, id);
       const icon = requireOptionalString(entryKind, "icon", entry?.icon);
       const description = requireOptionalString(
         entryKind,
@@ -564,10 +553,9 @@ function parseComposerCustomizationRegions(
         `${kind}.richText.effects`,
         raw.effects,
         onRejected,
-        (entryKind, value, seen) => {
+        (entryKind, value) => {
           const entry = value as Record<string, unknown> | null;
           const id = requireSlotId(entryKind, entry?.id);
-          requireUniqueId(entryKind, seen, id);
           return {
             id,
             match: requireFunction<
