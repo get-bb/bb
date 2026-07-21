@@ -690,6 +690,9 @@ describe("SkillDetailDialogView", () => {
     );
     expect(included.textContent).toBe("Included");
     expect(
+      included.querySelector('[data-icon="PackageReceive"]'),
+    ).not.toBeNull();
+    expect(
       screen.queryByRole("button", { name: /documents plugin/i }),
     ).toBeNull();
     expect(screen.queryByTestId("plugin-logo-documents")).toBeNull();

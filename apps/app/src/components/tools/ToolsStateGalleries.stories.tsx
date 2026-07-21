@@ -343,6 +343,7 @@ function SkillProvenanceTreatment({
     return (
       <ResourceLifecycleStatus
         label="Included"
+        icon="PackageReceive"
         accessibleLabel="Included with Documents (Codex plugin)"
         tooltip="Included with Documents (Codex plugin)"
       />
@@ -355,6 +356,7 @@ function SkillProvenanceTreatment({
     return (
       <ResourceLifecycleStatus
         label="Imported"
+        icon="Download"
         tooltip={`Discovered from ${scope.startsWith("claude") ? "Claude Code" : "Codex"}`}
       />
     );

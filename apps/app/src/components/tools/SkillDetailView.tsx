@@ -177,10 +177,16 @@ function SkillStatusControl({
   accessibleLabel?: string;
   appearance?: "default" | "recessed";
 }) {
+  const icon =
+    label === "Imported"
+      ? "Download"
+      : label === "Included"
+        ? "PackageReceive"
+        : undefined;
   return (
     <ResourceLifecycleStatus
       label={label}
-      icon={label === "Imported" ? "Download" : undefined}
+      icon={icon}
       accessibleLabel={accessibleLabel}
       tooltip={tooltip}
       appearance={appearance}
