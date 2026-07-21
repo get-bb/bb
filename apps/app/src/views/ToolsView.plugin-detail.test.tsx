@@ -103,8 +103,11 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    const official = screen.getByLabelText("GitHub: BB Official");
-    expect(official.textContent).toBe("BB Official");
+    const official = screen.getByRole("button", {
+      name: "Uninstall GitHub",
+    });
+    expect(official.textContent).toContain("BB Official");
+    expect(official.textContent).toContain("Uninstall");
     expect(official.className).toContain("bg-transparent");
     expect(official.className).toContain("border-border/70");
     expect(
@@ -119,12 +122,8 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.getByText("Included with bb releases")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
-    const installed = screen.getByRole("button", {
-      name: "Uninstall GitHub",
-    });
-    expect(installed.textContent).toContain("Installed");
-    expect(installed.textContent).toContain("Uninstall");
-    fireEvent.click(installed);
+    expect(screen.queryByLabelText("GitHub: BB Official")).toBeNull();
+    fireEvent.click(official);
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
     expect(screen.queryByRole("button", { name: "GitHub actions" })).toBeNull();
   });

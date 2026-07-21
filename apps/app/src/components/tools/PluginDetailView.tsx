@@ -75,6 +75,9 @@ export function PluginDetailView({
   };
   installed?: {
     accessibleLabel: string;
+    label?: string;
+    icon?: IconName;
+    appearance?: "installed" | "provenance";
     pending?: boolean;
     onAction: () => void;
   };
@@ -99,6 +102,9 @@ export function PluginDetailView({
             {installed ? (
               <ResourceInstalledControl
                 accessibleLabel={installed.accessibleLabel}
+                label={installed.label}
+                icon={installed.icon}
+                appearance={installed.appearance}
                 pending={installed.pending}
                 onAction={installed.onAction}
               />

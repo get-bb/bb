@@ -778,7 +778,7 @@ export function PluginDetail({
         <span className="block break-all font-mono">{plugin.rootDir}</span>
       }
       provenance={
-        sourceLabel
+        sourceLabel && !canRemove
           ? {
               label: sourceLabel,
               tooltip:
@@ -798,6 +798,16 @@ export function PluginDetail({
         canRemove
           ? {
               accessibleLabel: `Uninstall ${plugin.name ?? plugin.id}`,
+              label:
+                plugin.provenance === "catalog" ? "BB Official" : undefined,
+              icon:
+                plugin.provenance === "catalog"
+                  ? ("PackageReceive" as const)
+                  : undefined,
+              appearance:
+                plugin.provenance === "catalog"
+                  ? ("provenance" as const)
+                  : undefined,
               pending,
               onAction: () => onDelete(plugin),
             }

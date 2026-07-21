@@ -1392,12 +1392,14 @@ export function ResourceInstallControl({
 /**
  * Canonical installed state for browse and detail surfaces.
  *
- * With an action it stays green at rest, then reveals the destructive
- * uninstall affordance only while the control itself is hovered or focused.
+ * With an action it shows the installed or provenance treatment at rest, then
+ * reveals the destructive uninstall affordance only while hovered or focused.
  */
 export function ResourceInstalledControl({
   accessibleLabel,
   label = "Installed",
+  icon = "Check",
+  appearance = "installed",
   actionLabel = "Uninstall",
   pendingLabel = "Uninstalling",
   pending = false,
@@ -1407,6 +1409,8 @@ export function ResourceInstalledControl({
 }: {
   accessibleLabel: string;
   label?: string;
+  icon?: IconName;
+  appearance?: "installed" | "provenance";
   actionLabel?: string;
   pendingLabel?: string;
   pending?: boolean;
@@ -1416,7 +1420,7 @@ export function ResourceInstalledControl({
 }) {
   const installedContent = (
     <span className="inline-flex items-center gap-1">
-      <Icon name="Check" className="size-3.5" aria-hidden />
+      <Icon name={icon} className="size-3.5" aria-hidden />
       {presentation === "label" ? label : null}
     </span>
   );
@@ -1453,7 +1457,10 @@ export function ResourceInstalledControl({
       variant="outline"
       size="sm"
       className={cn(
-        "group/install h-7 shrink-0 justify-center border-success/30 bg-success/10 text-xs text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/40 focus-visible:bg-destructive/10 focus-visible:text-destructive-text",
+        "group/install h-7 shrink-0 justify-center text-xs hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/40 focus-visible:bg-destructive/10 focus-visible:text-destructive-text",
+        appearance === "installed"
+          ? "border-success/30 bg-success/10 text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
+          : "border-border/70 bg-transparent text-muted-foreground",
         presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2",
       )}
       disabled={pending}
