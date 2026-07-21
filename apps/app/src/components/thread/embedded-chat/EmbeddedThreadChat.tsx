@@ -57,7 +57,7 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
-import { useComposerTextEffect } from "@/lib/composer-text-effects";
+import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
@@ -864,7 +864,7 @@ function EmbeddedThreadChatWithComposer({
     [activeComposerDraft, pluginComposerHost],
   );
   const activePluginComposerHost = isActive ? pluginComposerHostWithDraft : null;
-  const composerTextEffect = useComposerTextEffect(
+  const composerTextEffects = useComposerTextEffects(
     activePluginComposerHost?.textEffectKey ?? null,
   );
 
@@ -1086,7 +1086,8 @@ function EmbeddedThreadChatWithComposer({
           stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
           pluginComposerHost={activePluginComposerHost}
-          textEffect={composerTextEffect}
+          pluginComposerScope={activePluginComposerHost?.scope ?? null}
+          textEffects={composerTextEffects}
           composerTarget={inlineComposerTarget}
           environmentSummary={composer.environmentSummary}
           contextWindowUsage={null}

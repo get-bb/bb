@@ -4,11 +4,13 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type Ref,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
@@ -166,7 +168,7 @@ export interface NewThreadPromptBoxUIProps {
   disabled: boolean;
   /** Active root-composer binding for plugin composer hooks and accessories. */
   pluginComposerHost?: PluginComposerHost | null;
-  textEffect?: PluginComposerTextEffect | null;
+  textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
 
@@ -216,7 +218,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   isSubmitting,
   disabled,
   pluginComposerHost,
-  textEffect,
+  textEffects,
   zenModeStorageKey,
   history,
   typeahead,
@@ -274,6 +276,39 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     : execution.model.isLoading
       ? "Loading models..."
       : "Submit (Enter)";
+  const attachmentCount = attachments.items?.length ?? 0;
+  const [composerView, setComposerView] = useState<ComposerView>(() => ({
+    scope: pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
+    layout: "expanded",
+    draft: {
+      text: value,
+      isEmpty: value.trim().length === 0 && attachmentCount === 0,
+      attachmentCount,
+    },
+    run: { isRunning: false, isSubmitting },
+  }));
+  const bannerComposerView = useMemo<ComposerView>(
+    () => ({
+      ...composerView,
+      scope: pluginComposerHost?.scope ?? {
+        kind: "new-thread",
+        projectId: null,
+      },
+      draft: {
+        text: value,
+        isEmpty: value.trim().length === 0 && attachmentCount === 0,
+        attachmentCount,
+      },
+      run: { isRunning: false, isSubmitting },
+    }),
+    [
+      attachmentCount,
+      composerView,
+      isSubmitting,
+      pluginComposerHost?.scope,
+      value,
+    ],
+  );
   return (
     <div
       data-app-composer=""
@@ -286,7 +321,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           <div className="mb-2 space-y-2">
             {modeConfig.banner}
             {pluginComposerHost ? (
-              <PluginComposerBanners scope={pluginComposerHost.scope} />
+              <PluginComposerBanners view={bannerComposerView} />
             ) : null}
           </div>
         ) : null}
@@ -297,7 +332,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           mentionRanges={mentionRanges}
           onChange={onChange}
           onSubmit={onSubmit}
-          textEffect={textEffect}
+          textEffects={textEffects}
+          onComposerViewChange={setComposerView}
           history={history}
           typeahead={typeahead}
           mentionMenuPlacement="bottom"

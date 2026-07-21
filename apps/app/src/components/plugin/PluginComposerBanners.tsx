@@ -1,36 +1,23 @@
-import type { PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerView } from "@bb/plugin-sdk";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
-
-function composerScopeKey(scope: PluginComposerScope): string {
-  switch (scope.kind) {
-    case "thread":
-      return `thread/${scope.threadId}`;
-    case "queued-message":
-      return `queued-message/${scope.threadId}/${scope.queuedMessageId}`;
-    case "side-chat":
-      return `side-chat/${scope.projectId}/${scope.parentThreadId}/${scope.tabId}/${scope.childThreadId ?? "draft"}`;
-    case "new-thread":
-      return `new-thread/${scope.projectId ?? "unresolved"}`;
-  }
-}
+import {
+  composerScopeIdentity,
+  PluginComposerViewProvider,
+} from "./plugin-composer-host";
 
 /** Plugin banner rows rendered at the bottom of a composer's measured stack. */
-export function PluginComposerBanners({
-  scope,
-}: {
-  scope: PluginComposerScope;
-}) {
+export function PluginComposerBanners({ view }: { view: ComposerView }) {
   const { composerCustomizations } = usePluginSlots();
-  const scopeKey = composerScopeKey(scope);
+  const scopeKey = composerScopeIdentity(view.scope);
 
   return (
     <>
       {composerCustomizations.map((customization) => {
         if (
           customization.scopes !== undefined &&
-          !customization.scopes.includes(scope.kind)
+          !customization.scopes.includes(view.scope.kind)
         ) {
           return null;
         }
@@ -44,16 +31,18 @@ export function PluginComposerBanners({
               slotId={slotId}
               crashFallback={<></>}
             >
-              {banner.chrome === "bare" ? (
-                <banner.component />
-              ) : (
-                <PromptStackCard
-                  ariaLabel={customization.pluginId}
-                  className="empty:hidden"
-                >
+              <PluginComposerViewProvider value={view}>
+                {banner.chrome === "bare" ? (
                   <banner.component />
-                </PromptStackCard>
-              )}
+                ) : (
+                  <PromptStackCard
+                    ariaLabel={customization.pluginId}
+                    className="empty:hidden"
+                  >
+                    <banner.component />
+                  </PromptStackCard>
+                )}
+              </PluginComposerViewProvider>
             </PluginSlotMount>
           );
         });

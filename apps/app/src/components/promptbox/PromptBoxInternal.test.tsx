@@ -21,7 +21,12 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
-import { useComposer } from "@/lib/plugin-sdk-hooks";
+import {
+  getComposerInputLock,
+  useComposer,
+  useComposerView,
+} from "@/lib/plugin-sdk-hooks";
+import { getComposerTextEffects } from "@/lib/composer-text-effects";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -537,7 +542,12 @@ describe("PromptBoxInternal controlled value sync", () => {
 
   it("decorates only draft text while shimmering and removes it when cleared", async () => {
     const props = createPromptBoxProps({ value: "Keep this draft readable" });
-    const view = render(<PromptBoxInternal {...props} textEffect="shimmer" />);
+    const view = render(
+      <PromptBoxInternal
+        {...props}
+        textEffects={[{ pluginId: "test", effect: "shimmer", order: 0 }]}
+      />,
+    );
 
     await waitFor(() => {
       expect(
@@ -550,9 +560,47 @@ describe("PromptBoxInternal controlled value sync", () => {
         ?.classList.contains("prompt-text-shimmer"),
     ).toBe(false);
 
-    view.rerender(<PromptBoxInternal {...props} textEffect={null} />);
+    view.rerender(<PromptBoxInternal {...props} textEffects={[]} />);
     await waitFor(() => {
       expect(view.container.querySelector(".prompt-text-shimmer")).toBeNull();
+    });
+  });
+
+  it("paints simultaneous imperative plugin effects and removes owners independently", async () => {
+    const props = createPromptBoxProps({ value: "Overlapping effects" });
+    const alpha = {
+      pluginId: "alpha",
+      effect: { className: "alpha-effect" },
+      order: 1,
+    } as const;
+    const zeta = {
+      pluginId: "zeta",
+      effect: { className: "zeta-effect" },
+      order: 2,
+    } as const;
+    const view = render(
+      <PromptBoxInternal {...props} textEffects={[alpha, zeta]} />,
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector(".alpha-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+      expect(view.container.querySelector(".zeta-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+    });
+    view.rerender(<PromptBoxInternal {...props} textEffects={[zeta]} />);
+    await waitFor(() => {
+      expect(view.container.querySelector(".alpha-effect")).toBeNull();
+      expect(view.container.querySelector(".zeta-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+    });
+
+    view.rerender(<PromptBoxInternal {...props} textEffects={[]} />);
+    await waitFor(() => {
+      expect(view.container.querySelector(".zeta-effect")).toBeNull();
     });
   });
 
@@ -991,6 +1039,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
   it("makes the editor read-only while locked and restores it on unlock", async () => {
     function LockAction() {
       const composer = useComposer();
+      const view = useComposerView();
       const [locked, setLocked] = useState(false);
       return (
         <button
@@ -1000,7 +1049,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
             setLocked(!locked);
           }}
         >
-          Toggle lock
+          Toggle lock ({view.scope.kind})
         </button>
       );
     }
@@ -1009,13 +1058,26 @@ describe("PromptBoxInternal plugin composer actions", () => {
       pluginRegistrationSet([
         {
           id: "tools",
+          scopes: ["thread"],
           actions: [{ id: "lock", component: LockAction }],
+          plusMenu: [
+            { id: "thread-menu", label: "Thread tool", run: () => {} },
+          ],
+          richText: {
+            effects: [
+              {
+                id: "thread-rule",
+                className: "thread-rule",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+          },
         },
       ]),
     );
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
-      scope: { kind: "new-thread", projectId: null },
+      scope: { kind: "thread", threadId: "thread-1" },
       draft,
       textEffectKey: "promptbox-lock-test",
       getCurrent: () => draft,
@@ -1025,14 +1087,28 @@ describe("PromptBoxInternal plugin composer actions", () => {
     render(
       <MemoryRouter>
         <PluginComposerHostProvider value={host}>
-          <PromptBoxInternal {...createPromptBoxProps()} />
+          <PromptBoxInternal
+            {...createPromptBoxProps({ value: "Thread draft" })}
+          />
         </PluginComposerHostProvider>
       </MemoryRouter>,
     );
     const editor = getPromptEditorElement();
     expect(editor.getAttribute("contenteditable")).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Toggle lock" }));
+    expect(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
+    await waitFor(() => {
+      expect(document.querySelector(".thread-rule")?.textContent).toBe(
+        "Thread draft",
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    );
     await waitFor(() => {
       expect(editor.getAttribute("contenteditable")).toBe("false");
       expect(
@@ -1043,7 +1119,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
     });
     expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Toggle lock" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    );
     await waitFor(() => {
       expect(editor.getAttribute("contenteditable")).toBe("true");
       expect(
@@ -1052,6 +1130,78 @@ describe("PromptBoxInternal plugin composer actions", () => {
           ?.hasAttribute("aria-busy"),
       ).toBe(false);
     });
+  });
+
+  it("remounts scoped actions and releases owned state when scope identity changes", () => {
+    const mounted = vi.fn();
+    const cleaned = vi.fn();
+    const staleWrite = vi.fn();
+    const completions: Array<() => void> = [];
+    function ScopedAction() {
+      const composer = useComposer();
+      const view = useComposerView();
+      useLayoutEffect(() => {
+        mounted(view.scope);
+        composer.setInputLock(true);
+        composer.setTextEffect({ className: "scoped-effect" });
+        let active = true;
+        completions.push(() => {
+          if (active) staleWrite();
+        });
+        return () => {
+          active = false;
+          cleaned(view.scope);
+        };
+      }, []);
+      return <button>{view.scope.kind}</button>;
+    }
+    setPluginSlotRegistrations(
+      "scope-action",
+      pluginRegistrationSet([
+        {
+          id: "scope",
+          actions: [{ id: "probe", component: ScopedAction }],
+        },
+      ]),
+    );
+    const draft = emptyPromptDraftState();
+    const host = (threadId: string): PluginComposerHost => ({
+      scope: { kind: "thread", threadId },
+      draft,
+      textEffectKey: `scope-action:${threadId}`,
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    });
+    const firstHost = host("one");
+    const secondHost = host("two");
+    const props = createPromptBoxProps({ value: "Scoped draft" });
+    const rendered = render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={firstHost}>
+          <PromptBoxInternal {...props} />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    expect(mounted).toHaveBeenCalledTimes(1);
+    expect(getComposerInputLock(firstHost.textEffectKey)).toBe(true);
+    expect(getComposerTextEffects(firstHost.textEffectKey)).toHaveLength(1);
+
+    rendered.rerender(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={secondHost}>
+          <PromptBoxInternal {...props} />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    expect(cleaned).toHaveBeenCalledTimes(1);
+    expect(mounted).toHaveBeenCalledTimes(2);
+    expect(getComposerInputLock(firstHost.textEffectKey)).toBe(false);
+    expect(getComposerTextEffects(firstHost.textEffectKey)).toEqual([]);
+    expect(getComposerInputLock(secondHost.textEffectKey)).toBe(true);
+
+    completions[0]?.();
+    expect(staleWrite).not.toHaveBeenCalled();
   });
 
   it("does not mount plugin actions in compact layout", () => {

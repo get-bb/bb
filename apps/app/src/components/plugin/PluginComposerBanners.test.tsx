@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetPluginSlotStoreForTest,
@@ -10,6 +11,16 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginComposerBanners } from "./PluginComposerBanners";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
+import { useComposerView } from "@/lib/plugin-sdk-hooks";
+
+function composerView(threadId: string, text = "") {
+  return {
+    scope: { kind: "thread" as const, threadId },
+    layout: "expanded" as const,
+    draft: { text, isEmpty: text.length === 0, attachmentCount: 0 },
+    run: { isRunning: false, isSubmitting: false },
+  };
+}
 
 function registrations(
   composerCustomizations: PluginRegistrationSet["composerCustomizations"],
@@ -58,9 +69,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t1" }} />,
-    );
+    render(<PluginComposerBanners view={composerView("t1")} />);
 
     expect(
       screen
@@ -81,9 +90,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t1" }} />,
-    );
+    render(<PluginComposerBanners view={composerView("t1")} />);
 
     expect(
       screen.getByRole("region", { name: "empty-plugin" }).className,
@@ -109,9 +116,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t1" }} />,
-    );
+    render(<PluginComposerBanners view={composerView("t1")} />);
 
     expect(screen.queryByText("plugin isolated-plugin crashed")).toBeNull();
     expect(screen.getByText("healthy banner")).toBeDefined();
@@ -137,12 +142,8 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    const view = render(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t1" }} />,
-    );
-    view.rerender(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t2" }} />,
-    );
+    const view = render(<PluginComposerBanners view={composerView("t1")} />);
+    view.rerender(<PluginComposerBanners view={composerView("t2")} />);
 
     expect(mounted).toHaveBeenCalledTimes(2);
     expect(unmounted).toHaveBeenCalledTimes(1);
@@ -175,14 +176,53 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(
-      <PluginComposerBanners scope={{ kind: "thread", threadId: "t1" }} />,
-    );
+    render(<PluginComposerBanners view={composerView("t1")} />);
 
     expect(
       screen
         .getAllByText(/^(alpha|zeta)/)
         .map((element) => element.textContent),
     ).toEqual(["alpha one", "alpha two", "alpha three", "zeta"]);
+  });
+
+  it("provides the live composer view to banner components", () => {
+    function ViewProbe() {
+      const view = useComposerView();
+      return (
+        <div>{`${view.scope.kind}:${view.draft.text}:${view.layout}:${view.run.isRunning}:${view.run.isSubmitting}`}</div>
+      );
+    }
+    setPluginSlotRegistrations(
+      "view-plugin",
+      registrations([
+        {
+          id: "view",
+          banners: [{ id: "probe", component: ViewProbe }],
+        },
+      ]),
+    );
+
+    const first = composerView("t1", "draft one");
+    const rendered = render(
+      <MemoryRouter>
+        <PluginComposerBanners view={first} />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText("thread:draft one:expanded:false:false"),
+    ).toBeDefined();
+
+    rendered.rerender(
+      <MemoryRouter>
+        <PluginComposerBanners
+          view={{
+            ...composerView("t1", "draft two"),
+            layout: "zen",
+            run: { isRunning: true, isSubmitting: true },
+          }}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("thread:draft two:zen:true:true")).toBeDefined();
   });
 });

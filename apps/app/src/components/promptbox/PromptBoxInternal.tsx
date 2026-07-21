@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { ComposerView, PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView } from "@bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -82,10 +82,10 @@ import {
 } from "./editor/prompt-mention-link";
 import {
   refreshPromptDecorations,
-  setPromptTextEffect,
   type PromptDecorationSource,
   type PromptDraftObserver,
 } from "./editor/prompt-decoration-extension";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
 import {
   promptCommandResourceFromSuggestion,
@@ -334,8 +334,10 @@ export interface PromptBoxInternalProps {
   onSubmit: () => void;
   placeholder?: string;
   className?: string;
-  /** Optional host-rendered paint applied only to editable draft text. */
-  textEffect?: PluginComposerTextEffect | null;
+  /** Plugin-owned whole-draft paint sources, in deterministic composition order. */
+  textEffects?: readonly ComposerTextEffectSource[];
+  /** Publishes the concrete reactive view to sibling banner mounts. */
+  onComposerViewChange?: (view: ComposerView) => void;
   /** Content rendered inside the prompt box card, above the text area. Use
    * for prominent context that should be impossible to miss — e.g. a
    * "Reusing existing worktree" banner when env mode is set to reuse. */
@@ -1043,7 +1045,8 @@ export function PromptBoxInternal({
   onSubmit,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   className,
-  textEffect = null,
+  textEffects,
+  onComposerViewChange,
   header,
   footerStart,
   submission = {},
@@ -1228,6 +1231,9 @@ export function PromptBoxInternal({
   );
   const composerViewRef = useRef(composerView);
   composerViewRef.current = composerView;
+  useEffect(() => {
+    onComposerViewChange?.(composerView);
+  }, [composerView, onComposerViewChange]);
   const pluginRichTextContributions = useMemo(() => {
     if (suppressPluginComposerAccessories) {
       return {
@@ -1252,6 +1258,7 @@ export function PromptBoxInternal({
         sources.push({
           id: sourceId,
           generation: customization.generation,
+          pluginId: customization.pluginId,
           effects: richText.effects,
         });
       }
@@ -1263,11 +1270,20 @@ export function PromptBoxInternal({
         });
       }
     }
+    for (const effectSource of textEffects ?? []) {
+      sources.push({
+        id: `plugin-imperative:${effectSource.pluginId}:${effectSource.order}`,
+        generation: effectSource.order,
+        pluginId: effectSource.pluginId,
+        textEffect: effectSource.effect,
+      });
+    }
     return { sources, observers };
   }, [
     composerCustomizations,
     composerView.scope,
     suppressPluginComposerAccessories,
+    textEffects,
   ]);
   const pluginDecorationSourcesRef = useRef(
     pluginRichTextContributions.sources,
@@ -1594,16 +1610,6 @@ export function PromptBoxInternal({
     if (!editor || editor.isDestroyed) return;
     refreshPromptDecorations(editor);
   }, [editor, pluginRichTextContributions]);
-
-  useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
-    setPromptTextEffect(editor, textEffect);
-    return () => {
-      if (!editor.isDestroyed) {
-        setPromptTextEffect(editor, null);
-      }
-    };
-  }, [editor, textEffect]);
 
   useLayoutEffect(() => {
     if (!pendingFocusEndRef.current) return;

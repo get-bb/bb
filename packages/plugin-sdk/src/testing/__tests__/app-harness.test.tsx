@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
   PluginComposerApi,
@@ -269,6 +269,40 @@ describe("loadPluginApp", () => {
         actions: [{ id: "improve", component: ComposerProbe }],
       },
     ]);
+  });
+
+  it("mirrors host isolation for malformed composer regions and duplicate entries", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const malformed = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "nested",
+          actions: {} as never,
+          banners: [
+            { id: "banner", component: ComposerProbe },
+            { id: "banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "bad", label: "", run: () => {} },
+            { id: "good", label: "Good", run: () => {} },
+          ],
+        });
+      }),
+    );
+
+    expect(malformed.composerCustomizations).toEqual([
+      {
+        id: "nested",
+        banners: [{ id: "banner", component: ComposerProbe }],
+        plusMenu: [{ id: "good", label: "Good", run: expect.any(Function) }],
+      },
+    ]);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("actions: must be an array"),
+    );
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining('duplicate id "banner"'),
+    );
   });
 
   it("rejects invalid and duplicate messageDirective ids like the host", async () => {

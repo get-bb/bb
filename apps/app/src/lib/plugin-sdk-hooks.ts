@@ -381,6 +381,8 @@ function createComposerScopeOwnership(scopeKey: string) {
   };
 }
 
+let composerVisualOwnerSequence = 0;
+
 type ComposerInputLockListener = () => void;
 type ComposerInputLockOwner = string | symbol;
 
@@ -608,12 +610,28 @@ export function useComposer(): PluginComposerApi {
     () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
     [pluginId, scopeOwnershipKey],
   );
+  const visualStateOwnerOrder = useMemo(
+    () => composerVisualOwnerSequence++,
+    [scopeOwnershipKey],
+  );
   const setTextEffect = useCallback(
     (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
       if (!scopeOwnership.isActive()) return;
-      setComposerTextEffect(textEffectKey, pluginId, effect, visualStateOwner);
+      setComposerTextEffect(
+        textEffectKey,
+        pluginId,
+        effect,
+        visualStateOwner,
+        visualStateOwnerOrder,
+      );
     },
-    [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
+    [
+      pluginId,
+      scopeOwnership,
+      textEffectKey,
+      visualStateOwner,
+      visualStateOwnerOrder,
+    ],
   );
   const setInputLock = useCallback(
     (locked: boolean) => {

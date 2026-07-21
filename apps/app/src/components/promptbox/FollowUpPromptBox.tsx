@@ -15,10 +15,8 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
-import type {
-  PluginComposerScope,
-  PluginComposerTextEffect,
-} from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
@@ -209,7 +207,7 @@ export interface FollowUpPromptBoxProps {
   pluginComposerHost?: PluginComposerHost | null;
   /** Active scope used to filter and lifecycle-key plugin banner slots. */
   pluginComposerScope?: PluginComposerScope | null;
-  textEffect?: PluginComposerTextEffect | null;
+  textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -252,7 +250,21 @@ function FollowUpPromptBoxStackOnly({
         {stack}
         {pluginComposerScope ? (
           <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-            <PluginComposerBanners scope={pluginComposerScope} />
+            <PluginComposerBanners
+              view={{
+                scope: pluginComposerScope,
+                layout: "expanded",
+                draft: {
+                  text: pluginComposerHost?.draft.text ?? "",
+                  isEmpty:
+                    (pluginComposerHost?.draft.text.trim().length ?? 0) === 0 &&
+                    (pluginComposerHost?.draft.attachments.length ?? 0) === 0,
+                  attachmentCount:
+                    pluginComposerHost?.draft.attachments.length ?? 0,
+                },
+                run: { isRunning: false, isSubmitting: false },
+              }}
+            />
           </PluginComposerHostProvider>
         ) : null}
       </div>
@@ -279,7 +291,7 @@ function FollowUpPromptBoxWithComposer({
   suppressPluginComposerAccessories,
   pluginComposerHost,
   pluginComposerScope,
-  textEffect,
+  textEffects,
   zenModeResetKey,
   focusEndKey,
   isPrimaryComposer = true,
@@ -304,6 +316,47 @@ function FollowUpPromptBoxWithComposer({
       ? submitMode.onStop
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
+  const attachmentCount = attachments.items?.length ?? 0;
+  const [composerView, setComposerView] = useState<ComposerView>(() => ({
+    scope: pluginComposerScope ??
+      pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
+    layout: "expanded",
+    draft: {
+      text: composer.message,
+      isEmpty: composer.message.trim().length === 0 && attachmentCount === 0,
+      attachmentCount,
+    },
+    run: {
+      isRunning: canStopRuntime,
+      isSubmitting: composer.isFollowUpSubmitting || isStopping,
+    },
+  }));
+  const bannerComposerView = useMemo<ComposerView>(
+    () => ({
+      ...composerView,
+      scope: pluginComposerScope ??
+        pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
+      draft: {
+        text: composer.message,
+        isEmpty: composer.message.trim().length === 0 && attachmentCount === 0,
+        attachmentCount,
+      },
+      run: {
+        isRunning: canStopRuntime,
+        isSubmitting: composer.isFollowUpSubmitting || isStopping,
+      },
+    }),
+    [
+      attachmentCount,
+      canStopRuntime,
+      composer.isFollowUpSubmitting,
+      composer.message,
+      composerView,
+      isStopping,
+      pluginComposerHost?.scope,
+      pluginComposerScope,
+    ],
+  );
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
   const [composerPortalHost] = useState(() => document.createElement("div"));
@@ -573,7 +626,8 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={composer.onSubmit}
-        textEffect={textEffect}
+        textEffects={textEffects}
+        onComposerViewChange={setComposerView}
         scrollToBottomOnSubmit={submitMode.kind !== "queue"}
         history={composer.history}
         focusEndKey={focusEndKey}
@@ -650,7 +704,7 @@ function FollowUpPromptBoxWithComposer({
           {stack}
           {pluginComposerScope ? (
             <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-              <PluginComposerBanners scope={pluginComposerScope} />
+              <PluginComposerBanners view={bannerComposerView} />
             </PluginComposerHostProvider>
           ) : null}
         </div>

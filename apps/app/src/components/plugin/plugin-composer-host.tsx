@@ -27,6 +27,19 @@ export interface PluginComposerHost {
   focus(): void;
 }
 
+export function composerScopeIdentity(scope: PluginComposerScope): string {
+  switch (scope.kind) {
+    case "thread":
+      return `thread/${scope.threadId}`;
+    case "queued-message":
+      return `queued-message/${scope.threadId}/${scope.queuedMessageId}`;
+    case "side-chat":
+      return `side-chat/${scope.projectId}/${scope.parentThreadId}/${scope.tabId}/${scope.childThreadId ?? "draft"}`;
+    case "new-thread":
+      return `new-thread/${scope.projectId ?? "unresolved"}`;
+  }
+}
+
 const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);

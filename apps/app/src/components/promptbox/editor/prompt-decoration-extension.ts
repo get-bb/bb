@@ -35,6 +35,7 @@ export type PromptDecorationRule = NonNullable<
 export interface PromptDecorationSource {
   id: string;
   generation: string | number;
+  pluginId?: string;
   effects?: readonly PromptDecorationRule[];
   textEffect?: PluginComposerTextEffect | null;
 }
@@ -271,6 +272,9 @@ function buildDecorations(
           normalizedEffect.className,
           {
             className: normalizedEffect.className,
+            ...(source.pluginId
+              ? { "data-bb-plugin-decoration": source.pluginId }
+              : {}),
             sourceId: source.id,
             sourceOrder: String(sourceIndex),
           },
@@ -314,6 +318,9 @@ function buildDecorations(
             rule.className,
             {
               className: rule.className,
+              ...(source.pluginId
+                ? { "data-bb-plugin-decoration": source.pluginId }
+                : {}),
               ruleId: rule.id,
               sourceId: source.id,
               sourceOrder: `${sourceIndex}:${ruleIndex}`,

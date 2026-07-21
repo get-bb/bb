@@ -16,6 +16,7 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { composerScopeIdentity } from "./plugin-composer-host";
 
 export interface PluginComposerPlusMenuContribution {
   pluginId: string;
@@ -56,6 +57,7 @@ export function usePluginComposerPlusMenuContributions(
 
 export function PluginComposerActions({ view }: { view: ComposerView }) {
   const { composerCustomizations } = usePluginSlots();
+  const scopeKey = composerScopeIdentity(view.scope);
   const actions = composerCustomizations.flatMap((customization) =>
     matchesScope(customization, view.scope)
       ? (customization.actions ?? []).map((action) => ({
@@ -69,7 +71,7 @@ export function PluginComposerActions({ view }: { view: ComposerView }) {
 
   return actions.map(({ pluginId, customizationId, generation, action }) => (
     <div
-      key={`${pluginId}/${customizationId}/${action.id}/${generation}`}
+      key={`${pluginId}/${customizationId}/${action.id}/${generation}/${scopeKey}`}
       data-plugin-composer-action=""
       className="flex h-9 max-h-9 shrink-0 items-center overflow-hidden"
     >

@@ -175,6 +175,64 @@ describe("collectPluginAppRegistrations", () => {
     ]);
   });
 
+  it("isolates malformed and duplicate nested composer contributions", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({
+        id: "malformed-array",
+        actions: {} as never,
+        banners: [
+          { id: "good-banner", component: Component },
+          { id: "bad-banner", chrome: "dialog" as never, component: Component },
+        ],
+      });
+      app.composer.customize({
+        id: "duplicates",
+        actions: [
+          { id: "action", component: Component },
+          { id: "action", component: Component },
+          { id: "survivor", component: Component },
+        ],
+        plusMenu: [
+          { id: "bad-menu", label: "", run: () => {} },
+          { id: "good-menu", label: "Good", run: () => {} },
+        ],
+        richText: {
+          effects: [
+            { id: "paint", className: "paint", match: () => [] },
+            { id: "paint", className: "other", match: () => [] },
+            { id: "valid-paint", className: "valid", match: () => [] },
+          ],
+        },
+      });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, rejected);
+    const customizations = registrations.composerCustomizations ?? [];
+
+    expect(customizations[0]).toEqual({
+      id: "malformed-array",
+      banners: [{ id: "good-banner", component: Component }],
+    });
+    expect(customizations[1]?.actions?.map(({ id }) => id)).toEqual([
+      "action",
+      "survivor",
+    ]);
+    expect(customizations[1]?.plusMenu?.map(({ id }) => id)).toEqual([
+      "good-menu",
+    ]);
+    expect(customizations[1]?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "paint",
+      "valid-paint",
+    ]);
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining("actions: must be an array"),
+    );
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining('duplicate id "action"'),
+    );
+  });
+
   it.each([
     [
       "settings section with a non-string title",

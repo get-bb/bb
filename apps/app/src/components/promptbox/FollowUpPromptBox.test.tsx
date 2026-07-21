@@ -10,6 +10,10 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
@@ -24,6 +28,7 @@ const mocks = vi.hoisted(() => {
   };
   return Object.assign(values, {});
 });
+let resizeObserverCallback: ResizeObserverCallback | null = null;
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: () => ({
@@ -53,6 +58,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     suppressPluginComposerAccessories,
     zenMode,
     heightAnimationKey,
+    minHeight,
   }: {
     footerStart?: ReactNode;
     compact?: {
@@ -70,12 +76,14 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     suppressPluginComposerAccessories?: boolean;
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
+    minHeight?: number;
   }) => (
     <div
       data-testid="prompt-box"
       data-compact={compact?.isCompact}
       data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
+      data-min-height={minHeight}
       data-plugin-accessories-suppressed={
         suppressPluginComposerAccessories ? "true" : "false"
       }
@@ -226,15 +234,85 @@ function createFollowUpPromptBoxProps(
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
   mocks.isCompactViewport = false;
   mocks.isPointerCoarse = false;
+  resizeObserverCallback = null;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
 });
 
 describe("FollowUpPromptBox", () => {
+  it("includes expanding plugin banners in measured stack compensation", () => {
+    setPluginSlotRegistrations("measured-banner", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerAccessories: [],
+      composerCustomizations: [
+        {
+          id: "measured",
+          banners: [
+            {
+              id: "banner",
+              component: () => <div>Expandable plugin banner</div>,
+            },
+          ],
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    const draft = { text: "Follow up", mentions: [], attachments: [] };
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(
+      <FollowUpPromptBox
+        {...props}
+        stack={<></>}
+        pluginComposerHost={{
+          scope: { kind: "thread", threadId: "thr_test" },
+          draft,
+          textEffectKey: "thread:thr_test",
+          getCurrent: () => draft,
+          setDraft: vi.fn(),
+          focus: vi.fn(),
+        }}
+        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+      />,
+    );
+    expect(screen.getByText("Expandable plugin banner")).toBeTruthy();
+    const promptBox = screen.getByTestId("prompt-box");
+    const initialMinHeight = Number(promptBox.getAttribute("data-min-height"));
+
+    act(() => {
+      resizeObserverCallback?.(
+        [{ contentRect: { height: 24 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    });
+
+    expect(Number(promptBox.getAttribute("data-min-height"))).toBeLessThan(
+      initialMinHeight,
+    );
+  });
+
   it("moves one stateful composer between the bottom and inline targets without remounting", () => {
     const target = document.createElement("div");
     target.setAttribute("data-test-composer-target", "");

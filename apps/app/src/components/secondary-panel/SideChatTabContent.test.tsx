@@ -58,7 +58,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     readOnly,
     stack,
     suppressPluginComposerAccessories,
-    textEffect,
+    textEffects,
     typeahead,
   }: {
     attachments: {
@@ -104,7 +104,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     };
     stack: ReactNode | null;
     suppressPluginComposerAccessories?: boolean;
-    textEffect?: string | null;
+    textEffects?: readonly { effect: string | { className: string } }[];
   }) => {
     if (
       mocks.composerSuspension !== null &&
@@ -215,7 +215,15 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
             ? JSON.stringify(pluginComposerHost.scope)
             : "null"}
         </span>
-        <span data-testid="side-chat-text-effect">{textEffect ?? "none"}</span>
+        <span data-testid="side-chat-text-effect">
+          {textEffects && textEffects.length > 0
+            ? textEffects
+                .map(({ effect }) =>
+                  typeof effect === "string" ? effect : effect.className,
+                )
+                .join(",")
+            : "none"}
+        </span>
         <button
           type="button"
           disabled={!pluginComposerHost}

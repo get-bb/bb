@@ -295,6 +295,70 @@ describe("PromptDecorationExtension", () => {
     editor.destroy();
   });
 
+  it("preserves serialization and mentions through insertion, undo, and redo while decorated", () => {
+    const editor = createEditor(
+      false,
+      {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "ask " },
+              {
+                type: "mention",
+                attrs: {
+                  resource: {
+                    kind: "plugin",
+                    pluginId: "sample",
+                    itemId: "people:alice",
+                    label: "Alice",
+                  },
+                  serializedText: "Alice",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        getDecorationSources: () => ({
+          plugins: [
+            {
+              id: "plugin:active-during-history",
+              generation: 1,
+              effects: [
+                {
+                  id: "all",
+                  className: "active-decoration",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    const before = promptEditorValueFromDoc(editor.state.doc);
+    expect(decorationClasses(editor)).toContain("active-decoration");
+
+    editor.commands.focus("end");
+    editor.commands.insertContent(" pasted text");
+    const afterInsertion = promptEditorValueFromDoc(editor.state.doc);
+    expect(afterInsertion.text).toBe("ask Alice pasted text");
+    expect(afterInsertion.mentions).toEqual(before.mentions);
+    expect(decorationClasses(editor)).toContain("active-decoration");
+
+    expect(editor.commands.undo()).toBe(true);
+    expect(promptEditorValueFromDoc(editor.state.doc)).toEqual(before);
+    expect(decorationClasses(editor)).toContain("active-decoration");
+
+    expect(editor.commands.redo()).toBe(true);
+    expect(promptEditorValueFromDoc(editor.state.doc)).toEqual(afterInsertion);
+    expect(decorationClasses(editor)).toContain("active-decoration");
+    editor.destroy();
+  });
+
   it("debounces structured draft observation with mention spans and view", () => {
     vi.useFakeTimers();
     const onDraftChange = vi.fn();
