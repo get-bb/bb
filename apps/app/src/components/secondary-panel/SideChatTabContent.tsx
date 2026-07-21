@@ -547,6 +547,7 @@ export function SideChatTabContent({
   return (
     <EmbeddedThreadChat
       variant="compact"
+      includePluginMessageActions={false}
       threadId={childThreadId}
       surfaceFallbackKey={tab.id}
       projectId={sourceThread.projectId}

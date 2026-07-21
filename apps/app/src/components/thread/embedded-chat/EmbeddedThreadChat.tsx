@@ -191,6 +191,12 @@ interface EmbeddedThreadChatSharedProps {
   leadingContent?: ReactNode;
   /** Surface-scoped consumer actions for the per-message action bar. */
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  /**
+   * Whether slot-registered plugin message actions render in this surface's
+   * timeline. Embedded consumers (plugin ThreadChat, the side-chat panel)
+   * pass false; the main thread keeps the default.
+   */
+  includePluginMessageActions?: boolean;
   /** Rows rendered while `threadId` is null (e.g. an optimistic first message). */
   draftModeTimelineRows?: readonly TimelineRow[];
   labels?: Partial<EmbeddedThreadChatLabels>;
@@ -287,6 +293,7 @@ function EmbeddedThreadChatWithComposer({
   rowFilter,
   leadingContent,
   consumerMessageActions,
+  includePluginMessageActions,
   draftModeTimelineRows,
   labels: labelOverrides,
   showLoadOlderRows = true,
@@ -1118,6 +1125,7 @@ function EmbeddedThreadChatWithComposer({
         isTurnSubmitting={isTurnSubmitting}
         leadingContent={leadingContent}
         consumerMessageActions={consumerMessageActions}
+        includePluginMessageActions={includePluginMessageActions}
         missingThreadLabel={labels.missingThread}
         onSendToMainMessage={onSendToMainMessage}
         onMessageAddToChat={handleAddToChat}

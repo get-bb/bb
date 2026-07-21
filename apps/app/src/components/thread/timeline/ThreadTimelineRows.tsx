@@ -157,6 +157,13 @@ export interface ThreadTimelineRowsProps {
    * bar after the slot-registered plugin actions.
    */
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  /**
+   * Whether slot-registered plugin message actions render on this surface.
+   * Default true (the app's native thread surfaces). Embedded chat surfaces
+   * (plugin-hosted ThreadChat, the side-chat panel) pass false so global
+   * actions like "Reply in side chat" don't nest inside themselves.
+   */
+  includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -2029,7 +2036,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
       pluginMessageActions:
-        timelineThreadId === undefined
+        timelineThreadId === undefined ||
+        props.includePluginMessageActions === false
           ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
           : messageActionSlots,
       consumerMessageActions:

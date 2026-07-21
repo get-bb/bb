@@ -98,7 +98,9 @@ function PluginThreadChatBody({
         ? undefined
         : messageActions.map((action) => ({
             id: action.id,
-            pluginId,
+            // An explicit icon hint wins over plugin branding so actions like
+            // send-to-main keep their semantic glyph (legacy parity).
+            pluginId: action.icon !== undefined ? null : pluginId,
             icon: action.icon ?? null,
             label: action.title,
             ...(action.roles !== undefined ? { roles: action.roles } : {}),
@@ -190,6 +192,7 @@ function PluginThreadChatBody({
       <ThreadTimelinePanelContent
         leadingContent={leadingContent}
         consumerMessageActions={consumerMessageActions}
+      includePluginMessageActions={false}
         projectId={thread.projectId}
         resolveMentionLink={resolveMentionLink}
         surfaceKey={`plugin-thread-chat:${threadId}`}
@@ -218,6 +221,7 @@ function PluginThreadChatBody({
       resolveMentionLink={resolveMentionLink}
       leadingContent={leadingContent}
       consumerMessageActions={consumerMessageActions}
+      includePluginMessageActions={false}
       composer={{
         draftScope: {
           kind: "thread",

@@ -193,8 +193,9 @@ describe("PluginThreadChat", () => {
     expect(actions[0]).toEqual(
       expect.objectContaining({
         id: "send-to-main",
-        // The mounting plugin's id, so the action bar shows its branding icon.
-        pluginId: "demo",
+        // An explicit icon hint wins over the mounting plugin's branding, so
+        // the action keeps its semantic glyph.
+        pluginId: null,
         icon: "ArrowTurnBackward",
         label: "Send to main thread",
         roles: ["assistant"],
