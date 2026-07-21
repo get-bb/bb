@@ -968,14 +968,26 @@ describe("QueuedMessagesList", () => {
     expect(container.textContent).not.toContain("1 attachment");
   });
 
-  it("lets attachment-free previews fill the row before fading overflow", () => {
-    const { container } = renderQueuedMessages([
-      makeQueuedMessage("q_short", "Short queued message"),
-    ]);
+  it("keeps previews on one ellipsized line in drawer and workspace modes", () => {
+    const queuedMessages = Array.from({ length: 4 }, (_, index) =>
+      makeQueuedMessage(
+        `q_${index}`,
+        `Long queued message ${index + 1} that must truncate to the available row width`,
+      ),
+    );
+    const { container, getByRole } = renderQueuedMessages(queuedMessages);
 
-    const preview = container.querySelector('[title="Short queued message"]');
+    const preview = container.querySelector('[title^="Long queued message 1"]');
     expect(preview?.classList.contains("flex-1")).toBe(true);
-    expect(preview?.classList.contains("fade-clip-right")).toBe(true);
+    expect(preview?.classList.contains("fade-clip-right")).toBe(false);
+    expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(
+      true,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
+    expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(
+      true,
+    );
   });
 
   it("renders prompt mentions as pills in queued previews", () => {

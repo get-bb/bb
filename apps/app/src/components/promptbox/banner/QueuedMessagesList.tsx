@@ -177,10 +177,8 @@ export function getInlineEditorSurfaceMaxHeight({
 
 function queuedMarkdownPreviewClass(compact: boolean): string {
   return cn(
-    "min-w-0",
-    compact
-      ? "line-clamp-1 !text-xs !leading-4"
-      : "line-clamp-2 !text-sm !leading-5",
+    "block min-w-0 truncate",
+    compact ? "!text-xs !leading-4" : "!text-sm !leading-5",
   );
 }
 
@@ -579,12 +577,10 @@ function buildQueuedMessagePreviewText(
 
 function QueuedMessagePreview({
   compact,
-  hasAttachments,
   queuedMessage,
   resolveMentionLink,
 }: {
   compact: boolean;
-  hasAttachments: boolean;
   queuedMessage: ThreadQueuedMessage;
   resolveMentionLink?: PromptMentionLinkResolver;
 }) {
@@ -602,10 +598,7 @@ function QueuedMessagePreview({
 
   return (
     <div
-      className={cn(
-        "min-w-0 overflow-hidden text-foreground",
-        !hasAttachments && "flex-1 fade-clip-right",
-      )}
+      className="min-w-0 flex-1 overflow-hidden text-foreground"
       title={preview}
     >
       {markdownPreview.text.length > 0 ? (
@@ -700,15 +693,9 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           />
         </Button>
         <div className="min-w-0 flex-1 py-1">
-          <div
-            className={cn(
-              "min-w-0",
-              compact ? "flex items-center gap-1" : "space-y-0.5",
-            )}
-          >
+          <div className="flex min-w-0 items-center gap-1">
             <QueuedMessagePreview
               compact={compact}
-              hasAttachments={attachmentCount > 0}
               queuedMessage={queuedMessage}
               resolveMentionLink={resolveMentionLink}
             />

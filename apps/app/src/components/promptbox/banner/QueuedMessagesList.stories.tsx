@@ -103,7 +103,7 @@ const manyMessages: readonly ThreadQueuedMessage[] = Array.from(
   (_, index) =>
     makeQueuedMessage({
       id: `q_many_${index + 1}`,
-      text: `Queued follow-up ${index + 1}: check the compact one-line row, right-edge text fade, and vertical scroll fade in the queue drawer.`,
+      text: `Queued follow-up ${index + 1}: check the compact one-line row, ellipsis truncation, and vertical scroll fade in the queue drawer.`,
     }),
 );
 
@@ -221,7 +221,7 @@ export function Blockquotes() {
     <StoryCard>
       <StoryRow
         label="mixed: quoted + plain"
-        hint="drawer rows stay one line; drag the header up to inspect the workspace treatment"
+        hint="rows stay one line in both drawer and workspace modes"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={mixedMessages} />
@@ -266,7 +266,7 @@ export function Blockquotes() {
       </StoryRow>
       <StoryRow
         label="long quote (truncated)"
-        hint="single-line preview fades at the right edge"
+        hint="single-line preview truncates with an ellipsis"
       >
         <ResponsivePromptStage>
           <StaticQueuedMessagesList queuedMessages={quoteTruncated} />
@@ -460,7 +460,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="long message"
-        hint="single line fades at the right edge; title attribute carries full text"
+        hint="single line truncates with an ellipsis; title attribute carries full text"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList
