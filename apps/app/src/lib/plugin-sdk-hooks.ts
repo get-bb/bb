@@ -21,7 +21,10 @@ import type {
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
-import { usePluginId } from "@/components/plugin/plugin-context";
+import {
+  PluginSlotOwnershipContext,
+  usePluginId,
+} from "@/components/plugin/plugin-context";
 import {
   PluginComposerViewContext,
   usePluginComposerHost,
@@ -507,6 +510,7 @@ export function useComposerView(): ComposerView {
  */
 export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
+  const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -614,9 +618,30 @@ export function useComposer(): PluginComposerApi {
     () => composerVisualOwnerSequence++,
     [scopeOwnershipKey],
   );
+  const releaseVisualState = useCallback(() => {
+    scopeOwnership.invalidate();
+    setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
+    setComposerInputLock(textEffectKey, pluginId, false, visualStateOwner);
+    setPluginThreadRowStatus(
+      threadRowStatusThreadId,
+      pluginId,
+      null,
+      visualStateOwner,
+    );
+  }, [
+    pluginId,
+    scopeOwnership,
+    textEffectKey,
+    threadRowStatusThreadId,
+    visualStateOwner,
+  ]);
+  const registerVisualStateOwner = useCallback(() => {
+    slotOwnershipRegistry?.register(visualStateOwner, releaseVisualState);
+  }, [releaseVisualState, slotOwnershipRegistry, visualStateOwner]);
   const setTextEffect = useCallback(
     (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
       if (!scopeOwnership.isActive()) return;
+      if (effect !== null) registerVisualStateOwner();
       setComposerTextEffect(
         textEffectKey,
         pluginId,
@@ -627,6 +652,7 @@ export function useComposer(): PluginComposerApi {
     },
     [
       pluginId,
+      registerVisualStateOwner,
       scopeOwnership,
       textEffectKey,
       visualStateOwner,
@@ -636,9 +662,16 @@ export function useComposer(): PluginComposerApi {
   const setInputLock = useCallback(
     (locked: boolean) => {
       if (!scopeOwnership.isActive()) return;
+      if (locked) registerVisualStateOwner();
       setComposerInputLock(textEffectKey, pluginId, locked, visualStateOwner);
     },
-    [pluginId, scopeOwnership, textEffectKey, visualStateOwner],
+    [
+      pluginId,
+      registerVisualStateOwner,
+      scopeOwnership,
+      textEffectKey,
+      visualStateOwner,
+    ],
   );
   const setThreadRowStatus = useCallback(
     (status: PluginComposerThreadRowStatus | null) => {
@@ -648,6 +681,7 @@ export function useComposer(): PluginComposerApi {
       ) {
         return;
       }
+      if (status !== null) registerVisualStateOwner();
       setPluginThreadRowStatus(
         threadRowStatusThreadId,
         pluginId,
@@ -657,6 +691,7 @@ export function useComposer(): PluginComposerApi {
     },
     [
       pluginId,
+      registerVisualStateOwner,
       scopeOwnership,
       threadRowStatusScopeKey,
       threadRowStatusThreadId,
@@ -667,22 +702,14 @@ export function useComposer(): PluginComposerApi {
   useEffect(() => {
     scopeOwnership.activate();
     return () => {
-      scopeOwnership.invalidate();
-      setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
-      setComposerInputLock(textEffectKey, pluginId, false, visualStateOwner);
-      setPluginThreadRowStatus(
-        threadRowStatusThreadId,
-        pluginId,
-        null,
-        visualStateOwner,
-      );
+      releaseVisualState();
+      slotOwnershipRegistry?.unregister(visualStateOwner);
     };
   }, [
-    pluginId,
+    releaseVisualState,
     scopeOwnership,
-    textEffectKey,
+    slotOwnershipRegistry,
     threadRowStatusScopeKey,
-    threadRowStatusThreadId,
     visualStateOwner,
   ]);
 

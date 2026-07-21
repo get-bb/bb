@@ -26,7 +26,14 @@ import {
   useComposer,
   useComposerView,
 } from "@/lib/plugin-sdk-hooks";
-import { getComposerTextEffects } from "@/lib/composer-text-effects";
+import {
+  getComposerTextEffects,
+  useComposerTextEffects,
+} from "@/lib/composer-text-effects";
+import {
+  getPluginThreadRowStatus,
+  resetPluginThreadRowStatusesForTest,
+} from "@/lib/plugin-thread-row-status";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -258,6 +265,7 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
 function renderPromptBox(
   initialValue: string,
   options: {
+    initialMentionRanges?: PromptTextMention[];
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
     mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
@@ -270,7 +278,9 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+      options.initialMentionRanges ?? [],
+    );
     return (
       <PromptBoxInternal
         value={value}
@@ -441,6 +451,7 @@ afterEach(() => {
   resetPluginLogoStoreForTest();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
+  resetPluginThreadRowStatusesForTest();
   vi.clearAllMocks();
 });
 
@@ -695,6 +706,97 @@ describe("PromptBoxInternal controlled value sync", () => {
     });
     expect(getPromptEditorElement()).toBe(editor);
   });
+
+  it.each([
+    {
+      label: "plain text",
+      clipboard: { plainText: " — café\nnext" },
+      expectedValue: "ask Alice — café\nnext",
+    },
+    {
+      label: "structured blockquote",
+      clipboard: {
+        html: "<blockquote><p>quoted café</p></blockquote><p>after paste</p>",
+        plainText: "> quoted café\n\nafter paste",
+      },
+      expectedValue: "ask Alice\n> quoted café\n\nafter paste",
+    },
+  ])(
+    "preserves decorated serialization, mentions, and history through a real $label paste",
+    async ({ clipboard, expectedValue }) => {
+      setPluginSlotRegistrations(
+        "clipboard-decoration",
+        pluginRegistrationSet([
+          {
+            id: "paint",
+            richText: {
+              effects: [
+                {
+                  id: "whole-draft",
+                  className: "clipboard-paste-decoration",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
+          },
+        ]),
+      );
+      const initialValue = "ask Alice";
+      const initialMentions: PromptTextMention[] = [
+        {
+          start: 4,
+          end: 9,
+          resource: {
+            kind: "plugin",
+            pluginId: "sample",
+            icon: null,
+            itemId: "people:alice",
+            label: "Alice",
+          },
+        },
+      ];
+      const { changes, promptBoxRef } = renderPromptBox(initialValue, {
+        initialMentionRanges: initialMentions,
+      });
+
+      await focusPromptEnd(promptBoxRef);
+      await waitFor(() =>
+        expect(
+          document.querySelector(".clipboard-paste-decoration"),
+        ).not.toBeNull(),
+      );
+      pasteClipboard(clipboard);
+
+      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "z",
+        code: "KeyZ",
+        ctrlKey: true,
+      });
+      await waitFor(() => expect(latestValue(changes)).toBe(initialValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "z",
+        code: "KeyZ",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+    },
+  );
 
   it("honors early focusEnd requests once the editor is ready", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
@@ -1007,10 +1109,18 @@ describe("PromptBoxInternal plugin composer actions", () => {
     ).not.toBe(0);
   });
 
-  it("contains a crashing action without hiding its sibling", () => {
+  it("releases composer visual state acquired by an action that crashes before passive effects", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashes(): never {
+      const composer = useComposer();
+      composer.setInputLock(true);
+      composer.setTextEffect({ className: "crashed-action-effect" });
+      composer.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "Crashed action status",
+        effect: "shimmer",
+      });
       throw new Error("action crashed");
     }
     setPluginSlotRegistrations(
@@ -1026,12 +1136,50 @@ describe("PromptBoxInternal plugin composer actions", () => {
       ]),
     );
 
-    render(<PromptBoxInternal {...createPromptBoxProps()} />);
+    const draft = emptyPromptDraftState();
+    const host: PluginComposerHost = {
+      scope: { kind: "thread", threadId: "crashing-action-thread" },
+      draft,
+      textEffectKey: "crashing-action-composer",
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    function Harness() {
+      const textEffects = useComposerTextEffects(host.textEffectKey);
+      return (
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <PromptBoxInternal
+              {...createPromptBoxProps({ value: "Native draft" })}
+              textEffects={textEffects}
+            />
+          </PluginComposerHostProvider>
+        </MemoryRouter>
+      );
+    }
+
+    render(<Harness />);
 
     expect(
       screen.getByRole("button", { name: "Still available" }),
     ).toBeTruthy();
     expect(screen.queryByText(/plugin actions crashed/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    await waitFor(() => {
+      expect(getPromptEditorElement().getAttribute("contenteditable")).toBe(
+        "true",
+      );
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.hasAttribute("aria-busy"),
+      ).toBe(false);
+    });
+    expect(document.querySelector(".crashed-action-effect")).toBeNull();
+    expect(getComposerInputLock(host.textEffectKey)).toBe(false);
+    expect(getComposerTextEffects(host.textEffectKey)).toEqual([]);
+    expect(getPluginThreadRowStatus("crashing-action-thread")).toBeNull();
     errorSpy.mockRestore();
     warnSpy.mockRestore();
   });

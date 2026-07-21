@@ -1,6 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
-import { PluginContext } from "./plugin-context";
+import {
+  PluginContext,
+  PluginSlotOwnershipContext,
+  type PluginSlotOwnershipRegistry,
+} from "./plugin-context";
 
 /**
  * Per-plugin error containment for mounted slot components (plugin design
@@ -13,6 +17,39 @@ import { PluginContext } from "./plugin-context";
 // Slot instances disabled for this session, keyed by `pluginId`. A crash in
 // one instance disables that instance everywhere it mounts (same key).
 const crashedSlotInstances = new Set<string>();
+const ownedStateReleasesBySlotInstance = new Map<
+  string,
+  Map<symbol, () => void>
+>();
+
+function registerSlotOwnedState(
+  instanceKey: string,
+  owner: symbol,
+  release: () => void,
+): void {
+  let releases = ownedStateReleasesBySlotInstance.get(instanceKey);
+  if (!releases) {
+    releases = new Map();
+    ownedStateReleasesBySlotInstance.set(instanceKey, releases);
+  }
+  releases.set(owner, release);
+}
+
+function unregisterSlotOwnedState(instanceKey: string, owner: symbol): void {
+  const releases = ownedStateReleasesBySlotInstance.get(instanceKey);
+  releases?.delete(owner);
+  if (releases?.size === 0) {
+    ownedStateReleasesBySlotInstance.delete(instanceKey);
+  }
+}
+
+function releaseSlotInstanceOwnedState(instanceKey: string): void {
+  const releases = [
+    ...(ownedStateReleasesBySlotInstance.get(instanceKey)?.values() ?? []),
+  ];
+  ownedStateReleasesBySlotInstance.delete(instanceKey);
+  for (const release of releases) release();
+}
 
 export function pluginSlotInstanceKey(
   pluginId: string,
@@ -63,6 +100,19 @@ class PluginSlotBoundary extends Component<
   PluginSlotBoundaryProps,
   PluginSlotBoundaryState
 > {
+  private readonly ownedStateReleases = new Map<symbol, () => void>();
+
+  private readonly ownershipRegistry: PluginSlotOwnershipRegistry = {
+    register: (owner, release) => {
+      this.ownedStateReleases.set(owner, release);
+      registerSlotOwnedState(this.props.instanceKey, owner, release);
+    },
+    unregister: (owner) => {
+      this.ownedStateReleases.delete(owner);
+      unregisterSlotOwnedState(this.props.instanceKey, owner);
+    },
+  };
+
   constructor(props: PluginSlotBoundaryProps) {
     super(props);
     this.state = { crashed: crashedSlotInstances.has(props.instanceKey) };
@@ -73,11 +123,26 @@ class PluginSlotBoundary extends Component<
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
+    releaseSlotInstanceOwnedState(this.props.instanceKey);
+    this.ownedStateReleases.clear();
     crashedSlotInstances.add(this.props.instanceKey);
     console.warn(
       `[plugin:${this.props.pluginId}] slot "${this.props.instanceKey}" crashed and is disabled for this session: ${error.message}`,
       info.componentStack,
     );
+  }
+
+  override componentWillUnmount(): void {
+    this.releaseOwnedState();
+  }
+
+  private releaseOwnedState(): void {
+    const entries = [...this.ownedStateReleases.entries()];
+    this.ownedStateReleases.clear();
+    for (const [owner, release] of entries) {
+      unregisterSlotOwnedState(this.props.instanceKey, owner);
+      release();
+    }
   }
 
   override render(): ReactNode {
@@ -91,7 +156,11 @@ class PluginSlotBoundary extends Component<
         )
       );
     }
-    return this.props.children;
+    return (
+      <PluginSlotOwnershipContext.Provider value={this.ownershipRegistry}>
+        {this.props.children}
+      </PluginSlotOwnershipContext.Provider>
+    );
   }
 }
 
