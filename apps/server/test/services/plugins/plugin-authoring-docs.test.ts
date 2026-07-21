@@ -23,6 +23,7 @@ import {
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
   type ThreadChatProps,
+  type experimental_PluginComposerStatusProps,
 } from "@bb/plugin-sdk";
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
@@ -151,6 +152,7 @@ type SlotPropsByName = {
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
   composerAccessory: PluginComposerAccessoryProps;
+  experimental_composerStatus: experimental_PluginComposerStatusProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -168,6 +170,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   composerAccessory: ["projectId", "threadId"],
+  experimental_composerStatus: ["projectId", "threadId"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],
@@ -178,7 +181,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openWorkspaceFile",
     "openThreadPanel",
   ],
-  experimental_messageAction: ["threadId", "message", "selectedText", "openPanel"],
+  experimental_messageAction: [
+    "threadId",
+    "message",
+    "selectedText",
+    "openPanel",
+  ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
