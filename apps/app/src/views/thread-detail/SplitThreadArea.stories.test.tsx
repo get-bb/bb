@@ -65,16 +65,16 @@ describe("SplitThreadArea stories", () => {
       expect(idleComposer.hasAttribute("aria-disabled")).toBe(false);
       expect(idleComposer.classList).not.toContain("pointer-events-none");
       expect(activeComposer.classList).not.toContain("opacity-50");
-      const inactiveTimelineGlass = idlePane.querySelector<HTMLElement>(
-        "[data-inactive-split-timeline-glass]",
+      const inactiveTimelineOverlay = idlePane.querySelector<HTMLElement>(
+        "[data-inactive-split-timeline-overlay]",
       );
-      expect(inactiveTimelineGlass).toBeTruthy();
+      expect(inactiveTimelineOverlay).toBeTruthy();
       expect(
-        inactiveTimelineGlass?.closest("[data-scroll-surface-overlay]")
+        inactiveTimelineOverlay?.closest("[data-scroll-surface-overlay]")
           ?.classList,
       ).toContain("pointer-events-none");
       expect(
-        activePane.querySelector("[data-inactive-split-timeline-glass]"),
+        activePane.querySelector("[data-inactive-split-timeline-overlay]"),
       ).toBeNull();
 
       fireEvent.pointerDown(idleComposer, { button: 0 });
@@ -89,10 +89,10 @@ describe("SplitThreadArea stories", () => {
         expect(nextActiveComposer?.classList).not.toContain("opacity-50");
         expect(nextInactiveComposer?.classList).toContain("opacity-50");
         expect(
-          idlePane.querySelector("[data-inactive-split-timeline-glass]"),
+          idlePane.querySelector("[data-inactive-split-timeline-overlay]"),
         ).toBeNull();
         expect(
-          activePane.querySelector("[data-inactive-split-timeline-glass]"),
+          activePane.querySelector("[data-inactive-split-timeline-overlay]"),
         ).toBeTruthy();
       });
     },

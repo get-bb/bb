@@ -644,27 +644,12 @@
   }
 
   /*
-   * The inactive split timeline is viewed through a real foreground layer,
-   * rather than tinting the scroll surface behind its content. A sub-pixel
-   * backdrop blur and restrained theme-derived reflections create the glass
-   * read while keeping message content at full opacity. The overlay host owns
-   * pointer-events: none, so the timeline remains fully interactive.
+   * The inactive split timeline gets one flat, light-grey foreground wash.
+   * The theme-derived recessed surface follows custom palettes, while the
+   * overlay host owns pointer-events: none so the timeline remains interactive.
    */
-  .inactive-split-timeline-glass {
-    background:
-      linear-gradient(
-        125deg,
-        color-mix(in oklab, var(--ink) 4.5%, transparent) 0%,
-        transparent 30%,
-        color-mix(in oklab, var(--ink) 2.5%, transparent) 52%,
-        transparent 76%
-      ),
-      var(--surface-raised);
-    -webkit-backdrop-filter: blur(0.75px);
-    backdrop-filter: blur(0.75px);
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, var(--ink) 9%, transparent),
-      inset 1px 0 0 color-mix(in oklab, var(--ink) 3.5%, transparent);
+  .inactive-split-timeline-overlay {
+    background: var(--surface-recessed);
   }
 
   /*

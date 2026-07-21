@@ -552,19 +552,16 @@ describe("plugin thread-row status shimmer", () => {
   });
 });
 
-describe("inactive split timeline glass", () => {
-  it("uses a restrained theme-derived foreground layer without content opacity", () => {
+describe("inactive split timeline overlay", () => {
+  it("uses one theme-derived light-grey surface without glass effects", () => {
     const inactiveSplitTimelineRule = appCss.match(
-      /\.inactive-split-timeline-glass\s*\{([\s\S]*?)\n\s*\}/,
+      /\.inactive-split-timeline-overlay\s*\{([\s\S]*?)\n\s*\}/,
     )?.[1];
 
     expect(inactiveSplitTimelineRule).toBeDefined();
-    expect(inactiveSplitTimelineRule).toContain("var(--surface-raised)");
-    expect(inactiveSplitTimelineRule).toContain("var(--ink)");
-    expect(inactiveSplitTimelineRule).toContain("transparent");
-    expect(inactiveSplitTimelineRule).toContain(
-      "backdrop-filter: blur(0.75px)",
-    );
+    expect(inactiveSplitTimelineRule).toContain("var(--surface-recessed)");
+    expect(inactiveSplitTimelineRule).not.toMatch(/gradient|box-shadow/);
+    expect(inactiveSplitTimelineRule).not.toMatch(/(?:backdrop-)?filter\s*:/);
     expect(inactiveSplitTimelineRule).not.toMatch(/\bopacity\s*:/);
   });
 });
