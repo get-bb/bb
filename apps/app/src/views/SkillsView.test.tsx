@@ -157,9 +157,11 @@ describe("SkillsOverview", () => {
 
     const builtInPill = screen.getByText("Built-in").parentElement;
     expect(builtInPill?.className).toContain("rounded-md");
-    expect(builtInPill?.className).toContain("bg-secondary");
-    expect(builtInPill?.className).toContain("px-2");
-    expect(builtInPill?.className).toContain("py-0.5");
+    expect(builtInPill?.className).toContain("bg-surface-recessed/45");
+    expect(builtInPill?.className).toContain("text-subtle-foreground");
+    expect(builtInPill?.className).toContain("font-medium");
+    expect(builtInPill?.className).toContain("px-1.5");
+    expect(builtInPill?.className).toContain("py-0");
   });
 
   it("renders browse content as the active full-page collection mode", () => {

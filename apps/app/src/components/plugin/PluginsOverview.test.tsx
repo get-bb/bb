@@ -295,9 +295,15 @@ describe("PluginsOverview", () => {
     const builtInPills = screen.getAllByText("Built-in");
     expect(builtInPills).toHaveLength(2);
     expect(builtInPills[0]?.parentElement?.className).toContain("rounded-md");
-    expect(builtInPills[0]?.parentElement?.className).toContain("bg-secondary");
-    expect(builtInPills[0]?.parentElement?.className).toContain("px-2");
-    expect(builtInPills[0]?.parentElement?.className).toContain("py-0.5");
+    expect(builtInPills[0]?.parentElement?.className).toContain(
+      "bg-surface-recessed/45",
+    );
+    expect(builtInPills[0]?.parentElement?.className).toContain(
+      "text-subtle-foreground",
+    );
+    expect(builtInPills[0]?.parentElement?.className).toContain("font-medium");
+    expect(builtInPills[0]?.parentElement?.className).toContain("px-1.5");
+    expect(builtInPills[0]?.parentElement?.className).toContain("py-0");
   });
 
   it("keeps installed plugins visible when plugin installation is off", async () => {
