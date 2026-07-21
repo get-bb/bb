@@ -198,7 +198,7 @@ function resolveExecutableOnPath(
   return null;
 }
 
-function resolveClaudeCodeExecutable(
+export function resolveClaudeCodeExecutable(
   args: ResolveClaudeCodeExecutableArgs,
 ): string | null {
   const explicitPath = args.env[CLAUDE_CODE_EXECUTABLE_ENV];

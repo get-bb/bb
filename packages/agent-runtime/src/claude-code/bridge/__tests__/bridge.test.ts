@@ -1601,6 +1601,7 @@ describe("bridge", () => {
   });
 
   it("returns the bridge-owned Claude model list from the SDK probe", async () => {
+    const { binDir, executablePath } = createTempClaudeExecutable();
     const close = vi.fn();
     queryMock.mockReturnValueOnce({
       initializationResult: vi.fn().mockResolvedValue({
@@ -1628,7 +1629,9 @@ describe("bridge", () => {
       close,
     });
 
-    const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels();
+    const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels({
+      PATH: binDir,
+    });
     expect(models).toEqual([
       expect.objectContaining({
         id: "claude-opus-4-8[1m]",
@@ -1649,7 +1652,11 @@ describe("bridge", () => {
     ]);
     expect(queryMock).toHaveBeenCalledWith({
       prompt: ".",
-      options: expect.objectContaining({ maxTurns: 0, persistSession: false }),
+      options: expect.objectContaining({
+        maxTurns: 0,
+        pathToClaudeCodeExecutable: executablePath,
+        persistSession: false,
+      }),
     });
     expect(close).toHaveBeenCalledOnce();
   });

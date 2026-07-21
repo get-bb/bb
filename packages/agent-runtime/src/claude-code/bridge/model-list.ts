@@ -1,8 +1,10 @@
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import type { AvailableModel } from "@bb/domain";
 import { buildClaudeCodeModels } from "../model-list.js";
+import { resolveClaudeCodeExecutable } from "./session-options.js";
 
-function buildModelProbeOptions(): Options {
+function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
+  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   return {
     cwd: process.cwd(),
     maxTurns: 0,
@@ -10,10 +12,13 @@ function buildModelProbeOptions(): Options {
     allowDangerouslySkipPermissions: true,
     permissionMode: "bypassPermissions",
     settingSources: [],
+    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
   };
 }
 
-export async function listClaudeCodeBridgeModels(): Promise<{
+export async function listClaudeCodeBridgeModels(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
@@ -24,7 +29,7 @@ export async function listClaudeCodeBridgeModels(): Promise<{
   // callers can distinguish temporary discovery failure from definite absence.
   const session = query({
     prompt: ".",
-    options: buildModelProbeOptions(),
+    options: buildModelProbeOptions(env),
   });
 
   try {

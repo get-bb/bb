@@ -311,7 +311,11 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   });
 }
 
-async function smokeBridgeModelList({ bridgePath, label }) {
+async function smokeBridgeModelList({
+  allowUnavailableProvider = false,
+  bridgePath,
+  label,
+}) {
   const childProcess = spawn(process.execPath, [bridgePath], {
     cwd: tempRoot,
     stdio: ["pipe", "pipe", "pipe"],
@@ -349,10 +353,21 @@ async function smokeBridgeModelList({ bridgePath, label }) {
   }
 
   if (
-    !("result" in modelListResponse) ||
-    !isRecord(modelListResponse.result) ||
-    !Array.isArray(modelListResponse.result.models)
+    "result" in modelListResponse &&
+    isRecord(modelListResponse.result) &&
+    Array.isArray(modelListResponse.result.models)
   ) {
+    return;
+  }
+
+  const unavailableProviderMessage =
+    "error" in modelListResponse &&
+    isRecord(modelListResponse.error) &&
+    typeof modelListResponse.error.message === "string" &&
+    /(?:Native CLI binary|Claude Code executable).*not found/u.test(
+      modelListResponse.error.message,
+    );
+  if (!allowUnavailableProvider || !unavailableProviderMessage) {
     throw new Error(
       `${label} did not return a model/list response\n${formatProcessOutput(output)}`,
     );
@@ -362,6 +377,10 @@ async function smokeBridgeModelList({ bridgePath, label }) {
 async function smokeProviderBridgeBundles(tarballPath) {
   const packageDir = await extractTarball(tarballPath);
   await smokeBridgeModelList({
+    // The packaged bridge intentionally relies on the host's Claude CLI for
+    // account-scoped discovery. CI does not install that provider binary, so
+    // its explicit unavailable-provider response is a valid smoke outcome.
+    allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
       "host-daemon",
