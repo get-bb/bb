@@ -782,11 +782,13 @@ describe("SplitThreadArea", () => {
     );
     const newThreadHeader = newThreadPane?.querySelector("header");
     expect(newThreadHeader?.classList).toContain("bg-surface-raised");
+    expect(newThreadHeader?.classList).not.toContain("opacity-50");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
-    await waitFor(() =>
-      expect(newThreadHeader?.classList).not.toContain("bg-surface-raised"),
-    );
+    await waitFor(() => {
+      expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
+      expect(newThreadHeader?.classList).toContain("opacity-50");
+    });
   });
 
   it("keeps drag updates local and persists the resized pair once on release", () => {

@@ -233,7 +233,7 @@ export function ThreadDetailHeader({
       ownsWindowTopLeft={ownsWindowTopLeft}
       className={cn(
         "border-b border-border-seam-vertical/60",
-        beginPaneDrag && isFocused && "bg-surface-raised",
+        beginPaneDrag && (isFocused ? "bg-surface-raised" : "opacity-50"),
       )}
     />
   );
