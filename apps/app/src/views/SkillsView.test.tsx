@@ -266,9 +266,8 @@ describe("SkillsOverview", () => {
     });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function getBoundingClientRect(this: HTMLElement) {
-        const rowCount = this.querySelectorAll?.("[data-resource-row]").length;
         const height = this.hasAttribute("data-resource-list-panel")
-          ? rowCount * 50 + 10
+          ? viewportHeight
           : this.hasAttribute("data-resource-row")
             ? 50
             : 0;
@@ -307,7 +306,14 @@ describe("SkillsOverview", () => {
       const footer = document.querySelector(
         "[data-resource-collection-footer]",
       );
+      const collectionContent = document.querySelector(
+        "[data-resource-collection-content]",
+      );
+      const listPanel = document.querySelector("[data-resource-list-panel]");
       expect(viewport?.contains(footer)).toBe(false);
+      expect(viewport?.classList.contains("[&>div]:!flex")).toBe(true);
+      expect(collectionContent?.classList.contains("flex-1")).toBe(true);
+      expect(listPanel?.classList.contains("flex-1")).toBe(true);
       fireEvent.click(screen.getByRole("button", { name: "Next" }));
       expect(screen.getByText("16–30 of 30")).toBeTruthy();
 
@@ -334,6 +340,37 @@ describe("SkillsOverview", () => {
         );
       }
     }
+  });
+
+  it("does not reserve a sticky pagination footer for one installed page", () => {
+    const skills = Array.from({ length: 3 }, (_, index) =>
+      makeSkill({
+        name: `skill-${index + 1}`,
+        filePath: `/skills/skill-${index + 1}/SKILL.md`,
+      }),
+    );
+
+    renderDom(
+      <SkillsOverview
+        skills={skills}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    expect(
+      document.querySelector("[data-resource-collection-footer]"),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-resource-collection-content]"),
+    ).toBeNull();
+    expect(
+      document
+        .querySelector("[data-resource-list-panel]")
+        ?.classList.contains("flex-1"),
+    ).toBe(false);
   });
 
   it("confirms before uninstalling an installed skill from a Browse card", () => {

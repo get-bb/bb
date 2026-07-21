@@ -30,6 +30,11 @@ interface ResourceViewportPageSizeOptions {
   fallbackPageSize?: number;
 }
 
+function cssPixelValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function measureResourceViewportPageSize(
   viewport: HTMLElement,
   fallbackPageSize: number,
@@ -44,20 +49,15 @@ function measureResourceViewportPageSize(
     panel.querySelectorAll<HTMLElement>("[data-resource-row]"),
     (row) => row.getBoundingClientRect().height,
   ).filter((height) => Number.isFinite(height) && height > 0);
-  const panelHeight = panel.getBoundingClientRect().height;
-  if (
-    rowHeights.length === 0 ||
-    !Number.isFinite(panelHeight) ||
-    panelHeight <= 0
-  ) {
-    return fallbackPageSize;
-  }
+  if (rowHeights.length === 0) return fallbackPageSize;
 
-  const renderedRowsHeight = rowHeights.reduce(
-    (total, height) => total + height,
-    0,
-  );
-  const panelChromeHeight = Math.max(0, panelHeight - renderedRowsHeight);
+  const panelStyle = panel.ownerDocument.defaultView?.getComputedStyle(panel);
+  const panelChromeHeight = panelStyle
+    ? cssPixelValue(panelStyle.paddingTop) +
+      cssPixelValue(panelStyle.paddingBottom) +
+      cssPixelValue(panelStyle.borderTopWidth) +
+      cssPixelValue(panelStyle.borderBottomWidth)
+    : 0;
   const rowHeight = Math.max(...rowHeights);
   return Math.max(
     1,

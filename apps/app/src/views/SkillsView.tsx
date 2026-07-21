@@ -762,6 +762,10 @@ export function SkillsOverview({
       sortDirection,
     ].join("\u0000"),
   });
+  const hasInstalledPagination =
+    !hasError &&
+    !isLoading &&
+    installedPagination.total > installedPagination.pageSize;
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -795,7 +799,7 @@ export function SkillsOverview({
       }
     />
   ) : (
-    <ResourceListPanel>
+    <ResourceListPanel fillHeight={hasInstalledPagination}>
       {installedPagination.items.map((skill) => (
         <SkillRow
           key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
@@ -830,6 +834,7 @@ export function SkillsOverview({
         <ResourceCollectionViewport
           scrollId="skills-installed-results"
           viewportRef={setInstalledViewport}
+          fillContent={hasInstalledPagination}
           toolbar={
             <ResourceToolbar
               searchValue={query}
@@ -864,7 +869,7 @@ export function SkillsOverview({
             />
           }
           footer={
-            !hasError && !isLoading && visibleSkills.length > 0 ? (
+            hasInstalledPagination ? (
               <ResourcePagination
                 page={installedPagination.page}
                 pageSize={installedPagination.pageSize}
