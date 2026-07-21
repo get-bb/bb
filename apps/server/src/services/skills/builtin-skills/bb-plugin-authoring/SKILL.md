@@ -746,6 +746,7 @@ export default definePluginApp((app) => {
       openPanel({ title: `Issue for ${threadId}` }),
   });
   app.slots.composerAccessory({ id: "hint", component: Hint });
+  app.slots.experimental_composerStatus({ id: "sync", component: SyncStatus });
   app.slots.pendingInteraction({
     id: "credentials",
     component: CredentialForm,
@@ -816,6 +817,10 @@ Slot props contracts (versioned, additive-only):
   owns its layout, such as `experimental_ThreadChat`.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
+- `experimental_composerStatus` → `{ projectId: string | null, threadId: string | null }`
+  — rendered by the host after native context/status cards and immediately
+  before queued messages. Registrations mount by plugin id, then registration order,
+  with per-slot crash isolation. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
   thread composer only while a matching plugin interaction is pending.
   Registration: `{ id, component }`; `id` must equal the backend request's

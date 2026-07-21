@@ -57,6 +57,10 @@ describe("collectPluginAppRegistrations", () => {
         run,
       });
       app.slots.composerAccessory({ id: "picker", component: Component });
+      app.slots.experimental_composerStatus({
+        id: "workflow",
+        component: Component,
+      });
       app.slots.sidebarFooterAction({
         id: "remote",
         title: "Remote access",
@@ -112,6 +116,9 @@ describe("collectPluginAppRegistrations", () => {
     ]);
     expect(registrations.composerAccessories).toEqual([
       { id: "picker", component: Component },
+    ]);
+    expect(registrations.experimental_composerStatuses).toEqual([
+      { id: "workflow", component: Component },
     ]);
     expect(registrations.sidebarFooterActions).toEqual([
       {
@@ -198,6 +205,21 @@ describe("collectPluginAppRegistrations", () => {
         definePluginApp((app) => {
           app.slots.composerAccessory({ id: "a", component: Component });
           app.slots.composerAccessory({ id: "a", component: Component });
+        }),
+      /duplicate id/,
+    ],
+    [
+      "duplicate experimental composer status id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_composerStatus({
+            id: "run",
+            component: Component,
+          });
+          app.slots.experimental_composerStatus({
+            id: "run",
+            component: Component,
+          });
         }),
       /duplicate id/,
     ],

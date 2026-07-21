@@ -28,6 +28,7 @@ import {
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { PluginComposerStatuses } from "@/components/plugin/PluginComposerStatuses";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import type {
   ExecutionControlsProps,
@@ -1040,26 +1041,32 @@ function EmbeddedThreadChatWithComposer({
     ],
   );
 
-  const queuedMessagesStack = useMemo(
-    () =>
-      queuedMessages.length > 0 ? (
-        <QueuedMessagesList
-          queuedMessages={queuedMessages}
-          resolveMentionLink={resolveMentionLink}
-          inlineEditor={inlineEditor}
-          sendDisabled={
-            threadId === null || isProvisioning || queuedMessageActionPending
-          }
-          actionDisabled={queuedMessageActionPending}
-          processingMessageId={processingQueuedMessage?.id ?? null}
-          processingAction={processingQueuedMessage?.action ?? null}
-          onSendImmediately={handleSendQueuedImmediately}
-          onReorder={handleReorderQueuedMessage}
-          onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
-          onEdit={beginEditQueuedMessage}
-          onDelete={handleDeleteQueuedMessage}
-        />
-      ) : null,
+  const composerStatusStack = useMemo(
+    () => (
+      <>
+        {isActive ? (
+          <PluginComposerStatuses projectId={projectId} threadId={threadId} />
+        ) : null}
+        {queuedMessages.length > 0 ? (
+          <QueuedMessagesList
+            queuedMessages={queuedMessages}
+            resolveMentionLink={resolveMentionLink}
+            inlineEditor={inlineEditor}
+            sendDisabled={
+              threadId === null || isProvisioning || queuedMessageActionPending
+            }
+            actionDisabled={queuedMessageActionPending}
+            processingMessageId={processingQueuedMessage?.id ?? null}
+            processingAction={processingQueuedMessage?.action ?? null}
+            onSendImmediately={handleSendQueuedImmediately}
+            onReorder={handleReorderQueuedMessage}
+            onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
+            onEdit={beginEditQueuedMessage}
+            onDelete={handleDeleteQueuedMessage}
+          />
+        ) : null}
+      </>
+    ),
     [
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
@@ -1067,9 +1074,11 @@ function EmbeddedThreadChatWithComposer({
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,
       inlineEditor,
+      isActive,
       isProvisioning,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
+      projectId,
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
@@ -1083,7 +1092,7 @@ function EmbeddedThreadChatWithComposer({
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
           attachments={attachmentsConfig}
-          stack={queuedMessagesStack ?? <></>}
+          stack={composerStatusStack}
           composer={composerConfig}
           pluginComposerHost={activePluginComposerHost}
           textEffect={composerTextEffect}

@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   PluginComposerApi,
   PluginComposerScope,
+  experimental_PluginComposerStatusProps,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -73,6 +74,13 @@ function Panel({ subPath }: PluginNavPanelProps) {
 function RealtimeConnectionProbe() {
   const state = useRealtimeConnectionState();
   return <div>Realtime: {state}</div>;
+}
+
+function ComposerStatus({
+  projectId,
+  threadId,
+}: experimental_PluginComposerStatusProps) {
+  return <div>{`Status ${projectId}:${threadId}`}</div>;
 }
 
 let capturedComposerVisualSetters: Pick<
@@ -231,6 +239,10 @@ const app = await loadPluginApp(
       id: "composer",
       component: ComposerProbe,
     });
+    builder.slots.experimental_composerStatus({
+      id: "workflow",
+      component: ComposerStatus,
+    });
     builder.slots.homepageSection({
       id: "realtime-connection",
       title: "Realtime connection",
@@ -240,6 +252,15 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures and renders an experimental composer status", () => {
+    expect(app.experimental_composerStatuses).toHaveLength(1);
+    const slot = renderSlot(app.experimental_composerStatuses[0]!, {
+      projectId: "proj_1",
+      threadId: "thr_1",
+    });
+    expect(slot.getByText("Status proj_1:thr_1")).toBeDefined();
+  });
+
   it("rejects registrations the host would reject, with the host's message", async () => {
     await expect(
       loadPluginApp(

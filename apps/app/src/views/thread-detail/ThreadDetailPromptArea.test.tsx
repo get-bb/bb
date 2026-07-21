@@ -112,6 +112,8 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     textEffect?: "shimmer" | null;
   }) => (
     <div data-testid="follow-up-prompt-box">
+      <div data-testid="prompt-stack">{stack}</div>
+      <div data-testid="composer-boundary" />
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
@@ -211,7 +213,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
           {execution.footerAction.label}
         </button>
       ) : null}
-      {stack}
     </div>
   ),
 }));
@@ -233,7 +234,7 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
       queuedMessageIndex: number;
     }) => void;
   }) => (
-    <div>
+    <div data-testid="queued-message-list">
       <div data-testid="queued-message-count">{queuedMessages.length}</div>
       {queuedMessages.map((message, index) => (
         <button
@@ -254,6 +255,20 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
           Cancel queued edit
         </button>
       ) : null}
+    </div>
+  ),
+}));
+
+vi.mock("@/components/plugin/PluginComposerStatuses", () => ({
+  PluginComposerStatuses: ({
+    projectId,
+    threadId,
+  }: {
+    projectId: string | null;
+    threadId: string | null;
+  }) => (
+    <div data-testid="plugin-composer-status">
+      {projectId}:{threadId}
     </div>
   ),
 }));
@@ -673,6 +688,23 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("keeps plugin statuses before the queued drawer and the queue adjacent to the composer", () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea();
+
+    const stack = screen.getByTestId("prompt-stack");
+    const status = screen.getByTestId("plugin-composer-status");
+    const queue = screen.getByTestId("queued-message-list");
+    const composer = screen.getByTestId("composer-boundary");
+    expect(status.textContent).toBe("proj_1:thr_1");
+    expect(
+      status.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(stack.lastElementChild).toBe(queue);
+    expect(stack.nextElementSibling).toBe(composer);
+  });
+
   it("uses the real thread cache keys immediately", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 

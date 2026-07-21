@@ -217,7 +217,8 @@ function HelloCard() {
 
 // The default export must be definePluginApp(...); BB interprets it after
 // loading the bundle. Other slots: navPanel, threadPanelAction,
-// composerAccessory (see the bb guide's plugins chapter).
+// composerAccessory, experimental_composerStatus (see the bb guide's plugins
+// chapter).
 export default definePluginApp((app) => {
   app.slots.homepageSection({
     id: "${id}-hello",

@@ -66,6 +66,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -375,6 +376,7 @@ describe("useComposer", () => {
       "demo",
       registrationSet({
         composerAccessories: [{ id: "probe", component: ComposerProbe }],
+        experimental_composerStatuses: [],
       }),
     );
   }

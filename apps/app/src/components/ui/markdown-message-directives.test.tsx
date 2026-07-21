@@ -111,6 +111,7 @@ function emptyRegistrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    experimental_composerStatuses: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],

@@ -64,6 +64,14 @@ export interface PluginComposerAccessoryProps {
   threadId: string | null;
 }
 
+/** @experimental Props passed to a composer status component. */
+export interface experimental_PluginComposerStatusProps {
+  /** The active composer's project. */
+  projectId: string | null;
+  /** The active composer's thread, or null outside an existing thread. */
+  threadId: string | null;
+}
+
 export interface PluginPendingInteractionView {
   id: string;
   threadId: string;
@@ -250,6 +258,16 @@ export interface PluginComposerAccessoryRegistration {
   component: ComponentType<PluginComposerAccessoryProps>;
 }
 
+/**
+ * @experimental A status card rendered in the host-owned prompt stack,
+ * immediately before queued messages.
+ */
+export interface experimental_PluginComposerStatusRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<experimental_PluginComposerStatusProps>;
+}
+
 export interface PluginPendingInteractionRegistration {
   /** Matches `rendererId` passed to `bb.ui.requestInput`. */
   id: string;
@@ -388,6 +406,9 @@ export interface PluginAppSlots {
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
   composerAccessory(registration: PluginComposerAccessoryRegistration): void;
+  experimental_composerStatus(
+    registration: experimental_PluginComposerStatusRegistration,
+  ): void;
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,

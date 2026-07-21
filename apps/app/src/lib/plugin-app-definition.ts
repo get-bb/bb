@@ -2,6 +2,7 @@ import {
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
+  type experimental_PluginComposerStatusRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -116,6 +117,8 @@ export function collectPluginAppRegistrations(
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const composerAccessories: PluginComposerAccessoryRegistration[] = [];
+  const experimentalComposerStatuses: experimental_PluginComposerStatusRegistration[] =
+    [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
@@ -127,6 +130,7 @@ export function collectPluginAppRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    experimental_composerStatus: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -233,6 +237,15 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_composerStatus(registration) {
+        const kind = "slots.experimental_composerStatus";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.experimental_composerStatus, id);
+        experimentalComposerStatuses.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
         const id = requireSlotId(kind, registration?.id);
@@ -317,6 +330,7 @@ export function collectPluginAppRegistrations(
     navPanels,
     threadPanelActions,
     composerAccessories,
+    experimental_composerStatuses: experimentalComposerStatuses,
     pendingInteractions,
     sidebarFooterActions,
     fileOpeners,

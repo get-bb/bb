@@ -24,6 +24,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],

@@ -25,6 +25,7 @@ import type {
 } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
+import { PluginComposerStatuses } from "@/components/plugin/PluginComposerStatuses";
 import {
   type PluginComposerHost,
   usePublishPluginComposerHost,
@@ -1082,6 +1083,16 @@ export function ThreadDetailPromptArea({
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
+        {modelFallback ? (
+          <ThreadModelFallbackCard
+            key={`${thread.id}:${modelFallback.sourceSeq}`}
+            fallback={modelFallback}
+            threadId={thread.id}
+          />
+        ) : null}
+        {shouldHideComposer ? null : (
+          <PluginComposerStatuses projectId={projectId} threadId={thread.id} />
+        )}
         {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
@@ -1105,13 +1116,6 @@ export function ThreadDetailPromptArea({
             onDelete={handleDeleteQueuedMessage}
           />
         )}
-        {modelFallback ? (
-          <ThreadModelFallbackCard
-            key={`${thread.id}:${modelFallback.sourceSeq}`}
-            fallback={modelFallback}
-            threadId={thread.id}
-          />
-        ) : null}
       </>
     ),
     [
@@ -1143,6 +1147,7 @@ export function ThreadDetailPromptArea({
       childThreadsSection,
       pullRequestSection,
       pendingTodos,
+      projectId,
       displayedProcessingQueuedMessage,
       queuedMessages,
       resolveMentionLink,

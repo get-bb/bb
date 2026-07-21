@@ -193,6 +193,7 @@ describe("PluginSettingsDetail settings gating", () => {
       navPanels: [],
       threadPanelActions: [],
       composerAccessories: [],
+      experimental_composerStatuses: [],
       sidebarFooterActions: [],
       fileOpeners: [],
       messageDirectives: [],

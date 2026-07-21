@@ -16,6 +16,7 @@ import {
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginComposerAccessoryRegistration,
+  type experimental_PluginComposerStatusRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
@@ -366,6 +367,7 @@ export interface CapturedPluginApp {
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
   composerAccessories: PluginComposerAccessoryRegistration[];
+  experimental_composerStatuses: experimental_PluginComposerStatusRegistration[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -451,6 +453,7 @@ function collectRegistrations(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    experimental_composerStatuses: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
@@ -463,6 +466,7 @@ function collectRegistrations(
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
     composerAccessory: new Set<string>(),
+    experimental_composerStatus: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -563,6 +567,15 @@ function collectRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.composerAccessory, id);
         captured.composerAccessories.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_composerStatus(registration) {
+        const kind = "slots.experimental_composerStatus";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.experimental_composerStatus, id);
+        captured.experimental_composerStatuses.push({
           id,
           component: requireComponent(kind, registration.component),
         });

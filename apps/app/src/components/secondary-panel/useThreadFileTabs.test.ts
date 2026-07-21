@@ -424,6 +424,7 @@ describe("useThreadFileTabs file opener diversion", () => {
       navPanels: [],
       threadPanelActions: [],
       composerAccessories: [],
+      experimental_composerStatuses: [],
       sidebarFooterActions: [],
       fileOpeners: [
         {

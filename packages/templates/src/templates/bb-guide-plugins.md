@@ -247,7 +247,8 @@ threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with recursive `JsonValue` params; restored
 components read `JsonValue | null`), composerAccessory (prompt box
-footer), pendingInteraction (temporarily replace a thread composer with a
+footer), experimental_composerStatus (host-owned status card immediately
+before queued messages), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -373,7 +374,7 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, composerAccessory, fileOpener,
+navPanel, threadPanelAction, composerAccessory, experimental_composerStatus, fileOpener,
 messageDirective) via
 definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against

@@ -32,6 +32,7 @@ function registrationSet(
     navPanels: [],
     threadPanelActions: [],
     composerAccessories: [],
+    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -60,6 +61,9 @@ describe("plugin slot store", () => {
           { id: "a", title: "Alpha", component: SectionComponent },
         ],
         composerAccessories: [{ id: "pick", component: SectionComponent }],
+        experimental_composerStatuses: [
+          { id: "status", component: SectionComponent },
+        ],
       }),
     );
 
@@ -69,6 +73,7 @@ describe("plugin slot store", () => {
     ).toEqual(["alpha", "zeta"]);
     expect(snapshot.composerAccessories).toHaveLength(1);
     expect(snapshot.composerAccessories[0]?.pluginId).toBe("alpha");
+    expect(snapshot.experimental_composerStatuses[0]?.pluginId).toBe("alpha");
   });
 
   it("replaces a plugin's registrations wholesale (never appends)", () => {
