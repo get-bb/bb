@@ -182,7 +182,7 @@ describe("SidebarThreadSearchPanel", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 
-  it("uses shared Plan precedence for search results", () => {
+  it("uses shared runtime precedence for search results", () => {
     const thread = createThreadListEntry({
       id: "thr_plan_goal",
       title: "Concurrent Plan and Goal",
@@ -220,9 +220,9 @@ describe("SidebarThreadSearchPanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
   it("subscribes search results to working draft state", () => {
