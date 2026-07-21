@@ -71,6 +71,7 @@ export interface EffectiveCreateExecutionValues {
 
 export interface BuildExecutionInputSourcesArgs {
   effectiveValues: EffectiveCreateExecutionValues;
+  forceExplicitModel?: boolean;
   scope: ThreadCreationOptionsScope;
   storedValues: StoredCreateExecutionValues;
   touchedFields: ReadonlySet<ThreadPromptField>;
@@ -208,6 +209,7 @@ export function updateThreadPromptSelections({
 
 export function buildExecutionInputSources({
   effectiveValues,
+  forceExplicitModel = false,
   scope,
   storedValues,
   touchedFields,
@@ -243,7 +245,9 @@ export function buildExecutionInputSources({
       storedValues.selectedModel === effectiveValues.selectedModel,
     hasValue: hasValue(effectiveValues.selectedModel),
     touched:
-      forcesExplicitExecutionFields || touchedFields.has("selectedModel"),
+      forceExplicitModel ||
+      forcesExplicitExecutionFields ||
+      touchedFields.has("selectedModel"),
   });
   const serviceTierSource = resolveCreateExecutionInputSource({
     hasStoredValue:

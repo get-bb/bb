@@ -12,11 +12,12 @@ import {
 import {
   reconcileReasoningLevel,
   type AvailableModel,
+  type CallerExecutionInputSource,
   type ReasoningLevel,
   type Thread,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
-import type { AppDeps } from "../../types.js";
+import type { LoggedWorkSessionDeps } from "../../types.js";
 import { resolveSystemExecutionOptions } from "../system/execution-options.js";
 import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
@@ -72,6 +73,12 @@ export interface ResolveThreadExecutionOverrideUpdateArgs {
 export interface ApplyThreadExecutionOverrideArgs {
   thread: Thread;
   patch: ThreadExecutionOverridePatch;
+}
+
+export interface RecoverThreadModelOverrideArgs {
+  model: string | undefined;
+  modelSource: CallerExecutionInputSource | undefined;
+  thread: Thread;
 }
 
 /**
@@ -157,7 +164,7 @@ export function resolveThreadExecutionOverrideUpdate(
  * `resolveExecutionOptions` + the runtime's `reconfigureThreadIfNeeded`.
  */
 export async function applyThreadExecutionOverride(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
 ): Promise<void> {
   const { thread, patch } = args;
@@ -191,8 +198,35 @@ export async function applyThreadExecutionOverride(
   });
 }
 
+/**
+ * Replaces a sticky model override when a user explicitly submits a different
+ * model. This is the recovery path for an override whose model was removed:
+ * the replacement is validated against a successfully loaded catalog before
+ * persistence, while a discovery failure remains a retryable 503.
+ */
+export async function recoverThreadModelOverride(
+  deps: LoggedWorkSessionDeps,
+  args: RecoverThreadModelOverrideArgs,
+): Promise<void> {
+  const existing = getThreadExecutionOverride(deps.db, args.thread.id);
+  if (
+    args.model === undefined ||
+    args.modelSource !== "explicit" ||
+    existing?.modelOverride === null ||
+    existing?.modelOverride === undefined ||
+    existing.modelOverride === args.model
+  ) {
+    return;
+  }
+
+  await applyThreadExecutionOverride(deps, {
+    thread: args.thread,
+    patch: { model: args.model },
+  });
+}
+
 async function loadThreadProviderModels(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   thread: Thread,
 ): Promise<readonly AvailableModel[]> {
   const result = await resolveSystemExecutionOptions(deps, {
@@ -213,7 +247,10 @@ async function loadThreadProviderModels(
   return [...result.models, ...result.selectedOnlyModels];
 }
 
-function resolveFallbackModel(deps: AppDeps, thread: Thread): string | null {
+function resolveFallbackModel(
+  deps: LoggedWorkSessionDeps,
+  thread: Thread,
+): string | null {
   const lastExecution = getLastExecutionOptions(deps, thread.id);
   if (lastExecution?.model) {
     return lastExecution.model;

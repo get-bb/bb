@@ -1,3 +1,4 @@
+import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import {
   cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,
@@ -248,11 +249,78 @@ function buildCatalogModel(entry: ClaudeCodeCatalogEntry): AvailableModel {
   };
 }
 
-function markDefaultModel(models: AvailableModel[]): AvailableModel[] {
+function buildDiscoveredModel(modelInfo: ModelInfo): AvailableModel {
+  const supportedReasoningEfforts = (
+    modelInfo.supportedEffortLevels?.length
+      ? modelInfo.supportedEffortLevels.flatMap((level) => {
+          switch (level) {
+            case "low":
+              return [LOW_REASONING_EFFORT];
+            case "medium":
+              return [MEDIUM_REASONING_EFFORT];
+            case "high":
+              return [HIGH_REASONING_EFFORT];
+            case "xhigh":
+              return [XHIGH_REASONING_EFFORT, ULTRACODE_REASONING_EFFORT];
+            case "max":
+              return [MAX_REASONING_EFFORT];
+          }
+        })
+      : [LOW_REASONING_EFFORT]
+  ).map((effort) => ({ ...effort }));
+  const supportedLevels = supportedReasoningEfforts.map(
+    (effort) => effort.reasoningEffort,
+  );
+  const defaultReasoningEffort = supportedLevels.includes("high")
+    ? "high"
+    : supportedLevels.includes("medium")
+      ? "medium"
+      : (supportedLevels[0] ?? "low");
+  const model = modelInfo.resolvedModel ?? modelInfo.value;
+  return {
+    id: model,
+    model,
+    displayName: modelInfo.displayName,
+    description: modelInfo.description,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+    isDefault: false,
+  };
+}
+
+function modelIsDiscovered(
+  model: string,
+  discoveredModels: readonly ModelInfo[],
+): boolean {
+  return discoveredModels.some(
+    (discovered) =>
+      discovered.value === model || discovered.resolvedModel === model,
+  );
+}
+
+function resolveDiscoveredDefaultModel(
+  discoveredModels: readonly ModelInfo[],
+): string | null {
+  const defaultModel = discoveredModels.find(
+    (model) => model.value === "default",
+  );
+  return defaultModel?.resolvedModel ?? null;
+}
+
+function markDefaultModel(
+  models: AvailableModel[],
+  discoveredModels: readonly ModelInfo[],
+): AvailableModel[] {
+  const discoveredDefault = resolveDiscoveredDefaultModel(discoveredModels);
+  const defaultModel =
+    discoveredDefault &&
+    models.some((model) => model.model === discoveredDefault)
+      ? discoveredDefault
+      : models.some((model) => model.model === DEFAULT_CLAUDE_CODE_MODEL)
+        ? DEFAULT_CLAUDE_CODE_MODEL
+        : models[0]?.model;
   return models.map((model) =>
-    model.model === DEFAULT_CLAUDE_CODE_MODEL
-      ? { ...model, isDefault: true }
-      : model,
+    model.model === defaultModel ? { ...model, isDefault: true } : model,
   );
 }
 
@@ -261,10 +329,33 @@ export interface ListClaudeCodeModelsResult {
   selectedOnlyModels: AvailableModel[];
 }
 
-export function listClaudeCodeModels(): ListClaudeCodeModelsResult {
+export function buildClaudeCodeModels(
+  discoveredModels: readonly ModelInfo[],
+): ListClaudeCodeModelsResult {
+  const models = CLAUDE_CODE_CATALOG.filter((entry) =>
+    modelIsDiscovered(entry.model, discoveredModels),
+  ).map(buildCatalogModel);
+  // Discovery can move faster than BB's curated labels. Preserve those new
+  // authoritative rows instead of returning an empty/partial picker until the
+  // static metadata catches up. Prefer non-"default" rows so aliases carrying
+  // the same resolved id provide the useful provider label.
+  for (const discovered of [
+    ...discoveredModels.filter((model) => model.value !== "default"),
+    ...discoveredModels.filter((model) => model.value === "default"),
+  ]) {
+    const resolvedModel = discovered.resolvedModel ?? discovered.value;
+    if (models.some((model) => model.model === resolvedModel)) {
+      continue;
+    }
+    models.push(buildDiscoveredModel(discovered));
+  }
+  const selectedOnlyModels = CLAUDE_CODE_SELECTED_ONLY_CATALOG.filter(
+    (entry) =>
+      modelIsDiscovered(entry.model, discoveredModels) &&
+      !models.some((model) => model.model === entry.model),
+  ).map(buildCatalogModel);
   return {
-    models: markDefaultModel(CLAUDE_CODE_CATALOG.map(buildCatalogModel)),
-    selectedOnlyModels:
-      CLAUDE_CODE_SELECTED_ONLY_CATALOG.map(buildCatalogModel),
+    models: markDefaultModel(models, discoveredModels),
+    selectedOnlyModels,
   };
 }

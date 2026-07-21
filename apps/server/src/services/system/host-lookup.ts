@@ -1,5 +1,5 @@
 import type { SystemProvidersQuery } from "@bb/server-contract";
-import type { AppDeps } from "../../types.js";
+import type { WorkSessionDeps } from "../../types.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import {
   assertUsableHostId,
@@ -9,7 +9,7 @@ import {
 export type SystemHostLookupQuery = SystemProvidersQuery;
 
 export function resolveSystemLookupHostId(
-  deps: AppDeps,
+  deps: WorkSessionDeps,
   query: SystemHostLookupQuery,
 ): string {
   if (query.environmentId) {
