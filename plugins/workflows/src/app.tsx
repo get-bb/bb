@@ -60,6 +60,15 @@ interface SharedWorkflowView {
 
 const ACTIVE_POLL_INTERVAL_MS = 1_000;
 const WORKFLOW_PANEL_ACTION_ID = "workflow-run";
+const WORKFLOW_CARD_ROW_HEIGHT = 32;
+const WORKFLOW_HEADER_GROUP_CLASS = activityRowClass(
+  "active",
+  "flex w-full items-stretch rounded-none px-0 py-0",
+);
+const WORKFLOW_HEADER_BUTTON_CLASS =
+  "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
+const WORKFLOW_STOP_BUTTON_CLASS =
+  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait disabled:text-muted-foreground/60";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -154,9 +163,102 @@ function formatDuration(startedAt: number | null, finishedAt: number | null) {
   const durationMs = Math.max(0, (finishedAt ?? Date.now()) - startedAt);
   const totalSeconds = Math.round(durationMs / 1_000);
   if (totalSeconds < 60) return `${totalSeconds}s`;
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}m${seconds.toString().padStart(2, "0")}s`;
+  return [
+    hours > 0 ? `${hours}h` : null,
+    minutes > 0 ? `${minutes}m` : null,
+    seconds > 0 ? `${seconds}s` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" ");
+}
+
+/** Matches the native workflow card's one-second-delayed live duration. */
+function WorkflowDuration({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
+  useEffect(() => {
+    setElapsed(Date.now() - startedAt);
+    const interval = window.setInterval(() => {
+      setElapsed(Date.now() - startedAt);
+    }, 1_000);
+    return () => window.clearInterval(interval);
+  }, [startedAt]);
+  if (elapsed <= 1_000) return null;
+  return <>{formatDuration(0, elapsed)}</>;
+}
+
+function WorkflowDetailScroll({
+  currentPhaseIndex,
+  progress,
+}: {
+  currentPhaseIndex?: number;
+  progress: WorkflowProgressSnapshot;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ above: false, below: false });
+  const contentKey = progress.agents
+    .map((agent) => `${agent.index}:${agent.state}:${agent.lastProgressAt}`)
+    .join("|");
+  const updateOverflow = useCallback(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const nextOverflow = {
+      above: element.scrollTop > 1,
+      below:
+        element.scrollTop + element.clientHeight < element.scrollHeight - 1,
+    };
+    setOverflow((currentOverflow) =>
+      currentOverflow.above === nextOverflow.above &&
+      currentOverflow.below === nextOverflow.below
+        ? currentOverflow
+        : nextOverflow,
+    );
+  }, []);
+
+  useEffect(() => {
+    updateOverflow();
+    const element = scrollRef.current;
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [contentKey, updateOverflow]);
+
+  return (
+    <div className="relative isolate min-w-0" data-detail-scroll="base">
+      <div
+        ref={scrollRef}
+        onScroll={updateOverflow}
+        data-detail-scroll-area="base"
+        className="max-h-[288px] min-w-0 overflow-x-auto overflow-y-auto px-2.5 py-2"
+      >
+        <div aria-hidden className="-mb-px h-px w-full" />
+        <WorkflowProgress
+          progress={progress}
+          settled={false}
+          collapsiblePhases
+          currentPhaseIndex={currentPhaseIndex}
+        />
+        <div aria-hidden className="h-px w-full" />
+      </div>
+      {overflow.above ? (
+        <div
+          aria-hidden
+          data-detail-scroll-fade="above"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-background to-transparent"
+        />
+      ) : null}
+      {overflow.below ? (
+        <div
+          aria-hidden
+          data-detail-scroll-fade="below"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-background to-transparent"
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function shortModelName(model: string): string {
@@ -390,6 +492,130 @@ function WorkflowStatusBanner() {
   return <WorkflowStatusBannerLoaded threadId={view.scope.threadId} />;
 }
 
+function WorkflowComposerCard({
+  run,
+  stopping,
+  stopDisabled,
+  onStop,
+}: {
+  run: WorkflowRunView;
+  stopping: boolean;
+  stopDisabled: boolean;
+  onStop: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
+  const toggleId = useId();
+  const shared = buildSharedWorkflowView(run);
+  const settledAgents = settledAgentCount(shared.progress.agents);
+  const agentCount = shared.progress.agents.length;
+
+  return (
+    <section
+      aria-label="Workflow"
+      className="overflow-hidden rounded-lg border border-border bg-surface-raised-solid"
+      style={{ minHeight: WORKFLOW_CARD_ROW_HEIGHT }}
+    >
+      <div
+        role="group"
+        aria-label={`Workflow controls: ${run.name}`}
+        className={WORKFLOW_HEADER_GROUP_CLASS}
+      >
+        <button
+          type="button"
+          id={toggleId}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          aria-label={`Workflow: ${run.name}`}
+          onClick={() => setExpanded((value) => !value)}
+          className={WORKFLOW_HEADER_BUTTON_CLASS}
+        >
+          <Icon
+            name="Workflow"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
+            aria-hidden
+          />
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            <span
+              className={activityTextClass("active", "min-w-0 truncate")}
+              title={run.name}
+            >
+              {run.name}
+            </span>
+            {agentCount === 0 ? null : (
+              <span
+                className={activityMetaClass(
+                  "active",
+                  "shrink-0 text-2xs tabular-nums",
+                )}
+              >
+                {settledAgents}/{agentCount} agents
+              </span>
+            )}
+            {run.startedAt === null ? null : (
+              <span
+                className={activityMetaClass(
+                  "active",
+                  "shrink-0 text-2xs tabular-nums",
+                )}
+              >
+                <WorkflowDuration startedAt={run.startedAt} />
+              </span>
+            )}
+          </span>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              activityIconClass("active"),
+              "size-3.5 shrink-0 transition-transform duration-200",
+              expanded && "rotate-180",
+            )}
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          aria-label={`Stop workflow ${run.name}`}
+          onClick={onStop}
+          disabled={stopDisabled}
+          className={WORKFLOW_STOP_BUTTON_CLASS}
+        >
+          <Icon
+            name={stopping ? "Loading" : "Square"}
+            className={cn("size-3.5", stopping && "animate-spin")}
+            aria-hidden
+          />
+        </button>
+      </div>
+      <WorkflowPhaseStrip
+        progress={shared.progress}
+        currentPhaseIndex={shared.currentPhaseIndex}
+        settled={false}
+        className="px-3 pb-2"
+      />
+      <section
+        id={bodyId}
+        role="region"
+        aria-labelledby={toggleId}
+        aria-hidden={!expanded}
+        className={cn(
+          "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
+          expanded
+            ? "grid-rows-[1fr] border-t border-border opacity-100"
+            : "pointer-events-none grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="overflow-hidden bg-popover">
+          <WorkflowDetailScroll
+            progress={shared.progress}
+            currentPhaseIndex={shared.currentPhaseIndex}
+          />
+        </div>
+      </section>
+    </section>
+  );
+}
+
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof workflowUiRpcContract>();
   const { state, setRuns } = useActiveWorkflowRuns(threadId);
@@ -420,94 +646,20 @@ function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
   };
 
   return (
-    <section aria-label="Active workflows" className="overflow-hidden">
-      {state.runs.map((run, index) => {
-        const shared = buildSharedWorkflowView(run);
-        const settledAgents = settledAgentCount(shared.progress.agents);
-        const phase =
-          run.currentPhase ?? (run.status === "queued" ? "Queued" : "Starting");
-        const duration = formatDuration(run.startedAt, null);
-        const stopping = stoppingRunId === run.id;
-        return (
-          <div
-            key={run.id}
-            className={cn(index > 0 && "border-t border-border-seam")}
-          >
-            <div
-              className={activityRowClass(
-                "active",
-                "flex min-h-8 min-w-0 items-center gap-1.5 px-3 py-1.5 text-xs text-foreground",
-              )}
-            >
-              <Icon
-                name="Workflow"
-                className={activityIconClass("active", "size-3.5 shrink-0")}
-                aria-hidden
-              />
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span
-                  className={activityTextClass(
-                    "active",
-                    "min-w-0 truncate no-underline",
-                  )}
-                  title={run.name}
-                >
-                  {run.name}
-                </span>
-                <span
-                  className={activityMetaClass(
-                    "active",
-                    "min-w-0 truncate text-2xs",
-                  )}
-                >
-                  {phase}
-                </span>
-                {shared.progress.agents.length === 0 ? null : (
-                  <span
-                    className={activityMetaClass(
-                      "active",
-                      "shrink-0 text-2xs tabular-nums",
-                    )}
-                  >
-                    {settledAgents}/{shared.progress.agents.length} agents
-                  </span>
-                )}
-                {duration === null ? null : (
-                  <span
-                    className={activityMetaClass(
-                      "active",
-                      "shrink-0 text-2xs tabular-nums",
-                    )}
-                  >
-                    {duration}
-                  </span>
-                )}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 px-2 text-2xs text-destructive-text"
-                disabled={stoppingRunId !== null}
-                aria-label={`Stop workflow ${run.name}`}
-                onClick={() => void stop(run)}
-              >
-                {stopping ? "Stopping…" : "Stop"}
-              </Button>
-            </div>
-            <WorkflowPhaseStrip
-              progress={shared.progress}
-              currentPhaseIndex={shared.currentPhaseIndex}
-              settled={false}
-              className="px-3 pb-2"
-            />
-          </div>
-        );
-      })}
+    <section aria-label="Active workflows" className="space-y-2">
+      {state.runs.map((run) => (
+        <WorkflowComposerCard
+          key={run.id}
+          run={run}
+          stopping={stoppingRunId === run.id}
+          stopDisabled={stoppingRunId !== null}
+          onStop={() => void stop(run)}
+        />
+      ))}
       {stopError === null ? null : (
         <div
           role="alert"
-          className="border-t border-border-seam px-3 py-2 text-xs text-destructive-text"
+          className="rounded-lg border border-destructive/20 bg-surface-raised-solid px-3 py-2 text-xs text-destructive-text"
         >
           {stopError}
         </div>
@@ -871,7 +1023,9 @@ export default definePluginApp((app) => {
   app.composer.customize({
     id: "workflow-status",
     scopes: ["thread"],
-    banners: [{ id: "active-runs", component: WorkflowStatusBanner }],
+    banners: [
+      { id: "active-runs", chrome: "bare", component: WorkflowStatusBanner },
+    ],
   });
   app.slots.messageDirective({
     id: "workflow-preview",

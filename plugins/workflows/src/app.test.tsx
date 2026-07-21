@@ -88,7 +88,7 @@ describe("workflows app registration", () => {
       {
         id: "workflow-status",
         scopes: ["thread"],
-        banners: [{ id: "active-runs" }],
+        banners: [{ id: "active-runs", chrome: "bare" }],
       },
     ]);
     expect(app.messageDirectives.map((directive) => directive.id)).toEqual([
@@ -129,12 +129,77 @@ describe("workflow composer banner", () => {
 
     await slot.findByText("Review the release");
     expect(slot.getByText("Queue release notes")).toBeTruthy();
-    expect(slot.getByText("Queued")).toBeTruthy();
     expect(slot.getByText("Review")).toBeTruthy();
     expect(slot.getByText("1/2 agents")).toBeTruthy();
+    expect(slot.getAllByRole("region", { name: "Workflow" })).toHaveLength(2);
     expect(
       slot.getByRole("button", { name: /stop workflow review/i }),
     ).toBeTruthy();
+  });
+
+  it("matches the native collapsed summary and expands with an accessible toggle", async () => {
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        rpc: { workflowActiveRuns: () => ({ runs: [run] }) },
+      },
+    );
+
+    const toggle = await slot.findByRole("button", {
+      name: "Workflow: Review the release",
+    });
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+
+    const body = document.getElementById(toggle.getAttribute("aria-controls")!);
+    expect(body?.getAttribute("role")).toBe("region");
+    expect(body?.getAttribute("aria-labelledby")).toBe(toggle.id);
+    expect(body?.getAttribute("aria-hidden")).toBe("true");
+    expect(body?.className).toContain("grid-rows-[0fr]");
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(body?.getAttribute("aria-hidden")).toBe("false");
+    expect(body?.className).toContain("grid-rows-[1fr]");
+    expect(slot.getByText("Adversarial review")).toBeTruthy();
+    expect(slot.getByRole("button", { name: /Review0\/1/ })).toBeTruthy();
+    expect(
+      slot.container.querySelector('[data-icon="ChevronDown"].rotate-180'),
+    ).toBeTruthy();
+  });
+
+  it("preserves each run's expansion state across polls", async () => {
+    vi.useFakeTimers();
+    let polls = 0;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        rpc: {
+          workflowActiveRuns: () => {
+            polls += 1;
+            return { runs: [{ ...run }] };
+          },
+        },
+      },
+    );
+
+    await act(async () => Promise.resolve());
+    const toggle = slot.getByRole("button", {
+      name: "Workflow: Review the release",
+    });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(polls).toBe(2);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    slot.unmount();
   });
 
   it("renders null when the scope thread has no active runs", async () => {
