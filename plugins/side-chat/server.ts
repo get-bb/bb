@@ -182,11 +182,6 @@ export const sideChatRpcContract = defineRpcContract({
       .strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
   },
-  /** Promote a hidden fork to a normal visible thread ("Open as full thread"). */
-  openAsFullThread: {
-    input: z.object({ threadId: z.string().trim().min(1) }).strict(),
-    output: z.object({ ok: z.literal(true) }).strict(),
-  },
 });
 
 export default async function plugin(bb: BbPluginApi) {
@@ -241,10 +236,6 @@ export default async function plugin(bb: BbPluginApi) {
         input: [{ type: "text", text, mentions: [] }],
         senderThreadId,
       });
-      return { ok: true as const };
-    },
-    async openAsFullThread({ threadId }) {
-      await bb.sdk.threads.update({ threadId, visibility: "visible" });
       return { ok: true as const };
     },
   });

@@ -256,23 +256,6 @@ describe("sendToMain rpc", () => {
   });
 });
 
-describe("openAsFullThread rpc", () => {
-  it("promotes the fork to visible", async () => {
-    const update = vi.fn(async () => ({ ok: true }));
-    const { harness } = await loadPlugin({ update });
-
-    const result = await harness.callRpc("openAsFullThread", {
-      threadId: "thr_fork",
-    });
-
-    expect(result).toEqual({ ok: true });
-    expect(update).toHaveBeenCalledWith({
-      threadId: "thr_fork",
-      visibility: "visible",
-    });
-  });
-});
-
 describe("archive cascade", () => {
   it("archives only this plugin's live hidden forks of the archived source", async () => {
     const ownFork = makeThreadResponse({

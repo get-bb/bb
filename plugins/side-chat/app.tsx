@@ -4,7 +4,7 @@
 // for an idle hidden fork, then opens a thread panel tab rendering the fork
 // with the host-owned ThreadChat: a "Replying to" header above the
 // conversation, a per-message "Send to main thread" action on assistant
-// messages, and an "Open as full thread" promotion affordance.
+// messages.
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Icon } from "@bb/shared-ui/icon";
@@ -12,7 +12,6 @@ import {
   definePluginApp,
   experimental_Markdown as Markdown,
   experimental_ThreadChat as ThreadChat,
-  useBbNavigate,
   useRpc,
   type PluginMessageActionContext,
   type PluginThreadPanelActionContext,
@@ -24,19 +23,8 @@ import type { sideChatRpcContract } from "./server.js";
 const PLUGIN_ID = "side-chat";
 export const PANEL_ACTION_ID = "side-chat";
 
-const PANEL_TAB_TITLE_MAX_LENGTH = 32;
-
-/** Panel tab title: first line of the anchor, truncated; "Side chat" fallback. */
-export function panelTabTitle(anchorText: string): string {
-  const firstLine = anchorText.trim().split(/\r\n|\r|\n/u, 1)[0] ?? "";
-  if (firstLine.length === 0) {
-    return "Side chat";
-  }
-  if (firstLine.length <= PANEL_TAB_TITLE_MAX_LENGTH) {
-    return firstLine;
-  }
-  return `${firstLine.slice(0, PANEL_TAB_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
-}
+/** Every side-chat tab is labeled like the legacy panel tab. */
+const PANEL_TAB_TITLE = "Side chat";
 
 // A type alias (not an interface) so it is assignable to the JsonValue
 // `params` the host persists with the tab.
@@ -184,7 +172,7 @@ async function createAndOpenSideChat({
     throw error;
   }
   openPanel({
-    title: panelTabTitle(anchorText),
+    title: PANEL_TAB_TITLE,
     params: {
       threadId,
       sourceThreadId,
@@ -255,8 +243,6 @@ function ReplyingTo({ anchorText }: { anchorText: string }) {
 
 function SideChatPanel({ params }: PluginThreadPanelProps) {
   const rpc = useRpc<typeof sideChatRpcContract>();
-  const navigate = useBbNavigate();
-  const [isPromoting, setIsPromoting] = useState(false);
   const parsed = parsePanelParams(params);
   const sideChatThreadId = parsed?.threadId ?? null;
   const sourceThreadId = parsed?.sourceThreadId ?? null;
@@ -282,23 +268,6 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
     [rpc, sideChatThreadId, sourceThreadId],
   );
 
-  const openAsFullThread = useCallback(async () => {
-    if (sideChatThreadId === null) return;
-    setIsPromoting(true);
-    try {
-      await rpc.call("openAsFullThread", { threadId: sideChatThreadId });
-      navigate.toThread(sideChatThreadId);
-    } catch (error) {
-      toast.error(
-        `Failed to open as full thread: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    } finally {
-      setIsPromoting(false);
-    }
-  }, [navigate, rpc, sideChatThreadId]);
-
   if (parsed === null) {
     return (
       <div className="p-3 text-sm text-muted-foreground" role="alert">
@@ -319,19 +288,6 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-end border-b border-border px-2 py-1">
-        <button
-          type="button"
-          className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-recessed hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          disabled={isPromoting}
-          onClick={() => {
-            void openAsFullThread();
-          }}
-        >
-          <Icon name="ExternalLink" aria-hidden className="size-3" />
-          Open as full thread
-        </button>
-      </div>
       <ThreadChat
         threadId={parsed.threadId}
         variant="compact"

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 // Frontend tests: slot registrations, the reply action's fork+open flow, and
-// the panel's ThreadChat wiring (ReplyingTo header, send-to-main action,
-// promotion affordance).
+// the panel's ThreadChat wiring (ReplyingTo header, send-to-main action).
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
@@ -9,7 +8,7 @@ import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 // Load through the thunk so the test runtime is installed before app.tsx
 // binds `definePluginApp`; pull the pure helpers from the same evaluation.
 const app = await loadPluginApp(() => import("./app"));
-const { panelTabTitle, parsePanelParams } = await import("./app");
+const { parsePanelParams } = await import("./app");
 
 afterEach(() => {
   cleanup();
@@ -41,17 +40,6 @@ describe("registrations", () => {
     expect(app.threadPanelActions.map((action) => action.id)).toEqual([
       "side-chat",
     ]);
-  });
-});
-
-describe("panelTabTitle", () => {
-  it("uses the anchor's first line, truncated, with a fallback", () => {
-    expect(panelTabTitle("")).toBe("Side chat");
-    expect(panelTabTitle("short question")).toBe("short question");
-    expect(panelTabTitle("first line\nsecond line")).toBe("first line");
-    const long = "x".repeat(80);
-    expect(panelTabTitle(long).length).toBeLessThanOrEqual(32);
-    expect(panelTabTitle(long).endsWith("…")).toBe(true);
   });
 });
 
@@ -117,7 +105,7 @@ describe("reply-in-side-chat message action", () => {
     });
     expect(openPanel).toHaveBeenCalledWith({
       actionId: "side-chat",
-      title: "whole message text",
+      title: "Side chat",
       params: {
         threadId: "thr_fork",
         sourceThreadId: "thr_src",
@@ -190,7 +178,7 @@ describe("reply-in-side-chat message action", () => {
 
     expect(openPanel).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "just this part",
+        title: "Side chat",
         params: expect.objectContaining({
           sourceMessageText: "just this part",
         }),
@@ -255,25 +243,6 @@ describe("SideChatPanel", () => {
     });
   });
 
-  it("Open as full thread promotes the fork then navigates to it", async () => {
-    const openAsFullThread = vi.fn(() => ({ ok: true }));
-    const slot = renderSlot(
-      app.threadPanelActions[0]!,
-      { threadId: "thr_src", params },
-      { rpc: { openAsFullThread } },
-    );
-
-    fireEvent.click(slot.getByText("Open as full thread"));
-
-    await waitFor(() => {
-      expect(slot.rpcCalls).toEqual([
-        { method: "openAsFullThread", input: { threadId: "thr_fork" } },
-      ]);
-      expect(slot.navigateCalls).toEqual([
-        { method: "toThread", threadId: "thr_fork" },
-      ]);
-    });
-  });
 
   it("reports a missing thread reference for malformed params", () => {
     const slot = renderSlot(
