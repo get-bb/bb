@@ -83,13 +83,102 @@ const run: WorkflowRunView = {
 };
 
 describe("workflows app registration", () => {
-  it("registers the chat directive and thread panel action", () => {
+  it("registers the composer banner, chat directive, and thread panel action", () => {
+    expect(app.composerCustomizations).toMatchObject([
+      {
+        id: "workflow-status",
+        scopes: ["thread"],
+        banners: [{ id: "active-runs" }],
+      },
+    ]);
     expect(app.messageDirectives.map((directive) => directive.id)).toEqual([
       "workflow-preview",
     ]);
     expect(app.threadPanelActions).toMatchObject([
       { id: "workflow-run", title: "Workflow run", icon: "Workflow" },
     ]);
+  });
+});
+
+describe("workflow composer banner", () => {
+  const banner = app.composerCustomizations[0]!.banners![0]!;
+
+  it("renders active runs for the composer scope thread", async () => {
+    const queuedRun: WorkflowRunView = {
+      ...run,
+      id: "wfr_22222222-2222-4222-8222-222222222222",
+      name: "Queue release notes",
+      status: "queued",
+      currentPhase: null,
+      phases: [],
+      startedAt: null,
+    };
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        rpc: {
+          workflowActiveRuns: (input) => {
+            expect(input).toEqual({ threadId: "thr_scope" });
+            return { runs: [run, queuedRun] };
+          },
+        },
+      },
+    );
+
+    await slot.findByText("Review the release");
+    expect(slot.getByText("Queue release notes")).toBeTruthy();
+    expect(slot.getByText("Queued")).toBeTruthy();
+    expect(slot.getByText("Review")).toBeTruthy();
+    expect(slot.getByText("1/2 agents")).toBeTruthy();
+    expect(
+      slot.getByRole("button", { name: /stop workflow review/i }),
+    ).toBeTruthy();
+  });
+
+  it("renders null when the scope thread has no active runs", async () => {
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thr_idle" } },
+        rpc: { workflowActiveRuns: () => ({ runs: [] }) },
+      },
+    );
+
+    await waitFor(() => expect(slot.rpcCalls).toHaveLength(1));
+    expect(slot.container.childElementCount).toBe(0);
+  });
+
+  it("stops a run through typed RPC and collapses when it was the last one", async () => {
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        rpc: {
+          workflowActiveRuns: () => ({ runs: [run] }),
+          workflowStopRun: (input) => {
+            expect(input).toEqual({ threadId: "thr_scope", runId: run.id });
+            return {
+              stopped: true,
+              run: { ...run, status: "cancelled" as const },
+            };
+          },
+        },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: /stop workflow review/i }),
+    );
+    await waitFor(() => {
+      expect(
+        slot.rpcCalls.some((call) => call.method === "workflowStopRun"),
+      ).toBe(true);
+      expect(slot.container.childElementCount).toBe(0);
+    });
   });
 });
 
@@ -149,9 +238,7 @@ describe("workflow-preview directive", () => {
       slot.getByText("Adversarial review").className.includes("animate-shine"),
     ).toBe(false);
     expect(
-      slot
-        .getAllByText("Review")[0]!
-        .className.includes("animate-shine"),
+      slot.getAllByText("Review")[0]!.className.includes("animate-shine"),
     ).toBe(false);
 
     const workflowToggle = slot.getByRole("button", {

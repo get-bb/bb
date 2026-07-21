@@ -286,6 +286,19 @@ export function getLatestRunForOriginThread(
   );
 }
 
+export function listActiveRunsForOriginThread(
+  db: Db,
+  originThreadId: string,
+): WorkflowRunRow[] {
+  return db
+    .prepare(
+      `${RUN_SELECT} WHERE origin_thread_id = ? AND status IN ('queued', 'running')
+       ORDER BY created_at DESC, workflow_runs.rowid DESC`,
+    )
+    .all(originThreadId)
+    .map(runRow);
+}
+
 export function listRuns(
   db: Db,
   args: { projectId: string; limit: number },

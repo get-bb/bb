@@ -70,7 +70,15 @@ const runLookupInputSchema = z
   })
   .strict();
 
+const threadLookupInputSchema = z
+  .object({ threadId: z.string().trim().min(1) })
+  .strict();
+
 export const workflowUiRpcContract = defineRpcContract({
+  workflowActiveRuns: {
+    input: threadLookupInputSchema,
+    output: z.object({ runs: z.array(workflowRunViewSchema) }).strict(),
+  },
   workflowRunView: {
     input: runLookupInputSchema,
     output: z.object({ run: workflowRunViewSchema.nullable() }).strict(),

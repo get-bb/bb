@@ -24,6 +24,10 @@ The authoring agent emits that returned value exactly once on a standalone
 line. BB replaces the directive with a compact live run card in chat. The card
 shows run state, declared phases, the active phase's workers, elapsed time, and
 an action that opens the full workflow inspector in the thread's right panel.
+While a thread has queued or running workflows, the plugin also contributes a
+status card above that thread's composer. It lists every active run with its
+current phase and agent-call progress and lets the user stop a run in place;
+the card disappears when the thread has no active runs.
 The panel shows every phase and worker, links attached workers to their BB
 threads, reports cache and result state, and can stop an active run. It may also
 be opened directly from the thread panel action, in which case it shows that
@@ -33,8 +37,9 @@ Both surfaces are implemented by the plugin app with `@bb/shared-ui` controls
 and BB theme tokens. Directive attributes and restored panel parameters are
 treated as untrusted input. The backend additionally binds every requested run
 to the directive message or panel thread, so a run ID from another thread
-cannot be inspected or stopped through these UI RPCs. Active cards and panels
-poll once per second; terminal views stop polling.
+cannot be inspected or stopped through these UI RPCs. The composer status
+surface checks once per second while mounted so newly started runs appear;
+active message cards and panels poll once per second, then stop when terminal.
 
 The security boundary is the QuickJS context: workflow code has JSON data and
 explicit orchestration capabilities, but no Node, filesystem, shell, network,

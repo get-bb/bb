@@ -30,6 +30,7 @@ import {
 import {
   definePluginApp,
   useBbNavigate,
+  useComposerView,
   useRpc,
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
@@ -45,6 +46,11 @@ type RunLoadState =
       refreshError: string | null;
     }
   | { status: "error"; message: string };
+
+type ActiveRunsLoadState =
+  | { status: "loading" }
+  | { status: "ready"; runs: WorkflowRunView[] }
+  | { status: "error" };
 
 interface SharedWorkflowView {
   callsById: ReadonlyMap<string, WorkflowCallView>;
@@ -282,6 +288,67 @@ function useWorkflowRun(
   return { state, refresh };
 }
 
+function useActiveWorkflowRuns(threadId: string): {
+  state: ActiveRunsLoadState;
+  setRuns: (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => void;
+} {
+  const rpc = useRpc<typeof workflowUiRpcContract>();
+  const [state, setState] = useState<ActiveRunsLoadState>({
+    status: "loading",
+  });
+  const requestSequence = useRef(0);
+
+  const refresh = useCallback(async () => {
+    const sequence = ++requestSequence.current;
+    try {
+      const result = await rpc.call("workflowActiveRuns", { threadId });
+      if (sequence === requestSequence.current) {
+        setState({ status: "ready", runs: result.runs });
+      }
+    } catch {
+      if (sequence === requestSequence.current) setState({ status: "error" });
+    }
+  }, [rpc, threadId]);
+
+  useEffect(() => {
+    setState({ status: "loading" });
+    void refresh();
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeout: number | null = null;
+    const schedule = () => {
+      timeout = window.setTimeout(() => {
+        void refresh().finally(() => {
+          if (!cancelled) schedule();
+        });
+      }, ACTIVE_POLL_INTERVAL_MS);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
+  }, [refresh]);
+
+  const setRuns = useCallback(
+    (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => {
+      setState((current) =>
+        current.status === "ready"
+          ? { status: "ready", runs: update(current.runs) }
+          : current,
+      );
+    },
+    [],
+  );
+
+  return { state, setRuns };
+}
+
 function EmptyOrError({ children }: { children: ReactNode }) {
   return (
     <div
@@ -314,6 +381,138 @@ function RefreshWarning({ message }: { message: string }) {
     >
       Could not refresh: {message}. Retrying…
     </div>
+  );
+}
+
+function WorkflowStatusBanner() {
+  const view = useComposerView();
+  if (view.scope.kind !== "thread") return null;
+  return <WorkflowStatusBannerLoaded threadId={view.scope.threadId} />;
+}
+
+function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
+  const rpc = useRpc<typeof workflowUiRpcContract>();
+  const { state, setRuns } = useActiveWorkflowRuns(threadId);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const [stopError, setStopError] = useState<string | null>(null);
+
+  if (state.status !== "ready" || state.runs.length === 0) return null;
+
+  const stop = async (run: WorkflowRunView) => {
+    setStoppingRunId(run.id);
+    setStopError(null);
+    try {
+      const result = await rpc.call("workflowStopRun", {
+        threadId,
+        runId: run.id,
+      });
+      setRuns((runs) =>
+        runs.flatMap((current) => {
+          if (current.id !== run.id) return [current];
+          return isRunActive(result.run) ? [result.run] : [];
+        }),
+      );
+    } catch (error) {
+      setStopError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStoppingRunId(null);
+    }
+  };
+
+  return (
+    <section aria-label="Active workflows" className="overflow-hidden">
+      {state.runs.map((run, index) => {
+        const shared = buildSharedWorkflowView(run);
+        const settledAgents = settledAgentCount(shared.progress.agents);
+        const phase =
+          run.currentPhase ?? (run.status === "queued" ? "Queued" : "Starting");
+        const duration = formatDuration(run.startedAt, null);
+        const stopping = stoppingRunId === run.id;
+        return (
+          <div
+            key={run.id}
+            className={cn(index > 0 && "border-t border-border-seam")}
+          >
+            <div
+              className={activityRowClass(
+                "active",
+                "flex min-h-8 min-w-0 items-center gap-1.5 px-3 py-1.5 text-xs text-foreground",
+              )}
+            >
+              <Icon
+                name="Workflow"
+                className={activityIconClass("active", "size-3.5 shrink-0")}
+                aria-hidden
+              />
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span
+                  className={activityTextClass(
+                    "active",
+                    "min-w-0 truncate no-underline",
+                  )}
+                  title={run.name}
+                >
+                  {run.name}
+                </span>
+                <span
+                  className={activityMetaClass(
+                    "active",
+                    "min-w-0 truncate text-2xs",
+                  )}
+                >
+                  {phase}
+                </span>
+                {shared.progress.agents.length === 0 ? null : (
+                  <span
+                    className={activityMetaClass(
+                      "active",
+                      "shrink-0 text-2xs tabular-nums",
+                    )}
+                  >
+                    {settledAgents}/{shared.progress.agents.length} agents
+                  </span>
+                )}
+                {duration === null ? null : (
+                  <span
+                    className={activityMetaClass(
+                      "active",
+                      "shrink-0 text-2xs tabular-nums",
+                    )}
+                  >
+                    {duration}
+                  </span>
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 px-2 text-2xs text-destructive-text"
+                disabled={stoppingRunId !== null}
+                aria-label={`Stop workflow ${run.name}`}
+                onClick={() => void stop(run)}
+              >
+                {stopping ? "Stopping…" : "Stop"}
+              </Button>
+            </div>
+            <WorkflowPhaseStrip
+              progress={shared.progress}
+              currentPhaseIndex={shared.currentPhaseIndex}
+              settled={false}
+              className="px-3 pb-2"
+            />
+          </div>
+        );
+      })}
+      {stopError === null ? null : (
+        <div
+          role="alert"
+          className="border-t border-border-seam px-3 py-2 text-xs text-destructive-text"
+        >
+          {stopError}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -574,9 +773,7 @@ function WorkflowRunPanelLoaded({
               {run.description}
             </p>
           </div>
-          {pillState === null ? null : (
-            <WorkflowStatusPill state={pillState} />
-          )}
+          {pillState === null ? null : <WorkflowStatusPill state={pillState} />}
         </div>
         <div className="mt-2 flex items-center gap-2 text-2xs tabular-nums text-subtle-foreground">
           <span>
@@ -671,6 +868,11 @@ function WorkflowRunPanelLoaded({
 }
 
 export default definePluginApp((app) => {
+  app.composer.customize({
+    id: "workflow-status",
+    scopes: ["thread"],
+    banners: [{ id: "active-runs", component: WorkflowStatusBanner }],
+  });
   app.slots.messageDirective({
     id: "workflow-preview",
     component: WorkflowPreviewDirective,

@@ -25,6 +25,7 @@ import {
   incrementRepairAttempts,
   listCallsForRun,
   listCallsForRunPage,
+  listActiveRunsForOriginThread,
   listRuns,
   listPendingNotificationRuns,
   listRunningCalls,
@@ -354,6 +355,7 @@ export interface WorkflowService {
     limit: number,
   ): WorkflowRunInspectionPage | null;
   inspectLatestForThread(threadId: string): WorkflowRunInspection | null;
+  inspectActiveForThread(threadId: string): WorkflowRunInspection[];
   list(projectId: string, limit: number): WorkflowRunRow[];
   stop(runId: string): Promise<boolean>;
   updateSettings(settings: WorkflowSettings): void;
@@ -573,6 +575,16 @@ export function createWorkflowService(
   ): WorkflowRunInspection | null {
     const run = getLatestRunForOriginThread(db, threadId);
     return run === null ? null : inspect(run.id);
+  }
+
+  function inspectActiveForThread(threadId: string): WorkflowRunInspection[] {
+    return listActiveRunsForOriginThread(db, threadId).map((run) => {
+      const inspection = inspect(run.id);
+      if (inspection === null) {
+        throw new Error(`Unknown workflow run ${run.id}`);
+      }
+      return inspection;
+    });
   }
 
   async function validateSelection(
@@ -1483,6 +1495,7 @@ export function createWorkflowService(
     inspect,
     inspectPage,
     inspectLatestForThread,
+    inspectActiveForThread,
     list: (projectId, limit) => listRuns(db, { projectId, limit }),
     stop,
     updateSettings(settings) {
