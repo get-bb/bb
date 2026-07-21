@@ -32,7 +32,6 @@ async function loadNotebook(notes: Record<string, string>) {
   );
   const host = createFakePluginHost({
     pluginId: "simple-notes",
-    settings: { directory },
     sdk: {
       files: {
         listPaths: async () => ({
@@ -74,6 +73,11 @@ async function loadNotebook(notes: Record<string, string>) {
     },
   });
   await simpleNotes(host.bb);
+  host.bb.storage
+    .database()
+    .prepare("UPDATE vaults SET root_path = ? WHERE id = 'personal'")
+    .run(directory);
+  host.harness.sdk.calls.length = 0;
   return host;
 }
 
@@ -111,7 +115,6 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
   };
   const host = createFakePluginHost({
     pluginId: "simple-notes-sync",
-    settings: { directory: "/vault" },
     sdk: {
       files: {
         async listPaths(args) {
@@ -223,6 +226,11 @@ async function loadVirtualSyncVault(initial: Record<string, VirtualFile>) {
     },
   });
   await simpleNotes(host.bb);
+  host.bb.storage
+    .database()
+    .prepare("UPDATE vaults SET root_path = ? WHERE id = 'personal'")
+    .run("/vault");
+  host.harness.sdk.calls.length = 0;
   return {
     ...host,
     files,
@@ -389,6 +397,31 @@ describe("Docs mention provider", () => {
 });
 
 describe("Docs vault operations", () => {
+  it("creates the initial Personal vault without exposing a folder setting", async () => {
+    const host = createFakePluginHost({
+      pluginId: "simple-notes",
+      sdk: {
+        files: { mkdir: async () => ({ ok: true as const }) },
+      },
+    });
+
+    await simpleNotes(host.bb);
+
+    const result = await host.harness.runCli(["vaults", "--json"]);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      {
+        id: "personal",
+        name: "Personal",
+        hostId: null,
+        rootPath: path.join(os.homedir(), "Notes"),
+      },
+    ]);
+    await expect(
+      host.harness.setSettings({ directory: "/Elsewhere" }),
+    ).rejects.toThrow('unknown setting "directory"');
+  });
+
   it("registers the agent-discoverable Docs CLI", async () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });
     expect(harness.registrations.cli).toMatchObject({
@@ -814,7 +847,6 @@ describe("Docs vault operations", () => {
     ).resolves.toEqual({ path: "projects/plan.md" });
 
     expect(harness.sdk.callsTo("files.mkdir")).toEqual([
-      [{ path: rootPath, recursive: true }],
       [
         {
           path: path.join(rootPath, "projects"),

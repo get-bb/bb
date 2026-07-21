@@ -721,13 +721,6 @@ function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const settings = bb.settings.define({
-    directory: {
-      type: "string",
-      label: "Legacy/default Docs folder (~ ok)",
-      default: DEFAULT_DIR,
-    },
-  });
   const db = bb.storage.database();
   bb.storage.migrate(db, [
     `CREATE TABLE IF NOT EXISTS vaults (
@@ -751,8 +744,7 @@ export default async function plugin(bb: BbPluginApi) {
     Number(db.prepare("SELECT COUNT(*) AS count FROM vaults").pluck().get()) ===
     0
   ) {
-    const { directory } = await settings.get();
-    const rootPath = path.resolve(expandHome(directory.trim() || DEFAULT_DIR));
+    const rootPath = path.resolve(expandHome(DEFAULT_DIR));
     db.prepare(
       "INSERT INTO vaults (id, name, host_id, root_path, created_at) VALUES (?, ?, NULL, ?, ?)",
     ).run("personal", "Personal", rootPath, Date.now());

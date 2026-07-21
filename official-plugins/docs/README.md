@@ -13,9 +13,8 @@ provider, and directive are all Docs.
 ## Features
 
 - **Vaults on connected hosts:** each vault is a named `{ hostId, rootPath }`
-  pair. The default Personal vault uses the primary host and the legacy
-  `directory` setting (`~/Notes` by default). Add remote vaults from the panel
-  with an absolute path on that host.
+  pair. A new installation starts with a Personal vault at `~/Notes` on the
+  primary host. Manage local and remote vaults from the Docs panel.
 - **Nested folders:** the resizable right sidebar recursively displays folders,
   Markdown documents, and HTML pages. It can be collapsed, and search stays
   hidden until requested.
