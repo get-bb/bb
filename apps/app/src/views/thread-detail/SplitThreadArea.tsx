@@ -899,7 +899,6 @@ function WorkspacePaneContent({
           content={content}
           onRequestClose={onRequestClose}
           beginPaneDrag={beginPaneDrag}
-          isFocused={isFocused}
           isBoundedPane={isBoundedPane}
           isTopRow={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}
@@ -939,7 +938,6 @@ function NonThreadPaneContent({
   content,
   onRequestClose,
   beginPaneDrag,
-  isFocused,
   isBoundedPane,
   isTopRow,
   ownsWindowTopLeft,
@@ -947,7 +945,6 @@ function NonThreadPaneContent({
   content: Exclude<PaneContent, { kind: "thread" }>;
   onRequestClose: (() => void) | null;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
-  isFocused: boolean;
   isBoundedPane: boolean;
   isTopRow: boolean;
   ownsWindowTopLeft: boolean;
@@ -1015,10 +1012,7 @@ function NonThreadPaneContent({
           bordered={false}
           isWindowDragRegion={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}
-          className={cn(
-            "border-b border-border-seam-vertical/60",
-            beginPaneDrag && (isFocused ? "bg-surface-raised" : "opacity-50"),
-          )}
+          className={cn("border-b border-border-seam-vertical/60")}
           center={
             <div
               className={cn(

@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  RESOURCE_LIST_PAGE_SIZE,
   ResourcePagination,
   useResourcePagination,
+  useResourceViewportPageSize,
 } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceCollectionPage,
@@ -63,6 +63,9 @@ export function PluginsOverview() {
     installationEnabled,
   );
   const [installedQuery, setInstalledQuery] = useState("");
+  const [installedViewport, setInstalledViewport] =
+    useState<HTMLDivElement | null>(null);
+  const installedPageSize = useResourceViewportPageSize(installedViewport);
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
@@ -114,9 +117,13 @@ export function PluginsOverview() {
     [installedSortDirection, normalizedInstalledQuery, plugins],
   );
   const installedPagination = useResourcePagination(visiblePlugins, {
-    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    pageSize: installedPageSize,
     resetKey: [normalizedInstalledQuery, installedSortDirection].join("\u0000"),
   });
+  const hasInstalledPagination =
+    !listQuery.isError &&
+    !(listQuery.isFetching && listQuery.data === undefined) &&
+    installedPagination.total > installedPagination.pageSize;
 
   const changeMode = (mode: PluginsCollectionMode) => {
     if (!installationEnabled && mode === "browse") return;
@@ -173,6 +180,8 @@ export function PluginsOverview() {
     content = (
       <ResourceCollectionViewport
         scrollId="plugins-installed-results"
+        viewportRef={setInstalledViewport}
+        fillContent={hasInstalledPagination}
         toolbar={
           <ResourceToolbar
             searchValue={installedQuery}
@@ -194,7 +203,7 @@ export function PluginsOverview() {
           />
         }
         footer={
-          installedPagination.total > installedPagination.pageSize ? (
+          hasInstalledPagination ? (
             <ResourcePagination
               page={installedPagination.page}
               pageSize={installedPagination.pageSize}
@@ -221,7 +230,10 @@ export function PluginsOverview() {
             message={`No plugins match "${installedQuery}"`}
           />
         ) : (
-          <InstalledPluginsTab plugins={installedPagination.items} />
+          <InstalledPluginsTab
+            plugins={installedPagination.items}
+            fillHeight={hasInstalledPagination}
+          />
         )}
         {!installationEnabled && systemConfig.data !== undefined ? (
           <p className="px-1 text-2xs text-subtle-foreground">

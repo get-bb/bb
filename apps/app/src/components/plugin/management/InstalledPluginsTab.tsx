@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
 import {
+  ResourceListPanel,
   ResourceRow,
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
@@ -30,8 +31,10 @@ import { PluginLogo } from "./plugin-ui";
  */
 export function InstalledPluginsTab({
   plugins,
+  fillHeight = false,
 }: {
   plugins: readonly PluginListItem[];
+  fillHeight?: boolean;
 }) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
@@ -47,7 +50,7 @@ export function InstalledPluginsTab({
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-card px-4 py-1">
+      <ResourceListPanel fillHeight={fillHeight}>
         <div className="divide-y divide-border">
           {plugins.map((plugin) => (
             <InstalledPluginRow
@@ -57,7 +60,7 @@ export function InstalledPluginsTab({
             />
           ))}
         </div>
-      </div>
+      </ResourceListPanel>
       {updateTarget !== null ? (
         <UpdatePluginDialog
           plugin={updateTarget}

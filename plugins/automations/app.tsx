@@ -42,9 +42,9 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import {
-  RESOURCE_LIST_PAGE_SIZE,
   ResourcePagination,
   useResourcePagination,
+  useResourceViewportPageSize,
 } from "@bb/shared-ui/resource-pagination";
 import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
@@ -776,8 +776,11 @@ function OverviewView({
       return applyAutomationSortDirection(base, sortDirection);
     });
   }, [filteredEntries, sortDirection, sortMode]);
+  const [installedViewport, setInstalledViewport] =
+    useState<HTMLDivElement | null>(null);
+  const installedPageSize = useResourceViewportPageSize(installedViewport);
   const installedPagination = useResourcePagination(visibleEntries, {
-    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    pageSize: installedPageSize,
     resetKey: [
       normalizedQuery,
       projectFilters.join(","),
@@ -785,6 +788,10 @@ function OverviewView({
       sortDirection,
     ].join("\u0000"),
   });
+  const hasInstalledPagination =
+    error === null &&
+    entries !== null &&
+    installedPagination.total > installedPagination.pageSize;
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "project" && nextSort !== "alpha") return;
@@ -827,7 +834,7 @@ function OverviewView({
     );
   } else {
     body = (
-      <ResourceListPanel>
+      <ResourceListPanel fillHeight={hasInstalledPagination}>
         {installedPagination.items.map((entry) => (
           <OverviewRow
             key={entry.automation.id}
@@ -878,6 +885,8 @@ function OverviewView({
       ) : (
         <ResourceCollectionViewport
           scrollId="automations-installed-results"
+          viewportRef={setInstalledViewport}
+          fillContent={hasInstalledPagination}
           toolbar={
             <ResourceToolbar
               searchValue={query}
@@ -912,7 +921,7 @@ function OverviewView({
             />
           }
           footer={
-            installedPagination.total > installedPagination.pageSize ? (
+            hasInstalledPagination ? (
               <ResourcePagination
                 page={installedPagination.page}
                 pageSize={installedPagination.pageSize}

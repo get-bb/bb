@@ -680,6 +680,7 @@ function AutomationsToolView() {
       : new URLSearchParams(location.search).get("view") === "browse"
         ? "browse"
         : "";
+  const isCollection = !(projectId && automationId);
 
   if (panel === null) {
     return (
@@ -714,7 +715,7 @@ function AutomationsToolView() {
       </WorkerPoolContextProvider>
     );
 
-  return <ToolsScrollPage>{mount}</ToolsScrollPage>;
+  return <ToolsScrollPage fillViewport={isCollection}>{mount}</ToolsScrollPage>;
 }
 
 export function PluginDetail({
@@ -905,7 +906,7 @@ export function PluginDetail({
 
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
   return pluginId === undefined ? (
-    <ToolsScrollPage>
+    <ToolsScrollPage fillViewport>
       <PluginsOverview />
     </ToolsScrollPage>
   ) : (

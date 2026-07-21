@@ -1262,7 +1262,7 @@ describe("fetchRegistrySkills", () => {
       ok: true,
       json: async () => ({
         skills: [skill],
-        pagination: { page: 2, perPage: 24, total: 73, hasMore: true },
+        pagination: { page: 2, perPage: 12, total: 73, hasMore: true },
       }),
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -1270,12 +1270,12 @@ describe("fetchRegistrySkills", () => {
     const result = await fetchRegistrySkills({ query: "useful", page: 2 });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/skills-registry?q=useful&page=2&perPage=24",
+      "/api/v1/skills-registry?q=useful&page=2&perPage=12",
     );
     expect(result.skills).toEqual([skill]);
     expect(result.pagination).toEqual({
       page: 2,
-      perPage: 24,
+      perPage: 12,
       total: 73,
       hasMore: true,
     });

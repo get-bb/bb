@@ -33,7 +33,7 @@ describe("SplitThreadArea stories", () => {
         throw new Error("Expected two split pane elements");
       }
 
-      expect(idlePane.querySelector("header")?.classList).toContain(
+      expect(idlePane.querySelector("header")?.classList).not.toContain(
         "opacity-50",
       );
       expect(activePane.querySelector("header")?.classList).not.toContain(
@@ -55,15 +55,15 @@ describe("SplitThreadArea stories", () => {
       expect(activePane.querySelector('[aria-label="Goal"]')).toBeTruthy();
 
       const idleComposer = idlePane.querySelector<HTMLElement>(
-        '[data-split-composer-state="inactive"]',
+        '[data-app-composer=""]',
       );
       const activeComposer = activePane.querySelector<HTMLElement>(
-        '[data-split-composer-state="active"]',
+        '[data-app-composer=""]',
       );
       if (!idleComposer || !activeComposer) {
         throw new Error("Expected focus-aware composers in both split panes");
       }
-      expect(idleComposer.classList).toContain("opacity-50");
+      expect(idleComposer.classList).not.toContain("opacity-50");
       expect(idleComposer.hasAttribute("aria-disabled")).toBe(false);
       expect(idleComposer.classList).not.toContain("pointer-events-none");
       expect(activeComposer.classList).not.toContain("opacity-50");
@@ -84,13 +84,13 @@ describe("SplitThreadArea stories", () => {
 
       await waitFor(() => {
         const nextActiveComposer = idlePane.querySelector<HTMLElement>(
-          '[data-split-composer-state="active"]',
+          '[data-app-composer=""]',
         );
         const nextInactiveComposer = activePane.querySelector<HTMLElement>(
-          '[data-split-composer-state="inactive"]',
+          '[data-app-composer=""]',
         );
         expect(nextActiveComposer?.classList).not.toContain("opacity-50");
-        expect(nextInactiveComposer?.classList).toContain("opacity-50");
+        expect(nextInactiveComposer?.classList).not.toContain("opacity-50");
         expect(idleScrim?.classList).toContain("bg-transparent");
         expect(activeScrim?.classList).toContain("bg-background/20");
       });

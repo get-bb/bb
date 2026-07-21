@@ -113,17 +113,17 @@ const idleTimeline = storyTimeline(
     "Type checking and the thread drag tests both pass with the fix applied.",
     "A subtle, non-interactive pane scrim marks this split as inactive without blocking it.",
   ],
-  "Keep the inactive pane readable while its composer and adjacent context read as idle.",
+  "Keep the inactive pane readable while a single light scrim marks it as idle.",
 );
 
 const activeTimeline = storyTimeline(
   ACTIVE_THREAD_ID,
   "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
   [
-    "The split seam is now one pixel with a wider invisible resize target. Pane content keeps full contrast while the focused header uses the raised surface treatment.",
+    "The split seam is now one pixel with a wider invisible resize target. One uniform pane scrim marks the inactive side without layering extra opacity on its content.",
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",
     "Inactive panes receive a subtle background scrim while messages and status rows remain readable and interactive.",
-    "The inactive scrim and raised focused header trade places together as focus moves between panes.",
+    "The inactive scrim trades places as focus moves between panes while both composers remain fully legible.",
     "The timeline scrollbar now stays invisible at rest and returns briefly while the pane is actively scrolling.",
     "Its native scroll container and hit area remain intact, so wheel, trackpad, touch, and keyboard scrolling behave exactly as before.",
     "This story intentionally overflows both panes so the transient scrollbar behavior can be checked alongside the divider and focus states.",

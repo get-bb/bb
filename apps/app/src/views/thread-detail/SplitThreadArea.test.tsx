@@ -751,7 +751,7 @@ describe("SplitThreadArea", () => {
     expect(separator.firstElementChild?.classList).toContain("-inset-x-1.5");
   });
 
-  it("marks a focused new-thread split in its header instead of its body", async () => {
+  it("uses only the pane-wide scrim to distinguish an inactive new-thread split", async () => {
     renderSplitArea({
       path: "/",
       layout: {
@@ -781,13 +781,13 @@ describe("SplitThreadArea", () => {
       '[data-split-pane-id="pane-2"]',
     );
     const newThreadHeader = newThreadPane?.querySelector("header");
-    expect(newThreadHeader?.classList).toContain("bg-surface-raised");
+    expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
     expect(newThreadHeader?.classList).not.toContain("opacity-50");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     await waitFor(() => {
       expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
-      expect(newThreadHeader?.classList).toContain("opacity-50");
+      expect(newThreadHeader?.classList).not.toContain("opacity-50");
     });
   });
 

@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
@@ -133,6 +140,7 @@ function LocationPath() {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -256,6 +264,106 @@ describe("PluginsOverview", () => {
     expect(
       screen.queryByRole("navigation", { name: "Results pagination" }),
     ).toBeNull();
+  });
+
+  it("fits installed plugin rows to the available height and keeps pagination outside the scroller", async () => {
+    const plugins = Array.from({ length: 30 }, (_, index) => {
+      const ordinal = String(index + 1).padStart(2, "0");
+      return {
+        ...AUTOMATIONS_PLUGIN,
+        id: `plugin-${ordinal}`,
+        source: `builtin:plugin-${ordinal}`,
+        name: `Plugin ${ordinal}`,
+      };
+    });
+    let viewportHeight = 760;
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight",
+    );
+    const resizeCallbacks = new Set<ResizeObserverCallback>();
+
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.id === "plugins-installed-results" ? viewportHeight : 0;
+      },
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect(this: HTMLElement) {
+        const height = this.hasAttribute("data-resource-list-panel")
+          ? viewportHeight
+          : this.hasAttribute("data-resource-row")
+            ? 50
+            : 0;
+        return new DOMRect(0, 0, 800, height);
+      },
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverMock {
+        constructor(private readonly callback: ResizeObserverCallback) {
+          resizeCallbacks.add(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          resizeCallbacks.delete(this.callback);
+        }
+      },
+    );
+
+    try {
+      installFetch(true, plugins);
+      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+      render(
+        <MemoryRouter initialEntries={["/tools/plugins"]}>
+          <QueryClientWrapper>
+            <PluginsOverview />
+          </QueryClientWrapper>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("1–15 of 30")).toBeTruthy();
+      });
+      const viewport = document.getElementById("plugins-installed-results");
+      const footer = document.querySelector(
+        "[data-resource-collection-footer]",
+      );
+      const collectionContent = document.querySelector(
+        "[data-resource-collection-content]",
+      );
+      const listPanel = document.querySelector("[data-resource-list-panel]");
+      expect(viewport?.contains(footer)).toBe(false);
+      expect(collectionContent?.classList.contains("flex-1")).toBe(true);
+      expect(listPanel?.classList.contains("flex-1")).toBe(true);
+
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+      expect(screen.getByText("16–30 of 30")).toBeTruthy();
+
+      viewportHeight = 410;
+      act(() => {
+        for (const callback of resizeCallbacks) {
+          callback([], {} as ResizeObserver);
+        }
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("9–16 of 30")).toBeTruthy();
+      });
+      expect(screen.getByText("Page 2 of 4")).toBeTruthy();
+    } finally {
+      if (clientHeightDescriptor === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+      } else {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "clientHeight",
+          clientHeightDescriptor,
+        );
+      }
+    }
   });
 
   it("sorts built-ins first and alphabetically within provenance groups", async () => {

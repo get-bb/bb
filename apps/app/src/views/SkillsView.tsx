@@ -12,6 +12,7 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
+  RESOURCE_GRID_PAGE_SIZE,
   ResourcePagination,
   useResourcePagination,
   useResourceViewportPageSize,
@@ -108,7 +109,7 @@ export interface RegistrySkillDetail {
 }
 
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
-const REGISTRY_PAGE_SIZE = 24;
+const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
 const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
   page: 0,
   perPage: REGISTRY_PAGE_SIZE,
