@@ -176,6 +176,7 @@ describe("builtin plugin reconciliation", () => {
   beforeEach(async () => {
     delete globals.__builtinFixtureLoads;
     delete globals.__packagedBuiltinLoads;
+    delete globals.__hotBuiltinServerVersion;
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
@@ -498,18 +499,77 @@ describe("builtin plugin reconciliation", () => {
     });
   });
 
-  it("rebuilds and serves a new builtin app hash after a source edit while Plugins is off", async () => {
-    const mutableRoot = join(workDir, "bb-plugin-hot-builtin");
+  it("hot-reloads a source-layout builtin server instead of a compatible dist artifact", async () => {
+    const mutableRoot = join(workDir, "bb-plugin-hot-server-builtin");
+    await mkdir(join(mutableRoot, "dist"), { recursive: true });
+    await writeFile(
+      join(mutableRoot, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-hot-server-builtin",
+        version: "0.1.0",
+        type: "module",
+        bb: {
+          name: "Hot server builtin",
+          description: "Hot server builtin plugin fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(mutableRoot, "server.ts"),
+      'export default function plugin() { globalThis.__hotBuiltinServerVersion = "before"; }\n',
+    );
+    // A source-layout builtin may retain artifacts from a production build.
+    // Dev reloads must still execute the edited source entry.
+    await writeFile(
+      join(mutableRoot, "dist", "server.js"),
+      'export default function plugin() { globalThis.__hotBuiltinServerVersion = "stale-dist"; }\n',
+    );
+    await writeFile(
+      join(mutableRoot, "dist", "server.meta.json"),
+      JSON.stringify({
+        sdkMajor: PLUGIN_SDK_MAJOR,
+        sdkVersion: PLUGIN_SDK_VERSION,
+      }),
+    );
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "hot-server",
+      isEnabled: () => false,
+      rootDir: mutableRoot,
+      watchBuiltinPluginSources: true,
+    });
+    await service.start();
+    expect(globals.__hotBuiltinServerVersion).toBe("before");
+
+    await writeFile(
+      join(mutableRoot, "server.ts"),
+      'export default function plugin() { globalThis.__hotBuiltinServerVersion = "after"; }\n',
+    );
+    let deadline = Date.now() + 20_000;
+    while (
+      globals.__hotBuiltinServerVersion !== "after" &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    }
+    expect(globals.__hotBuiltinServerVersion).toBe("after");
+  }, 30_000);
+
+  it("surfaces builtin app build failures in status until the next successful build", async () => {
+    const mutableRoot = join(workDir, "bb-plugin-hot-app-builtin");
     await mkdir(mutableRoot, { recursive: true });
     await writeFile(
       join(mutableRoot, "package.json"),
       JSON.stringify({
-        name: "bb-plugin-hot-builtin",
+        name: "bb-plugin-hot-app-builtin",
         version: "0.1.0",
         type: "module",
         bb: {
-          name: "Hot builtin",
-          description: "Hot builtin plugin fixture.",
+          name: "Hot app builtin",
+          description: "Hot app builtin plugin fixture.",
           branding: { icon: "Zap" },
           server: "./server.ts",
           app: "./app.tsx",
@@ -527,7 +587,7 @@ describe("builtin plugin reconciliation", () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
-      builtinName: "hot",
+      builtinName: "hot-app",
       isEnabled: () => false,
       rootDir: mutableRoot,
       watchBuiltinPluginSources: true,
@@ -538,19 +598,41 @@ describe("builtin plugin reconciliation", () => {
 
     await writeFile(
       join(mutableRoot, "app.tsx"),
+      "export default function App( {\n",
+    );
+    let deadline = Date.now() + 20_000;
+    let failed = service.list()[0];
+    while (
+      !failed?.statusDetail?.includes("frontend bundle build failed") &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      failed = service.list()[0];
+    }
+    expect(failed?.status).toBe("running");
+    expect(failed?.statusDetail).toContain("frontend bundle build failed");
+    expect(failed?.app.bundle?.hash).toBe(before?.hash);
+
+    await writeFile(
+      join(mutableRoot, "app.tsx"),
       "export default function App() { return <div>after</div>; }\n",
     );
-    let after = service.list()[0]?.app.bundle;
-    const deadline = Date.now() + 20_000;
-    while (after?.hash === before?.hash && Date.now() < deadline) {
+    deadline = Date.now() + 20_000;
+    let after = service.list()[0];
+    while (
+      (after?.statusDetail !== null ||
+        after.app.bundle?.hash === before?.hash) &&
+      Date.now() < deadline
+    ) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
-      after = service.list()[0]?.app.bundle;
+      after = service.list()[0];
     }
-    expect(after?.hash).not.toBe(before?.hash);
+    expect(after?.statusDetail).toBeNull();
+    expect(after?.app.bundle?.hash).not.toBe(before?.hash);
     await expect(
       readFile(join(mutableRoot, "dist", "app.js"), "utf8"),
     ).resolves.toContain("after");
-  }, 30_000);
+  }, 90_000);
 
   it("rejects unknown builtin install sources clearly", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });

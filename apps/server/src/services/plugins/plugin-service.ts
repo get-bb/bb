@@ -1002,6 +1002,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loaded,
     loadOne,
     logos,
+    setDevBuildProblem,
     setStatus,
     shouldExposeLoadedPlugin,
     shouldExposePluginId,
@@ -1416,7 +1417,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
             buildApp: async () => {
-              await buildPluginApp(bundled.rootDir, deps.appVersion);
+              try {
+                await buildPluginApp(bundled.rootDir, deps.appVersion);
+                setDevBuildProblem(row.id, null);
+                notifyPluginsChanged();
+              } catch (error) {
+                setDevBuildProblem(
+                  row.id,
+                  error instanceof Error ? error.message : String(error),
+                );
+                notifyPluginsChanged();
+                throw error;
+              }
             },
             reloadPlugin: async () => {
               await withLifecycleLock(row.id, async () => {
