@@ -6,10 +6,7 @@ import {
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
 import type { Project, Thread, ThreadOriginKind } from "@bb/domain";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -123,10 +120,7 @@ function resolveForkDescriptor(
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
-  if (
-    !isAgentProviderId(args.providerId) ||
-    !getBuiltInAgentProviderInfo(args.providerId).capabilities.supportsFork
-  ) {
+  if (!supportsNativeFork(args.providerId)) {
     return null;
   }
   const sourceProviderThreadId =

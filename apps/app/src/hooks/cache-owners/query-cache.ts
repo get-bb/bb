@@ -549,10 +549,10 @@ function threadMatchesListFilters(
   ) {
     return false;
   }
-  // Mirror the server default: hidden threads stay out of list caches unless
-  // the query opted in — otherwise realtime inserts leak them into surfaces
-  // (sidebar, recents) whose fetches exclude them.
-  if (!filters?.includeHidden && thread.visibility === "hidden") {
+  // Mirror the server default: hidden threads stay out of list caches —
+  // otherwise realtime inserts leak them into surfaces (sidebar, recents)
+  // whose fetches exclude them.
+  if (thread.visibility === "hidden") {
     return false;
   }
 

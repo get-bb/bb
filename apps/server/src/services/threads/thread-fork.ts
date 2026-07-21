@@ -1,9 +1,6 @@
 import { getEnvironment, getThread } from "@bb/db";
 import type { Environment, PromptInput, Thread } from "@bb/domain";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { supportsNativeFork } from "@bb/agent-providers";
 import type { EnvironmentArgs, ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -32,11 +29,7 @@ function requireForkSourceThread(
 }
 
 function requireForkCapableProvider(sourceThread: Thread): void {
-  if (
-    !isAgentProviderId(sourceThread.providerId) ||
-    !getBuiltInAgentProviderInfo(sourceThread.providerId).capabilities
-      .supportsFork
-  ) {
+  if (!supportsNativeFork(sourceThread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",

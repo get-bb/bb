@@ -135,25 +135,6 @@ export function isOwnLiveHiddenFork(
   );
 }
 
-/**
- * Sweep predicate for the empty-fork cleanup: this plugin's live hidden
- * forks older than {@link EMPTY_FORK_MAX_AGE_MS} that never received a user
- * message. Panel unmount is not a close signal (tabs unmount on switch), so
- * abandoned idle forks are reaped in the background instead.
- */
-export function shouldSweepEmptyFork(args: {
-  thread: SideChatForkCandidate;
-  pluginId: string;
-  hasUserMessage: boolean;
-  now: number;
-}): boolean {
-  return (
-    isOwnLiveHiddenFork(args.thread, args.pluginId) &&
-    !args.hasUserMessage &&
-    args.now - args.thread.createdAt > EMPTY_FORK_MAX_AGE_MS
-  );
-}
-
 export const sideChatRpcContract = defineRpcContract({
   /**
    * Create the idle hidden fork a side-chat panel renders. `anchorText` is
@@ -279,13 +260,12 @@ export default async function plugin(bb: BbPluginApi) {
     for (const thread of threads) {
       if (!isOwnLiveHiddenFork(thread, bb.pluginId)) continue;
       if (now - thread.createdAt <= EMPTY_FORK_MAX_AGE_MS) continue;
-      let hasUserMessage: boolean;
       try {
         const timeline = await bb.sdk.threads.timeline({
           threadId: thread.id,
           includeNestedRows: "true",
         });
-        hasUserMessage = timelineRowsContainUserMessage(timeline.rows);
+        if (timelineRowsContainUserMessage(timeline.rows)) continue;
       } catch (error) {
         bb.log.warn(
           `empty-fork sweep skipped ${thread.id} (timeline read failed: ${
@@ -294,29 +274,17 @@ export default async function plugin(bb: BbPluginApi) {
         );
         continue;
       }
-      if (!hasUserMessage) {
-        try {
-          const queued = await bb.sdk.threads.queuedMessages.list({
-            threadId: thread.id,
-          });
-          if (queued.length > 0) continue;
-        } catch (error) {
-          bb.log.warn(
-            `empty-fork sweep skipped ${thread.id} (queued-message read failed: ${
-              error instanceof Error ? error.message : String(error)
-            })`,
-          );
-          continue;
-        }
-      }
-      if (
-        !shouldSweepEmptyFork({
-          thread,
-          pluginId: bb.pluginId,
-          hasUserMessage,
-          now,
-        })
-      ) {
+      try {
+        const queued = await bb.sdk.threads.queuedMessages.list({
+          threadId: thread.id,
+        });
+        if (queued.length > 0) continue;
+      } catch (error) {
+        bb.log.warn(
+          `empty-fork sweep skipped ${thread.id} (queued-message read failed: ${
+            error instanceof Error ? error.message : String(error)
+          })`,
+        );
         continue;
       }
       try {

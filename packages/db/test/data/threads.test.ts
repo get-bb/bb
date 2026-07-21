@@ -169,6 +169,10 @@ describe("threads", () => {
         (thread) => thread.id,
       ),
     ).not.toContain(hidden.id);
+    // Fail closed: omitting includeHidden also excludes hidden threads.
+    expect(
+      listThreads(db, { projectId: project.id }).map((thread) => thread.id),
+    ).not.toContain(hidden.id);
     expect(
       listThreads(db, { projectId: project.id, includeHidden: true })
         .map((thread) => thread.id)

@@ -2067,6 +2067,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onSendToMainMessage,
       selectionAddToChatHandler,
       messageActionSlots,
+      props.includePluginMessageActions,
       props.consumerMessageActions,
       reportProseSelection,
       props.threadChildOrigin,

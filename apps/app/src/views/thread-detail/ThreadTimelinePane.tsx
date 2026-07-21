@@ -29,7 +29,7 @@ export function ThreadTimelinePane({
 }: ThreadTimelinePaneProps) {
   return (
     <EmbeddedThreadChat
-      variant="full"
+      variant="hosted-footer"
       threadId={surface.threadId}
       footer={footer}
       scrollOverlay={

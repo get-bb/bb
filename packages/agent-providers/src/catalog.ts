@@ -364,6 +364,14 @@ export function isAgentProviderId(value: string): value is AgentProviderId {
   return agentProviderIdSchema.safeParse(value).success;
 }
 
+/** Whether this provider can clone a session at a branch point (native fork). */
+export function supportsNativeFork(providerId: string): boolean {
+  return (
+    isAgentProviderId(providerId) &&
+    getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
+  );
+}
+
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {
   return BUILT_IN_AGENT_PROVIDER_CATALOG.map((provider) =>
     cloneBuiltInAgentProviderInfo(provider.info),

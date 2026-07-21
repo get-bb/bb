@@ -587,11 +587,6 @@ export function SideChatTabContent({
         deferExecutionOptionsUntilActive: true,
         permissionPolicy: "snapshot",
         environmentSummary,
-        contextWindowUsage: null,
-        // A side chat is a secondary composer: it stays mounted (often hidden)
-        // inside its pane, so it must not answer the pane-scoped Cmd+Shift+C /
-        // Cmd+Shift+M fallback unless the caret is actually inside it.
-        isPrimaryComposer: false,
         pluginComposerBottomScope: {
           kind: "side-chat",
           projectId: sourceThread.projectId,

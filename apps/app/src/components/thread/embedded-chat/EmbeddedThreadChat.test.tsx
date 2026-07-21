@@ -238,7 +238,6 @@ function renderEmbeddedChat({
         executionResetKey: "thr_parent",
         permissionPolicy: "snapshot",
         environmentSummary: null,
-        contextWindowUsage: null,
       }}
     />,
   );

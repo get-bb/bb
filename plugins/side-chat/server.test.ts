@@ -9,9 +9,7 @@ import plugin, {
   REPLY_SEED_PREFIX,
   lastConversationMessageText,
   resolveReplySeedText,
-  shouldSweepEmptyFork,
   timelineRowsContainUserMessage,
-  type SideChatForkCandidate,
   type SideChatTimelineRowLike,
 } from "./server";
 
@@ -314,35 +312,6 @@ describe("archive cascade", () => {
 });
 
 describe("empty-fork sweep", () => {
-  it("shouldSweepEmptyFork requires an old, empty, live hidden own fork", () => {
-    const now = 10 * EMPTY_FORK_MAX_AGE_MS;
-    const base: SideChatForkCandidate = {
-      originKind: "fork",
-      originPluginId: PLUGIN_ID,
-      visibility: "hidden",
-      archivedAt: null,
-      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 1,
-    };
-    const sweep = (
-      thread: Partial<SideChatForkCandidate>,
-      hasUserMessage = false,
-    ): boolean =>
-      shouldSweepEmptyFork({
-        thread: { ...base, ...thread },
-        pluginId: PLUGIN_ID,
-        hasUserMessage,
-        now,
-      });
-
-    expect(sweep({})).toBe(true);
-    expect(sweep({}, true)).toBe(false);
-    expect(sweep({ createdAt: now - EMPTY_FORK_MAX_AGE_MS })).toBe(false);
-    expect(sweep({ visibility: "visible" })).toBe(false);
-    expect(sweep({ originPluginId: "other" })).toBe(false);
-    expect(sweep({ originKind: "side-chat" })).toBe(false);
-    expect(sweep({ archivedAt: 1 })).toBe(false);
-  });
-
   it("timelineRowsContainUserMessage finds nested user rows", () => {
     expect(
       timelineRowsContainUserMessage([

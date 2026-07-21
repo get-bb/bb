@@ -55,7 +55,6 @@ export interface UseInlineQueuedMessageEditingResult {
   beginEditQueuedMessage: (request: QueuedMessageEditRequest) => void;
   inlineEditor: QueuedMessageInlineEditor | undefined;
   inlineComposerTarget: HTMLDivElement | null;
-  queuedMessagesByIdRef: React.RefObject<ReadonlyMap<string, ThreadQueuedMessage>>;
 }
 
 /**
@@ -189,6 +188,5 @@ export function useInlineQueuedMessageEditing({
     beginEditQueuedMessage,
     inlineEditor,
     inlineComposerTarget,
-    queuedMessagesByIdRef,
   };
 }

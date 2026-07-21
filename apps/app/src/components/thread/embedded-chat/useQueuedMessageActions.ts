@@ -39,8 +39,6 @@ interface UseQueuedMessageActionsArgs {
   canSendNow?: () => boolean;
   onSendSuccess?: () => void;
   onSaveSuccess?: () => void;
-  /** Passed through to the delete-failure toast message builder. */
-  deleteErrorLifecycleOperation?: "queue_message";
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
   dismissInlineQueuedMessageEditor: () => void;
   /** The inline edit draft's current prompt input (for saving the edit). */
@@ -77,7 +75,6 @@ export function useQueuedMessageActions({
   canSendNow,
   onSendSuccess,
   onSaveSuccess,
-  deleteErrorLifecycleOperation,
   inlineEditingQueuedMessage,
   dismissInlineQueuedMessageEditor,
   activeComposerDraftInput,
@@ -241,9 +238,7 @@ export function useQueuedMessageActions({
             getMutationErrorMessage({
               error,
               fallbackMessage: "Failed to delete queued message",
-              ...(deleteErrorLifecycleOperation
-                ? { lifecycleOperation: deleteErrorLifecycleOperation }
-                : {}),
+              lifecycleOperation: "queue_message",
             }),
           );
         })
@@ -253,7 +248,7 @@ export function useQueuedMessageActions({
           );
         });
     },
-    [deleteErrorLifecycleOperation, deleteQueuedMessage, threadId],
+    [deleteQueuedMessage, threadId],
   );
 
   const handleReorderQueuedMessage = useCallback(

@@ -26,7 +26,6 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
-  type FollowUpPromptBoxProps,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
@@ -94,7 +93,6 @@ export const hideProvisioningTimelineRow: ThreadTimelineRowFilter = (row) =>
 export interface EmbeddedThreadChatLabels {
   /** Composer placeholder while the thread is idle/active. */
   placeholder: string;
-  compactPlaceholder?: string;
   stopping: string;
   provisioning: string;
   compactProvisioning?: string;
@@ -145,8 +143,6 @@ export interface EmbeddedThreadChatComposerProps {
   deferExecutionOptionsUntilActive?: boolean;
   permissionPolicy: "editable" | "snapshot";
   environmentSummary: ReactNode;
-  contextWindowUsage?: FollowUpPromptBoxProps["contextWindowUsage"];
-  isPrimaryComposer?: boolean;
   /** Plugin composer host scope for the bottom draft. Null disables the host. */
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
@@ -228,7 +224,7 @@ export interface EmbeddedThreadChatComposerModeProps
  * outside for now; it shares the same engine hooks this component uses.
  */
 export interface EmbeddedThreadChatHostedFooterProps {
-  variant: "full";
+  variant: "hosted-footer";
   threadId: string;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
@@ -242,13 +238,14 @@ export type EmbeddedThreadChatProps =
 
 /**
  * One thread's chat — timeline plus composer — embeddable in a side panel
- * ("compact") or as the main conversation surface ("full"). Owns timeline
+ * ("compact") or as the main conversation surface ("hosted-footer"). Owns
+ * timeline
  * loading (when no controller is injected), realtime cache updates, drafts,
  * send/queue/steer/stop, queued-message editing, attachments, mentions,
  * execution controls, and read tracking.
  */
 export function EmbeddedThreadChat(props: EmbeddedThreadChatProps) {
-  if (props.variant === "full") {
+  if (props.variant === "hosted-footer") {
     return <EmbeddedThreadChatHostedFooter {...props} />;
   }
   return <EmbeddedThreadChatWithComposer {...props} />;
@@ -537,7 +534,6 @@ function EmbeddedThreadChatWithComposer({
     sendProcessingPersistence: "clear-on-settle",
     canSendNow: () => !isProvisioning,
     onSaveSuccess: () => setAttachmentError(null),
-    deleteErrorLifecycleOperation: "queue_message",
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
     activeComposerDraftInput,
@@ -882,7 +878,7 @@ function EmbeddedThreadChatWithComposer({
     ? labels.stopping
     : isProvisioning
       ? (labels.compactProvisioning ?? labels.provisioning)
-      : (labels.compactPlaceholder ?? labels.placeholder);
+      : labels.placeholder;
 
   const composerConfig = useMemo<FollowUpComposerProps>(
     () => ({
@@ -1093,7 +1089,7 @@ function EmbeddedThreadChatWithComposer({
           textEffect={composerTextEffect}
           composerTarget={inlineComposerTarget}
           environmentSummary={composer.environmentSummary}
-          contextWindowUsage={composer.contextWindowUsage ?? null}
+          contextWindowUsage={null}
           execution={executionConfig}
           executionReadOnly={inlineEditingQueuedMessage !== null}
           permission={permissionConfig}
@@ -1112,7 +1108,9 @@ function EmbeddedThreadChatWithComposer({
               ? composerFocusNonce
               : `${composerFocusNonce}:${composer.focusRequestKey}`
           }
-          isPrimaryComposer={composer.isPrimaryComposer ?? true}
+          // Embedded surfaces never own the global composer shortcuts; the
+          // thread-detail composer does.
+          isPrimaryComposer={false}
         />
       </div>
     </div>

@@ -930,7 +930,7 @@ export function ExperimentsSettingsSection({
           }
         >
           <Switch
-            checked={sideChatPluginEnabled && pluginsEnabled}
+            checked={sideChatPluginEnabled}
             disabled={disabled || !pluginsEnabled}
             onCheckedChange={onSideChatPluginEnabledChange}
             aria-label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}

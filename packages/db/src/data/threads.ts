@@ -339,7 +339,7 @@ export interface ListThreadsOptions {
   childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
-  /** False applies a visible-only filter; undefined preserves internal callers. */
+  /** Hidden threads are excluded unless explicitly opted in. */
   includeHidden?: boolean;
 }
 
@@ -633,7 +633,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
     isNull(threads.deletedAt),
-    options.includeHidden === false ? eq(threads.visibility, "visible") : undefined,
+    options.includeHidden ? undefined : eq(threads.visibility, "visible"),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
       : undefined,

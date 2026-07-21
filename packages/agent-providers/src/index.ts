@@ -11,6 +11,7 @@ export {
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
+  supportsNativeFork,
 } from "./catalog.js";
 export type {
   AcpAgentProviderId,

@@ -41,12 +41,6 @@ describe("ExperimentsSettingsSection side-chat plugin toggle", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("shows unchecked while Plugins is off even if the stored flag is on", () => {
-    renderSection({ pluginsEnabled: false, sideChatPluginEnabled: true });
-    const toggle = screen.getByLabelText("Side chat plugin");
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-  });
-
   it("is enabled when the Plugins experiment is on and reports toggles", () => {
     const onChange = vi.fn();
     renderSection({

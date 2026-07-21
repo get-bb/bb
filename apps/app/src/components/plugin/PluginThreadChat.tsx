@@ -235,8 +235,6 @@ function PluginThreadChatBody({
         // surface: sends run with exactly what the thread would use.
         permissionPolicy: "snapshot",
         environmentSummary,
-        contextWindowUsage: null,
-        isPrimaryComposer: false,
         pluginComposerBottomScope: { kind: "thread", threadId },
         composerIdentity: `plugin-thread-chat:${threadId}`,
         focusRequestKey: focusRequest,

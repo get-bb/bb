@@ -53,6 +53,27 @@ describe("experiments settings", () => {
     });
   });
 
+  it("normalizes sideChatPlugin off when plugins is off", async () => {
+    await withTestHarness(async (harness) => {
+      const put = await harness.app.request("/api/v1/settings/experiments", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          claudeCodeMockCliTraffic: false,
+          plugins: false,
+          sideChatPlugin: true,
+        }),
+      });
+      expect(put.status).toBe(200);
+      expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        claudeCodeMockCliTraffic: false,
+        plugins: false,
+        sideChatPlugin: false,
+      });
+      expect(getExperiments(harness.db).sideChatPlugin).toBe(false);
+    });
+  });
+
   it("does not expose legacy direct bb connect routes", async () => {
     await withTestHarness(async (harness) => {
       const disabled = await harness.app.request("/api/v1/connect/status");
