@@ -9,7 +9,7 @@ import {
 const NOW = 2_000;
 
 describe("one-shot automation lifecycle", () => {
-  it("omits a duplicate failure label and separates the next-run label", () => {
+  it("omits row state repeated by icons or controls and separates the next-run label", () => {
     expect(
       formatOverviewScheduleMetadata({
         enabled: false,
@@ -17,6 +17,19 @@ describe("one-shot automation lifecycle", () => {
         trigger: { triggerType: "once", runAt: NOW - 1_000 },
         runCount: 1,
         lastRunStatus: "failed",
+        now: NOW,
+      }),
+    ).toBeNull();
+
+    expect(
+      formatOverviewScheduleMetadata({
+        enabled: false,
+        nextRunAt: NOW + 60_000,
+        trigger: {
+          triggerType: "schedule",
+          cron: "0 * * * *",
+          timezone: "UTC",
+        },
         now: NOW,
       }),
     ).toBeNull();
