@@ -109,21 +109,6 @@ export function subscribeComposerTextEffect(
   };
 }
 
-export function useComposerTextEffect(
-  storageKey: string | null,
-): PluginComposerTextEffect | null {
-  const subscribe = useCallback(
-    (listener: ComposerTextEffectListener) =>
-      subscribeComposerTextEffect(storageKey, listener),
-    [storageKey],
-  );
-  const getSnapshot = useCallback(
-    () => getComposerTextEffect(storageKey),
-    [storageKey],
-  );
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
 export function useComposerTextEffects(
   storageKey: string | null,
 ): readonly ComposerTextEffectSource[] {

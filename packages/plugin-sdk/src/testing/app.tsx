@@ -42,6 +42,16 @@ import {
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
+import {
+  collectComposerCustomization,
+  PLUGIN_SLOT_ID_PATTERN,
+  requireComponent,
+  requireMessageDirectiveId,
+  requireNonEmptyString,
+  requireOptionalString,
+  requireSlotId,
+  requireUniqueId,
+} from "../internal/composer-customization-validation.js";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -93,6 +103,10 @@ export type NavigateCall =
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
+  /** Latest host-provided composer scope. */
+  readonly scope: PluginComposerScope;
+  /** Latest host-provided attachment count exposed through `useComposerView()`. */
+  readonly attachmentCount: number;
   /** Latest host-rendered text effect requested by the plugin. */
   textEffect: PluginComposerTextEffect | null;
   textEffectCalls: Array<PluginComposerTextEffect | null>;
@@ -108,8 +122,11 @@ export interface ComposerLog {
 }
 
 interface TestComposerStore {
-  api: Omit<PluginComposerApi, "text">;
-  getSnapshot(): string;
+  api: Omit<PluginComposerApi, "scope" | "text">;
+  getAttachmentCount(): number;
+  getScope(): PluginComposerScope;
+  getText(): string;
+  getVersionSnapshot(): number;
   subscribe(listener: () => void): () => void;
 }
 
@@ -175,9 +192,6 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
     typeof (value as { setup?: unknown }).setup === "function"
   );
 }
-
-const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /**
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
@@ -297,31 +311,42 @@ const testPluginSdkApp = {
   },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
-    const text = useSyncExternalStore(
+    const version = useSyncExternalStore(
       composer.subscribe,
-      composer.getSnapshot,
-      composer.getSnapshot,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
     );
-    return useMemo(() => ({ ...composer.api, text }), [composer, text]);
+    return useMemo(
+      () => ({
+        ...composer.api,
+        scope: composer.getScope(),
+        text: composer.getText(),
+      }),
+      [composer, version],
+    );
   },
   experimental_ThreadChat: TestThreadChat,
   experimental_Markdown: TestMarkdown,
   useComposerView(): ComposerView {
     const composer = useSlotEnv("useComposerView").composer;
-    const text = useSyncExternalStore(
+    const version = useSyncExternalStore(
       composer.subscribe,
-      composer.getSnapshot,
-      composer.getSnapshot,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
     );
-    return useMemo(
-      () => ({
-        scope: composer.api.scope,
+    return useMemo(() => {
+      const text = composer.getText();
+      return {
+        scope: composer.getScope(),
         layout: "expanded",
-        draft: { text, isEmpty: text.length === 0, attachmentCount: 0 },
+        draft: {
+          text,
+          isEmpty: text.length === 0,
+          attachmentCount: composer.getAttachmentCount(),
+        },
         run: { isRunning: false, isSubmitting: false },
-      }),
-      [composer.api.scope, text],
-    );
+      };
+    }, [composer, version]);
   },
 } satisfies PluginSdkApp;
 
@@ -366,240 +391,9 @@ export type PluginAppSource =
   | PluginAppModule
   | (() => Promise<PluginAppDefinition | PluginAppModule>);
 
-function requireSlotId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireMessageDirectiveId(kind: string, value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
-  ) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireNonEmptyString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${kind}: "${field}" must be a non-empty string`);
-  }
-  return value;
-}
-
-function requireOptionalString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string | undefined {
-  if (value !== undefined && typeof value !== "string") {
-    throw new Error(`${kind}: "${field}" must be a string when set`);
-  }
-  return value;
-}
-
-function requireComponent<T>(kind: string, value: unknown): T {
-  if (typeof value !== "function") {
-    throw new Error(`${kind}: "component" must be a React component function`);
-  }
-  return value as T;
-}
-
-function requireFunction<T>(kind: string, field: string, value: unknown): T {
-  if (typeof value !== "function") {
-    throw new Error(`${kind}: "${field}" must be a function`);
-  }
-  return value as T;
-}
-
-function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
-  if (seen.has(id)) {
-    throw new Error(`${kind}: duplicate id "${id}"`);
-  }
-  seen.add(id);
-}
-
-function parseComposerContributionArray<T extends { id: string }>(
-  kind: string,
-  value: unknown,
-  onRejected: (reason: string) => void,
-  parse: (entryKind: string, value: unknown) => T,
-): readonly T[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
-    onRejected(`${kind}: must be an array when set`);
-    return undefined;
-  }
-  const seenIds = new Set<string>();
-  const parsed: T[] = [];
-  for (const [index, entry] of value.entries()) {
-    const entryKind = `${kind}[${index}]`;
-    try {
-      const parsedEntry = parse(entryKind, entry);
-      requireUniqueId(entryKind, seenIds, parsedEntry.id);
-      parsed.push(parsedEntry);
-    } catch (error) {
-      onRejected(error instanceof Error ? error.message : String(error));
-    }
-  }
-  return parsed;
-}
-
-function parseComposerCustomizationRegions(
-  kind: string,
-  registration: ComposerCustomization,
-  onRejected: (reason: string) => void,
-): Pick<
-  ComposerCustomization,
-  "actions" | "banners" | "plusMenu" | "richText"
-> {
-  const actions = parseComposerContributionArray<
-    NonNullable<ComposerCustomization["actions"]>[number]
-  >(`${kind}.actions`, registration.actions, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
-    const id = requireSlotId(entryKind, entry?.id);
-    return {
-      id,
-      component: requireComponent(entryKind, entry?.component),
-    };
-  });
-  const banners = parseComposerContributionArray<
-    NonNullable<ComposerCustomization["banners"]>[number]
-  >(`${kind}.banners`, registration.banners, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
-    const id = requireSlotId(entryKind, entry?.id);
-    const chrome = entry?.chrome;
-    if (chrome !== undefined && chrome !== "card" && chrome !== "bare") {
-      throw new Error(
-        `${entryKind}: "chrome" must be "card" or "bare" when set`,
-      );
-    }
-    return {
-      id,
-      ...(chrome !== undefined ? { chrome } : {}),
-      component: requireComponent(entryKind, entry?.component),
-    };
-  });
-  const plusMenu = parseComposerContributionArray<
-    NonNullable<ComposerCustomization["plusMenu"]>[number]
-  >(
-    `${kind}.plusMenu`,
-    registration.plusMenu,
-    onRejected,
-    (entryKind, value) => {
-      const entry = value as Record<string, unknown> | null;
-      const id = requireSlotId(entryKind, entry?.id);
-      const icon = requireOptionalString(entryKind, "icon", entry?.icon);
-      const description = requireOptionalString(
-        entryKind,
-        "description",
-        entry?.description,
-      );
-      const disabled = entry?.disabled;
-      if (
-        disabled !== undefined &&
-        typeof disabled !== "boolean" &&
-        typeof disabled !== "function"
-      ) {
-        throw new Error(
-          `${entryKind}: "disabled" must be a boolean or function when set`,
-        );
-      }
-      return {
-        id,
-        label: requireNonEmptyString(entryKind, "label", entry?.label),
-        ...(icon !== undefined ? { icon } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(disabled !== undefined
-          ? {
-              disabled: disabled as NonNullable<
-                NonNullable<
-                  ComposerCustomization["plusMenu"]
-                >[number]["disabled"]
-              >,
-            }
-          : {}),
-        run: requireFunction<
-          NonNullable<ComposerCustomization["plusMenu"]>[number]["run"]
-        >(entryKind, "run", entry?.run),
-      };
-    },
-  );
-
-  let richText: ComposerCustomization["richText"];
-  if (registration.richText !== undefined) {
-    const raw = registration.richText as Record<string, unknown> | null;
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      onRejected(`${kind}.richText: must be an object when set`);
-    } else {
-      const effects = parseComposerContributionArray<
-        NonNullable<
-          NonNullable<ComposerCustomization["richText"]>["effects"]
-        >[number]
-      >(
-        `${kind}.richText.effects`,
-        raw.effects,
-        onRejected,
-        (entryKind, value) => {
-          const entry = value as Record<string, unknown> | null;
-          const id = requireSlotId(entryKind, entry?.id);
-          return {
-            id,
-            match: requireFunction<
-              NonNullable<
-                NonNullable<ComposerCustomization["richText"]>["effects"]
-              >[number]["match"]
-            >(entryKind, "match", entry?.match),
-            className: requireNonEmptyString(
-              entryKind,
-              "className",
-              entry?.className,
-            ),
-          };
-        },
-      );
-      const onDraftChange = raw.onDraftChange;
-      if (onDraftChange !== undefined && typeof onDraftChange !== "function") {
-        onRejected(
-          `${kind}.richText: "onDraftChange" must be a function when set`,
-        );
-      }
-      richText = {
-        ...(effects !== undefined ? { effects } : {}),
-        ...(typeof onDraftChange === "function"
-          ? {
-              onDraftChange: onDraftChange as NonNullable<
-                ComposerCustomization["richText"]
-              >["onDraftChange"],
-            }
-          : {}),
-      };
-    }
-  }
-
-  return {
-    ...(actions !== undefined ? { actions } : {}),
-    ...(banners !== undefined ? { banners } : {}),
-    ...(plusMenu !== undefined ? { plusMenu } : {}),
-    ...(richText !== undefined ? { richText } : {}),
-  };
-}
-
 /**
- * Validation ported from the BB app's collector
- * (apps/app/src/lib/plugin-app-definition.ts) so a registration the host
- * would reject fails here with the same message.
+ * Uses the same registration validation as the BB app collector so a
+ * registration the host would reject fails here with the same message.
  */
 function collectRegistrations(
   definition: PluginAppDefinition,
@@ -793,40 +587,13 @@ function collectRegistrations(
     },
     composer: {
       customize(registration) {
-        const kind = "composer.customize";
-        try {
-          const id = requireSlotId(kind, registration?.id);
-          const scopes = registration?.scopes;
-          if (scopes !== undefined) {
-            if (!Array.isArray(scopes)) {
-              throw new Error(`${kind}: "scopes" must be an array when set`);
-            }
-            for (const scope of scopes) {
-              if (
-                scope !== "thread" &&
-                scope !== "queued-message" &&
-                scope !== "side-chat" &&
-                scope !== "new-thread"
-              ) {
-                throw new Error(
-                  `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
-                );
-              }
-            }
-          }
-          requireUniqueId(kind, seenIds.composerCustomization, id);
-          const regions = parseComposerCustomizationRegions(
-            `${kind}(${id})`,
-            registration,
-            (reason) => console.warn(reason),
-          );
-          captured.composerCustomizations.push({
-            id,
-            ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
-            ...regions,
-          });
-        } catch (error) {
-          console.warn(error instanceof Error ? error.message : String(error));
+        const customization = collectComposerCustomization(
+          registration,
+          seenIds.composerCustomization,
+          (reason) => console.warn(reason),
+        );
+        if (customization !== null) {
+          captured.composerCustomizations.push(customization);
         }
       },
     },
@@ -885,8 +652,12 @@ export interface RenderSlotOptions<
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
-  /** Initial state for this render's isolated `useComposer()` scope. */
-  composer?: { text?: string; scope?: PluginComposerScope };
+  /** Initial state for this render's isolated composer scope and view. */
+  composer?: {
+    text?: string;
+    scope?: PluginComposerScope;
+    attachmentCount?: number;
+  };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -900,6 +671,10 @@ export interface RenderedSlotBehaviorDrivers {
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
   ): Promise<void>;
+  /** Replace composer text as a host-originated edit, wrapped in act. */
+  setComposerText(text: string): Promise<void>;
+  /** Replace the scope snapshots returned by composer hooks, wrapped in act. */
+  setComposerScope(scope: PluginComposerScope): Promise<void>;
 }
 
 /** Read-only call/write logs produced while the slot is mounted. */
@@ -1051,22 +826,34 @@ export function renderSlot<
 
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
-  const composerScope: PluginComposerScope =
+  let composerScope: PluginComposerScope =
     options.composer?.scope ??
     (threadId !== null
       ? { kind: "thread", threadId }
       : { kind: "new-thread", projectId });
 
   let composerText = options.composer?.text ?? "";
+  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerVersion = 0;
   const composerListeners = new Set<() => void>();
+  const notifyComposerListeners = () => {
+    composerVersion += 1;
+    for (const listener of composerListeners) listener();
+  };
   const commitComposerText = (next: string) => {
     if (next === composerText) return;
     composerText = next;
-    for (const listener of composerListeners) listener();
+    notifyComposerListeners();
   };
   const composerLog: ComposerLog = {
     get text() {
       return composerText;
+    },
+    get scope() {
+      return composerScope;
+    },
+    get attachmentCount() {
+      return composerAttachmentCount;
     },
     textEffect: null,
     textEffectCalls: [],
@@ -1080,13 +867,15 @@ export function renderSlot<
   };
   const composerOwnership = { active: true };
   const composer: TestComposerStore = {
-    getSnapshot: () => composerText,
+    getAttachmentCount: () => composerAttachmentCount,
+    getScope: () => composerScope,
+    getText: () => composerText,
+    getVersionSnapshot: () => composerVersion,
     subscribe(listener) {
       composerListeners.add(listener);
       return () => composerListeners.delete(listener);
     },
     api: {
-      scope: composerScope,
       setText(next) {
         commitComposerText(next);
       },
@@ -1195,6 +984,17 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
+  const setComposerText = async (text: string): Promise<void> => {
+    await act(async () => commitComposerText(text));
+  };
+  const setComposerScope = async (
+    scope: PluginComposerScope,
+  ): Promise<void> => {
+    await act(async () => {
+      composerScope = scope;
+      notifyComposerListeners();
+    });
+  };
   const unmountSlot = (): void => {
     if (!composerOwnership.active) return;
     result.unmount();
@@ -1207,9 +1007,16 @@ export function renderSlot<
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
+    setComposerText,
+    setComposerScope,
     navigateCalls,
     composer: composerLog,
-    behavior: { emitRealtime, setRealtimeConnectionState },
+    behavior: {
+      emitRealtime,
+      setRealtimeConnectionState,
+      setComposerText,
+      setComposerScope,
+    },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };

@@ -115,6 +115,9 @@ function ComposerProbe() {
       </span>
       <span data-testid="composer-text">{composer.text}</span>
       <span data-testid="composer-view-text">{view.draft.text}</span>
+      <span data-testid="composer-attachment-count">
+        {view.draft.attachmentCount}
+      </span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -401,7 +404,9 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow('slots.experimental_messageAction: "run" must be a function');
+    ).rejects.toThrow(
+      'slots.experimental_messageAction: "run" must be a function',
+    );
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
@@ -626,6 +631,50 @@ describe("renderSlot", () => {
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
     expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+  });
+
+  it("drives host-originated composer text and scope changes", async () => {
+    const initialScope = {
+      kind: "queued-message",
+      threadId: "thr_1",
+      queuedMessageId: "qmsg_1",
+    } satisfies PluginComposerScope;
+    const nextScope = {
+      kind: "side-chat",
+      projectId: "proj_1",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    } satisfies PluginComposerScope;
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      {
+        composer: {
+          text: "initial draft",
+          scope: initialScope,
+          attachmentCount: 2,
+        },
+      },
+    );
+
+    expect(slot.getByTestId("composer-attachment-count").textContent).toBe("2");
+    expect(slot.composer.scope).toEqual(initialScope);
+    expect(slot.composer.attachmentCount).toBe(2);
+
+    await slot.behavior.setComposerText("host edit");
+    expect(slot.getByTestId("composer-text").textContent).toBe("host edit");
+    expect(slot.getByTestId("composer-view-text").textContent).toBe(
+      "host edit",
+    );
+
+    await slot.behavior.setComposerScope(nextScope);
+    expect(
+      JSON.parse(
+        slot.getByTestId("composer-scope-details").textContent ?? "{}",
+      ),
+    ).toEqual(nextScope);
+    expect(slot.composer.scope).toEqual(nextScope);
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
