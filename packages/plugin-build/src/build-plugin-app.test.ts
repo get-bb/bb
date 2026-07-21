@@ -6,6 +6,26 @@ import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import { buildPluginApp, runtimeShimPlugin } from "./build-plugin-app.js";
 
+function precedingScopeBounds(css: string, ruleIndex: number): {
+  start: number;
+  bodyStart: number;
+  end: number;
+} {
+  const start = css.lastIndexOf("@scope", ruleIndex);
+  const bodyStart = css.indexOf("{", start);
+  let end = -1;
+  let braceDepth = 0;
+  for (let index = bodyStart; index < css.length; index += 1) {
+    if (css[index] === "{") braceDepth += 1;
+    if (css[index] === "}") braceDepth -= 1;
+    if (braceDepth === 0) {
+      end = index;
+      break;
+    }
+  }
+  return { start, bodyStart, end };
+}
+
 describe("plugin app runtime shim", () => {
   const tempDirs: string[] = [];
 
@@ -86,26 +106,16 @@ describe("plugin app runtime shim", () => {
     expect(css).toContain(
       '@scope ([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
     );
-    expect(css).toMatch(/@scope[^{}]+\{[\s\S]*?\.flex-col\s*\{/);
+    const utilityRuleIndex = css.indexOf(".flex-col");
+    const utilityScope = precedingScopeBounds(css, utilityRuleIndex);
+    expect(utilityRuleIndex).toBeGreaterThan(utilityScope.start);
+    expect(utilityScope.end).toBeGreaterThan(utilityScope.bodyStart);
+    expect(utilityRuleIndex).toBeLessThan(utilityScope.end);
+
     const authoredRuleIndex = css.indexOf(".bb71-authored-decoration");
-    const precedingScopeIndex = css.lastIndexOf("@scope", authoredRuleIndex);
-    const precedingScopeBodyStart = css.indexOf("{", precedingScopeIndex);
-    let precedingScopeEnd = -1;
-    let braceDepth = 0;
-    for (
-      let index = precedingScopeBodyStart;
-      index < authoredRuleIndex;
-      index += 1
-    ) {
-      if (css[index] === "{") braceDepth += 1;
-      if (css[index] === "}") braceDepth -= 1;
-      if (braceDepth === 0) {
-        precedingScopeEnd = index;
-        break;
-      }
-    }
-    expect(authoredRuleIndex).toBeGreaterThan(precedingScopeIndex);
-    expect(precedingScopeEnd).toBeGreaterThan(precedingScopeBodyStart);
-    expect(authoredRuleIndex).toBeGreaterThan(precedingScopeEnd);
+    const authoredScope = precedingScopeBounds(css, authoredRuleIndex);
+    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.start);
+    expect(authoredScope.end).toBeGreaterThan(authoredScope.bodyStart);
+    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.end);
   });
 });

@@ -1278,7 +1278,7 @@ export function PromptBoxInternal({
     return { sources, observers };
   }, [
     composerCustomizations,
-    composerView.scope.kind,
+    composerView.scope,
     suppressPluginComposerCustomizations,
     textEffects,
   ]);

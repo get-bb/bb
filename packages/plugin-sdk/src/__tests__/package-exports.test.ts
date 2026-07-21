@@ -25,6 +25,7 @@ describe("packed plugin SDK exports", () => {
       ".",
       "./app",
       "./internal/composer-customization-validation",
+      "./internal/composer-view",
       "./testing",
       "./testing/app",
     ]);

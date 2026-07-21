@@ -42,6 +42,7 @@ import {
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
+import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
@@ -336,13 +337,14 @@ const testPluginSdkApp = {
     );
     return useMemo(() => {
       const text = composer.getText();
+      const attachmentCount = composer.getAttachmentCount();
       return {
         scope: composer.getScope(),
         layout: "expanded",
         draft: {
           text,
-          isEmpty: text.length === 0,
-          attachmentCount: composer.getAttachmentCount(),
+          isEmpty: isComposerDraftEmpty(text, attachmentCount),
+          attachmentCount,
         },
         run: { isRunning: false, isSubmitting: false },
       };

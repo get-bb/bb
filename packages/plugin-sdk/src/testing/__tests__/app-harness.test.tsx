@@ -118,6 +118,9 @@ function ComposerProbe() {
       <span data-testid="composer-attachment-count">
         {view.draft.attachmentCount}
       </span>
+      <span data-testid="composer-is-empty">
+        {String(view.draft.isEmpty)}
+      </span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -675,6 +678,31 @@ describe("renderSlot", () => {
       ),
     ).toEqual(nextScope);
     expect(slot.composer.scope).toEqual(nextScope);
+  });
+
+  it.each([
+    {
+      name: "attachment-only",
+      text: "",
+      attachmentCount: 1,
+      expected: "false",
+    },
+    {
+      name: "whitespace-only",
+      text: " \n\t ",
+      attachmentCount: 0,
+      expected: "true",
+    },
+  ])("reports $name composer drafts as empty=$expected", (draft) => {
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: draft },
+    );
+
+    expect(slot.getByTestId("composer-is-empty").textContent).toBe(
+      draft.expected,
+    );
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {

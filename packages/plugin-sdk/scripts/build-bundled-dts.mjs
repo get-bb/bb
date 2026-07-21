@@ -32,6 +32,10 @@ const outputs = {
     pkgRoot,
     "src/internal/composer-customization-validation.ts",
   ),
+  "bb-plugin-sdk-internal-composer-view.d.ts": path.join(
+    pkgRoot,
+    "src/internal/composer-view.ts",
+  ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
 };

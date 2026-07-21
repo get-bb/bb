@@ -17,6 +17,11 @@ const entries = [
     external: [],
   },
   {
+    source: "src/internal/composer-view.ts",
+    output: "dist/internal/composer-view.js",
+    external: [],
+  },
+  {
     source: "src/testing/index.ts",
     output: "dist/testing/index.js",
     external: [

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
+import { isComposerDraftEmpty } from "@bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 /**
@@ -65,7 +66,7 @@ export function usePluginComposerViewModel({
       layout,
       draft: {
         text,
-        isEmpty: text.trim().length === 0 && attachmentCount === 0,
+        isEmpty: isComposerDraftEmpty(text, attachmentCount),
         attachmentCount,
       },
       run: { isRunning, isSubmitting },

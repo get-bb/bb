@@ -703,6 +703,67 @@ describe("PromptBoxInternal controlled value sync", () => {
     expect(getPromptEditorElement()).toBe(editor);
   });
 
+  it("refreshes draft observers when the composer scope identity changes", async () => {
+    const onDraftChange = vi.fn();
+    setPluginSlotRegistrations(
+      "scope-observer",
+      pluginRegistrationSet([
+        {
+          id: "queued-message-observer",
+          scopes: ["queued-message"],
+          richText: { onDraftChange },
+        },
+      ]),
+    );
+    const draft = {
+      ...emptyPromptDraftState(),
+      text: "Unchanged draft",
+    };
+    const host = (queuedMessageId: string): PluginComposerHost => ({
+      scope: {
+        kind: "queued-message",
+        threadId: "thread-1",
+        queuedMessageId,
+      },
+      draft,
+      textEffectKey: `queued-message:${queuedMessageId}`,
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    });
+    const props = createPromptBoxProps({ value: draft.text });
+    const rendered = render(
+      <PluginComposerHostProvider value={host("message-1")}>
+        <PromptBoxInternal {...props} />
+      </PluginComposerHostProvider>,
+    );
+
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: draft.text, mentions: [] },
+        expect.objectContaining({
+          scope: expect.objectContaining({ queuedMessageId: "message-1" }),
+        }),
+      );
+    });
+    onDraftChange.mockClear();
+
+    rendered.rerender(
+      <PluginComposerHostProvider value={host("message-2")}>
+        <PromptBoxInternal {...props} />
+      </PluginComposerHostProvider>,
+    );
+
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: draft.text, mentions: [] },
+        expect.objectContaining({
+          scope: expect.objectContaining({ queuedMessageId: "message-2" }),
+        }),
+      );
+    });
+  });
+
   it.each([
     {
       label: "plain text",
