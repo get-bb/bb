@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatOverviewScheduleMetadata,
   formatScheduleStatusLabel,
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
@@ -8,6 +9,32 @@ import {
 const NOW = 2_000;
 
 describe("one-shot automation lifecycle", () => {
+  it("omits a duplicate failure label and separates the next-run label", () => {
+    expect(
+      formatOverviewScheduleMetadata({
+        enabled: false,
+        nextRunAt: null,
+        trigger: { triggerType: "once", runAt: NOW - 1_000 },
+        runCount: 1,
+        lastRunStatus: "failed",
+        now: NOW,
+      }),
+    ).toBeNull();
+
+    const next = formatOverviewScheduleMetadata({
+      enabled: true,
+      nextRunAt: NOW + 60_000,
+      trigger: {
+        triggerType: "schedule",
+        cron: "0 * * * *",
+        timezone: "UTC",
+      },
+      now: NOW,
+    });
+    expect(next?.emphasis).toBe("Next");
+    expect(next?.text).not.toContain("Next");
+  });
+
   it("allows pausing a scheduled run and resuming a future paused run", () => {
     const trigger = { triggerType: "once" as const, runAt: NOW + 1_000 };
 

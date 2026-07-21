@@ -589,6 +589,15 @@ export function PluginDetail({
             }
           : undefined
       }
+      installed={
+        canRemove
+          ? {
+              accessibleLabel: `Uninstall ${plugin.name ?? plugin.id}`,
+              pending,
+              onAction: () => onDelete(plugin),
+            }
+          : undefined
+      }
       enabled={plugin.enabled}
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
@@ -609,18 +618,6 @@ export function PluginDetail({
                   ? "No editor configured"
                   : undefined,
                 onSelect: () => onOpenSource(plugin),
-              },
-            ]
-          : []),
-        ...(canRemove
-          ? [
-              { kind: "separator" as const },
-              {
-                label: pluginRemovalLabel(plugin),
-                icon: "Trash2" as const,
-                tone: "destructive" as const,
-                disabled: pending,
-                onSelect: () => onDelete(plugin),
               },
             ]
           : []),

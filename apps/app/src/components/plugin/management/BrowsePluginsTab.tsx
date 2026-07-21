@@ -138,7 +138,7 @@ export function BrowsePluginsTab({
               <h3 className="mb-2 text-sm font-semibold text-foreground">
                 {category}
               </h3>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-2.5">
+              <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
                 {categoryEntries.map((entry) => (
                   <BrowseCard
                     key={entry.entryId}
@@ -243,6 +243,8 @@ function BrowseCard({
                   : `Uninstall ${entry.displayName}`
               }
               pending={uninstall.isPending}
+              presentation="icon"
+              tooltip={`Uninstall ${entry.displayName}`}
               onAction={
                 installedPluginId === null
                   ? undefined
@@ -255,6 +257,8 @@ function BrowseCard({
             <ResourceInstallControl
               accessibleLabel={`Install ${entry.displayName}`}
               disabled={!entry.compatible}
+              presentation="icon"
+              tooltip={`Install ${entry.displayName}`}
               onAction={() =>
                 onInstall({
                   entryId: entry.entryId,

@@ -474,12 +474,12 @@ describe("public project skills route", () => {
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as {
         skills: Array<{ id: string }>;
-        pagination: { total: number };
+        pagination: { total: number; hasMore: boolean };
       };
       expect(body.skills.map((skill) => skill.id)).toEqual([
         "owner/available-repo/available-skill",
       ]);
-      expect(body.pagination.total).toBe(2);
+      expect(body.pagination).toMatchObject({ total: 1, hasMore: false });
 
       const staleDetail = await harness.app.request(
         "/api/v1/skills-registry/detail?source=owner%2Fstale-repo&skillId=stale-skill",

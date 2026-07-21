@@ -137,6 +137,31 @@ describe("SkillsOverview", () => {
     expect(markup).not.toContain('aria-expanded="true"');
   });
 
+  it("marks built-in skill rows with the shared provenance badge", () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "bb-cli",
+            provider: null,
+            scope: "bb-builtin",
+            manageable: false,
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    const builtInPill = screen.getByText("Built-in").parentElement;
+    expect(builtInPill?.className).toContain("rounded-md");
+    expect(builtInPill?.className).toContain("bg-secondary");
+    expect(builtInPill?.className).toContain("px-2");
+    expect(builtInPill?.className).toContain("py-0.5");
+  });
+
   it("renders browse content as the active full-page collection mode", () => {
     const registrySkill = makeRegistrySkill({ installs: 123_456, stars: 654 });
     const markup = renderToStaticMarkup(
@@ -630,7 +655,7 @@ describe("SkillDetailDialogView", () => {
     );
   });
 
-  it("shows bundled plugin provenance as passive identity metadata", async () => {
+  it("shows plugin-provided provenance as a passive lifecycle status", async () => {
     const skill = makeSkill({
       name: "documents",
       provider: "codex",
@@ -649,7 +674,7 @@ describe("SkillDetailDialogView", () => {
         isContentError={false}
         canEdit={false}
         canDelete={false}
-        canOpenInEditor={false}
+        canOpenInEditor
         isDeleting={false}
         onEdit={() => {}}
         onRetry={() => {}}
@@ -658,33 +683,26 @@ describe("SkillDetailDialogView", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Bundled with Documents (Codex plugin)").textContent,
-    ).toBe("Bundled with Documents (Codex plugin)");
+    const included = screen.getByLabelText(
+      "documents is included with Documents (Codex plugin)",
+    );
+    expect(included.textContent).toBe("Included");
     expect(
       screen.queryByRole("button", { name: /documents plugin/i }),
     ).toBeNull();
     expect(screen.queryByTestId("plugin-logo-documents")).toBeNull();
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
 
-    fireEvent.pointerMove(
-      screen.getByText("Bundled with Documents (Codex plugin)"),
-    );
+    fireEvent.pointerMove(included);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bundled with plugin",
+      "Included with Documents (Codex plugin)",
     );
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "documents actions" }),
-    );
-    expect(screen.queryByText("Bundled with documents")).toBeNull();
-    fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Edit" }));
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bundled with plugin",
-    );
+    expect(
+      screen.queryByRole("button", { name: "documents actions" }),
+    ).toBeNull();
   });
 
-  it("identifies a bundled bb plugin skill without provider provenance", () => {
+  it("identifies a bb plugin-provided skill without provider provenance", async () => {
     const skill = makeSkill({
       name: "plugin-notes",
       provider: null,
@@ -712,11 +730,18 @@ describe("SkillDetailDialogView", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Bundled with Skill catalog fixture (bb plugin)")
-        .textContent,
-    ).toBe("Bundled with Skill catalog fixture (bb plugin)");
+    const included = screen.getByLabelText(
+      "plugin-notes is included with Skill catalog fixture (bb plugin)",
+    );
+    expect(included.textContent).toBe("Included");
+    fireEvent.pointerMove(included);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Included with Skill catalog fixture (bb plugin)",
+    );
     expect(screen.queryByText("Imported", { exact: true })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "plugin-notes actions" }),
+    ).toBeNull();
   });
 
   it("labels externally discovered provider skills as imported", async () => {

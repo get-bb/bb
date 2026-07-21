@@ -94,13 +94,20 @@ describe("BrowsePluginsTab", () => {
     expect(await screen.findByText("BB Official plugins")).toBeTruthy();
     const card = await screen.findByTestId("browse-card-memory");
     expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    expect(card.parentElement?.className).toContain("lg:grid-cols-2");
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
 
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Install Memory" }));
+    const install = screen.getByRole("button", { name: "Install Memory" });
+    expect(install.className).toContain("w-7");
+    fireEvent.pointerMove(install);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Install Memory",
+    );
+    fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
       displayName: "Memory",
@@ -140,9 +147,14 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    expect(
-      await screen.findByRole("button", { name: "Uninstall Memory" }),
-    ).toBeTruthy();
+    const installed = await screen.findByRole("button", {
+      name: "Uninstall Memory",
+    });
+    expect(installed.className).toContain("w-7");
+    fireEvent.pointerMove(installed);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Uninstall Memory",
+    );
     expect(document.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
 

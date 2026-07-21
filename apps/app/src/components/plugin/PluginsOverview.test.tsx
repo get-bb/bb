@@ -212,9 +212,9 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
 
-    expect(
-      (await screen.findByTestId("location-path")).textContent,
-    ).toBe("/tools/plugins/github");
+    expect((await screen.findByTestId("location-path")).textContent).toBe(
+      "/tools/plugins/github",
+    );
   });
 
   it("paginates the installed plugin projection", async () => {
@@ -256,6 +256,48 @@ describe("PluginsOverview", () => {
     expect(
       screen.queryByRole("navigation", { name: "Results pagination" }),
     ).toBeNull();
+  });
+
+  it("sorts built-ins first and alphabetically within provenance groups", async () => {
+    installFetch(true, [
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "local-zulu",
+        name: "Local Zulu",
+        provenance: "direct",
+      },
+      { ...AUTOMATIONS_PLUGIN, id: "built-zulu", name: "Built Zulu" },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "local-alpha",
+        name: "Local Alpha",
+        provenance: "direct",
+      },
+      { ...AUTOMATIONS_PLUGIN, id: "built-alpha", name: "Built Alpha" },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Built Alpha");
+    const rows = [...document.querySelectorAll('[data-testid^="plugin-row-"]')];
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "plugin-row-built-alpha",
+      "plugin-row-built-zulu",
+      "plugin-row-local-alpha",
+      "plugin-row-local-zulu",
+    ]);
+    const builtInPills = screen.getAllByText("Built-in");
+    expect(builtInPills).toHaveLength(2);
+    expect(builtInPills[0]?.parentElement?.className).toContain("rounded-md");
+    expect(builtInPills[0]?.parentElement?.className).toContain("bg-secondary");
+    expect(builtInPills[0]?.parentElement?.className).toContain("px-2");
+    expect(builtInPills[0]?.parentElement?.className).toContain("py-0.5");
   });
 
   it("keeps installed plugins visible when plugin installation is off", async () => {

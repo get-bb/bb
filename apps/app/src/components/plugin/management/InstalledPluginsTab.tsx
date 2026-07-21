@@ -7,6 +7,7 @@ import {
   ResourceRow,
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
+import { BuiltInPill } from "@/components/tools/BuiltInPill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -110,7 +111,9 @@ export function InstalledPluginRow({
           </PluginSignalLogo>
         }
         title={plugin.name ?? plugin.id}
-        titleMeta={plugin.provenance === "builtin" ? "Built-in" : undefined}
+        titleMeta={
+          plugin.provenance === "builtin" ? <BuiltInPill /> : undefined
+        }
         description={plugin.description}
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}

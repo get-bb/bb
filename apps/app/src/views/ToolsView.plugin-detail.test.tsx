@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -42,6 +42,7 @@ afterEach(cleanup);
 describe("PluginDetail official catalog lifecycle", () => {
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const onDelete = vi.fn();
     render(
       <MemoryRouter>
         <QueryClientWrapper>
@@ -53,7 +54,7 @@ describe("PluginDetail official catalog lifecycle", () => {
             onToggle={() => {}}
             onEdit={() => {}}
             onOpenSource={() => {}}
-            onDelete={() => {}}
+            onDelete={onDelete}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -69,13 +70,14 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.getByText("Included with bb releases")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "GitHub actions" }),
-      { button: 0 },
-    );
-    expect(
-      await screen.findByRole("menuitem", { name: "Uninstall" }),
-    ).toBeTruthy();
+    const installed = screen.getByRole("button", {
+      name: "Uninstall GitHub",
+    });
+    expect(installed.textContent).toContain("Installed");
+    expect(installed.textContent).toContain("Uninstall");
+    fireEvent.click(installed);
+    expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
+    expect(screen.queryByRole("button", { name: "GitHub actions" })).toBeNull();
   });
 
   it("shows built-in provenance with lifecycle controls and no ownership actions", async () => {

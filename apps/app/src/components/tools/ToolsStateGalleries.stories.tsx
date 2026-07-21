@@ -27,7 +27,6 @@ import {
   pluginRuntimeStatusDefinition,
   type PluginRowSignal,
 } from "@/components/plugin/management/plugin-status";
-import { SkillBundledPluginMetadata } from "@/components/tools/SkillDetailView";
 import { SKILL_SCOPE_DEFINITIONS } from "@/components/tools/skill-taxonomy";
 import {
   formatAutomationTrigger,
@@ -342,19 +341,15 @@ function SkillProvenanceTreatment({
 }) {
   if (scope === "plugin") {
     return (
-      <SkillBundledPluginMetadata
-        pluginName="Documents"
-        providerLabel="Codex"
+      <ResourceLifecycleStatus
+        label="Included"
+        accessibleLabel="Included with Documents (Codex plugin)"
+        tooltip="Included with Documents (Codex plugin)"
       />
     );
   }
   if (scope === "bb-builtin") {
-    return (
-      <ResourceLifecycleStatus
-        label="Built-in"
-        tooltip="Ships with bb and is read-only"
-      />
-    );
+    return <ResourceLifecycleStatus label="Built-in" tooltip="Ships with bb" />;
   }
   if (scope.startsWith("claude") || scope.startsWith("codex")) {
     return (

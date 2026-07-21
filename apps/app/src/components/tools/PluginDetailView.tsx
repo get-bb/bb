@@ -8,6 +8,7 @@ import {
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
+  ResourceInstalledControl,
   ResourceLifecycleStatus,
   ResourceOverflowMenu,
   ResourceProperty,
@@ -51,6 +52,7 @@ export function PluginDetailView({
   description,
   metadata,
   provenance,
+  installed,
   enabled,
   lifecycleDisabled = false,
   onEnabledChange,
@@ -69,6 +71,11 @@ export function PluginDetailView({
     accessibleLabel?: string;
     appearance?: "default" | "recessed";
   };
+  installed?: {
+    accessibleLabel: string;
+    pending?: boolean;
+    onAction: () => void;
+  };
   enabled?: boolean;
   lifecycleDisabled?: boolean;
   onEnabledChange?: (enabled: boolean) => void;
@@ -77,7 +84,7 @@ export function PluginDetailView({
   definitionSections?: readonly PluginDetailSection[];
   activitySections?: readonly PluginDetailSection[];
 }) {
-  const hasLifecycleControl =
+  const hasRuntimeControl =
     enabled !== undefined && onEnabledChange !== undefined;
   return (
     <ResourceDetailPage
@@ -85,8 +92,15 @@ export function PluginDetailView({
       title={title}
       metadata={metadata}
       lifecycleControl={
-        provenance || hasLifecycleControl ? (
+        installed || provenance || hasRuntimeControl ? (
           <div className="flex items-center gap-2">
+            {installed ? (
+              <ResourceInstalledControl
+                accessibleLabel={installed.accessibleLabel}
+                pending={installed.pending}
+                onAction={installed.onAction}
+              />
+            ) : null}
             {provenance ? (
               <ResourceLifecycleStatus
                 label={provenance.label}
@@ -95,7 +109,7 @@ export function PluginDetailView({
                 appearance={provenance.appearance}
               />
             ) : null}
-            {hasLifecycleControl ? (
+            {hasRuntimeControl ? (
               <Switch
                 checked={enabled}
                 disabled={lifecycleDisabled}

@@ -53,7 +53,6 @@ export interface SkillDetailViewProps {
   path: string;
   pathHref?: string;
   headerControl?: SkillDetailHeaderControl;
-  bundledPlugin?: { pluginName: string; providerLabel: string };
   overflowMenu?: ReactNode;
   files: readonly string[];
   selectedPath: string;
@@ -164,30 +163,6 @@ export function SkillBrowseInstallControl({
         </ConfirmDeleteDialog>
       ) : null}
     </>
-  );
-}
-
-export function SkillBundledPluginMetadata({
-  pluginName,
-  providerLabel,
-}: {
-  pluginName: string;
-  providerLabel: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            tabIndex={0}
-            className="rounded-sm text-xs font-normal text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            Bundled with {pluginName} ({providerLabel} plugin)
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Bundled with plugin</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
@@ -305,7 +280,6 @@ export function SkillDetailView({
   path,
   pathHref,
   headerControl,
-  bundledPlugin,
   overflowMenu,
   files,
   selectedPath,
@@ -348,14 +322,6 @@ export function SkillDetailView({
     <ResourceDetailPage
       leading={leading}
       title={title}
-      titleMeta={
-        bundledPlugin ? (
-          <SkillBundledPluginMetadata
-            pluginName={bundledPlugin.pluginName}
-            providerLabel={bundledPlugin.providerLabel}
-          />
-        ) : undefined
-      }
       metadata={<SkillPath path={directoryPath} href={pathHref} />}
       lifecycleControl={lifecycleControl}
       overflowMenu={overflowMenu}

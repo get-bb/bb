@@ -20,6 +20,11 @@ export interface FormatScheduleStatusLabelArgs {
   now?: number;
 }
 
+export interface OverviewScheduleMetadata {
+  emphasis: "Next" | null;
+  text: string;
+}
+
 export interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
@@ -161,4 +166,19 @@ export function formatScheduleStatusLabel({
     return "Not scheduled";
   }
   return `Next ${formatScheduleRunTime(nextRunAt)}`;
+}
+
+/**
+ * Row metadata removes status already carried by the leading failure icon and
+ * separates the upcoming-run label so the UI can give "Next" clear hierarchy.
+ */
+export function formatOverviewScheduleMetadata(
+  args: FormatScheduleStatusLabelArgs,
+): OverviewScheduleMetadata | null {
+  const label = formatScheduleStatusLabel(args);
+  if (label === "Failed") return null;
+  if (label.startsWith("Next ")) {
+    return { emphasis: "Next", text: label.slice("Next ".length) };
+  }
+  return { emphasis: null, text: label };
 }

@@ -21,6 +21,7 @@ import {
   SkillBrowseInstallControl,
   SkillDetailView,
 } from "@/components/tools/SkillDetailView";
+import { BuiltInPill } from "@/components/tools/BuiltInPill";
 import {
   isSkillEditable,
   SKILL_SCOPE_LABELS,
@@ -422,6 +423,10 @@ function bundledWithPluginReason(skill: SkillSummary): string {
   return "Bundled with plugin";
 }
 
+function includedPluginDescription(skill: SkillSummary): string {
+  return `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider)} plugin)`;
+}
+
 function skillEditDisabledReason(skill: SkillSummary): string {
   if (skill.scope === "bb-builtin") return "Built-in skill";
   if (skill.scope === "plugin") return bundledWithPluginReason(skill);
@@ -446,6 +451,7 @@ function SkillRow({
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
+      titleMeta={skill.scope === "bb-builtin" ? <BuiltInPill /> : undefined}
       description={description}
       onOpen={onSelect}
       trailingVisual={<ResourceRowDetailChevron />}
@@ -1027,7 +1033,9 @@ export function SkillDetailDialogView({
   const deleteDisabledReason = skillDeleteDisabledReason(skill);
   const canEditSelectedPath = canEdit && selectedPath === "SKILL.md";
   const headerActions =
-    skill.scope !== "bb-builtin" && !confirmingDelete ? (
+    skill.scope !== "plugin" &&
+    (canEdit || canDelete || canOpenInEditor) &&
+    !confirmingDelete ? (
       <ResourceOverflowMenu
         label={`${skill.name} actions`}
         items={[
@@ -1077,22 +1085,21 @@ export function SkillDetailDialogView({
               accessibleLabel: `${skill.name} is built into bb`,
               appearance: "recessed",
             }
-          : skill.provider !== null && bundledPluginName === null
+          : bundledPluginName !== null
             ? {
                 kind: "status",
-                label: "Imported",
-                tooltip: `Discovered from ${providerLabel(skill.provider)}`,
-                accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
+                label: "Included",
+                tooltip: `Included with ${includedPluginDescription(skill)}`,
+                accessibleLabel: `${skill.name} is included with ${includedPluginDescription(skill)}`,
               }
-            : undefined
-      }
-      bundledPlugin={
-        bundledPluginName
-          ? {
-              pluginName: providerPluginDisplayName(skill),
-              providerLabel: providerLabel(skill.provider),
-            }
-          : undefined
+            : skill.provider !== null
+              ? {
+                  kind: "status",
+                  label: "Imported",
+                  tooltip: `Discovered from ${providerLabel(skill.provider)}`,
+                  accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
+                }
+              : undefined
       }
       files={files.length > 0 ? files : ["SKILL.md"]}
       selectedPath={selectedPath}

@@ -66,6 +66,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
+  formatOverviewScheduleMetadata,
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
 } from "@/lib/format-schedule";
@@ -587,7 +588,13 @@ function OverviewRow({
   });
   const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
   const triggerLabel = formatAutomationTrigger(automation.trigger);
-  const lifecycleLabel = automationScheduleLabel(automation);
+  const scheduleMetadata = formatOverviewScheduleMetadata({
+    enabled: automation.enabled,
+    nextRunAt: automation.nextRunAt,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
+  });
   const projectLabel = automationProjectLabel(entry.project);
 
   return (
@@ -605,7 +612,17 @@ function OverviewRow({
               <Icon name="Clock" className="size-3.5" aria-hidden />
               {triggerLabel}
             </span>,
-            lifecycleLabel,
+            scheduleMetadata ? (
+              <span>
+                {scheduleMetadata.emphasis ? (
+                  <span className="font-medium text-foreground">
+                    {scheduleMetadata.emphasis}
+                  </span>
+                ) : null}
+                {scheduleMetadata.emphasis ? " " : null}
+                {scheduleMetadata.text}
+              </span>
+            ) : null,
           ]}
         />
       }

@@ -788,7 +788,18 @@ async function listRegistrySkills(
   const hydrated = await hydrateGithubStars(
     await hydrateDetails(availableSkills),
   );
-  return { skills: hydrated, pagination };
+  // Preserve the registry's stable ranking/page boundaries while browsing,
+  // then correct the count once its terminal page proves the eligible total.
+  // This keeps every loadable entry reachable without eagerly resolving the
+  // entire catalog before page one can render.
+  const eligiblePagination =
+    !pagination.hasMore && skills.length > 0
+      ? {
+          ...pagination,
+          total: page * perPage + availableSkills.length,
+        }
+      : pagination;
+  return { skills: hydrated, pagination: eligiblePagination };
 }
 
 function parseRegistrySkillId(id: string): { source: string; skillId: string } {

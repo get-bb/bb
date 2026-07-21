@@ -102,6 +102,10 @@ export function PluginsOverview() {
             .includes(normalizedInstalledQuery);
         })
         .sort((left, right) => {
+          const provenanceResult =
+            Number(left.provenance !== "builtin") -
+            Number(right.provenance !== "builtin");
+          if (provenanceResult !== 0) return provenanceResult;
           const result = (left.name ?? left.id).localeCompare(
             right.name ?? right.id,
           );
