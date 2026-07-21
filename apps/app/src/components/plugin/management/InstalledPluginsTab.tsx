@@ -7,7 +7,7 @@ import {
   ResourceRow,
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
-import { BuiltInPill } from "@/components/tools/BuiltInPill";
+import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -112,7 +112,11 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         titleMeta={
-          plugin.provenance === "builtin" ? <BuiltInPill /> : undefined
+          plugin.provenance === "builtin" ? (
+            <ProvenancePill label="Built-in" />
+          ) : plugin.provenance === "catalog" ? (
+            <ProvenancePill label="BB Official" />
+          ) : undefined
         }
         description={plugin.description}
         openLabel={`${plugin.name ?? plugin.id} plugin details`}

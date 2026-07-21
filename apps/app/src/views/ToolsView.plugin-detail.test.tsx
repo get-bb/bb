@@ -76,7 +76,10 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("BB Official")).toBeTruthy();
+    const official = screen.getByLabelText("GitHub: BB Official");
+    expect(official.textContent).toBe("BB Official");
+    expect(official.className).toContain("bg-surface-recessed/75");
+    expect(official.className).toContain("text-subtle-foreground");
     expect(screen.getByText("About")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),

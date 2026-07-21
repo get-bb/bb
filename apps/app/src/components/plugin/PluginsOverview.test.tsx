@@ -306,6 +306,33 @@ describe("PluginsOverview", () => {
     expect(builtInPills[0]?.parentElement?.className).toContain("py-0");
   });
 
+  it("uses the same passive provenance tag for built-in and BB Official plugins", async () => {
+    installFetch(true, [
+      AUTOMATIONS_PLUGIN,
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "github",
+        name: "GitHub",
+        source: GITHUB_CATALOG_ENTRY.source,
+        provenance: "catalog",
+        catalogEntryId: GITHUB_CATALOG_ENTRY.entryId,
+        sourceDisplay: "BB Official · GitHub",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const builtIn = (await screen.findByText("Built-in")).parentElement;
+    const official = screen.getByText("BB Official").parentElement;
+    expect(official?.className).toBe(builtIn?.className);
+  });
+
   it("keeps installed plugins visible when plugin installation is off", async () => {
     installFetch(false);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();

@@ -304,6 +304,17 @@ function resolvePatternAtlasPluginDetailPath(): Promise<string> {
   return resolvePluginDetailPath("ui-patterns");
 }
 
+async function resolveOfficialPluginDetailPath(): Promise<string> {
+  const response = await fetchPluginList(fetch);
+  const plugin = response.plugins.find(
+    (candidate) => candidate.provenance === "catalog",
+  );
+  if (plugin === undefined) {
+    throw new Error("The live server has no BB Official plugin installed.");
+  }
+  return getPluginDetailRoutePath({ pluginId: plugin.id });
+}
+
 async function resolveAutomationRoute(mode?: "agent" | "script"): Promise<{
   projectId: string;
   automationId: string;
@@ -418,6 +429,10 @@ export function PluginDetailSecrets() {
 
 export function PluginDetailPatternAtlas() {
   return <LiveToolsPage target={resolvePatternAtlasPluginDetailPath} />;
+}
+
+export function PluginDetailBbOfficial() {
+  return <LiveToolsPage target={resolveOfficialPluginDetailPath} />;
 }
 
 export function AutomationsOverview() {

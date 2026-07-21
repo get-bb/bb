@@ -585,7 +585,7 @@ export function PluginDetail({
                   : plugin.sourceDisplay,
               accessibleLabel: `${plugin.name ?? plugin.id}: ${sourceLabel}`,
               appearance:
-                plugin.provenance === "builtin" ? "recessed" : "default",
+                plugin.provenance === "direct" ? "default" : "recessed",
             }
           : undefined
       }

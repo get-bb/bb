@@ -21,7 +21,7 @@ import {
   SkillBrowseInstallControl,
   SkillDetailView,
 } from "@/components/tools/SkillDetailView";
-import { BuiltInPill } from "@/components/tools/BuiltInPill";
+import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import {
   isSkillEditable,
   SKILL_SCOPE_LABELS,
@@ -451,7 +451,11 @@ function SkillRow({
     <ResourceRow
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
-      titleMeta={skill.scope === "bb-builtin" ? <BuiltInPill /> : undefined}
+      titleMeta={
+        skill.scope === "bb-builtin" ? (
+          <ProvenancePill label="Built-in" />
+        ) : undefined
+      }
       description={description}
       onOpen={onSelect}
       trailingVisual={<ResourceRowDetailChevron />}
