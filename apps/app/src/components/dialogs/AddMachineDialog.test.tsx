@@ -3,21 +3,24 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { hostsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { AddMachineDialog } from "./AddMachineDialog";
 
-vi.mock("@/lib/sdk", () => ({
-  BbHttpError: class BbHttpError extends Error {},
-  sdk: {
-    hosts: {
-      createJoinCode: vi.fn(),
-      list: vi.fn(),
+vi.mock("@/lib/sdk", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/sdk")>();
+  return {
+    ...original,
+    sdk: {
+      hosts: {
+        createJoinCode: vi.fn(),
+        list: vi.fn(),
+      },
+      plugins: { callRpc: vi.fn() },
     },
-    plugins: { callRpc: vi.fn() },
-  },
-}));
+  };
+});
 
 vi.mock("@/lib/ws", () => ({
   wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
@@ -104,13 +107,23 @@ describe("AddMachineDialog", () => {
     ).toBeNull();
   });
 
-  it("ignores hosts that were already known at open time", async () => {
+  it("falls back to direct pairing when connect is unpaired and ignores known hosts", async () => {
     vi.mocked(sdk.hosts.createJoinCode).mockResolvedValue({
       joinCode: "jc_test123",
       hostId: "host_new",
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
-    vi.mocked(sdk.plugins.callRpc).mockResolvedValue(null);
+    vi.mocked(sdk.plugins.callRpc).mockRejectedValue(
+      new BbHttpError({
+        body: {
+          ok: false,
+          error: { code: "handler_error", message: "not_paired" },
+        },
+        code: "handler_error",
+        message: "not_paired",
+        status: 500,
+      }),
+    );
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       existingHost,
       host({ id: "host_offline", name: "dev-vm", status: "disconnected" }),
