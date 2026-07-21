@@ -44,7 +44,7 @@ import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
 } from "../threads/thread-data.js";
-import type { PluginLogoVariant } from "./app-bundle.js";
+import type { PluginBrandingAssetVariant } from "./app-bundle.js";
 import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
 import {
   derivePluginId,
@@ -197,15 +197,11 @@ export interface PluginService {
     id: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
-  /**
-   * On-disk logo backing GET /plugins/:id/assets/logo (variant "logo") or
-   * .../logo-dark (variant "logo-dark"). Same gating as getAppAsset:
-   * undefined unless the plugin is currently loaded and ships that variant.
-   */
-  getLogoAsset(
+  /** Immutable byte snapshot backing one plugin branding asset route. */
+  getBrandingAsset(
     id: string,
-    variant: PluginLogoVariant,
-  ): { path: string; contentType: string; hash: string } | undefined;
+    variant: PluginBrandingAssetVariant,
+  ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -1001,7 +997,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loadAll,
     loaded,
     loadOne,
-    logos,
+    brandingAssets,
     setStatus,
     shouldExposeLoadedPlugin,
     shouldExposePluginId,
@@ -1282,6 +1278,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
             null,
+          experimental_iconUrl:
+            (exposedPlugin !== undefined
+              ? brandingAssets.get(row.id)?.compactIcon?.url
+              : identity?.brandingAssets.compactIcon?.url) ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
           // A running plugin's detail is legitimately null — only fall back
           // to "not loaded" when there is no runtime status at all.
@@ -1314,17 +1314,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin !== undefined &&
             Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
-          // Logos come from the live runtime for an exposed plugin, else from
-          // the static-identity cache — both are served by the (now
-          // identity-backed) logo asset route.
+          // Rich logos come from the live runtime for an exposed plugin, else
+          // from the static-identity cache.
           logoUrl:
             (exposedPlugin !== undefined
-              ? logos.get(row.id)?.logo?.url
-              : identity?.logos.logo?.url) ?? null,
+              ? brandingAssets.get(row.id)?.logo?.url
+              : identity?.brandingAssets.logo?.url) ?? null,
           logoDarkUrl:
             (exposedPlugin !== undefined
-              ? logos.get(row.id)?.logoDark?.url
-              : identity?.logos.logoDark?.url) ?? null,
+              ? brandingAssets.get(row.id)?.logoDark?.url
+              : identity?.brandingAssets.logoDark?.url) ?? null,
         };
       });
   }
@@ -1502,7 +1501,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         handlerStats.delete(id);
         agentToolProblems.delete(id);
         appBundles.delete(id);
-        logos.delete(id);
+        brandingAssets.delete(id);
         identities.delete(id);
         const removed = row
           ? row.sourceKind === "builtin"
@@ -1601,19 +1600,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return { path, hash: assets.hash };
     },
 
-    getLogoAsset(id, variant) {
-      // Logos are identity, not runtime: serve them for a disabled/incompatible
-      // plugin too (from the static-identity cache), matching the inventory's
-      // logoUrl/logoDarkUrl. Still gated by shouldExposePluginId (experiment /
-      // not-removed). Unlike getAppAsset, no live-runtime requirement.
+    getBrandingAsset(id, variant) {
+      // Branding is identity, not runtime: serve it for a disabled or
+      // incompatible plugin too, matching the inventory. Still gated by
+      // shouldExposePluginId (experiment / not-removed).
       if (!shouldExposePluginId(id)) return undefined;
-      const set = loaded.has(id) ? logos.get(id) : identities.get(id)?.logos;
-      const logo = variant === "logo-dark" ? set?.logoDark : set?.logo;
-      if (!logo) return undefined;
+      const set = loaded.has(id)
+        ? brandingAssets.get(id)
+        : identities.get(id)?.brandingAssets;
+      const asset =
+        variant === "icon"
+          ? set?.compactIcon
+          : variant === "logo-dark"
+            ? set?.logoDark
+            : set?.logo;
+      if (!asset) return undefined;
       return {
-        path: logo.path,
-        contentType: logo.contentType,
-        hash: logo.hash,
+        bytes: asset.bytes,
+        contentType: asset.contentType,
+        hash: asset.hash,
       };
     },
 

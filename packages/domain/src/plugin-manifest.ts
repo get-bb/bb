@@ -2,6 +2,16 @@ import { z } from "zod";
 
 const requiredManifestString = z.string().trim().min(1);
 
+/**
+ * `bb.branding.icon` keeps accepting host icon names while a leading `./`
+ * opts into a plugin-owned compact SVG asset. Keeping both forms in the
+ * existing string field lets older BB versions load the manifest and fall
+ * back to their generic icon instead of rejecting a new key.
+ */
+export function isPluginOwnedIconPath(icon: string): boolean {
+  return icon.startsWith("./");
+}
+
 export const pluginBrandingSchema = z
   .object({
     icon: requiredManifestString.optional(),
@@ -14,6 +24,20 @@ export const pluginBrandingSchema = z
       .optional(),
   })
   .strict()
+  .superRefine((branding, context) => {
+    if (
+      branding.icon !== undefined &&
+      isPluginOwnedIconPath(branding.icon) &&
+      !branding.icon.toLowerCase().endsWith(".svg")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["icon"],
+        message:
+          'plugin-owned branding.icon paths must point at an .svg file (for example "./assets/icon.svg")',
+      });
+    }
+  })
   .refine(
     (branding) => branding.icon !== undefined || branding.logo !== undefined,
     {

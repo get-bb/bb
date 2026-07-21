@@ -87,6 +87,44 @@ describe("plugin manifest", () => {
     }
   });
 
+  it("resolves a path-shaped branding.icon as a plugin-owned compact SVG", async () => {
+    await mkdir(join(rootDir, "assets"));
+    await writeFile(join(rootDir, "assets", "icon.svg"), "<svg/>");
+    await writeManifest(undefined, {
+      ...validBb,
+      branding: { icon: "./assets/icon.svg" },
+    });
+
+    const manifest = await readPluginManifest(rootDir);
+    expect(manifest.branding.icon).toBeUndefined();
+    expect(manifest.branding.compactIconPath).toBe(
+      join(rootDir, "assets", "icon.svg"),
+    );
+  });
+
+  it("keeps a named branding.icon as a host icon hint", async () => {
+    await writeManifest();
+    const manifest = await readPluginManifest(rootDir);
+    expect(manifest.branding.icon).toBe("Zap");
+    expect(manifest.branding.compactIconPath).toBeUndefined();
+  });
+
+  it("requires plugin-owned branding.icon paths to be readable SVG files", async () => {
+    await writeManifest(undefined, {
+      ...validBb,
+      branding: { icon: "./missing.svg" },
+    });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(/missing file/);
+
+    await writeManifest(undefined, {
+      ...validBb,
+      branding: { icon: "./icon.png" },
+    });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(
+      /branding\.icon.*\.svg/,
+    );
+  });
+
   it("rejects a dark logo without a light logo", async () => {
     await writeManifest(undefined, {
       ...validBb,

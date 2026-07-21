@@ -13,6 +13,8 @@ import { useSyncExternalStore } from "react";
 export interface PluginLogoUrls {
   /** Compact identity and the fallback when a roomy image logo is unavailable. */
   icon: string | null;
+  /** Plugin-owned compact SVG, rendered as a currentColor mask. */
+  compactIconUrl: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
 }
@@ -39,10 +41,15 @@ export function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
   return logoUrls;
 }
 
-/** Canonical manifest icon hint, or null when the plugin did not declare one. */
-export function usePluginIconHint(pluginId: string): string | null {
+/** Compact branding resolved from the latest plugin inventory. */
+export function usePluginCompactBranding(
+  pluginId: string,
+): Pick<PluginLogoUrls, "icon" | "compactIconUrl"> | null {
   const entries = useSyncExternalStore(subscribePluginLogos, getPluginLogoUrls);
-  return entries.get(pluginId)?.icon ?? null;
+  const branding = entries.get(pluginId);
+  return branding === undefined
+    ? null
+    : { icon: branding.icon, compactIconUrl: branding.compactIconUrl };
 }
 
 /** Test-only. */

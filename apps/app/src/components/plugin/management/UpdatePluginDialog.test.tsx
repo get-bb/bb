@@ -22,6 +22,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     description: null,
     name: "Linear",
     icon: null,
+    compactIconUrl: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,

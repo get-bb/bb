@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -55,13 +55,23 @@ export function PluginLogo({
       : plugin.logoUrl;
   const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
   if (logoUrl === null || logoUrl === failedLogoUrl) {
-    // No shipped image: use the manifest icon hint, falling back to the
-    // generic plugin glyph (never a letter avatar).
+    // No rich image: use the plugin's compact asset or named icon, falling
+    // back to the generic plugin glyph (never a letter avatar).
     return (
-      <PlaceholderBadge
-        className={className}
-        iconName={pluginIconName(plugin.icon)}
-      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "grid shrink-0 place-items-center text-muted-foreground",
+          className,
+        )}
+      >
+        <PluginIcon
+          pluginId={plugin.id}
+          icon={plugin.icon}
+          compactIconUrl={plugin.compactIconUrl}
+          className="size-5"
+        />
+      </span>
     );
   }
   return (

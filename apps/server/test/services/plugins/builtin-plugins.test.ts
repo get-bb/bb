@@ -62,6 +62,7 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
   // entry — a name added to the registry is covered here automatically.
   for (const name of BUILTIN_PLUGIN_NAMES) {
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
+    const usesPluginOwnedIcon = name === "automations";
     await mkdir(join(sourceRoot, "dist"), { recursive: true });
     await mkdir(join(sourceRoot, "skills", name), { recursive: true });
     await mkdir(join(sourceRoot, "src"), { recursive: true });
@@ -75,7 +76,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           bb: {
             name,
             description: `${name} builtin plugin fixture.`,
-            branding: { icon: "Zap" },
+            branding: {
+              icon: usesPluginOwnedIcon ? "./assets/icon.svg" : "Zap",
+            },
             server: "./src/server.ts",
             app: "./app.tsx",
             skills: ["skills"],
@@ -93,6 +96,10 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
       join(sourceRoot, "app.tsx"),
       `throw new Error("packaged builtin should not build app source");\n`,
     );
+    if (usesPluginOwnedIcon) {
+      await mkdir(join(sourceRoot, "assets"), { recursive: true });
+      await writeFile(join(sourceRoot, "assets", "icon.svg"), "<svg/>\n");
+    }
     await writeFile(
       join(sourceRoot, "dist", "server.js"),
       `export default function plugin() {
@@ -156,9 +163,10 @@ function createService(args: {
               name: args.builtinName ?? "fixture",
               pluginId: args.builtinName ?? "fixture",
               autoInstall: args.autoInstall ?? true,
-              repoDirectory: args.autoInstall === false
-                ? ("official-plugins" as const)
-                : ("plugins" as const),
+              repoDirectory:
+                args.autoInstall === false
+                  ? ("official-plugins" as const)
+                  : ("plugins" as const),
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
             },
@@ -717,6 +725,9 @@ describe("builtin plugin packaging", () => {
       stat(join(copiedRoot, "dist", "app.css")),
     ).resolves.toBeTruthy();
     await expect(stat(join(copiedRoot, "skills"))).resolves.toBeTruthy();
+    await expect(
+      readFile(join(copiedRoot, "assets", "icon.svg"), "utf8"),
+    ).resolves.toBe("<svg/>\n");
     await expect(stat(join(copiedRoot, "src"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "app.tsx"))).rejects.toThrow();
     await expect(stat(join(copiedRoot, "node_modules"))).rejects.toThrow();

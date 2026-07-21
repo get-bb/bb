@@ -6350,6 +6350,7 @@ declare const installedPluginSchema: z$1.ZodObject<{
     description: z$1.ZodNullable<z$1.ZodString>;
     name: z$1.ZodNullable<z$1.ZodString>;
     icon: z$1.ZodNullable<z$1.ZodString>;
+    experimental_iconUrl: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
     status: z$1.ZodEnum<{
         error: "error";
         running: "running";
@@ -6443,6 +6444,7 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         description: z$1.ZodNullable<z$1.ZodString>;
         name: z$1.ZodNullable<z$1.ZodString>;
         icon: z$1.ZodNullable<z$1.ZodString>;
+        experimental_iconUrl: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";
@@ -6537,6 +6539,7 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         description: z$1.ZodNullable<z$1.ZodString>;
         name: z$1.ZodNullable<z$1.ZodString>;
         icon: z$1.ZodNullable<z$1.ZodString>;
+        experimental_iconUrl: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
         status: z$1.ZodEnum<{
             error: "error";
             running: "running";

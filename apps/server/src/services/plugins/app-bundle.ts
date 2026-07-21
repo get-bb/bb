@@ -67,78 +67,85 @@ export interface PluginAppBundleSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin logos from the explicit `bb.branding.logo` manifest contract.
-// Served at GET /plugins/:id/assets/logo (and .../logo-dark) with the same
-// hash-busting scheme as the bundle assets; refreshed on every load like the
-// bundle snapshot.
+// Plugin branding assets from `bb.branding.icon` path values and
+// `bb.branding.logo`. Served with the same hash-busting scheme as bundle
+// assets and refreshed on every load like the bundle snapshot.
 // ---------------------------------------------------------------------------
 
-const LOGO_CONTENT_TYPES: Record<string, string> = {
+const BRANDING_ASSET_CONTENT_TYPES: Record<string, string> = {
   svg: "image/svg+xml",
   png: "image/png",
   webp: "image/webp",
 };
 
-/** Asset names (and convention-filename stems) of the two logo variants. */
-export type PluginLogoVariant = "logo" | "logo-dark";
+/** Stable route names for plugin-owned branding assets. */
+export type PluginBrandingAssetVariant = "icon" | "logo" | "logo-dark";
 
-/** On-disk logo record backing GET /plugins/:id/assets/logo[-dark] + *Url. */
-export interface PluginLogoSnapshot {
+/** Immutable byte snapshot backing one GET /plugins/:id/assets/<variant>. */
+export interface PluginBrandingAssetSnapshot {
   /** App-relative asset URL, content-hash query included. */
   url: string;
-  path: string;
+  /** The exact bytes used to compute `hash`; never re-read from source. */
+  bytes: Uint8Array;
   contentType: string;
-  /** sha256 (first 16 hex chars) over the logo bytes. */
+  /** sha256 (first 16 hex chars) over the asset bytes. */
   hash: string;
 }
 
-/** Both logo variants of one plugin; either is null when absent. */
-export interface PluginLogoSet {
-  logo: PluginLogoSnapshot | null;
-  logoDark: PluginLogoSnapshot | null;
+/** All declared branding assets of one plugin; each is null when absent. */
+export interface PluginBrandingAssetSet {
+  compactIcon: PluginBrandingAssetSnapshot | null;
+  logo: PluginBrandingAssetSnapshot | null;
+  logoDark: PluginBrandingAssetSnapshot | null;
 }
 
 /**
- * Read and hash one explicitly declared logo variant. Manifest parsing has
+ * Read and hash one explicitly declared branding asset. Manifest parsing has
  * already validated that the path is a readable supported asset.
  */
-async function loadPluginLogoVariant(
+async function loadPluginBrandingAsset(
   pluginId: string,
   manifestPath: string | undefined,
-  variant: PluginLogoVariant,
-): Promise<PluginLogoSnapshot | null> {
+  variant: PluginBrandingAssetVariant,
+): Promise<PluginBrandingAssetSnapshot | null> {
   if (manifestPath === undefined) return null;
   const bytes = await readFile(manifestPath);
   const extension = manifestPath
     .slice(manifestPath.lastIndexOf(".") + 1)
     .toLowerCase();
-  const contentType = LOGO_CONTENT_TYPES[extension];
+  const contentType = BRANDING_ASSET_CONTENT_TYPES[extension];
   if (contentType === undefined) return null;
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
   return {
     url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${variant}?h=${hash}`,
-    path: manifestPath,
+    bytes,
     contentType,
     hash,
   };
 }
 
-/** Detect and hash both logo variants (see {@link loadPluginLogoVariant}). */
-export async function loadPluginLogos(
+/** Read and hash every explicitly declared branding asset. */
+export async function loadPluginBrandingAssets(
   pluginId: string,
   manifest: {
     branding: {
+      compactIconPath?: string;
       logo?: { lightPath: string; darkPath?: string };
     };
   },
-): Promise<PluginLogoSet> {
+): Promise<PluginBrandingAssetSet> {
   return {
-    logo: await loadPluginLogoVariant(
+    compactIcon: await loadPluginBrandingAsset(
+      pluginId,
+      manifest.branding.compactIconPath,
+      "icon",
+    ),
+    logo: await loadPluginBrandingAsset(
       pluginId,
       manifest.branding.logo?.lightPath,
       "logo",
     ),
-    logoDark: await loadPluginLogoVariant(
+    logoDark: await loadPluginBrandingAsset(
       pluginId,
       manifest.branding.logo?.darkPath,
       "logo-dark",

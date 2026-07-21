@@ -1,7 +1,11 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
-import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
+import {
+  derivePluginId,
+  isPluginOwnedIconPath,
+  pluginPackageJsonSchema,
+} from "@bb/domain";
 
 export interface PluginManifest {
   /** Sanitized plugin id derived from the package name. */
@@ -15,7 +19,10 @@ export interface PluginManifest {
   description: string;
   /** Explicit plugin branding, resolved to absolute asset paths. */
   branding: {
+    /** Host icon-name hint. Mutually exclusive with compactIconPath. */
     icon?: string;
+    /** Plugin-owned compact SVG declared through a path-shaped branding.icon. */
+    compactIconPath?: string;
     logo?: {
       lightPath: string;
       darkPath?: string;
@@ -136,7 +143,12 @@ export async function readPluginManifest(
                 ),
               }),
         };
+  const brandingCompactIconPath =
+    bb.branding.icon !== undefined && isPluginOwnedIconPath(bb.branding.icon)
+      ? resolveBrandingAsset(bb.branding.icon, "bb.branding.icon")
+      : undefined;
   for (const [label, assetPath] of [
+    ["bb.branding.icon", brandingCompactIconPath],
     ["bb.branding.logo.light", brandingLogo?.lightPath],
     ["bb.branding.logo.dark", brandingLogo?.darkPath],
   ] as const) {
@@ -187,6 +199,10 @@ export async function readPluginManifest(
       );
     }
   }
+  const brandingIcon =
+    bb.branding.icon === undefined || brandingCompactIconPath !== undefined
+      ? undefined
+      : bb.branding.icon;
   return {
     id: derivePluginId(packageName),
     packageName,
@@ -194,7 +210,10 @@ export async function readPluginManifest(
     name: bb.name,
     description: bb.description,
     branding: {
-      ...(bb.branding.icon === undefined ? {} : { icon: bb.branding.icon }),
+      ...(brandingIcon === undefined ? {} : { icon: brandingIcon }),
+      ...(brandingCompactIconPath === undefined
+        ? {}
+        : { compactIconPath: brandingCompactIconPath }),
       ...(brandingLogo === undefined ? {} : { logo: brandingLogo }),
     },
     bbEngineRange: engines?.bb,

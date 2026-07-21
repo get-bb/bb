@@ -1,6 +1,10 @@
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { pluginPackageJsonSchema, type PluginPackageJson } from "@bb/domain";
+import {
+  isPluginOwnedIconPath,
+  pluginPackageJsonSchema,
+  type PluginPackageJson,
+} from "@bb/domain";
 
 function resolveManifestPath(
   rootDir: string,
@@ -34,6 +38,13 @@ export async function validatePluginBuildManifest(
   }
   const logo = parsed.data.bb.branding.logo;
   for (const [label, entry] of [
+    [
+      "bb.branding.icon",
+      parsed.data.bb.branding.icon !== undefined &&
+      isPluginOwnedIconPath(parsed.data.bb.branding.icon)
+        ? parsed.data.bb.branding.icon
+        : undefined,
+    ],
     ["bb.branding.logo.light", logo?.light],
     ["bb.branding.logo.dark", logo?.dark],
   ] as const) {

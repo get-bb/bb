@@ -142,6 +142,7 @@ function rowPlugin(
     description: null,
     name: null,
     icon: null,
+    compactIconUrl: null,
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,

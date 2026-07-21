@@ -62,6 +62,7 @@ describe("PluginSidebarFooterActions", () => {
           "remote",
           {
             icon: "FileText",
+            compactIconUrl: null,
             logoUrl: "/api/v1/plugins/remote/assets/logo?h=abc",
             logoDarkUrl: null,
           },

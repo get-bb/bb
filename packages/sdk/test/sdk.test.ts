@@ -1157,6 +1157,7 @@ describe("@bb/sdk", () => {
       description: "Notes",
       name: "Notes",
       icon: null,
+      experimental_iconUrl: null,
       status: "running" as const,
       statusDetail: null,
       handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
@@ -1168,6 +1169,7 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
     };
+    const { experimental_iconUrl: _omitted, ...legacyPlugin } = plugin;
     const catalog = { pluginCount: 1 };
     const checked = {
       id: "notes",
@@ -1176,9 +1178,9 @@ describe("@bb/sdk", () => {
       candidate: { version: "1.3.0", display: "1.3.0" },
     };
     const queue = createFetchQueue([
-      { body: { enabled: true, plugins: [plugin] } },
-      { body: { ok: true, plugin } },
-      { body: { ok: true, plugin } },
+      { body: { enabled: true, plugins: [legacyPlugin] } },
+      { body: { ok: true, plugin: legacyPlugin } },
+      { body: { ok: true, plugin: legacyPlugin } },
       {
         body: {
           requested: "npm:@bb/notes@^1",

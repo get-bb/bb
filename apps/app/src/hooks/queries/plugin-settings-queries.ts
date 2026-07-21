@@ -36,6 +36,7 @@ export interface PluginListItem {
   description: string | null;
   name: string | null;
   icon: string | null;
+  compactIconUrl: string | null;
   logoUrl: string | null;
   logoDarkUrl: string | null;
   hasSettings: boolean;
@@ -88,6 +89,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,
+    compactIconUrl: plugin.experimental_iconUrl,
     logoUrl: plugin.logoUrl,
     logoDarkUrl: plugin.logoDarkUrl,
     hasSettings: plugin.hasSettings,

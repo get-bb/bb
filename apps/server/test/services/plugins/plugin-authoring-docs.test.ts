@@ -307,6 +307,8 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("no root logo auto-detection");
     expect(skill).toContain("currentColor");
     expect(skill).toContain("branding.icon");
+    expect(skill).toContain("./assets/icon.svg");
+    expect(skill).toContain("CSS mask");
   });
 
   it("documents every frontend slot and its prop fields", () => {

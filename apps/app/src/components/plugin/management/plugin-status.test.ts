@@ -24,6 +24,7 @@ function plugin(
     description: null,
     name: null,
     icon: null,
+    compactIconUrl: null,
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,

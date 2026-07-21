@@ -277,6 +277,27 @@ describe("buildPluginApp", () => {
     );
   });
 
+  it("validates a plugin-owned branding.icon SVG before building", async () => {
+    await writeFixture();
+    const packageJson = JSON.parse(FIXTURE_PACKAGE_JSON) as {
+      bb: { branding: { icon: string } };
+    };
+    packageJson.bb.branding.icon = "./assets/icon.svg";
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify(packageJson, null, 2),
+    );
+
+    await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(
+      /bb\.branding\.icon points at a missing file/,
+    );
+
+    await mkdir(join(root, "assets"));
+    await writeFile(join(root, "assets", "icon.svg"), "<svg/>");
+    const result = await buildPluginApp(root, TEST_BB_VERSION);
+    expect(result.jsPath).toBe(join(root, "dist", "app.js"));
+  });
+
   it("builds the `bb plugin new --app` scaffold end to end", async () => {
     const targetDir = join(root, "bb-plugin-scaffolded");
     await scaffoldPlugin({

@@ -18,12 +18,12 @@ import {
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
-  loadPluginLogos,
+  loadPluginBrandingAssets,
   parsePluginAppBundleMeta,
   readPluginAppBundleMeta,
   validatePluginArtifactMeta,
   type PluginAppBundleSnapshot,
-  type PluginLogoSet,
+  type PluginBrandingAssetSet,
 } from "./app-bundle.js";
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
@@ -158,19 +158,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
   const appBundles = new Map<string, PluginAppBundleSnapshot>();
-  // Logo snapshots (light + optional dark variant), refreshed alongside
-  // appBundles on every load. Entries are only servable (and only advertised
-  // via logoUrl/logoDarkUrl) while the plugin is in `loaded` — same honest
-  // gate as getAppAsset.
-  const logos = new Map<string, PluginLogoSet>();
-  // Static identity — parsed manifest + logo snapshots — for EVERY installed
-  // plugin, loaded or not. Unlike `logos`/`appBundles`, which are gated on the
-  // live runtime, this survives the load lifecycle so the inventory and the
-  // logo asset route can show a disabled (or incompatible) plugin's real name,
-  // icon, and logo. Refreshed on every load attempt; pruned only on remove.
+  // Branding assets (compact icon + logo variants), refreshed alongside
+  // appBundles on every load.
+  const brandingAssets = new Map<string, PluginBrandingAssetSet>();
+  // Static identity — parsed manifest + branding snapshots — for EVERY
+  // installed plugin, loaded or not. Unlike `brandingAssets`/`appBundles`,
+  // which are gated on the live runtime, this survives the load lifecycle so
+  // the inventory and branding asset route can recognize disabled or
+  // incompatible plugins. Refreshed on every load attempt; pruned on remove.
   const identities = new Map<
     string,
-    { manifest: PluginManifest; logos: PluginLogoSet }
+    { manifest: PluginManifest; brandingAssets: PluginBrandingAssetSet }
   >();
   // Services that ignored their abort past the stop bound. While a plugin
   // has entries here it is not re-loaded (that would double-start the
@@ -774,7 +772,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const manifest = await readPluginManifest(row.rootDir);
       identities.set(row.id, {
         manifest,
-        logos: await loadPluginLogos(row.id, manifest),
+        brandingAssets: await loadPluginBrandingAssets(row.id, manifest),
       });
     } catch {
       identities.delete(row.id);
@@ -844,9 +842,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // Build candidate assets without publishing them; a failed reload keeps
     // the previous backend and frontend registration sets together.
     const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
-    // Logo refresh rides every load too, so `bb plugin reload` picks up a
-    // changed/added/removed logo file (either variant).
-    const logoCandidate = await loadPluginLogos(row.id, manifest);
+    // Branding refresh rides every load too, so `bb plugin reload` picks up a
+    // changed compact icon or logo file.
+    const brandingAssetCandidate = await loadPluginBrandingAssets(
+      row.id,
+      manifest,
+    );
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -992,7 +993,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     // every dispatcher continues to resolve the complete previous handle.
     loaded.set(row.id, plugin);
     appBundles.set(row.id, appBundleCandidate.snapshot);
-    logos.set(row.id, logoCandidate);
+    brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
     agentToolProblems.delete(row.id);
     handle.activate();
@@ -1098,7 +1099,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function clearRuntimeState(id: string): void {
     statuses.delete(id);
     appBundles.delete(id);
-    logos.delete(id);
+    brandingAssets.delete(id);
     needsConfiguration.delete(id);
     agentToolProblems.delete(id);
   }
@@ -1108,8 +1109,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<void> {
     await disposeOne(row.id);
     clearRuntimeState(row.id);
-    // clearRuntimeState drops the runtime logo entry; keep the plugin's static
-    // identity so a gated/disabled row still shows its name, icon, and logo.
+    // clearRuntimeState drops runtime branding; keep static identity so a
+    // gated/disabled row still shows its name, icon, and logo.
     await populateIdentity(row);
     if (row.enabled) {
       setStatus(row.id, "disabled", experimentGateDisabledDetail(row));
@@ -1196,7 +1197,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loadAll,
     loaded,
     loadOne,
-    logos,
+    brandingAssets,
     needsConfiguration,
     setStatus,
     shouldExposeLoadedPlugin,

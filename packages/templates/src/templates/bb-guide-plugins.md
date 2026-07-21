@@ -322,16 +322,18 @@ file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
 list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
 removing the owning plugin makes bb fall back to the default palette.
 
-Branding is explicit: `bb.branding.logo.light` points to the plugin's rich
-identity artwork and optional `bb.branding.logo.dark` is preferred in dark
-mode. Paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
-files are not auto-detected, and a dark logo requires a light logo.
-`bb.branding.icon` is the compact host icon-name identity. Compact chrome uses
-it first, then a contribution's distinct local icon hint, then Zap. Roomy
-Settings rows and cards use the image logo where available. At least the icon
-or light logo is required. BB rejects nulls, empty strings, missing/escaping
-assets, and unsupported extensions. Reload the plugin to pick up branding
-changes.
+Branding is explicit. `bb.branding.icon` is the compact identity: use a BB icon
+name, or a plugin-relative SVG such as `./assets/icon.svg` for a plugin-owned
+glyph. BB hash-serves SVG icons and renders them as masks that inherit the
+surrounding text color. Compact chrome prefers that asset, then a named manifest
+icon, a contribution's local icon hint, and finally Zap.
+
+`bb.branding.logo.light` points to rich identity artwork; optional
+`bb.branding.logo.dark` is preferred in dark mode. Logo paths must be
+plugin-relative `.svg`, `.png`, or `.webp` files. Root logo files are not
+auto-detected, and a dark logo requires a light logo. At least the icon or light
+logo is required. BB rejects nulls, empty strings, missing or escaping assets,
+and unsupported extensions. Reload the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
