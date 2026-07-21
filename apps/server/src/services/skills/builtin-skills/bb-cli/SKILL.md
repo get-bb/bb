@@ -579,8 +579,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
-    settingsSection, navPanel, threadPanelAction, composerAccessory,
-    fileOpener) with hooks (useRpc, useRealtime, useRealtimeConnectionState,
+    settingsSection, navPanel, threadPanelAction, fileOpener) with hooks
+    (useRpc, useRealtime, useRealtimeConnectionState,
     useSettings, useBbContext,
     useBbNavigate, useComposer for scoped text editing / quote / mention /
     focus access); components are vendored shadcn source the

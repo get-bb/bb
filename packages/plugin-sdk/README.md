@@ -19,10 +19,9 @@ and `useComposerView()` for the reactive scope, layout, draft, and run state.
 
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
-for every region in one small app. The legacy
-`app.slots.composerAccessory(...)` footer slot remains available for one
-compatibility window, but is deprecated; migrate footer controls to actions or
-the plus menu and larger content to banners.
+for every region in one small app. The deprecated pre-1.0
+`app.slots.composerAccessory(...)` footer API has been removed; migrate footer
+controls to actions or the plus menu and larger content to banners.
 
 ## External plugin tests
 

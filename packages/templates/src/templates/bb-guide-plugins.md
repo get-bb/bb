@@ -374,9 +374,9 @@ navPanel, threadPanelAction, fileOpener, messageDirective) and composer
 customizations via `app.composer.customize({ actions, plusMenu, banners,
 richText })`; action/banner components use `useComposer()` and
 `useComposerView()`, while the host renders plus-menu rows and editor
-decorations. The legacy `slots.composerAccessory` footer remains functional
-for one compatibility window but is deprecated; migrate controls to actions or
-the plus menu and larger content to banners. Register all frontend surfaces via
+decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was
+removed; migrate controls to actions or the plus menu and larger content to
+banners. Register all frontend surfaces via
 definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and

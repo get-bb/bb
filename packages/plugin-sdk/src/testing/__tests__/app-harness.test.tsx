@@ -133,7 +133,6 @@ function ComposerProbe() {
           composer.setThreadRowStatus({
             icon: "AiContentGenerator01",
             label: "Plugin improving draft",
-            effect: "shimmer",
           })
         }
       >
@@ -217,10 +216,6 @@ const app = await loadPluginApp(
     builder.slots.messageDirective({
       id: "inline-vis",
       component: InlineVis,
-    });
-    builder.slots.composerAccessory({
-      id: "composer",
-      component: ComposerProbe,
     });
     builder.slots.homepageSection({
       id: "realtime-connection",
@@ -573,16 +568,16 @@ describe("renderSlot", () => {
 
   it("reads, replaces, functionally updates, and clears isolated composer text", () => {
     const threadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: "thr_1" },
         composer: { text: "seed" },
       },
     );
     const newThreadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: null },
         composer: { text: "new-thread seed" },
@@ -619,8 +614,8 @@ describe("renderSlot", () => {
       childThreadId: null,
     } satisfies PluginComposerScope;
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_parent" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "side-chat draft", scope: sideChatScope } },
     );
 
@@ -635,8 +630,8 @@ describe("renderSlot", () => {
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: null, threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "draft" } },
     );
 
@@ -654,8 +649,8 @@ describe("renderSlot", () => {
 
   it("records composer thread-row status changes", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
 
@@ -663,7 +658,6 @@ describe("renderSlot", () => {
     expect(slot.composer.threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
 
     fireEvent.click(slot.getByText("clear row status"));
@@ -673,8 +667,8 @@ describe("renderSlot", () => {
 
   it("ignores thread-row status changes outside a thread composer", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: null } },
     );
 
@@ -686,8 +680,8 @@ describe("renderSlot", () => {
   it("invalidates visual-state setters through both unmount controls", () => {
     for (const control of ["top-level", "lifecycle"] as const) {
       const slot = renderSlot(
-        app.composerAccessories[0]!,
-        { projectId: "proj_1", threadId: "thr_1" },
+        app.composerCustomizations[0]!.actions![0]!,
+        {},
         { context: { projectId: "proj_1", threadId: "thr_1" } },
       );
       const setters = capturedComposerVisualSetters;
@@ -699,7 +693,6 @@ describe("renderSlot", () => {
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
-        effect: "shimmer",
         tone: "success",
       });
       expect(slot.composer.textEffect).toEqual({
@@ -714,12 +707,11 @@ describe("renderSlot", () => {
       expect(slot.composer.inputLocked).toBe(false);
       expect(slot.composer.threadRowStatus).toBeNull();
 
-      setters.setTextEffect("shimmer");
+      setters.setTextEffect({ className: "late-effect" });
       setters.setInputLock(true);
       setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "late status",
-        effect: "shimmer",
       });
       expect(slot.composer.textEffect).toBeNull();
       expect(slot.composer.threadRowStatus).toBeNull();
@@ -733,33 +725,33 @@ describe("renderSlot", () => {
 
   it("invalidates visual-state setters when Testing Library cleans up the root", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
 
-    setters.setTextEffect("shimmer");
+    setters.setTextEffect({ className: "cleanup-effect" });
     setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     cleanup();
 
     expect(slot.composer.textEffect).toBeNull();
     expect(slot.composer.threadRowStatus).toBeNull();
 
-    setters.setTextEffect("shimmer");
+    setters.setTextEffect({ className: "late-effect" });
     setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "late status",
-      effect: "shimmer",
     });
     expect(slot.composer.textEffect).toBeNull();
     expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.textEffectCalls).toEqual(["shimmer"]);
+    expect(slot.composer.textEffectCalls).toEqual([
+      { className: "cleanup-effect" },
+    ]);
     expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

@@ -201,8 +201,8 @@ export interface FollowUpPromptBoxProps {
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
-  /** Suppress plugin accessories while a retained secondary composer is inactive. */
-  suppressPluginComposerAccessories?: boolean;
+  /** Suppress plugin customizations while a retained secondary composer is inactive. */
+  suppressPluginComposerCustomizations?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
   /** Active scope used to filter and lifecycle-key plugin banner slots. */
@@ -288,7 +288,7 @@ function FollowUpPromptBoxWithComposer({
   permissionReadOnly,
   typeahead,
   promptActions,
-  suppressPluginComposerAccessories,
+  suppressPluginComposerCustomizations,
   pluginComposerHost,
   pluginComposerScope,
   textEffects,
@@ -658,7 +658,9 @@ function FollowUpPromptBoxWithComposer({
         typeahead={typeahead}
         attachments={attachments}
         promptActions={promptActions}
-        suppressPluginComposerAccessories={suppressPluginComposerAccessories}
+        suppressPluginComposerCustomizations={
+          suppressPluginComposerCustomizations
+        }
         compact={compactConfig}
         zenMode={{
           layout: "thread",

@@ -30,7 +30,6 @@ function registrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     composerCustomizations,
     sidebarFooterActions: [],
     fileOpeners: [],

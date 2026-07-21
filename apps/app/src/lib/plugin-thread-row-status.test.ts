@@ -9,7 +9,6 @@ import {
 const RUNNING_STATUS = {
   icon: "AiContentGenerator01",
   label: "Plugin improving draft",
-  effect: "shimmer",
 } as const;
 
 describe("plugin thread-row status", () => {

@@ -121,13 +121,13 @@ existing <code>useComposer()</code> hooks — context-bound to the composer inst
 <tr><td>Where components <em>can't</em> go</td><td>Two places, for mechanical reasons: <b><code>+</code> menu items</b> (Radix owns keyboard nav, focus restore, and the mobile sheet — items are a small data contract) and <b>inside the editor text</b> (ProseMirror owns those nodes — paint goes through declarative decoration rules).</td></tr>
 <tr><td>Composer identity</td><td><b>Context binding, not ids.</b> A slot component's <code>useComposer()</code> / <code>useComposerView()</code> are bound to the composer instance that mounted it (the existing <code>PluginComposerHost</code> mechanism). Nothing to pass around; calls from outside a composer subtree keep today's scope-resolution fallbacks.</td></tr>
 <tr><td>Native controls</td><td><b>Not removable, hideable, or reorderable.</b> Submit / stop / queue / voice / attach / native menu items and cards are host-owned invariants — structurally, since there is no API through which they could be dropped.</td></tr>
-<tr><td>Text effects</td><td><b>One decoration engine, two sources, zero vocabulary.</b> An effect is a <b>class name from the plugin's own stylesheet</b> applied to decoration spans. Content-derived: declarative rules (<code>match(text) → ranges</code>). State-derived: imperative <code>setTextEffect({ className })</code> (widened from today's <code>"shimmer"</code> enum). BB's shimmer + ultracode highlight become host-registered users of the same engine. Decorations never mutate the document.</td></tr>
+<tr><td>Text effects</td><td><b>One decoration engine, two sources, zero vocabulary.</b> An effect is a <b>class name from the plugin's own stylesheet</b> applied to decoration spans. Content-derived: declarative rules (<code>match(text) → ranges</code>). State-derived: imperative <code>setTextEffect({ className })</code>. The deprecated string shorthand was removed pre-1.0. Decorations never mutate the document.</td></tr>
 <tr><td>Input lock</td><td>New <code>composer.setInputLock(locked)</code>: host makes the editor read-only + <code>aria-busy</code>, keeping cancel reachable. Auto-released on unmount / scope change / reload, so a crashed plugin cannot wedge the composer. Closes Improve Prompt's type-during-rewrite race.</td></tr>
 <tr><td>Chrome consistency</td><td>Via the SDK's existing philosophy: plugins vendor BB components (<code>npx shadcn add @bb/&lt;name&gt;</code>) — the docs ship an icon-button recipe matching native sizing and coarse-pointer targets. Accessibility of custom components is the plugin's responsibility.</td></tr>
 <tr><td>Ordering</td><td>Plugins sorted by <code>pluginId</code> asc (existing snapshot order), registrations in call order within a plugin, entries in array order. Deterministic; no priorities.</td></tr>
 <tr><td>Isolation</td><td>Every slot mounts inside its own <code>PluginSlotMount</code> error boundary; a crashing action button or banner collapses only itself. Menu-item <code>run</code> errors toast + log. The native composer never degrades.</td></tr>
 <tr><td><code>pendingInteraction</code></td><td>Replaces the editor as today: action slots, <code>+</code> entries, and decoration rules suspend with it; <b>banners stay mounted</b> (they annotate the thread, not the editor).</td></tr>
-<tr><td><code>composerAccessory</code></td><td>Kept for one compatibility window as a mapped legacy <code>footer</code> slot, <code>@deprecated</code>; removed next SDK major. <code>useComposer()</code> is not deprecated — it's the backbone of the design, gaining <code>setInputLock</code> and the widened <code>setTextEffect</code>.</td></tr>
+<tr><td><code>composerAccessory</code></td><td>Removed pre-1.0. Migrate controls to <code>actions</code> or <code>plusMenu</code>, larger content to <code>banners</code>, and legacy identity props to <code>useComposerView().scope</code>. <code>useComposer()</code> remains the backbone of the design.</td></tr>
 <tr><td>Wire impact</td><td>Frontend-only (SDK contract + app). No server/daemon payload changes ⇒ no <code>HOST_DAEMON_PROTOCOL_VERSION</code> bump.</td></tr>
 </table>
 
@@ -142,7 +142,6 @@ existing <code>useComposer()</code> hooks — context-bound to the composer inst
     <div class="editor">Fix the flaky test in <span class="hl">auth-session.test.ts</span> and…&nbsp; <span style="float:right;font-size:11px" class="tag plugin">decoration rules (className)</span></div>
     <div class="row">
       <span class="btn" title="Plus menu">＋</span><span class="tag plugin" style="margin-left:-4px">+ menu items (data)</span>
-      <span class="tag native">footer (legacy accessory)</span>
       <span class="spacer"></span>
       <span class="btn plugin" title="Plugin action">✦</span>
       <span class="btn plugin" title="Plugin action">⌁</span><span class="tag plugin" style="margin-left:-4px">action slots (components)</span>
@@ -158,7 +157,7 @@ existing <code>useComposer()</code> hooks — context-bound to the composer inst
 
 <h2>3 · Why components + hooks (and why not a transform)</h2>
 <p><b>Components fit the SDK BB already has.</b> The plugin SDK deliberately removed frozen component
-prop types in favor of vendored components plugins own; <code>composerAccessory</code>, banners, panels,
+prop types in favor of vendored components plugins own; banners, panels,
 and settings sections are already components; and <code>useComposer()</code> already carries the safe
 imperative operations. Making action buttons components too means one mental model everywhere —
 "render UI in a slot, call hooks for behavior, hold your own state" — instead of a parallel
@@ -267,7 +266,7 @@ interface ComposerStructuredDraft {
 }
 
 // useComposer() additions (PluginComposerApi):
-//   setTextEffect(effect: { className: string } | null)   // widened from "shimmer"
+//   setTextEffect(effect: { className: string } | null)
 //   setInputLock(locked: boolean)                          // auto-released on unmount/scope change
 // New hook: useComposerView(): ComposerView
 </code></pre>
@@ -332,8 +331,8 @@ transactions), semantic inline renderers, paste transformers. Each is additive.<
 <h2>8 · Migration</h2>
 <table>
 <tr><th style="width:230px">Existing surface</th><th>Plan</th></tr>
-<tr><td><code>slots.composerAccessory</code></td><td><span class="pill w">deprecated</span> Internally re-mapped as a legacy <code>footer</code> slot rendering exactly where it does today; <code>@deprecated</code> JSDoc + docs banner now, removal at the next SDK major.</td></tr>
-<tr><td><code>useComposer()</code></td><td><span class="pill g">kept &amp; extended</span> Gains <code>setInputLock</code>; <code>setTextEffect</code> widens from <code>"shimmer"</code> to <code>{ className }</code> (the string form stays as sugar for one window). <code>setThreadRowStatus</code> unchanged.</td></tr>
+<tr><td><code>slots.composerAccessory</code></td><td><span class="pill b">removed pre-1.0</span> Controls move to <code>actions</code> or <code>plusMenu</code>; larger footer content moves to <code>banners</code>; identity props move to <code>useComposerView().scope</code>.</td></tr>
+<tr><td><code>useComposer()</code></td><td><span class="pill g">kept &amp; extended</span> Gains <code>setInputLock</code>; <code>setTextEffect</code> accepts only <code>{ className }</code> or <code>null</code>. The deprecated string shorthand and the shimmer-only thread-row effect field were removed pre-1.0.</td></tr>
 <tr><td>Improve Prompt</td><td>Becomes the §4 component: same draft transforms, shimmer (now its own CSS), thread-row status; gains the input lock and per-scope correctness.</td></tr>
 <tr><td>Omegacode</td><td>Becomes one banner component; deletes its portal, ancestor walk, and <code>MutationObserver</code> entirely.</td></tr>
 </table>
@@ -346,7 +345,7 @@ transactions), semantic inline renderers, paste transformers. Each is additive.<
 <tr><td class="num">P2</td><td><code>PromptBoxInternal.tsx</code></td><td>Action slot zone in the right group (height-constrained container, per-slot boundaries), <code>ComposerView</code> context, input-lock plumbing (read-only editor + <code>aria-busy</code>), plugin section in <code>PromptBoxActionsMenu</code>.</td></tr>
 <tr><td class="num">P3</td><td><code>FollowUpPromptBox</code> / <code>NewThreadPromptBox</code> / side-chat &amp; queued hosts</td><td>Shared <code>&lt;PluginComposerBanners scope=…/&gt;</code> appended to each host's <code>stack</code>; card/bare chrome; scope filtering.</td></tr>
 <tr><td class="num">P4</td><td><code>editor/</code></td><td>Unified decoration engine replacing <code>PromptUltracodeHighlightExtension</code> + <code>PromptTextEffectExtension</code> (re-registered as host sources); rule offset mapping; class-based spans; debounced draft observer.</td></tr>
-<tr><td class="num">P5</td><td>Migration + docs</td><td><code>composerAccessory</code> shim, deprecation notes, <code>PromptIconButton</code> registry recipe, plugin-authoring skill/docs/scaffold updates, and an example plugin exercising every region (doubles as the QA vehicle).</td></tr>
+<tr><td class="num">P5</td><td>Migration + docs</td><td>Remove the legacy <code>composerAccessory</code> path, document its migration mapping, add the <code>PromptIconButton</code> registry recipe, update the plugin-authoring skill/docs/scaffold, and provide an example plugin exercising every region (doubles as the QA vehicle).</td></tr>
 </table>
 
 <h2>10 · Test plan (focused, per repo guidelines)</h2>
@@ -356,7 +355,7 @@ transactions), semantic inline renderers, paste transformers. Each is additive.<
   <li><b>Input lock</b> — editor read-only + <code>aria-busy</code> while locked; auto-release on unlock, unmount, scope change, and plugin reload; submit/stop still reachable.</li>
   <li><b>Plus menu</b> — plugin section ordering + separators, focus restoration parity with native items, disabled callback, run error containment.</li>
   <li><b>Banners</b> — card vs bare chrome, null-render collapse, crash isolation per card, stack height measurement including plugin rows, scope-change remount cleanup.</li>
-  <li><b>Text effects</b> — decorations across rich/plain modes, offsets correct around mentions, serialization byte-identical with rules active, classes applied/removed across edits and remounts, shimmer/ultracode parity as host-registered sources, throwing match() disabled.</li>
+  <li><b>Text effects</b> — decorations across rich/plain modes, offsets correct around mentions, serialization byte-identical with rules active, classes applied/removed across edits and remounts, ultracode parity as a host-registered source, throwing match() disabled.</li>
   <li><b>Cross-cutting</b> — two plugins composing without interference, pendingInteraction suspension, testing-harness capture snapshots.</li>
 </ul>
 

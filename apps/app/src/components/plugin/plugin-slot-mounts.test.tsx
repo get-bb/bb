@@ -12,11 +12,7 @@ import {
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type {
-  PluginComposerApi,
-  PluginComposerAccessoryProps,
-  PluginThreadPanelProps,
-} from "@bb/plugin-sdk";
+import type { PluginComposerApi, PluginThreadPanelProps } from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -31,7 +27,7 @@ import {
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
-import { PluginComposerAccessories } from "./PluginComposerAccessories";
+import { PluginComposerActions } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
 import {
   PluginComposerHostProvider,
@@ -41,7 +37,11 @@ import {
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
-import { getComposerInputLock, useComposer } from "@/lib/plugin-sdk-hooks";
+import {
+  getComposerInputLock,
+  useComposer,
+  useComposerView,
+} from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffect } from "@/lib/composer-text-effects";
 import {
@@ -65,7 +65,7 @@ function registrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
+    composerCustomizations: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -213,10 +213,7 @@ describe("useComposer", () => {
     label: string,
     onRender?: (composer: PluginComposerApi) => void,
   ) {
-    function ComposerProbe({
-      projectId,
-      threadId,
-    }: PluginComposerAccessoryProps) {
+    function ComposerProbe() {
       const composer = useComposer();
       onRender?.(composer);
       const initialMethods = useRef({
@@ -236,12 +233,6 @@ describe("useComposer", () => {
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
-          <div data-testid={`${label}-accessory-project`}>
-            {projectId ?? "null"}
-          </div>
-          <div data-testid={`${label}-accessory-thread`}>
-            {threadId ?? "null"}
-          </div>
           <div data-testid={`${label}-scope-project`}>
             {composer.scope.kind === "new-thread" ||
             composer.scope.kind === "side-chat"
@@ -279,7 +270,9 @@ describe("useComposer", () => {
           </button>
           <button
             type="button"
-            onClick={() => composer.setTextEffect("shimmer")}
+            onClick={() =>
+              composer.setTextEffect({ className: "test-text-effect" })
+            }
           >
             {label}-start-effect
           </button>
@@ -292,7 +285,6 @@ describe("useComposer", () => {
               composer.setThreadRowStatus({
                 icon: "AiContentGenerator01",
                 label: "Plugin improving draft",
-                effect: "shimmer",
               })
             }
           >
@@ -343,26 +335,30 @@ describe("useComposer", () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
-        composerAccessories: [{ id: "probe", component: ComposerProbe }],
+        composerCustomizations: [
+          {
+            id: "probe",
+            actions: [{ id: "probe", component: ComposerProbe }],
+          },
+        ],
       }),
     );
+  }
+
+  function ComposerCustomizationMount() {
+    const view = useComposerView();
+    return <PluginComposerActions view={view} />;
   }
 
   it("writes quotes into the thread draft and fires the focus bus", () => {
     registerComposerProbe("t");
     render(
       <MemoryRouter initialEntries={["/threads/thr_comp1"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftViewer threadId="thr_comp1" />
       </MemoryRouter>,
     );
     expect(screen.getByText("scope: thread")).toBeDefined();
-    expect(screen.getByTestId("t-accessory-project").textContent).toBe(
-      PERSONAL_PROJECT_ID,
-    );
-    expect(screen.getByTestId("t-accessory-thread").textContent).toBe(
-      "thr_comp1",
-    );
 
     let focusRequests = 0;
     const storageKey = screen.getByTestId("draft-key").textContent ?? "";
@@ -381,7 +377,7 @@ describe("useComposer", () => {
     registerComposerProbe("edit-thread");
     render(
       <MemoryRouter initialEntries={["/threads/thr_edit"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftSeeder threadId="thr_edit" />
         <ThreadDraftViewer threadId="thr_edit" />
         <NewThreadDraftSeeder />
@@ -431,7 +427,7 @@ describe("useComposer", () => {
     registerComposerProbe("structured");
     render(
       <MemoryRouter initialEntries={["/threads/thr_structured"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftSeeder threadId="thr_structured" />
         <ThreadDraftViewer threadId="thr_structured" />
       </MemoryRouter>,
@@ -516,7 +512,7 @@ describe("useComposer", () => {
 
       return (
         <PluginComposerHostProvider value={host}>
-          <PluginComposerAccessories />
+          <ComposerCustomizationMount />
           <div data-testid="queued-attachments">
             {JSON.stringify(draft.attachments)}
           </div>
@@ -533,9 +529,11 @@ describe("useComposer", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("scope: queued-message")).toBeDefined();
-    expect(screen.getByTestId("queued-accessory-thread").textContent).toBe(
-      "thr_queue",
-    );
+    expect(
+      JSON.parse(
+        screen.getByTestId("queued-scope-details").textContent ?? "{}",
+      ),
+    ).toMatchObject({ kind: "queued-message", threadId: "thr_queue" });
 
     fireEvent.click(screen.getByText("queued-replace"));
     expect(screen.getByTestId("queued-composer-text").textContent).toBe(
@@ -547,12 +545,13 @@ describe("useComposer", () => {
 
     const firstEffectKey = "queued-message:thr_queue:qmsg_1:1";
     fireEvent.click(screen.getByText("queued-start-effect"));
-    expect(getComposerTextEffect(firstEffectKey)).toBe("shimmer");
+    expect(getComposerTextEffect(firstEffectKey)).toEqual({
+      className: "test-text-effect",
+    });
     fireEvent.click(screen.getByText("queued-start-row-status"));
     expect(getPluginThreadRowStatus("thr_queue")).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     fireEvent.click(screen.getByText("change-queued-scope"));
     expect(screen.getByText("scope: queued-message")).toBeDefined();
@@ -693,7 +692,7 @@ describe("useComposer", () => {
 
       return (
         <PluginComposerHostProvider value={host}>
-          <PluginComposerAccessories />
+          <ComposerCustomizationMount />
           <div data-testid="side-attachments">
             {JSON.stringify(draft.attachments)}
           </div>
@@ -711,12 +710,6 @@ describe("useComposer", () => {
     );
 
     expect(screen.getByText("scope: side-chat")).toBeDefined();
-    expect(screen.getByTestId("side-accessory-project").textContent).toBe(
-      "proj_side",
-    );
-    expect(screen.getByTestId("side-accessory-thread").textContent).toBe(
-      "thr_parent",
-    );
     expect(
       JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
     ).toEqual({
@@ -739,13 +732,9 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_parent")).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
 
     fireEvent.click(screen.getByText("create-side-child"));
-    expect(screen.getByTestId("side-accessory-thread").textContent).toBe(
-      "thr_side",
-    );
     expect(getPluginThreadRowStatus("thr_parent")).toBeNull();
     expect(
       JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
@@ -763,7 +752,6 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_parent")).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     expect(getPluginThreadRowStatus("thr_side")).toBeNull();
   });
@@ -772,7 +760,7 @@ describe("useComposer", () => {
     registerComposerProbe("edit-new");
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <NewThreadDraftSeeder />
         <NewThreadDraftViewer />
         <ThreadDraftSeeder threadId="thr_other" />
@@ -843,7 +831,7 @@ describe("useComposer", () => {
 
       return (
         <PluginComposerHostProvider value={host}>
-          <PluginComposerAccessories />
+          <ComposerCustomizationMount />
           <PluginContext.Provider value="demo">
             <RootSiblingPluginSurface />
           </PluginContext.Provider>
@@ -863,23 +851,13 @@ describe("useComposer", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("root-accessory-project").textContent).toBe(
-      "proj_selected",
-    );
     expect(screen.getByTestId("root-scope-project").textContent).toBe(
       "proj_selected",
     );
     expect(screen.getByTestId("root-sibling-scope-project").textContent).toBe(
       "proj_selected",
     );
-    expect(screen.getByTestId("root-accessory-thread").textContent).toBe(
-      "null",
-    );
-
     fireEvent.click(screen.getByText("change-root-project"));
-    expect(screen.getByTestId("root-accessory-project").textContent).toBe(
-      "proj_other",
-    );
     expect(screen.getByTestId("root-scope-project").textContent).toBe(
       "proj_other",
     );
@@ -935,7 +913,7 @@ describe("useComposer", () => {
 
       return (
         <PluginComposerHostProvider value={host}>
-          <PluginComposerAccessories />
+          <ComposerCustomizationMount />
           <button type="button" onClick={() => setProjectId(null)}>
             unset-root-project
           </button>
@@ -950,16 +928,10 @@ describe("useComposer", () => {
     );
 
     expect(
-      screen.getByTestId("root-project-state-accessory-project").textContent,
-    ).toBe(PERSONAL_PROJECT_ID);
-    expect(
       screen.getByTestId("root-project-state-scope-project").textContent,
     ).toBe(PERSONAL_PROJECT_ID);
 
     fireEvent.click(screen.getByText("unset-root-project"));
-    expect(
-      screen.getByTestId("root-project-state-accessory-project").textContent,
-    ).toBe("null");
     expect(
       screen.getByTestId("root-project-state-scope-project").textContent,
     ).toBe("null");
@@ -969,7 +941,7 @@ describe("useComposer", () => {
     registerComposerProbe("effect");
     const view = render(
       <MemoryRouter initialEntries={["/threads/thr_effect"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftViewer threadId="thr_effect" />
       </MemoryRouter>,
     );
@@ -977,7 +949,9 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("effect-start-effect"));
     fireEvent.click(screen.getByText("effect-start-row-status"));
-    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getComposerTextEffect(storageKey)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_effect")).not.toBeNull();
     fireEvent.click(screen.getByText("effect-clear-effect"));
     expect(getComposerTextEffect(storageKey)).toBeNull();
@@ -1005,11 +979,10 @@ describe("useComposer", () => {
         <button
           type="button"
           onClick={() => {
-            composer.setTextEffect("shimmer");
+            composer.setTextEffect({ className: "test-text-effect" });
             composer.setThreadRowStatus({
               icon: "AiContentGenerator01",
               label: `${label} status`,
-              effect: "shimmer",
               tone: "success",
             });
           }}
@@ -1042,7 +1015,9 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("start-first"));
     fireEvent.click(screen.getByText("start-second"));
-    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getComposerTextEffect(storageKey)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "first status",
     );
@@ -1051,7 +1026,9 @@ describe("useComposer", () => {
     expect(staleFirst).toBeDefined();
     fireEvent.click(screen.getByText("unmount-first"));
 
-    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getComposerTextEffect(storageKey)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "second status",
     );
@@ -1060,7 +1037,9 @@ describe("useComposer", () => {
       staleFirst?.setTextEffect(null);
       staleFirst?.setThreadRowStatus(null);
     });
-    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getComposerTextEffect(storageKey)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "second status",
     );
@@ -1079,11 +1058,10 @@ describe("useComposer", () => {
         scope.kind === "queued-message" ? scope.queuedMessageId : "unexpected";
 
       useLayoutEffect(() => {
-        setTextEffect("shimmer");
+        setTextEffect({ className: "test-text-effect" });
         setThreadRowStatus({
           icon: "AiContentGenerator01",
           label: `${queuedMessageId} status`,
-          effect: "shimmer",
           tone: "success",
         });
       }, [queuedMessageId, setTextEffect, setThreadRowStatus]);
@@ -1128,14 +1106,18 @@ describe("useComposer", () => {
         <Harness />
       </MemoryRouter>,
     );
-    expect(getComposerTextEffect("shared-scope-effect")).toBe("shimmer");
+    expect(getComposerTextEffect("shared-scope-effect")).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
       "qmsg_1 status",
     );
 
     fireEvent.click(screen.getByText("change-visual-scope"));
 
-    expect(getComposerTextEffect("shared-scope-effect")).toBe("shimmer");
+    expect(getComposerTextEffect("shared-scope-effect")).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
       "qmsg_2 status",
     );
@@ -1156,7 +1138,7 @@ describe("useComposer", () => {
     }
     render(
       <MemoryRouter initialEntries={["/threads/thr_effect"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftViewer threadId="thr_effect" />
         <ChangeScope />
       </MemoryRouter>,
@@ -1164,7 +1146,9 @@ describe("useComposer", () => {
     const storageKey = screen.getByTestId("draft-key").textContent ?? "";
 
     fireEvent.click(screen.getByText("scope-effect-start-effect"));
-    expect(getComposerTextEffect(storageKey)).toBe("shimmer");
+    expect(getComposerTextEffect(storageKey)).toEqual({
+      className: "test-text-effect",
+    });
     fireEvent.click(screen.getByText("change-scope"));
 
     expect(getComposerTextEffect(storageKey)).toBeNull();
@@ -1204,7 +1188,7 @@ describe("useComposer", () => {
     }
     const view = render(
       <MemoryRouter initialEntries={["/threads/thr_owned"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <ThreadDraftViewer threadId="thr_owned" />
         <ThreadDraftViewer threadId="thr_owned_next" />
         <ChangeScope />
@@ -1218,7 +1202,9 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("owned-start-row-status"));
     act(() => captured[0]!.setInputLock(true));
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(true);
-    expect(getComposerTextEffect(initialStorageKey ?? null)).toBe("shimmer");
+    expect(getComposerTextEffect(initialStorageKey ?? null)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_owned")).not.toBeNull();
 
     const staleScopeSetters = captured[0]!;
@@ -1229,11 +1215,10 @@ describe("useComposer", () => {
 
     act(() => {
       staleScopeSetters.setInputLock(true);
-      staleScopeSetters.setTextEffect("shimmer");
+      staleScopeSetters.setTextEffect({ className: "stale-text-effect" });
       staleScopeSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "stale status",
-        effect: "shimmer",
         tone: "success",
       });
     });
@@ -1244,16 +1229,17 @@ describe("useComposer", () => {
     const currentSetters = captured.at(-1)!;
     act(() => {
       currentSetters.setInputLock(true);
-      currentSetters.setTextEffect("shimmer");
+      currentSetters.setTextEffect({ className: "test-text-effect" });
       currentSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "current status",
-        effect: "shimmer",
         tone: "success",
       });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(true);
-    expect(getComposerTextEffect(nextStorageKey ?? null)).toBe("shimmer");
+    expect(getComposerTextEffect(nextStorageKey ?? null)).toEqual({
+      className: "test-text-effect",
+    });
     expect(getPluginThreadRowStatus("thr_owned_next")?.label).toBe(
       "current status",
     );
@@ -1264,11 +1250,10 @@ describe("useComposer", () => {
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
     act(() => {
       currentSetters.setInputLock(true);
-      currentSetters.setTextEffect("shimmer");
+      currentSetters.setTextEffect({ className: "unmounted-text-effect" });
       currentSetters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "unmounted status",
-        effect: "shimmer",
       });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
@@ -1280,7 +1265,7 @@ describe("useComposer", () => {
     registerComposerProbe("n");
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <NewThreadDraftViewer />
       </MemoryRouter>,
     );
@@ -1321,7 +1306,7 @@ describe("useComposer", () => {
     registerComposerProbe("b");
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginComposerAccessories />
+        <ComposerCustomizationMount />
         <NewThreadDraftViewer />
       </MemoryRouter>,
     );

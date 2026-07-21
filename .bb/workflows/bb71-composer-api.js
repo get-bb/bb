@@ -23,14 +23,14 @@ const PLUGINS = "/home/sawyer/bb-plugins-migration";
 const COMMON = `You are one worker in a coordinated build of BB-71 (composer plugin API redesign) inside the bb repo at ${WS} (branch bb/redesign-composer-plugin-api-thr_54rtepgpbh).
 FIRST read the authoritative approved spec: ${WS}/composer-api-plan.html (read the HTML source; sections are numbered). Repo rules in ${WS}/AGENTS.md apply (notably: use turbo for typecheck/build; no DB mocking; pipe slow test output to a file under /tmp then read it).
 Do NOT git commit or push. Do NOT run pnpm install unless a command fails without it. Stay strictly inside your owned files listed below — other workers own the rest concurrently.
-Canonical names you must use exactly (spec section 5): ComposerCustomization, ComposerPlusMenuItem, ComposerView, ComposerRichTextSpec, ComposerStructuredDraft, app.composer.customize(...), snapshot field composerCustomizations, hook useComposerView(), PluginComposerApi.setInputLock(locked), setTextEffect widened to ({ className } | "shimmer" | null).
+Canonical names you must use exactly (spec section 5): ComposerCustomization, ComposerPlusMenuItem, ComposerView, ComposerRichTextSpec, ComposerStructuredDraft, app.composer.customize(...), snapshot field composerCustomizations, hook useComposerView(), PluginComposerApi.setInputLock(locked), and setTextEffect({ className } | null).
 End your final message with: OUTCOME (done/partial/blocked), FILES CHANGED, CHECKS RUN (with real results), and EXPORTED API SURFACE you created. Report failures honestly; never claim green checks you did not run.`;
 
 phase("Contract");
 const contract = await agent(
   `${COMMON}
 Objective — spec phase P1, the contract layer everything else builds on:
-1. ${WS}/packages/plugin-sdk/src/app-contract.ts: add the composer types from spec section 5 verbatim in intent (ComposerCustomization with scopes?/actions?/banners?/plusMenu?/richText?, ComposerPlusMenuItem, ComposerView, ComposerRichTextSpec, ComposerStructuredDraft). Add a "composer" namespace to PluginAppBuilder with customize(registration). Widen PluginComposerApi.setTextEffect to accept { className: string } | "shimmer" | null ("shimmer" stays as deprecated sugar) and add setInputLock(locked: boolean). Add useComposerView(): ComposerView to PluginSdkApp. Update bundled declaration/export surfaces the same way (find how existing types are exported/bundled and follow that pattern).
+1. ${WS}/packages/plugin-sdk/src/app-contract.ts: add the composer types from spec section 5 verbatim in intent (ComposerCustomization with scopes?/actions?/banners?/plusMenu?/richText?, ComposerPlusMenuItem, ComposerView, ComposerRichTextSpec, ComposerStructuredDraft). Add a "composer" namespace to PluginAppBuilder with customize(registration). Make PluginComposerApi.setTextEffect accept { className: string } | null and add setInputLock(locked: boolean). Add useComposerView(): ComposerView to PluginSdkApp. Update bundled declaration/export surfaces the same way (find how existing types are exported/bundled and follow that pattern).
 2. ${WS}/apps/app/src/lib/plugin-slots.ts: add composerCustomizations to PluginRegistrationSet and PluginSlotSnapshot with the same wholesale-replace + generation semantics as existing kinds.
 3. Locate the app-side collector that implements app.slots.* against PluginRegistrationSet (search for where composerAccessory registrations are collected/interpreted) and implement app.composer.customize there with per-entry validation per spec section 7: id shape (letters/digits/-/_), duplicate ids within a plugin rejected individually with a logged reason, invalid scope kinds rejected, siblings survive.
 4. ${WS}/apps/app/src/lib/plugin-sdk-hooks.ts (+ plugin-composer-host if needed): implement runtime setInputLock and widened setTextEffect with the SAME auto-clear scoping the existing setTextEffect has (clears on unmount, scope change, plugin reload). Create and export a ComposerView React context + provider (name it PluginComposerViewProvider) and implement useComposerView() reading it, with a sensible route-derived fallback when no provider is mounted (mirror how useComposer falls back). The lock state must be observable by the host (export a store/context the prompt box can subscribe to) — the actual editor read-only wiring is another worker's job.
@@ -95,11 +95,11 @@ ${contract}
 Objective — spec phase P4, the unified decoration engine. OWNED FILES: ${WS}/apps/app/src/components/promptbox/editor/** only (plus a new lib module there if needed). Do NOT edit PromptBoxInternal.tsx — keep promptEditorExtensions() backward compatible by adding OPTIONAL options; the integrator wires the call site afterward.
 1. Build one decoration-based extension that replaces both PromptUltracodeHighlightExtension and PromptTextEffectExtension. Sources, painted host-first then plugins in composition order, overlapping classes stacking:
    a. Content-derived rules: { id, match(text) => [{from,to}], className } evaluated against the serialized plain text (mentions count as their text representation — reuse prompt-editor-serialization's offset mapping), recomputed on doc changes. A throwing match() disables that rule until the next plugin generation, logged once.
-   b. State-derived whole-draft effects: { className } driven by the widened setTextEffect plumbing from the contract layer; "shimmer" sugar maps to the host shimmer class.
-2. Re-register the ultracode highlight and the host shimmer as HOST sources on this engine using the exact same public shapes, then delete the two old extensions. Visual parity required.
+   b. State-derived whole-draft effects: { className } driven by setTextEffect plumbing from the contract layer.
+2. Re-register the ultracode highlight as a HOST source on this engine using the exact same public shape, then delete the old extension. Visual parity required.
 3. onDraftChange (spec 5): debounced read-only observation delivering ComposerStructuredDraft (text + mention spans) per registered richText.onDraftChange.
 4. Extend promptEditorExtensions options additively (e.g. optional getDecorationSources / observer hooks) with JSDoc for the integrator.
-5. Focused tests: offsets correct around mentions, decorations in rich AND plain modes, serialization byte-identical with rules active, classes applied/removed across edits, throwing match disabled, shimmer/ultracode parity.
+5. Focused tests: offsets correct around mentions, decorations in rich AND plain modes, serialization byte-identical with rules active, classes applied/removed across edits, throwing match disabled, ultracode parity.
 Validation: pnpm exec turbo run typecheck --filter=@bb/app and run editor-related tests (pipe to /tmp).`,
       {
         label: "P4 decoration engine",
@@ -147,7 +147,7 @@ const polishAndMigrate = await parallel([
 Integration report:
 ${integration}
 Objective — spec phase P5 polish inside ${WS} only:
-1. Mark slots.composerAccessory @deprecated in the SDK contract JSDoc with migration pointers (it keeps working unchanged this window).
+1. Remove slots.composerAccessory from the SDK contract and document the pre-1.0 migration mapping.
 2. Update plugin authoring docs: search docs/ and any plugin-sdk README/reference text for composerAccessory guidance and add the composer.customize surfaces per docs/cli-guide-and-skill.md conventions.
 3. Add a small example/reference plugin exercising every region (action slot, plus menu item, banner, richText rule) in whatever location existing example/reference plugins live (search first; if none exists, add it under the plugin-sdk package's examples and reference it from docs).
 4. Typecheck affected packages with turbo; run any doc/example tests.
@@ -165,7 +165,7 @@ Then git add -A and git commit in ${WS} with message "Document and exemplify com
       `${COMMON}
 ${MIGRATE_COMMON}
 Objective — migrate improve-prompt at ${PLUGINS}/plugins/improve-prompt (spec section 8):
-Replace the composerAccessory registration with app.composer.customize({ id, actions: [{ id: "improve", component: ImproveAction }] }). The action component follows spec section 4: useComposer() + useComposerView(), own busy state with AbortController, setTextEffect({ className }) for shimmer (plugin-owned CSS class), setInputLock(true/false) around the rewrite, setThreadRowStatus unchanged, setText for the mention-safe replace, cancel = abort. Preserve every current behavior: draft transform, progress affordance, cancellation, undo path, focus, accessibility labels. Keep the server side untouched.`,
+Replace the composerAccessory registration with app.composer.customize({ id, actions: [{ id: "improve", component: ImproveAction }] }). The action component follows spec section 4: useComposer() + useComposerView(), own busy state with AbortController, setTextEffect({ className }) for shimmer (plugin-owned CSS class), setInputLock(true/false) around the rewrite, setThreadRowStatus({ icon, label, tone? }), setText for the mention-safe replace, cancel = abort. Preserve every current behavior: draft transform, progress affordance, cancellation, undo path, focus, accessibility labels. Keep the server side untouched.`,
       {
         label: "migrate improve-prompt",
         phase: "Polish & migrate",
@@ -220,7 +220,7 @@ const REVIEW_SCHEMA = {
 const reviewPrompt = `You are the final review gate for BB-71. Do NOT edit any files and do NOT spawn subagents; read-only inspection and safe read-only commands only.
 Review the integrated implementation in ${WS} (inspect the git log/diff for the new commits on this branch plus surrounding code) and the migrated plugins in ${PLUGINS} (git diff) against:
 1. The approved spec ${WS}/composer-api-plan.html (authoritative), and
-2. BB-71 acceptance criteria: all four regions usable via typed APIs across composer scopes; deterministic multi-plugin composition; per-contribution crash isolation with the native composer never degrading; cleanup on scope change/reload/pendingInteraction; omegacode migrated with zero DOM traversal/portals/observers/class-name deps; improve-prompt migrated with draft transforms, progress, cancellation, focus, a11y intact; serialization/mentions/undo/paste preserved with decorations active; focused tests for validation/order/collisions/crash isolation/regions/scope transitions; docs+declarations+example updated; composerAccessory deprecation decided and implemented.
+2. BB-71 acceptance criteria: all four regions usable via typed APIs across composer scopes; deterministic multi-plugin composition; per-contribution crash isolation with the native composer never degrading; cleanup on scope change/reload/pendingInteraction; omegacode migrated with zero DOM traversal/portals/observers/class-name deps; improve-prompt migrated with draft transforms, progress, cancellation, focus, a11y intact; serialization/mentions/undo/paste preserved with decorations active; focused tests for validation/order/collisions/crash isolation/regions/scope transitions; docs+declarations+example updated; composerAccessory removed pre-1.0 with a documented migration.
 Also check AGENTS.md compliance (no HOST_DAEMON_PROTOCOL_VERSION bump should be needed — verify nothing crossed the server/daemon wire; typecheck/tests run via turbo).
 Report findings in severity order with file:line references. Every REQUEST_CHANGES finding must be concrete and testable.`;
 

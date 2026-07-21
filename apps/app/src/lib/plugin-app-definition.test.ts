@@ -343,15 +343,6 @@ describe("collectPluginAppRegistrations", () => {
       /duplicate id "a"/,
     ],
     [
-      "duplicate id",
-      () =>
-        definePluginApp((app) => {
-          app.slots.composerAccessory({ id: "a", component: Component });
-          app.slots.composerAccessory({ id: "a", component: Component });
-        }),
-      /duplicate id/,
-    ],
-    [
       "sidebar footer action missing run",
       () =>
         definePluginApp((app) => {

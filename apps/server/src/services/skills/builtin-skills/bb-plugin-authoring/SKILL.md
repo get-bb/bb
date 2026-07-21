@@ -842,11 +842,10 @@ Slot props contracts (versioned, additive-only):
   document-like content; `"flush"` gives it the full tab area (no padding,
   definite height, no host scrolling) — right for app-like content that
   owns its layout, such as `experimental_ThreadChat`.
-- `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
-  — **deprecated** legacy composer footer. It remains unchanged for one
-  compatibility window and is removed in the next plugin SDK major. Migrate
-  controls to `app.composer.customize({ actions })` or `plusMenu`, and larger
-  content to `banners`.
+- Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
+  controls to `app.composer.customize({ actions })` or `plusMenu`, larger
+  content to `banners`, and legacy `{ projectId, threadId }` prop reads to
+  `useComposerView().scope`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
   thread composer only while a matching plugin interaction is pending.
   Registration: `{ id, component }`; `id` must equal the backend request's
@@ -982,9 +981,11 @@ Hooks:
   `addQuote(text)` appends the text as a `> ` blockquote block and focuses
   the composer — the "reference this selection in chat" primitive;
   `setTextEffect({ className })` paints the whole editable draft with a class
-  from the plugin stylesheet (`null` clears it; `"shimmer"` is deprecated
-  compatibility sugar); `setInputLock(locked)` makes the editor read-only and
-  busy and auto-releases when the customization unmounts or changes scope;
+  from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
+  the editor read-only and busy and auto-releases when the customization
+  unmounts or changes scope; `setThreadRowStatus({ icon, label, tone? })`
+  replaces the bound thread-row draft glyph (`null` clears it; new-thread
+  calls are no-ops);
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
   fresh context at send time; `focus()` focuses the caret; `scope` reports

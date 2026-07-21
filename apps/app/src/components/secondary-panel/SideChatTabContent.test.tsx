@@ -57,7 +57,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost,
     readOnly,
     stack,
-    suppressPluginComposerAccessories,
+    suppressPluginComposerCustomizations,
     textEffects,
     typeahead,
   }: {
@@ -103,7 +103,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       };
     };
     stack: ReactNode | null;
-    suppressPluginComposerAccessories?: boolean;
+    suppressPluginComposerCustomizations?: boolean;
     textEffects?: readonly { effect: string | { className: string } }[];
   }) => {
     if (
@@ -119,7 +119,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
           data-testid="side-chat-composer"
           data-focus-end-key={focusEndKey}
           data-plugin-accessories-suppressed={
-            suppressPluginComposerAccessories ? "true" : "false"
+            suppressPluginComposerCustomizations ? "true" : "false"
           }
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}

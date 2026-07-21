@@ -21,7 +21,6 @@ function registrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     pendingInteractions,
     sidebarFooterActions: [],
     fileOpeners: [],

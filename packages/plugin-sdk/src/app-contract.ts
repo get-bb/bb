@@ -56,14 +56,6 @@ export interface PluginThreadPanelProps {
   params: JsonValue | null;
 }
 
-/** Props passed to a `composerAccessory` component. */
-export interface PluginComposerAccessoryProps {
-  /** The active composer's project. Root compose uses its selected project. */
-  projectId: string | null;
-  /** The active composer's thread, or null for a new-thread composer. */
-  threadId: string | null;
-}
-
 export interface PluginPendingInteractionView {
   id: string;
   threadId: string;
@@ -244,12 +236,6 @@ export interface PluginThreadPanelActionRegistration {
   run?(context: PluginThreadPanelActionContext): void | Promise<void>;
 }
 
-export interface PluginComposerAccessoryRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
-  id: string;
-  component: ComponentType<PluginComposerAccessoryProps>;
-}
-
 export interface PluginPendingInteractionRegistration {
   /** Matches `rendererId` passed to `bb.ui.requestInput`. */
   id: string;
@@ -387,14 +373,6 @@ export interface PluginAppSlots {
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
-  /**
-   * @deprecated Use `app.composer.customize(...)` instead: `actions` for
-   * composer buttons, `plusMenu` for host-rendered menu commands, and
-   * `banners` for content above the composer. This legacy footer slot remains
-   * available for one compatibility window and will be removed in the next
-   * plugin SDK major.
-   */
-  composerAccessory(registration: PluginComposerAccessoryRegistration): void;
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
@@ -545,10 +523,9 @@ export interface ComposerStructuredDraft {
 }
 
 /** Host-rendered paint applied to the editable composer text. */
-export type PluginComposerTextEffect =
-  | { className: string }
-  /** @deprecated Use `{ className }`; `"shimmer"` remains compatibility sugar. */
-  | "shimmer";
+export interface PluginComposerTextEffect {
+  className: string;
+}
 
 /** Host-rendered status that temporarily replaces a thread's draft glyph. */
 export interface PluginComposerThreadRowStatus {
@@ -556,8 +533,6 @@ export interface PluginComposerThreadRowStatus {
   icon: string;
   /** Accessible label for the status glyph. */
   label: string;
-  /** Host-rendered motion treatment for the status glyph, or null. */
-  effect: "shimmer" | null;
   /** Semantic host color for the status glyph. Defaults to the neutral tone. */
   tone?: "default" | "success";
 }

@@ -4,7 +4,6 @@ import type { ComposerView } from "@bb/plugin-sdk";
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  PROMPT_TEXT_SHIMMER_CLASS,
   ULTRACODE_HIGHLIGHT_CLASS,
   findUltracodeRanges,
   getPromptDecorationSet,
@@ -204,11 +203,8 @@ describe("PromptDecorationExtension", () => {
     });
 
     expect(decorationClasses(editor)).toContain("tagged");
-    setPromptTextEffect(editor, "shimmer");
-    expect(decorationClasses(editor)).toContain(PROMPT_TEXT_SHIMMER_CLASS);
     setPromptTextEffect(editor, { className: "plugin-shimmer" });
     expect(decorationClasses(editor)).toContain("plugin-shimmer");
-    expect(decorationClasses(editor)).not.toContain(PROMPT_TEXT_SHIMMER_CLASS);
 
     editor.commands.setContent(paragraphContent("other"));
     expect(decorationClasses(editor)).not.toContain("tagged");

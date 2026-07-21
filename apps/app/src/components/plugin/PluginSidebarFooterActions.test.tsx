@@ -23,7 +23,6 @@ function registrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],

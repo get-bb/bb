@@ -17,7 +17,6 @@ import {
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
-  type PluginComposerAccessoryRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
@@ -352,7 +351,6 @@ export interface CapturedPluginApp {
   settingsSections: PluginSettingsSectionRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
-  composerAccessories: PluginComposerAccessoryRegistration[];
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
@@ -611,7 +609,6 @@ function collectRegistrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
@@ -624,7 +621,6 @@ function collectRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
-    composerAccessory: new Set<string>(),
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
@@ -719,15 +715,6 @@ function collectRegistrations(
             ? { layout: registration.layout }
             : {}),
           ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
-      },
-      composerAccessory(registration) {
-        const kind = "slots.composerAccessory";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.composerAccessory, id);
-        captured.composerAccessories.push({
-          id,
-          component: requireComponent(kind, registration.component),
         });
       },
       pendingInteraction(registration) {

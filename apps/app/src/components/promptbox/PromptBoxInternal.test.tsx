@@ -63,12 +63,6 @@ import type {
   ProviderCommandSuggestion,
 } from "./mentions/types";
 
-vi.mock("@/components/plugin/PluginComposerAccessories", () => ({
-  PluginComposerAccessories: () => (
-    <span data-testid="plugin-composer-accessories" />
-  ),
-}));
-
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
 function pluginRegistrationSet(
@@ -81,7 +75,6 @@ function pluginRegistrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     composerCustomizations,
     pendingInteractions: [],
     sidebarFooterActions: [],
@@ -502,7 +495,7 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
-  it("suppresses and restores plugin accessories without remounting the editor", () => {
+  it("suppresses and restores plugin customizations without remounting the editor", () => {
     setPluginSlotRegistrations(
       "pending-test",
       pluginRegistrationSet([
@@ -525,15 +518,13 @@ describe("PromptBoxInternal controlled value sync", () => {
     const view = render(<PromptBoxInternal {...props} />);
     const editor = getPromptEditorElement();
 
-    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
 
     view.rerender(
-      <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
+      <PromptBoxInternal {...props} suppressPluginComposerCustomizations />,
     );
 
-    expect(screen.queryByTestId("plugin-composer-accessories")).toBeNull();
     expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(getPromptEditorElement()).toBe(editor);
@@ -541,39 +532,44 @@ describe("PromptBoxInternal controlled value sync", () => {
     view.rerender(
       <PromptBoxInternal
         {...props}
-        suppressPluginComposerAccessories={false}
+        suppressPluginComposerCustomizations={false}
       />,
     );
 
-    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
     expect(getPromptEditorElement()).toBe(editor);
   });
 
-  it("decorates only draft text while shimmering and removes it when cleared", async () => {
+  it("decorates only draft text and removes the effect when cleared", async () => {
     const props = createPromptBoxProps({ value: "Keep this draft readable" });
     const view = render(
       <PromptBoxInternal
         {...props}
-        textEffects={[{ pluginId: "test", effect: "shimmer", order: 0 }]}
+        textEffects={[
+          {
+            pluginId: "test",
+            effect: { className: "test-text-effect" },
+            order: 0,
+          },
+        ]}
       />,
     );
 
     await waitFor(() => {
       expect(
-        view.container.querySelector(".prompt-text-shimmer")?.textContent,
+        view.container.querySelector(".test-text-effect")?.textContent,
       ).toBe("Keep this draft readable");
     });
     expect(
       view.container
         .querySelector("[data-promptbox]")
-        ?.classList.contains("prompt-text-shimmer"),
+        ?.classList.contains("test-text-effect"),
     ).toBe(false);
 
     view.rerender(<PromptBoxInternal {...props} textEffects={[]} />);
     await waitFor(() => {
-      expect(view.container.querySelector(".prompt-text-shimmer")).toBeNull();
+      expect(view.container.querySelector(".test-text-effect")).toBeNull();
     });
   });
 
@@ -697,7 +693,7 @@ describe("PromptBoxInternal controlled value sync", () => {
     expect(getPromptEditorElement()).toBe(editor);
 
     view.rerender(
-      <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
+      <PromptBoxInternal {...props} suppressPluginComposerCustomizations />,
     );
     await waitFor(() => {
       expect(
@@ -1119,7 +1115,6 @@ describe("PromptBoxInternal plugin composer actions", () => {
       composer.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Crashed action status",
-        effect: "shimmer",
       });
       throw new Error("action crashed");
     }

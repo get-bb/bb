@@ -218,7 +218,7 @@ function HelloCard() {
 // The default export must be definePluginApp(...); BB interprets it after
 // loading the bundle. Register general UI under app.slots and composer actions,
 // plus-menu rows, banners, or rich-text rules with app.composer.customize(...)
-// (see the bb guide's plugins chapter). slots.composerAccessory is deprecated.
+// (see the bb guide's plugins chapter).
 export default definePluginApp((app) => {
   app.slots.homepageSection({
     id: "${id}-hello",

@@ -122,7 +122,6 @@ describe("useSettingsNavState", () => {
       settingsSections: [{ id: "remote", component: Component }],
       navPanels: [],
       threadPanelActions: [],
-      composerAccessories: [],
       sidebarFooterActions: [],
       fileOpeners: [],
       messageDirectives: [],

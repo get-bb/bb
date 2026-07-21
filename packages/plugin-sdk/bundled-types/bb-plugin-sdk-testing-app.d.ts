@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginComposerScope } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginComposerScope } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -84,7 +84,6 @@ interface CapturedPluginApp {
     settingsSections: PluginSettingsSectionRegistration[];
     navPanels: PluginNavPanelRegistration[];
     threadPanelActions: PluginThreadPanelActionRegistration[];
-    composerAccessories: PluginComposerAccessoryRegistration[];
     composerCustomizations: ComposerCustomization[];
     pendingInteractions: PluginPendingInteractionRegistration[];
     sidebarFooterActions: PluginSidebarFooterActionRegistration[];

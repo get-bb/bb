@@ -2,7 +2,6 @@ import {
   type ComposerCustomization,
   type PluginAppDefinition,
   type PluginAppSetup,
-  type PluginComposerAccessoryRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -303,7 +302,6 @@ export function collectPluginAppRegistrations(
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
-  const composerAccessories: PluginComposerAccessoryRegistration[] = [];
   const composerCustomizations: ComposerCustomization[] = [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
@@ -315,7 +313,6 @@ export function collectPluginAppRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
-    composerAccessory: new Set<string>(),
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
@@ -412,15 +409,6 @@ export function collectPluginAppRegistrations(
             ? { layout: registration.layout }
             : {}),
           ...(registration.run !== undefined ? { run: registration.run } : {}),
-        });
-      },
-      composerAccessory(registration) {
-        const kind = "slots.composerAccessory";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.composerAccessory, id);
-        composerAccessories.push({
-          id,
-          component: requireComponent(kind, registration.component),
         });
       },
       pendingInteraction(registration) {
@@ -542,7 +530,6 @@ export function collectPluginAppRegistrations(
     settingsSections,
     navPanels,
     threadPanelActions,
-    composerAccessories,
     composerCustomizations,
     pendingInteractions,
     sidebarFooterActions,

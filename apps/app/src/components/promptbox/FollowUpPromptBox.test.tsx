@@ -55,7 +55,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     onSubmit,
     promptBoxRef,
     submission,
-    suppressPluginComposerAccessories,
+    suppressPluginComposerCustomizations,
     zenMode,
     heightAnimationKey,
     minHeight,
@@ -73,7 +73,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       } | null;
     };
     submission?: { onModifierSubmit?: () => void };
-    suppressPluginComposerAccessories?: boolean;
+    suppressPluginComposerCustomizations?: boolean;
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
     minHeight?: number;
@@ -85,7 +85,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       data-height-animation-key={heightAnimationKey}
       data-min-height={minHeight}
       data-plugin-accessories-suppressed={
-        suppressPluginComposerAccessories ? "true" : "false"
+        suppressPluginComposerCustomizations ? "true" : "false"
       }
     >
       {footerStart}
@@ -263,7 +263,6 @@ describe("FollowUpPromptBox", () => {
       settingsSections: [],
       navPanels: [],
       threadPanelActions: [],
-      composerAccessories: [],
       composerCustomizations: [
         {
           id: "measured",
@@ -368,7 +367,6 @@ describe("FollowUpPromptBox", () => {
         settingsSections: [],
         navPanels: [],
         threadPanelActions: [],
-        composerAccessories: [],
         composerCustomizations: [
           {
             id: "queued-banner",
@@ -432,7 +430,7 @@ describe("FollowUpPromptBox", () => {
   it("forwards accessory suppression changes without remounting the composer", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(
-      <FollowUpPromptBox {...props} suppressPluginComposerAccessories />,
+      <FollowUpPromptBox {...props} suppressPluginComposerCustomizations />,
     );
     const promptBox = screen.getByTestId("prompt-box");
     const input = screen.getByLabelText("Follow-up prompt");
@@ -442,7 +440,7 @@ describe("FollowUpPromptBox", () => {
     rerender(
       <FollowUpPromptBox
         {...props}
-        suppressPluginComposerAccessories={false}
+        suppressPluginComposerCustomizations={false}
       />,
     );
 

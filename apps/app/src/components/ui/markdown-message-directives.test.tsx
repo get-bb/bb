@@ -110,7 +110,6 @@ function emptyRegistrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],

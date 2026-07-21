@@ -40,7 +40,6 @@ import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-t
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
 import {
   PluginComposerActions,
   usePluginComposerPlusMenuContributions,
@@ -362,7 +361,7 @@ export interface PromptBoxInternalProps {
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
   /** Suppress plugin composer regions without unmounting the editor. */
-  suppressPluginComposerAccessories?: boolean;
+  suppressPluginComposerCustomizations?: boolean;
   zenMode?: PromptBoxZenModeConfig;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
   compact?: PromptBoxCompactConfig;
@@ -1055,7 +1054,7 @@ export function PromptBoxInternal({
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
   promptActions,
-  suppressPluginComposerAccessories = false,
+  suppressPluginComposerCustomizations = false,
   zenMode = {},
   compact,
   containerCompactPlaceholder,
@@ -1235,7 +1234,7 @@ export function PromptBoxInternal({
     onComposerViewChange?.(composerView);
   }, [composerView, onComposerViewChange]);
   const pluginRichTextContributions = useMemo(() => {
-    if (suppressPluginComposerAccessories) {
+    if (suppressPluginComposerCustomizations) {
       return {
         sources: [] as readonly PromptDecorationSource[],
         observers: [] as readonly PromptDraftObserver[],
@@ -1282,7 +1281,7 @@ export function PromptBoxInternal({
   }, [
     composerCustomizations,
     composerView.scope,
-    suppressPluginComposerAccessories,
+    suppressPluginComposerCustomizations,
     textEffects,
   ]);
   const pluginDecorationSourcesRef = useRef(
@@ -2966,22 +2965,19 @@ export function PromptBoxInternal({
                     }
                     onAction={applyPromptAction}
                     pluginItems={
-                      suppressPluginComposerAccessories
+                      suppressPluginComposerCustomizations
                         ? []
                         : pluginPlusMenuItems
                     }
                   />
                 </PluginComposerViewProvider>
                 {footerStart}
-                {!suppressPluginComposerAccessories ? (
-                  <PluginComposerAccessories />
-                ) : null}
               </div>
             ) : null}
             <div className="flex shrink-0 flex-row items-center gap-1">
               {!showCompactLayout ? (
                 <>
-                  {!suppressPluginComposerAccessories ? (
+                  {!suppressPluginComposerCustomizations ? (
                     <PluginComposerViewProvider value={composerView}>
                       <PluginComposerActions view={composerView} />
                     </PluginComposerViewProvider>

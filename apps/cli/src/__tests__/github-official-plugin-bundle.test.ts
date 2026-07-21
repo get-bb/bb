@@ -66,7 +66,6 @@ describe("GitHub official plugin frontend bundle", () => {
       homepageSection: [],
       navPanel: [],
       threadPanelAction: [],
-      composerAccessory: [],
       sidebarFooterAction: [],
     };
     // Vendored components read e.g. `Primitive.Trigger.displayName` at
@@ -116,7 +115,6 @@ describe("GitHub official plugin frontend bundle", () => {
         homepageSection: (r) => registered.homepageSection.push(r),
         navPanel: (r) => registered.navPanel.push(r),
         threadPanelAction: (r) => registered.threadPanelAction.push(r),
-        composerAccessory: (r) => registered.composerAccessory.push(r),
         sidebarFooterAction: (r) => registered.sidebarFooterAction.push(r),
       },
     });
@@ -140,7 +138,6 @@ describe("GitHub official plugin frontend bundle", () => {
     expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
 
     expect(registered.homepageSection).toHaveLength(0);
-    expect(registered.composerAccessory).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);
   });
 });

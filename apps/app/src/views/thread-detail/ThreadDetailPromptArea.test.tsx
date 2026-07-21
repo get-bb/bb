@@ -112,7 +112,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost?: PluginComposerHost | null;
     stack: ReactNode;
     textEffects?: readonly {
-      effect: "shimmer" | { className: string };
+      effect: { className: string };
     }[];
   }) => (
     <div data-testid="follow-up-prompt-box">
@@ -134,11 +134,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <div data-testid="attachment-count">{attachments.items.length}</div>
       <div data-testid="composer-text-effect">
         {textEffects && textEffects.length > 0
-          ? textEffects
-              .map(({ effect }) =>
-                typeof effect === "string" ? effect : effect.className,
-              )
-              .join(",")
+          ? textEffects.map(({ effect }) => effect.className).join(",")
           : "none"}
       </div>
       <div data-testid="plugin-composer-scope">
@@ -855,14 +851,12 @@ describe("ThreadDetailPromptArea", () => {
     );
     const firstHost = mocks.pluginComposerHost!;
     act(() => {
-      setComposerTextEffect(
-        firstHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", {
+        className: "queued-test-effect",
+      });
     });
     expect(screen.getByTestId("composer-text-effect").textContent).toBe(
-      "shimmer",
+      "queued-test-effect",
     );
 
     fireEvent.click(
@@ -876,22 +870,18 @@ describe("ThreadDetailPromptArea", () => {
     expect(secondHost.textEffectKey).not.toBe(firstHost.textEffectKey);
 
     act(() => {
-      setComposerTextEffect(
-        firstHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", {
+        className: "stale-queued-test-effect",
+      });
     });
     expect(screen.getByTestId("composer-text-effect").textContent).toBe("none");
     act(() => {
-      setComposerTextEffect(
-        secondHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(secondHost.textEffectKey, "composer-effect-test", {
+        className: "queued-test-effect",
+      });
     });
     expect(screen.getByTestId("composer-text-effect").textContent).toBe(
-      "shimmer",
+      "queued-test-effect",
     );
 
     act(() => {
@@ -1174,7 +1164,6 @@ describe("ThreadDetailPromptArea", () => {
       settingsSections: [],
       navPanels: [],
       threadPanelActions: [],
-      composerAccessories: [],
       composerCustomizations: [
         {
           id: "pending",

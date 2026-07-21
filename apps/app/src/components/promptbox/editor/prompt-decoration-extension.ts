@@ -14,7 +14,6 @@ import {
   type PromptEditorOffsetSegment,
 } from "./prompt-editor-serialization";
 
-export const PROMPT_TEXT_SHIMMER_CLASS = "prompt-text-shimmer";
 export const ULTRACODE_HIGHLIGHT_CLASS = "prompt-ultracode-highlight";
 
 export interface PromptDecorationRange {
@@ -110,11 +109,6 @@ export const PROMPT_ULTRACODE_DECORATION_RULE: PromptDecorationRule = {
   className: ULTRACODE_HIGHLIGHT_CLASS,
 };
 
-/** Built-in host whole-draft effect used by the legacy "shimmer" sugar. */
-export const PROMPT_SHIMMER_TEXT_EFFECT = {
-  className: PROMPT_TEXT_SHIMMER_CLASS,
-} as const;
-
 const BUILT_IN_HOST_SOURCE: PromptDecorationSource = {
   id: "host:ultracode",
   generation: 0,
@@ -124,7 +118,6 @@ const BUILT_IN_HOST_SOURCE: PromptDecorationSource = {
 function normalizeTextEffect(
   effect: PluginComposerTextEffect | null,
 ): { className: string } | null {
-  if (effect === "shimmer") return PROMPT_SHIMMER_TEXT_EFFECT;
   if (effect === null) return null;
   return effect.className.length > 0 ? effect : null;
 }
@@ -136,7 +129,7 @@ function parseCommand(value: unknown): PromptDecorationCommand | null {
   if (value.type === "refresh") return { type: "refresh" };
   if (value.type !== "effect" || !("effect" in value)) return null;
   const effect = value.effect;
-  if (effect === null || effect === "shimmer") {
+  if (effect === null) {
     return { type: "effect", effect };
   }
   if (

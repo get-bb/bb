@@ -5,7 +5,6 @@ import * as pluginSdkApp from "@bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type PluginAppSlots,
-  type PluginComposerAccessoryProps,
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
@@ -150,7 +149,6 @@ type SlotPropsByName = {
   settingsSection: PluginSettingsSectionProps;
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
-  composerAccessory: PluginComposerAccessoryProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
@@ -167,7 +165,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   settingsSection: [],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
-  composerAccessory: ["projectId", "threadId"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   fileOpener: ["path", "source"],

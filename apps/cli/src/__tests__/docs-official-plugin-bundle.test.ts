@@ -62,7 +62,6 @@ describe("Docs official plugin frontend bundle", () => {
       homepageSection: [],
       navPanel: [],
       threadPanelAction: [],
-      composerAccessory: [],
       sidebarFooterAction: [],
       fileOpener: [],
       messageDirective: [],
@@ -119,7 +118,6 @@ describe("Docs official plugin frontend bundle", () => {
         homepageSection: (r) => registered.homepageSection.push(r),
         navPanel: (r) => registered.navPanel.push(r),
         threadPanelAction: (r) => registered.threadPanelAction.push(r),
-        composerAccessory: (r) => registered.composerAccessory.push(r),
         sidebarFooterAction: (r) => registered.sidebarFooterAction.push(r),
         fileOpener: (r) => registered.fileOpener.push(r),
         messageDirective: (r) => registered.messageDirective.push(r),
@@ -142,7 +140,6 @@ describe("Docs official plugin frontend bundle", () => {
     expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
     expect(registered.messageDirective[0]).toMatchObject({ id: "docs" });
     expect(typeof registered.messageDirective[0]?.component).toBe("function");
-    expect(registered.composerAccessory).toHaveLength(0);
     expect(registered.sidebarFooterAction).toHaveLength(0);
     expect(registered.fileOpener[0]).toMatchObject({
       id: "docs",

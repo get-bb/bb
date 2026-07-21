@@ -1100,7 +1100,7 @@ function EmbeddedThreadChatWithComposer({
           }
           typeahead={typeaheadConfig}
           promptActions={promptActions}
-          suppressPluginComposerAccessories={!isActive}
+          suppressPluginComposerCustomizations={!isActive}
           zenModeResetKey={surfaceKey}
           focusEndKey={
             // Composite only when an external nonce is supplied, so existing
