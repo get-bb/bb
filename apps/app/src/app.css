@@ -644,15 +644,6 @@
   }
 
   /*
-   * The inactive split timeline gets one flat, light-grey foreground wash.
-   * The theme-derived recessed surface follows custom palettes, while the
-   * overlay host owns pointer-events: none so the timeline remains interactive.
-   */
-  .inactive-split-timeline-overlay {
-    background: var(--surface-recessed);
-  }
-
-  /*
    * Opt out of the global thin scrollbar into always-visible classic
    * scrollbars for two-axis data surfaces (e.g. the CSV table preview).
    * Native thin scrollbars render as macOS overlay bars that fade out and

@@ -19,8 +19,6 @@ export interface PageShellBaseProps {
 
 export interface PageShellProps extends PageShellBaseProps {
   scrollBehavior?: PageShellScrollBehavior;
-  /** Non-interactive visual layer over a bottom-anchored scroll viewport. */
-  scrollSurfaceOverlay?: ReactNode;
   // Only meaningful with `scrollBehavior="bottom-anchor"`: persists and restores
   // the timeline scroll position per thread so switching away and back doesn't
   // snap to the bottom.
@@ -61,7 +59,6 @@ export function PageShell({
   children,
   footer,
   scrollOverlay,
-  scrollSurfaceOverlay,
   shellClassName,
   scrollAreaClassName,
   contentClassName,
@@ -84,7 +81,6 @@ export function PageShell({
           maxWidthClassName={maxWidthClassName}
           footer={staticFooter}
           scrollOverlay={scrollOverlay}
-          scrollSurfaceOverlay={scrollSurfaceOverlay}
           scrollAnchorThreadId={scrollAnchorThreadId}
         >
           {children}
