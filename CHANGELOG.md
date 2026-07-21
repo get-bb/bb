@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.33.0
+
+This release brings updates into one quiet place, simplifies approval settings, and improves reliability across threads and connected machines.
+
+### Clearer updates and approvals
+
+- Permission modes are now clearer approval presets: Accept Edits, Approve for me, and Full Access. Codex and Claude use their native automatic-review behavior while keeping workspace sandboxing in place.
+- A quiet Updates badge replaces stacked notifications. Settings → Updates now brings together bb, desktop, connected-machine, Codex, and Claude Code updates, with clearer progress and retry actions.
+- Connected machines recover from failed updates faster and can be retried from Settings or with `bb machine retry-update`.
+
+### Experiments
+
+- Try the new Side Chat experiment, rebuilt on bb's plugin system. Side chats are lightweight hidden forks that inherit the source thread's execution settings, can be opened as full threads, and can send useful results back to the main conversation.
+- Quiet Workflows workers no longer fail just because they have not produced output; they wait until the overall run timeout, cancellation, or a real failure.
+
+### Fixes and polish
+
+- `bb thread tell` now steers an active turn by default, while `--mode queue` remains available for non-urgent follow-ups.
+- Plan and Goal activity are now tracked independently, so either can be stopped without disturbing the other.
+- Threads recover cleanly when a previously selected Claude model is no longer available to the signed-in account.
+- Active turns are less likely to be interrupted when a connected machine's daemon encounters a lock or update problem.
+- Daemons now shut down cleanly after a startup failure instead of leaving a broken process behind.
+- Adding a machine now works correctly when bb Connect is not paired.
+- Assistant-authored thread mentions render as navigable thread-title pills.
+- The model and reasoning picker stays open so both settings can be changed together.
+- Removed misleading Codex timeline errors and polished keyboard hints and queued messages.
+- Source installs now repair native modules correctly when running on Node.js 26.
+
 ## 0.0.31
 
 This release brings split views to everyone and redesigns queued messages in the composer.
