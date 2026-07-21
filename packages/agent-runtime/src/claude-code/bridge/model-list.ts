@@ -1,9 +1,41 @@
+import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import type { AvailableModel } from "@bb/domain";
-import { listClaudeCodeModels } from "../model-list.js";
+import { buildClaudeCodeModels } from "../model-list.js";
+import { resolveClaudeCodeExecutable } from "./session-options.js";
 
-export async function listClaudeCodeBridgeModels(): Promise<{
+function buildModelProbeOptions(env: NodeJS.ProcessEnv): Options {
+  const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
+  return {
+    cwd: process.cwd(),
+    maxTurns: 0,
+    persistSession: false,
+    allowDangerouslySkipPermissions: true,
+    permissionMode: "bypassPermissions",
+    settingSources: [],
+    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+  };
+}
+
+export async function listClaudeCodeBridgeModels(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  return listClaudeCodeModels();
+  // Claude's initialization response is account-scoped and is the provider's
+  // authoritative list of runnable models. Keep BB's curated labels and
+  // reasoning policy, but only expose entries covered by a discovered value or
+  // its canonical resolved model id. Probe failures intentionally propagate so
+  // callers can distinguish temporary discovery failure from definite absence.
+  const session = query({
+    prompt: ".",
+    options: buildModelProbeOptions(env),
+  });
+
+  try {
+    const initialization = await session.initializationResult();
+    return buildClaudeCodeModels(initialization.models);
+  } finally {
+    session.close();
+  }
 }

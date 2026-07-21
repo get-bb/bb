@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external ./start-server.js --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js",
+    "build": "node ../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs && node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external ./start-server.js --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js",
     "start": "node dist/index.js",
     "start:prod": "cross-env NODE_ENV=production node dist/index.js",
     "dev": "node --conditions=source --import tsx scripts/dev-supervisor.mjs",
@@ -62,7 +62,7 @@
     "@types/node": "^22.0.0",
     "@types/semver": "^7.7.0",
     "@types/ws": "^8.18.1",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1",

@@ -19,7 +19,31 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import {
+  getComposerInputLock,
+  useComposer,
+  useComposerView,
+} from "@/lib/plugin-sdk-hooks";
+import {
+  getComposerTextEffects,
+  useComposerTextEffects,
+} from "@/lib/composer-text-effects";
+import {
+  getPluginThreadRowStatus,
+  resetPluginThreadRowStatusesForTest,
+} from "@/lib/plugin-thread-row-status";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+  type PluginRegistrationSet,
+} from "@/lib/plugin-slots";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -39,13 +63,25 @@ import type {
   ProviderCommandSuggestion,
 } from "./mentions/types";
 
-vi.mock("@/components/plugin/PluginComposerAccessories", () => ({
-  PluginComposerAccessories: () => (
-    <span data-testid="plugin-composer-accessories" />
-  ),
-}));
-
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
+
+function pluginRegistrationSet(
+  composerCustomizations: NonNullable<
+    PluginRegistrationSet["composerCustomizations"]
+  >,
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels: [],
+    threadPanelActions: [],
+    composerCustomizations,
+    pendingInteractions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
 
 interface PromptChange {
   mentions: PromptTextMention[];
@@ -222,6 +258,7 @@ function PromptBoxHistoryAutoFocusAfterLayoutStealHarness({
 function renderPromptBox(
   initialValue: string,
   options: {
+    initialMentionRanges?: PromptTextMention[];
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
     mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
@@ -234,7 +271,9 @@ function renderPromptBox(
 
   function PromptBoxHarness() {
     const [value, setValue] = useState(initialValue);
-    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+    const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>(
+      options.initialMentionRanges ?? [],
+    );
     return (
       <PromptBoxInternal
         value={value}
@@ -403,6 +442,9 @@ function mockPointerCoarse(matches: boolean): () => void {
 afterEach(() => {
   cleanup();
   resetPluginLogoStoreForTest();
+  resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
+  resetPluginThreadRowStatusesForTest();
   vi.clearAllMocks();
 });
 
@@ -453,51 +495,365 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
-  it("suppresses and restores plugin accessories without remounting the editor", () => {
+  it("suppresses and restores plugin customizations without remounting the editor", () => {
+    setPluginSlotRegistrations(
+      "pending-test",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "action", component: () => <button>Plugin action</button> },
+          ],
+          plusMenu: [
+            {
+              id: "menu",
+              label: "Plugin menu item",
+              run: () => {},
+            },
+          ],
+        },
+      ]),
+    );
     const props = createPromptBoxProps({ value: "Retained draft" });
     const view = render(<PromptBoxInternal {...props} />);
     const editor = getPromptEditorElement();
 
-    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
 
     view.rerender(
-      <PromptBoxInternal {...props} suppressPluginComposerAccessories />,
+      <PromptBoxInternal {...props} suppressPluginComposerCustomizations />,
     );
 
-    expect(screen.queryByTestId("plugin-composer-accessories")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(getPromptEditorElement()).toBe(editor);
 
     view.rerender(
       <PromptBoxInternal
         {...props}
-        suppressPluginComposerAccessories={false}
+        suppressPluginComposerCustomizations={false}
       />,
     );
 
-    expect(screen.getByTestId("plugin-composer-accessories")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Plugin action" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
     expect(getPromptEditorElement()).toBe(editor);
   });
 
-  it("decorates only draft text while shimmering and removes it when cleared", async () => {
+  it("decorates only draft text and removes the effect when cleared", async () => {
     const props = createPromptBoxProps({ value: "Keep this draft readable" });
-    const view = render(<PromptBoxInternal {...props} textEffect="shimmer" />);
+    const view = render(
+      <PromptBoxInternal
+        {...props}
+        textEffects={[
+          {
+            pluginId: "test",
+            effect: { className: "test-text-effect" },
+            order: 0,
+          },
+        ]}
+      />,
+    );
 
     await waitFor(() => {
       expect(
-        view.container.querySelector(".prompt-text-shimmer")?.textContent,
+        view.container.querySelector(".test-text-effect")?.textContent,
       ).toBe("Keep this draft readable");
     });
     expect(
       view.container
         .querySelector("[data-promptbox]")
-        ?.classList.contains("prompt-text-shimmer"),
+        ?.classList.contains("test-text-effect"),
     ).toBe(false);
 
-    view.rerender(<PromptBoxInternal {...props} textEffect={null} />);
+    view.rerender(<PromptBoxInternal {...props} textEffects={[]} />);
     await waitFor(() => {
-      expect(view.container.querySelector(".prompt-text-shimmer")).toBeNull();
+      expect(view.container.querySelector(".test-text-effect")).toBeNull();
     });
   });
+
+  it("paints simultaneous imperative plugin effects and removes owners independently", async () => {
+    const props = createPromptBoxProps({ value: "Overlapping effects" });
+    const alpha = {
+      pluginId: "alpha",
+      effect: { className: "alpha-effect" },
+      order: 1,
+    } as const;
+    const zeta = {
+      pluginId: "zeta",
+      effect: { className: "zeta-effect" },
+      order: 2,
+    } as const;
+    const view = render(
+      <PromptBoxInternal {...props} textEffects={[alpha, zeta]} />,
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector(".alpha-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+      expect(view.container.querySelector(".zeta-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+    });
+    view.rerender(<PromptBoxInternal {...props} textEffects={[zeta]} />);
+    await waitFor(() => {
+      expect(view.container.querySelector(".alpha-effect")).toBeNull();
+      expect(view.container.querySelector(".zeta-effect")?.textContent).toBe(
+        "Overlapping effects",
+      );
+    });
+
+    view.rerender(<PromptBoxInternal {...props} textEffects={[]} />);
+    await waitFor(() => {
+      expect(view.container.querySelector(".zeta-effect")).toBeNull();
+    });
+  });
+
+  it("wires scoped plugin rich-text rules and draft observers without rebuilding the editor", async () => {
+    const onDraftChange = vi.fn();
+    setPluginSlotRegistrations(
+      "rich-text",
+      pluginRegistrationSet([
+        {
+          id: "active",
+          scopes: ["new-thread"],
+          richText: {
+            effects: [
+              {
+                id: "paint",
+                className: "plugin-draft-paint",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+            onDraftChange,
+          },
+        },
+        {
+          id: "wrong-scope",
+          scopes: ["thread"],
+          richText: {
+            effects: [
+              {
+                id: "hidden",
+                className: "wrong-scope-paint",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const props = createPromptBoxProps({ value: "Decorate this draft" });
+    const view = render(<PromptBoxInternal {...props} />);
+    const editor = getPromptEditorElement();
+
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".plugin-draft-paint")?.textContent,
+      ).toBe("Decorate this draft");
+    });
+    expect(view.container.querySelector(".wrong-scope-paint")).toBeNull();
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: "Decorate this draft", mentions: [] },
+        expect.objectContaining({
+          scope: { kind: "new-thread", projectId: null },
+          draft: expect.objectContaining({ text: "Decorate this draft" }),
+        }),
+      );
+    });
+
+    act(() => {
+      setPluginSlotRegistrations(
+        "rich-text",
+        pluginRegistrationSet([
+          {
+            id: "replacement",
+            richText: {
+              effects: [
+                {
+                  id: "paint-next",
+                  className: "plugin-draft-paint-next",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
+          },
+        ]),
+      );
+    });
+    await waitFor(() => {
+      expect(view.container.querySelector(".plugin-draft-paint")).toBeNull();
+      expect(
+        view.container.querySelector(".plugin-draft-paint-next")?.textContent,
+      ).toBe("Decorate this draft");
+    });
+    expect(getPromptEditorElement()).toBe(editor);
+
+    view.rerender(
+      <PromptBoxInternal {...props} suppressPluginComposerCustomizations />,
+    );
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".plugin-draft-paint-next"),
+      ).toBeNull();
+    });
+    expect(getPromptEditorElement()).toBe(editor);
+  });
+
+  it("refreshes draft observers when the composer scope identity changes", async () => {
+    const onDraftChange = vi.fn();
+    setPluginSlotRegistrations(
+      "scope-observer",
+      pluginRegistrationSet([
+        {
+          id: "queued-message-observer",
+          scopes: ["queued-message"],
+          richText: { onDraftChange },
+        },
+      ]),
+    );
+    const draft = {
+      ...emptyPromptDraftState(),
+      text: "Unchanged draft",
+    };
+    const host = (queuedMessageId: string): PluginComposerHost => ({
+      scope: {
+        kind: "queued-message",
+        threadId: "thread-1",
+        queuedMessageId,
+      },
+      draft,
+      textEffectKey: `queued-message:${queuedMessageId}`,
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    });
+    const props = createPromptBoxProps({ value: draft.text });
+    const rendered = render(
+      <PluginComposerHostProvider value={host("message-1")}>
+        <PromptBoxInternal {...props} />
+      </PluginComposerHostProvider>,
+    );
+
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: draft.text, mentions: [] },
+        expect.objectContaining({
+          scope: expect.objectContaining({ queuedMessageId: "message-1" }),
+        }),
+      );
+    });
+    onDraftChange.mockClear();
+
+    rendered.rerender(
+      <PluginComposerHostProvider value={host("message-2")}>
+        <PromptBoxInternal {...props} />
+      </PluginComposerHostProvider>,
+    );
+
+    await waitFor(() => {
+      expect(onDraftChange).toHaveBeenCalledWith(
+        { text: draft.text, mentions: [] },
+        expect.objectContaining({
+          scope: expect.objectContaining({ queuedMessageId: "message-2" }),
+        }),
+      );
+    });
+  });
+
+  it.each([
+    {
+      label: "plain text",
+      clipboard: { plainText: " — café\nnext" },
+      expectedValue: "ask Alice — café\nnext",
+    },
+    {
+      label: "structured blockquote",
+      clipboard: {
+        html: "<blockquote><p>quoted café</p></blockquote><p>after paste</p>",
+        plainText: "> quoted café\n\nafter paste",
+      },
+      expectedValue: "ask Alice\n> quoted café\n\nafter paste",
+    },
+  ])(
+    "preserves decorated serialization, mentions, and history through a real $label paste",
+    async ({ clipboard, expectedValue }) => {
+      setPluginSlotRegistrations(
+        "clipboard-decoration",
+        pluginRegistrationSet([
+          {
+            id: "paint",
+            richText: {
+              effects: [
+                {
+                  id: "whole-draft",
+                  className: "clipboard-paste-decoration",
+                  match: (text) => [{ from: 0, to: text.length }],
+                },
+              ],
+            },
+          },
+        ]),
+      );
+      const initialValue = "ask Alice";
+      const initialMentions: PromptTextMention[] = [
+        {
+          start: 4,
+          end: 9,
+          resource: {
+            kind: "plugin",
+            pluginId: "sample",
+            icon: null,
+            itemId: "people:alice",
+            label: "Alice",
+          },
+        },
+      ];
+      const { changes, promptBoxRef } = renderPromptBox(initialValue, {
+        initialMentionRanges: initialMentions,
+      });
+
+      await focusPromptEnd(promptBoxRef);
+      await waitFor(() =>
+        expect(
+          document.querySelector(".clipboard-paste-decoration"),
+        ).not.toBeNull(),
+      );
+      pasteClipboard(clipboard);
+
+      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "z",
+        code: "KeyZ",
+        ctrlKey: true,
+      });
+      await waitFor(() => expect(latestValue(changes)).toBe(initialValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "z",
+        code: "KeyZ",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
+      expect(latestChange(changes)?.mentions).toEqual(initialMentions);
+      expect(
+        document.querySelector(".clipboard-paste-decoration"),
+      ).not.toBeNull();
+    },
+  );
 
   it("honors early focusEnd requests once the editor is ready", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
@@ -742,6 +1098,336 @@ describe("PromptBoxInternal zen mode layout", () => {
     expect(footerRow?.classList.contains("shrink-0")).toBe(true);
 
     window.localStorage.removeItem(storageKey);
+  });
+});
+
+describe("PromptBoxInternal plugin composer actions", () => {
+  it("mounts scope-matched actions in deterministic order before voice", () => {
+    setPluginSlotRegistrations(
+      "zeta",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "zeta", component: () => <button>Zeta action</button> },
+          ],
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "alpha",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          scopes: ["new-thread"],
+          actions: [
+            { id: "first", component: () => <button>Alpha first</button> },
+            { id: "second", component: () => <button>Alpha second</button> },
+          ],
+        },
+        {
+          id: "thread-only",
+          scopes: ["thread"],
+          actions: [
+            { id: "hidden", component: () => <button>Hidden action</button> },
+          ],
+        },
+      ]),
+    );
+
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "idle",
+            isSupported: true,
+            stream: null,
+            start: vi.fn(),
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    expect(
+      Array.from(
+        document.querySelectorAll("[data-plugin-composer-action] button"),
+        (element) => element.textContent,
+      ),
+    ).toEqual(["Alpha first", "Alpha second", "Zeta action"]);
+    expect(screen.queryByRole("button", { name: "Hidden action" })).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Zeta action" })
+        .compareDocumentPosition(
+          screen.getByRole("button", { name: "Start voice input" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
+  it("releases composer visual state acquired by an action that crashes before passive effects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    function Crashes(): never {
+      const composer = useComposer();
+      composer.setInputLock(true);
+      composer.setTextEffect({ className: "crashed-action-effect" });
+      composer.setThreadRowStatus({
+        icon: "AiContentGenerator01",
+        label: "Crashed action status",
+      });
+      throw new Error("action crashed");
+    }
+    setPluginSlotRegistrations(
+      "actions",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "broken", component: Crashes },
+            { id: "fine", component: () => <button>Still available</button> },
+          ],
+        },
+      ]),
+    );
+
+    const draft = emptyPromptDraftState();
+    const host: PluginComposerHost = {
+      scope: { kind: "thread", threadId: "crashing-action-thread" },
+      draft,
+      textEffectKey: "crashing-action-composer",
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    function Harness() {
+      const textEffects = useComposerTextEffects(host.textEffectKey);
+      return (
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <PromptBoxInternal
+              {...createPromptBoxProps({ value: "Native draft" })}
+              textEffects={textEffects}
+            />
+          </PluginComposerHostProvider>
+        </MemoryRouter>
+      );
+    }
+
+    render(<Harness />);
+
+    expect(
+      screen.getByRole("button", { name: "Still available" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/plugin actions crashed/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    await waitFor(() => {
+      expect(getPromptEditorElement().getAttribute("contenteditable")).toBe(
+        "true",
+      );
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.hasAttribute("aria-busy"),
+      ).toBe(false);
+    });
+    expect(document.querySelector(".crashed-action-effect")).toBeNull();
+    expect(getComposerInputLock(host.textEffectKey)).toBe(false);
+    expect(getComposerTextEffects(host.textEffectKey)).toEqual([]);
+    expect(getPluginThreadRowStatus("crashing-action-thread")).toBeNull();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it("makes the editor read-only while locked and restores it on unlock", async () => {
+    function LockAction() {
+      const composer = useComposer();
+      const view = useComposerView();
+      const [locked, setLocked] = useState(false);
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            composer.setInputLock(!locked);
+            setLocked(!locked);
+          }}
+        >
+          Toggle lock ({view.scope.kind})
+        </button>
+      );
+    }
+    setPluginSlotRegistrations(
+      "locker",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          scopes: ["thread"],
+          actions: [{ id: "lock", component: LockAction }],
+          plusMenu: [
+            { id: "thread-menu", label: "Thread tool", run: () => {} },
+          ],
+          richText: {
+            effects: [
+              {
+                id: "thread-rule",
+                className: "thread-rule",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const draft = emptyPromptDraftState();
+    const host: PluginComposerHost = {
+      scope: { kind: "thread", threadId: "thread-1" },
+      draft,
+      textEffectKey: "promptbox-lock-test",
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={host}>
+          <PromptBoxInternal
+            {...createPromptBoxProps({ value: "Thread draft" })}
+          />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    const editor = getPromptEditorElement();
+    expect(editor.getAttribute("contenteditable")).toBe("true");
+
+    expect(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
+    await waitFor(() => {
+      expect(document.querySelector(".thread-rule")?.textContent).toBe(
+        "Thread draft",
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    );
+    await waitFor(() => {
+      expect(editor.getAttribute("contenteditable")).toBe("false");
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.getAttribute("aria-busy"),
+      ).toBe("true");
+    });
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle lock (thread)" }),
+    );
+    await waitFor(() => {
+      expect(editor.getAttribute("contenteditable")).toBe("true");
+      expect(
+        document
+          .querySelector("[data-promptbox-editor-scroll]")
+          ?.hasAttribute("aria-busy"),
+      ).toBe(false);
+    });
+  });
+
+  it("remounts scoped actions and releases owned state when scope identity changes", () => {
+    const mounted = vi.fn();
+    const cleaned = vi.fn();
+    const staleWrite = vi.fn();
+    const completions: Array<() => void> = [];
+    function ScopedAction() {
+      const composer = useComposer();
+      const view = useComposerView();
+      useLayoutEffect(() => {
+        mounted(view.scope);
+        composer.setInputLock(true);
+        composer.setTextEffect({ className: "scoped-effect" });
+        let active = true;
+        completions.push(() => {
+          if (active) staleWrite();
+        });
+        return () => {
+          active = false;
+          cleaned(view.scope);
+        };
+      }, [composer, view.scope]);
+      return <button>{view.scope.kind}</button>;
+    }
+    setPluginSlotRegistrations(
+      "scope-action",
+      pluginRegistrationSet([
+        {
+          id: "scope",
+          actions: [{ id: "probe", component: ScopedAction }],
+        },
+      ]),
+    );
+    const draft = emptyPromptDraftState();
+    const host = (threadId: string): PluginComposerHost => ({
+      scope: { kind: "thread", threadId },
+      draft,
+      textEffectKey: `scope-action:${threadId}`,
+      getCurrent: () => draft,
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    });
+    const firstHost = host("one");
+    const secondHost = host("two");
+    const props = createPromptBoxProps({ value: "Scoped draft" });
+    const rendered = render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={firstHost}>
+          <PromptBoxInternal {...props} />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    expect(mounted).toHaveBeenCalledTimes(1);
+    expect(getComposerInputLock(firstHost.textEffectKey)).toBe(true);
+    expect(getComposerTextEffects(firstHost.textEffectKey)).toHaveLength(1);
+
+    rendered.rerender(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={secondHost}>
+          <PromptBoxInternal {...props} />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    expect(cleaned).toHaveBeenCalledTimes(1);
+    expect(mounted).toHaveBeenCalledTimes(2);
+    expect(getComposerInputLock(firstHost.textEffectKey)).toBe(false);
+    expect(getComposerTextEffects(firstHost.textEffectKey)).toEqual([]);
+    expect(getComposerInputLock(secondHost.textEffectKey)).toBe(true);
+
+    completions[0]?.();
+    expect(staleWrite).not.toHaveBeenCalled();
+  });
+
+  it("does not mount plugin actions in compact layout", () => {
+    setPluginSlotRegistrations(
+      "compact",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [
+            { id: "hidden", component: () => <button>Plugin action</button> },
+          ],
+        },
+      ]),
+    );
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ compact: { isCompact: true } })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
   });
 });
 
@@ -1082,6 +1768,7 @@ describe("PromptBoxInternal mention triggers", () => {
         [
           "github",
           {
+            displayName: "GitHub",
             icon: null,
             compactIconUrl: null,
             logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",

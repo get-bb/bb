@@ -1,15 +1,25 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
 
 type ComposerTextEffectListener = () => void;
 type ComposerTextEffectOwner = string | symbol;
 
+export interface ComposerTextEffectSource {
+  pluginId: string;
+  effect: PluginComposerTextEffect;
+  order: number;
+}
+
+let fallbackOwnerOrder = 0;
+const EMPTY_COMPOSER_TEXT_EFFECTS: readonly ComposerTextEffectSource[] = [];
+
 const effectsByStorageKey = new Map<
   string,
-  Map<
-    ComposerTextEffectOwner,
-    { pluginId: string; effect: experimental_PluginComposerTextEffect }
-  >
+  Map<ComposerTextEffectOwner, ComposerTextEffectSource>
+>();
+const snapshotsByStorageKey = new Map<
+  string,
+  readonly ComposerTextEffectSource[]
 >();
 const listenersByStorageKey = new Map<
   string,
@@ -24,26 +34,26 @@ function notify(storageKey: string): void {
   }
 }
 
-export function getComposerTextEffect(
+export function getComposerTextEffects(
   storageKey: string | null,
-): experimental_PluginComposerTextEffect | null {
-  if (storageKey === null) return null;
-  const effects = effectsByStorageKey.get(storageKey);
-  if (!effects || effects.size === 0) return null;
-  return effects.values().next().value?.effect ?? null;
+): readonly ComposerTextEffectSource[] {
+  if (storageKey === null) return EMPTY_COMPOSER_TEXT_EFFECTS;
+  return snapshotsByStorageKey.get(storageKey) ?? EMPTY_COMPOSER_TEXT_EFFECTS;
 }
 
 export function setComposerTextEffect(
   storageKey: string | null,
   pluginId: string,
-  effect: experimental_PluginComposerTextEffect | null,
+  effect: PluginComposerTextEffect | null,
   owner: ComposerTextEffectOwner = pluginId,
+  ownerOrder?: number,
 ): void {
   if (storageKey === null) return;
-  const previous = getComposerTextEffect(storageKey);
   let effects = effectsByStorageKey.get(storageKey);
+  const previousEntry = effects?.get(owner);
 
   if (effect === null) {
+    if (previousEntry === undefined) return;
     effects?.delete(owner);
     if (effects?.size === 0) {
       effectsByStorageKey.delete(storageKey);
@@ -53,12 +63,25 @@ export function setComposerTextEffect(
       effects = new Map();
       effectsByStorageKey.set(storageKey, effects);
     }
-    effects.set(owner, { pluginId, effect });
+    if (
+      previousEntry?.effect === effect &&
+      previousEntry.pluginId === pluginId
+    ) {
+      return;
+    }
+    effects.set(owner, {
+      pluginId,
+      effect,
+      order: previousEntry?.order ?? ownerOrder ?? fallbackOwnerOrder++,
+    });
   }
 
-  if (getComposerTextEffect(storageKey) !== previous) {
-    notify(storageKey);
-  }
+  const next = [...(effectsByStorageKey.get(storageKey)?.values() ?? [])].sort(
+    (a, b) => a.pluginId.localeCompare(b.pluginId) || a.order - b.order,
+  );
+  if (next.length === 0) snapshotsByStorageKey.delete(storageKey);
+  else snapshotsByStorageKey.set(storageKey, next);
+  notify(storageKey);
 }
 
 export function subscribeComposerTextEffect(
@@ -80,16 +103,16 @@ export function subscribeComposerTextEffect(
   };
 }
 
-export function useComposerTextEffect(
+export function useComposerTextEffects(
   storageKey: string | null,
-): experimental_PluginComposerTextEffect | null {
+): readonly ComposerTextEffectSource[] {
   const subscribe = useCallback(
     (listener: ComposerTextEffectListener) =>
       subscribeComposerTextEffect(storageKey, listener),
     [storageKey],
   );
   const getSnapshot = useCallback(
-    () => getComposerTextEffect(storageKey),
+    () => getComposerTextEffects(storageKey),
     [storageKey],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

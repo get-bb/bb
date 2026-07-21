@@ -11,7 +11,6 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { derivePluginId } from "@bb/domain";
 import type { Plugin } from "esbuild";
-import * as bundledPluginSdkAppFacade from "@bb/plugin-sdk/app";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
@@ -31,9 +30,8 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
  *   second copy (and its "Invalid hook call" crashes) is impossible.
  * - `dist/app.css` — a plugin-scoped Tailwind v4 pass over the plugin's own
- *   sources. Host theme tokens are live CSS variables at runtime, so this
- *   pass only needs to emit the plugin's own utility classes (theme +
- *   utilities layers; no preflight — the host already loads it).
+ *   sources plus its imported CSS. Imported CSS stays unscoped so selectors
+ *   can target editor decorations rendered outside the plugin mount.
  * - `dist/app.meta.json` — SDK compatibility plus authoritative plugin,
  *   artifact-format, and build-version metadata.
  */
@@ -79,8 +77,10 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
  * every app build. The dev server stays alive while the SDK source changes, so
  * retaining the first module namespace here would make newly-added exports
  * unavailable to every subsequent plugin rebuild until the server restarted.
- * The React lists next to it come from
- * scripts/generate-runtime-export-manifest.mjs instead.
+ * Packaged bundles cannot resolve the facade as a package, so they use the
+ * export manifest generated directly from SDK source at bundle time. Other
+ * shared-runtime lists in that manifest are introspected from the host app's
+ * installed packages by scripts/generate-runtime-export-manifest.mjs.
  */
 let freshFacadeImportSequence = 0;
 
@@ -106,12 +106,17 @@ async function shimExportsOf(
     try {
       resolvedModuleUrl = import.meta.resolve("@bb/plugin-sdk/app");
     } catch {
-      // The built CLI bundles @bb/plugin-build and the facade itself, but does
-      // not install plugin-build's dependency as a directly resolvable package.
-      // That immutable packaged process cannot gain SDK exports mid-run, so its
-      // bundled namespace is the correct fallback; source dev servers resolve
-      // the workspace facade above and always take the fresh-import path.
-      return Object.keys(bundledPluginSdkAppFacade).sort();
+      // The built CLI bundles @bb/plugin-build but does not install
+      // plugin-build's dependency as a directly resolvable package. Do not
+      // derive this from a bundled namespace: esbuild can tree-shake that
+      // namespace to the exports referenced elsewhere in the outer bundle.
+      // The generated manifest is derived statically from SDK source before
+      // CLI/packaged-daemon builds and cannot lose otherwise-unused exports.
+      const names = RUNTIME_EXPORT_MANIFEST[specifier];
+      if (!names) {
+        throw new Error(`no runtime export manifest entry for "${specifier}"`);
+      }
+      return names;
     }
     return freshModuleExports(resolvedModuleUrl);
   }
@@ -486,9 +491,18 @@ export async function buildPluginApp(
       plugins: [runtimeShimPlugin()],
     });
 
-    // After esbuild so a stray CSS entry emitted by the bundle step can never
-    // clobber the Tailwind output.
-    await writeFile(stagedCssPath, await buildTailwindCss(rootDir, pluginId));
+    // Esbuild writes imported styles beside app.js. Preserve them unscoped:
+    // authored selectors may target ProseMirror decorations in the host
+    // editor, outside PluginSlotMount. Tailwind utilities remain scoped by
+    // buildTailwindCss so their generic class names cannot leak into the host.
+    let authoredCss = "";
+    try {
+      authoredCss = await readFile(stagedCssPath, "utf8");
+    } catch (error) {
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+    }
+    const tailwindCss = (await buildTailwindCss(rootDir, pluginId)).trimEnd();
+    await writeFile(stagedCssPath, `${tailwindCss}\n${authoredCss}`);
     await writeFile(
       stagedMetaPath,
       JSON.stringify(

@@ -7,7 +7,7 @@
     "title": "./bin/title"
   },
   "scripts": {
-    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide",
+    "build": "node ../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs && node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external esbuild --external @tailwindcss/node --external @tailwindcss/oxide",
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",

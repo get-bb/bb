@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.0.32",
+  "version": "0.33.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",

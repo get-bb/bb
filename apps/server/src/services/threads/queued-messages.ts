@@ -43,6 +43,7 @@ import {
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import { getLastProviderThreadId } from "./thread-events.js";
+import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
@@ -306,6 +307,16 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
+  if (initiator === "user") {
+    await recoverThreadModelOverride(deps, {
+      model: payload.model,
+      modelSource:
+        payload.executionInputSources === undefined
+          ? "explicit"
+          : payload.executionInputSources.model,
+      thread,
+    });
+  }
   const execution = await buildExecutionOptions(
     deps,
     payload,

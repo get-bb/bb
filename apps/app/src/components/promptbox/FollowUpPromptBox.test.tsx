@@ -10,6 +10,10 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
@@ -24,6 +28,7 @@ const mocks = vi.hoisted(() => {
   };
   return Object.assign(values, {});
 });
+let resizeObserverCallback: ResizeObserverCallback | null = null;
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body.js", () => ({
   useBottomAnchoredScroll: () => ({
@@ -50,9 +55,10 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     onSubmit,
     promptBoxRef,
     submission,
-    suppressPluginComposerAccessories,
+    suppressPluginComposerCustomizations,
     zenMode,
     heightAnimationKey,
+    minHeight,
   }: {
     footerStart?: ReactNode;
     compact?: {
@@ -67,17 +73,19 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       } | null;
     };
     submission?: { onModifierSubmit?: () => void };
-    suppressPluginComposerAccessories?: boolean;
+    suppressPluginComposerCustomizations?: boolean;
     zenMode?: { resetKey: string | number };
     heightAnimationKey?: string | number;
+    minHeight?: number;
   }) => (
     <div
       data-testid="prompt-box"
       data-compact={compact?.isCompact}
       data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
-      data-plugin-accessories-suppressed={
-        suppressPluginComposerAccessories ? "true" : "false"
+      data-min-height={minHeight}
+      data-plugin-customizations-suppressed={
+        suppressPluginComposerCustomizations ? "true" : "false"
       }
     >
       {footerStart}
@@ -226,15 +234,84 @@ function createFollowUpPromptBoxProps(
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
   mocks.isCompactViewport = false;
   mocks.isPointerCoarse = false;
+  resizeObserverCallback = null;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
 });
 
 describe("FollowUpPromptBox", () => {
+  it("includes expanding plugin banners in measured stack compensation", () => {
+    setPluginSlotRegistrations("measured-banner", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerCustomizations: [
+        {
+          id: "measured",
+          banners: [
+            {
+              id: "banner",
+              component: () => <div>Expandable plugin banner</div>,
+            },
+          ],
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    const draft = { text: "Follow up", mentions: [], attachments: [] };
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(
+      <FollowUpPromptBox
+        {...props}
+        stack={<></>}
+        pluginComposerHost={{
+          scope: { kind: "thread", threadId: "thr_test" },
+          draft,
+          textEffectKey: "thread:thr_test",
+          getCurrent: () => draft,
+          setDraft: vi.fn(),
+          focus: vi.fn(),
+        }}
+        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+      />,
+    );
+    expect(screen.getByText("Expandable plugin banner")).toBeTruthy();
+    const promptBox = screen.getByTestId("prompt-box");
+    const initialMinHeight = Number(promptBox.getAttribute("data-min-height"));
+
+    act(() => {
+      resizeObserverCallback?.(
+        [{ contentRect: { height: 24 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    });
+
+    expect(Number(promptBox.getAttribute("data-min-height"))).toBeLessThan(
+      initialMinHeight,
+    );
+  });
+
   it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
@@ -266,26 +343,90 @@ describe("FollowUpPromptBox", () => {
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
   });
 
-  it("forwards accessory suppression changes without remounting the composer", () => {
+  it.each([
+    ["main-thread", true],
+    ["side-chat", false],
+  ] as const)(
+    "renders queued-message banners before the %s inline composer",
+    (_kind, isPrimaryComposer) => {
+      setPluginSlotRegistrations("queued-tools", {
+        homepageSections: [],
+        settingsSections: [],
+        navPanels: [],
+        threadPanelActions: [],
+        composerCustomizations: [
+          {
+            id: "queued-banner",
+            scopes: ["queued-message"],
+            banners: [
+              {
+                id: "status",
+                chrome: "bare",
+                component: () => (
+                  <div data-testid="queued-plugin-banner">Queued status</div>
+                ),
+              },
+            ],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      });
+      const draft = { text: "Queued draft", mentions: [], attachments: [] };
+      const scope = {
+        kind: "queued-message" as const,
+        threadId: "thr_test",
+        queuedMessageId: "queued_1",
+      };
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      render(
+        <FollowUpPromptBox
+          {...props}
+          isPrimaryComposer={isPrimaryComposer}
+          pluginComposerHost={{
+            scope,
+            draft,
+            textEffectKey: "queued:queued_1",
+            getCurrent: () => draft,
+            setDraft: vi.fn(),
+            focus: vi.fn(),
+          }}
+          pluginComposerScope={scope}
+        />,
+      );
+
+      const banner = screen.getByTestId("queued-plugin-banner");
+      const promptBox = screen.getByTestId("prompt-box");
+      expect(
+        banner.compareDocumentPosition(promptBox) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+      expect(screen.getAllByTestId("queued-plugin-banner")).toHaveLength(1);
+    },
+  );
+
+  it("forwards customization suppression changes without remounting the composer", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(
-      <FollowUpPromptBox {...props} suppressPluginComposerAccessories />,
+      <FollowUpPromptBox {...props} suppressPluginComposerCustomizations />,
     );
     const promptBox = screen.getByTestId("prompt-box");
     const input = screen.getByLabelText("Follow-up prompt");
 
-    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("true");
+    expect(promptBox.dataset.pluginCustomizationsSuppressed).toBe("true");
 
     rerender(
       <FollowUpPromptBox
         {...props}
-        suppressPluginComposerAccessories={false}
+        suppressPluginComposerCustomizations={false}
       />,
     );
 
     expect(screen.getByTestId("prompt-box")).toBe(promptBox);
     expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
-    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("false");
+    expect(promptBox.dataset.pluginCustomizationsSuppressed).toBe("false");
   });
 
   it("scrolls to the bottom after submitting a ready follow-up", () => {

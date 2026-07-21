@@ -237,6 +237,7 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   for (const entry of body.plugins) {
     const typed = entry as {
       id?: unknown;
+      name?: unknown;
       icon?: unknown;
       status?: unknown;
       logoUrl?: unknown;
@@ -253,19 +254,14 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
         ? typed.experimental_iconUrl
         : null;
     const icon = typeof typed.icon === "string" ? typed.icon : null;
-    if (
-      compactIconUrl !== null ||
-      logoUrl !== null ||
-      logoDarkUrl !== null ||
-      icon !== null
-    ) {
-      logoUrls.set(typed.id, {
-        icon,
-        compactIconUrl,
-        logoUrl,
-        logoDarkUrl,
-      });
-    }
+    const displayName = typeof typed.name === "string" ? typed.name : null;
+    logoUrls.set(typed.id, {
+      displayName,
+      icon,
+      compactIconUrl,
+      logoUrl,
+      logoDarkUrl,
+    });
     if (typed.status !== "running") {
       continue;
     }

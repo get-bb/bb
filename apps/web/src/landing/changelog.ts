@@ -29,6 +29,10 @@ export type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.33.0": {
+    date: "July 21, 2026",
+    headline: "Quieter updates and safer approvals",
+  },
   "0.0.31": {
     date: "July 17, 2026",
     headline: "Splits for everyone",

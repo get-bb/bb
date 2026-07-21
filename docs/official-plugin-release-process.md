@@ -6,7 +6,7 @@ builds every plugin declared in `BUNDLED_PLUGINS`
 (`apps/server/src/services/plugins/builtin-registry.ts`) — the auto-installed
 builtins in `plugins/*` and the store-only official plugins in
 `official-plugins/*` — and copies each prebuilt runtime layout into
-`<server dist>/builtin-plugins/<name>`. The app in Settings → Plugins → Browse
+`<server dist>/builtin-plugins/<name>`. The app in Tools → Plugins → Browse
 installs official plugins from that local bundled copy; no network is involved.
 
 The official plugins are:

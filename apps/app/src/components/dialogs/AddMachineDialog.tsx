@@ -28,20 +28,30 @@ const connectMachineCodeSchema = z.object({
   serverUrl: z.string(),
 });
 
+const pluginRpcErrorEnvelopeSchema = z.object({
+  error: z.object({ message: z.string() }),
+});
+
 type ConnectMachineCode = z.infer<typeof connectMachineCodeSchema>;
+
+function isNotPairedRpcError(error: BbHttpError): boolean {
+  const envelope = pluginRpcErrorEnvelopeSchema.safeParse(error.body);
+  return envelope.success && envelope.data.error.message === "not_paired";
+}
 
 async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
   try {
     return await sdk.plugins.callRpc({
       pluginId: "connect",
       method: "createMachineCode",
-      input: {},
+      input: null,
       outputSchema: connectMachineCodeSchema,
     });
   } catch (error) {
     if (
       error instanceof BbHttpError &&
       (error.code === "not_paired" ||
+        isNotPairedRpcError(error) ||
         error.status === 404 ||
         error.status === 422 ||
         error.status === 503)

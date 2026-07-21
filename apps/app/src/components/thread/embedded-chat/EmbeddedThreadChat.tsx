@@ -28,7 +28,6 @@ import {
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { PluginComposerStatuses } from "@/components/plugin/PluginComposerStatuses";
 import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
@@ -61,7 +60,7 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
-import { useComposerTextEffect } from "@/lib/composer-text-effects";
+import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { PromptDraftScope } from "@/hooks/usePromptDraftStorage";
 import { appToast } from "@/components/ui/app-toast";
@@ -151,7 +150,7 @@ export interface EmbeddedThreadChatComposerProps {
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /** Thread whose row status plugin composer accessories reflect. */
+  /** Thread whose row status plugin composer customizations reflect. */
   threadRowStatusThreadId?: string;
   /** ORed into queue-pending guards for consumer-owned submit mutations. */
   isExternalSubmitPending?: boolean;
@@ -183,7 +182,7 @@ interface EmbeddedThreadChatSharedProps {
   providerId: string;
   /** Environment context for mentions and command suggestions. */
   promptContextEnvironmentId: string | null;
-  /** Retained hidden surfaces pass false to pause read tracking + accessories. */
+  /** Retained hidden surfaces pass false to pause read tracking + composer customizations. */
   isActive?: boolean;
   resolveMentionLink: PromptMentionLinkResolver;
   timeline?: UseThreadTimelineControllerResult;
@@ -919,10 +918,10 @@ function EmbeddedThreadChatWithComposer({
   const activeQueuedPluginComposerHost = isActive
     ? queuedPluginComposerHostWithDraft
     : null;
-  const bottomComposerTextEffect = useComposerTextEffect(
+  const bottomComposerTextEffects = useComposerTextEffects(
     activeBottomPluginComposerHost?.textEffectKey ?? null,
   );
-  const queuedComposerTextEffect = useComposerTextEffect(
+  const queuedComposerTextEffects = useComposerTextEffects(
     activeQueuedPluginComposerHost?.textEffectKey ?? null,
   );
 
@@ -1192,7 +1191,8 @@ function EmbeddedThreadChatWithComposer({
           stack={null}
           composer={inlineComposerConfig}
           pluginComposerHost={activeQueuedPluginComposerHost}
-          textEffect={queuedComposerTextEffect}
+          pluginComposerScope={activeQueuedPluginComposerHost?.scope ?? null}
+          textEffects={queuedComposerTextEffects}
           environmentSummary={null}
           contextWindowUsage={null}
           execution={inlineExecutionConfig}
@@ -1201,7 +1201,7 @@ function EmbeddedThreadChatWithComposer({
           permissionReadOnly
           typeahead={typeaheadConfig}
           promptActions={promptActions}
-          suppressPluginComposerAccessories={!isActive}
+          suppressPluginComposerCustomizations={!isActive}
           zenModeResetKey={`${surfaceKey}:queued-message:${inlineEditingQueuedMessage.queuedMessageId}`}
           focusEndKey={`${inlineEditingQueuedMessage.editSessionId}:${inlineComposerFocusNonce}`}
           isPrimaryComposer={false}
@@ -1220,37 +1220,31 @@ function EmbeddedThreadChatWithComposer({
     inlinePermissionConfig,
     isActive,
     promptActions,
-    queuedComposerTextEffect,
+    queuedComposerTextEffects,
     surfaceKey,
     typeaheadConfig,
   ]);
 
-  const composerStatusStack = useMemo(
-    () => (
-      <>
-        {isActive ? (
-          <PluginComposerStatuses projectId={projectId} threadId={threadId} />
-        ) : null}
-        {queuedMessages.length > 0 ? (
-          <QueuedMessagesList
-            queuedMessages={queuedMessages}
-            resolveMentionLink={resolveMentionLink}
-            inlineEditor={inlineEditor}
-            sendDisabled={
-              threadId === null || isProvisioning || queuedMessageActionPending
-            }
-            actionDisabled={queuedMessageActionPending}
-            processingMessageId={processingQueuedMessage?.id ?? null}
-            processingAction={processingQueuedMessage?.action ?? null}
-            onSendImmediately={handleSendQueuedImmediately}
-            onReorder={handleReorderQueuedMessage}
-            onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
-            onEdit={beginEditQueuedMessage}
-            onDelete={handleDeleteQueuedMessage}
-          />
-        ) : null}
-      </>
-    ),
+  const queuedMessagesStack = useMemo(
+    () =>
+      queuedMessages.length > 0 ? (
+        <QueuedMessagesList
+          queuedMessages={queuedMessages}
+          resolveMentionLink={resolveMentionLink}
+          inlineEditor={inlineEditor}
+          sendDisabled={
+            threadId === null || isProvisioning || queuedMessageActionPending
+          }
+          actionDisabled={queuedMessageActionPending}
+          processingMessageId={processingQueuedMessage?.id ?? null}
+          processingAction={processingQueuedMessage?.action ?? null}
+          onSendImmediately={handleSendQueuedImmediately}
+          onReorder={handleReorderQueuedMessage}
+          onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
+          onEdit={beginEditQueuedMessage}
+          onDelete={handleDeleteQueuedMessage}
+        />
+      ) : null,
     [
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
@@ -1258,11 +1252,9 @@ function EmbeddedThreadChatWithComposer({
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,
       inlineEditor,
-      isActive,
       isProvisioning,
       processingQueuedMessage?.action,
       processingQueuedMessage?.id,
-      projectId,
       queuedMessageActionPending,
       queuedMessages,
       resolveMentionLink,
@@ -1276,10 +1268,11 @@ function EmbeddedThreadChatWithComposer({
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
           attachments={bottomAttachmentsConfig}
-          stack={composerStatusStack}
+          stack={queuedMessagesStack}
           composer={bottomComposerConfig}
           pluginComposerHost={activeBottomPluginComposerHost}
-          textEffect={bottomComposerTextEffect}
+          pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
+          textEffects={bottomComposerTextEffects}
           environmentSummary={composer.environmentSummary}
           contextWindowUsage={null}
           execution={bottomExecutionConfig}
@@ -1287,7 +1280,7 @@ function EmbeddedThreadChatWithComposer({
           permissionReadOnly={composer.permissionPolicy === "snapshot"}
           typeahead={typeaheadConfig}
           promptActions={promptActions}
-          suppressPluginComposerAccessories={!isActive}
+          suppressPluginComposerCustomizations={!isActive}
           zenModeResetKey={surfaceKey}
           focusEndKey={
             // Composite only when an external nonce is supplied, so existing

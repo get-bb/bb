@@ -56,20 +56,6 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   ),
 }));
 
-vi.mock("@/components/plugin/PluginComposerStatuses", () => ({
-  PluginComposerStatuses: ({
-    projectId,
-    threadId,
-  }: {
-    projectId: string | null;
-    threadId: string | null;
-  }) => (
-    <div data-testid="embedded-chat-plugin-status">
-      {projectId}:{threadId}
-    </div>
-  ),
-}));
-
 vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   BottomAnchoredScrollBody: ({
     children,
@@ -360,26 +346,20 @@ describe("EmbeddedThreadChat", () => {
     ).toBe(true);
   });
 
-  it("places active plugin statuses before queued messages and keeps the queue adjacent to the composer", () => {
+  it("keeps queued messages adjacent to the composer", () => {
     mocks.queuedMessages = [{ id: "q1" }, { id: "q2" }];
     renderEmbeddedChat();
 
-    const status = screen.getByTestId("embedded-chat-plugin-status");
     const queue = screen.getByTestId("embedded-chat-queued-messages");
     const composer = screen.getByTestId("embedded-chat-composer");
-    expect(status.textContent).toBe("proj-1:thr_child");
-    expect(
-      status.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
     expect(queue.nextElementSibling).toBe(composer);
     expect(screen.getByTestId("queued-count").textContent).toBe("2");
   });
 
-  it("suppresses plugin statuses while a retained embedded chat is inactive", () => {
+  it("keeps queued messages visible while a retained embedded chat is inactive", () => {
     mocks.queuedMessages = [{ id: "q1" }];
     renderEmbeddedChat({ isActive: false });
 
-    expect(screen.queryByTestId("embedded-chat-plugin-status")).toBeNull();
     expect(screen.getByTestId("queued-count").textContent).toBe("1");
   });
 });

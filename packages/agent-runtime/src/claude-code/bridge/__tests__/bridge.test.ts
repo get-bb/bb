@@ -1601,31 +1601,43 @@ describe("bridge", () => {
   });
 
   it("returns the bridge-owned Claude model list from the SDK probe", async () => {
-    const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels();
+    const { binDir, executablePath } = createTempClaudeExecutable();
+    const close = vi.fn();
+    queryMock.mockReturnValueOnce({
+      initializationResult: vi.fn().mockResolvedValue({
+        models: [
+          {
+            value: "default",
+            resolvedModel: "claude-opus-4-8[1m]",
+            displayName: "Default (recommended)",
+            description: "Opus 4.8 with 1M context",
+          },
+          {
+            value: "opus[1m]",
+            resolvedModel: "claude-opus-4-8[1m]",
+            displayName: "Opus",
+            description: "Opus 4.8 with 1M context",
+          },
+          {
+            value: "sonnet",
+            resolvedModel: "claude-sonnet-5",
+            displayName: "Sonnet",
+            description: "Sonnet 5",
+          },
+        ],
+      }),
+      close,
+    });
+
+    const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels({
+      PATH: binDir,
+    });
     expect(models).toEqual([
-      expect.objectContaining({
-        id: "claude-fable-5",
-        model: "claude-fable-5",
-        displayName: "Fable 5",
-        isDefault: false,
-      }),
-      expect.objectContaining({
-        id: "claude-mythos-5",
-        model: "claude-mythos-5",
-        displayName: "Mythos 5",
-        isDefault: false,
-      }),
       expect.objectContaining({
         id: "claude-opus-4-8[1m]",
         model: "claude-opus-4-8[1m]",
         displayName: "Opus 4.8 (1M)",
         isDefault: true,
-      }),
-      expect.objectContaining({
-        id: "claude-opus-4-7[1m]",
-        model: "claude-opus-4-7[1m]",
-        displayName: "Opus 4.7 (1M)",
-        isDefault: false,
       }),
       expect.objectContaining({
         id: "claude-sonnet-5",
@@ -1635,22 +1647,33 @@ describe("bridge", () => {
       }),
     ]);
     expect(selectedOnlyModels.map((model) => model.model)).toEqual([
-      "claude-sonnet-4-6[1m]",
-      "claude-sonnet-4-6",
-      "claude-haiku-4-5",
-      "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-opus-4-6[1m]",
-      "claude-opus-4-6",
-      "best",
-      "fable",
       "opus[1m]",
-      "opus",
-      "sonnet[1m]",
       "sonnet",
-      "haiku",
     ]);
-    expect(queryMock).not.toHaveBeenCalled();
+    expect(queryMock).toHaveBeenCalledWith({
+      prompt: ".",
+      options: expect.objectContaining({
+        maxTurns: 0,
+        pathToClaudeCodeExecutable: executablePath,
+        persistSession: false,
+      }),
+    });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("propagates Claude model discovery failures and closes the probe", async () => {
+    const close = vi.fn();
+    queryMock.mockReturnValueOnce({
+      initializationResult: vi
+        .fn()
+        .mockRejectedValue(new Error("temporary discovery failure")),
+      close,
+    });
+
+    await expect(listClaudeCodeBridgeModels()).rejects.toThrow(
+      "temporary discovery failure",
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("exposes the host HOME and CLAUDE settings cascade to the Claude SDK on thread/start", async () => {

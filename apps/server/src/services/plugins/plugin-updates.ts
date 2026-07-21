@@ -145,7 +145,7 @@ export function createPluginUpdates(
       return {
         outcome: "unavailable",
         detail:
-          "installed from the retired remote marketplace — remove it and reinstall from Settings → Plugins → Browse to switch to the bundled copy",
+          "installed from the retired remote marketplace — remove it and reinstall from Tools → Plugins → Browse to switch to the bundled copy",
       };
     }
     if (args.row.sourceKind === "npm") {

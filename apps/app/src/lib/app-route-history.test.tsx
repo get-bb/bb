@@ -105,7 +105,6 @@ function PluginNavigationHarness() {
         onClick={() =>
           pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
-            experimental_returnOnExit: true,
           })
         }
       >
@@ -126,7 +125,6 @@ function PluginNavigationHarness() {
         onClick={() =>
           pluginNavigate.toCompose({
             initialPrompt: "Edit this automation",
-            experimental_replace: true,
           })
         }
       >
@@ -135,12 +133,10 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.experimental_exitPluginPanel(
-            AUTOMATIONS_PLUGIN_PANEL_PATH,
-            {
-              subPath: detailSubPath,
-            },
-          )
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+            subPath: detailSubPath,
+            replace: true,
+          })
         }
       >
         Exit edit
@@ -262,7 +258,7 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go forward", false);
   });
 
-  it("exits remounted edit routes without duplicate native history entries", async () => {
+  it("redirects remounted automation edit routes without duplicate history entries", async () => {
     render(
       <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
         <RemountablePluginNavigationHarness />
@@ -275,14 +271,13 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Open detail", detailPath);
     await clickAndExpectPath("Edit from detail", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
-    await clickAndExpectPath("Exit edit", detailPath);
+    await clickAndExpectPath("Redirect edit to compose", "/");
+    await clickAndExpectPath("Native back", detailPath);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
 
-    await clickAndExpectPath("Open detail", detailPath);
     await clickAndExpectPath("Open direct edit", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
-    await clickAndExpectPath("Native back", detailPath);
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 });

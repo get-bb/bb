@@ -66,6 +66,14 @@ function createEnsureOptions(fakeRequire, execFileSync) {
     ],
     createRequire: () => fakeRequire,
     execFileSync,
+    verifyRepairedNativeModule(name) {
+      try {
+        verifyNativeModule(name, fakeRequire);
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
     log: vi.fn(),
   };
 }
@@ -247,6 +255,27 @@ describe("ensure-native-modules", () => {
     expect(fake.state.constructorCalls).toBe(3);
   });
 
+  it("rebuilds when Node reports that the native module did not self-register", () => {
+    const registrationError = new Error(
+      "Module did not self-register: '/tmp/better_sqlite3.node'",
+    );
+    const fake = createBetterSqliteRequire(registrationError);
+    const execFileSync = vi.fn((nodePath, args) => {
+      if (args[0] === "/tmp/fake-node-modules/node-gyp/bin/node-gyp.js") {
+        fake.clearConstructorError();
+      }
+    });
+
+    expect(() =>
+      ensureNativeModules(
+        createEnsureOptions(fake.requireModule, execFileSync),
+      ),
+    ).not.toThrow();
+
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(fake.state.constructorCalls).toBe(3);
+  });
+
   it("exits non-zero when the post-rebuild instantiation still fails", () => {
     const result = spawnSync(
       process.execPath,
@@ -278,6 +307,9 @@ describe("ensure-native-modules", () => {
             modules: [{ name: "better-sqlite3", resolveFrom: "packages/db/package.json" }],
             createRequire,
             execFileSync() {},
+            verifyRepairedNativeModule() {
+              return "Wrong native binary NODE_MODULE_VERSION";
+            },
             log() {},
           });
         `,

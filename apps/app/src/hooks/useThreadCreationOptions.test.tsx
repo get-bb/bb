@@ -245,6 +245,74 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("marks a definitive missing component-local model fallback as explicit", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "thr_stale_model",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "claude-mythos-5",
+          initialReasoningLevel: "high",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-model");
+      expect(result.current.executionInputSources.model).toBe("explicit");
+    });
+  });
+
+  it("overrides a stale project model default when creating a new thread", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "removed-project-default",
+          initialReasoningLevel: "high",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-model");
+      expect(result.current.executionInputSources.model).toBe("explicit");
+    });
+  });
+
+  it("keeps an existing model when provider discovery fails temporarily", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValueOnce({
+      ...executionOptionsResponse(),
+      modelLoadError: { providerId: GLOBAL_PROVIDER_ID, code: "failed" },
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "thr_model_discovery_failure",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "still-valid-model",
+          initialReasoningLevel: "high",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.modelLoadFailed).toBe(true);
+      expect(result.current.selectedModel).toBe("still-valid-model");
+      expect(result.current.executionInputSources.model).toBeUndefined();
+    });
+  });
+
   it("loads the product default provider before any persisted selection exists", async () => {
     const { wrapper } = createQueryClientTestHarness();
 

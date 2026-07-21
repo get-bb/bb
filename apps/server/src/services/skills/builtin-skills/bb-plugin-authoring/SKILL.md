@@ -174,7 +174,7 @@ are additive, so registering multiple listeners is supported.
 ### bb.settings
 
 `bb.settings.define(descriptors)` declares plain-data descriptors (rendered
-in Settings → Plugins and editable via `bb plugin config <id> set <key>
+in Tools → Plugins and editable via `bb plugin config <id> set <key>
 <value>`). Four descriptor types:
 
 ```ts
@@ -714,6 +714,8 @@ import {
   useSettings,
   useBbContext,
   useBbNavigate,
+  useComposer,
+  useComposerView,
 } from "@bb/plugin-sdk/app";
 import { toast } from "sonner"; // shimmed to the host toaster
 import { Button } from "@/components/ui/button"; // vendored source YOU own
@@ -745,8 +747,34 @@ export default definePluginApp((app) => {
     run: async ({ threadId, openPanel }) =>
       openPanel({ title: `Issue for ${threadId}` }),
   });
-  app.slots.composerAccessory({ id: "hint", component: Hint });
-  app.slots.experimental_composerStatus({ id: "sync", component: SyncStatus });
+  app.composer.customize({
+    id: "prompt-tools",
+    actions: [{ id: "improve", component: ImprovePromptAction }],
+    plusMenu: [
+      {
+        id: "append-checklist",
+        label: "Append checklist",
+        run: ({ composer }) =>
+          composer.updateText(
+            (current) => `${current}\n\n- Verify behavior\n- Run checks`,
+          ),
+      },
+    ],
+    banners: [{ id: "workflow", component: WorkflowBanner }],
+    richText: {
+      effects: [
+        {
+          id: "todo",
+          className: "plugin-todo-highlight",
+          match: (text) =>
+            Array.from(text.matchAll(/\bTODO\b/g), (match) => ({
+              from: match.index,
+              to: match.index + match[0].length,
+            })),
+        },
+      ],
+    },
+  });
   app.slots.pendingInteraction({
     id: "credentials",
     component: CredentialForm,
@@ -765,8 +793,8 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
-- `settingsSection` → `{}` (deliberately no props in V1). Rendered on
-  `/settings/plugins/<pluginId>` below the host-rendered declarative settings
+- `settingsSection` → `{}` (deliberately no props in V1). Rendered on the
+  plugin detail page below the host-rendered declarative settings
   form for running, needs-configuration, and degraded plugins. Registration:
   `{ id, title?, description?, component }`; `title` is an optional host-rendered
   section heading and `description` is optional supporting copy rendered with
@@ -776,7 +804,7 @@ Slot props contracts (versioned, additive-only):
   settings sidebar when they declare settings descriptors OR register
   settings sections. Slot-derived sidebar entries work for builtin plugin
   frontends even when the user-installed Plugins experiment is off; the
-  Settings → Plugins management bucket remains experiment-gated.
+  Tools → Plugins management surface remains experiment-gated.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep
@@ -815,12 +843,10 @@ Slot props contracts (versioned, additive-only):
   document-like content; `"flush"` gives it the full tab area (no padding,
   definite height, no host scrolling) — right for app-like content that
   owns its layout, such as `experimental_ThreadChat`.
-- `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
-  — rendered in the composer footer. Registration: `{ id, component }`.
-- `experimental_composerStatus` → `{ projectId: string | null, threadId: string | null }`
-  — rendered by the host after native context/status cards and immediately
-  before queued messages. Registrations mount by plugin id, then registration order,
-  with per-slot crash isolation. Registration: `{ id, component }`.
+- Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
+  controls to `app.composer.customize({ actions })` or `plusMenu`, larger
+  content to `banners`, and legacy `{ projectId, threadId }` prop reads to
+  `useComposerView().scope`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
   thread composer only while a matching plugin interaction is pending.
   Registration: `{ id, component }`; `id` must equal the backend request's
@@ -833,8 +859,8 @@ Slot props contracts (versioned, additive-only):
   the chrome so icons stay consistent. Registration:
   `{ id, title, icon, run }`. Activating it calls
   `run({ openSettings })` — use `openSettings()` to open this plugin's
-  Settings detail page (`/settings/plugins/<pluginId>`), or do anything else
-  (rpc, toast). Errors from `run` (sync or async) are contained and logged,
+  detail page in Tools, or do anything else (rpc, toast). Errors from `run`
+  (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
 - `fileOpener` → `{ path: string, source }` — register as a viewer/editor
@@ -945,14 +971,9 @@ Hooks:
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
-options?), experimental_exitPluginPanel(path, options?), toCompose(options?) }`.
-  `toPluginPanel` accepts stable `subPath` and `replace` options plus
-  `experimental_returnOnExit`; pair the latter with
-  `experimental_exitPluginPanel` when a panel subroute should return to the
-  route that opened it. `toCompose` opens the root compose screen; pass
-  `initialPrompt` to seed the draft and `focusPrompt: true` to focus it. Its
-  `experimental_replaceInitialPrompt` option overwrites an existing root draft,
-  while `experimental_replace` replaces the browser history entry.
+{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`.
+  `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
+  composer draft and `focusPrompt: true` to focus it.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;
@@ -963,26 +984,50 @@ options?), experimental_exitPluginPanel(path, options?), toCompose(options?) }`.
   longer represents that pill. Text edits do not focus the composer;
   `addQuote(text)` appends the text as a `> ` blockquote block and focuses
   the composer — the "reference this selection in chat" primitive;
+  `setTextEffect({ className })` paints the whole editable draft with a class
+  from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
+  the editor read-only and busy and auto-releases when the customization
+  unmounts or changes scope; `setThreadRowStatus({ icon, label, tone? })`
+  replaces the bound thread-row draft glyph (`null` clears it; new-thread
+  calls are no-ops);
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret. `scope` reports
-  where writes land: `{ kind: "thread", threadId }` for a thread draft,
-  experimental `{ kind: "queued-message", threadId, queuedMessageId }` for the
-  active inline queue editor, experimental
-  `{ kind: "side-chat", projectId, parentThreadId, tabId, childThreadId }` for
-  the visible side-chat draft, or
-  `{ kind: "new-thread", projectId }` for root and nav-panel compose surfaces.
-  `experimental_setTextEffect("shimmer" | null)` paints the active draft;
-  `experimental_setThreadRowStatus({ icon, label, effect, tone } | null)`
-  replaces the visible thread's draft glyph (a side chat targets its parent
-  row; `tone` is `"default"` or `"success"` and `label` must be non-blank).
-  Both visuals belong to the calling hook instance and clear automatically
-  when it unmounts or its composer scope changes.
+  fresh context at send time; `focus()` focuses the caret; `scope` reports
+  where writes land (`{ kind: "thread", threadId }` inside a thread
+  context, `{ kind: "new-thread", projectId }` from nav panels and
+  homepage sections — those seed the composer the user lands on next).
+- `useComposerView()` → reactive `{ scope, layout, draft, run }` for the
+  composer instance that mounted an action or banner. `layout` is
+  `"expanded" | "compact" | "zen"`; `draft` is
+  `{ text, isEmpty, attachmentCount }`; `run` is
+  `{ isRunning, isSubmitting }`.
 
 ```tsx
 const composer = useComposer();
 composer.updateText((current) => `${current}\n\nPlease summarize this.`);
 ```
+
+Composer customizations:
+
+- Register with `app.composer.customize({ id, scopes?, actions?, plusMenu?,
+banners?, richText? })`. Omitted `scopes` means all thread, queued-message,
+  side-chat, and new-thread composers.
+- `actions` and `banners` are plugin React components. Calls to
+  `useComposer()` and `useComposerView()` inside them are bound to the composer
+  that mounted the component. Actions render before native voice/submit and
+  are unavailable in compact layout; banners render above the composer.
+- `plusMenu` rows are host-rendered so keyboard navigation, focus restoration,
+  and mobile layout remain correct. Each `ComposerPlusMenuItem` supplies
+  `id`, `label`, optional `icon`, `description`, and `disabled`, plus
+  `run({ composer, view })`.
+- `richText.effects` rules return plain-text `{ from, to }` ranges and a class
+  name from plugin CSS. Decorations are paint-only and never mutate the draft.
+  `richText.onDraftChange(draft, view)` observes the debounced
+  `ComposerStructuredDraft`, including mention ranges.
+- Use a vendored BB prompt icon-button recipe for native-matching action chrome
+  and provide an accessible label. Each component/callback is isolated so one
+  failing customization does not degrade the native composer. Complete
+  reference: `examples/plugins/composer-customization`.
 
 UI components — **vendored shadcn source you own** (the shadcn model; the
 old host-provided component kit is REMOVED — `@bb/plugin-sdk/app` exports

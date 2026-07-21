@@ -386,6 +386,13 @@ export function useThreadCreationOptions(
     rawSelectedModel,
   ]);
   const selectedModel = useMemo(() => {
+    // A provider discovery error is temporary: keep an existing explicit
+    // selection instead of treating a partial/custom catalog as proof that it
+    // disappeared. Once discovery succeeds, absence is definitive and the
+    // catalog default becomes a recovery selection.
+    if (modelLoadError !== null && rawSelectedModel) {
+      return rawSelectedModel;
+    }
     if (availableModels.length === 0) {
       return rawSelectedModel;
     }
@@ -396,7 +403,11 @@ export function useThreadCreationOptions(
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model
     );
-  }, [availableModels, rawSelectedModel]);
+  }, [availableModels, modelLoadError, rawSelectedModel]);
+  const isUnavailableModelRecovery =
+    modelLoadError === null &&
+    rawSelectedModel.length > 0 &&
+    selectedModel !== rawSelectedModel;
 
   const modelOptions = useMemo(
     (): PickerOption<string>[] =>
@@ -488,6 +499,7 @@ export function useThreadCreationOptions(
           reasoningLevel,
           permissionMode,
         },
+        forceExplicitModel: isUnavailableModelRecovery,
         scope,
         storedValues: {
           selectedProviderId: storedProviderId,
@@ -500,6 +512,7 @@ export function useThreadCreationOptions(
       }),
     [
       effectiveProviderId,
+      isUnavailableModelRecovery,
       permissionMode,
       reasoningLevel,
       scope,

@@ -55,3 +55,4 @@ export const useSettings = runtime.useSettings;
 export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;
 export const useComposer = runtime.useComposer;
+export const useComposerView = runtime.useComposerView;

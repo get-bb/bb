@@ -13,6 +13,7 @@ const packageRoot = resolve(scriptsDir, "..");
 const workspaceRoot = resolve(packageRoot, "..", "..");
 
 async function main() {
+  await import("../../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs");
   await generateTemplatesIfRequested(true);
 
   for (const target of bundleTargets) {

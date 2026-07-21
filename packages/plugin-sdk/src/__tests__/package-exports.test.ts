@@ -9,7 +9,7 @@ interface PackageExport {
 }
 
 describe("packed plugin SDK exports", () => {
-  it("maps every public subpath to runtime JavaScript and portable declarations", async () => {
+  it("maps every packed subpath to runtime JavaScript and portable declarations", async () => {
     const packageRoot = new URL("../../", import.meta.url);
     const packageJson = JSON.parse(
       await readFile(new URL("package.json", packageRoot), "utf8"),
@@ -24,6 +24,8 @@ describe("packed plugin SDK exports", () => {
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",
       "./app",
+      "./internal/composer-customization-validation",
+      "./internal/composer-view",
       "./testing",
       "./testing/app",
     ]);

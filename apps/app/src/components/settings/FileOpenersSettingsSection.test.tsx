@@ -18,8 +18,6 @@ function registerNotesOpener() {
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
-    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [
       {

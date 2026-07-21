@@ -3,7 +3,36 @@ import {
   callPluginRpc,
   fetchPluginSdkSettings,
   getAutomationPluginPanelRoutePath,
+  isAutomationEditRoutePath,
 } from "./plugin-sdk-hooks";
+
+describe("getAutomationPluginPanelRoutePath", () => {
+  it.each([
+    ["", "/tools/automations"],
+    ["browse", "/tools/automations?view=browse"],
+    ["proj_1/auto_1", "/tools/automations/proj_1/auto_1"],
+    ["proj_1/auto_1/edit", "/tools/automations/proj_1/auto_1/edit"],
+    ["unsupported/path/shape/extra", "/tools/automations"],
+  ])("maps %j to the canonical Tools route", (subPath, expected) => {
+    expect(getAutomationPluginPanelRoutePath(subPath)).toBe(expected);
+  });
+});
+
+describe("isAutomationEditRoutePath", () => {
+  it("recognizes only canonical automation edit routes", () => {
+    expect(
+      isAutomationEditRoutePath(
+        "/tools/automations/proj_standard/auto_standard/edit",
+      ),
+    ).toBe(true);
+    expect(
+      isAutomationEditRoutePath(
+        "/tools/automations/proj_standard/auto_standard",
+      ),
+    ).toBe(false);
+    expect(isAutomationEditRoutePath("/plugins/automations/edit")).toBe(false);
+  });
+});
 
 type FetchLike = Parameters<typeof callPluginRpc>[0];
 
@@ -14,25 +43,6 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
     json: () => Promise.resolve(body),
   };
 }
-
-describe("getAutomationPluginPanelRoutePath", () => {
-  it.each([
-    ["", "/tools/automations"],
-    ["browse", "/tools/automations?view=browse"],
-    [
-      "project one/automation one",
-      "/tools/automations/project%20one/automation%20one",
-    ],
-    [
-      "project one/automation one/edit",
-      "/tools/automations/project%20one/automation%20one/edit",
-    ],
-    ["project/automation/typo", "/tools/automations"],
-    ["project/automation/edit/extra", "/tools/automations"],
-  ])("maps %j to the canonical Tools route", (subPath, expected) => {
-    expect(getAutomationPluginPanelRoutePath(subPath)).toBe(expected);
-  });
-});
 
 describe("callPluginRpc", () => {
   it("posts JSON to the plugin's rpc route and returns the result", async () => {

@@ -9,6 +9,20 @@ The authoritative contracts are the exported declarations in
 [`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
 the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
+## Composer customization
+
+Composer UI extensions register through `app.composer.customize(...)`. A
+`ComposerCustomization` can contribute React action and banner components,
+host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
+Mounted components use `useComposer()` for writes, effects, and input locking,
+and `useComposerView()` for the reactive scope, layout, draft, and run state.
+
+See the
+[`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
+for every region in one small app. The deprecated pre-1.0
+`app.slots.composerAccessory(...)` footer API has been removed; migrate footer
+controls to actions or the plus menu and larger content to banners.
+
 ## External plugin tests
 
 The packed package includes executable JavaScript and portable declarations

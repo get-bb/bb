@@ -4,14 +4,19 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type Ref,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
-import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
+  PluginComposerViewProvider,
   type PluginComposerHost,
+  usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
   useAppCommandContext,
@@ -66,6 +71,10 @@ import {
 } from "./effective-prompt-mode";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
+const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
+  kind: "new-thread",
+  projectId: null,
+} as const;
 
 export interface NewThreadEnvironmentConfig {
   value: string;
@@ -163,9 +172,9 @@ export interface NewThreadPromptBoxUIProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
   isSubmitting: boolean;
   disabled: boolean;
-  /** Active root-composer binding for plugin composer hooks and accessories. */
+  /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
-  textEffect?: experimental_PluginComposerTextEffect | null;
+  textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
 
@@ -215,7 +224,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   isSubmitting,
   disabled,
   pluginComposerHost,
-  textEffect,
+  textEffects,
   zenModeStorageKey,
   history,
   typeahead,
@@ -273,6 +282,17 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     : execution.model.isLoading
       ? "Loading models..."
       : "Submit (Enter)";
+  const attachmentCount = attachments.items?.length ?? 0;
+  const [composerLayout, setComposerLayout] =
+    useState<ComposerView["layout"]>("expanded");
+  const composerView = usePluginComposerViewModel({
+    scope: pluginComposerHost?.scope ?? DEFAULT_NEW_THREAD_COMPOSER_SCOPE,
+    layout: composerLayout,
+    text: value,
+    attachmentCount,
+    isRunning: false,
+    isSubmitting,
+  });
   return (
     <div
       data-app-composer=""
@@ -280,39 +300,45 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       data-promptbox-shell=""
       className="w-full"
     >
-      {modeConfig.banner ? (
-        <div className="mb-2">{modeConfig.banner}</div>
-      ) : null}
-      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-        <PromptBoxInternal
-          id={id}
-          promptBoxRef={promptBoxRef}
-          value={value}
-          mentionRanges={mentionRanges}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          textEffect={textEffect}
-          history={history}
-          typeahead={typeahead}
-          mentionMenuPlacement="bottom"
-          attachments={attachments}
-          promptActions={promptActions}
-          voice={voice}
-          submission={{
-            isSubmitting,
-            disabled,
-            title: submitTitle,
-          }}
-          zenMode={{
-            layout: "root-compose",
-            storageKey: zenModeStorageKey,
-          }}
-          minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
-          placeholder={placeholder}
-          header={modeConfig.header}
-          footerStart={<ExecutionControls {...execution} />}
-        />
-      </PluginComposerHostProvider>
+      <PluginComposerViewProvider value={composerView}>
+        <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+          {modeConfig.banner || pluginComposerHost ? (
+            <div className="mb-2 space-y-2">
+              {modeConfig.banner}
+              {pluginComposerHost ? <PluginComposerBanners /> : null}
+            </div>
+          ) : null}
+          <PromptBoxInternal
+            id={id}
+            promptBoxRef={promptBoxRef}
+            value={value}
+            mentionRanges={mentionRanges}
+            onChange={onChange}
+            onSubmit={onSubmit}
+            textEffects={textEffects}
+            onComposerLayoutChange={setComposerLayout}
+            history={history}
+            typeahead={typeahead}
+            mentionMenuPlacement="bottom"
+            attachments={attachments}
+            promptActions={promptActions}
+            voice={voice}
+            submission={{
+              isSubmitting,
+              disabled,
+              title: submitTitle,
+            }}
+            zenMode={{
+              layout: "root-compose",
+              storageKey: zenModeStorageKey,
+            }}
+            minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
+            placeholder={placeholder}
+            header={modeConfig.header}
+            footerStart={<ExecutionControls {...execution} />}
+          />
+        </PluginComposerHostProvider>
+      </PluginComposerViewProvider>
       {/* Strip below the prompt-box card: optional project + env + branch (or
           worktree) on the left, permission picker pinned to the right. `mt-1`
           reproduces the 4px gap main got from a

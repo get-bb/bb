@@ -20,6 +20,18 @@
       "import": "./dist/app.js",
       "default": "./dist/app.js"
     },
+    "./internal/composer-customization-validation": {
+      "source": "./src/internal/composer-customization-validation.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-composer-customization-validation.d.ts",
+      "import": "./dist/internal/composer-customization-validation.js",
+      "default": "./dist/internal/composer-customization-validation.js"
+    },
+    "./internal/composer-view": {
+      "source": "./src/internal/composer-view.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-composer-view.d.ts",
+      "import": "./dist/internal/composer-view.js",
+      "default": "./dist/internal/composer-view.js"
+    },
     "./testing": {
       "source": "./src/testing/index.ts",
       "types": "./bundled-types/bb-plugin-sdk-testing.d.ts",

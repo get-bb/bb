@@ -343,16 +343,42 @@ function pluginAppSurfaceItems(
           "Thread panel action",
         ),
       ),
-    ...slots.composerAccessories
+    ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("composer", slot.id, undefined, "Composer accessory"),
-      ),
-    ...slots.experimental_composerStatuses
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("composer-status", slot.id, undefined, "Composer status"),
-      ),
+      .flatMap((slot) => [
+        ...(slot.actions ?? []).map((action) =>
+          namedSurface(
+            `composer:${slot.id}:action`,
+            action.id,
+            undefined,
+            "Composer action",
+          ),
+        ),
+        ...(slot.banners ?? []).map((banner) =>
+          namedSurface(
+            `composer:${slot.id}:banner`,
+            banner.id,
+            undefined,
+            "Composer banner",
+          ),
+        ),
+        ...(slot.plusMenu ?? []).map((item) =>
+          namedSurface(
+            `composer:${slot.id}:plus-menu`,
+            item.id,
+            item.label,
+            "Composer plus-menu item",
+          ),
+        ),
+        ...(slot.richText?.effects ?? []).map((effect) =>
+          namedSurface(
+            `composer:${slot.id}:rich-text`,
+            effect.id,
+            undefined,
+            "Composer text effect",
+          ),
+        ),
+      ]),
     ...slots.pendingInteractions
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) =>

@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView } from "@bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -40,7 +40,19 @@ import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-t
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { PluginComposerAccessories } from "@/components/plugin/PluginComposerAccessories";
+import {
+  PluginComposerActions,
+  usePluginComposerPlusMenuContributions,
+} from "@/components/plugin/PluginComposerActions";
+import {
+  PluginComposerViewProvider,
+  useOptionalPluginComposerView,
+  usePluginComposerHost,
+  usePluginComposerViewModel,
+} from "@/components/plugin/plugin-composer-host";
+import { composerCustomizationsForScope } from "@/components/plugin/composer-customizations";
+import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
@@ -70,8 +82,13 @@ import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
+import {
+  refreshPromptDecorations,
+  type PromptDecorationSource,
+  type PromptDraftObserver,
+} from "./editor/prompt-decoration-extension";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
-import { setPromptTextEffect } from "./editor/prompt-text-effect-extension";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
@@ -319,8 +336,10 @@ export interface PromptBoxInternalProps {
   onSubmit: () => void;
   placeholder?: string;
   className?: string;
-  /** Optional host-rendered paint applied only to editable draft text. */
-  textEffect?: experimental_PluginComposerTextEffect | null;
+  /** Plugin-owned whole-draft paint sources, in deterministic composition order. */
+  textEffects?: readonly ComposerTextEffectSource[];
+  /** Publishes the editor-owned layout to the concrete composer shell. */
+  onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
   /** Content rendered inside the prompt box card, above the text area. Use
    * for prominent context that should be impossible to miss — e.g. a
    * "Reusing existing worktree" banner when env mode is set to reuse. */
@@ -344,8 +363,8 @@ export interface PromptBoxInternalProps {
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
-  /** Suppress plugin-rendered composer accessories without unmounting the editor. */
-  suppressPluginComposerAccessories?: boolean;
+  /** Suppress plugin composer regions without unmounting the editor. */
+  suppressPluginComposerCustomizations?: boolean;
   zenMode?: PromptBoxZenModeConfig;
   /** Optional one-line presentation for unfocused mobile follow-up composers. */
   compact?: PromptBoxCompactConfig;
@@ -1028,7 +1047,8 @@ export function PromptBoxInternal({
   onSubmit,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   className,
-  textEffect = null,
+  textEffects,
+  onComposerLayoutChange,
   header,
   footerStart,
   submission = {},
@@ -1037,7 +1057,7 @@ export function PromptBoxInternal({
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
   promptActions,
-  suppressPluginComposerAccessories = false,
+  suppressPluginComposerCustomizations = false,
   zenMode = {},
   compact,
   containerCompactPlaceholder,
@@ -1178,6 +1198,98 @@ export function PromptBoxInternal({
   const effectivePlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
+  const pluginComposerHost = usePluginComposerHost();
+  const { composerCustomizations } = usePluginSlots();
+  const composerInputLocked = useComposerInputLock(
+    pluginComposerHost?.textEffectKey ?? null,
+  );
+  const composerLayout = showCompactLayout
+    ? "compact"
+    : showZenLayout
+      ? "zen"
+      : "expanded";
+  const localComposerView = usePluginComposerViewModel({
+    scope: pluginComposerHost?.scope ?? {
+      kind: "new-thread",
+      projectId: null,
+    },
+    layout: composerLayout,
+    text: value,
+    attachmentCount: attachments.length,
+    isRunning,
+    isSubmitting,
+  });
+  const composerView = useOptionalPluginComposerView() ?? localComposerView;
+  const composerViewRef = useRef(composerView);
+  composerViewRef.current = composerView;
+  useEffect(() => {
+    onComposerLayoutChange?.(composerLayout);
+  }, [composerLayout, onComposerLayoutChange]);
+  const pluginRichTextContributions = useMemo(() => {
+    if (suppressPluginComposerCustomizations) {
+      return {
+        sources: [] as readonly PromptDecorationSource[],
+        observers: [] as readonly PromptDraftObserver[],
+      };
+    }
+
+    const sources: PromptDecorationSource[] = [];
+    const observers: PromptDraftObserver[] = [];
+    for (const customization of composerCustomizationsForScope(
+      composerCustomizations,
+      composerView.scope.kind,
+    )) {
+      const richText = customization.richText;
+      if (richText === undefined) continue;
+      const sourceId = `${customization.pluginId}/${customization.id}`;
+      if (richText.effects !== undefined && richText.effects.length > 0) {
+        sources.push({
+          id: sourceId,
+          generation: customization.generation,
+          pluginId: customization.pluginId,
+          effects: richText.effects,
+        });
+      }
+      if (richText.onDraftChange !== undefined) {
+        observers.push({
+          id: sourceId,
+          getView: () => composerViewRef.current,
+          onDraftChange: richText.onDraftChange,
+        });
+      }
+    }
+    for (const effectSource of textEffects ?? []) {
+      const className = effectSource.effect.className;
+      if (className.length === 0) continue;
+      sources.push({
+        id: `plugin-imperative:${effectSource.pluginId}:${effectSource.order}`,
+        generation: effectSource.order,
+        pluginId: effectSource.pluginId,
+        effects: [
+          {
+            id: "whole-draft",
+            className,
+            match: (text) =>
+              text.length === 0 ? [] : [{ from: 0, to: text.length }],
+          },
+        ],
+      });
+    }
+    return { sources, observers };
+  }, [
+    composerCustomizations,
+    composerView.scope,
+    suppressPluginComposerCustomizations,
+    textEffects,
+  ]);
+  const pluginDecorationSourcesRef = useRef(
+    pluginRichTextContributions.sources,
+  );
+  pluginDecorationSourcesRef.current = pluginRichTextContributions.sources;
+  const pluginDraftObserversRef = useRef(pluginRichTextContributions.observers);
+  pluginDraftObserversRef.current = pluginRichTextContributions.observers;
+  const pluginPlusMenuItems =
+    usePluginComposerPlusMenuContributions(composerView);
   const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
 
@@ -1324,6 +1436,8 @@ export function PromptBoxInternal({
       promptEditorExtensions({
         richTextEditing,
         getPlaceholder: () => placeholderRef.current,
+        getDecorationSources: () => pluginDecorationSourcesRef.current,
+        getDraftObservers: () => pluginDraftObserversRef.current,
       }),
     [richTextEditing],
   );
@@ -1478,18 +1592,19 @@ export function PromptBoxInternal({
   );
 
   useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const editable = !composerInputLocked;
+    if (editor.isEditable !== editable) editor.setEditable(editable);
+  }, [composerInputLocked, editor]);
+
+  useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    setPromptTextEffect(editor, textEffect);
-    return () => {
-      if (!editor.isDestroyed) {
-        setPromptTextEffect(editor, null);
-      }
-    };
-  }, [editor, textEffect]);
+    refreshPromptDecorations(editor);
+  }, [editor, pluginRichTextContributions]);
 
   useLayoutEffect(() => {
     if (!pendingFocusEndRef.current) return;
@@ -2702,6 +2817,7 @@ export function PromptBoxInternal({
             <div
               ref={editorScrollContainerRef}
               data-promptbox-editor-scroll=""
+              aria-busy={composerInputLocked || undefined}
               className={cn(
                 "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
                 COARSE_POINTER_TEXT_BASE_CLASS,
@@ -2821,112 +2937,121 @@ export function PromptBoxInternal({
             </>
           ) : null}
 
-          <div
-            data-promptbox-action-row=""
-            className={cn(
-              "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
-              showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
-            )}
-          >
-            {!showCompactLayout ? (
-              <div
-                data-promptbox-expanded-only=""
-                className="flex min-w-0 flex-1 flex-row items-center gap-1"
-                aria-live="polite"
-              >
-                <PromptBoxActionsMenu
-                  actions={promptActions}
-                  isAttaching={isAttaching}
-                  onAttach={
-                    onAttachFiles
-                      ? () => attachmentInputRef.current?.click()
-                      : undefined
-                  }
-                  onAction={applyPromptAction}
-                />
-                {footerStart}
-                {!suppressPluginComposerAccessories ? (
-                  <PluginComposerAccessories />
-                ) : null}
-              </div>
-            ) : null}
-            <div className="flex shrink-0 flex-row items-center gap-1">
+          <PluginComposerViewProvider value={composerView}>
+            <div
+              data-promptbox-action-row=""
+              className={cn(
+                "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
+              )}
+            >
               {!showCompactLayout ? (
-                <>
-                  {voice && !showVoiceActionGroup ? (
+                <div
+                  data-promptbox-expanded-only=""
+                  className="flex min-w-0 flex-1 flex-row items-center gap-1"
+                  aria-live="polite"
+                >
+                  <PromptBoxActionsMenu
+                    actions={promptActions}
+                    isAttaching={isAttaching}
+                    onAttach={
+                      onAttachFiles
+                        ? () => attachmentInputRef.current?.click()
+                        : undefined
+                    }
+                    onAction={applyPromptAction}
+                    pluginItems={
+                      suppressPluginComposerCustomizations
+                        ? []
+                        : pluginPlusMenuItems
+                    }
+                  />
+                  {footerStart}
+                </div>
+              ) : null}
+              <div className="flex shrink-0 flex-row items-center gap-1">
+                {!showCompactLayout ? (
+                  <>
+                    {!suppressPluginComposerCustomizations ? (
+                      <PluginComposerActions />
+                    ) : null}
+                    {voice && !showVoiceActionGroup ? (
+                      <Button
+                        data-promptbox-expanded-only=""
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label={
+                          !voice.isSupported
+                            ? "Voice input is not supported in this browser"
+                            : "Start voice input"
+                        }
+                        disabled={!canStartVoiceInput}
+                        onClick={voice.start}
+                        className={
+                          COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                        }
+                      >
+                        <Icon name="Mic" className="size-4" />
+                      </Button>
+                    ) : null}
+                  </>
+                ) : null}
+                <div
+                  data-promptbox-submit-group=""
+                  className="flex shrink-0 flex-row items-center"
+                >
+                  {showStop ? (
                     <Button
-                      data-promptbox-expanded-only=""
+                      data-promptbox-submit-action=""
                       type="button"
                       size="icon"
-                      variant="ghost"
-                      aria-label={
-                        !voice.isSupported
-                          ? "Voice input is not supported in this browser"
-                          : "Start voice input"
+                      variant="secondary"
+                      aria-label="Stop run"
+                      onClick={onStop}
+                      className={
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                       }
-                      disabled={!canStartVoiceInput}
-                      onClick={voice.start}
-                      className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
                     >
-                      <Icon name="Mic" className="size-4" />
+                      <Icon
+                        name="Square"
+                        className="size-3.5 fill-current [&_*]:stroke-0"
+                      />
                     </Button>
-                  ) : null}
-                </>
-              ) : null}
-              <div
-                data-promptbox-submit-group=""
-                className="flex shrink-0 flex-row items-center"
-              >
-                {showStop ? (
-                  <Button
-                    data-promptbox-submit-action=""
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    aria-label="Stop run"
-                    onClick={onStop}
-                    className={
-                      showCompactLayout
-                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                        : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
-                    }
-                  >
-                    <Icon
-                      name="Square"
-                      className="size-3.5 fill-current [&_*]:stroke-0"
-                    />
-                  </Button>
-                ) : (
-                  <Button
-                    data-promptbox-submit-action=""
-                    type="submit"
-                    size={showCompactLayout ? "icon" : "sm"}
-                    variant="default"
-                    aria-label={effectiveSubmitTitle}
-                    disabled={!canSubmit}
-                    className={cn(
-                      showCompactLayout
-                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                        : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
-                      // Container-driven compact layouts change the button's
-                      // width, padding, and margin at the breakpoint. Keep
-                      // those geometry changes instantaneous so the action
-                      // stays pinned while the prompt height animates.
-                      "transition-colors",
-                    )}
-                  >
-                    {isSubmitting ? (
-                      <Icon name="Spinner" className="size-4 animate-spin" />
-                    ) : isZenMode ? (
-                      <Icon name="ArrowUp" className="size-4" />
-                    ) : (
-                      <Icon name="CornerDownLeft" className="size-4" />
-                    )}
-                  </Button>
-                )}
+                  ) : (
+                    <Button
+                      data-promptbox-submit-action=""
+                      type="submit"
+                      size={showCompactLayout ? "icon" : "sm"}
+                      variant="default"
+                      aria-label={effectiveSubmitTitle}
+                      disabled={!canSubmit}
+                      className={cn(
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                        // Container-driven compact layouts change the button's
+                        // width, padding, and margin at the breakpoint. Keep
+                        // those geometry changes instantaneous so the action
+                        // stays pinned while the prompt height animates.
+                        "transition-colors",
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <Icon name="Spinner" className="size-4 animate-spin" />
+                      ) : isZenMode ? (
+                        <Icon name="ArrowUp" className="size-4" />
+                      ) : (
+                        <Icon name="CornerDownLeft" className="size-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </PluginComposerViewProvider>
         </div>
       </div>
       <div

@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, PluginComposerAccessoryRegistration, experimental_PluginComposerStatusRegistration, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, experimental_PluginComposerTextEffect, experimental_PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginComposerScope } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -49,32 +49,30 @@ type NavigateCall = {
     options?: {
         subPath?: string;
         replace?: boolean;
-        experimental_returnOnExit?: boolean;
-    };
-} | {
-    method: "experimental_exitPluginPanel";
-    path: string;
-    options?: {
-        subPath?: string;
     };
 } | {
     method: "toCompose";
     options?: {
         initialPrompt?: string;
         focusPrompt?: boolean;
-        experimental_replaceInitialPrompt?: boolean;
-        experimental_replace?: boolean;
     };
 };
 interface ComposerLog {
     /** Latest plain text in this isolated composer scope. */
     readonly text: string;
-    /** @experimental Latest host-rendered text effect requested by the plugin. */
-    experimental_textEffect: experimental_PluginComposerTextEffect | null;
-    experimental_textEffectCalls: Array<experimental_PluginComposerTextEffect | null>;
-    /** @experimental Latest host-rendered thread-row status requested by the plugin. */
-    experimental_threadRowStatus: experimental_PluginComposerThreadRowStatus | null;
-    experimental_threadRowStatusCalls: Array<experimental_PluginComposerThreadRowStatus | null>;
+    /** Latest host-provided composer scope. */
+    readonly scope: PluginComposerScope;
+    /** Latest host-provided attachment count exposed through `useComposerView()`. */
+    readonly attachmentCount: number;
+    /** Latest host-rendered text effect requested by the plugin. */
+    textEffect: PluginComposerTextEffect | null;
+    textEffectCalls: Array<PluginComposerTextEffect | null>;
+    /** Whether this plugin currently holds the composer input lock. */
+    inputLocked: boolean;
+    inputLockCalls: boolean[];
+    /** Latest host-rendered thread-row status requested by the plugin. */
+    threadRowStatus: PluginComposerThreadRowStatus | null;
+    threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
     quotes: string[];
     mentions: PluginComposerMention[];
     focusCount: number;
@@ -90,8 +88,7 @@ interface CapturedPluginApp {
     settingsSections: PluginSettingsSectionRegistration[];
     navPanels: PluginNavPanelRegistration[];
     threadPanelActions: PluginThreadPanelActionRegistration[];
-    composerAccessories: PluginComposerAccessoryRegistration[];
-    experimental_composerStatuses: experimental_PluginComposerStatusRegistration[];
+    composerCustomizations: ComposerCustomization[];
     pendingInteractions: PluginPendingInteractionRegistration[];
     sidebarFooterActions: PluginSidebarFooterActionRegistration[];
     fileOpeners: PluginFileOpenerRegistration[];
@@ -129,10 +126,11 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
     };
     /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
     realtimeConnectionState?: PluginRealtimeConnectionState;
-    /** Isolated `useComposer()` state; scope defaults to the supplied route context. */
+    /** Initial state for this render's isolated composer scope and view. */
     composer?: {
         text?: string;
         scope?: PluginComposerScope;
+        attachmentCount?: number;
     };
 }
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -144,8 +142,10 @@ interface RenderedSlotBehaviorDrivers {
     emitRealtime(channel: string, payload: unknown): Promise<void>;
     /** Drive the lifecycle of the same connection used by realtime events. */
     setRealtimeConnectionState(state: PluginRealtimeConnectionState): Promise<void>;
-    /** @experimental Move scopes, optionally replacing the draft text. */
-    experimental_setComposerScope(scope: PluginComposerScope, text?: string): Promise<void>;
+    /** Replace composer text as a host-originated edit, wrapped in act. */
+    setComposerText(text: string): Promise<void>;
+    /** Replace the scope snapshots returned by composer hooks, wrapped in act. */
+    setComposerScope(scope: PluginComposerScope): Promise<void>;
 }
 /** Read-only call/write logs produced while the slot is mounted. */
 interface RenderedSlotInspectionState {

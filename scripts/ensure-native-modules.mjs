@@ -51,8 +51,10 @@ export function verifyNativeModule(name, requireModule) {
 }
 
 function shouldRebuildNativeModule(errorMessage) {
-  return /NODE_MODULE_VERSION|Could not locate the bindings file/.test(
-    errorMessage,
+  return (
+    /NODE_MODULE_VERSION|Could not locate the bindings file|Module did not self-register/.test(
+      errorMessage,
+    )
   );
 }
 
@@ -67,11 +69,38 @@ function getRepairableNativeModuleError(name, requireModule) {
   }
 }
 
+function getRepairedNativeModuleError(name, pkgJsonPath) {
+  try {
+    // A failed dlopen remains cached for the life of the process. Verify a
+    // replacement binary in a fresh process so the old handle cannot poison it.
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import { createRequire } from "node:module";
+const requireModule = createRequire(${JSON.stringify(pkgJsonPath)});
+const NativeModule = requireModule(${JSON.stringify(name)});
+const instance = new NativeModule(":memory:");
+instance.close();`,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return null;
+  } catch (err) {
+    const message = formatChildProcessFailure(err);
+    if (!shouldRebuildNativeModule(message)) throw err;
+    return message;
+  }
+}
+
 export function ensureNativeModules({
   repoRoot = defaultRepoRoot,
   modules = nativeModules,
   createRequire: createRequireImpl = createRequire,
   execFileSync: execFileSyncImpl = execFileSync,
+  verifyRepairedNativeModule: verifyRepairedNativeModuleImpl =
+    getRepairedNativeModuleError,
   log = console.log,
 } = {}) {
   for (const { name, resolveFrom } of modules) {
@@ -108,9 +137,9 @@ export function ensureNativeModules({
         );
       }
 
-      const prebuildVerifyError = getRepairableNativeModuleError(
+      const prebuildVerifyError = verifyRepairedNativeModuleImpl(
         name,
-        requireModule,
+        pkgJsonPath,
       );
       if (prebuildVerifyError === null) {
         if (!prebuildInstalled) {
@@ -147,9 +176,9 @@ export function ensureNativeModules({
         },
       );
 
-      const rebuildVerifyError = getRepairableNativeModuleError(
+      const rebuildVerifyError = verifyRepairedNativeModuleImpl(
         name,
-        requireModule,
+        pkgJsonPath,
       );
       if (rebuildVerifyError !== null) {
         throw new Error(

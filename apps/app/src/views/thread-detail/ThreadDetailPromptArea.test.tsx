@@ -24,6 +24,10 @@ import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-hand
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
@@ -81,7 +85,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost,
     showScrollToBottomButton,
     stack,
-    textEffect,
+    textEffects,
   }: {
     attachments: {
       items: readonly unknown[];
@@ -110,7 +114,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost?: PluginComposerHost | null;
     showScrollToBottomButton?: boolean;
     stack: ReactNode;
-    textEffect?: "shimmer" | null;
+    textEffects?: readonly {
+      effect: { className: string };
+    }[];
   }) => (
     <div data-testid="follow-up-prompt-box">
       <div data-testid="prompt-stack">{stack}</div>
@@ -131,7 +137,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         {permissionReadOnly ? "true" : "false"}
       </div>
       <div data-testid="attachment-count">{attachments.items.length}</div>
-      <div data-testid="composer-text-effect">{textEffect ?? "none"}</div>
+      <div data-testid="composer-text-effect">
+        {textEffects && textEffects.length > 0
+          ? textEffects.map(({ effect }) => effect.className).join(",")
+          : "none"}
+      </div>
       <div data-testid="composer-location">
         {showScrollToBottomButton === false ? "inline" : "bottom"}
       </div>
@@ -259,20 +269,6 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
           </button>
         </div>
       ) : null}
-    </div>
-  ),
-}));
-
-vi.mock("@/components/plugin/PluginComposerStatuses", () => ({
-  PluginComposerStatuses: ({
-    projectId,
-    threadId,
-  }: {
-    projectId: string | null;
-    threadId: string | null;
-  }) => (
-    <div data-testid="plugin-composer-status">
-      {projectId}:{threadId}
     </div>
   ),
 }));
@@ -688,23 +684,19 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.clearAllMocks();
 });
 
 describe("ThreadDetailPromptArea", () => {
-  it("keeps plugin statuses before the queued drawer and the queue adjacent to the composer", () => {
+  it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
     renderPromptArea();
 
     const stack = screen.getByTestId("prompt-stack");
-    const status = screen.getByTestId("plugin-composer-status");
     const queue = screen.getByTestId("queued-message-list");
     const composer = screen.getByTestId("composer-boundary");
-    expect(status.textContent).toBe("proj_1:thr_1");
-    expect(
-      status.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
     expect(stack.lastElementChild).toBe(queue);
     expect(stack.nextElementSibling).toBe(composer);
   });
@@ -934,14 +926,12 @@ describe("ThreadDetailPromptArea", () => {
     );
     const firstHost = mocks.pluginComposerHost!;
     act(() => {
-      setComposerTextEffect(
-        firstHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", {
+        className: "queued-test-effect",
+      });
     });
     expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
-      "shimmer",
+      "queued-test-effect",
     );
 
     fireEvent.click(
@@ -958,24 +948,20 @@ describe("ThreadDetailPromptArea", () => {
     expect(secondHost.textEffectKey).not.toBe(firstHost.textEffectKey);
 
     act(() => {
-      setComposerTextEffect(
-        firstHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(firstHost.textEffectKey, "composer-effect-test", {
+        className: "stale-queued-test-effect",
+      });
     });
     expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
       "none",
     );
     act(() => {
-      setComposerTextEffect(
-        secondHost.textEffectKey,
-        "composer-effect-test",
-        "shimmer",
-      );
+      setComposerTextEffect(secondHost.textEffectKey, "composer-effect-test", {
+        className: "queued-test-effect",
+      });
     });
     expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
-      "shimmer",
+      "queued-test-effect",
     );
 
     act(() => {
@@ -1281,6 +1267,51 @@ describe("ThreadDetailPromptArea", () => {
         .getAllByTestId("composer-stack-item")
         .map((item) => item.textContent),
     ).toEqual(["Goal banner", "Pending interaction"]);
+  });
+
+  it("keeps plugin banners mounted while pending interaction suspends editor regions", () => {
+    setPluginSlotRegistrations("pending-plugin", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerCustomizations: [
+        {
+          id: "pending",
+          scopes: ["thread"],
+          actions: [
+            { id: "action", component: () => <button>Editor action</button> },
+          ],
+          plusMenu: [{ id: "menu", label: "Editor menu", run: () => {} }],
+          banners: [
+            {
+              id: "banner",
+              component: () => <div>Persistent plugin banner</div>,
+            },
+          ],
+          richText: {
+            effects: [
+              {
+                id: "rule",
+                className: "pending-rule",
+                match: (text) => [{ from: 0, to: text.length }],
+              },
+            ],
+          },
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderPromptArea({ pendingInteractions: [makePendingInteraction()] });
+
+    expect(screen.getByText("Persistent plugin banner")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Editor action" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
+    expect(document.querySelector(".pending-rule")).toBeNull();
   });
 
   it("wires the Plan exit action to the current thread", () => {

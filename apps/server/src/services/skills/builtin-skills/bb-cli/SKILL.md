@@ -458,7 +458,7 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 
 - The builtin `workflows` plugin runs durable provider-independent JavaScript
   orchestration and is disabled on fresh installations. Enable it under
-  Settings → Plugins or with `bb plugin enable workflows` before using its
+  Tools → Plugins or with `bb plugin enable workflows` before using its
   command.
 - Author and check sources with `bb workflows validate (--script <javascript>|
 --source <javascript>|--file <path>|--name <name>)`; start a background run
@@ -604,12 +604,13 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
     `@bb/plugin-sdk/app` and register UI slots (homepageSection,
-    settingsSection, navPanel, threadPanelAction, composerAccessory,
-    fileOpener) with hooks (useRpc, useRealtime, useRealtimeConnectionState,
-    useSettings, useBbContext, useBbNavigate, and useComposer for scoped text
-    editing, quote/mention insertion, focus, and scope-owned progress visuals);
-    components are vendored shadcn source the plugin owns. Installed
-    plugins and their settings also appear in the Plugins surface.
+    settingsSection, navPanel, threadPanelAction, fileOpener) with hooks
+    (useRpc, useRealtime, useRealtimeConnectionState,
+    useSettings, useBbContext,
+    useBbNavigate, useComposer for scoped text editing / quote / mention /
+    focus access); components are vendored shadcn source the
+    plugin owns. Installed
+    plugins and their settings also appear under Tools → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins
   and proxied to the server. Core command names always win. In agent threads,

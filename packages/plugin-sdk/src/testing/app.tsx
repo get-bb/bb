@@ -13,15 +13,15 @@ import { act, render, type RenderResult } from "@testing-library/react";
 import {
   type BbContext,
   type BbNavigate,
+  type ComposerCustomization,
+  type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
-  type PluginComposerAccessoryRegistration,
-  type experimental_PluginComposerStatusRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
-  type experimental_PluginComposerTextEffect,
-  type experimental_PluginComposerThreadRowStatus,
+  type PluginComposerTextEffect,
+  type PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -42,6 +42,17 @@ import {
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
+import { isComposerDraftEmpty } from "../internal/composer-view.js";
+import {
+  collectComposerCustomization,
+  PLUGIN_SLOT_ID_PATTERN,
+  requireComponent,
+  requireMessageDirectiveId,
+  requireNonEmptyString,
+  requireOptionalString,
+  requireSlotId,
+  requireUniqueId,
+} from "../internal/composer-customization-validation.js";
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -83,69 +94,41 @@ export type NavigateCall =
   | {
       method: "toPluginPanel";
       path: string;
-      options?: {
-        subPath?: string;
-        replace?: boolean;
-        experimental_returnOnExit?: boolean;
-      };
-    }
-  | {
-      method: "experimental_exitPluginPanel";
-      path: string;
-      options?: { subPath?: string };
+      options?: { subPath?: string; replace?: boolean };
     }
   | {
       method: "toCompose";
-      options?: {
-        initialPrompt?: string;
-        focusPrompt?: boolean;
-        experimental_replaceInitialPrompt?: boolean;
-        experimental_replace?: boolean;
-      };
+      options?: { initialPrompt?: string; focusPrompt?: boolean };
     };
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
-  /** @experimental Latest host-rendered text effect requested by the plugin. */
-  experimental_textEffect: experimental_PluginComposerTextEffect | null;
-  experimental_textEffectCalls: Array<experimental_PluginComposerTextEffect | null>;
-  /** @experimental Latest host-rendered thread-row status requested by the plugin. */
-  experimental_threadRowStatus: experimental_PluginComposerThreadRowStatus | null;
-  experimental_threadRowStatusCalls: Array<experimental_PluginComposerThreadRowStatus | null>;
+  /** Latest host-provided composer scope. */
+  readonly scope: PluginComposerScope;
+  /** Latest host-provided attachment count exposed through `useComposerView()`. */
+  readonly attachmentCount: number;
+  /** Latest host-rendered text effect requested by the plugin. */
+  textEffect: PluginComposerTextEffect | null;
+  textEffectCalls: Array<PluginComposerTextEffect | null>;
+  /** Whether this plugin currently holds the composer input lock. */
+  inputLocked: boolean;
+  inputLockCalls: boolean[];
+  /** Latest host-rendered thread-row status requested by the plugin. */
+  threadRowStatus: PluginComposerThreadRowStatus | null;
+  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
 }
 
-interface TestComposerSnapshot {
-  revision: number;
-  scope: PluginComposerScope;
-  text: string;
-}
-
-interface TestComposerBinding {
-  api: Omit<PluginComposerApi, "text">;
-  release(): void;
-}
-
 interface TestComposerStore {
-  createBinding(revision: number): TestComposerBinding;
-  getSnapshot(): TestComposerSnapshot;
+  api: Omit<PluginComposerApi, "scope" | "text">;
+  getAttachmentCount(): number;
+  getScope(): PluginComposerScope;
+  getText(): string;
+  getVersionSnapshot(): number;
   subscribe(listener: () => void): () => void;
-  setScope(scope: PluginComposerScope, text?: string): void;
-}
-
-function normalizeTestComposerThreadRowStatus(
-  status: experimental_PluginComposerThreadRowStatus | null,
-): experimental_PluginComposerThreadRowStatus | null | undefined {
-  if (status === null) return null;
-  const label = status.label.trim();
-  return label.length === 0
-    ? undefined
-    : label === status.label
-      ? status
-      : { ...status, label };
 }
 
 interface SlotEnv {
@@ -159,6 +142,17 @@ interface SlotEnv {
   navigateCalls: NavigateCall[];
   composer: TestComposerStore;
   composerLog: ComposerLog;
+}
+
+function SlotLifecycleGuard({
+  children,
+  onUnmount,
+}: {
+  children: ReactNode;
+  onUnmount: () => void;
+}) {
+  useEffect(() => () => onUnmount(), [onUnmount]);
+  return children;
 }
 
 interface TestRealtimeConnectionStore {
@@ -199,9 +193,6 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
     typeof (value as { setup?: unknown }).setup === "function"
   );
 }
-
-const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /**
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
@@ -321,23 +312,44 @@ const testPluginSdkApp = {
   },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
-    const snapshot = useSyncExternalStore(
+    const version = useSyncExternalStore(
       composer.subscribe,
-      composer.getSnapshot,
-      composer.getSnapshot,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
     );
-    const binding = useMemo(
-      () => composer.createBinding(snapshot.revision),
-      [composer, snapshot.revision],
-    );
-    useEffect(() => () => binding.release(), [binding]);
     return useMemo(
-      () => ({ ...binding.api, text: snapshot.text }),
-      [binding.api, snapshot.text],
+      () => ({
+        ...composer.api,
+        scope: composer.getScope(),
+        text: composer.getText(),
+      }),
+      [composer, version],
     );
   },
   experimental_ThreadChat: TestThreadChat,
   experimental_Markdown: TestMarkdown,
+  useComposerView(): ComposerView {
+    const composer = useSlotEnv("useComposerView").composer;
+    const version = useSyncExternalStore(
+      composer.subscribe,
+      composer.getVersionSnapshot,
+      composer.getVersionSnapshot,
+    );
+    return useMemo(() => {
+      const text = composer.getText();
+      const attachmentCount = composer.getAttachmentCount();
+      return {
+        scope: composer.getScope(),
+        layout: "expanded",
+        draft: {
+          text,
+          isEmpty: isComposerDraftEmpty(text, attachmentCount),
+          attachmentCount,
+        },
+        run: { isRunning: false, isSubmitting: false },
+      };
+    }, [composer, version]);
+  },
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -366,8 +378,7 @@ export interface CapturedPluginApp {
   settingsSections: PluginSettingsSectionRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
-  composerAccessories: PluginComposerAccessoryRegistration[];
-  experimental_composerStatuses: experimental_PluginComposerStatusRegistration[];
+  composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
@@ -382,67 +393,9 @@ export type PluginAppSource =
   | PluginAppModule
   | (() => Promise<PluginAppDefinition | PluginAppModule>);
 
-function requireSlotId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireMessageDirectiveId(kind: string, value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
-  ) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireNonEmptyString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${kind}: "${field}" must be a non-empty string`);
-  }
-  return value;
-}
-
-function requireOptionalString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string | undefined {
-  if (value !== undefined && typeof value !== "string") {
-    throw new Error(`${kind}: "${field}" must be a string when set`);
-  }
-  return value;
-}
-
-function requireComponent<T>(kind: string, value: unknown): T {
-  if (typeof value !== "function") {
-    throw new Error(`${kind}: "component" must be a React component function`);
-  }
-  return value as T;
-}
-
-function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
-  if (seen.has(id)) {
-    throw new Error(`${kind}: duplicate id "${id}"`);
-  }
-  seen.add(id);
-}
-
 /**
- * Validation ported from the BB app's collector
- * (apps/app/src/lib/plugin-app-definition.ts) so a registration the host
- * would reject fails here with the same message.
+ * Uses the same registration validation as the BB app collector so a
+ * registration the host would reject fails here with the same message.
  */
 function collectRegistrations(
   definition: PluginAppDefinition,
@@ -452,8 +405,7 @@ function collectRegistrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
-    experimental_composerStatuses: [],
+    composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
     fileOpeners: [],
@@ -465,8 +417,7 @@ function collectRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
-    composerAccessory: new Set<string>(),
-    experimental_composerStatus: new Set<string>(),
+    composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -562,24 +513,6 @@ function collectRegistrations(
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
-      composerAccessory(registration) {
-        const kind = "slots.composerAccessory";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.composerAccessory, id);
-        captured.composerAccessories.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
-      experimental_composerStatus(registration) {
-        const kind = "slots.experimental_composerStatus";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.experimental_composerStatus, id);
-        captured.experimental_composerStatuses.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
         const id = requireSlotId(kind, registration?.id);
@@ -654,6 +587,18 @@ function collectRegistrations(
         });
       },
     },
+    composer: {
+      customize(registration) {
+        const customization = collectComposerCustomization(
+          registration,
+          seenIds.composerCustomization,
+          (reason) => console.warn(reason),
+        );
+        if (customization !== null) {
+          captured.composerCustomizations.push(customization);
+        }
+      },
+    },
   });
 
   return captured;
@@ -709,8 +654,12 @@ export interface RenderSlotOptions<
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
-  /** Isolated `useComposer()` state; scope defaults to the supplied route context. */
-  composer?: { text?: string; scope?: PluginComposerScope };
+  /** Initial state for this render's isolated composer scope and view. */
+  composer?: {
+    text?: string;
+    scope?: PluginComposerScope;
+    attachmentCount?: number;
+  };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -724,11 +673,10 @@ export interface RenderedSlotBehaviorDrivers {
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
   ): Promise<void>;
-  /** @experimental Move scopes, optionally replacing the draft text. */
-  experimental_setComposerScope(
-    scope: PluginComposerScope,
-    text?: string,
-  ): Promise<void>;
+  /** Replace composer text as a host-originated edit, wrapped in act. */
+  setComposerText(text: string): Promise<void>;
+  /** Replace the scope snapshots returned by composer hooks, wrapped in act. */
+  setComposerScope(scope: PluginComposerScope): Promise<void>;
 }
 
 /** Read-only call/write logs produced while the slot is mounted. */
@@ -870,13 +818,6 @@ export function renderSlot<
         ...(panelOptions !== undefined ? { options: panelOptions } : {}),
       });
     },
-    experimental_exitPluginPanel(path, panelOptions) {
-      navigateCalls.push({
-        method: "experimental_exitPluginPanel",
-        path,
-        ...(panelOptions !== undefined ? { options: panelOptions } : {}),
-      });
-    },
     toCompose(composeOptions) {
       navigateCalls.push({
         method: "toCompose",
@@ -887,186 +828,107 @@ export function renderSlot<
 
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
+  let composerScope: PluginComposerScope =
+    options.composer?.scope ??
+    (threadId !== null
+      ? { kind: "thread", threadId }
+      : { kind: "new-thread", projectId });
+
   let composerText = options.composer?.text ?? "";
-  let composerSnapshot: TestComposerSnapshot = {
-    revision: 0,
-    scope:
-      options.composer?.scope ??
-      (threadId !== null
-        ? { kind: "thread", threadId }
-        : { kind: "new-thread", projectId }),
-    text: composerText,
-  };
+  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerVersion = 0;
   const composerListeners = new Set<() => void>();
   const notifyComposerListeners = () => {
+    composerVersion += 1;
     for (const listener of composerListeners) listener();
   };
   const commitComposerText = (next: string) => {
     if (next === composerText) return;
     composerText = next;
-    composerSnapshot = { ...composerSnapshot, text: next };
     notifyComposerListeners();
   };
   const composerLog: ComposerLog = {
     get text() {
       return composerText;
     },
-    experimental_textEffect: null,
-    experimental_textEffectCalls: [],
-    experimental_threadRowStatus: null,
-    experimental_threadRowStatusCalls: [],
+    get scope() {
+      return composerScope;
+    },
+    get attachmentCount() {
+      return composerAttachmentCount;
+    },
+    textEffect: null,
+    textEffectCalls: [],
+    inputLocked: false,
+    inputLockCalls: [],
+    threadRowStatus: null,
+    threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
   };
-  const textEffectsByOwner = new Map<
-    symbol,
-    experimental_PluginComposerTextEffect
-  >();
-  const threadRowStatusesByOwner = new Map<
-    symbol,
-    experimental_PluginComposerThreadRowStatus
-  >();
-  const syncComposerVisualState = () => {
-    composerLog.experimental_textEffect =
-      textEffectsByOwner.values().next().value ?? null;
-    composerLog.experimental_threadRowStatus =
-      threadRowStatusesByOwner.values().next().value ?? null;
-  };
-  interface ComposerBindingOwnership {
-    active: boolean;
-    owner: symbol;
-    release(): void;
-  }
-  const bindingsByRevision = new Map<number, Set<ComposerBindingOwnership>>();
+  const composerOwnership = { active: true };
   const composer: TestComposerStore = {
-    getSnapshot: () => composerSnapshot,
+    getAttachmentCount: () => composerAttachmentCount,
+    getScope: () => composerScope,
+    getText: () => composerText,
+    getVersionSnapshot: () => composerVersion,
     subscribe(listener) {
       composerListeners.add(listener);
       return () => composerListeners.delete(listener);
     },
-    createBinding(revision) {
-      const scope = composerSnapshot.scope;
-      const ownership: ComposerBindingOwnership = {
-        active: composerSnapshot.revision === revision,
-        owner: Symbol(`composer-scope-${revision}`),
-        release() {
-          if (!ownership.active) return;
-          ownership.active = false;
-          textEffectsByOwner.delete(ownership.owner);
-          threadRowStatusesByOwner.delete(ownership.owner);
-          bindingsByRevision.get(revision)?.delete(ownership);
-          syncComposerVisualState();
-        },
-      };
-      const revisionBindings = bindingsByRevision.get(revision) ?? new Set();
-      revisionBindings.add(ownership);
-      bindingsByRevision.set(revision, revisionBindings);
-
-      return {
-        api: {
-          scope,
-          setText(next) {
-            commitComposerText(next);
-          },
-          updateText(updater) {
-            commitComposerText(updater(composerText));
-          },
-          clear() {
-            commitComposerText("");
-          },
-          experimental_setTextEffect(effect) {
-            if (!ownership.active) return;
-            if (effect === null) textEffectsByOwner.delete(ownership.owner);
-            else textEffectsByOwner.set(ownership.owner, effect);
-            composerLog.experimental_textEffectCalls.push(effect);
-            syncComposerVisualState();
-          },
-          experimental_setThreadRowStatus(status) {
-            if (!ownership.active || scope.kind === "new-thread") return;
-            const normalizedStatus =
-              normalizeTestComposerThreadRowStatus(status);
-            if (normalizedStatus === undefined) return;
-            if (normalizedStatus === null) {
-              threadRowStatusesByOwner.delete(ownership.owner);
-            } else {
-              threadRowStatusesByOwner.set(ownership.owner, {
-                ...normalizedStatus,
-              });
-            }
-            composerLog.experimental_threadRowStatusCalls.push(
-              normalizedStatus,
-            );
-            syncComposerVisualState();
-          },
-          addQuote(text) {
-            const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
-            if (trimmed !== "") {
-              const block = trimmed
-                .split("\n")
-                .map((line) => (line.length > 0 ? `> ${line}` : ">"))
-                .join("\n");
-              commitComposerText(
-                composerText === ""
-                  ? `${block}\n`
-                  : `${composerText}\n${block}\n`,
-              );
-              composerLog.quotes.push(text);
-            }
-            composerLog.focusCount += 1;
-          },
-          insertMention(mention) {
-            const label = mention.label.trim() || mention.id;
-            const separator =
-              composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
-            commitComposerText(`${composerText}${separator}${label} `);
-            composerLog.mentions.push(mention);
-            composerLog.focusCount += 1;
-          },
-          focus() {
-            composerLog.focusCount += 1;
-          },
-        },
-        release: ownership.release,
-      };
-    },
-    setScope(scope, text) {
-      const previousRevision = composerSnapshot.revision;
-      const previousScope = composerSnapshot.scope;
-      const unchanged =
-        previousScope.kind === scope.kind &&
-        (scope.kind === "thread"
-          ? previousScope.kind === "thread" &&
-            previousScope.threadId === scope.threadId
-          : scope.kind === "queued-message"
-            ? previousScope.kind === "queued-message" &&
-              previousScope.threadId === scope.threadId &&
-              previousScope.queuedMessageId === scope.queuedMessageId
-            : scope.kind === "side-chat"
-              ? previousScope.kind === "side-chat" &&
-                previousScope.projectId === scope.projectId &&
-                previousScope.parentThreadId === scope.parentThreadId &&
-                previousScope.tabId === scope.tabId &&
-                previousScope.childThreadId === scope.childThreadId
-              : previousScope.kind === "new-thread" &&
-                previousScope.projectId === scope.projectId);
-      if (unchanged) {
-        if (text !== undefined) commitComposerText(text);
-        return;
-      }
-      for (const ownership of [
-        ...(bindingsByRevision.get(previousRevision) ?? []),
-      ]) {
-        ownership.release();
-      }
-      bindingsByRevision.delete(previousRevision);
-      composerText = text ?? composerText;
-      composerSnapshot = {
-        revision: previousRevision + 1,
-        scope,
-        text: composerText,
-      };
-      notifyComposerListeners();
+    api: {
+      setText(next) {
+        commitComposerText(next);
+      },
+      updateText(updater) {
+        commitComposerText(updater(composerText));
+      },
+      clear() {
+        commitComposerText("");
+      },
+      setTextEffect(effect) {
+        if (!composerOwnership.active) return;
+        composerLog.textEffect = effect;
+        composerLog.textEffectCalls.push(effect);
+      },
+      setInputLock(locked) {
+        if (!composerOwnership.active) return;
+        composerLog.inputLocked = locked;
+        composerLog.inputLockCalls.push(locked);
+      },
+      setThreadRowStatus(status) {
+        if (!composerOwnership.active || composerScope.kind === "new-thread") {
+          return;
+        }
+        composerLog.threadRowStatus = status;
+        composerLog.threadRowStatusCalls.push(status);
+      },
+      addQuote(text) {
+        const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
+        if (trimmed !== "") {
+          const block = trimmed
+            .split("\n")
+            .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+            .join("\n");
+          commitComposerText(
+            composerText === "" ? `${block}\n` : `${composerText}\n${block}\n`,
+          );
+          composerLog.quotes.push(text);
+        }
+        composerLog.focusCount += 1;
+      },
+      insertMention(mention) {
+        const label = mention.label.trim() || mention.id;
+        const separator =
+          composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
+        commitComposerText(`${composerText}${separator}${label} `);
+        composerLog.mentions.push(mention);
+        composerLog.focusCount += 1;
+      },
+      focus() {
+        composerLog.focusCount += 1;
+      },
     },
   };
 
@@ -1083,8 +945,19 @@ export function renderSlot<
     composerLog,
   };
 
+  const releaseComposerOwnership = (): void => {
+    if (!composerOwnership.active) return;
+    composerOwnership.active = false;
+    composerLog.textEffect = null;
+    composerLog.inputLocked = false;
+    composerLog.threadRowStatus = null;
+  };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
-    <SlotEnvContext.Provider value={env}>{ui}</SlotEnvContext.Provider>
+    <SlotEnvContext.Provider value={env}>
+      <SlotLifecycleGuard onUnmount={releaseComposerOwnership}>
+        {ui}
+      </SlotLifecycleGuard>
+    </SlotEnvContext.Provider>
   );
   const Component = registration.component;
   const element = renderSlotTree(<Component {...props} />);
@@ -1113,13 +986,19 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
-  const experimental_setComposerScope = async (
+  const setComposerText = async (text: string): Promise<void> => {
+    await act(async () => commitComposerText(text));
+  };
+  const setComposerScope = async (
     scope: PluginComposerScope,
-    text?: string,
   ): Promise<void> => {
-    await act(async () => composer.setScope(scope, text));
+    await act(async () => {
+      composerScope = scope;
+      notifyComposerListeners();
+    });
   };
   const unmountSlot = (): void => {
+    if (!composerOwnership.active) return;
     result.unmount();
   };
 
@@ -1130,13 +1009,15 @@ export function renderSlot<
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
-    experimental_setComposerScope,
+    setComposerText,
+    setComposerScope,
     navigateCalls,
     composer: composerLog,
     behavior: {
       emitRealtime,
       setRealtimeConnectionState,
-      experimental_setComposerScope,
+      setComposerText,
+      setComposerScope,
     },
     inspection: { rpcCalls, navigateCalls, composer: composerLog },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },

@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
   PluginComposerApi,
   PluginComposerScope,
-  experimental_PluginComposerStatusProps,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -20,6 +19,7 @@ const {
   definePluginApp,
   experimental_ThreadChat: ThreadChat,
   useComposer,
+  useComposerView,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -76,16 +76,9 @@ function RealtimeConnectionProbe() {
   return <div>Realtime: {state}</div>;
 }
 
-function ComposerStatus({
-  projectId,
-  threadId,
-}: experimental_PluginComposerStatusProps) {
-  return <div>{`Status ${projectId}:${threadId}`}</div>;
-}
-
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "experimental_setTextEffect" | "experimental_setThreadRowStatus"
+  "setTextEffect" | "setInputLock" | "setThreadRowStatus"
 > | null = null;
 
 function InlineVis({
@@ -108,9 +101,11 @@ function InlineVis({
 
 function ComposerProbe() {
   const composer = useComposer();
+  const view = useComposerView();
   capturedComposerVisualSetters = {
-    experimental_setTextEffect: composer.experimental_setTextEffect,
-    experimental_setThreadRowStatus: composer.experimental_setThreadRowStatus,
+    setTextEffect: composer.setTextEffect,
+    setInputLock: composer.setInputLock,
+    setThreadRowStatus: composer.setThreadRowStatus,
   };
   return (
     <div>
@@ -118,16 +113,14 @@ function ComposerProbe() {
       <span data-testid="composer-scope-details">
         {JSON.stringify(composer.scope)}
       </span>
-      <span data-testid="composer-scope-id">
-        {composer.scope.kind === "thread"
-          ? composer.scope.threadId
-          : composer.scope.kind === "queued-message"
-            ? composer.scope.queuedMessageId
-            : composer.scope.kind === "side-chat"
-              ? composer.scope.tabId
-              : (composer.scope.projectId ?? "null")}
-      </span>
       <span data-testid="composer-text">{composer.text}</span>
+      <span data-testid="composer-view-text">{view.draft.text}</span>
+      <span data-testid="composer-attachment-count">
+        {view.draft.attachmentCount}
+      </span>
+      <span data-testid="composer-is-empty">
+        {String(view.draft.isEmpty)}
+      </span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -143,20 +136,15 @@ function ComposerProbe() {
       <button
         type="button"
         onClick={() =>
-          composer.experimental_setThreadRowStatus({
+          composer.setThreadRowStatus({
             icon: "AiContentGenerator01",
             label: "Plugin improving draft",
-            effect: "shimmer",
-            tone: "default",
           })
         }
       >
         set row status
       </button>
-      <button
-        type="button"
-        onClick={() => composer.experimental_setThreadRowStatus(null)}
-      >
+      <button type="button" onClick={() => composer.setThreadRowStatus(null)}>
         clear row status
       </button>
       <button type="button" onClick={() => composer.addQuote("picked text")}>
@@ -235,32 +223,20 @@ const app = await loadPluginApp(
       id: "inline-vis",
       component: InlineVis,
     });
-    builder.slots.composerAccessory({
-      id: "composer",
-      component: ComposerProbe,
-    });
-    builder.slots.experimental_composerStatus({
-      id: "workflow",
-      component: ComposerStatus,
-    });
     builder.slots.homepageSection({
       id: "realtime-connection",
       title: "Realtime connection",
       component: RealtimeConnectionProbe,
     });
+    builder.composer.customize({
+      id: "improve-prompt",
+      scopes: ["thread", "new-thread"],
+      actions: [{ id: "improve", component: ComposerProbe }],
+    });
   }),
 );
 
 describe("loadPluginApp", () => {
-  it("captures and renders an experimental composer status", () => {
-    expect(app.experimental_composerStatuses).toHaveLength(1);
-    const slot = renderSlot(app.experimental_composerStatuses[0]!, {
-      projectId: "proj_1",
-      threadId: "thr_1",
-    });
-    expect(slot.getByText("Status proj_1:thr_1")).toBeDefined();
-  });
-
   it("rejects registrations the host would reject, with the host's message", async () => {
     await expect(
       loadPluginApp(
@@ -284,6 +260,106 @@ describe("loadPluginApp", () => {
     expect(app.messageDirectives).toEqual([
       { id: "inline-vis", component: InlineVis },
     ]);
+  });
+
+  it("captures composer customizations", () => {
+    expect(app.composerCustomizations).toEqual([
+      {
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: ComposerProbe }],
+      },
+    ]);
+  });
+
+  it("mirrors host isolation for malformed composer regions and duplicate entries", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const malformed = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "nested",
+          actions: {} as never,
+          banners: [
+            { id: "banner", component: ComposerProbe },
+            { id: "banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "bad", label: "", run: () => {} },
+            { id: "good", label: "Good", run: () => {} },
+          ],
+        });
+      }),
+    );
+
+    expect(malformed.composerCustomizations).toEqual([
+      {
+        id: "nested",
+        banners: [{ id: "banner", component: ComposerProbe }],
+        plusMenu: [{ id: "good", label: "Good", run: expect.any(Function) }],
+      },
+    ]);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("actions: must be an array"),
+    );
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining('duplicate id "banner"'),
+    );
+  });
+
+  it("does not reserve nested ids for malformed composer contributions", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warning.mockClear();
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.composer.customize({
+          id: "reused-after-malformed",
+          actions: [
+            { id: "same-action", component: null as never },
+            { id: "same-action", component: ComposerProbe },
+          ],
+          banners: [
+            {
+              id: "same-banner",
+              chrome: "dialog" as never,
+              component: ComposerProbe,
+            },
+            { id: "same-banner", component: ComposerProbe },
+          ],
+          plusMenu: [
+            { id: "same-menu", label: "", run: () => {} },
+            { id: "same-menu", label: "Valid menu", run: () => {} },
+          ],
+          richText: {
+            effects: [
+              { id: "same-effect", className: "", match: () => [] },
+              {
+                id: "same-effect",
+                className: "valid-effect",
+                match: () => [],
+              },
+            ],
+          },
+        });
+      }),
+    );
+
+    const [customization] = captured.composerCustomizations;
+    expect(customization?.actions?.map(({ id }) => id)).toEqual([
+      "same-action",
+    ]);
+    expect(customization?.banners?.map(({ id }) => id)).toEqual([
+      "same-banner",
+    ]);
+    expect(customization?.plusMenu?.map(({ id }) => id)).toEqual(["same-menu"]);
+    expect(customization?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "same-effect",
+    ]);
+    expect(warning).toHaveBeenCalledTimes(4);
+    expect(
+      warning.mock.calls.some(([reason]) =>
+        String(reason).includes("duplicate id"),
+      ),
+    ).toBe(false);
   });
 
   it("rejects invalid and duplicate messageDirective ids like the host", async () => {
@@ -331,7 +407,9 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow('slots.experimental_messageAction: "run" must be a function');
+    ).rejects.toThrow(
+      'slots.experimental_messageAction: "run" must be a function',
+    );
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
@@ -498,16 +576,16 @@ describe("renderSlot", () => {
 
   it("reads, replaces, functionally updates, and clears isolated composer text", () => {
     const threadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: "thr_1" },
         composer: { text: "seed" },
       },
     );
     const newThreadSlot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       {
         context: { projectId: "proj_1", threadId: null },
         composer: { text: "new-thread seed" },
@@ -535,7 +613,7 @@ describe("renderSlot", () => {
     );
   });
 
-  it("exposes and transitions an explicit side-chat composer scope", async () => {
+  it("exposes an explicit side-chat composer scope", () => {
     const sideChatScope = {
       kind: "side-chat",
       projectId: "proj_1",
@@ -544,8 +622,8 @@ describe("renderSlot", () => {
       childThreadId: null,
     } satisfies PluginComposerScope;
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_parent" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "side-chat draft", scope: sideChatScope } },
     );
 
@@ -555,28 +633,82 @@ describe("renderSlot", () => {
       ),
     ).toEqual(sideChatScope);
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
-      "Plugin improving draft",
+    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
+  });
+
+  it("drives host-originated composer text and scope changes", async () => {
+    const initialScope = {
+      kind: "queued-message",
+      threadId: "thr_1",
+      queuedMessageId: "qmsg_1",
+    } satisfies PluginComposerScope;
+    const nextScope = {
+      kind: "side-chat",
+      projectId: "proj_1",
+      parentThreadId: "thr_parent",
+      tabId: "side-chat:one",
+      childThreadId: null,
+    } satisfies PluginComposerScope;
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      {
+        composer: {
+          text: "initial draft",
+          scope: initialScope,
+          attachmentCount: 2,
+        },
+      },
     );
 
-    const childScope = { ...sideChatScope, childThreadId: "thr_child" };
-    await slot.behavior.experimental_setComposerScope(
-      childScope,
-      "child draft",
+    expect(slot.getByTestId("composer-attachment-count").textContent).toBe("2");
+    expect(slot.composer.scope).toEqual(initialScope);
+    expect(slot.composer.attachmentCount).toBe(2);
+
+    await slot.behavior.setComposerText("host edit");
+    expect(slot.getByTestId("composer-text").textContent).toBe("host edit");
+    expect(slot.getByTestId("composer-view-text").textContent).toBe(
+      "host edit",
     );
+
+    await slot.behavior.setComposerScope(nextScope);
     expect(
       JSON.parse(
         slot.getByTestId("composer-scope-details").textContent ?? "{}",
       ),
-    ).toEqual(childScope);
-    expect(slot.getByTestId("composer-text").textContent).toBe("child draft");
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
+    ).toEqual(nextScope);
+    expect(slot.composer.scope).toEqual(nextScope);
+  });
+
+  it.each([
+    {
+      name: "attachment-only",
+      text: "",
+      attachmentCount: 1,
+      expected: "false",
+    },
+    {
+      name: "whitespace-only",
+      text: " \n\t ",
+      attachmentCount: 0,
+      expected: "true",
+    },
+  ])("reports $name composer drafts as empty=$expected", (draft) => {
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: draft },
+    );
+
+    expect(slot.getByTestId("composer-is-empty").textContent).toBe(
+      draft.expected,
+    );
   });
 
   it("keeps quote, mention, and focus behavior while updating harness text", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: null, threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { composer: { text: "draft" } },
     );
 
@@ -594,237 +726,109 @@ describe("renderSlot", () => {
 
   it("records composer thread-row status changes", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
 
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.experimental_threadRowStatus).toEqual({
+    expect(slot.composer.threadRowStatus).toEqual({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
-      tone: "default",
     });
-    const visualSetters = capturedComposerVisualSetters;
-    if (visualSetters === null)
-      throw new Error("composer setters not captured");
-    visualSetters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "   ",
-      effect: "shimmer",
-      tone: "default",
-    });
-    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
-      "Plugin improving draft",
-    );
-    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
 
     fireEvent.click(slot.getByText("clear row status"));
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
-    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(2);
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(2);
   });
 
   it("ignores thread-row status changes outside a thread composer", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: null },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: null } },
     );
 
     fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
-    expect(slot.composer.experimental_threadRowStatusCalls).toEqual([]);
-  });
-
-  it("models queued-message scope independently from route context", () => {
-    const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_route", threadId: null },
-      {
-        context: { projectId: "proj_route", threadId: null },
-        composer: {
-          scope: {
-            kind: "queued-message",
-            threadId: "thr_queue",
-            queuedMessageId: "qmsg_1",
-          },
-        },
-      },
-    );
-
-    expect(slot.getByTestId("composer-scope").textContent).toBe(
-      "queued-message",
-    );
-    expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_1");
-    fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.experimental_threadRowStatus?.tone).toBe("default");
-  });
-
-  it("clears visual state and invalidates stale setters across scope changes", async () => {
-    const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
-      { context: { projectId: "proj_1", threadId: "thr_1" } },
-    );
-    const staleSetters = capturedComposerVisualSetters;
-    if (staleSetters === null) {
-      throw new Error("composer setters were not captured");
-    }
-    staleSetters.experimental_setTextEffect("shimmer");
-    staleSetters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Old scope",
-      effect: "shimmer",
-      tone: "success",
-    });
-
-    await slot.behavior.experimental_setComposerScope(
-      {
-        kind: "queued-message",
-        threadId: "thr_1",
-        queuedMessageId: "qmsg_2",
-      },
-      "queued draft",
-    );
-    const currentSetters = capturedComposerVisualSetters;
-    if (currentSetters === null || currentSetters === staleSetters) {
-      throw new Error("composer scope did not publish fresh setters");
-    }
-
-    expect(slot.getByTestId("composer-scope").textContent).toBe(
-      "queued-message",
-    );
-    expect(slot.getByTestId("composer-scope-id").textContent).toBe("qmsg_2");
-    expect(slot.getByTestId("composer-text").textContent).toBe("queued draft");
-    expect(slot.composer.experimental_textEffect).toBeNull();
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
-
-    staleSetters.experimental_setTextEffect("shimmer");
-    staleSetters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Late old scope",
-      effect: "shimmer",
-      tone: "success",
-    });
-    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
-
-    currentSetters.experimental_setTextEffect("shimmer");
-    currentSetters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Current scope",
-      effect: "shimmer",
-      tone: "success",
-    });
-    expect(slot.composer.experimental_textEffect).toBe("shimmer");
-    expect(slot.composer.experimental_threadRowStatus?.label).toBe(
-      "Current scope",
-    );
-  });
-
-  it("releases visual ownership when only the hook consumer unmounts", () => {
-    const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
-      { context: { projectId: "proj_1", threadId: "thr_1" } },
-    );
-    const setters = capturedComposerVisualSetters;
-    if (setters === null) throw new Error("composer setters were not captured");
-    setters.experimental_setTextEffect("shimmer");
-    setters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Mounted",
-      effect: "shimmer",
-      tone: "default",
-    });
-
-    slot.lifecycle.rerender(null);
-    expect(slot.composer.experimental_textEffect).toBeNull();
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
-
-    setters.experimental_setTextEffect("shimmer");
-    setters.experimental_setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Late unmounted",
-      effect: "shimmer",
-      tone: "default",
-    });
-    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.threadRowStatusCalls).toEqual([]);
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {
     for (const control of ["top-level", "lifecycle"] as const) {
       const slot = renderSlot(
-        app.composerAccessories[0]!,
-        { projectId: "proj_1", threadId: "thr_1" },
+        app.composerCustomizations[0]!.actions![0]!,
+        {},
         { context: { projectId: "proj_1", threadId: "thr_1" } },
       );
       const setters = capturedComposerVisualSetters;
       if (setters === null)
         throw new Error("composer setters were not captured");
 
-      setters.experimental_setTextEffect("shimmer");
-      setters.experimental_setThreadRowStatus({
+      setters.setTextEffect({ className: "improve-shimmer" });
+      setters.setInputLock(true);
+      setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
-        effect: "shimmer",
         tone: "success",
       });
-      expect(slot.composer.experimental_textEffect).toBe("shimmer");
-      expect(slot.composer.experimental_threadRowStatus?.tone).toBe("success");
+      expect(slot.composer.textEffect).toEqual({
+        className: "improve-shimmer",
+      });
+      expect(slot.composer.inputLocked).toBe(true);
+      expect(slot.composer.threadRowStatus?.tone).toBe("success");
 
       if (control === "top-level") slot.unmount();
       else slot.lifecycle.unmount();
-      expect(slot.composer.experimental_textEffect).toBeNull();
-      expect(slot.composer.experimental_threadRowStatus).toBeNull();
+      expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.inputLocked).toBe(false);
+      expect(slot.composer.threadRowStatus).toBeNull();
 
-      setters.experimental_setTextEffect("shimmer");
-      setters.experimental_setThreadRowStatus({
+      setters.setTextEffect({ className: "late-effect" });
+      setters.setInputLock(true);
+      setters.setThreadRowStatus({
         icon: "AiContentGenerator01",
         label: "late status",
-        effect: "shimmer",
-        tone: "default",
       });
-      expect(slot.composer.experimental_textEffect).toBeNull();
-      expect(slot.composer.experimental_threadRowStatus).toBeNull();
-      expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
-      expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
+      expect(slot.composer.textEffect).toBeNull();
+      expect(slot.composer.threadRowStatus).toBeNull();
+      expect(slot.composer.textEffectCalls).toEqual([
+        { className: "improve-shimmer" },
+      ]);
+      expect(slot.composer.inputLockCalls).toEqual([true]);
+      expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
     }
   });
 
   it("invalidates visual-state setters when Testing Library cleans up the root", () => {
     const slot = renderSlot(
-      app.composerAccessories[0]!,
-      { projectId: "proj_1", threadId: "thr_1" },
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
       { context: { projectId: "proj_1", threadId: "thr_1" } },
     );
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
 
-    setters.experimental_setTextEffect("shimmer");
-    setters.experimental_setThreadRowStatus({
+    setters.setTextEffect({ className: "cleanup-effect" });
+    setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
-      tone: "default",
     });
     cleanup();
 
-    expect(slot.composer.experimental_textEffect).toBeNull();
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
 
-    setters.experimental_setTextEffect("shimmer");
-    setters.experimental_setThreadRowStatus({
+    setters.setTextEffect({ className: "late-effect" });
+    setters.setThreadRowStatus({
       icon: "AiContentGenerator01",
       label: "late status",
-      effect: "shimmer",
-      tone: "default",
     });
-    expect(slot.composer.experimental_textEffect).toBeNull();
-    expect(slot.composer.experimental_threadRowStatus).toBeNull();
-    expect(slot.composer.experimental_textEffectCalls).toEqual(["shimmer"]);
-    expect(slot.composer.experimental_threadRowStatusCalls).toHaveLength(1);
+    expect(slot.composer.textEffect).toBeNull();
+    expect(slot.composer.threadRowStatus).toBeNull();
+    expect(slot.composer.textEffectCalls).toEqual([
+      { className: "cleanup-effect" },
+    ]);
+    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

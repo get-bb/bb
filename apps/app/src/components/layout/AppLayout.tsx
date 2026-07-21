@@ -452,8 +452,8 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
 function resolveRouteTitle(
   pathname: string,
 ): { title: string; subtitle?: string } | undefined {
-  // The global settings page owns a subtree (/settings/:section,
-  // /settings/plugins/:id); every sub-route keeps the "Settings" title.
+  // The global settings page owns /settings/:section. Legacy plugin settings
+  // links still match briefly before AppRoutes redirects them to Tools.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
   }

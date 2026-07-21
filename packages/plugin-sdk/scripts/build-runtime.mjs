@@ -12,6 +12,16 @@ const entries = [
   { source: "src/index.ts", output: "dist/index.js", external: [] },
   { source: "src/app.ts", output: "dist/app.js", external: [] },
   {
+    source: "src/internal/composer-customization-validation.ts",
+    output: "dist/internal/composer-customization-validation.js",
+    external: [],
+  },
+  {
+    source: "src/internal/composer-view.ts",
+    output: "dist/internal/composer-view.js",
+    external: [],
+  },
+  {
     source: "src/testing/index.ts",
     output: "dist/testing/index.js",
     external: [

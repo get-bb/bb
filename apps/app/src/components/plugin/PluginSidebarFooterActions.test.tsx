@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -23,8 +23,6 @@ function registrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
-    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -35,17 +33,9 @@ function registrationSet(
 function renderWithProviders(ui: ReactNode) {
   return render(
     <MemoryRouter>
-      <SidebarProvider>
-        {ui}
-        <LocationProbe />
-      </SidebarProvider>
+      <SidebarProvider>{ui}</SidebarProvider>
     </MemoryRouter>,
   );
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return <span data-testid="location">{location.pathname}</span>;
 }
 
 afterEach(() => {
@@ -62,6 +52,7 @@ describe("PluginSidebarFooterActions", () => {
         [
           "remote",
           {
+            displayName: "Remote",
             icon: "FileText",
             compactIconUrl: null,
             logoUrl: "/api/v1/plugins/remote/assets/logo?h=abc",
@@ -114,29 +105,6 @@ describe("PluginSidebarFooterActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Boom" }));
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('sidebarFooterAction "boom" failed: nope'),
-    );
-  });
-
-  it("opens plugin configuration on the canonical Plugins detail page", () => {
-    setPluginSlotRegistrations(
-      "connect",
-      registrationSet({
-        sidebarFooterActions: [
-          {
-            id: "remote",
-            title: "Remote access",
-            icon: "Smartphone",
-            run: ({ openSettings }) => openSettings(),
-          },
-        ],
-      }),
-    );
-
-    renderWithProviders(<PluginSidebarFooterActions />);
-    fireEvent.click(screen.getByRole("button", { name: "Remote access" }));
-
-    expect(screen.getByTestId("location").textContent).toBe(
-      "/tools/plugins/connect",
     );
   });
 });

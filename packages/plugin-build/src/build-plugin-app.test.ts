@@ -1,10 +1,30 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
-import { runtimeShimPlugin } from "./build-plugin-app.js";
+import { buildPluginApp, runtimeShimPlugin } from "./build-plugin-app.js";
+
+function precedingScopeBounds(css: string, ruleIndex: number): {
+  start: number;
+  bodyStart: number;
+  end: number;
+} {
+  const start = css.lastIndexOf("@scope", ruleIndex);
+  const bodyStart = css.indexOf("{", start);
+  let end = -1;
+  let braceDepth = 0;
+  for (let index = bodyStart; index < css.length; index += 1) {
+    if (css[index] === "{") braceDepth += 1;
+    if (css[index] === "}") braceDepth -= 1;
+    if (braceDepth === 0) {
+      end = index;
+      break;
+    }
+  }
+  return { start, bodyStart, end };
+}
 
 describe("plugin app runtime shim", () => {
   const tempDirs: string[] = [];
@@ -48,5 +68,54 @@ describe("plugin app runtime shim", () => {
       "export const first = 1; export const addedLater = 2;\n",
     );
     await expect(bundle("addedLater")).resolves.toContain("addedLater");
+  });
+
+  it("scopes Tailwind utilities while preserving imported CSS unscoped", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-css-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-css-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "CSS fixture",
+          description: "Verifies plugin CSS emission.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      'import "./app.css";\nexport const utilityClass = "flex-col";\n',
+    );
+    await writeFile(
+      join(dir, "app.css"),
+      ".bb71-authored-decoration { text-decoration: underline; }\n",
+    );
+
+    const result = await buildPluginApp(dir, "0.9.0-test");
+    const css = await readFile(result.cssPath, "utf8");
+
+    expect(css).toContain(
+      '@scope ([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
+    );
+    const utilityRuleIndex = css.indexOf(".flex-col");
+    const utilityScope = precedingScopeBounds(css, utilityRuleIndex);
+    expect(utilityRuleIndex).toBeGreaterThan(utilityScope.start);
+    expect(utilityScope.end).toBeGreaterThan(utilityScope.bodyStart);
+    expect(utilityRuleIndex).toBeLessThan(utilityScope.end);
+
+    const authoredRuleIndex = css.indexOf(".bb71-authored-decoration");
+    const authoredScope = precedingScopeBounds(css, authoredRuleIndex);
+    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.start);
+    expect(authoredScope.end).toBeGreaterThan(authoredScope.bodyStart);
+    expect(authoredRuleIndex).toBeGreaterThan(authoredScope.end);
   });
 });

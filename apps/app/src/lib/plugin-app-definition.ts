@@ -1,8 +1,7 @@
 import {
+  type ComposerCustomization,
   type PluginAppDefinition,
   type PluginAppSetup,
-  type PluginComposerAccessoryRegistration,
-  type experimental_PluginComposerStatusRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -13,6 +12,16 @@ import {
   type PluginSidebarFooterActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
+import {
+  collectComposerCustomization,
+  PLUGIN_SLOT_ID_PATTERN,
+  requireComponent,
+  requireMessageDirectiveId,
+  requireNonEmptyString,
+  requireOptionalString,
+  requireSlotId,
+  requireUniqueId,
+} from "@bb/plugin-sdk/internal/composer-customization-validation";
 import type { PluginFrontendRecord } from "./plugin-frontend";
 import type { PluginRegistrationSet } from "./plugin-slots";
 
@@ -44,66 +53,6 @@ export function isPluginAppDefinition(
   );
 }
 
-const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-
-function requireSlotId(kind: string, value: unknown): string {
-  if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_SLOT_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireMessageDirectiveId(kind: string, value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN.test(value)
-  ) {
-    throw new Error(
-      `${kind}: "id" must match ${String(PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN)}, got ${JSON.stringify(value)}`,
-    );
-  }
-  return value;
-}
-
-function requireNonEmptyString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${kind}: "${field}" must be a non-empty string`);
-  }
-  return value;
-}
-
-function requireOptionalString(
-  kind: string,
-  field: string,
-  value: unknown,
-): string | undefined {
-  if (value !== undefined && typeof value !== "string") {
-    throw new Error(`${kind}: "${field}" must be a string when set`);
-  }
-  return value;
-}
-
-function requireComponent<T>(kind: string, value: unknown): T {
-  if (typeof value !== "function") {
-    throw new Error(`${kind}: "component" must be a React component function`);
-  }
-  return value as T;
-}
-
-function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
-  if (seen.has(id)) {
-    throw new Error(`${kind}: duplicate id "${id}"`);
-  }
-  seen.add(id);
-}
-
 /**
  * Run a plugin app definition's setup against a fresh collector and return
  * the validated plain registration set. Throws a human-readable error (the
@@ -111,14 +60,14 @@ function requireUniqueId(kind: string, seen: Set<string>, id: string): void {
  */
 export function collectPluginAppRegistrations(
   definition: PluginAppDefinition,
+  onComposerCustomizationRejected: (reason: string) => void = (reason) =>
+    console.warn(reason),
 ): PluginRegistrationSet {
   const homepageSections: PluginHomepageSectionRegistration[] = [];
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
-  const composerAccessories: PluginComposerAccessoryRegistration[] = [];
-  const experimentalComposerStatuses: experimental_PluginComposerStatusRegistration[] =
-    [];
+  const composerCustomizations: ComposerCustomization[] = [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
@@ -129,8 +78,7 @@ export function collectPluginAppRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
-    composerAccessory: new Set<string>(),
-    experimental_composerStatus: new Set<string>(),
+    composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
@@ -228,24 +176,6 @@ export function collectPluginAppRegistrations(
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
-      composerAccessory(registration) {
-        const kind = "slots.composerAccessory";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.composerAccessory, id);
-        composerAccessories.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
-      experimental_composerStatus(registration) {
-        const kind = "slots.experimental_composerStatus";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.experimental_composerStatus, id);
-        experimentalComposerStatuses.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
       pendingInteraction(registration) {
         const kind = "slots.pendingInteraction";
         const id = requireSlotId(kind, registration?.id);
@@ -322,6 +252,18 @@ export function collectPluginAppRegistrations(
         });
       },
     },
+    composer: {
+      customize(registration) {
+        const customization = collectComposerCustomization(
+          registration,
+          seenIds.composerCustomization,
+          onComposerCustomizationRejected,
+        );
+        if (customization !== null) {
+          composerCustomizations.push(customization);
+        }
+      },
+    },
   });
 
   return {
@@ -329,8 +271,7 @@ export function collectPluginAppRegistrations(
     settingsSections,
     navPanels,
     threadPanelActions,
-    composerAccessories,
-    experimental_composerStatuses: experimentalComposerStatuses,
+    composerCustomizations,
     pendingInteractions,
     sidebarFooterActions,
     fileOpeners,
@@ -369,7 +310,11 @@ export function interpretPluginFrontends(
       }
       deps.setRegistrations(
         pluginId,
-        collectPluginAppRegistrations(definition),
+        collectPluginAppRegistrations(definition, (reason) => {
+          deps.warn(
+            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
+          );
+        }),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

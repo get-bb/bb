@@ -56,11 +56,6 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
         run,
       });
-      app.slots.composerAccessory({ id: "picker", component: Component });
-      app.slots.experimental_composerStatus({
-        id: "workflow",
-        component: Component,
-      });
       app.slots.sidebarFooterAction({
         id: "remote",
         title: "Remote access",
@@ -82,6 +77,11 @@ describe("collectPluginAppRegistrations", () => {
         title: "Summarize",
         icon: "Zap",
         run,
+      });
+      app.composer.customize({
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: Component }],
       });
     });
 
@@ -114,12 +114,6 @@ describe("collectPluginAppRegistrations", () => {
         run,
       },
     ]);
-    expect(registrations.composerAccessories).toEqual([
-      { id: "picker", component: Component },
-    ]);
-    expect(registrations.experimental_composerStatuses).toEqual([
-      { id: "workflow", component: Component },
-    ]);
     expect(registrations.sidebarFooterActions).toEqual([
       {
         id: "remote",
@@ -142,6 +136,151 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.messageActions).toEqual([
       { id: "summarize", title: "Summarize", icon: "Zap", run },
     ]);
+    expect(registrations.composerCustomizations).toEqual([
+      {
+        id: "improve-prompt",
+        scopes: ["thread", "new-thread"],
+        actions: [{ id: "improve", component: Component }],
+      },
+    ]);
+  });
+
+  it("rejects invalid composer customizations individually while siblings survive", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({ id: "valid-first" });
+      app.composer.customize({ id: "has space" });
+      app.composer.customize({ id: "valid-first" });
+      app.composer.customize({
+        id: "bad-scope",
+        scopes: ["modal" as never],
+      });
+      app.composer.customize({ id: "valid-last", scopes: ["side-chat"] });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, rejected);
+
+    expect(registrations.composerCustomizations).toEqual([
+      { id: "valid-first" },
+      { id: "valid-last", scopes: ["side-chat"] },
+    ]);
+    expect(rejected.mock.calls.map(([reason]) => reason)).toEqual([
+      expect.stringContaining('"id" must match'),
+      expect.stringContaining('duplicate id "valid-first"'),
+      expect.stringContaining('invalid scope kind "modal"'),
+    ]);
+  });
+
+  it("isolates malformed and duplicate nested composer contributions", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({
+        id: "malformed-array",
+        actions: {} as never,
+        banners: [
+          { id: "good-banner", component: Component },
+          { id: "bad-banner", chrome: "dialog" as never, component: Component },
+        ],
+      });
+      app.composer.customize({
+        id: "duplicates",
+        actions: [
+          { id: "action", component: Component },
+          { id: "action", component: Component },
+          { id: "survivor", component: Component },
+        ],
+        plusMenu: [
+          { id: "bad-menu", label: "", run: () => {} },
+          { id: "good-menu", label: "Good", run: () => {} },
+        ],
+        richText: {
+          effects: [
+            { id: "paint", className: "paint", match: () => [] },
+            { id: "paint", className: "other", match: () => [] },
+            { id: "valid-paint", className: "valid", match: () => [] },
+          ],
+        },
+      });
+    });
+
+    const registrations = collectPluginAppRegistrations(definition, rejected);
+    const customizations = registrations.composerCustomizations ?? [];
+
+    expect(customizations[0]).toEqual({
+      id: "malformed-array",
+      banners: [{ id: "good-banner", component: Component }],
+    });
+    expect(customizations[1]?.actions?.map(({ id }) => id)).toEqual([
+      "action",
+      "survivor",
+    ]);
+    expect(customizations[1]?.plusMenu?.map(({ id }) => id)).toEqual([
+      "good-menu",
+    ]);
+    expect(customizations[1]?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "paint",
+      "valid-paint",
+    ]);
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining("actions: must be an array"),
+    );
+    expect(rejected).toHaveBeenCalledWith(
+      expect.stringContaining('duplicate id "action"'),
+    );
+  });
+
+  it("does not reserve nested ids for malformed contributions", () => {
+    const rejected = vi.fn<(reason: string) => void>();
+    const definition = definePluginApp((app) => {
+      app.composer.customize({
+        id: "reused-after-malformed",
+        actions: [
+          { id: "same-action", component: null as never },
+          { id: "same-action", component: Component },
+        ],
+        banners: [
+          {
+            id: "same-banner",
+            chrome: "dialog" as never,
+            component: Component,
+          },
+          { id: "same-banner", component: Component },
+        ],
+        plusMenu: [
+          { id: "same-menu", label: "", run: () => {} },
+          { id: "same-menu", label: "Valid menu", run: () => {} },
+        ],
+        richText: {
+          effects: [
+            { id: "same-effect", className: "", match: () => [] },
+            {
+              id: "same-effect",
+              className: "valid-effect",
+              match: () => [],
+            },
+          ],
+        },
+      });
+    });
+
+    const [customization] =
+      collectPluginAppRegistrations(definition, rejected)
+        .composerCustomizations ?? [];
+
+    expect(customization?.actions?.map(({ id }) => id)).toEqual([
+      "same-action",
+    ]);
+    expect(customization?.banners?.map(({ id }) => id)).toEqual([
+      "same-banner",
+    ]);
+    expect(customization?.plusMenu?.map(({ id }) => id)).toEqual(["same-menu"]);
+    expect(customization?.richText?.effects?.map(({ id }) => id)).toEqual([
+      "same-effect",
+    ]);
+    expect(rejected).toHaveBeenCalledTimes(4);
+    expect(
+      rejected.mock.calls.some(([reason]) => reason.includes("duplicate id")),
+    ).toBe(false);
   });
 
   it.each([
@@ -194,34 +333,18 @@ describe("collectPluginAppRegistrations", () => {
       "duplicate message action id",
       () =>
         definePluginApp((app) => {
-          app.slots.experimental_messageAction({ id: "a", title: "A", run: () => {} });
-          app.slots.experimental_messageAction({ id: "a", title: "B", run: () => {} });
+          app.slots.experimental_messageAction({
+            id: "a",
+            title: "A",
+            run: () => {},
+          });
+          app.slots.experimental_messageAction({
+            id: "a",
+            title: "B",
+            run: () => {},
+          });
         }),
       /duplicate id "a"/,
-    ],
-    [
-      "duplicate id",
-      () =>
-        definePluginApp((app) => {
-          app.slots.composerAccessory({ id: "a", component: Component });
-          app.slots.composerAccessory({ id: "a", component: Component });
-        }),
-      /duplicate id/,
-    ],
-    [
-      "duplicate experimental composer status id",
-      () =>
-        definePluginApp((app) => {
-          app.slots.experimental_composerStatus({
-            id: "run",
-            component: Component,
-          });
-          app.slots.experimental_composerStatus({
-            id: "run",
-            component: Component,
-          });
-        }),
-      /duplicate id/,
     ],
     [
       "sidebar footer action missing run",
@@ -421,7 +544,10 @@ describe("interpretPluginFrontends", () => {
         loadedRecord(
           "good",
           definePluginApp((app) => {
-            app.slots.composerAccessory({ id: "a", component: Component });
+            app.composer.customize({
+              id: "a",
+              actions: [{ id: "a", component: Component }],
+            });
           }),
         ),
       ],
@@ -436,7 +562,12 @@ describe("interpretPluginFrontends", () => {
     expect(setRegistrations).toHaveBeenCalledWith(
       "good",
       expect.objectContaining({
-        composerAccessories: [{ id: "a", component: Component }],
+        composerCustomizations: [
+          {
+            id: "a",
+            actions: [{ id: "a", component: Component }],
+          },
+        ],
       }),
     );
   });
@@ -451,7 +582,10 @@ describe("interpretPluginFrontends", () => {
         loadedRecord(
           "good",
           definePluginApp((app) => {
-            app.slots.composerAccessory({ id: "a", component: Component });
+            app.composer.customize({
+              id: "a",
+              actions: [{ id: "a", component: Component }],
+            });
           }),
         ),
       ],
@@ -496,5 +630,35 @@ describe("interpretPluginFrontends", () => {
       error: "setup exploded",
     });
     expect(setRegistrations).not.toHaveBeenCalled();
+  });
+
+  it("logs an invalid composer customization without failing the plugin", () => {
+    const setRegistrations = vi.fn();
+    const warn = vi.fn();
+    const records = new Map<string, PluginFrontendRecord>([
+      [
+        "composer-plugin",
+        loadedRecord(
+          "composer-plugin",
+          definePluginApp((app) => {
+            app.composer.customize({ id: "bad id" });
+            app.composer.customize({ id: "good" });
+          }),
+        ),
+      ],
+    ]);
+
+    interpretPluginFrontends(records, { setRegistrations, warn });
+
+    expect(records.get("composer-plugin")?.status).toBe("loaded");
+    expect(setRegistrations).toHaveBeenCalledWith(
+      "composer-plugin",
+      expect.objectContaining({ composerCustomizations: [{ id: "good" }] }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[plugin:composer-plugin] composer customization rejected",
+      ),
+    );
   });
 });

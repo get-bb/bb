@@ -20,7 +20,7 @@ import {
   type ProviderInfo,
 } from "@bb/domain";
 import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import type { AppDeps } from "../../types.js";
+import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -149,7 +149,7 @@ function expectedFallbackErrorLogFields(
 }
 
 async function listInstalledKnownAcpAgents(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   hostId: string,
 ): Promise<KnownAcpAgent[]> {
   const customProviderIds = new Set(
@@ -198,7 +198,7 @@ async function listInstalledKnownAcpAgents(
 }
 
 async function listSystemProviderInfosForHost(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   hostId: string,
 ): Promise<ProviderInfo[]> {
   return listConfiguredSystemProviderInfos(
@@ -208,7 +208,7 @@ async function listSystemProviderInfosForHost(
 }
 
 function resolveSystemProviderInfosPlan(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
 ): ResolveSystemProviderInfosPlanResult {
   try {
@@ -237,7 +237,7 @@ function resolveSystemProviderInfosPlan(
 }
 
 async function resolveSystemProviderInfos(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
 ): Promise<ListSystemProviderInfosResult> {
   const { hostId, hostLookupError, providersPromise } =
@@ -250,7 +250,7 @@ async function resolveSystemProviderInfos(
 }
 
 export async function listSystemProviderInfos(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   query: ListSystemProviderInfosRequest = {},
 ): Promise<ProviderInfo[]> {
   return (await resolveSystemProviderInfos(deps, query)).providers;
@@ -336,7 +336,7 @@ export function appendCustomModels({
 }
 
 export async function resolveSystemExecutionOptions(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
   const { hostId, hostLookupError, providersPromise } =
@@ -423,7 +423,7 @@ export async function resolveSystemExecutionOptions(
 }
 
 async function loadSystemProviderModels(
-  deps: AppDeps,
+  deps: LoggedWorkSessionDeps,
   {
     hostId,
     provider,

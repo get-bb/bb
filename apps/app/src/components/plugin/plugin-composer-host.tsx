@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
+import { isComposerDraftEmpty } from "@bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 /**
@@ -28,9 +30,78 @@ export interface PluginComposerHost {
   focus(): void;
 }
 
+export function composerScopeIdentity(scope: PluginComposerScope): string {
+  switch (scope.kind) {
+    case "thread":
+      return `thread/${scope.threadId}`;
+    case "queued-message":
+      return `queued-message/${scope.threadId}/${scope.queuedMessageId}`;
+    case "side-chat":
+      return `side-chat/${scope.projectId}/${scope.parentThreadId}/${scope.tabId}/${scope.childThreadId ?? "draft"}`;
+    case "new-thread":
+      return `new-thread/${scope.projectId ?? "unresolved"}`;
+  }
+}
+
+export interface PluginComposerViewModelInput {
+  scope: PluginComposerScope;
+  layout: ComposerView["layout"];
+  text: string;
+  attachmentCount: number;
+  isRunning: boolean;
+  isSubmitting: boolean;
+}
+
+/** The single model builder shared by concrete composer shells and the editor. */
+export function usePluginComposerViewModel({
+  scope,
+  layout,
+  text,
+  attachmentCount,
+  isRunning,
+  isSubmitting,
+}: PluginComposerViewModelInput): ComposerView {
+  return useMemo(
+    () => ({
+      scope,
+      layout,
+      draft: {
+        text,
+        isEmpty: isComposerDraftEmpty(text, attachmentCount),
+        attachmentCount,
+      },
+      run: { isRunning, isSubmitting },
+    }),
+    [attachmentCount, isRunning, isSubmitting, layout, scope, text],
+  );
+}
+
 const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);
+
+/** Reactive composer state supplied by the concrete prompt-box host. */
+export const PluginComposerViewContext = createContext<
+  ComposerView | undefined
+>(undefined);
+
+export function PluginComposerViewProvider({
+  children,
+  value,
+}: {
+  children: ReactNode;
+  value: ComposerView;
+}) {
+  return (
+    <PluginComposerViewContext.Provider value={value}>
+      {children}
+    </PluginComposerViewContext.Provider>
+  );
+}
+
+export function useOptionalPluginComposerView(): ComposerView | undefined {
+  return useContext(PluginComposerViewContext);
+}
 
 interface PluginComposerHostStore {
   getSnapshot(): PluginComposerHost | null;

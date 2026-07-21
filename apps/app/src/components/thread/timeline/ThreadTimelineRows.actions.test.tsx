@@ -35,8 +35,6 @@ function messageActionRegistrationSet(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
-    composerAccessories: [],
-    experimental_composerStatuses: [],
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
@@ -1118,9 +1116,9 @@ describe("ThreadTimelineRows actions", () => {
     });
     expect(context.selectedText).toBeUndefined();
     // openPanel routes through the surface's opener with this plugin's id.
-    expect(
-      context.openPanel({ actionId: "panel", params: { a: 1 } }),
-    ).toBe(true);
+    expect(context.openPanel({ actionId: "panel", params: { a: 1 } })).toBe(
+      true,
+    );
     expect(onOpenPluginPanel).toHaveBeenCalledWith({
       pluginId: "demo",
       actionId: "panel",
@@ -1234,9 +1232,9 @@ describe("ThreadTimelineRows actions", () => {
     });
     expect(rowsWithAction).toHaveLength(1);
     expect(
-      rowsWithAction[0]!.closest("[data-timeline-row-id]")?.getAttribute(
-        "data-timeline-row-id",
-      ),
+      rowsWithAction[0]!
+        .closest("[data-timeline-row-id]")
+        ?.getAttribute("data-timeline-row-id"),
     ).toBe("assistant_row");
 
     fireEvent.click(rowsWithAction[0]!);

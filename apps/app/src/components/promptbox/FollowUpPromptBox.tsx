@@ -14,10 +14,14 @@ import type {
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
-import type { experimental_PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
+import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
+import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
+  PluginComposerViewProvider,
   type PluginComposerHost,
+  usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
   useAppCommandContext,
@@ -111,6 +115,10 @@ const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
   '[aria-haspopup][aria-expanded="true"]';
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
+const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
+  kind: "new-thread",
+  projectId: null,
+} as const;
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
  * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
@@ -197,11 +205,13 @@ export interface FollowUpPromptBoxProps {
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
   promptActions?: readonly PromptBoxAction[];
-  /** Suppress plugin accessories while a retained secondary composer is inactive. */
-  suppressPluginComposerAccessories?: boolean;
+  /** Suppress plugin customizations while a retained secondary composer is inactive. */
+  suppressPluginComposerCustomizations?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
-  textEffect?: experimental_PluginComposerTextEffect | null;
+  /** Active scope used to filter and lifecycle-key plugin banner slots. */
+  pluginComposerScope?: PluginComposerScope | null;
+  textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -231,27 +241,49 @@ type FollowUpPromptBoxWithComposerProps = Omit<
 
 function FollowUpPromptBoxStackOnly({
   stack,
-}: Pick<FollowUpPromptBoxProps, "stack">) {
+  pluginComposerHost,
+  pluginComposerScope,
+}: Pick<
+  FollowUpPromptBoxProps,
+  "stack" | "pluginComposerHost" | "pluginComposerScope"
+>) {
+  const composerScope =
+    pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const composerView = usePluginComposerViewModel({
+    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    layout: "expanded",
+    text: pluginComposerHost?.draft.text ?? "",
+    attachmentCount: pluginComposerHost?.draft.attachments.length ?? 0,
+    isRunning: false,
+    isSubmitting: false,
+  });
   const paneContext = useOptionalPaneContext();
   const splitComposerState = paneContext?.isSplitPane
     ? paneContext.isFocused
       ? "active"
       : "inactive"
     : undefined;
-  if (!stack) {
+  if (!stack && !composerScope) {
     return null;
   }
   return (
-    <div
-      data-promptbox-shell=""
-      data-split-composer-state={splitComposerState}
-      className={cn(
-        "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
-        splitComposerState === "inactive" && "opacity-50",
-      )}
-    >
-      <div className="space-y-2">{stack}</div>
-    </div>
+    <PluginComposerViewProvider value={composerView}>
+      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        <div
+          data-promptbox-shell=""
+          data-split-composer-state={splitComposerState}
+          className={cn(
+            "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
+            splitComposerState === "inactive" && "opacity-50",
+          )}
+        >
+          <div className="space-y-2">
+            {stack}
+            {composerScope ? <PluginComposerBanners /> : null}
+          </div>
+        </div>
+      </PluginComposerHostProvider>
+    </PluginComposerViewProvider>
   );
 }
 
@@ -270,9 +302,10 @@ function FollowUpPromptBoxWithComposer({
   permissionReadOnly,
   typeahead,
   promptActions,
-  suppressPluginComposerAccessories,
+  suppressPluginComposerCustomizations,
   pluginComposerHost,
-  textEffect,
+  pluginComposerScope,
+  textEffects,
   zenModeResetKey,
   focusEndKey,
   isPrimaryComposer = true,
@@ -298,6 +331,19 @@ function FollowUpPromptBoxWithComposer({
       ? submitMode.onStop
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
+  const attachmentCount = attachments.items?.length ?? 0;
+  const composerScope =
+    pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const [composerLayout, setComposerLayout] =
+    useState<ComposerView["layout"]>("expanded");
+  const composerView = usePluginComposerViewModel({
+    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    layout: composerLayout,
+    text: composer.message,
+    attachmentCount,
+    isRunning: canStopRuntime,
+    isSubmitting: composer.isFollowUpSubmitting || isStopping,
+  });
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   // Scope Cmd+Shift+C to the focused pane's primary composer. Every mounted
   // composer registers this handler — including side-chat composers that stay
@@ -553,7 +599,8 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={composer.onSubmit}
-        textEffect={textEffect}
+        textEffects={textEffects}
+        onComposerLayoutChange={setComposerLayout}
         scrollToBottomOnSubmit={submitMode.kind !== "queue"}
         history={composer.history}
         focusEndKey={focusEndKey}
@@ -584,7 +631,9 @@ function FollowUpPromptBoxWithComposer({
         typeahead={typeahead}
         attachments={attachments}
         promptActions={promptActions}
-        suppressPluginComposerAccessories={suppressPluginComposerAccessories}
+        suppressPluginComposerCustomizations={
+          suppressPluginComposerCustomizations
+        }
         compact={compactConfig}
         zenMode={{
           layout: "thread",
@@ -616,32 +665,33 @@ function FollowUpPromptBoxWithComposer({
   );
 
   return (
-    <>
-      {showScrollToBottomButton ? (
-        <ThreadTimelineScrollToBottomButton
-          active={composer.threadRuntimeDisplayStatus === "active"}
-        />
-      ) : null}
-      <div
-        data-app-composer=""
-        data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
-        data-promptbox-shell=""
-        data-split-composer-state={splitComposerState}
-        className={cn(
-          "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
-          splitComposerState === "inactive" && "opacity-50",
-        )}
-      >
-        <div ref={stackRef} className="space-y-2">
-          {stack}
-        </div>
-        <div data-follow-up-composer-anchor="">
-          <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-            {composerElement}
-          </PluginComposerHostProvider>
-        </div>
-      </div>
-    </>
+    <PluginComposerViewProvider value={composerView}>
+      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        <>
+          {showScrollToBottomButton ? (
+            <ThreadTimelineScrollToBottomButton
+              active={composer.threadRuntimeDisplayStatus === "active"}
+            />
+          ) : null}
+          <div
+            data-app-composer=""
+            data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
+            data-promptbox-shell=""
+            data-split-composer-state={splitComposerState}
+            className={cn(
+              "space-y-2 transition-opacity duration-150 motion-reduce:transition-none",
+              splitComposerState === "inactive" && "opacity-50",
+            )}
+          >
+            <div ref={stackRef} className="space-y-2">
+              {stack}
+              {composerScope ? <PluginComposerBanners /> : null}
+            </div>
+            <div data-follow-up-composer-anchor="">{composerElement}</div>
+          </div>
+        </>
+      </PluginComposerHostProvider>
+    </PluginComposerViewProvider>
   );
 }
 
@@ -649,7 +699,13 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox(
   props: FollowUpPromptBoxProps,
 ) {
   if (props.composer === null) {
-    return <FollowUpPromptBoxStackOnly stack={props.stack} />;
+    return (
+      <FollowUpPromptBoxStackOnly
+        stack={props.stack}
+        pluginComposerHost={props.pluginComposerHost}
+        pluginComposerScope={props.pluginComposerScope}
+      />
+    );
   }
   return <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />;
 });

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
-import type { experimental_PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@bb/shared-ui/icon";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
@@ -54,7 +54,6 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -153,7 +152,7 @@ function ThreadDraftIndicator({
 function PluginThreadRowStatusIndicator({
   status,
 }: {
-  status: experimental_PluginComposerThreadRowStatus;
+  status: PluginComposerThreadRowStatus;
 }) {
   return (
     <Icon
@@ -161,16 +160,9 @@ function PluginThreadRowStatusIndicator({
       className={cn(
         "pointer-events-none shrink-0",
         COARSE_POINTER_ICON_SIZE_CLASS,
-        status.effect === "shimmer"
-          ? [
-              "animate-shine-icon animate-shine-icon-status",
-              status.tone === "success"
-                ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
-                : SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
-            ]
-          : status.tone === "success"
-            ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
-            : "text-muted-foreground",
+        status.tone === "success"
+          ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+          : "text-muted-foreground",
       )}
       aria-label={status.label}
     />
@@ -393,7 +385,7 @@ export function CollapsedThreadStatusGlyph({
   );
 }
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
-  pluginStatus: experimental_PluginComposerThreadRowStatus | null;
+  pluginStatus: PluginComposerThreadRowStatus | null;
 };
 
 function ThreadTrailingIndicator({

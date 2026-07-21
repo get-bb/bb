@@ -196,8 +196,12 @@ describe("PluginDetail capability inventory", () => {
         },
       ],
       threadPanelActions: [],
-      composerAccessories: [{ id: "enhance-prompt", component: EmptySlot }],
-      experimental_composerStatuses: [],
+      composerCustomizations: [
+        {
+          id: "prompt-tools",
+          actions: [{ id: "enhance-prompt", component: EmptySlot }],
+        },
+      ],
       pendingInteractions: [],
       sidebarFooterActions: [],
       fileOpeners: [],
@@ -270,7 +274,7 @@ describe("PluginDetail capability inventory", () => {
     expect(inventory.getByText("Run monitor")).toBeTruthy();
     expect(inventory.getByText("Navigation panel")).toBeTruthy();
     expect(inventory.getByText("enhance-prompt")).toBeTruthy();
-    expect(inventory.getByText("Composer accessory")).toBeTruthy();
+    expect(inventory.getByText("Composer action")).toBeTruthy();
     expect(inventory.getByText("Advanced preferences")).toBeTruthy();
     expect(inventory.getByText("Custom settings section")).toBeTruthy();
     expect(inventory.getByText("API token")).toBeTruthy();

@@ -712,7 +712,6 @@ function OverviewView({
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
-        experimental_replaceInitialPrompt: true,
       });
     },
     [navigate],
@@ -956,7 +955,7 @@ function DetailView({
   );
 
   const editViaThread = useCallback(
-    (target: AutomationResponse, replace = false) => {
+    (target: AutomationResponse) => {
       navigate.toCompose({
         focusPrompt: true,
         initialPrompt: buildAutomationEditThreadPrompt({
@@ -964,8 +963,6 @@ function DetailView({
           projectId: route.projectId,
           automationId: route.automationId,
         }),
-        experimental_replaceInitialPrompt: true,
-        experimental_replace: replace,
       });
     },
     [navigate, route],
@@ -973,7 +970,7 @@ function DetailView({
 
   useEffect(() => {
     if (!initialEditing || automation === null) return;
-    editViaThread(automation, true);
+    editViaThread(automation);
   }, [automation, editViaThread, initialEditing]);
 
   const runAction = useCallback(

@@ -140,7 +140,11 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
           "Host daemon started",
         );
       } catch (error) {
-        unregisterSignalHandlers();
+        // A failed connection attempt happens after the app has opened its
+        // local API and started background monitors/watchers. Run the same
+        // cleanup as an ordinary shutdown so the process can actually exit
+        // and its service manager can restart it.
+        await stop("startup-failed").catch(() => undefined);
         throw error;
       }
     },

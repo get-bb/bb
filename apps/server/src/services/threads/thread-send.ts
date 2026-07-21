@@ -31,6 +31,7 @@ import {
   createClientTurnRequestId,
   getActiveTurnId,
 } from "./thread-events.js";
+import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
@@ -442,6 +443,16 @@ export async function sendThreadMessage(
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
       : null;
+  if (senderThreadId === null) {
+    await recoverThreadModelOverride(deps, {
+      model: payload.model,
+      modelSource:
+        payload.executionInputSources === undefined
+          ? "explicit"
+          : payload.executionInputSources.model,
+      thread,
+    });
+  }
   const execution = await buildExecutionOptions(
     deps,
     payload,

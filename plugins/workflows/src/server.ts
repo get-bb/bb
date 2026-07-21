@@ -114,6 +114,13 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(workflowUiRpcContract, {
+    workflowActiveRuns({ threadId }) {
+      return {
+        runs: service
+          .inspectActiveForThread(threadId)
+          .map(buildWorkflowRunView),
+      };
+    },
     workflowRunView({ threadId, runId }) {
       const run = workflowForThread(threadId, runId);
       return { run: run === null ? null : buildWorkflowRunView(run) };

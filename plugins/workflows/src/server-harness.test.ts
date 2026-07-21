@@ -163,6 +163,12 @@ describe("workflows plugin", () => {
       }),
     ).resolves.toMatchObject({ run: { id: started.runId } });
     await expect(
+      harness.callRpc("workflowActiveRuns", { threadId: "thread-test" }),
+    ).resolves.toMatchObject({ runs: [{ id: started.runId }] });
+    await expect(
+      harness.callRpc("workflowActiveRuns", { threadId: "other-thread" }),
+    ).resolves.toEqual({ runs: [] });
+    await expect(
       harness.callRpc("workflowRunView", {
         threadId: "thread-test",
         runId: started.runId,

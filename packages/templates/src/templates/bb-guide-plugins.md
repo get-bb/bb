@@ -23,7 +23,7 @@ agent task instructions; blank text contributes nothing.
 
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
-Settings → Plugins or run `bb plugin enable workflows` before using:
+Tools → Plugins or run `bb plugin enable workflows` before using:
 
   bb workflows validate (--script '<javascript>'|--source '<javascript>'|
                         --file <path>|--name <name>)
@@ -192,7 +192,7 @@ added/updated/unchanged counts.
 BB Official plugins
 
 BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
-the app itself. They appear in Settings → Plugins → Browse and install with
+the app itself. They appear in Tools → Plugins → Browse and install with
 one click from the local bundled copy: no network, no download, no separate
 release. Install from the CLI by bare name (`bb plugin install github`,
 `bb plugin install docs`, `bb plugin install memory`, or
@@ -237,7 +237,7 @@ Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title; builtin slot entries work
-with the Plugins experiment off while the Settings → Plugins management
+with the Plugins experiment off while the Tools → Plugins management
 bucket stays experiment-gated),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
@@ -246,9 +246,7 @@ zero-padding full-bleed body, including its scrolling),
 threadPanelAction
 (an entry in the thread right panel's new-tab Actions list whose run() can
 open closable panel tabs with recursive `JsonValue` params; restored
-components read `JsonValue | null`), composerAccessory (prompt box
-footer), experimental_composerStatus (host-owned status card immediately
-before queued messages), pendingInteraction (temporarily replace a thread composer with a
+components read `JsonValue | null`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -263,11 +261,11 @@ useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
-useBbNavigate, and useComposer (read/replace/update/clear scoped composer
-text, quote selections, insert mention pills, focus the composer, and set
-scope-owned composer/thread-row progress visuals; queued-message and side-chat
-editors are reported as their own scopes; plain-text edits preserve attachments
-and reconcile only inline mentions overlapped by the edit). Define RPC methods with `defineRpcContract`
+useBbNavigate, useComposer (read/replace/update/clear scoped composer text,
+apply a class-based text effect, lock input, quote selections, insert mention
+pills, and focus the composer), and useComposerView (reactive bound scope,
+layout, draft, and run state). Plain-text edits preserve attachments and
+reconcile only inline mentions overlapped by the edit. Define RPC methods with `defineRpcContract`
 and Standard Schema-compatible input/output validators (Zod works directly),
 register via `bb.rpc.register(contract, handlers)`, then use a type-only
 backend contract import with `useRpc<typeof contract>()` for exact frontend
@@ -285,7 +283,7 @@ bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Settings → Plugins.
+(same data as `bb plugin config`) also appear under Tools → Plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
@@ -374,8 +372,13 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, composerAccessory, experimental_composerStatus, fileOpener,
-messageDirective) via
+navPanel, threadPanelAction, fileOpener, messageDirective) and composer
+customizations via `app.composer.customize({ actions, plusMenu, banners,
+richText })`; action/banner components use `useComposer()` and
+`useComposerView()`, while the host renders plus-menu rows and editor
+decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was
+removed; migrate controls to actions or the plus menu and larger content to
+banners. Register all frontend surfaces via
 definePluginApp, use the hooks
 listed above, and render vendored components; styling is Tailwind against
 the host theme's tokens only (semantic classes like bg-background and
@@ -390,6 +393,6 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `official-plugins/` directory contains the BB Official GitHub, Docs,
-Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins cover slack-bot
-(webhook bot), agent-enrichment (agent surfaces), and small-ux-pack
-(host-rendered UI).
+Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins
+cover slack-bot (webhook bot), agent-enrichment (agent surfaces), small-ux-pack
+(host-rendered UI), and composer-customization (all composer regions).

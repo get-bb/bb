@@ -150,6 +150,27 @@ describe("buildPluginApp", () => {
     });
   });
 
+  it("preserves authored CSS unscoped for editor decorations", async () => {
+    await writeFixture();
+    await writeFile(
+      join(root, "app.css"),
+      ".fixture-highlight { background: hotpink; }\n" +
+        "@keyframes fixture-pulse { to { opacity: 0.5; } }\n",
+    );
+    await writeFile(
+      join(root, "app.tsx"),
+      `import "./app.css";\n${FIXTURE_APP_TSX}`,
+    );
+
+    const { cssPath } = await buildPluginApp(root, TEST_BB_VERSION);
+    const css = await readFile(cssPath, "utf8");
+
+    expect(css).toContain(".fixture-highlight");
+    expect(css).toContain("background: hotpink");
+    expect(css).toContain("@keyframes fixture-pulse");
+    expect(css.match(/@scope/g)).toHaveLength(1);
+  });
+
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
     await writeFixture();
     const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION);

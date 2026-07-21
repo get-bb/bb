@@ -4,17 +4,16 @@ import { matchPath } from "react-router-dom";
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const SETTINGS_ROUTE_PATH = "/settings";
-// Settings buckets (general, files, …) and per-plugin settings pages. The
-// static "plugins" segment wins over :section, so /settings/plugins is the
-// plugin management bucket and /settings/plugins/:id a plugin's own page.
+// Settings buckets (general, files, …) plus legacy plugin routes that redirect
+// to the canonical Tools → Plugins surfaces. The static "plugins" segment must
+// win over :section so those old deep links resolve before redirecting.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
-export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
-  "/tools/skills/installed/:skillId";
+export const TOOLS_SKILL_DETAIL_ROUTE_PATH = "/tools/skills/installed/:skillId";
 export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
 export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
   "/tools/skills/registry/:registrySkillId";
