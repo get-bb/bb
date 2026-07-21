@@ -46,7 +46,10 @@ import {
   PluginReleaseFacts,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
-import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
+import {
+  formatAbsoluteDate,
+  PluginLogo,
+} from "@/components/plugin/management/plugin-ui";
 import {
   pluginRuntimeStatusPresentation,
   type PluginRuntimeStatusPresentation,
@@ -57,7 +60,6 @@ import {
   usePluginSettingsView,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
   createDiffWorker,
@@ -187,36 +189,6 @@ function ToolsSectionBody({
     return <PluginsToolView pluginId={pluginId} />;
   }
   return <AutomationsToolView />;
-}
-
-function PluginListLogo({ plugin }: { plugin: PluginListItem }) {
-  const theme = usePreferredTheme();
-  const logoUrl =
-    theme === "dark" && plugin.logoDarkUrl !== null
-      ? plugin.logoDarkUrl
-      : plugin.logoUrl;
-  if (logoUrl !== null) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        aria-hidden="true"
-        className="size-4 shrink-0 rounded-sm object-contain"
-      />
-    );
-  }
-  return <BbMark />;
-}
-
-function BbMark({ className = "size-4" }: { className?: string }) {
-  return (
-    <img
-      src="/bb-mark.svg"
-      alt=""
-      aria-hidden="true"
-      className={cn(className, "object-contain dark:invert")}
-    />
-  );
 }
 
 function PluginsLoadingRows() {
@@ -797,7 +769,7 @@ export function PluginDetail({
 
   return (
     <PluginDetailView
-      leading={<PluginListLogo plugin={plugin} />}
+      leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={plugin.name ?? plugin.id}
       description={plugin.description}
       metadata={

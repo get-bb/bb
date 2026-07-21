@@ -404,6 +404,10 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("branding.icon");
     expect(skill).toContain("./assets/icon.svg");
     expect(skill).toContain("CSS mask");
+    expect(skill).toContain("canonical identity");
+    expect(skill).toContain("reuses this icon on roomy surfaces");
+    expect(skill).toContain("Logo-only manifests remain supported");
+    expect(skill).toContain("Do not duplicate");
   });
 
   it("documents every frontend slot and its prop fields", () => {

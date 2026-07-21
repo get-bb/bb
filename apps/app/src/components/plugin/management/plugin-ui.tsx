@@ -40,7 +40,7 @@ export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
 
-/** Rich plugin identity for roomy settings rows and cards. */
+/** Plugin identity for roomy surfaces, with rich artwork as an optional override. */
 export function PluginLogo({
   plugin,
   className,
@@ -69,7 +69,7 @@ export function PluginLogo({
           pluginId={plugin.id}
           icon={plugin.icon}
           compactIconUrl={plugin.compactIconUrl}
-          className="size-5"
+          className="size-full"
         />
       </span>
     );

@@ -86,7 +86,7 @@ describe("PluginDetail official catalog lifecycle", () => {
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const onDelete = vi.fn();
-    render(
+    const { container } = render(
       <MemoryRouter>
         <QueryClientWrapper>
           <PluginDetail
@@ -123,9 +123,48 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     expect(screen.queryByLabelText("GitHub: BB Official")).toBeNull();
+    expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
+    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
     fireEvent.click(official);
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
     expect(screen.queryByRole("button", { name: "GitHub actions" })).toBeNull();
+  });
+
+  it("uses a plugin-owned canonical icon when no rich logo is declared", () => {
+    const compactIconUrl = "/api/v1/plugins/omega/assets/icon?h=abc";
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const { container } = render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              id: "omega",
+              name: "Omegacode",
+              icon: null,
+              compactIconUrl,
+              source: "path:/plugins/omega",
+              provenance: "direct",
+              catalogEntryId: null,
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const icon = container.querySelector(
+      `[data-plugin-icon-asset="${compactIconUrl}"]`,
+    );
+    expect(icon).not.toBeNull();
+    expect(icon?.className).toContain("size-full");
+    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
   });
 
   it("shows built-in provenance with lifecycle controls and no ownership actions", async () => {

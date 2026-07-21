@@ -320,18 +320,22 @@ file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
 list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
 removing the owning plugin makes bb fall back to the default palette.
 
-Branding is explicit. `bb.branding.icon` is the compact identity: use a BB icon
-name, or a plugin-relative SVG such as `./assets/icon.svg` for a plugin-owned
-glyph. BB hash-serves SVG icons and renders them as masks that inherit the
-surrounding text color. Compact chrome prefers that asset, then a named manifest
-icon, a contribution's local icon hint, and finally Zap.
+Branding is explicit. Normally declare `bb.branding.icon` as the plugin's
+canonical identity: use a BB icon name, or a plugin-relative SVG such as
+`./assets/icon.svg` for a plugin-owned glyph. BB hash-serves SVG icons and
+renders them as masks that inherit the surrounding text color. Compact chrome
+prefers that asset, then a named manifest icon, a contribution's local icon
+hint, and finally Zap. Roomy surfaces reuse the same icon when no logo override
+is declared.
 
-`bb.branding.logo.light` points to rich identity artwork; optional
-`bb.branding.logo.dark` is preferred in dark mode. Logo paths must be
-plugin-relative `.svg`, `.png`, or `.webp` files. Root logo files are not
-auto-detected, and a dark logo requires a light logo. At least the icon or light
-logo is required. BB rejects nulls, empty strings, missing or escaping assets,
-and unsupported extensions. Reload the plugin to pick up branding changes.
+Add `bb.branding.logo.light` only for intentionally different rich/full-size
+identity artwork; optional `bb.branding.logo.dark` is preferred in dark mode.
+Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
+files are not auto-detected, and a dark logo requires a light logo. Logo-only
+manifests remain supported for compatibility, so at least the icon or light logo
+is required. Do not duplicate the same artwork in both fields. BB rejects nulls,
+empty strings, missing or escaping assets, and unsupported extensions. Reload
+the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
