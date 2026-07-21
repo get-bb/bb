@@ -49,7 +49,7 @@ export function promptMentionIconName(
   resource: PromptMentionResource,
 ): IconName | null {
   if (resource.kind === "thread") {
-    return "MessageSquare";
+    return "UserRound";
   }
   if (resource.kind === "project") {
     return "Folder";
