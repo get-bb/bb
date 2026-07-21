@@ -7,7 +7,7 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 
-const { PluginIcon } = await import("./PluginIcon");
+const { PluginIcon, pluginIconName } = await import("./PluginIcon");
 
 afterEach(() => {
   cleanup();
@@ -70,4 +70,9 @@ it("uses Zap compactly when a logo-only plugin has no contribution hint", () => 
   const view = render(<PluginIcon pluginId="github" icon={null} />);
   expect(view.container.querySelector("[data-icon=Zap]")).toBeTruthy();
   expect(view.container.querySelector("img")).toBeNull();
+});
+
+it("returns the first-class Omega icon instead of the Zap fallback", () => {
+  expect(pluginIconName("Omega")).toBe("Omega");
+  expect(pluginIconName("unknown")).toBe("Zap");
 });

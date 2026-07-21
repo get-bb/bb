@@ -253,6 +253,21 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
   ],
 ];
 
+const OmegaStrokeRoundedIcon: IconSvgElement = [
+  [
+    "path",
+    {
+      d: "M4 19H9L6.5 15.7A8 8 0 1 1 17.5 15.7L15 19H20",
+      fill: "none",
+      stroke: "currentColor",
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      strokeWidth: "1.5",
+      key: "0",
+    },
+  ],
+];
+
 const ICON_MAP = {
   AiContentGenerator01: AiContentGenerator01Icon,
   AlertCircle: AlertCircleIcon,
@@ -341,6 +356,7 @@ const ICON_MAP = {
   Minimize2: ArrowShrink01Icon,
   MoreHorizontal: MoreHorizontalIcon,
   NewTab: DashedLine02Icon,
+  Omega: OmegaStrokeRoundedIcon,
   PackageReceive: PackageReceiveIcon,
   Palette: PaletteStrokeRoundedIcon,
   PanelBottom: SidebarBottomIcon,
