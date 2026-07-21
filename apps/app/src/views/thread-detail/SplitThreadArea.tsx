@@ -744,6 +744,16 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
+        {/* A subtle pane-wide focus scrim stays consistent across opaque
+            timeline, header, and composer surfaces. Pointer events pass through
+            so interacting with an inactive pane still focuses it. */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 z-20 transition-colors",
+            isFocused ? "bg-transparent" : "bg-background/20",
+          )}
+        />
       </div>
     );
   }

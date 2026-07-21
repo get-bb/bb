@@ -67,6 +67,16 @@ describe("SplitThreadArea stories", () => {
       expect(activeComposer.classList).not.toContain("opacity-50");
       expect(idlePane.querySelector("[data-thread-window]")).toBeTruthy();
       expect(activePane.querySelector("[data-thread-window]")).toBeTruthy();
+      const idleScrim = idlePane.querySelector<HTMLElement>(
+        ':scope > [aria-hidden="true"]',
+      );
+      const activeScrim = activePane.querySelector<HTMLElement>(
+        ':scope > [aria-hidden="true"]',
+      );
+      expect(idleScrim?.classList).toContain("pointer-events-none");
+      expect(idleScrim?.classList).toContain("bg-background/20");
+      expect(idleScrim?.classList).not.toContain("bg-background/40");
+      expect(activeScrim?.classList).toContain("bg-transparent");
 
       fireEvent.pointerDown(idleComposer, { button: 0 });
 
@@ -79,6 +89,8 @@ describe("SplitThreadArea stories", () => {
         );
         expect(nextActiveComposer?.classList).not.toContain("opacity-50");
         expect(nextInactiveComposer?.classList).toContain("opacity-50");
+        expect(idleScrim?.classList).toContain("bg-transparent");
+        expect(activeScrim?.classList).toContain("bg-background/20");
       });
     },
   );

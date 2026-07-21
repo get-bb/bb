@@ -721,18 +721,28 @@ describe("SplitThreadArea", () => {
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
   });
 
-  it("keeps unfocused pane content undimmed behind a hairline divider", () => {
+  it("uses a subtle scrim over unfocused pane content behind a hairline divider", () => {
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
 
+    const activePane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-1"]',
+    );
     const inactivePane = document.querySelector<HTMLElement>(
       '[data-split-pane-id="pane-2"]',
     );
-    expect(
-      inactivePane?.querySelector(':scope > [aria-hidden="true"]'),
-    ).toBeNull();
+    const activeScrim = activePane?.querySelector<HTMLElement>(
+      ':scope > [aria-hidden="true"]',
+    );
+    const inactiveScrim = inactivePane?.querySelector<HTMLElement>(
+      ':scope > [aria-hidden="true"]',
+    );
+    expect(activeScrim?.classList).toContain("bg-transparent");
+    expect(inactiveScrim?.classList).toContain("pointer-events-none");
+    expect(inactiveScrim?.classList).toContain("bg-background/20");
+    expect(inactiveScrim?.classList).not.toContain("bg-background/40");
 
     const separator = screen.getByRole("separator");
     expect(separator.classList).toContain("w-px");
