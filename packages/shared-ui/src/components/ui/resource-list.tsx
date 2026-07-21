@@ -1,4 +1,9 @@
-import { useEffect, type ComponentProps, type ReactNode } from "react";
+import {
+  useEffect,
+  type ComponentProps,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Button, type ButtonProps } from "./button";
 import { EmptyStatePanel } from "./empty-state";
 import {
@@ -764,6 +769,7 @@ export function ResourceRow({
     leading !== undefined && leading !== null && leading !== false;
   return (
     <div
+      data-resource-row
       className={cn(
         "group grid min-w-0 cursor-pointer items-center gap-3 bg-transparent py-3 text-left focus-visible:outline-none",
         hasLeading
@@ -863,6 +869,7 @@ export function ResourceListPanel({
 }) {
   return (
     <div
+      data-resource-list-panel
       className={cn(
         "overflow-hidden rounded-lg border border-border bg-card px-4 py-1",
         className,
@@ -1721,6 +1728,7 @@ export function ResourceCollectionViewport({
   children,
   footer,
   scrollId,
+  viewportRef,
   className,
   contentClassName,
 }: {
@@ -1728,6 +1736,7 @@ export function ResourceCollectionViewport({
   children: ReactNode;
   footer?: ReactNode;
   scrollId?: string;
+  viewportRef?: Ref<HTMLDivElement>;
   className?: string;
   contentClassName?: string;
 }) {
@@ -1742,6 +1751,7 @@ export function ResourceCollectionViewport({
         scrollHideDelay={600}
         className="min-h-0 flex-1"
         scrollbarClassName="w-2"
+        viewportRef={viewportRef}
         viewportProps={{
           id: scrollId,
           className: cn("overscroll-contain pr-1", contentClassName),

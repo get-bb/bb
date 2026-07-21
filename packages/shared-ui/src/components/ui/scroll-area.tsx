@@ -6,6 +6,9 @@ import { cn } from "../../lib/utils";
 type ScrollAreaProps = React.ComponentPropsWithoutRef<
   typeof ScrollAreaPrimitive.Root
 > & {
+  viewportRef?: React.Ref<
+    React.ElementRef<typeof ScrollAreaPrimitive.Viewport>
+  >;
   viewportProps?: Omit<
     React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Viewport>,
     "children"
@@ -20,7 +23,14 @@ const ScrollArea = React.forwardRef<
   ScrollAreaProps
 >(
   (
-    { className, children, viewportProps, scrollbarClassName, ...props },
+    {
+      className,
+      children,
+      viewportRef,
+      viewportProps,
+      scrollbarClassName,
+      ...props
+    },
     ref,
   ) => (
     <ScrollAreaPrimitive.Root
@@ -29,6 +39,7 @@ const ScrollArea = React.forwardRef<
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef}
         {...viewportProps}
         className={cn(
           "h-full w-full rounded-[inherit]",

@@ -26,6 +26,107 @@ interface ResourcePaginationResult<Item> {
   setPage: (page: number) => void;
 }
 
+interface ResourceViewportPageSizeOptions {
+  fallbackPageSize?: number;
+}
+
+function measureResourceViewportPageSize(
+  viewport: HTMLElement,
+  fallbackPageSize: number,
+): number {
+  const availableHeight = viewport.clientHeight;
+  const panel = viewport.querySelector<HTMLElement>(
+    "[data-resource-list-panel]",
+  );
+  if (availableHeight <= 0 || panel === null) return fallbackPageSize;
+
+  const rowHeights = Array.from(
+    panel.querySelectorAll<HTMLElement>("[data-resource-row]"),
+    (row) => row.getBoundingClientRect().height,
+  ).filter((height) => Number.isFinite(height) && height > 0);
+  const panelHeight = panel.getBoundingClientRect().height;
+  if (
+    rowHeights.length === 0 ||
+    !Number.isFinite(panelHeight) ||
+    panelHeight <= 0
+  ) {
+    return fallbackPageSize;
+  }
+
+  const renderedRowsHeight = rowHeights.reduce(
+    (total, height) => total + height,
+    0,
+  );
+  const panelChromeHeight = Math.max(0, panelHeight - renderedRowsHeight);
+  const rowHeight = Math.max(...rowHeights);
+  return Math.max(
+    1,
+    Math.floor((availableHeight - panelChromeHeight) / rowHeight),
+  );
+}
+
+/** Fits complete resource rows into a measured collection scroll viewport. */
+export function useResourceViewportPageSize(
+  viewport: HTMLElement | null,
+  options: ResourceViewportPageSizeOptions = {},
+): number {
+  const fallbackPageSize = Math.max(
+    1,
+    Math.floor(options.fallbackPageSize ?? RESOURCE_LIST_PAGE_SIZE),
+  );
+  const [pageSize, setPageSize] = useState(fallbackPageSize);
+
+  useEffect(() => {
+    if (viewport === null) return;
+    const viewportElement = viewport;
+
+    let observedPanel: HTMLElement | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    function observeCurrentPanel() {
+      const panel = viewportElement.querySelector<HTMLElement>(
+        "[data-resource-list-panel]",
+      );
+      if (panel === observedPanel) return;
+      if (observedPanel !== null) resizeObserver?.unobserve(observedPanel);
+      observedPanel = panel;
+      if (observedPanel !== null) resizeObserver?.observe(observedPanel);
+    }
+
+    function measure() {
+      observeCurrentPanel();
+      const nextPageSize = measureResourceViewportPageSize(
+        viewportElement,
+        fallbackPageSize,
+      );
+      setPageSize((current) =>
+        current === nextPageSize ? current : nextPageSize,
+      );
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(measure);
+      resizeObserver.observe(viewportElement);
+    }
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(measure);
+    mutationObserver?.observe(viewportElement, {
+      childList: true,
+      subtree: true,
+    });
+    measure();
+
+    return () => {
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+    };
+  }, [fallbackPageSize, viewport]);
+
+  return viewport === null ? fallbackPageSize : pageSize;
+}
+
 /**
  * Client-side pagination for the bounded arrays returned by resource APIs.
  * The selected page resets with the projection and clamps when live data
@@ -41,27 +142,41 @@ export function useResourcePagination<Item>(
   );
   const resetKey = options.resetKey ?? "";
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
-  const [pageState, setPageState] = useState({ resetKey, page: 0 });
-  const requestedPage = pageState.resetKey === resetKey ? pageState.page : 0;
+  const [pageState, setPageState] = useState({
+    resetKey,
+    page: 0,
+    pageSize,
+  });
+  const requestedPage =
+    pageState.resetKey !== resetKey
+      ? 0
+      : pageState.pageSize === pageSize
+        ? pageState.page
+        : Math.floor((pageState.page * pageState.pageSize) / pageSize);
   const page = Math.min(requestedPage, pageCount - 1);
 
   useEffect(() => {
     setPageState((current) => {
-      if (current.resetKey === resetKey && current.page === page) {
+      if (
+        current.resetKey === resetKey &&
+        current.page === page &&
+        current.pageSize === pageSize
+      ) {
         return current;
       }
-      return { resetKey, page };
+      return { resetKey, page, pageSize };
     });
-  }, [page, resetKey]);
+  }, [page, pageSize, resetKey]);
 
   const setPage = useCallback(
     (nextPage: number) => {
       setPageState({
         resetKey,
         page: Math.max(0, Math.min(Math.floor(nextPage), pageCount - 1)),
+        pageSize,
       });
     },
-    [pageCount, resetKey],
+    [pageCount, pageSize, resetKey],
   );
   const paginatedItems = useMemo(() => {
     const start = page * pageSize;

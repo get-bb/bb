@@ -67,6 +67,8 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
+  TOOLS_SKILLS_ROUTE_PATH,
   getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
@@ -119,9 +121,11 @@ function ToolsBodyFallback() {
 export function ToolsScrollPage({
   children,
   maxWidthClassName = "max-w-5xl",
+  fillViewport = false,
 }: {
   children: ReactNode;
   maxWidthClassName?: string;
+  fillViewport?: boolean;
 }) {
   const {
     scrollRef,
@@ -137,6 +141,7 @@ export function ToolsScrollPage({
         <div
           className={cn(
             "mx-auto box-border min-h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
+            fillViewport && "h-full",
             maxWidthClassName,
           )}
         >
@@ -161,13 +166,18 @@ export function ToolsScrollPage({
 function ToolsSectionBody({
   activeSection,
   pluginId,
+  pathname,
 }: {
   activeSection: ToolsSectionId;
   pluginId: string | undefined;
+  pathname: string;
 }) {
   if (activeSection === "skills") {
+    const isCollection =
+      pathname === TOOLS_SKILLS_ROUTE_PATH ||
+      pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH;
     return (
-      <ToolsScrollPage>
+      <ToolsScrollPage fillViewport={isCollection}>
         <SkillsLibrary />
       </ToolsScrollPage>
     );
@@ -852,7 +862,11 @@ export function ToolsView() {
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<ToolsBodyFallback />}>
-          <ToolsSectionBody activeSection={activeSection} pluginId={pluginId} />
+          <ToolsSectionBody
+            activeSection={activeSection}
+            pluginId={pluginId}
+            pathname={location.pathname}
+          />
         </Suspense>
       </div>
     </div>

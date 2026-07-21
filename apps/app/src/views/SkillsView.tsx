@@ -12,9 +12,9 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
-  RESOURCE_LIST_PAGE_SIZE,
   ResourcePagination,
   useResourcePagination,
+  useResourceViewportPageSize,
 } from "@bb/shared-ui/resource-pagination";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -683,6 +683,9 @@ export function SkillsOverview({
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
+  const [installedViewport, setInstalledViewport] =
+    useState<HTMLDivElement | null>(null);
+  const installedPageSize = useResourceViewportPageSize(installedViewport);
   const normalizedQuery = query.trim().toLowerCase();
   const providerCounts = useMemo(() => {
     const counts = new Map<ResourceProviderFilter, number>();
@@ -742,7 +745,7 @@ export function SkillsOverview({
     });
   }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
   const installedPagination = useResourcePagination(visibleSkills, {
-    pageSize: RESOURCE_LIST_PAGE_SIZE,
+    pageSize: installedPageSize,
     resetKey: [
       normalizedQuery,
       providerFilters.join(","),
@@ -817,6 +820,7 @@ export function SkillsOverview({
       ) : (
         <ResourceCollectionViewport
           scrollId="skills-installed-results"
+          viewportRef={setInstalledViewport}
           toolbar={
             <ResourceToolbar
               searchValue={query}

@@ -40,6 +40,19 @@ const GITHUB_PLUGIN = {
 afterEach(cleanup);
 
 describe("ToolsScrollPage layout", () => {
+  it("gives bounded collection pages a definite viewport height", () => {
+    render(
+      <ToolsScrollPage fillViewport>
+        <div>Skills collection</div>
+      </ToolsScrollPage>,
+    );
+
+    const content = screen.getByText("Skills collection").parentElement;
+    const classes = content?.className.split(/\s+/) ?? [];
+    expect(classes).toContain("h-full");
+    expect(classes).toContain("min-h-full");
+  });
+
   it("keeps bottom padding after detail content that exceeds the viewport", () => {
     render(
       <ToolsScrollPage>

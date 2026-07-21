@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render as renderDom,
@@ -240,6 +241,99 @@ describe("SkillsOverview", () => {
       (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("fits whole installed rows to the available height while keeping pagination anchored", async () => {
+    const skills = Array.from({ length: 30 }, (_, index) => {
+      const ordinal = String(index + 1).padStart(2, "0");
+      return makeSkill({
+        name: `skill-${ordinal}`,
+        filePath: `/skills/skill-${ordinal}/SKILL.md`,
+      });
+    });
+    let viewportHeight = 760;
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight",
+    );
+    const resizeCallbacks = new Set<ResizeObserverCallback>();
+
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.id === "skills-installed-results" ? viewportHeight : 0;
+      },
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect(this: HTMLElement) {
+        const rowCount = this.querySelectorAll?.("[data-resource-row]").length;
+        const height = this.hasAttribute("data-resource-list-panel")
+          ? rowCount * 50 + 10
+          : this.hasAttribute("data-resource-row")
+            ? 50
+            : 0;
+        return new DOMRect(0, 0, 800, height);
+      },
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverMock {
+        constructor(private readonly callback: ResizeObserverCallback) {
+          resizeCallbacks.add(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          resizeCallbacks.delete(this.callback);
+        }
+      },
+    );
+
+    try {
+      renderDom(
+        <SkillsOverview
+          skills={skills}
+          isLoading={false}
+          hasError={false}
+          onCreateSkill={() => {}}
+          onSelectSkill={() => {}}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("1–15 of 30")).toBeTruthy();
+      });
+      const viewport = document.getElementById("skills-installed-results");
+      const footer = document.querySelector(
+        "[data-resource-collection-footer]",
+      );
+      expect(viewport?.contains(footer)).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+      expect(screen.getByText("16–30 of 30")).toBeTruthy();
+
+      viewportHeight = 410;
+      act(() => {
+        for (const callback of resizeCallbacks) {
+          callback([], {} as ResizeObserver);
+        }
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("9–16 of 30")).toBeTruthy();
+      });
+      expect(screen.getByText("Page 2 of 4")).toBeTruthy();
+      expect(screen.getByText("skill-16")).toBeTruthy();
+    } finally {
+      if (clientHeightDescriptor === undefined) {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+      } else {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "clientHeight",
+          clientHeightDescriptor,
+        );
+      }
+    }
   });
 
   it("confirms before uninstalling an installed skill from a Browse card", () => {
