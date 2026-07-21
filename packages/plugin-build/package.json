@@ -13,7 +13,7 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "node ./scripts/generate-plugin-theme.mjs --check && tsc --noEmit"
+    "typecheck": "node ./scripts/generate-plugin-theme.mjs --check && node ./scripts/generate-runtime-export-manifest.mjs --check && tsc --noEmit"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",

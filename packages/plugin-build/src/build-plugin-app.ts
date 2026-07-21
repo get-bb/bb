@@ -11,7 +11,6 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { derivePluginId } from "@bb/domain";
 import type { Plugin } from "esbuild";
-import * as bundledPluginSdkAppFacade from "@bb/plugin-sdk/app";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
@@ -78,8 +77,10 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
  * every app build. The dev server stays alive while the SDK source changes, so
  * retaining the first module namespace here would make newly-added exports
  * unavailable to every subsequent plugin rebuild until the server restarted.
- * The React lists next to it come from
- * scripts/generate-runtime-export-manifest.mjs instead.
+ * Packaged bundles cannot resolve the facade as a package, so they use the
+ * export manifest generated directly from SDK source at bundle time. Other
+ * shared-runtime lists in that manifest are introspected from the host app's
+ * installed packages by scripts/generate-runtime-export-manifest.mjs.
  */
 let freshFacadeImportSequence = 0;
 
@@ -105,12 +106,17 @@ async function shimExportsOf(
     try {
       resolvedModuleUrl = import.meta.resolve("@bb/plugin-sdk/app");
     } catch {
-      // The built CLI bundles @bb/plugin-build and the facade itself, but does
-      // not install plugin-build's dependency as a directly resolvable package.
-      // That immutable packaged process cannot gain SDK exports mid-run, so its
-      // bundled namespace is the correct fallback; source dev servers resolve
-      // the workspace facade above and always take the fresh-import path.
-      return Object.keys(bundledPluginSdkAppFacade).sort();
+      // The built CLI bundles @bb/plugin-build but does not install
+      // plugin-build's dependency as a directly resolvable package. Do not
+      // derive this from a bundled namespace: esbuild can tree-shake that
+      // namespace to the exports referenced elsewhere in the outer bundle.
+      // The generated manifest is derived statically from SDK source before
+      // CLI/packaged-daemon builds and cannot lose otherwise-unused exports.
+      const names = RUNTIME_EXPORT_MANIFEST[specifier];
+      if (!names) {
+        throw new Error(`no runtime export manifest entry for "${specifier}"`);
+      }
+      return names;
     }
     return freshModuleExports(resolvedModuleUrl);
   }

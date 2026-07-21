@@ -1,12 +1,26 @@
 // GENERATED FILE — do not edit by hand.
-// Named exports of the shared runtime modules (react@19.2.4 + the
-// shimmed radix/sonner/vaul packages), introspected from the host app's
-// installed copies. Consumed by
+// Named exports of the plugin SDK app facade and shared runtime modules
+// (react@19.2.4 + the shimmed radix/sonner/vaul packages), derived
+// from SDK source/build metadata and the host app's installed copies.
+// Consumed by
 // `bb plugin build` to emit static ESM re-export shims over
 // globalThis.__bbPluginRuntime. Regenerate after upgrading a shimmed package:
 //   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
 
 export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
+  "@bb/plugin-sdk/app": [
+    "definePluginApp",
+    "experimental_Markdown",
+    "experimental_ThreadChat",
+    "useBbContext",
+    "useBbNavigate",
+    "useComposer",
+    "useComposerView",
+    "useRealtime",
+    "useRealtimeConnectionState",
+    "useRpc",
+    "useSettings",
+  ],
   "react": [
     "Activity",
     "Children",

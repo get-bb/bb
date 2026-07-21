@@ -6,10 +6,11 @@
 // script after upgrading react or any shimmed package:
 //
 //   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 // Resolve React exactly as the host app does — apps/app owns the runtime the
@@ -67,7 +68,14 @@ async function loadRuntimeModule(moduleId) {
       : parts[0];
     const subpath = `.${moduleId.slice(pkgName.length)}`;
     const pkgDir = path.join(
-      scriptDir, "..", "..", "..", "apps", "app", "node_modules", pkgName,
+      scriptDir,
+      "..",
+      "..",
+      "..",
+      "apps",
+      "app",
+      "node_modules",
+      pkgName,
     );
     const pkg = JSON.parse(
       await readFile(path.join(pkgDir, "package.json"), "utf8"),
@@ -92,8 +100,42 @@ async function namedExportsOf(moduleId) {
     .sort();
 }
 
+async function pluginSdkAppExports() {
+  const entryPoint = path.join(
+    scriptDir,
+    "..",
+    "..",
+    "plugin-sdk",
+    "src",
+    "app.ts",
+  );
+  const result = await build({
+    entryPoints: [entryPoint],
+    bundle: false,
+    format: "esm",
+    logLevel: "silent",
+    metafile: true,
+    platform: "neutral",
+    write: false,
+  });
+  const entryOutput = Object.values(result.metafile.outputs).find(
+    (output) => output.entryPoint !== undefined,
+  );
+  if (entryOutput === undefined) {
+    throw new Error(`esbuild did not report exports for ${entryPoint}`);
+  }
+  return entryOutput.exports
+    .filter((name) => IDENTIFIER_RE.test(name) && name !== "default")
+    .sort();
+}
+
 const reactVersion = appRequire("react/package.json").version;
 const entryChunks = [];
+entryChunks.push(
+  `  "@bb/plugin-sdk/app": [\n${(await pluginSdkAppExports())
+    .map((name) => `    ${JSON.stringify(name)},`)
+    .join("\n")}\n  ],`,
+);
 for (const id of RUNTIME_MODULE_IDS) {
   const names = await namedExportsOf(id);
   entryChunks.push(
@@ -105,9 +147,10 @@ for (const id of RUNTIME_MODULE_IDS) {
 const entries = entryChunks.join("\n");
 
 const output = `// GENERATED FILE — do not edit by hand.
-// Named exports of the shared runtime modules (react@${reactVersion} + the
-// shimmed radix/sonner/vaul packages), introspected from the host app's
-// installed copies. Consumed by
+// Named exports of the plugin SDK app facade and shared runtime modules
+// (react@${reactVersion} + the shimmed radix/sonner/vaul packages), derived
+// from SDK source/build metadata and the host app's installed copies.
+// Consumed by
 // \`bb plugin build\` to emit static ESM re-export shims over
 // globalThis.__bbPluginRuntime. Regenerate after upgrading a shimmed package:
 //   node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs
@@ -118,5 +161,21 @@ ${entries}
 `;
 
 const outPath = path.join(scriptDir, "..", "src", "runtime-export-manifest.ts");
-await writeFile(outPath, output);
-console.log(`wrote ${outPath} (react@${reactVersion})`);
+if (process.argv.includes("--check")) {
+  const current = await readFile(outPath, "utf8").catch(() => "");
+  if (current !== output) {
+    throw new Error(
+      `${outPath} is stale; run node packages/plugin-build/scripts/generate-runtime-export-manifest.mjs`,
+    );
+  }
+  console.log(`checked ${outPath} (react@${reactVersion})`);
+} else {
+  const tempPath = `${outPath}.${process.pid}.tmp`;
+  try {
+    await writeFile(tempPath, output);
+    await rename(tempPath, outPath);
+  } finally {
+    await rm(tempPath, { force: true });
+  }
+  console.log(`wrote ${outPath} (react@${reactVersion})`);
+}
