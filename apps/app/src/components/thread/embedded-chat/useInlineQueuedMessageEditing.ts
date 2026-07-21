@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import type {
-  QueuedMessageEditRequest,
-  QueuedMessageInlineEditor,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
 
@@ -41,7 +38,9 @@ export interface UseInlineQueuedMessageEditingResult {
    * action's draft.
    */
   inlineEditingQueuedMessageRef: React.RefObject<InlineQueuedMessageEditState | null>;
-  commitInlineQueuedMessage: (next: InlineQueuedMessageEditState | null) => void;
+  commitInlineQueuedMessage: (
+    next: InlineQueuedMessageEditState | null,
+  ) => void;
   /**
    * Functional variant applied against the latest state — for writes that must
    * compose with concurrent (possibly not-yet-committed) updates.
@@ -53,16 +52,14 @@ export interface UseInlineQueuedMessageEditingResult {
   ) => void;
   dismissInlineQueuedMessageEditor: () => void;
   beginEditQueuedMessage: (request: QueuedMessageEditRequest) => void;
-  inlineEditor: QueuedMessageInlineEditor | undefined;
-  inlineComposerTarget: HTMLDivElement | null;
 }
 
 /**
  * The inline queued-message edit session shared by every thread-chat composer:
- * "Edit" on a queued card moves the one live composer into that card's slot,
- * seeded with the queued content, until saved or dismissed. The session
- * self-dismisses when the edited message leaves the queue (sent or deleted
- * elsewhere) or the owning thread changes.
+ * "Edit" on a queued card creates a transient draft for the queue's inline
+ * composer. The persisted bottom-composer draft remains independent. The
+ * session self-dismisses when the edited message leaves the queue (sent or
+ * deleted elsewhere) or the owning thread changes.
  */
 export function useInlineQueuedMessageEditing({
   ownerThreadId,
@@ -74,12 +71,10 @@ export function useInlineQueuedMessageEditing({
   const inlineEditingQueuedMessageRef =
     useRef<InlineQueuedMessageEditState | null>(null);
   const inlineEditSessionIdRef = useRef(0);
-  const [inlineComposerTarget, setInlineComposerTarget] =
-    useState<HTMLDivElement | null>(null);
 
-  const queuedMessagesByIdRef = useRef<ReadonlyMap<string, ThreadQueuedMessage>>(
-    new Map(),
-  );
+  const queuedMessagesByIdRef = useRef<
+    ReadonlyMap<string, ThreadQueuedMessage>
+  >(new Map());
   queuedMessagesByIdRef.current = useMemo(() => {
     const next = new Map<string, ThreadQueuedMessage>();
     for (const message of queuedMessages) {
@@ -110,7 +105,6 @@ export function useInlineQueuedMessageEditing({
     [],
   );
   const dismissInlineQueuedMessageEditor = useCallback(() => {
-    setInlineComposerTarget(null);
     commitInlineQueuedMessage(null);
   }, [commitInlineQueuedMessage]);
 
@@ -165,20 +159,6 @@ export function useInlineQueuedMessageEditing({
     [commitInlineQueuedMessage, onBeginEdit, ownerThreadId],
   );
 
-  const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(
-    () =>
-      inlineEditingQueuedMessage
-        ? {
-            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
-            queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
-            ready: true,
-            onComposerTargetChange: setInlineComposerTarget,
-            onDismiss: dismissInlineQueuedMessageEditor,
-          }
-        : undefined,
-    [dismissInlineQueuedMessageEditor, inlineEditingQueuedMessage],
-  );
-
   return {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
@@ -186,7 +166,5 @@ export function useInlineQueuedMessageEditing({
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
     beginEditQueuedMessage,
-    inlineEditor,
-    inlineComposerTarget,
   };
 }

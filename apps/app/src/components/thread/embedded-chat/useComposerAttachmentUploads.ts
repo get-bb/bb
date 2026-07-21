@@ -9,21 +9,23 @@ interface UseComposerAttachmentUploadsArgs {
   addDraftAttachment: (attachment: PromptDraftAttachment) => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
   inlineEditingQueuedMessageRef: React.RefObject<InlineQueuedMessageEditState | null>;
-  commitInlineQueuedMessage: (next: InlineQueuedMessageEditState | null) => void;
+  commitInlineQueuedMessage: (
+    next: InlineQueuedMessageEditState | null,
+  ) => void;
 }
 
 export interface UseComposerAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
-  handleAttachFiles: (files: File[]) => Promise<void>;
+  handleAttachBottomFiles: (files: File[]) => Promise<void>;
+  handleAttachInlineFiles: (files: File[]) => Promise<void>;
   isAttaching: boolean;
 }
 
 /**
- * Uploads dropped/picked files and appends them to whichever draft owns the
- * composer at upload time: the bottom draft, or — captured per invocation so a
- * dismissed edit session can't receive a late upload — the inline queued-message
- * edit draft.
+ * Uploads dropped/picked files for either independently mounted composer. The
+ * inline owner is captured per invocation so a dismissed edit session cannot
+ * receive a late upload.
  */
 export function useComposerAttachmentUploads({
   projectId,
@@ -35,23 +37,21 @@ export function useComposerAttachmentUploads({
   const uploadPromptAttachment = useUploadPromptAttachment();
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
+  const uploadFiles = useCallback(
+    async (
+      files: File[],
+      attachmentOwner:
+        | { addAttachment: typeof addDraftAttachment; kind: "bottom" }
+        | {
+            editSessionId: number;
+            kind: "queued";
+            ownerThreadId: string;
+            queuedMessageId: string;
+          },
+    ) => {
       if (files.length === 0) {
         return;
       }
-
-      const attachmentOwner = inlineEditingQueuedMessage
-        ? {
-            kind: "queued" as const,
-            editSessionId: inlineEditingQueuedMessage.editSessionId,
-            ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
-            queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
-          }
-        : {
-            addAttachment: addDraftAttachment,
-            kind: "bottom" as const,
-          };
       setAttachmentError(null);
       const failedFiles: string[] = [];
       for (const file of files) {
@@ -91,19 +91,40 @@ export function useComposerAttachmentUploads({
       }
     },
     [
-      addDraftAttachment,
       commitInlineQueuedMessage,
-      inlineEditingQueuedMessage,
       inlineEditingQueuedMessageRef,
       projectId,
       uploadPromptAttachment,
     ],
   );
+  const handleAttachBottomFiles = useCallback(
+    (files: File[]) =>
+      uploadFiles(files, {
+        addAttachment: addDraftAttachment,
+        kind: "bottom",
+      }),
+    [addDraftAttachment, uploadFiles],
+  );
+  const handleAttachInlineFiles = useCallback(
+    (files: File[]) => {
+      if (!inlineEditingQueuedMessage) {
+        return Promise.resolve();
+      }
+      return uploadFiles(files, {
+        editSessionId: inlineEditingQueuedMessage.editSessionId,
+        kind: "queued",
+        ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
+        queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+      });
+    },
+    [inlineEditingQueuedMessage, uploadFiles],
+  );
 
   return {
     attachmentError,
     setAttachmentError,
-    handleAttachFiles,
+    handleAttachBottomFiles,
+    handleAttachInlineFiles,
     isAttaching: uploadPromptAttachment.isPending,
   };
 }

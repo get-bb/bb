@@ -235,10 +235,7 @@ beforeEach(() => {
 });
 
 describe("FollowUpPromptBox", () => {
-  it("moves one stateful composer between the bottom and inline targets without remounting", () => {
-    const target = document.createElement("div");
-    target.setAttribute("data-test-composer-target", "");
-    document.body.append(target);
+  it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
     const { container, rerender } = render(<FollowUpPromptBox {...props} />);
@@ -254,29 +251,19 @@ describe("FollowUpPromptBox", () => {
         ?.querySelector('[data-testid="prompt-box"]'),
     ).toBe(promptBox);
 
-    rerender(<FollowUpPromptBox {...props} composerTarget={target} />);
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        stack={<div data-testid="new-stack-item">Queue</div>}
+      />,
+    );
 
-    expect(target.querySelector('[data-testid="prompt-box"]')).toBe(promptBox);
+    expect(screen.getByTestId("new-stack-item")).toBeTruthy();
     expect(screen.getAllByTestId("prompt-box")).toHaveLength(1);
     expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
     expect(input.value).toBe("Uncommitted editor state");
-    expect(document.activeElement).toBe(input);
-    expect(input.selectionStart).toBe(input.value.length);
-
     fireEvent.click(screen.getByText("Submit"));
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
-
-    rerender(<FollowUpPromptBox {...props} composerTarget={null} />);
-
-    expect(
-      container
-        .querySelector("[data-follow-up-composer-anchor]")
-        ?.querySelector('[data-testid="prompt-box"]'),
-    ).toBe(promptBox);
-    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
-    expect(input.value).toBe("Uncommitted editor state");
-
-    target.remove();
   });
 
   it("forwards accessory suppression changes without remounting the composer", () => {

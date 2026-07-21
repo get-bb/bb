@@ -316,14 +316,14 @@ describe("QueuedMessagesList", () => {
     ).not.toBeNull();
   });
 
-  it("replaces the edited row with a marker for the bottom composer", () => {
+  it("replaces the edited row with the real inline composer", () => {
     const onDismiss = vi.fn();
     const queuedMessages = [
       makeQueuedMessage("q_one", "First queued message"),
       makeQueuedMessage("q_two", "Second queued message"),
     ];
 
-    const { container, getByRole, getByText } = render(
+    const { container, getByRole, getByText, getByTestId } = render(
       <QueuedMessagesList
         queuedMessages={queuedMessages}
         inlineEditor={{
@@ -331,7 +331,7 @@ describe("QueuedMessagesList", () => {
           // Position is resolved from the stable message id, even if a stale
           // caller index arrives while the queue is changing.
           queuedMessageIndex: 0,
-          ready: true,
+          content: <div data-testid="inline-queue-editor">Inline editor</div>,
           onDismiss,
         }}
         sendDisabled={false}
@@ -383,10 +383,7 @@ describe("QueuedMessagesList", () => {
     expect(
       dismissButton.querySelector('[data-icon="X"]')?.getAttribute("class"),
     ).toContain("size-3");
-    expect(container.textContent).toContain("Edit with the prompt box below.");
-    expect(
-      container.querySelector("[data-queued-message-composer-target]"),
-    ).toBeNull();
+    expect(getByTestId("inline-queue-editor")).toBeTruthy();
 
     fireEvent.click(
       getByRole("button", { name: "Stop editing queued message" }),
@@ -401,7 +398,7 @@ describe("QueuedMessagesList", () => {
         inlineEditor={{
           queuedMessageId: "q_missing",
           queuedMessageIndex: 0,
-          ready: true,
+          content: <div>Inline editor</div>,
           onDismiss: noop,
         }}
         sendDisabled={false}
@@ -453,7 +450,7 @@ describe("QueuedMessagesList", () => {
         inlineEditor={{
           queuedMessageId: "q_0",
           queuedMessageIndex: 0,
-          ready: true,
+          content: <div>Inline editor</div>,
           onDismiss: noop,
         }}
       />,
@@ -500,7 +497,7 @@ describe("QueuedMessagesList", () => {
         inlineEditor={{
           queuedMessageId: "q_one",
           queuedMessageIndex: 0,
-          ready: true,
+          content: <div>Inline editor</div>,
           onDismiss,
         }}
       />,
@@ -565,7 +562,7 @@ describe("QueuedMessagesList", () => {
                 ? {
                     queuedMessageId: "q_one",
                     queuedMessageIndex: 0,
-                    ready: true,
+                    content: <div>Inline editor</div>,
                     onDismiss: noop,
                   }
                 : undefined
@@ -597,6 +594,255 @@ describe("QueuedMessagesList", () => {
       ).toBe("drawer");
     });
   });
+
+  it("grows edit mode to fit the measured editor and its immediate neighbors", async () => {
+    const viewport = document.createElement("div");
+    Object.defineProperty(viewport, "clientHeight", { value: 500 });
+    bottomAnchorMocks.scrollElement = viewport;
+
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-queue-test-footer")) {
+          return new DOMRect(0, 0, 600, 340);
+        }
+        if (this.getAttribute("aria-label") === "Queued messages") {
+          return new DOMRect(0, 0, 600, 240);
+        }
+        if (this.hasAttribute("data-queued-messages-scroll")) {
+          return new DOMRect(0, 32, 600, 180);
+        }
+        if (this.hasAttribute("data-queued-message-inline-editor")) {
+          return new DOMRect(0, 112, 600, 130);
+        }
+        if (this.hasAttribute("data-queued-message-row")) {
+          if (this.textContent?.includes("Previous queued message")) {
+            return new DOMRect(0, 32, 600, 80);
+          }
+          if (this.textContent?.includes("Following queued message")) {
+            return new DOMRect(0, 242, 600, 90);
+          }
+        }
+        return nativeGetBoundingClientRect.call(this);
+      },
+    );
+
+    const queuedMessages = [
+      makeQueuedMessage("q_previous", "Previous queued message"),
+      makeQueuedMessage("q_editing", "Edited queued message"),
+      makeQueuedMessage("q_following", "Following queued message"),
+    ];
+    const { container } = render(
+      <div data-queue-test-footer="">
+        <div data-app-composer="">
+          <QueuedMessagesList
+            queuedMessages={queuedMessages}
+            inlineEditor={{
+              queuedMessageId: "q_editing",
+              queuedMessageIndex: 1,
+              content: <div>Inline editor</div>,
+              onDismiss: noop,
+            }}
+            sendDisabled={false}
+            actionDisabled={false}
+            processingMessageId={null}
+            processingAction={null}
+            onSendImmediately={noop}
+            onReorder={noop}
+            onSetGroupBoundary={noop}
+            onEdit={noop}
+            onDelete={noop}
+          />
+          <div>Bottom composer</div>
+        </div>
+      </div>,
+    );
+    const surface = container.querySelector<HTMLElement>(
+      'section[aria-label="Queued messages"]',
+    );
+
+    await waitFor(() => expect(surface?.style.height).toBe("360px"));
+  });
+
+  it("realigns both neighbors as the edit surface finishes growing", async () => {
+    let notifyResize = noop;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        notifyResize = () => callback([], this as unknown as ResizeObserver);
+      }
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+
+    const viewport = document.createElement("div");
+    Object.defineProperty(viewport, "clientHeight", { value: 500 });
+    bottomAnchorMocks.scrollElement = viewport;
+
+    let queueViewportBottom = 180;
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-queue-test-footer")) {
+          return new DOMRect(0, 0, 600, 340);
+        }
+        if (this.getAttribute("aria-label") === "Queued messages") {
+          return new DOMRect(0, 0, 600, 240);
+        }
+        if (this.hasAttribute("data-queued-messages-scroll")) {
+          return new DOMRect(0, 32, 600, queueViewportBottom - 32);
+        }
+        const queueScrollTop =
+          this.closest<HTMLElement>("[data-queued-messages-scroll]")
+            ?.scrollTop ?? 0;
+        if (this.hasAttribute("data-queued-message-inline-editor")) {
+          return new DOMRect(0, 132 - queueScrollTop, 600, 180);
+        }
+        if (this.hasAttribute("data-queued-message-row")) {
+          if (this.textContent?.includes("Previous queued message")) {
+            return new DOMRect(0, 92 - queueScrollTop, 600, 40);
+          }
+          if (this.textContent?.includes("Following queued message")) {
+            return new DOMRect(0, 312 - queueScrollTop, 600, 30);
+          }
+        }
+        return nativeGetBoundingClientRect.call(this);
+      },
+    );
+
+    const queuedMessages = [
+      makeQueuedMessage("q_previous", "Previous queued message"),
+      makeQueuedMessage("q_editing", "Edited queued message"),
+      makeQueuedMessage("q_following", "Following queued message"),
+    ];
+    const { container } = render(
+      <div data-queue-test-footer="">
+        <div data-app-composer="">
+          <QueuedMessagesList
+            queuedMessages={queuedMessages}
+            inlineEditor={{
+              queuedMessageId: "q_editing",
+              queuedMessageIndex: 1,
+              content: <div>Inline editor</div>,
+              onDismiss: noop,
+            }}
+            sendDisabled={false}
+            actionDisabled={false}
+            processingMessageId={null}
+            processingAction={null}
+            onSendImmediately={noop}
+            onReorder={noop}
+            onSetGroupBoundary={noop}
+            onEdit={noop}
+            onDelete={noop}
+          />
+          <div>Bottom composer</div>
+        </div>
+      </div>,
+    );
+    const scroll = container.querySelector<HTMLElement>(
+      "[data-queued-messages-scroll]",
+    );
+    expect(scroll).not.toBeNull();
+    if (!scroll) return;
+    scroll.scrollTop = 100;
+
+    act(() => notifyResize());
+    expect(scroll.scrollTop).toBe(100);
+
+    queueViewportBottom = 300;
+    act(() => notifyResize());
+    expect(scroll.scrollTop).toBe(60);
+  });
+
+  it.each([
+    {
+      label: "first",
+      messages: [
+        makeQueuedMessage("q_editing", "Edited queued message"),
+        makeQueuedMessage("q_neighbor", "Following queued message"),
+      ],
+      editorTop: 32,
+      neighborTop: 182,
+    },
+    {
+      label: "last",
+      messages: [
+        makeQueuedMessage("q_neighbor", "Previous queued message"),
+        makeQueuedMessage("q_editing", "Edited queued message"),
+      ],
+      editorTop: 112,
+      neighborTop: 32,
+    },
+  ])(
+    "sizes a $label-item edit from only the neighbor that exists",
+    async ({ editorTop, messages, neighborTop }) => {
+      const viewport = document.createElement("div");
+      Object.defineProperty(viewport, "clientHeight", { value: 500 });
+      bottomAnchorMocks.scrollElement = viewport;
+
+      const nativeGetBoundingClientRect =
+        HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute("data-queue-test-footer")) {
+          return new DOMRect(0, 0, 600, 340);
+        }
+        if (this.getAttribute("aria-label") === "Queued messages") {
+          return new DOMRect(0, 0, 600, 240);
+        }
+        if (this.hasAttribute("data-queued-messages-scroll")) {
+          return new DOMRect(0, 32, 600, 180);
+        }
+        if (this.hasAttribute("data-queued-message-inline-editor")) {
+          return new DOMRect(0, editorTop, 600, 150);
+        }
+        if (this.getAttribute("data-queued-message-id") === "q_neighbor") {
+          return new DOMRect(0, neighborTop, 600, 80);
+        }
+        return nativeGetBoundingClientRect.call(this);
+      });
+
+      const { container } = render(
+        <div data-queue-test-footer="">
+          <div data-app-composer="">
+            <QueuedMessagesList
+              queuedMessages={messages}
+              inlineEditor={{
+                queuedMessageId: "q_editing",
+                queuedMessageIndex: messages.findIndex(
+                  (message) => message.id === "q_editing",
+                ),
+                content: <div>Inline editor</div>,
+                onDismiss: noop,
+              }}
+              sendDisabled={false}
+              actionDisabled={false}
+              processingMessageId={null}
+              processingAction={null}
+              onSendImmediately={noop}
+              onReorder={noop}
+              onSetGroupBoundary={noop}
+              onEdit={noop}
+              onDelete={noop}
+            />
+            <div>Bottom composer</div>
+          </div>
+        </div>,
+      );
+      const surface = container.querySelector<HTMLElement>(
+        'section[aria-label="Queued messages"]',
+      );
+
+      await waitFor(() => expect(surface?.style.height).toBe("290px"));
+    },
+  );
 
   it("reserves the actual occupied composer and footer height", () => {
     expect(

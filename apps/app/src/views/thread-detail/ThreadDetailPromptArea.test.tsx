@@ -16,6 +16,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,12 +74,12 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     attachments,
     composer,
-    composerTarget,
     execution,
     executionReadOnly,
     permission,
     permissionReadOnly,
     pluginComposerHost,
+    showScrollToBottomButton,
     stack,
     textEffect,
   }: {
@@ -92,7 +93,6 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       onSubmit: () => void;
       submitMode: { kind: string; reason?: string };
     } | null;
-    composerTarget?: HTMLElement | null;
     execution: {
       footerAction?: {
         label: string;
@@ -108,6 +108,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     permission: { value?: string };
     permissionReadOnly?: boolean;
     pluginComposerHost?: PluginComposerHost | null;
+    showScrollToBottomButton?: boolean;
     stack: ReactNode;
     textEffect?: "shimmer" | null;
   }) => (
@@ -132,7 +133,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <div data-testid="attachment-count">{attachments.items.length}</div>
       <div data-testid="composer-text-effect">{textEffect ?? "none"}</div>
       <div data-testid="composer-location">
-        {composerTarget ? "inline" : "bottom"}
+        {showScrollToBottomButton === false ? "inline" : "bottom"}
       </div>
       <div data-testid="plugin-composer-scope">
         {pluginComposerHost
@@ -227,7 +228,7 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
     queuedMessages,
     onEdit,
   }: {
-    inlineEditor?: { onDismiss: () => void };
+    inlineEditor?: { content: ReactNode; onDismiss: () => void };
     queuedMessages: readonly ThreadQueuedMessage[];
     onEdit: (request: {
       queuedMessageId: string;
@@ -251,9 +252,12 @@ vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
         </button>
       ))}
       {inlineEditor ? (
-        <button type="button" onClick={inlineEditor.onDismiss}>
-          Cancel queued edit
-        </button>
+        <div data-testid="inline-queued-message-editor">
+          {inlineEditor.content}
+          <button type="button" onClick={inlineEditor.onDismiss}>
+            Cancel queued edit
+          </button>
+        </div>
       ) : null}
     </div>
   ),
@@ -763,20 +767,39 @@ describe("ThreadDetailPromptArea", () => {
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
 
-    expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
     expect(screen.getByTestId("queued-message-count").textContent).toBe("1");
     expect(
       (
-        screen.getByRole("textbox", {
+        inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLTextAreaElement
       ).value,
     ).toBe("Already queued");
+    const bottomComposer = screen
+      .getAllByRole("textbox", { name: "Composer message" })
+      .find(
+        (element) =>
+          element.closest('[data-testid="inline-queued-message-editor"]') ===
+          null,
+      ) as HTMLInputElement;
+    expect(bottomComposer.value).toBe("Keep this bottom draft");
+    fireEvent.change(bottomComposer, {
+      target: { value: "Still-usable bottom draft" },
+    });
+    expect(mocks.promptDraft.setTextAndMentions).toHaveBeenCalledWith(
+      "Still-usable bottom draft",
+      [],
+    );
     fireEvent.change(
-      screen.getByRole("textbox", { name: "Composer message" }),
+      inlineEditor.getByRole("textbox", { name: "Composer message" }),
       { target: { value: "Edited queued message" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
 
     await waitFor(() => {
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
@@ -820,25 +843,32 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
 
-    expect(screen.getByTestId("plugin-composer-scope").textContent).toBe(
+    expect(inlineEditor.getByTestId("plugin-composer-scope").textContent).toBe(
       "queued-message:qmsg_1",
     );
-    expect(screen.getByTestId("attachment-count").textContent).toBe("1");
+    expect(inlineEditor.getByTestId("attachment-count").textContent).toBe("1");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Simulate plugin replacement" }),
+      inlineEditor.getByRole("button", {
+        name: "Simulate plugin replacement",
+      }),
     );
     expect(
       (
-        screen.getByRole("textbox", {
+        inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
       ).value,
     ).toBe("Plugin-enhanced queued message");
-    expect(screen.getByTestId("attachment-count").textContent).toBe("1");
+    expect(inlineEditor.getByTestId("attachment-count").textContent).toBe("1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
     await waitFor(() => {
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
         expectedUpdatedAt: 1,
@@ -868,13 +898,18 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: "Simulate chained plugin updates" }),
+      inlineEditor.getByRole("button", {
+        name: "Simulate chained plugin updates",
+      }),
     );
 
     expect(
       (
-        screen.getByRole("textbox", {
+        inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
       ).value,
@@ -891,8 +926,11 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    let inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: "Capture plugin host" }),
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
     );
     const firstHost = mocks.pluginComposerHost!;
     act(() => {
@@ -902,16 +940,19 @@ describe("ThreadDetailPromptArea", () => {
         "shimmer",
       );
     });
-    expect(screen.getByTestId("composer-text-effect").textContent).toBe(
+    expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
       "shimmer",
     );
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 2" }),
     );
-    expect(screen.getByTestId("composer-text-effect").textContent).toBe("none");
+    inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
+    expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
+      "none",
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: "Capture plugin host" }),
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
     );
     const secondHost = mocks.pluginComposerHost!;
     expect(secondHost.textEffectKey).not.toBe(firstHost.textEffectKey);
@@ -923,7 +964,9 @@ describe("ThreadDetailPromptArea", () => {
         "shimmer",
       );
     });
-    expect(screen.getByTestId("composer-text-effect").textContent).toBe("none");
+    expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
+      "none",
+    );
     act(() => {
       setComposerTextEffect(
         secondHost.textEffectKey,
@@ -931,7 +974,7 @@ describe("ThreadDetailPromptArea", () => {
         "shimmer",
       );
     });
-    expect(screen.getByTestId("composer-text-effect").textContent).toBe(
+    expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
       "shimmer",
     );
 
@@ -965,8 +1008,11 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    let inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: "Capture plugin host" }),
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
     );
     const staleHost = mocks.pluginComposerHost;
     expect(staleHost?.scope).toMatchObject({
@@ -977,7 +1023,8 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 2" }),
     );
-    expect(screen.getByTestId("plugin-composer-scope").textContent).toBe(
+    inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
+    expect(inlineEditor.getByTestId("plugin-composer-scope").textContent).toBe(
       "queued-message:qmsg_2",
     );
 
@@ -989,7 +1036,7 @@ describe("ThreadDetailPromptArea", () => {
     });
     expect(
       (
-        screen.getByRole("textbox", {
+        inlineEditor.getByRole("textbox", {
           name: "Composer message",
         }) as HTMLInputElement
       ).value,
@@ -1017,19 +1064,30 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
 
-    expect(screen.getByTestId("selected-model").textContent).toBe(
+    expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
       "queued-model",
     );
-    expect(screen.getByTestId("selected-reasoning").textContent).toBe("high");
-    expect(screen.getByTestId("selected-service-tier").textContent).toBe(
+    expect(inlineEditor.getByTestId("selected-reasoning").textContent).toBe(
+      "high",
+    );
+    expect(inlineEditor.getByTestId("selected-service-tier").textContent).toBe(
       "fast",
     );
-    expect(screen.getByTestId("selected-permission").textContent).toBe("full");
-    expect(screen.getByTestId("execution-read-only").textContent).toBe("true");
-    expect(screen.getByTestId("permission-read-only").textContent).toBe("true");
+    expect(inlineEditor.getByTestId("selected-permission").textContent).toBe(
+      "full",
+    );
+    expect(inlineEditor.getByTestId("execution-read-only").textContent).toBe(
+      "true",
+    );
+    expect(inlineEditor.getByTestId("permission-read-only").textContent).toBe(
+      "true",
+    );
     expect(
-      screen.queryByRole("button", { name: "Handoff to new thread" }),
+      inlineEditor.queryByRole("button", { name: "Handoff to new thread" }),
     ).toBeNull();
   });
 
@@ -1086,11 +1144,15 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
+    let inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    fireEvent.click(inlineEditor.getByRole("button", { name: "Attach file" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
+    inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
 
     upload.resolve({
       mimeType: "text/plain",
@@ -1103,7 +1165,7 @@ describe("ThreadDetailPromptArea", () => {
     await waitFor(() =>
       expect(mocks.uploadPromptAttachmentMutateAsync).toHaveBeenCalledTimes(1),
     );
-    expect(screen.getByTestId("attachment-count").textContent).toBe("0");
+    expect(inlineEditor.getByTestId("attachment-count").textContent).toBe("0");
     expect(mocks.promptDraft.addAttachment).not.toHaveBeenCalled();
   });
 
@@ -1135,7 +1197,11 @@ describe("ThreadDetailPromptArea", () => {
     await waitFor(() =>
       expect(mocks.promptDraft.addAttachment).toHaveBeenCalledWith(uploaded),
     );
-    expect(screen.getByTestId("attachment-count").textContent).toBe("0");
+    expect(
+      within(screen.getByTestId("inline-queued-message-editor")).getByTestId(
+        "attachment-count",
+      ).textContent,
+    ).toBe("0");
   });
 
   it("dismisses a missing queued message but keeps a stale edit recoverable", async () => {
@@ -1152,7 +1218,12 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    let inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
 
     await waitFor(() =>
       expect(mocks.toastError).toHaveBeenCalledWith("Queued message changed"),
@@ -1169,7 +1240,10 @@ describe("ThreadDetailPromptArea", () => {
         message: "Queued message not found",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+    inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Cancel queued edit" }),

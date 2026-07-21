@@ -9,7 +9,6 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type {
   PromptTextMention,
   ThreadRuntimeDisplayStatus,
@@ -169,8 +168,6 @@ export interface FollowUpPromptBoxProps {
   stack: ReactNode | null;
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   composer: FollowUpComposerProps | null;
-  /** Moves the one live composer into an inline queue-editor slot. */
-  composerTarget?: HTMLElement | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
   /**
@@ -220,6 +217,8 @@ export interface FollowUpPromptBoxProps {
    * `data-app-composer-role` so the model picker can read the same signal.
    */
   isPrimaryComposer?: boolean;
+  /** Inline queue editors do not own a timeline scroll control. */
+  showScrollToBottomButton?: boolean;
 }
 
 type FollowUpPromptBoxWithComposerProps = Omit<
@@ -248,7 +247,6 @@ function FollowUpPromptBoxWithComposer({
   stack,
   activePromptMode,
   composer,
-  composerTarget,
   environmentSummary,
   contextWindowUsage,
   execution,
@@ -264,6 +262,7 @@ function FollowUpPromptBoxWithComposer({
   zenModeResetKey,
   focusEndKey,
   isPrimaryComposer = true,
+  showScrollToBottomButton = true,
 }: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
   const canQueueFollowUp = submitMode.kind === "queue";
@@ -286,8 +285,6 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const promptBoxRef = useRef<PromptBoxHandle>(null);
-  const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
-  const [composerPortalHost] = useState(() => document.createElement("div"));
   // Scope Cmd+Shift+C to the focused pane's primary composer. Every mounted
   // composer registers this handler — including side-chat composers that stay
   // mounted while hidden — so gating on both the focused pane and "primary"
@@ -308,24 +305,6 @@ function FollowUpPromptBoxWithComposer({
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
-  useLayoutEffect(() => {
-    const destination = composerTarget ?? bottomComposerAnchorRef.current;
-    if (!destination) return;
-
-    // The portal container never changes. Moving its DOM node preserves the
-    // live editor instance (including selection, history, and local state)
-    // while changing where it appears.
-    destination.append(composerPortalHost);
-    if (composerTarget) {
-      promptBoxRef.current?.focusEnd();
-    }
-  }, [composerPortalHost, composerTarget]);
-  useLayoutEffect(
-    () => () => {
-      composerPortalHost.remove();
-    },
-    [composerPortalHost],
-  );
   const compactConfig = useMemo(
     () =>
       isCompactViewport
@@ -618,9 +597,11 @@ function FollowUpPromptBoxWithComposer({
 
   return (
     <>
-      <ThreadTimelineScrollToBottomButton
-        active={composer.threadRuntimeDisplayStatus === "active"}
-      />
+      {showScrollToBottomButton ? (
+        <ThreadTimelineScrollToBottomButton
+          active={composer.threadRuntimeDisplayStatus === "active"}
+        />
+      ) : null}
       <div
         data-app-composer=""
         data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
@@ -630,13 +611,11 @@ function FollowUpPromptBoxWithComposer({
         <div ref={stackRef} className="space-y-2">
           {stack}
         </div>
-        <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
-        {createPortal(
+        <div data-follow-up-composer-anchor="">
           <PluginComposerHostProvider value={pluginComposerHost ?? null}>
             {composerElement}
-          </PluginComposerHostProvider>,
-          composerPortalHost,
-        )}
+          </PluginComposerHostProvider>
+        </div>
       </div>
     </>
   );

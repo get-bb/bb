@@ -90,9 +90,9 @@ export interface QueuedMessageEditRequest {
 }
 
 export interface QueuedMessageInlineEditor {
+  content: ReactNode;
   queuedMessageId: string;
   queuedMessageIndex: number;
-  ready: boolean;
   onDismiss: () => void;
 }
 
@@ -665,6 +665,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       ref={setNodeRef}
       style={rowStyle}
       data-queued-message-row=""
+      data-queued-message-id={queuedMessage.id}
       data-queued-message-group-boundary-row={isGroupBoundary ? "" : undefined}
       className={cn(
         "group/row relative border-b border-border/35 px-2.5 py-0.5",
@@ -936,15 +937,7 @@ function QueuedMessageInlineEditorSlot({
             <Icon name="X" className="size-3" aria-hidden />
           </Button>
         </div>
-        {editor.ready ? (
-          <p className="pb-2 pl-1 text-xs text-muted-foreground">
-            Edit with the prompt box below.
-          </p>
-        ) : (
-          <div className="flex min-h-8 items-center pl-1 text-xs text-muted-foreground">
-            Opening editor…
-          </div>
-        )}
+        {editor.content}
       </div>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
@@ -987,9 +980,13 @@ export function QueuedMessagesList({
   const [inlineEditorMaxHeight, setInlineEditorMaxHeight] = useState<
     number | null
   >(null);
+  const [inlineEditorDesiredHeight, setInlineEditorDesiredHeight] = useState<
+    number | null
+  >(null);
   const inlineEditorActive = inlineEditor !== undefined;
   const getScrollElement = useBottomAnchoredScroll()?.getScrollElement;
   const surfaceRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const surfaceDragStartYRef = useRef(0);
   const surfaceDragOffsetRef = useRef(0);
   const surfaceDraggingRef = useRef(false);
@@ -1006,9 +1003,56 @@ export function QueuedMessagesList({
     measureOverflow: true,
   });
 
+  const scrollInlineEditorNeighborhoodIntoView = useCallback(() => {
+    const list = listRef.current;
+    const scroll = scrollRef.current;
+    const editorElement = list?.querySelector<HTMLElement>(
+      "[data-queued-message-inline-editor]",
+    );
+    if (!list || !scroll || !editorElement) return;
+
+    const items = Array.from(list.children);
+    const editorIndex = items.indexOf(editorElement);
+    const previousRow = items
+      .slice(0, editorIndex)
+      .reverse()
+      .find((item) => item.hasAttribute("data-queued-message-row"));
+    const followingRow = items
+      .slice(editorIndex + 1)
+      .find((item) => item.hasAttribute("data-queued-message-row"));
+    const firstElement = (previousRow ?? editorElement) as HTMLElement;
+    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const viewportRect = scroll.getBoundingClientRect();
+    const firstRect = firstElement.getBoundingClientRect();
+    const lastRect = lastElement.getBoundingClientRect();
+    const neighborhoodHeight = lastRect.bottom - firstRect.top;
+    let delta = 0;
+
+    if (neighborhoodHeight <= viewportRect.height) {
+      if (firstRect.top < viewportRect.top) {
+        delta = firstRect.top - viewportRect.top;
+      } else if (lastRect.bottom > viewportRect.bottom) {
+        delta = lastRect.bottom - viewportRect.bottom;
+      }
+    } else {
+      const editorRect = editorElement.getBoundingClientRect();
+      if (editorRect.height > viewportRect.height) {
+        delta = editorRect.top - viewportRect.top;
+      } else if (editorRect.top < viewportRect.top) {
+        delta = editorRect.top - viewportRect.top;
+      } else if (editorRect.bottom > viewportRect.bottom) {
+        delta = editorRect.bottom - viewportRect.bottom;
+      }
+    }
+    if (delta !== 0) {
+      scroll.scrollTop += delta;
+    }
+  }, [scrollRef]);
+
   const measureInlineEditorMaxHeight = useCallback(() => {
     if (!inlineEditorActive) {
       setInlineEditorMaxHeight(null);
+      setInlineEditorDesiredHeight(null);
       return;
     }
     const viewport = getScrollElement?.();
@@ -1028,7 +1072,50 @@ export function QueuedMessagesList({
     setInlineEditorMaxHeight((currentHeight) =>
       currentHeight === nextHeight ? currentHeight : nextHeight,
     );
-  }, [getScrollElement, inlineEditorActive]);
+
+    const list = listRef.current;
+    const scroll = scrollRef.current;
+    const editorElement = list?.querySelector<HTMLElement>(
+      "[data-queued-message-inline-editor]",
+    );
+    if (!list || !scroll || !editorElement) {
+      setInlineEditorDesiredHeight(null);
+      return;
+    }
+    const items = Array.from(list.children);
+    const editorIndex = items.indexOf(editorElement);
+    const previousRow = items
+      .slice(0, editorIndex)
+      .reverse()
+      .find((item) => item.hasAttribute("data-queued-message-row"));
+    const followingRow = items
+      .slice(editorIndex + 1)
+      .find((item) => item.hasAttribute("data-queued-message-row"));
+    const firstElement = (previousRow ?? editorElement) as HTMLElement;
+    const lastElement = (followingRow ?? editorElement) as HTMLElement;
+    const surfaceRect = surface.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    const contentHeight =
+      lastElement.getBoundingClientRect().bottom -
+      firstElement.getBoundingClientRect().top;
+    const chromeHeight = Math.max(0, surfaceRect.height - scrollRect.height);
+    const desiredHeight = Math.max(
+      WORKSPACE_MIN_HEIGHT,
+      Math.ceil(contentHeight + chromeHeight),
+    );
+    setInlineEditorDesiredHeight((currentHeight) =>
+      currentHeight === desiredHeight ? currentHeight : desiredHeight,
+    );
+    // The surface height is animated. ResizeObserver calls this throughout the
+    // transition, so re-align the neighborhood as usable space appears instead
+    // of leaving the editor pinned to the top based on the first, short frame.
+    scrollInlineEditorNeighborhoodIntoView();
+  }, [
+    getScrollElement,
+    inlineEditorActive,
+    scrollInlineEditorNeighborhoodIntoView,
+    scrollRef,
+  ]);
 
   useLayoutEffect(() => {
     measureInlineEditorMaxHeight();
@@ -1047,6 +1134,11 @@ export function QueuedMessagesList({
         : new ResizeObserver(measureInlineEditorMaxHeight);
     if (viewport) resizeObserver?.observe(viewport);
     if (surface) resizeObserver?.observe(surface);
+    if (listRef.current) resizeObserver?.observe(listRef.current);
+    const editorElement = listRef.current?.querySelector<HTMLElement>(
+      "[data-queued-message-inline-editor]",
+    );
+    if (editorElement) resizeObserver?.observe(editorElement);
     if (composerShell) resizeObserver?.observe(composerShell);
     if (container) resizeObserver?.observe(container);
     window.addEventListener("resize", measureInlineEditorMaxHeight);
@@ -1144,7 +1236,6 @@ export function QueuedMessagesList({
   );
   // Keep a dragged row inside both the visible viewport and the rendered list:
   // short queues should not gain scrollable overflow below the final row.
-  const listRef = useRef<HTMLUListElement>(null);
   const restrictToListBounds = useCallback<Modifier>(
     ({ draggingNodeRect, transform }) => {
       return clampQueuedMessageDragTransform({
@@ -1320,8 +1411,19 @@ export function QueuedMessagesList({
     : baseSurfaceHeight;
   const surfaceHeight =
     inlineEditor && inlineEditorMaxHeight !== null
-      ? Math.min(unconstrainedSurfaceHeight, inlineEditorMaxHeight)
+      ? Math.min(
+          inlineEditorDesiredHeight ?? unconstrainedSurfaceHeight,
+          inlineEditorMaxHeight,
+        )
       : unconstrainedSurfaceHeight;
+
+  useLayoutEffect(() => {
+    if (!inlineEditor) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      scrollInlineEditorNeighborhoodIntoView();
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [inlineEditor, scrollInlineEditorNeighborhoodIntoView, surfaceHeight]);
 
   const queueItems: ReactNode[] = [];
   let messageIndex = 0;

@@ -13,7 +13,9 @@ interface UseActiveComposerDraftArgs {
   draftScope: PromptDraftScope;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
   inlineEditingQueuedMessageRef: React.RefObject<InlineQueuedMessageEditState | null>;
-  commitInlineQueuedMessage: (next: InlineQueuedMessageEditState | null) => void;
+  commitInlineQueuedMessage: (
+    next: InlineQueuedMessageEditState | null,
+  ) => void;
 }
 
 export interface UseActiveComposerDraftResult {
@@ -21,22 +23,19 @@ export interface UseActiveComposerDraftResult {
   /** The persisted bottom-composer draft, independent of any inline edit. */
   currentPromptDraft: PromptDraftState;
   currentPromptDraftInput: PromptInput[];
-  /** What the one live composer is editing: the inline edit draft, else the bottom draft. */
+  /** The inline edit draft when present, otherwise the bottom draft. */
   activeComposerDraft: PromptDraftState;
   activeComposerDraftInput: PromptInput[];
   setActiveComposerDraft: (draft: PromptDraftState) => void;
-  handleChangeMessage: (
-    text: string,
-    mentions: PromptTextMention[],
-  ) => void;
+  handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
   removeActiveComposerAttachment: (path: string) => void;
 }
 
 /**
- * The draft the live composer edits: the persisted bottom draft normally, or
- * the transient inline queued-message edit draft while an edit session is
- * active. All writes route through the inline-edit ref so back-to-back plugin
- * composer actions in one event observe each other's updates.
+ * Exposes the persisted bottom draft plus an active draft view for the inline
+ * queued-message editor and the currently published plugin host. Active writes
+ * route through the inline-edit ref so back-to-back plugin composer actions in
+ * one event observe each other's updates.
  */
 export function useActiveComposerDraft({
   draftScope,
@@ -77,7 +76,11 @@ export function useActiveComposerDraft({
       }
       setStoredPromptDraft(draft);
     },
-    [commitInlineQueuedMessage, inlineEditingQueuedMessageRef, setStoredPromptDraft],
+    [
+      commitInlineQueuedMessage,
+      inlineEditingQueuedMessageRef,
+      setStoredPromptDraft,
+    ],
   );
   const handleChangeMessage = useCallback(
     (text: string, mentions: PromptTextMention[]) => {
