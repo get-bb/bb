@@ -309,6 +309,7 @@ export {
   listCompletedTurnsByThreadIds,
   listEvents,
   listRecentStoredEventRows,
+  listStoredConversationOutlineEventRows,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,

@@ -14,6 +14,8 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   insertEvents,
+  listLatestOpenBackgroundTaskStateRowsForThread,
+  listStoredConversationOutlineEventRows,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
 } from "../src/data/events.js";
@@ -165,6 +167,80 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("uses selective indexes for conversation-outline events", () => {
+    const { db, logger, thread } = setup();
+
+    listStoredConversationOutlineEventRows(db, { threadId: thread.id });
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" && fields.sql.includes('from "events"'),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog,
+      indexName: "events_thread_type_item_kind_sequence_idx",
+      params: [
+        thread.id,
+        "client/turn/requested",
+        "turn/input/accepted",
+        "turn/started",
+        "turn/completed",
+        "system/manager/user_message",
+        "system/thread/interrupted",
+        "system/error",
+        "provider/error",
+        "item/agentMessage/delta",
+        "item/plan/delta",
+        thread.id,
+        "item/completed",
+        "agentMessage",
+        "plan",
+        thread.id,
+        "item/started",
+        "item/completed",
+        "item/backgroundTask/progress",
+        "item/backgroundTask/completed",
+        "backgroundTask",
+        "toolCall",
+      ],
+    });
+
+    db.$client.close();
+  });
+
+  it("uses the type and item-kind index for open background-task state", () => {
+    const { db, logger, thread } = setup();
+
+    listLatestOpenBackgroundTaskStateRowsForThread(db, {
+      threadId: thread.id,
+    });
+
+    const debugLog = findOnlyDebugLog({
+      logger,
+      predicate: (fields) =>
+        fields.operation === "all" &&
+        fields.sql.includes("completed_background_task_state"),
+    });
+    assertEmittedQueryPlanUsesIndex({
+      db,
+      debugLog,
+      indexName: "events_thread_type_item_kind_sequence_idx",
+      params: [
+        thread.id,
+        "backgroundTask",
+        "item/started",
+        "item/backgroundTask/progress",
+        "item/backgroundTask/completed",
+        "item/started",
+        "item/backgroundTask/progress",
+      ],
+    });
+
+    db.$client.close();
+  });
+
   it("uses the closed-session prune index for emitted delete SQL", () => {
     const { db, host, logger } = setup();
     const now = Date.now();

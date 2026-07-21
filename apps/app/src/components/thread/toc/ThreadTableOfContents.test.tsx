@@ -343,6 +343,22 @@ describe("selectTocRailItems", () => {
 });
 
 describe("ThreadTableOfContents", () => {
+  it("defers the full outline request until the latest timeline is available", () => {
+    const view = render(<TocHost timelineRows={[]} />);
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: false },
+    );
+
+    view.rerender(<TocHost timelineRows={[userConversationRow(1)]} />);
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: true },
+    );
+  });
+
   it("shows after timeline rows arrive following an empty initial render", async () => {
     const view = render(<TocHost timelineRows={[]} />);
 

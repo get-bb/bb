@@ -41,7 +41,7 @@ import type {
   DbQueryConnection,
   DbTransaction,
 } from "../connection.js";
-import { alias } from "drizzle-orm/sqlite-core";
+import { alias, unionAll } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
 import { environments, events, threads } from "../schema.js";
 import { createEventId } from "../ids.js";
@@ -812,6 +812,10 @@ export interface ListRecentStoredEventRowsArgs {
   threadId: string;
 }
 
+export interface ListStoredConversationOutlineEventRowsArgs {
+  threadId: string;
+}
+
 export interface ListStoredTimelineWindowEventRowsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
@@ -1414,7 +1418,7 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const completed = alias(events, "completed_background_task_state");
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -1445,8 +1449,13 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
         )`,
       ),
     )
-    .orderBy(events.sequence)
     .all();
+
+  // Ordering this query in SQL makes SQLite prefer the thread/sequence index,
+  // scanning every event in a long-lived thread even when it has no background
+  // tasks. The type/item-kind index returns only task candidates; the open-task
+  // result is small enough to order after selection without widening the scan.
+  return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
 /**
@@ -1652,6 +1661,84 @@ export function listRecentStoredEventRows(
     .where(condition)
     .orderBy(events.sequence)
     .all();
+}
+
+/**
+ * Event subset required to project the conversation-only table of contents.
+ * Bulk command, reasoning, diff, and usage rows cannot affect the outline and
+ * dominate long-lived histories. Keep only conversation-producing rows plus
+ * the small set of structural lifecycle/error rows that affect their grouping.
+ */
+export function listStoredConversationOutlineEventRows(
+  db: DbConnection,
+  args: ListStoredConversationOutlineEventRowsArgs,
+): StoredEventRow[] {
+  const lifecycleTypes = [
+    "client/turn/requested",
+    "turn/input/accepted",
+    "turn/started",
+    "turn/completed",
+    "system/manager/user_message",
+    "system/thread/interrupted",
+    "system/error",
+    "provider/error",
+    "item/agentMessage/delta",
+    "item/plan/delta",
+  ] satisfies ThreadEventType[];
+  const conversationItemKinds = [
+    "agentMessage",
+    "plan",
+  ] satisfies ThreadEventItemType[];
+  const structuralItemKinds = [
+    "backgroundTask",
+    "toolCall",
+  ] satisfies ThreadEventItemType[];
+  const structuralItemLifecycleTypes = [
+    "item/started",
+    "item/completed",
+    "item/backgroundTask/progress",
+    "item/backgroundTask/completed",
+  ] satisfies ThreadEventType[];
+
+  const lifecycleRows = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.type, lifecycleTypes),
+      ),
+    );
+  const completedConversationRows = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "item/completed"),
+        inArray(events.itemKind, conversationItemKinds),
+      ),
+    );
+  const structuralRows = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.type, structuralItemLifecycleTypes),
+        inArray(events.itemKind, structuralItemKinds),
+      ),
+    );
+
+  // These disjoint branches let SQLite use the thread/type/item-kind indexes.
+  // A single OR plus SQL ordering makes it scan every event through the
+  // thread/sequence index instead, which dominates cold loads of long threads.
+  const rows = unionAll(
+    lifecycleRows,
+    completedConversationRows,
+    structuralRows,
+  ).all();
+  return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
 export interface StandardTimelineSegmentAnchorRow {

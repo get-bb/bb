@@ -22,6 +22,7 @@ import {
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
   listRecentStoredEventRows,
+  listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
@@ -1127,21 +1128,20 @@ function toConversationOutlineAttachmentSummary(
 /**
  * Projects the entire thread into a lightweight conversation outline for the
  * table-of-contents minimap. Unlike {@link buildThreadTimeline}, this is not
- * paginated: it reads every event and reuses the same
- * {@link buildThreadTimelineFromEvents} projection so each outline item's `id`
- * is identical to the timeline row it represents. That identity is what lets
- * the minimap scroll-spy the loaded window and jump to a message once it is
- * paginated in. Only conversation rows survive, and each is reduced to the few
- * fields the minimap renders.
+ * paginated: it reads every outline-relevant event across the full history,
+ * reusing the same {@link buildThreadTimelineFromEvents} projection so each
+ * outline item's `id` is identical to the timeline row it represents. That
+ * identity is what lets the minimap scroll-spy the loaded window and jump to a
+ * message once it is paginated in. Only conversation rows survive, and each is
+ * reduced to the few fields the minimap renders.
  */
 export function buildThreadConversationOutline(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
-  const rawEventRows = listRecentStoredEventRows(db, {
+  const rawEventRows = listStoredConversationOutlineEventRows(db, {
     threadId: thread.id,
-    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   });
   const decodedRawEvents = rawEventRows.map((row) =>
     toThreadEventWithMeta(row),

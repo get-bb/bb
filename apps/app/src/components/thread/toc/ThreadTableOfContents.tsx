@@ -410,12 +410,13 @@ export function ThreadTableOfContents({
   loadOlderTimelineRows,
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
-  // Source the minimap from the full thread outline. Enabled whenever the
-  // thread id is present (not gated on `tocVisible`): the TOC_MIN_USER_MESSAGES
-  // early-return can unmount the root before it is measured, and gating the
-  // query on visibility would then deadlock a short loaded window that the full
-  // thread would otherwise fill.
-  const outlineQuery = useThreadConversationOutline(threadId);
+  // The outline is secondary to the latest timeline. Waiting for that first
+  // window prevents a long outline projection from occupying the synchronous
+  // server before the conversation can paint. Do not gate on `tocVisible`: the
+  // minimum-message early return can unmount the root before it is measured.
+  const outlineQuery = useThreadConversationOutline(threadId, {
+    enabled: timelineRows.length > 0,
+  });
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const { agentItems, userItems } = useConversationTocItems({
     outlineItems: outlineQuery.data?.items,
