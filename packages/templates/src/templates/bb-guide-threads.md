@@ -141,16 +141,15 @@ Opening threads and files in the app:
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
-    --mode <mode>                          Message mode: queue (default), steer, or auto
+    --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
-  By default, tell queues: if the agent is working, the message is delivered
-  after the current turn finishes. Use --mode steer to send immediately into
-  the active turn. Prefer steer for urgent redirects; prefer queue for
-  non-urgent follow-ups that can wait until the agent is free.
+  Tell steers by default, delivering the message immediately into the active
+  turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
+  is free.
 
   bb thread stop [id]                      Stop an active or provisioning thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode

@@ -365,7 +365,7 @@ export function registerActionsCommands(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--mode <mode>", "Message mode: queue, steer, or auto")
+    .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
     .option(
       "--file <path>",
       "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
@@ -500,7 +500,7 @@ function resolveSenderThreadId(targetThreadId: string): string | undefined {
 function resolveThreadMessageMode(
   value: string | undefined,
 ): ThreadTellDeliveryMode {
-  if (value === undefined) return "queue";
+  if (value === undefined) return "steer";
   const normalized = value.trim().toLowerCase();
   if (normalized === "steer") return "steer";
   if (normalized === "steer-if-active") return "steer";
