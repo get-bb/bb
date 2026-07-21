@@ -365,6 +365,9 @@ export default definePluginApp((app) => {
     title: "Start side chat",
     icon: "SideChat",
     component: SideChatPanel,
+    // The embedded chat owns its layout; padded framing would float the
+    // composer above the main thread's baseline.
+    layout: "flush",
     // Launcher activation forks from the thread tip: no anchor, no seed.
     async run(context: PluginThreadPanelActionContext) {
       await openSideChat({

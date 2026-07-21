@@ -202,6 +202,13 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "run" must be a function when set`);
         }
+        if (
+          registration.layout !== undefined &&
+          registration.layout !== "padded" &&
+          registration.layout !== "flush"
+        ) {
+          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+        }
         threadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -211,6 +218,9 @@ export function collectPluginAppRegistrations(
               }
             : {}),
           component: requireComponent(kind, registration.component),
+          ...(registration.layout !== undefined
+            ? { layout: registration.layout }
+            : {}),
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },

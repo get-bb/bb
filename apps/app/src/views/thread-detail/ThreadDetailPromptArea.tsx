@@ -536,7 +536,12 @@ export function ThreadDetailPromptArea({
       },
       focus: () => setEditFocusNonce((nonce) => nonce + 1),
     };
-  }, [inlineEditingQueuedMessage, commitInlineQueuedMessage, thread.id]);
+  }, [
+    inlineEditingQueuedMessage,
+    inlineEditingQueuedMessageRef,
+    commitInlineQueuedMessage,
+    thread.id,
+  ]);
   const pluginComposerHost = useMemo<PluginComposerHost | null>(
     () =>
       pluginComposerHostBinding && inlineEditingQueuedMessage
@@ -647,6 +652,7 @@ export function ThreadDetailPromptArea({
     isDefaultExecutionOptionsLoading,
     promptDraft,
     sendMessage,
+    setAttachmentError,
     thread.id,
     runtimeDisplayStatus,
   ]);
@@ -709,6 +715,7 @@ export function ThreadDetailPromptArea({
     promptDraft,
     sendMessage,
     sendQueuedMessageById,
+    setAttachmentError,
     thread.id,
   ]);
 

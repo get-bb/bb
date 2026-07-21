@@ -797,7 +797,7 @@ Slot props contracts (versioned, additive-only):
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. Registration:
-  `{ id, title, icon?, component, run? }`. Activating it calls
+  `{ id, title, icon?, component, layout?, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
   rendering `component` with `{ threadId: string, params: JsonValue | null }`.
@@ -808,6 +808,11 @@ Slot props contracts (versioned, additive-only):
   tab (title refreshed), different params open sibling tabs. The tab pill
   shows your compact plugin icon + the tab title. Errors thrown from `run`
   (sync or async) are contained and logged, never breaking the launcher.
+  `layout` frames the tab content: `"padded"` (default) wraps `component`
+  in the panel's scroll container with standard padding — right for
+  document-like content; `"flush"` gives it the full tab area (no padding,
+  definite height, no host scrolling) — right for app-like content that
+  owns its layout, such as `experimental_ThreadChat`.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the

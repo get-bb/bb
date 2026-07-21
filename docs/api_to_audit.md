@@ -61,3 +61,16 @@ Audit before stabilizing:
 - Is `openPanel`-only the right navigation affordance, or do actions also
   need `useBbNavigate`-style routing from `run`?
 - Ordering/dedup policy when several plugins contribute actions.
+
+### `threadPanelAction.layout` (registration field)
+
+Not a new member, but new contract surface on an existing registration:
+`layout?: "padded" | "flush"` controls how the host frames a panel tab —
+`"padded"` (default) is the padded scroll container; `"flush"` hands the
+component the full tab area (definite height, no padding or host
+scrolling), which app-like content such as `experimental_ThreadChat` needs
+to align with the main thread's composer baseline.
+
+Audit before stabilizing: whether `layout` belongs on the registration (one
+value per action) or on `openPanel` (per tab), and whether other slot kinds
+(navPanel) need the same knob.

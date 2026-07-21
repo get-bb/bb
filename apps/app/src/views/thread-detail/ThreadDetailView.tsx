@@ -2611,6 +2611,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             workspaceRootPath: environment?.path,
             fileTabs,
             fileTabContent,
+            fileTabContentFillsRegion:
+              activePluginPanelTab !== null &&
+              pluginThreadPanelActions.find(
+                (candidate) =>
+                  candidate.pluginId === activePluginPanelTab.pluginId &&
+                  candidate.id === activePluginPanelTab.actionId,
+              )?.layout === "flush",
             renderBrowserDeck,
             isBrowserTabActive,
             sideChatDeck,

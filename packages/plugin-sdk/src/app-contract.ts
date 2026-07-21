@@ -227,6 +227,15 @@ export interface PluginThreadPanelActionRegistration {
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginThreadPanelProps>;
   /**
+   * How the host frames the tab content. "padded" (default) wraps the
+   * component in the panel's scroll container with standard padding —
+   * right for document-like content. "flush" gives the component the full
+   * tab area (no padding, definite height, no host scrolling) — right for
+   * app-like content that manages its own layout, such as
+   * `experimental_ThreadChat`.
+   */
+  layout?: "padded" | "flush";
+  /**
    * Runs when the user activates the action: call your RPC methods, show a
    * toast, and/or open panel tabs via `context.openPanel`. Omitted =
    * immediately open a panel tab with defaults. Errors (sync or async) are

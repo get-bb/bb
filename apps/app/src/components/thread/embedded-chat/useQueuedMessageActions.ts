@@ -253,7 +253,7 @@ export function useQueuedMessageActions({
           );
         });
     },
-    [deleteQueuedMessage, threadId],
+    [deleteErrorLifecycleOperation, deleteQueuedMessage, threadId],
   );
 
   const handleReorderQueuedMessage = useCallback(

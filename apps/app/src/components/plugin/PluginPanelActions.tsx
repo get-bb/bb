@@ -161,7 +161,13 @@ function ActionTabContent({
   }
   return (
     <div
-      className="h-full min-h-0 flex-1 overflow-y-auto p-4"
+      className={
+        action.layout === "flush"
+          ? // App-like content (e.g. an embedded ThreadChat) owns its own
+            // layout and scrolling; the host only provides a definite height.
+            "h-full min-h-0 flex-1 overflow-hidden"
+          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
+      }
       data-testid="plugin-panel-tab-content"
     >
       <PluginSlotMount
