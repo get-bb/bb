@@ -62,6 +62,13 @@ describe("AddMachineDialog", () => {
     render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
 
     const command = await screen.findByText(/--join-code jc_test123/);
+    expect(sdk.plugins.callRpc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginId: "connect",
+        method: "createMachineCode",
+        input: null,
+      }),
+    );
     expect(command.textContent).toContain("--host-id host_new");
     expect(command.textContent).toContain(
       "curl -fsSL https://example.getbb.app/install.sh",

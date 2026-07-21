@@ -35,7 +35,7 @@ async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
     return await sdk.plugins.callRpc({
       pluginId: "connect",
       method: "createMachineCode",
-      input: {},
+      input: null,
       outputSchema: connectMachineCodeSchema,
     });
   } catch (error) {
