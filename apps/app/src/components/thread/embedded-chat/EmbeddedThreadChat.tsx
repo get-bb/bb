@@ -147,7 +147,7 @@ export interface EmbeddedThreadChatComposerProps {
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /** Thread whose row status plugin composer accessories reflect. */
+  /** Thread whose row status plugin composer customizations reflect. */
   threadRowStatusThreadId?: string;
   /** ORed into queue-pending guards for consumer-owned submit mutations. */
   isExternalSubmitPending?: boolean;
@@ -211,8 +211,7 @@ interface EmbeddedThreadChatSharedProps {
   measure?: "panel" | "page";
 }
 
-export interface EmbeddedThreadChatComposerModeProps
-  extends EmbeddedThreadChatSharedProps {
+export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
   variant: "compact";
   composer: EmbeddedThreadChatComposerProps;
   footer?: never;
@@ -312,9 +311,12 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: isActive ? threadQuery.data : undefined,
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId ?? "", {
-    enabled: threadId !== null,
-  });
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(
+    threadId ?? "",
+    {
+      enabled: threadId !== null,
+    },
+  );
 
   const [shouldLoadExecutionOptions, setShouldLoadExecutionOptions] = useState(
     composer.deferExecutionOptionsUntilActive !== true,
@@ -598,9 +600,10 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setAttachmentError(null);
     setIsTurnSubmitting(true);
-    void (sendOrQueueInput
-      ? sendOrQueueInput(submittedInput, executionContext)
-      : defaultSendOrQueueInput(submittedInput)
+    void (
+      sendOrQueueInput
+        ? sendOrQueueInput(submittedInput, executionContext)
+        : defaultSendOrQueueInput(submittedInput)
     )
       .catch((error) => {
         if (!isMountedRef.current) {
@@ -863,7 +866,9 @@ function EmbeddedThreadChatWithComposer({
         : { ...pluginComposerHost, draft: activeComposerDraft },
     [activeComposerDraft, pluginComposerHost],
   );
-  const activePluginComposerHost = isActive ? pluginComposerHostWithDraft : null;
+  const activePluginComposerHost = isActive
+    ? pluginComposerHostWithDraft
+    : null;
   const composerTextEffects = useComposerTextEffects(
     activePluginComposerHost?.textEffectKey ?? null,
   );
@@ -1023,8 +1028,7 @@ function EmbeddedThreadChatWithComposer({
             supported: supportsPermissionModeSelection,
           }
         : {
-            value:
-              inlineEditingQueuedMessage?.permissionMode ?? permissionMode,
+            value: inlineEditingQueuedMessage?.permissionMode ?? permissionMode,
             options: permissionModeOptions,
             onChange: setPermissionMode,
             supported: supportsPermissionModeSelection,

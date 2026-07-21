@@ -56,7 +56,6 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
         run,
       });
-      app.slots.composerAccessory({ id: "picker", component: Component });
       app.slots.sidebarFooterAction({
         id: "remote",
         title: "Remote access",
@@ -114,9 +113,6 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
         run,
       },
-    ]);
-    expect(registrations.composerAccessories).toEqual([
-      { id: "picker", component: Component },
     ]);
     expect(registrations.sidebarFooterActions).toEqual([
       {
@@ -337,8 +333,16 @@ describe("collectPluginAppRegistrations", () => {
       "duplicate message action id",
       () =>
         definePluginApp((app) => {
-          app.slots.experimental_messageAction({ id: "a", title: "A", run: () => {} });
-          app.slots.experimental_messageAction({ id: "a", title: "B", run: () => {} });
+          app.slots.experimental_messageAction({
+            id: "a",
+            title: "A",
+            run: () => {},
+          });
+          app.slots.experimental_messageAction({
+            id: "a",
+            title: "B",
+            run: () => {},
+          });
         }),
       /duplicate id "a"/,
     ],
@@ -540,7 +544,10 @@ describe("interpretPluginFrontends", () => {
         loadedRecord(
           "good",
           definePluginApp((app) => {
-            app.slots.composerAccessory({ id: "a", component: Component });
+            app.composer.customize({
+              id: "a",
+              actions: [{ id: "a", component: Component }],
+            });
           }),
         ),
       ],
@@ -555,7 +562,12 @@ describe("interpretPluginFrontends", () => {
     expect(setRegistrations).toHaveBeenCalledWith(
       "good",
       expect.objectContaining({
-        composerAccessories: [{ id: "a", component: Component }],
+        composerCustomizations: [
+          {
+            id: "a",
+            actions: [{ id: "a", component: Component }],
+          },
+        ],
       }),
     );
   });
@@ -570,7 +582,10 @@ describe("interpretPluginFrontends", () => {
         loadedRecord(
           "good",
           definePluginApp((app) => {
-            app.slots.composerAccessory({ id: "a", component: Component });
+            app.composer.customize({
+              id: "a",
+              actions: [{ id: "a", component: Component }],
+            });
           }),
         ),
       ],

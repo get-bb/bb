@@ -189,26 +189,22 @@ describe("ThreadRow", () => {
     expect(screen.queryByText("⌘3")).toBeNull();
   });
 
-  it("replaces the draft icon with a shimmering plugin status and restores it when cleared", () => {
+  it("replaces the draft icon with a plugin status and restores it when cleared", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const runningIcon = screen.getByLabelText("Plugin improving draft");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
     expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
 
     act(() => {
       setPluginThreadRowStatus("thr_test", "composer-status-test", null);
     });
 
-    expect(
-      screen.queryByLabelText("Plugin improving draft"),
-    ).toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
@@ -216,7 +212,6 @@ describe("ThreadRow", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
 
     renderThreadRow({ shortcutKey: "3" });
@@ -225,18 +220,16 @@ describe("ThreadRow", () => {
     expect(screen.queryByText("⌘3")).toBeNull();
   });
 
-  it("renders a shimmering plugin status with the semantic success tone", () => {
+  it("renders a plugin status with the semantic success tone", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
       tone: "success",
     });
     renderThreadRow({ hasComposerDraft: true });
 
     const runningIcon = screen.getByLabelText("Plugin improving draft");
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
     expect(Array.from(runningIcon.classList)).toContain(
       SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
     );
@@ -245,11 +238,10 @@ describe("ThreadRow", () => {
     );
   });
 
-  it("keeps the runtime spinner ahead of a shimmering plugin status", () => {
+  it("keeps the runtime spinner ahead of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
-      effect: "shimmer",
     });
     const { container } = renderThreadRow({
       hasComposerDraft: false,

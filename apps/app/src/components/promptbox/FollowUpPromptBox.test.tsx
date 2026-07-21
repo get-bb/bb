@@ -84,7 +84,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       data-zen-reset-key={zenMode?.resetKey}
       data-height-animation-key={heightAnimationKey}
       data-min-height={minHeight}
-      data-plugin-accessories-suppressed={
+      data-plugin-customizations-suppressed={
         suppressPluginComposerCustomizations ? "true" : "false"
       }
     >
@@ -427,7 +427,7 @@ describe("FollowUpPromptBox", () => {
     },
   );
 
-  it("forwards accessory suppression changes without remounting the composer", () => {
+  it("forwards customization suppression changes without remounting the composer", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(
       <FollowUpPromptBox {...props} suppressPluginComposerCustomizations />,
@@ -435,7 +435,7 @@ describe("FollowUpPromptBox", () => {
     const promptBox = screen.getByTestId("prompt-box");
     const input = screen.getByLabelText("Follow-up prompt");
 
-    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("true");
+    expect(promptBox.dataset.pluginCustomizationsSuppressed).toBe("true");
 
     rerender(
       <FollowUpPromptBox
@@ -446,7 +446,7 @@ describe("FollowUpPromptBox", () => {
 
     expect(screen.getByTestId("prompt-box")).toBe(promptBox);
     expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
-    expect(promptBox.dataset.pluginAccessoriesSuppressed).toBe("false");
+    expect(promptBox.dataset.pluginCustomizationsSuppressed).toBe("false");
   });
 
   it("scrolls to the bottom after submitting a ready follow-up", () => {
