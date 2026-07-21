@@ -288,9 +288,13 @@ export async function startHostDaemon(
     await app.daemon.start();
     return app.daemon;
   } catch (error) {
-    await app?.localApi?.close().catch(() => undefined);
-    await machineAuthProxy?.close().catch(() => undefined);
-    await releaseLock().catch(() => undefined);
+    // Once the app exists, daemon.start() owns startup-failure cleanup through
+    // the normal shutdown lifecycle. Before that point, release the resources
+    // acquired directly by this function.
+    if (!app) {
+      await machineAuthProxy?.close().catch(() => undefined);
+      await releaseLock().catch(() => undefined);
+    }
     throw error;
   }
 }

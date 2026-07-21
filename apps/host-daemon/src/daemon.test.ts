@@ -102,6 +102,59 @@ describe("daemon lifecycle", () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  it("cleans up fully when startup fails so a service manager can restart it", async () => {
+    const logger = createLogger();
+    const startupFailure = new Error("server unavailable");
+    const shutdownRuntimes = vi.fn(async () => undefined);
+    const releaseLock = vi.fn(async () => undefined);
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      onStart: async () => {
+        throw startupFailure;
+      },
+      releaseLock,
+      shutdownRuntimes,
+    });
+
+    await expect(daemon.start()).rejects.toBe(startupFailure);
+    await expect(daemon.waitUntilStopped()).resolves.toBeUndefined();
+
+    expect(shutdownRuntimes).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
+    expect(logger.info).toHaveBeenCalledWith(
+      { mode: "shutdown", reason: "startup-failed" },
+      "Shutting down host daemon",
+    );
+  });
+
+  it("preserves the startup error when startup cleanup also fails", async () => {
+    const logger = createLogger();
+    const startupFailure = new Error("server unavailable");
+    const cleanupFailure = new Error("cleanup failed");
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      onStart: async () => {
+        throw startupFailure;
+      },
+      releaseLock: async () => {
+        throw cleanupFailure;
+      },
+    });
+
+    await expect(daemon.start()).rejects.toBe(startupFailure);
+    await expect(daemon.waitUntilStopped()).rejects.toBe(cleanupFailure);
+  });
+
   it("rejects direct shutdown and waitUntilStopped when shutdown cleanup fails", async () => {
     const logger = createLogger();
     const shutdownFailure = new Error("release failed");
