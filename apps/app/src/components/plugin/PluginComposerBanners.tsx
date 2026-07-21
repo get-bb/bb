@@ -9,7 +9,7 @@ import {
 } from "./plugin-composer-host";
 import { composerCustomizationsForScope } from "./composer-customizations";
 
-/** Plugin banner rows rendered at the bottom of a composer's measured stack. */
+/** Plugin banner rows rendered above a composer's native measured stack. */
 export function PluginComposerBanners({ view }: { view?: ComposerView }) {
   return view === undefined ? (
     <PluginComposerBannerRows />

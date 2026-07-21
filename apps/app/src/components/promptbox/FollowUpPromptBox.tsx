@@ -266,8 +266,8 @@ function FollowUpPromptBoxStackOnly({
       <PluginComposerHostProvider value={pluginComposerHost ?? null}>
         <div data-promptbox-shell="" className="space-y-2">
           <div className="space-y-2">
-            {stack}
             {composerScope ? <PluginComposerBanners /> : null}
+            {stack}
           </div>
         </div>
       </PluginComposerHostProvider>
@@ -680,10 +680,10 @@ function FollowUpPromptBoxWithComposer({
             className="space-y-2"
           >
             <div ref={stackRef} className="space-y-2">
-              {stack}
               {composerScope && !composerTarget ? (
                 <PluginComposerBanners />
               ) : null}
+              {stack}
             </div>
             <div
               ref={bottomComposerAnchorRef}
