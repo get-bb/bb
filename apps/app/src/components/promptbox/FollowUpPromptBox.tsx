@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -20,7 +21,9 @@ import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
+  PluginComposerViewProvider,
   type PluginComposerHost,
+  usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
   useAppCommandContext,
@@ -113,6 +116,10 @@ const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
   '[aria-haspopup][aria-expanded="true"]';
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
+const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
+  kind: "new-thread",
+  projectId: null,
+} as const;
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
  * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
@@ -241,34 +248,30 @@ function FollowUpPromptBoxStackOnly({
   FollowUpPromptBoxProps,
   "stack" | "pluginComposerHost" | "pluginComposerScope"
 >) {
-  if (!stack && !pluginComposerScope) {
+  const composerScope =
+    pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const composerView = usePluginComposerViewModel({
+    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    layout: "expanded",
+    text: pluginComposerHost?.draft.text ?? "",
+    attachmentCount: pluginComposerHost?.draft.attachments.length ?? 0,
+    isRunning: false,
+    isSubmitting: false,
+  });
+  if (!stack && !composerScope) {
     return null;
   }
   return (
-    <div data-promptbox-shell="" className="space-y-2">
-      <div className="space-y-2">
-        {stack}
-        {pluginComposerScope ? (
-          <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-            <PluginComposerBanners
-              view={{
-                scope: pluginComposerScope,
-                layout: "expanded",
-                draft: {
-                  text: pluginComposerHost?.draft.text ?? "",
-                  isEmpty:
-                    (pluginComposerHost?.draft.text.trim().length ?? 0) === 0 &&
-                    (pluginComposerHost?.draft.attachments.length ?? 0) === 0,
-                  attachmentCount:
-                    pluginComposerHost?.draft.attachments.length ?? 0,
-                },
-                run: { isRunning: false, isSubmitting: false },
-              }}
-            />
-          </PluginComposerHostProvider>
-        ) : null}
-      </div>
-    </div>
+    <PluginComposerViewProvider value={composerView}>
+      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        <div data-promptbox-shell="" className="space-y-2">
+          <div className="space-y-2">
+            {stack}
+            {composerScope ? <PluginComposerBanners /> : null}
+          </div>
+        </div>
+      </PluginComposerHostProvider>
+    </PluginComposerViewProvider>
   );
 }
 
@@ -317,46 +320,18 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const attachmentCount = attachments.items?.length ?? 0;
-  const [composerView, setComposerView] = useState<ComposerView>(() => ({
-    scope: pluginComposerScope ??
-      pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
-    layout: "expanded",
-    draft: {
-      text: composer.message,
-      isEmpty: composer.message.trim().length === 0 && attachmentCount === 0,
-      attachmentCount,
-    },
-    run: {
-      isRunning: canStopRuntime,
-      isSubmitting: composer.isFollowUpSubmitting || isStopping,
-    },
-  }));
-  const bannerComposerView = useMemo<ComposerView>(
-    () => ({
-      ...composerView,
-      scope: pluginComposerScope ??
-        pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
-      draft: {
-        text: composer.message,
-        isEmpty: composer.message.trim().length === 0 && attachmentCount === 0,
-        attachmentCount,
-      },
-      run: {
-        isRunning: canStopRuntime,
-        isSubmitting: composer.isFollowUpSubmitting || isStopping,
-      },
-    }),
-    [
-      attachmentCount,
-      canStopRuntime,
-      composer.isFollowUpSubmitting,
-      composer.message,
-      composerView,
-      isStopping,
-      pluginComposerHost?.scope,
-      pluginComposerScope,
-    ],
-  );
+  const composerScope =
+    pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const [composerLayout, setComposerLayout] =
+    useState<ComposerView["layout"]>("expanded");
+  const composerView = usePluginComposerViewModel({
+    scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
+    layout: composerLayout,
+    text: composer.message,
+    attachmentCount,
+    isRunning: canStopRuntime,
+    isSubmitting: composer.isFollowUpSubmitting || isStopping,
+  });
   const promptBoxRef = useRef<PromptBoxHandle>(null);
   const bottomComposerAnchorRef = useRef<HTMLDivElement>(null);
   const [composerPortalHost] = useState(() => document.createElement("div"));
@@ -627,7 +602,7 @@ function FollowUpPromptBoxWithComposer({
         onChange={composer.onChangeMessage}
         onSubmit={composer.onSubmit}
         textEffects={textEffects}
-        onComposerViewChange={setComposerView}
+        onComposerLayoutChange={setComposerLayout}
         scrollToBottomOnSubmit={submitMode.kind !== "queue"}
         history={composer.history}
         focusEndKey={focusEndKey}
@@ -692,46 +667,41 @@ function FollowUpPromptBoxWithComposer({
   );
 
   return (
-    <>
-      <ThreadTimelineScrollToBottomButton
-        active={composer.threadRuntimeDisplayStatus === "active"}
-      />
-      <div
-        data-app-composer=""
-        data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
-        data-promptbox-shell=""
-        className="space-y-2"
-      >
-        <div ref={stackRef} className="space-y-2">
-          {stack}
-          {pluginComposerScope && !composerTarget ? (
-            <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-              <PluginComposerBanners view={bannerComposerView} />
-            </PluginComposerHostProvider>
-          ) : null}
-        </div>
-        <div ref={bottomComposerAnchorRef} data-follow-up-composer-anchor="" />
-        {createPortal(
-          [
-            composerTarget && pluginComposerScope ? (
-              <PluginComposerHostProvider
-                key="queued-composer-banners"
-                value={pluginComposerHost ?? null}
-              >
-                <PluginComposerBanners view={bannerComposerView} />
-              </PluginComposerHostProvider>
-            ) : null,
-            <PluginComposerHostProvider
-              key="composer"
-              value={pluginComposerHost ?? null}
-            >
-              {composerElement}
-            </PluginComposerHostProvider>,
-          ],
-          composerPortalHost,
-        )}
-      </div>
-    </>
+    <PluginComposerViewProvider value={composerView}>
+      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+        <>
+          <ThreadTimelineScrollToBottomButton
+            active={composer.threadRuntimeDisplayStatus === "active"}
+          />
+          <div
+            data-app-composer=""
+            data-app-composer-role={isPrimaryComposer ? "primary" : "secondary"}
+            data-promptbox-shell=""
+            className="space-y-2"
+          >
+            <div ref={stackRef} className="space-y-2">
+              {stack}
+              {composerScope && !composerTarget ? (
+                <PluginComposerBanners />
+              ) : null}
+            </div>
+            <div
+              ref={bottomComposerAnchorRef}
+              data-follow-up-composer-anchor=""
+            />
+            {createPortal(
+              <>
+                {composerTarget && composerScope ? (
+                  <PluginComposerBanners key="queued-composer-banners" />
+                ) : null}
+                <Fragment key="composer">{composerElement}</Fragment>
+              </>,
+              composerPortalHost,
+            )}
+          </div>
+        </>
+      </PluginComposerHostProvider>
+    </PluginComposerViewProvider>
   );
 }
 

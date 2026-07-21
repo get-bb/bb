@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -40,6 +41,39 @@ export function composerScopeIdentity(scope: PluginComposerScope): string {
   }
 }
 
+export interface PluginComposerViewModelInput {
+  scope: PluginComposerScope;
+  layout: ComposerView["layout"];
+  text: string;
+  attachmentCount: number;
+  isRunning: boolean;
+  isSubmitting: boolean;
+}
+
+/** The single model builder shared by concrete composer shells and the editor. */
+export function usePluginComposerViewModel({
+  scope,
+  layout,
+  text,
+  attachmentCount,
+  isRunning,
+  isSubmitting,
+}: PluginComposerViewModelInput): ComposerView {
+  return useMemo(
+    () => ({
+      scope,
+      layout,
+      draft: {
+        text,
+        isEmpty: text.trim().length === 0 && attachmentCount === 0,
+        attachmentCount,
+      },
+      run: { isRunning, isSubmitting },
+    }),
+    [attachmentCount, isRunning, isSubmitting, layout, scope, text],
+  );
+}
+
 const PluginComposerHostContext = createContext<
   PluginComposerHost | null | undefined
 >(undefined);
@@ -61,6 +95,10 @@ export function PluginComposerViewProvider({
       {children}
     </PluginComposerViewContext.Provider>
   );
+}
+
+export function useOptionalPluginComposerView(): ComposerView | undefined {
+  return useContext(PluginComposerViewContext);
 }
 
 interface PluginComposerHostStore {

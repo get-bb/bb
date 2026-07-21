@@ -14,7 +14,9 @@ import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
   PluginComposerHostProvider,
+  PluginComposerViewProvider,
   type PluginComposerHost,
+  usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
   useAppCommandContext,
@@ -69,6 +71,10 @@ import {
 } from "./effective-prompt-mode";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
+const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
+  kind: "new-thread",
+  projectId: null,
+} as const;
 
 export interface NewThreadEnvironmentConfig {
   value: string;
@@ -166,7 +172,7 @@ export interface NewThreadPromptBoxUIProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
   isSubmitting: boolean;
   disabled: boolean;
-  /** Active root-composer binding for plugin composer hooks and accessories. */
+  /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode storage key used for the root-compose zen-mode atom. */
@@ -277,38 +283,16 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       ? "Loading models..."
       : "Submit (Enter)";
   const attachmentCount = attachments.items?.length ?? 0;
-  const [composerView, setComposerView] = useState<ComposerView>(() => ({
-    scope: pluginComposerHost?.scope ?? { kind: "new-thread", projectId: null },
-    layout: "expanded",
-    draft: {
-      text: value,
-      isEmpty: value.trim().length === 0 && attachmentCount === 0,
-      attachmentCount,
-    },
-    run: { isRunning: false, isSubmitting },
-  }));
-  const bannerComposerView = useMemo<ComposerView>(
-    () => ({
-      ...composerView,
-      scope: pluginComposerHost?.scope ?? {
-        kind: "new-thread",
-        projectId: null,
-      },
-      draft: {
-        text: value,
-        isEmpty: value.trim().length === 0 && attachmentCount === 0,
-        attachmentCount,
-      },
-      run: { isRunning: false, isSubmitting },
-    }),
-    [
-      attachmentCount,
-      composerView,
-      isSubmitting,
-      pluginComposerHost?.scope,
-      value,
-    ],
-  );
+  const [composerLayout, setComposerLayout] =
+    useState<ComposerView["layout"]>("expanded");
+  const composerView = usePluginComposerViewModel({
+    scope: pluginComposerHost?.scope ?? DEFAULT_NEW_THREAD_COMPOSER_SCOPE,
+    layout: composerLayout,
+    text: value,
+    attachmentCount,
+    isRunning: false,
+    isSubmitting,
+  });
   return (
     <div
       data-app-composer=""
@@ -316,45 +300,45 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       data-promptbox-shell=""
       className="w-full"
     >
-      <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-        {modeConfig.banner || pluginComposerHost ? (
-          <div className="mb-2 space-y-2">
-            {modeConfig.banner}
-            {pluginComposerHost ? (
-              <PluginComposerBanners view={bannerComposerView} />
-            ) : null}
-          </div>
-        ) : null}
-        <PromptBoxInternal
-          id={id}
-          promptBoxRef={promptBoxRef}
-          value={value}
-          mentionRanges={mentionRanges}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          textEffects={textEffects}
-          onComposerViewChange={setComposerView}
-          history={history}
-          typeahead={typeahead}
-          mentionMenuPlacement="bottom"
-          attachments={attachments}
-          promptActions={promptActions}
-          voice={voice}
-          submission={{
-            isSubmitting,
-            disabled,
-            title: submitTitle,
-          }}
-          zenMode={{
-            layout: "root-compose",
-            storageKey: zenModeStorageKey,
-          }}
-          minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
-          placeholder={placeholder}
-          header={modeConfig.header}
-          footerStart={<ExecutionControls {...execution} />}
-        />
-      </PluginComposerHostProvider>
+      <PluginComposerViewProvider value={composerView}>
+        <PluginComposerHostProvider value={pluginComposerHost ?? null}>
+          {modeConfig.banner || pluginComposerHost ? (
+            <div className="mb-2 space-y-2">
+              {modeConfig.banner}
+              {pluginComposerHost ? <PluginComposerBanners /> : null}
+            </div>
+          ) : null}
+          <PromptBoxInternal
+            id={id}
+            promptBoxRef={promptBoxRef}
+            value={value}
+            mentionRanges={mentionRanges}
+            onChange={onChange}
+            onSubmit={onSubmit}
+            textEffects={textEffects}
+            onComposerLayoutChange={setComposerLayout}
+            history={history}
+            typeahead={typeahead}
+            mentionMenuPlacement="bottom"
+            attachments={attachments}
+            promptActions={promptActions}
+            voice={voice}
+            submission={{
+              isSubmitting,
+              disabled,
+              title: submitTitle,
+            }}
+            zenMode={{
+              layout: "root-compose",
+              storageKey: zenModeStorageKey,
+            }}
+            minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
+            placeholder={placeholder}
+            header={modeConfig.header}
+            footerStart={<ExecutionControls {...execution} />}
+          />
+        </PluginComposerHostProvider>
+      </PluginComposerViewProvider>
       {/* Strip below the prompt-box card: optional project + env + branch (or
           worktree) on the left, permission picker pinned to the right. `mt-1`
           reproduces the 4px gap main got from a

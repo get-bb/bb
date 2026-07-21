@@ -43,7 +43,7 @@ import {
   useComposerView,
 } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { getComposerTextEffect } from "@/lib/composer-text-effects";
+import { getComposerTextEffects } from "@/lib/composer-text-effects";
 import {
   getPluginThreadRowStatus,
   resetPluginThreadRowStatusesForTest,
@@ -56,6 +56,10 @@ import {
 } from "./PluginPanelActions";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@/lib/prompt-draft";
+
+function composerTextEffectValues(storageKey: string | null) {
+  return getComposerTextEffects(storageKey).map(({ effect }) => effect);
+}
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -545,9 +549,9 @@ describe("useComposer", () => {
 
     const firstEffectKey = "queued-message:thr_queue:qmsg_1:1";
     fireEvent.click(screen.getByText("queued-start-effect"));
-    expect(getComposerTextEffect(firstEffectKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(firstEffectKey)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     fireEvent.click(screen.getByText("queued-start-row-status"));
     expect(getPluginThreadRowStatus("thr_queue")).toEqual({
       icon: "AiContentGenerator01",
@@ -555,7 +559,7 @@ describe("useComposer", () => {
     });
     fireEvent.click(screen.getByText("change-queued-scope"));
     expect(screen.getByText("scope: queued-message")).toBeDefined();
-    expect(getComposerTextEffect(firstEffectKey)).toBeNull();
+    expect(composerTextEffectValues(firstEffectKey)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_queue")).toBeNull();
   });
 
@@ -652,7 +656,7 @@ describe("useComposer", () => {
     expect(screen.getByTestId("sibling-scope").textContent).toBe("thread");
   });
 
-  it("binds side-chat accessories and hooks to the visible side-chat draft", () => {
+  it("binds side-chat customizations and hooks to the visible side-chat draft", () => {
     registerComposerProbe("side");
 
     function SideChatComposerHarness() {
@@ -779,7 +783,7 @@ describe("useComposer", () => {
     );
   });
 
-  it("binds root compose accessories and hooks to the selected project without losing its draft", () => {
+  it("binds root compose customizations and hooks to the selected project without losing its draft", () => {
     registerComposerProbe("root");
 
     function RootSiblingPluginSurface() {
@@ -949,17 +953,17 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("effect-start-effect"));
     fireEvent.click(screen.getByText("effect-start-row-status"));
-    expect(getComposerTextEffect(storageKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(storageKey)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_effect")).not.toBeNull();
     fireEvent.click(screen.getByText("effect-clear-effect"));
-    expect(getComposerTextEffect(storageKey)).toBeNull();
+    expect(composerTextEffectValues(storageKey)).toEqual([]);
     fireEvent.click(screen.getByText("effect-start-effect"));
     fireEvent.click(screen.getByText("effect-start-row-status"));
 
     view.unmount();
-    expect(getComposerTextEffect(storageKey)).toBeNull();
+    expect(composerTextEffectValues(storageKey)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_effect")).toBeNull();
   });
 
@@ -1015,9 +1019,10 @@ describe("useComposer", () => {
 
     fireEvent.click(screen.getByText("start-first"));
     fireEvent.click(screen.getByText("start-second"));
-    expect(getComposerTextEffect(storageKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(storageKey)).toEqual([
+      { className: "test-text-effect" },
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "first status",
     );
@@ -1026,9 +1031,9 @@ describe("useComposer", () => {
     expect(staleFirst).toBeDefined();
     fireEvent.click(screen.getByText("unmount-first"));
 
-    expect(getComposerTextEffect(storageKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(storageKey)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "second status",
     );
@@ -1037,9 +1042,9 @@ describe("useComposer", () => {
       staleFirst?.setTextEffect(null);
       staleFirst?.setThreadRowStatus(null);
     });
-    expect(getComposerTextEffect(storageKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(storageKey)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
       "second status",
     );
@@ -1106,18 +1111,18 @@ describe("useComposer", () => {
         <Harness />
       </MemoryRouter>,
     );
-    expect(getComposerTextEffect("shared-scope-effect")).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues("shared-scope-effect")).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
       "qmsg_1 status",
     );
 
     fireEvent.click(screen.getByText("change-visual-scope"));
 
-    expect(getComposerTextEffect("shared-scope-effect")).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues("shared-scope-effect")).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
       "qmsg_2 status",
     );
@@ -1146,12 +1151,12 @@ describe("useComposer", () => {
     const storageKey = screen.getByTestId("draft-key").textContent ?? "";
 
     fireEvent.click(screen.getByText("scope-effect-start-effect"));
-    expect(getComposerTextEffect(storageKey)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(storageKey)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     fireEvent.click(screen.getByText("change-scope"));
 
-    expect(getComposerTextEffect(storageKey)).toBeNull();
+    expect(composerTextEffectValues(storageKey)).toEqual([]);
   });
 
   it("clears and rejects captured lock, effect, and status setters after scope cleanup or unmount", () => {
@@ -1202,15 +1207,15 @@ describe("useComposer", () => {
     fireEvent.click(screen.getByText("owned-start-row-status"));
     act(() => captured[0]!.setInputLock(true));
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(true);
-    expect(getComposerTextEffect(initialStorageKey ?? null)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_owned")).not.toBeNull();
 
     const staleScopeSetters = captured[0]!;
     fireEvent.click(screen.getByText("change-owned-scope"));
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
-    expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
+    expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
 
     act(() => {
@@ -1223,7 +1228,7 @@ describe("useComposer", () => {
       });
     });
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
-    expect(getComposerTextEffect(initialStorageKey ?? null)).toBeNull();
+    expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
 
     const currentSetters = captured.at(-1)!;
@@ -1237,16 +1242,16 @@ describe("useComposer", () => {
       });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(true);
-    expect(getComposerTextEffect(nextStorageKey ?? null)).toEqual({
-      className: "test-text-effect",
-    });
+    expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([
+      { className: "test-text-effect" },
+    ]);
     expect(getPluginThreadRowStatus("thr_owned_next")?.label).toBe(
       "current status",
     );
 
     view.unmount();
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
-    expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
+    expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
     act(() => {
       currentSetters.setInputLock(true);
@@ -1257,7 +1262,7 @@ describe("useComposer", () => {
       });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
-    expect(getComposerTextEffect(nextStorageKey ?? null)).toBeNull();
+    expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([]);
     expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
   });
 

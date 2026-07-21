@@ -2,7 +2,6 @@ import type {
   ComposerRichTextSpec,
   ComposerStructuredDraft,
   ComposerView,
-  PluginComposerTextEffect,
 } from "@bb/plugin-sdk";
 import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
@@ -35,14 +34,7 @@ export interface PromptDecorationSource {
   id: string;
   generation: string | number;
   pluginId?: string;
-  effects?: readonly PromptDecorationRule[];
-  textEffect?: PluginComposerTextEffect | null;
-}
-
-/** Host entries paint before plugin entries; array order is preserved. */
-export interface PromptDecorationSources {
-  host?: readonly PromptDecorationSource[];
-  plugins?: readonly PromptDecorationSource[];
+  effects: readonly PromptDecorationRule[];
 }
 
 export interface PromptDraftObserver {
@@ -53,11 +45,11 @@ export interface PromptDraftObserver {
 
 export interface PromptDecorationExtensionOptions {
   /**
-   * Returns current host and plugin sources. Keep plugin entries in composer
-   * composition order and call refreshPromptDecorations after generations or
-   * state effects change without a document edit.
+   * Returns current sources in composition order. Call
+   * refreshPromptDecorations after generations or state effects change
+   * without a document edit.
    */
-  getDecorationSources?: () => PromptDecorationSources;
+  getDecorationSources?: () => readonly PromptDecorationSource[];
   /**
    * Returns the currently registered richText.onDraftChange callbacks and
    * their latest ComposerView snapshots. Callback order is preserved.
@@ -73,19 +65,14 @@ export interface PromptDecorationExtensionOptions {
 
 interface PromptDecorationPluginState {
   decorations: DecorationSet | null;
-  effect: { className: string } | null;
   revision: number;
 }
-
-type PromptDecorationCommand =
-  | { type: "effect"; effect: PluginComposerTextEffect | null }
-  | { type: "refresh" };
 
 const promptDecorationPluginKey = new PluginKey<PromptDecorationPluginState>(
   "promptDecorations",
 );
 
-const EMPTY_SOURCES: PromptDecorationSources = {};
+const EMPTY_SOURCES: readonly PromptDecorationSource[] = [];
 const EMPTY_OBSERVERS: readonly PromptDraftObserver[] = [];
 
 function ultracodePattern(): RegExp {
@@ -114,34 +101,6 @@ const BUILT_IN_HOST_SOURCE: PromptDecorationSource = {
   generation: 0,
   effects: [PROMPT_ULTRACODE_DECORATION_RULE],
 };
-
-function normalizeTextEffect(
-  effect: PluginComposerTextEffect | null,
-): { className: string } | null {
-  if (effect === null) return null;
-  return effect.className.length > 0 ? effect : null;
-}
-
-function parseCommand(value: unknown): PromptDecorationCommand | null {
-  if (typeof value !== "object" || value === null || !("type" in value)) {
-    return null;
-  }
-  if (value.type === "refresh") return { type: "refresh" };
-  if (value.type !== "effect" || !("effect" in value)) return null;
-  const effect = value.effect;
-  if (effect === null) {
-    return { type: "effect", effect };
-  }
-  if (
-    typeof effect === "object" &&
-    effect !== null &&
-    "className" in effect &&
-    typeof effect.className === "string"
-  ) {
-    return { type: "effect", effect: { className: effect.className } };
-  }
-  return null;
-}
 
 function parseRanges(value: unknown): PromptDecorationRange[] | null {
   if (!Array.isArray(value)) return null;
@@ -195,24 +154,6 @@ function decorationForIntersection(
     : null;
 }
 
-function wholeDraftDecorations(
-  doc: ProseMirrorNode,
-  mapping: readonly PromptEditorOffsetSegment[],
-  className: string,
-  spec: Record<string, string>,
-): Decoration[] {
-  return mapping.flatMap((segment) => {
-    const decoration = decorationForIntersection(
-      doc,
-      segment,
-      { from: segment.textFrom, to: segment.textTo },
-      className,
-      spec,
-    );
-    return decoration === null ? [] : [decoration];
-  });
-}
-
 function defaultRuleErrorLogger(
   sourceId: string,
   ruleId: string,
@@ -233,49 +174,19 @@ function defaultObserverErrorLogger(observerId: string, error: unknown): void {
 
 function buildDecorations(
   doc: ProseMirrorNode,
-  stateEffect: { className: string } | null,
-  sources: PromptDecorationSources,
+  sources: readonly PromptDecorationSource[],
   disabledRules: Map<string, string | number>,
   onRuleError: PromptDecorationExtensionOptions["onRuleError"],
 ): DecorationSet | null {
   const serialization = promptEditorSerializationFromDoc(doc);
   const orderedSources: PromptDecorationSource[] = [
     BUILT_IN_HOST_SOURCE,
-    ...(stateEffect === null
-      ? []
-      : [
-          {
-            id: "host:imperative-text-effect",
-            generation: 0,
-            textEffect: stateEffect,
-          },
-        ]),
-    ...(sources.host ?? []),
-    ...(sources.plugins ?? []),
+    ...sources,
   ];
   const decorations: Decoration[] = [];
 
   for (const [sourceIndex, source] of orderedSources.entries()) {
-    const normalizedEffect = normalizeTextEffect(source.textEffect ?? null);
-    if (normalizedEffect !== null) {
-      decorations.push(
-        ...wholeDraftDecorations(
-          doc,
-          serialization.offsetMapping,
-          normalizedEffect.className,
-          {
-            className: normalizedEffect.className,
-            ...(source.pluginId
-              ? { "data-bb-plugin-decoration": source.pluginId }
-              : {}),
-            sourceId: source.id,
-            sourceOrder: String(sourceIndex),
-          },
-        ),
-      );
-    }
-
-    for (const [ruleIndex, rule] of (source.effects ?? []).entries()) {
+    for (const [ruleIndex, rule] of source.effects.entries()) {
       const failureKey = `${source.id}\0${rule.id}\0${ruleIndex}`;
       const disabledGeneration = disabledRules.get(failureKey);
       if (disabledGeneration === source.generation) continue;
@@ -376,20 +287,9 @@ export function composerStructuredDraftFromDoc(
   };
 }
 
-export function setPromptTextEffect(
-  editor: Editor,
-  effect: PluginComposerTextEffect | null,
-): void {
-  const command: PromptDecorationCommand = { type: "effect", effect };
-  editor.view.dispatch(
-    editor.state.tr.setMeta(promptDecorationPluginKey, command),
-  );
-}
-
 export function refreshPromptDecorations(editor: Editor): void {
-  const command: PromptDecorationCommand = { type: "refresh" };
   editor.view.dispatch(
-    editor.state.tr.setMeta(promptDecorationPluginKey, command),
+    editor.state.tr.setMeta(promptDecorationPluginKey, true),
   );
 }
 
@@ -420,34 +320,24 @@ export const PromptDecorationExtension =
             init: (_config, state) => ({
               decorations: buildDecorations(
                 state.doc,
-                null,
                 options.getDecorationSources?.() ?? EMPTY_SOURCES,
                 disabledRules,
                 options.onRuleError,
               ),
-              effect: null,
               revision: 0,
             }),
             apply(transaction, previous, _oldState, newState) {
-              const command = parseCommand(
-                transaction.getMeta(promptDecorationPluginKey),
-              );
-              if (command === null && !transaction.docChanged) return previous;
-              const effect =
-                command?.type === "effect"
-                  ? normalizeTextEffect(command.effect)
-                  : previous.effect;
+              const refreshed =
+                transaction.getMeta(promptDecorationPluginKey) === true;
+              if (!refreshed && !transaction.docChanged) return previous;
               return {
                 decorations: buildDecorations(
                   newState.doc,
-                  effect,
                   options.getDecorationSources?.() ?? EMPTY_SOURCES,
                   disabledRules,
                   options.onRuleError,
                 ),
-                effect,
-                revision:
-                  command === null ? previous.revision : previous.revision + 1,
+                revision: refreshed ? previous.revision + 1 : previous.revision,
               };
             },
           },

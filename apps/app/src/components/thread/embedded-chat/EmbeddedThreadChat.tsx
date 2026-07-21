@@ -179,7 +179,7 @@ interface EmbeddedThreadChatSharedProps {
   providerId: string;
   /** Environment context for mentions and command suggestions. */
   promptContextEnvironmentId: string | null;
-  /** Retained hidden surfaces pass false to pause read tracking + accessories. */
+  /** Retained hidden surfaces pass false to pause read tracking + composer customizations. */
   isActive?: boolean;
   resolveMentionLink: PromptMentionLinkResolver;
   timeline?: UseThreadTimelineControllerResult;
@@ -790,7 +790,10 @@ function EmbeddedThreadChatWithComposer({
   const setStoredPromptDraft = promptDraft.setDraft;
   const threadRowStatusThreadId =
     composer.threadRowStatusThreadId ?? threadId ?? undefined;
-  const pluginComposerHost = useMemo<PluginComposerHost | null>(() => {
+  const pluginComposerHostBinding = useMemo<Omit<
+    PluginComposerHost,
+    "draft"
+  > | null>(() => {
     if (bottomScope === null && queuedComposerIdentity === null) {
       return null;
     }
@@ -822,7 +825,6 @@ function EmbeddedThreadChatWithComposer({
       ...(threadRowStatusThreadId !== undefined
         ? { threadRowStatusThreadId }
         : {}),
-      draft: activeComposerDraftRef.current,
       getCurrent: () => {
         if (activeComposerIdentityRef.current !== identity) {
           return initialDraft;
@@ -859,16 +861,14 @@ function EmbeddedThreadChatWithComposer({
     threadRowStatusThreadId,
     updateInlineQueuedMessage,
   ]);
-  const pluginComposerHostWithDraft = useMemo<PluginComposerHost | null>(
+  const pluginComposerHost = useMemo<PluginComposerHost | null>(
     () =>
-      pluginComposerHost === null
+      pluginComposerHostBinding === null
         ? null
-        : { ...pluginComposerHost, draft: activeComposerDraft },
-    [activeComposerDraft, pluginComposerHost],
+        : { ...pluginComposerHostBinding, draft: activeComposerDraft },
+    [activeComposerDraft, pluginComposerHostBinding],
   );
-  const activePluginComposerHost = isActive
-    ? pluginComposerHostWithDraft
-    : null;
+  const activePluginComposerHost = isActive ? pluginComposerHost : null;
   const composerTextEffects = useComposerTextEffects(
     activePluginComposerHost?.textEffectKey ?? null,
   );
@@ -1090,7 +1090,6 @@ function EmbeddedThreadChatWithComposer({
           stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
           pluginComposerHost={activePluginComposerHost}
-          pluginComposerScope={activePluginComposerHost?.scope ?? null}
           textEffects={composerTextEffects}
           composerTarget={inlineComposerTarget}
           environmentSummary={composer.environmentSummary}

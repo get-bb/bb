@@ -34,12 +34,6 @@ function notify(storageKey: string): void {
   }
 }
 
-export function getComposerTextEffect(
-  storageKey: string | null,
-): PluginComposerTextEffect | null {
-  return getComposerTextEffects(storageKey)[0]?.effect ?? null;
-}
-
 export function getComposerTextEffects(
   storageKey: string | null,
 ): readonly ComposerTextEffectSource[] {

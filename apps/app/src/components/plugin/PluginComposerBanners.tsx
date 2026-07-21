@@ -5,22 +5,34 @@ import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
   PluginComposerViewProvider,
+  useOptionalPluginComposerView,
 } from "./plugin-composer-host";
+import { composerCustomizationsForScope } from "./composer-customizations";
 
 /** Plugin banner rows rendered at the bottom of a composer's measured stack. */
-export function PluginComposerBanners({ view }: { view: ComposerView }) {
+export function PluginComposerBanners({ view }: { view?: ComposerView }) {
+  return view === undefined ? (
+    <PluginComposerBannerRows />
+  ) : (
+    <PluginComposerViewProvider value={view}>
+      <PluginComposerBannerRows />
+    </PluginComposerViewProvider>
+  );
+}
+
+function PluginComposerBannerRows() {
+  const view = useOptionalPluginComposerView();
   const { composerCustomizations } = usePluginSlots();
+  if (view === undefined) return null;
   const scopeKey = composerScopeIdentity(view.scope);
+  const scopedCustomizations = composerCustomizationsForScope(
+    composerCustomizations,
+    view.scope.kind,
+  );
 
   return (
     <>
-      {composerCustomizations.map((customization) => {
-        if (
-          customization.scopes !== undefined &&
-          !customization.scopes.includes(view.scope.kind)
-        ) {
-          return null;
-        }
+      {scopedCustomizations.map((customization) => {
         return customization.banners?.map((banner) => {
           const slotId = `${customization.id}/${banner.id}`;
           return (
@@ -31,18 +43,16 @@ export function PluginComposerBanners({ view }: { view: ComposerView }) {
               slotId={slotId}
               crashFallback={<></>}
             >
-              <PluginComposerViewProvider value={view}>
-                {banner.chrome === "bare" ? (
+              {banner.chrome === "bare" ? (
+                <banner.component />
+              ) : (
+                <PromptStackCard
+                  ariaLabel={customization.pluginId}
+                  className="empty:hidden"
+                >
                   <banner.component />
-                ) : (
-                  <PromptStackCard
-                    ariaLabel={customization.pluginId}
-                    className="empty:hidden"
-                  >
-                    <banner.component />
-                  </PromptStackCard>
-                )}
-              </PluginComposerViewProvider>
+                </PromptStackCard>
+              )}
             </PluginSlotMount>
           );
         });

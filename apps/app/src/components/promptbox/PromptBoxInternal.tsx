@@ -46,8 +46,11 @@ import {
 } from "@/components/plugin/PluginComposerActions";
 import {
   PluginComposerViewProvider,
+  useOptionalPluginComposerView,
   usePluginComposerHost,
+  usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
+import { composerCustomizationsForScope } from "@/components/plugin/composer-customizations";
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import {
@@ -335,8 +338,8 @@ export interface PromptBoxInternalProps {
   className?: string;
   /** Plugin-owned whole-draft paint sources, in deterministic composition order. */
   textEffects?: readonly ComposerTextEffectSource[];
-  /** Publishes the concrete reactive view to sibling banner mounts. */
-  onComposerViewChange?: (view: ComposerView) => void;
+  /** Publishes the editor-owned layout to the concrete composer shell. */
+  onComposerLayoutChange?: (layout: ComposerView["layout"]) => void;
   /** Content rendered inside the prompt box card, above the text area. Use
    * for prominent context that should be impossible to miss — e.g. a
    * "Reusing existing worktree" banner when env mode is set to reuse. */
@@ -1045,7 +1048,7 @@ export function PromptBoxInternal({
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   className,
   textEffects,
-  onComposerViewChange,
+  onComposerLayoutChange,
   header,
   footerStart,
   submission = {},
@@ -1200,39 +1203,28 @@ export function PromptBoxInternal({
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
   );
-  const composerView = useMemo<ComposerView>(
-    () => ({
-      scope: pluginComposerHost?.scope ?? {
-        kind: "new-thread",
-        projectId: null,
-      },
-      layout: showCompactLayout
-        ? "compact"
-        : showZenLayout
-          ? "zen"
-          : "expanded",
-      draft: {
-        text: value,
-        isEmpty: value.trim().length === 0 && attachments.length === 0,
-        attachmentCount: attachments.length,
-      },
-      run: { isRunning, isSubmitting },
-    }),
-    [
-      attachments.length,
-      isRunning,
-      isSubmitting,
-      pluginComposerHost?.scope,
-      showCompactLayout,
-      showZenLayout,
-      value,
-    ],
-  );
+  const composerLayout = showCompactLayout
+    ? "compact"
+    : showZenLayout
+      ? "zen"
+      : "expanded";
+  const localComposerView = usePluginComposerViewModel({
+    scope: pluginComposerHost?.scope ?? {
+      kind: "new-thread",
+      projectId: null,
+    },
+    layout: composerLayout,
+    text: value,
+    attachmentCount: attachments.length,
+    isRunning,
+    isSubmitting,
+  });
+  const composerView = useOptionalPluginComposerView() ?? localComposerView;
   const composerViewRef = useRef(composerView);
   composerViewRef.current = composerView;
   useEffect(() => {
-    onComposerViewChange?.(composerView);
-  }, [composerView, onComposerViewChange]);
+    onComposerLayoutChange?.(composerLayout);
+  }, [composerLayout, onComposerLayoutChange]);
   const pluginRichTextContributions = useMemo(() => {
     if (suppressPluginComposerCustomizations) {
       return {
@@ -1243,13 +1235,10 @@ export function PromptBoxInternal({
 
     const sources: PromptDecorationSource[] = [];
     const observers: PromptDraftObserver[] = [];
-    for (const customization of composerCustomizations) {
-      if (
-        customization.scopes !== undefined &&
-        !customization.scopes.includes(composerView.scope.kind)
-      ) {
-        continue;
-      }
+    for (const customization of composerCustomizationsForScope(
+      composerCustomizations,
+      composerView.scope.kind,
+    )) {
       const richText = customization.richText;
       if (richText === undefined) continue;
       const sourceId = `${customization.pluginId}/${customization.id}`;
@@ -1270,17 +1259,26 @@ export function PromptBoxInternal({
       }
     }
     for (const effectSource of textEffects ?? []) {
+      const className = effectSource.effect.className;
+      if (className.length === 0) continue;
       sources.push({
         id: `plugin-imperative:${effectSource.pluginId}:${effectSource.order}`,
         generation: effectSource.order,
         pluginId: effectSource.pluginId,
-        textEffect: effectSource.effect,
+        effects: [
+          {
+            id: "whole-draft",
+            className,
+            match: (text) =>
+              text.length === 0 ? [] : [{ from: 0, to: text.length }],
+          },
+        ],
       });
     }
     return { sources, observers };
   }, [
     composerCustomizations,
-    composerView.scope,
+    composerView.scope.kind,
     suppressPluginComposerCustomizations,
     textEffects,
   ]);
@@ -1438,9 +1436,7 @@ export function PromptBoxInternal({
       promptEditorExtensions({
         richTextEditing,
         getPlaceholder: () => placeholderRef.current,
-        getDecorationSources: () => ({
-          plugins: pluginDecorationSourcesRef.current,
-        }),
+        getDecorationSources: () => pluginDecorationSourcesRef.current,
         getDraftObservers: () => pluginDraftObserversRef.current,
       }),
     [richTextEditing],
@@ -2941,20 +2937,20 @@ export function PromptBoxInternal({
             </>
           ) : null}
 
-          <div
-            data-promptbox-action-row=""
-            className={cn(
-              "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
-              showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
-            )}
-          >
-            {!showCompactLayout ? (
-              <div
-                data-promptbox-expanded-only=""
-                className="flex min-w-0 flex-1 flex-row items-center gap-1"
-                aria-live="polite"
-              >
-                <PluginComposerViewProvider value={composerView}>
+          <PluginComposerViewProvider value={composerView}>
+            <div
+              data-promptbox-action-row=""
+              className={cn(
+                "flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
+              )}
+            >
+              {!showCompactLayout ? (
+                <div
+                  data-promptbox-expanded-only=""
+                  className="flex min-w-0 flex-1 flex-row items-center gap-1"
+                  aria-live="polite"
+                >
                   <PromptBoxActionsMenu
                     actions={promptActions}
                     isAttaching={isAttaching}
@@ -2970,92 +2966,92 @@ export function PromptBoxInternal({
                         : pluginPlusMenuItems
                     }
                   />
-                </PluginComposerViewProvider>
-                {footerStart}
-              </div>
-            ) : null}
-            <div className="flex shrink-0 flex-row items-center gap-1">
-              {!showCompactLayout ? (
-                <>
-                  {!suppressPluginComposerCustomizations ? (
-                    <PluginComposerViewProvider value={composerView}>
-                      <PluginComposerActions view={composerView} />
-                    </PluginComposerViewProvider>
-                  ) : null}
-                  {voice && !showVoiceActionGroup ? (
+                  {footerStart}
+                </div>
+              ) : null}
+              <div className="flex shrink-0 flex-row items-center gap-1">
+                {!showCompactLayout ? (
+                  <>
+                    {!suppressPluginComposerCustomizations ? (
+                      <PluginComposerActions />
+                    ) : null}
+                    {voice && !showVoiceActionGroup ? (
+                      <Button
+                        data-promptbox-expanded-only=""
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label={
+                          !voice.isSupported
+                            ? "Voice input is not supported in this browser"
+                            : "Start voice input"
+                        }
+                        disabled={!canStartVoiceInput}
+                        onClick={voice.start}
+                        className={
+                          COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
+                        }
+                      >
+                        <Icon name="Mic" className="size-4" />
+                      </Button>
+                    ) : null}
+                  </>
+                ) : null}
+                <div
+                  data-promptbox-submit-group=""
+                  className="flex shrink-0 flex-row items-center"
+                >
+                  {showStop ? (
                     <Button
-                      data-promptbox-expanded-only=""
+                      data-promptbox-submit-action=""
                       type="button"
                       size="icon"
-                      variant="ghost"
-                      aria-label={
-                        !voice.isSupported
-                          ? "Voice input is not supported in this browser"
-                          : "Start voice input"
+                      variant="secondary"
+                      aria-label="Stop run"
+                      onClick={onStop}
+                      className={
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                       }
-                      disabled={!canStartVoiceInput}
-                      onClick={voice.start}
-                      className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
                     >
-                      <Icon name="Mic" className="size-4" />
+                      <Icon
+                        name="Square"
+                        className="size-3.5 fill-current [&_*]:stroke-0"
+                      />
                     </Button>
-                  ) : null}
-                </>
-              ) : null}
-              <div
-                data-promptbox-submit-group=""
-                className="flex shrink-0 flex-row items-center"
-              >
-                {showStop ? (
-                  <Button
-                    data-promptbox-submit-action=""
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    aria-label="Stop run"
-                    onClick={onStop}
-                    className={
-                      showCompactLayout
-                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                        : COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
-                    }
-                  >
-                    <Icon
-                      name="Square"
-                      className="size-3.5 fill-current [&_*]:stroke-0"
-                    />
-                  </Button>
-                ) : (
-                  <Button
-                    data-promptbox-submit-action=""
-                    type="submit"
-                    size={showCompactLayout ? "icon" : "sm"}
-                    variant="default"
-                    aria-label={effectiveSubmitTitle}
-                    disabled={!canSubmit}
-                    className={cn(
-                      showCompactLayout
-                        ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
-                        : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
-                      // Container-driven compact layouts change the button's
-                      // width, padding, and margin at the breakpoint. Keep
-                      // those geometry changes instantaneous so the action
-                      // stays pinned while the prompt height animates.
-                      "transition-colors",
-                    )}
-                  >
-                    {isSubmitting ? (
-                      <Icon name="Spinner" className="size-4 animate-spin" />
-                    ) : isZenMode ? (
-                      <Icon name="ArrowUp" className="size-4" />
-                    ) : (
-                      <Icon name="CornerDownLeft" className="size-4" />
-                    )}
-                  </Button>
-                )}
+                  ) : (
+                    <Button
+                      data-promptbox-submit-action=""
+                      type="submit"
+                      size={showCompactLayout ? "icon" : "sm"}
+                      variant="default"
+                      aria-label={effectiveSubmitTitle}
+                      disabled={!canSubmit}
+                      className={cn(
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                        // Container-driven compact layouts change the button's
+                        // width, padding, and margin at the breakpoint. Keep
+                        // those geometry changes instantaneous so the action
+                        // stays pinned while the prompt height animates.
+                        "transition-colors",
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <Icon name="Spinner" className="size-4 animate-spin" />
+                      ) : isZenMode ? (
+                        <Icon name="ArrowUp" className="size-4" />
+                      ) : (
+                        <Icon name="CornerDownLeft" className="size-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </PluginComposerViewProvider>
         </div>
       </div>
       <div

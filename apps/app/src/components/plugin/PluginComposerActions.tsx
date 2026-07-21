@@ -1,23 +1,20 @@
 import { useMemo } from "react";
-import type {
-  ComposerPlusMenuItem,
-  ComposerView,
-  PluginComposerScope,
-} from "@bb/plugin-sdk";
+import type { ComposerPlusMenuItem, ComposerView } from "@bb/plugin-sdk";
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
 } from "@bb/shared-ui/dropdown-menu";
 import { appToast } from "@/components/ui/app-toast";
 import { useComposer, useComposerView } from "@/lib/plugin-sdk-hooks";
-import {
-  usePluginSlots,
-  type PluginComposerCustomizationSlot,
-} from "@/lib/plugin-slots";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { composerScopeIdentity } from "./plugin-composer-host";
+import {
+  composerScopeIdentity,
+  useOptionalPluginComposerView,
+} from "./plugin-composer-host";
+import { composerCustomizationsForScope } from "./composer-customizations";
 
 export interface PluginComposerPlusMenuContribution {
   pluginId: string;
@@ -31,48 +28,43 @@ export interface PluginComposerPlusMenuSelection {
   selectedElement: Element | null;
 }
 
-function matchesScope(
-  customization: PluginComposerCustomizationSlot,
-  scope: PluginComposerScope,
-): boolean {
-  return (
-    customization.scopes === undefined ||
-    customization.scopes.includes(scope.kind)
-  );
-}
-
 export function usePluginComposerPlusMenuContributions(
   view: ComposerView,
 ): readonly PluginComposerPlusMenuContribution[] {
   const { composerCustomizations } = usePluginSlots();
   return useMemo(
     () =>
-      composerCustomizations.flatMap((customization) =>
-        matchesScope(customization, view.scope)
-          ? (customization.plusMenu ?? []).map((item) => ({
-              pluginId: customization.pluginId,
-              customizationId: customization.id,
-              generation: customization.generation,
-              item,
-            }))
-          : [],
-      ),
-    [composerCustomizations, view.scope],
-  );
-}
-
-export function PluginComposerActions({ view }: { view: ComposerView }) {
-  const { composerCustomizations } = usePluginSlots();
-  const scopeKey = composerScopeIdentity(view.scope);
-  const actions = composerCustomizations.flatMap((customization) =>
-    matchesScope(customization, view.scope)
-      ? (customization.actions ?? []).map((action) => ({
+      composerCustomizationsForScope(
+        composerCustomizations,
+        view.scope.kind,
+      ).flatMap((customization) =>
+        (customization.plusMenu ?? []).map((item) => ({
           pluginId: customization.pluginId,
           customizationId: customization.id,
           generation: customization.generation,
-          action,
-        }))
-      : [],
+          item,
+        })),
+      ),
+    [composerCustomizations, view.scope.kind],
+  );
+}
+
+export function PluginComposerActions({ view }: { view?: ComposerView }) {
+  const providedView = useOptionalPluginComposerView();
+  const { composerCustomizations } = usePluginSlots();
+  const composerView = view ?? providedView;
+  if (composerView === undefined) return null;
+  const scopeKey = composerScopeIdentity(composerView.scope);
+  const actions = composerCustomizationsForScope(
+    composerCustomizations,
+    composerView.scope.kind,
+  ).flatMap((customization) =>
+    (customization.actions ?? []).map((action) => ({
+      pluginId: customization.pluginId,
+      customizationId: customization.id,
+      generation: customization.generation,
+      action,
+    })),
   );
 
   return actions.map(({ pluginId, customizationId, generation, action }) => (

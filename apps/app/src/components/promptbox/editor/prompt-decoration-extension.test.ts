@@ -8,7 +8,6 @@ import {
   findUltracodeRanges,
   getPromptDecorationSet,
   refreshPromptDecorations,
-  setPromptTextEffect,
   type PromptDecorationExtensionOptions,
 } from "./prompt-decoration-extension";
 import { promptEditorExtensions } from "./prompt-editor-extensions";
@@ -87,26 +86,24 @@ describe("PromptDecorationExtension", () => {
           }
         : paragraphContent("alpha beta");
       const editor = createEditor(richTextEditing, content, {
-        getDecorationSources: () => ({
-          plugins: [
-            {
-              id: "plugin:test",
-              generation: 1,
-              effects: [
-                {
-                  id: "beta",
-                  className: "plugin-beta",
-                  match(text) {
-                    const from = text.indexOf("beta");
-                    return from === -1
-                      ? []
-                      : [{ from, to: from + "beta".length }];
-                  },
+        getDecorationSources: () => [
+          {
+            id: "plugin:test",
+            generation: 1,
+            effects: [
+              {
+                id: "beta",
+                className: "plugin-beta",
+                match(text) {
+                  const from = text.indexOf("beta");
+                  return from === -1
+                    ? []
+                    : [{ from, to: from + "beta".length }];
                 },
-              ],
-            },
-          ],
-        }),
+              },
+            ],
+          },
+        ],
       });
       const before = promptEditorValueFromDoc(editor.state.doc);
 
@@ -144,24 +141,22 @@ describe("PromptDecorationExtension", () => {
         ],
       },
       {
-        getDecorationSources: () => ({
-          plugins: [
-            {
-              id: "plugin:mentions",
-              generation: 1,
-              effects: [
-                {
-                  id: "mention-through-suffix",
-                  className: "mention-range",
-                  match(text) {
-                    const from = text.indexOf("@alice");
-                    return [{ from, to: text.length }];
-                  },
+        getDecorationSources: () => [
+          {
+            id: "plugin:mentions",
+            generation: 1,
+            effects: [
+              {
+                id: "mention-through-suffix",
+                className: "mention-range",
+                match(text) {
+                  const from = text.indexOf("@alice");
+                  return [{ from, to: text.length }];
                 },
-              ],
-            },
-          ],
-        }),
+              },
+            ],
+          },
+        ],
       },
     );
     const serialization = promptEditorSerializationFromDoc(editor.state.doc);
@@ -183,32 +178,46 @@ describe("PromptDecorationExtension", () => {
   });
 
   it("adds and removes content and whole-draft classes across edits", () => {
+    let includeWholeDraftEffect = true;
     const editor = createEditor(false, paragraphContent("tag"), {
-      getDecorationSources: () => ({
-        plugins: [
-          {
-            id: "plugin:tag",
-            generation: 1,
-            effects: [
+      getDecorationSources: () => [
+        {
+          id: "plugin:tag",
+          generation: 1,
+          effects: [
+            {
+              id: "tag",
+              className: "tagged",
+              match: (text) =>
+                text === "tag" ? [{ from: 0, to: text.length }] : [],
+            },
+          ],
+        },
+        ...(includeWholeDraftEffect
+          ? [
               {
-                id: "tag",
-                className: "tagged",
-                match: (text) =>
-                  text === "tag" ? [{ from: 0, to: text.length }] : [],
+                id: "plugin:imperative",
+                generation: 1,
+                effects: [
+                  {
+                    id: "whole-draft",
+                    className: "plugin-shimmer",
+                    match: (text: string) => [{ from: 0, to: text.length }],
+                  },
+                ],
               },
-            ],
-          },
-        ],
-      }),
+            ]
+          : []),
+      ],
     });
 
     expect(decorationClasses(editor)).toContain("tagged");
-    setPromptTextEffect(editor, { className: "plugin-shimmer" });
     expect(decorationClasses(editor)).toContain("plugin-shimmer");
 
     editor.commands.setContent(paragraphContent("other"));
     expect(decorationClasses(editor)).not.toContain("tagged");
-    setPromptTextEffect(editor, null);
+    includeWholeDraftEffect = false;
+    refreshPromptDecorations(editor);
     expect(decorationClasses(editor)).not.toContain("plugin-shimmer");
     editor.destroy();
   });
@@ -216,33 +225,29 @@ describe("PromptDecorationExtension", () => {
   it("stacks overlapping host and plugin classes in composition order", () => {
     const wholeRange = (text: string) => [{ from: 0, to: text.length }];
     const editor = createEditor(false, paragraphContent("ultracode"), {
-      getDecorationSources: () => ({
-        host: [
-          {
-            id: "host:extra",
-            generation: 1,
-            effects: [
-              {
-                id: "host-extra",
-                className: "host-extra",
-                match: wholeRange,
-              },
-            ],
-          },
-        ],
-        plugins: [
-          {
-            id: "plugin:a",
-            generation: 1,
-            effects: [{ id: "a", className: "plugin-a", match: wholeRange }],
-          },
-          {
-            id: "plugin:b",
-            generation: 1,
-            effects: [{ id: "b", className: "plugin-b", match: wholeRange }],
-          },
-        ],
-      }),
+      getDecorationSources: () => [
+        {
+          id: "host:extra",
+          generation: 1,
+          effects: [
+            {
+              id: "host-extra",
+              className: "host-extra",
+              match: wholeRange,
+            },
+          ],
+        },
+        {
+          id: "plugin:a",
+          generation: 1,
+          effects: [{ id: "a", className: "plugin-a", match: wholeRange }],
+        },
+        {
+          id: "plugin:b",
+          generation: 1,
+          effects: [{ id: "b", className: "plugin-b", match: wholeRange }],
+        },
+      ],
     });
     const decorations = getPromptDecorationSet(editor.state)?.find() ?? [];
 
@@ -266,15 +271,13 @@ describe("PromptDecorationExtension", () => {
     });
     const onRuleError = vi.fn();
     const editor = createEditor(false, paragraphContent("paint me"), {
-      getDecorationSources: () => ({
-        plugins: [
-          {
-            id: "plugin:thrower",
-            generation,
-            effects: [{ id: "throws", className: "eventual", match }],
-          },
-        ],
-      }),
+      getDecorationSources: () => [
+        {
+          id: "plugin:thrower",
+          generation,
+          effects: [{ id: "throws", className: "eventual", match }],
+        },
+      ],
       onRuleError,
     });
 
