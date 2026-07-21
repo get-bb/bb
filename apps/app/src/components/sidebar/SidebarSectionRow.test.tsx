@@ -9,7 +9,7 @@ import { SidebarSectionRow } from "./SidebarSectionRow";
 afterEach(() => cleanup());
 
 describe("SidebarSectionRow", () => {
-  it("renders the section icon and name before the disclosure at the requested depth", () => {
+  it("renders the section name before the disclosure without a sidebar icon", () => {
     const result = render(
       <SidebarSectionRow
         name="Nested work"
@@ -28,11 +28,7 @@ describe("SidebarSectionRow", () => {
     const label = screen.getByText("Nested work");
     const row = label.parentElement?.parentElement as HTMLElement | null;
 
-    expect(icon).not.toBeNull();
-    expect(
-      (icon as Element).compareDocumentPosition(label) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+    expect(icon).toBeNull();
     expect(
       label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
