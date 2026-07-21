@@ -853,7 +853,11 @@ describe("SkillDetailDialogView", () => {
 
     const builtIn = screen.getByLabelText("bb-cli is built into bb");
     expect(builtIn.textContent).toBe("Built-in");
-    expect(builtIn.className).toContain("bg-surface-recessed/75");
+    expect(builtIn.className).toContain("bg-transparent");
+    expect(builtIn.className).toContain("border-border/70");
+    expect(
+      builtIn.querySelector('[data-icon="PackageReceive"]'),
+    ).not.toBeNull();
     expect(screen.queryByRole("button", { name: "bb-cli actions" })).toBeNull();
     fireEvent.pointerMove(builtIn);
     expect((await screen.findByRole("tooltip")).textContent).toBe(

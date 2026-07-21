@@ -105,8 +105,11 @@ describe("PluginDetail official catalog lifecycle", () => {
 
     const official = screen.getByLabelText("GitHub: BB Official");
     expect(official.textContent).toBe("BB Official");
-    expect(official.className).toContain("bg-surface-recessed/75");
-    expect(official.className).toContain("text-subtle-foreground");
+    expect(official.className).toContain("bg-transparent");
+    expect(official.className).toContain("border-border/70");
+    expect(
+      official.querySelector('[data-icon="PackageReceive"]'),
+    ).not.toBeNull();
     expect(screen.getByText("About")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
@@ -153,7 +156,11 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
 
     const builtIn = screen.getByLabelText("Automations: Built-in");
-    expect(builtIn.className).toContain("bg-surface-recessed/75");
+    expect(builtIn.className).toContain("bg-transparent");
+    expect(builtIn.className).toContain("border-border/70");
+    expect(
+      builtIn.querySelector('[data-icon="PackageReceive"]'),
+    ).not.toBeNull();
     fireEvent.pointerMove(builtIn);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Ships with bb",

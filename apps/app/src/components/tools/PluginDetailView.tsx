@@ -15,6 +15,7 @@ import {
   ResourcePropertyList,
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
+import type { IconName } from "@bb/shared-ui/icon";
 import { Switch } from "@bb/shared-ui/switch";
 
 export interface PluginDetailProperty {
@@ -69,6 +70,7 @@ export function PluginDetailView({
     label: ReactNode;
     tooltip?: ReactNode;
     accessibleLabel?: string;
+    icon?: IconName;
     appearance?: "default" | "recessed";
   };
   installed?: {
@@ -106,6 +108,7 @@ export function PluginDetailView({
                 label={provenance.label}
                 tooltip={provenance.tooltip}
                 accessibleLabel={provenance.accessibleLabel}
+                icon={provenance.icon}
                 appearance={provenance.appearance}
               />
             ) : null}

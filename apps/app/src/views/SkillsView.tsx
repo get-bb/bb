@@ -1105,7 +1105,6 @@ export function SkillDetailDialogView({
               label: "Built-in",
               tooltip: "Ships with bb",
               accessibleLabel: `${skill.name} is built into bb`,
-              appearance: "recessed",
             }
           : bundledPluginName !== null
             ? {

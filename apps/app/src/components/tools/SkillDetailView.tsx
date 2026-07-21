@@ -180,7 +180,7 @@ function SkillStatusControl({
   const icon =
     label === "Imported"
       ? "Download"
-      : label === "Included"
+      : label === "Included" || label === "Built-in"
         ? "PackageReceive"
         : undefined;
   return (

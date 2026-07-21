@@ -350,7 +350,13 @@ function SkillProvenanceTreatment({
     );
   }
   if (scope === "bb-builtin") {
-    return <ResourceLifecycleStatus label="Built-in" tooltip="Ships with bb" />;
+    return (
+      <ResourceLifecycleStatus
+        label="Built-in"
+        icon="PackageReceive"
+        tooltip="Ships with bb"
+      />
+    );
   }
   if (scope.startsWith("claude") || scope.startsWith("codex")) {
     return (

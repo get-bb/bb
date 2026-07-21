@@ -786,8 +786,11 @@ export function PluginDetail({
                   ? "Ships with bb"
                   : plugin.sourceDisplay,
               accessibleLabel: `${plugin.name ?? plugin.id}: ${sourceLabel}`,
-              appearance:
-                plugin.provenance === "direct" ? "default" : "recessed",
+              icon:
+                plugin.provenance === "builtin" ||
+                plugin.provenance === "catalog"
+                  ? ("PackageReceive" as const)
+                  : undefined,
             }
           : undefined
       }
