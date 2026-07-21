@@ -8,7 +8,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { PluginDetail } from "./ToolsView";
+import { PluginDetail, ToolsScrollPage } from "./ToolsView";
 
 const GITHUB_PLUGIN = {
   id: "github",
@@ -38,6 +38,22 @@ const GITHUB_PLUGIN = {
 } satisfies PluginListItem;
 
 afterEach(cleanup);
+
+describe("ToolsScrollPage layout", () => {
+  it("keeps bottom padding after detail content that exceeds the viewport", () => {
+    render(
+      <ToolsScrollPage>
+        <div>Long plugin detail</div>
+      </ToolsScrollPage>,
+    );
+
+    const content = screen.getByText("Long plugin detail").parentElement;
+    const classes = content?.className.split(/\s+/) ?? [];
+    expect(classes).toContain("min-h-full");
+    expect(classes).toContain("pb-4");
+    expect(classes).not.toContain("h-full");
+  });
+});
 
 describe("PluginDetail official catalog lifecycle", () => {
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {

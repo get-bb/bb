@@ -116,7 +116,7 @@ function ToolsBodyFallback() {
   );
 }
 
-function ToolsScrollPage({
+export function ToolsScrollPage({
   children,
   maxWidthClassName = "max-w-5xl",
 }: {
@@ -136,7 +136,7 @@ function ToolsScrollPage({
         <div ref={topSentinelRef} aria-hidden className="h-0" />
         <div
           className={cn(
-            "mx-auto box-border h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
+            "mx-auto box-border min-h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
             maxWidthClassName,
           )}
         >
