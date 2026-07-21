@@ -10,6 +10,7 @@ import {
   useResourcePagination,
 } from "@bb/shared-ui/resource-pagination";
 import {
+  ResourceCollectionViewport,
   ResourceInstallControl,
   ResourceInstalledControl,
 } from "@bb/shared-ui/resource-list";
@@ -59,40 +60,58 @@ export function BrowsePluginsTab({
   }
 
   return (
-    <div id="plugins-browse-results" className="space-y-4">
-      <div className="rounded-lg border border-border bg-card px-3.5 py-3">
-        <p className="text-sm font-medium text-foreground">
-          BB Official plugins
-        </p>
-        {status === undefined ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {statusQuery.isPending
-              ? "Loading plugins…"
-              : "Plugin list unavailable."}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {status.pluginCount} plugin
-            {status.pluginCount === 1 ? "" : "s"} · bundled with BB and
-            installed with one click
-          </p>
-        )}
-      </div>
+    <ResourceCollectionViewport
+      scrollId="plugins-browse-results"
+      contentClassName="space-y-4"
+      toolbar={
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-card px-3.5 py-3">
+            <p className="text-sm font-medium text-foreground">
+              BB Official plugins
+            </p>
+            {status === undefined ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {statusQuery.isPending
+                  ? "Loading plugins…"
+                  : "Plugin list unavailable."}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {status.pluginCount} plugin
+                {status.pluginCount === 1 ? "" : "s"} · bundled with BB and
+                installed with one click
+              </p>
+            )}
+          </div>
 
-      <div className="relative min-w-48">
-        <Icon
-          name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
-        />
-        <Input
-          value={query}
-          placeholder="Search plugins…"
-          aria-label="Search plugins"
-          className="h-8 pl-8 text-xs"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </div>
-
+          <div className="relative min-w-48">
+            <Icon
+              name="Search"
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
+            />
+            <Input
+              value={query}
+              placeholder="Search plugins…"
+              aria-label="Search plugins"
+              className="h-8 pl-8 text-xs"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+        </div>
+      }
+      footer={
+        pagination.total > pagination.pageSize ? (
+          <ResourcePagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.total}
+            visibleCount={pagination.visibleCount}
+            onPageChange={pagination.setPage}
+            scrollTargetId="plugins-browse-results"
+          />
+        ) : undefined
+      }
+    >
       {searchQuery.isError && entries.length > 0 ? (
         <p className="text-xs text-warning-text" role="status">
           Showing cached catalog results because the latest search failed.
@@ -113,13 +132,13 @@ export function BrowsePluginsTab({
           }
         />
       ) : (
-        <>
+        <div className="space-y-4">
           {[...byCategory.entries()].map(([category, categoryEntries]) => (
             <div key={category}>
               <h3 className="mb-2 text-sm font-semibold text-foreground">
                 {category}
               </h3>
-              <div className="grid gap-2.5 sm:grid-cols-2">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-2.5">
                 {categoryEntries.map((entry) => (
                   <BrowseCard
                     key={entry.entryId}
@@ -132,17 +151,9 @@ export function BrowsePluginsTab({
               </div>
             </div>
           ))}
-          <ResourcePagination
-            page={pagination.page}
-            pageSize={pagination.pageSize}
-            total={pagination.total}
-            visibleCount={pagination.visibleCount}
-            onPageChange={pagination.setPage}
-            scrollTargetId="plugins-browse-results"
-          />
-        </>
+        </div>
       )}
-    </div>
+    </ResourceCollectionViewport>
   );
 }
 
@@ -194,13 +205,6 @@ function BrowseCard({
             {entry.description}
           </p>
         ) : null}
-        <p
-          className="mt-1.5 truncate text-2xs text-subtle-foreground"
-          title={entry.source}
-          data-testid={`browse-source-${entry.entryId}`}
-        >
-          {entry.source}
-        </p>
         {!entry.compatible && entry.incompatibleReason !== null ? (
           <p className="text-2xs text-warning-text">
             {entry.incompatibleReason}

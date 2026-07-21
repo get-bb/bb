@@ -18,7 +18,11 @@ import {
   automationRunStatusSchema,
 } from "bb-plugin-automations/rpc-types";
 import { StoryCard, type StoryRowProps } from "../../../.ladle/story-card";
-import { PluginRowSignalView } from "@/components/plugin/management/PluginRowSignal";
+import {
+  PluginRowSignalView,
+  PluginSignalLogo,
+} from "@/components/plugin/management/PluginRowSignal";
+import { PlaceholderBadge } from "@/components/plugin/management/plugin-ui";
 import {
   pluginRuntimeStatusDefinition,
   type PluginRowSignal,
@@ -284,11 +288,9 @@ export function Plugins() {
               {signal === null ? (
                 <SurfaceRule>No health icon</SurfaceRule>
               ) : (
-                <PluginRowSignalView
-                  signal={signal}
-                  onUpdateClick={noop}
-                  onStatusClick={noop}
-                />
+                <PluginSignalLogo signal={signal} onStatusClick={noop}>
+                  <PlaceholderBadge className="size-6" iconName="Puzzle" />
+                </PluginSignalLogo>
               )}
             </StoryRow>
           );

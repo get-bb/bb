@@ -36,6 +36,7 @@ interface SkillRpcStub {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function registryHtml(args: {
@@ -229,6 +230,62 @@ async function writePluginSkillFixture(rootPath: string): Promise<{
 }
 
 describe("public project skills route", () => {
+  it("omits registry entries whose real source has no loadable SKILL.md", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = [
+        String.raw`\"source\":\"owner/available-repo\",\"skillId\":\"available-skill\",\"name\":\"Available skill\",\"installs\":200`,
+        String.raw`\"source\":\"owner/stale-repo\",\"skillId\":\"stale-skill\",\"name\":\"Stale skill\",\"installs\":100`,
+      ].join("\n");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url === "https://www.skills.sh/") {
+            return new Response(homepage, { status: 200 });
+          }
+          if (
+            url.includes("raw.githubusercontent.com/owner/available-repo") &&
+            url.endsWith("/skills/available-skill/SKILL.md")
+          ) {
+            return new Response("# Available skill\n", { status: 200 });
+          }
+          if (
+            url === "https://www.skills.sh/owner/available-repo/available-skill"
+          ) {
+            return new Response(
+              registryHtml({
+                source: "owner/available-repo",
+                skillId: "available-skill",
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(null, { status: 404 });
+        }),
+      );
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=24",
+      );
+
+      expect(response.status).toBe(200);
+      const body = (await readJson(response)) as {
+        skills: Array<{ id: string }>;
+        pagination: { total: number };
+      };
+      expect(body.skills.map((skill) => skill.id)).toEqual([
+        "owner/available-repo/available-skill",
+      ]);
+      expect(body.pagination.total).toBe(2);
+
+      const staleDetail = await harness.app.request(
+        "/api/v1/skills-registry/detail?source=owner%2Fstale-repo&skillId=stale-skill",
+      );
+      expect(staleDetail.status).toBe(404);
+    });
+  });
+
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

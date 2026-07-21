@@ -30,6 +30,7 @@ import {
   ResourceBrowseGrid,
   ResourceCardStat,
   ResourceCollectionPage,
+  ResourceCollectionViewport,
   ResourceListPanel,
   ResourceListState,
   ResourceMultiSelectMenu,
@@ -38,6 +39,7 @@ import {
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceToolbar,
+  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
@@ -417,7 +419,7 @@ function providerPluginDisplayName(skill: SkillSummary): string {
 }
 
 function bundledWithPluginReason(skill: SkillSummary): string {
-  return `Bundled with ${providerPluginNameForSkill(skill)}`;
+  return "Bundled with plugin";
 }
 
 function skillEditDisabledReason(skill: SkillSummary): string {
@@ -454,7 +456,7 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
   const installs = formatInstallCount(skill.installs);
   const stars = skill.stars !== null ? formatInstallCount(skill.stars) : null;
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-[11px] leading-none">
+    <span className="inline-flex flex-nowrap items-center gap-1 text-[11px] leading-none">
       <ResourceCardStat
         icon="Download"
         iconClassName="text-success"
@@ -506,6 +508,7 @@ function RegistrySkillSourceItem({
           pending={pending}
           onInstall={() => onInstall(skill)}
           onUninstall={canUninstall ? () => onUninstall(skill) : undefined}
+          presentation="icon"
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
@@ -558,13 +561,34 @@ export function RegistrySkillsBrowsePage({
   isInstalled: (skill: RegistrySkill) => boolean;
   canUninstall?: (skill: RegistrySkill) => boolean;
 }) {
-  return (
-    <div id="skills-browse-results" className="space-y-4">
-      <ResourceToolbar
-        searchValue={query}
-        searchPlaceholder="Search skills"
-        onSearchChange={onQueryChange}
+  const footer = (
+    <div className="space-y-2">
+      <ResourcePagination
+        page={pagination.page}
+        pageSize={pagination.perPage}
+        total={pagination.total}
+        visibleCount={skills.length}
+        onPageChange={onPageChange}
+        scrollTargetId="skills-browse-results"
       />
+      <div className="flex justify-end px-1">
+        <SkillsShAttributionLink />
+      </div>
+    </div>
+  );
+  return (
+    <ResourceCollectionViewport
+      scrollId="skills-browse-results"
+      toolbar={
+        <ResourceToolbar
+          searchValue={query}
+          searchPlaceholder="Search skills"
+          onSearchChange={onQueryChange}
+        />
+      }
+      footer={footer}
+      contentClassName="space-y-4"
+    >
       {hasError ? (
         <EmptyStatePanel role="alert" className="py-6">
           <div className="flex flex-col items-center gap-2">
@@ -604,18 +628,7 @@ export function RegistrySkillsBrowsePage({
           ))}
         </ResourceBrowseGrid>
       )}
-      <ResourcePagination
-        page={pagination.page}
-        pageSize={pagination.perPage}
-        total={pagination.total}
-        visibleCount={skills.length}
-        onPageChange={onPageChange}
-        scrollTargetId="skills-browse-results"
-      />
-      <div className="flex justify-end px-1">
-        <SkillsShAttributionLink />
-      </div>
-    </div>
+    </ResourceCollectionViewport>
   );
 }
 
@@ -792,50 +805,56 @@ export function SkillsOverview({
       {activeMode === "browse" ? (
         browseContent
       ) : (
-        <div id="skills-installed-results" className="space-y-3">
-          <ResourceToolbar
-            searchValue={query}
-            searchPlaceholder="Search skills"
-            onSearchChange={onQueryChange}
-            controls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Agent"
-                  icon="Layers"
-                  selectedValues={providerFilters}
-                  options={providerOptions}
-                  onChange={(values) =>
-                    setProviderFilters(values as ResourceProviderFilter[])
-                  }
-                />
-                <ResourceSortMenu
-                  value={sortMode}
-                  direction={sortDirection}
-                  options={[
-                    {
-                      id: "provider",
-                      label: "Agent",
-                      disabled: providerBucketCount <= 1,
-                    },
-                    { id: "alpha", label: "Skill name" },
-                  ]}
-                  onChange={handleSortChange}
-                />
-              </>
-            }
-          />
-          {installedBody}
-          {!hasError && !isLoading && visibleSkills.length > 0 ? (
-            <ResourcePagination
-              page={installedPagination.page}
-              pageSize={installedPagination.pageSize}
-              total={installedPagination.total}
-              visibleCount={installedPagination.visibleCount}
-              onPageChange={installedPagination.setPage}
-              scrollTargetId="skills-installed-results"
+        <ResourceCollectionViewport
+          scrollId="skills-installed-results"
+          toolbar={
+            <ResourceToolbar
+              searchValue={query}
+              searchPlaceholder="Search skills"
+              onSearchChange={onQueryChange}
+              controls={
+                <>
+                  <ResourceMultiSelectMenu
+                    label="Agent"
+                    icon="Layers"
+                    selectedValues={providerFilters}
+                    options={providerOptions}
+                    onChange={(values) =>
+                      setProviderFilters(values as ResourceProviderFilter[])
+                    }
+                  />
+                  <ResourceSortMenu
+                    value={sortMode}
+                    direction={sortDirection}
+                    options={[
+                      {
+                        id: "provider",
+                        label: "Agent",
+                        disabled: providerBucketCount <= 1,
+                      },
+                      { id: "alpha", label: "Skill name" },
+                    ]}
+                    onChange={handleSortChange}
+                  />
+                </>
+              }
             />
-          ) : null}
-        </div>
+          }
+          footer={
+            !hasError && !isLoading && visibleSkills.length > 0 ? (
+              <ResourcePagination
+                page={installedPagination.page}
+                pageSize={installedPagination.pageSize}
+                total={installedPagination.total}
+                visibleCount={installedPagination.visibleCount}
+                onPageChange={installedPagination.setPage}
+                scrollTargetId="skills-installed-results"
+              />
+            ) : undefined
+          }
+        >
+          {installedBody}
+        </ResourceCollectionViewport>
       )}
     </ResourceCollectionPage>
   );
@@ -880,7 +899,6 @@ function RegistrySkillDetailView({
   const path = installedPath ?? `skills.sh/${skill.source}/${skill.skillId}`;
   return (
     <SkillDetailView
-      leading={<BbLogo />}
       title={skill.name}
       path={path}
       pathHref={installedPath === null ? skill.url : undefined}
@@ -962,8 +980,6 @@ export interface SkillDetailDialogViewProps {
   onSelectPath: (path: string) => void;
   content: string;
   isLoadingContent: boolean;
-  /** A background refetch is checking for out-of-band SKILL.md changes. */
-  isRefreshingContent: boolean;
   isContentError: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -988,7 +1004,6 @@ export function SkillDetailDialogView({
   onSelectPath,
   content,
   isLoadingContent,
-  isRefreshingContent,
   isContentError,
   canEdit,
   canDelete,
@@ -1010,52 +1025,66 @@ export function SkillDetailDialogView({
     skill.scope === "plugin" ? providerPluginNameForSkill(skill) : null;
   const editDisabledReason = skillEditDisabledReason(skill);
   const deleteDisabledReason = skillDeleteDisabledReason(skill);
-  const headerActions = !confirmingDelete ? (
-    <ResourceOverflowMenu
-      label={`${skill.name} actions`}
-      items={[
-        {
-          label: "Edit",
-          icon: "Edit" as const,
-          disabled: !canEdit,
-          disabledReason: !canEdit ? editDisabledReason : undefined,
-          onSelect: onEdit,
-        },
-        ...(canOpenInEditor
-          ? [
-              {
-                label: "Open source",
-                icon: "ExternalLink" as const,
-                onSelect: onOpenInEditor,
-              },
-            ]
-          : []),
-        { kind: "separator" as const },
-        {
-          label: "Delete",
-          icon: "Trash2" as const,
-          tone: "destructive" as const,
-          disabled: !canDelete,
-          disabledReason: !canDelete ? deleteDisabledReason : undefined,
-          onSelect: () => setConfirmingDelete(true),
-        },
-      ]}
-    />
-  ) : null;
+  const canEditSelectedPath = canEdit && selectedPath === "SKILL.md";
+  const headerActions =
+    skill.scope !== "bb-builtin" && !confirmingDelete ? (
+      <ResourceOverflowMenu
+        label={`${skill.name} actions`}
+        items={[
+          {
+            label: "Edit",
+            icon: "Edit" as const,
+            disabled: !canEditSelectedPath,
+            disabledReason: !canEdit
+              ? editDisabledReason
+              : selectedPath !== "SKILL.md"
+                ? "Only SKILL.md can be edited"
+                : undefined,
+            onSelect: onEdit,
+          },
+          ...(canOpenInEditor
+            ? [
+                {
+                  label: "Open source",
+                  icon: "ExternalLink" as const,
+                  onSelect: onOpenInEditor,
+                },
+              ]
+            : []),
+          { kind: "separator" as const },
+          {
+            label: "Delete",
+            icon: "Trash2" as const,
+            tone: "destructive" as const,
+            disabled: !canDelete,
+            disabledReason: !canDelete ? deleteDisabledReason : undefined,
+            onSelect: () => setConfirmingDelete(true),
+          },
+        ]}
+      />
+    ) : null;
   return (
     <SkillDetailView
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       path={skill.filePath}
       headerControl={
-        skill.provider !== null && bundledPluginName === null
+        skill.scope === "bb-builtin"
           ? {
               kind: "status",
-              label: "Imported",
-              tooltip: `Discovered from ${providerLabel(skill.provider)}`,
-              accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
+              label: "Built-in",
+              tooltip: "Ships with bb",
+              accessibleLabel: `${skill.name} is built into bb`,
+              appearance: "recessed",
             }
-          : undefined
+          : skill.provider !== null && bundledPluginName === null
+            ? {
+                kind: "status",
+                label: "Imported",
+                tooltip: `Discovered from ${providerLabel(skill.provider)}`,
+                accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
+              }
+            : undefined
       }
       bundledPlugin={
         bundledPluginName
@@ -1115,7 +1144,7 @@ function SkillDetailPage({
   projectId: string;
   skill: SkillSummary | null;
   onClose: () => void;
-  onEdit: () => void;
+  onEdit: (skill: SkillSummary) => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => {
@@ -1142,13 +1171,14 @@ function SkillDetailPage({
       onSelectPath={setSelectedPath}
       content={contentQuery.data?.content ?? ""}
       isLoadingContent={contentQuery.isLoading}
-      isRefreshingContent={contentQuery.isFetching}
       isContentError={contentQuery.isError}
       canEdit={editableScope !== null}
       canDelete={deletableScope !== null}
       canOpenInEditor={editableScope !== null && canOpenPreferredFileTarget}
       isDeleting={deleteSkill.isPending}
-      onEdit={onEdit}
+      onEdit={() => {
+        if (skill) onEdit(skill);
+      }}
       onRetry={() => {
         void filesQuery.refetch();
         void contentQuery.refetch();
@@ -1247,6 +1277,9 @@ export function SkillsLibrary() {
   });
   const selectedRegistrySkill =
     registrySkillOnPage ?? registryEntryQuery.data ?? null;
+  useResourceRouteLabel(
+    selectedSkill?.name ?? selectedRegistrySkill?.name ?? null,
+  );
   const registryDetailQuery = useQuery({
     queryKey: ["skills-registry-detail", selectedRegistrySkill?.id ?? "none"],
     queryFn: () =>
@@ -1277,31 +1310,6 @@ export function SkillsLibrary() {
     },
     [confirmedRegistryInstalls, skills],
   );
-  const installedRegistryDetailSkill = useMemo(() => {
-    if (selectedRegistrySkill === null) return null;
-    return (
-      findVerifiedInstalledRegistrySkill(selectedRegistrySkill) ??
-      findInstalledRegistrySkill(selectedRegistrySkill)
-    );
-  }, [
-    findInstalledRegistrySkill,
-    findVerifiedInstalledRegistrySkill,
-    selectedRegistrySkill,
-  ]);
-  useEffect(() => {
-    if (
-      routeRegistrySkillId === undefined ||
-      installedRegistryDetailSkill === null
-    ) {
-      return;
-    }
-    navigate(
-      getSkillDetailRoutePath({
-        skillId: installedRegistryDetailSkill.id,
-      }),
-      { replace: true },
-    );
-  }, [installedRegistryDetailSkill, navigate, routeRegistrySkillId]);
   const isRegistrySkillInstalled = useCallback(
     (skill: RegistrySkill): boolean => {
       if (confirmedRegistryInstalls.has(skill.id)) {
@@ -1319,40 +1327,65 @@ export function SkillsLibrary() {
   );
   const canUninstallRegistrySkill = useCallback(
     (skill: RegistrySkill) =>
-      findVerifiedInstalledRegistrySkill(skill) !== null,
-    [findVerifiedInstalledRegistrySkill],
+      findVerifiedInstalledRegistrySkill(skill) !== null ||
+      typeof confirmedRegistryInstalls.get(skill.id) === "string",
+    [confirmedRegistryInstalls, findVerifiedInstalledRegistrySkill],
   );
   const uninstallRegistry = useCallback(
     (skill: RegistrySkill) => {
-      const installedSkill = findVerifiedInstalledRegistrySkill(skill);
-      if (installedSkill === null) return;
-      deleteSkill.mutate(
-        {
-          skillId: installedSkill.id,
-          environmentId: null,
-        },
-        {
-          onSuccess: () => {
-            setConfirmedRegistryInstalls((current) => {
-              const next = new Map(current);
-              next.set(skill.id, null);
-              return next;
-            });
-            appToast.success("Skill uninstalled", {
-              action: {
-                label: "Reinstall",
-                onClick: () => registryInstall.mutate({ skill }),
-              },
-            });
-            void skillsQuery.refetch();
+      void (async () => {
+        const confirmedPath = confirmedRegistryInstalls.get(skill.id);
+        const refreshedSkills =
+          findVerifiedInstalledRegistrySkill(skill) === null &&
+          typeof confirmedPath === "string"
+            ? (await skillsQuery.refetch()).data?.skills
+            : skills;
+        const installedSkill =
+          findVerifiedInstalledRegistrySkill(skill) ??
+          (typeof confirmedPath === "string"
+            ? (refreshedSkills?.find(
+                (candidate) =>
+                  candidate.scope === "bb-user" &&
+                  candidate.provider === null &&
+                  candidate.filePath === confirmedPath,
+              ) ?? null)
+            : null);
+        if (installedSkill === null) {
+          appToast.error(
+            "The installed skill is still being indexed. Try again.",
+          );
+          return;
+        }
+        deleteSkill.mutate(
+          {
+            skillId: installedSkill.id,
+            environmentId: null,
           },
-        },
-      );
+          {
+            onSuccess: () => {
+              setConfirmedRegistryInstalls((current) => {
+                const next = new Map(current);
+                next.set(skill.id, null);
+                return next;
+              });
+              appToast.success("Skill uninstalled", {
+                action: {
+                  label: "Reinstall",
+                  onClick: () => registryInstall.mutate({ skill }),
+                },
+              });
+              void skillsQuery.refetch();
+            },
+          },
+        );
+      })();
     },
     [
+      confirmedRegistryInstalls,
       deleteSkill,
       findVerifiedInstalledRegistrySkill,
       registryInstall,
+      skills,
       skillsQuery,
     ],
   );
@@ -1442,6 +1475,7 @@ export function SkillsLibrary() {
           deleteSkill.variables?.skillId,
       )?.id ?? null)
     : null;
+  const registryDetail = registryDetailQuery.data ?? null;
   return (
     <>
       {routeSkillId !== undefined && hasError ? (
@@ -1459,15 +1493,7 @@ export function SkillsLibrary() {
           projectId={PERSONAL_PROJECT_ID}
           skill={selectedSkill}
           onClose={closeSkillDetail}
-          onEdit={() => editSkillViaThread(selectedSkill)}
-        />
-      ) : selectedRegistrySkill !== null &&
-        installedRegistryDetailSkill !== null ? (
-        <SkillDetailPage
-          projectId={PERSONAL_PROJECT_ID}
-          skill={installedRegistryDetailSkill}
-          onClose={closeSkillDetail}
-          onEdit={() => editSkillViaThread(installedRegistryDetailSkill)}
+          onEdit={editSkillViaThread}
         />
       ) : routeRegistrySkillId !== undefined &&
         selectedRegistrySkill === null ? (
@@ -1480,19 +1506,30 @@ export function SkillsLibrary() {
           }
           onRetry={() => void registryEntryQuery.refetch()}
         />
+      ) : selectedRegistrySkill && registryDetailQuery.isLoading ? (
+        <ResourceListState state="loading" message="Checking skill source" />
+      ) : selectedRegistrySkill &&
+        (registryDetailQuery.isError || registryDetail === null) ? (
+        <ResourceListState
+          state="error"
+          message="This registry skill is no longer available from its source."
+          onRetry={() => void registryDetailQuery.refetch()}
+        />
       ) : selectedRegistrySkill ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
-          detail={registryDetailQuery.data ?? null}
-          isLoadingDetail={registryDetailQuery.isLoading}
-          isDetailError={registryDetailQuery.isError}
+          detail={registryDetail}
+          isLoadingDetail={false}
+          isDetailError={false}
           installed={isRegistrySkillInstalled(selectedRegistrySkill)}
           installedSkill={findVerifiedInstalledRegistrySkill(
             selectedRegistrySkill,
           )}
           installedPath={
             findVerifiedInstalledRegistrySkill(selectedRegistrySkill)
-              ?.filePath ?? null
+              ?.filePath ??
+            confirmedRegistryInstalls.get(selectedRegistrySkill.id) ??
+            null
           }
           pending={pendingRegistrySkillId === selectedRegistrySkill.id}
           uninstallPending={

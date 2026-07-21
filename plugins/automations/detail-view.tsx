@@ -13,8 +13,6 @@ import {
   ResourceActivitySection,
   ResourceDefinitionSection,
   ResourceDetailCollection,
-  ResourceDetailFact,
-  ResourceDetailFacts,
   ResourceDetailPage,
   ResourceDetailPanel,
   ResourcePromptPreview,
@@ -22,6 +20,7 @@ import {
   ResourceLocationMeta,
   ResourceMeta,
   ResourceOverflowMenu,
+  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import {
@@ -139,7 +138,7 @@ function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (environment.type === "reuse") return "Existing environment";
   if (environment.type === "project-default") return "Project default";
   if (environment.workspace.type === "managed-worktree") return "Worktree";
-  if (environment.workspace.type === "personal") return "Personal workspace";
+  if (environment.workspace.type === "personal") return "Local";
   return environment.workspace.path ?? "Local workspace";
 }
 
@@ -243,7 +242,9 @@ function RunRow({
   return (
     <div className="overflow-hidden rounded-sm">
       <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-        <AutomationRunStatusIndicator status={run.status} />
+        <span className="sr-only">
+          {AUTOMATION_RUN_STATUS_VISUALS[run.status].label}
+        </span>
         <span className="font-medium">
           {formatScheduleRunTime(run.startedAt)}
         </span>
@@ -258,21 +259,17 @@ function RunRow({
           >
             View thread
           </button>
-        ) : run.runMode === "script" && run.exitCode !== null ? (
-          <span className="ml-auto font-mono text-xs text-muted-foreground">
-            exit {run.exitCode}
-          </span>
         ) : null}
       </div>
       {run.skipReason ? (
-        <p className="mx-2 mb-2 rounded-md border border-border bg-surface-recessed px-3 py-2 text-xs text-muted-foreground">
+        <p className="mx-2 mb-2 rounded-md bg-surface-recessed/70 px-3 py-2 text-xs text-muted-foreground">
           {run.skipReason}
         </p>
       ) : null}
       {showOutput ? (
         <pre
           className={cn(
-            "mx-2 mb-2 whitespace-pre-wrap rounded-md border border-border bg-surface-recessed px-3 py-2 font-mono text-xs leading-relaxed",
+            "mx-2 mb-2 whitespace-pre-wrap rounded-md bg-surface-recessed/70 px-3 py-2 font-mono text-xs leading-relaxed",
             run.error ? "text-destructive" : "text-foreground",
             silent && "italic text-subtle-foreground",
           )}
@@ -299,6 +296,7 @@ export function AutomationDetailView({
   onOpenThread,
   footer,
 }: AutomationDetailViewProps) {
+  useResourceRouteLabel(automation.name);
   const oneShotLifecycle = getOneShotLifecycle({
     enabled: automation.enabled,
     trigger: automation.trigger,
@@ -313,8 +311,8 @@ export function AutomationDetailView({
     : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
-  const projectContextLabel =
-    projectLabel === "Personal" ? "Personal" : `Project ${projectLabel}`;
+  const projectContextLabel = projectLabel;
+  const localProject = projectLabel === "Local";
 
   return (
     <ResourceDetailPage
@@ -329,9 +327,15 @@ export function AutomationDetailView({
       metadata={
         <ResourceMeta
           items={[
-            formatAutomationTrigger(automation.trigger),
+            <ResourceLocationMeta
+              label={projectContextLabel}
+              icon={localProject ? "Laptop" : "Folder"}
+            />,
+            <span className="inline-flex items-center gap-1.5">
+              <Icon name="Clock" className="size-3.5" aria-hidden />
+              {formatAutomationTrigger(automation.trigger)}
+            </span>,
             automationScheduleLabel(automation),
-            <ResourceLocationMeta label={projectContextLabel} />,
           ]}
         />
       }
@@ -389,7 +393,11 @@ export function AutomationDetailView({
                   label: `${execution.providerId} · ${execution.model}`,
                 },
                 {
-                  icon: "Folder",
+                  icon:
+                    execution.environment.type === "host" &&
+                    execution.environment.workspace.type === "personal"
+                      ? "Laptop"
+                      : "Folder",
                   label: automationEnvironmentLabel(execution),
                 },
                 {
@@ -403,38 +411,40 @@ export function AutomationDetailView({
           ) : (
             <ResourceDetailPanel
               surface="recessed"
-              className={cn(
-                "px-3 py-2",
-                execution.script && "max-h-[42dvh] overflow-auto",
-              )}
+              className="bg-surface-recessed/45"
             >
-              {execution.script ? (
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                  {execution.script}
-                </pre>
-              ) : execution.scriptFile ? (
-                <span className="font-mono text-xs">
-                  {execution.scriptFile}
+              <div
+                className={cn(
+                  "px-3 py-2",
+                  execution.script && "max-h-[42dvh] overflow-auto",
+                )}
+              >
+                {execution.script ? (
+                  <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                    {execution.script}
+                  </pre>
+                ) : execution.scriptFile ? (
+                  <span className="font-mono text-xs">
+                    {execution.scriptFile}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/35 px-3 py-1.5 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon
+                    name="ComputerTerminal01"
+                    className="size-3.5"
+                    aria-hidden
+                  />
+                  {execution.interpreter ?? "bash"}
                 </span>
-              ) : null}
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="Clock" className="size-3.5" aria-hidden />
+                  {Math.round(execution.timeoutMs / 1000)}s timeout
+                </span>
+              </div>
             </ResourceDetailPanel>
           )}
-
-          {execution.mode === "script" ? (
-            <ResourceDetailFacts className="mt-4">
-              <>
-                <ResourceDetailFact label="Runtime">
-                  {execution.interpreter ?? "bash"} ·{" "}
-                  {Math.round(execution.timeoutMs / 1000)}s timeout
-                </ResourceDetailFact>
-                {execution.scriptFile ? (
-                  <ResourceDetailFact label="Source" mono>
-                    {execution.scriptFile}
-                  </ResourceDetailFact>
-                ) : null}
-              </>
-            </ResourceDetailFacts>
-          ) : null}
         </ResourceDefinitionSection>
 
         <ResourceActivitySection label="Run history">
@@ -479,8 +489,8 @@ export function AutomationDetailView({
               </div>
             </EmptyStatePanel>
           ) : (
-            <div className="space-y-2">
-              <ResourceDetailCollection>
+            <div>
+              <ResourceDetailCollection className="divide-border/60">
                 {runsState.runs.map((run) => (
                   <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
                 ))}

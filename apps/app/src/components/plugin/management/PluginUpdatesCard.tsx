@@ -1,34 +1,20 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
   ResourceDetailFact,
   ResourceDetailFacts,
 } from "@bb/shared-ui/resource-list";
-import { appToast } from "@/components/ui/app-toast.js";
-import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  checkPluginUpdates,
-  usePluginSource,
-} from "@/hooks/queries/plugin-catalog-queries";
+import { usePluginSource } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
-import { formatRelativeTime } from "@/lib/relative-time";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
-import {
-  KeyValueGrid,
-  SUCCESS_BANNER_STYLE,
-  formatAbsoluteDate,
-} from "./plugin-ui";
+import { SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
- * Layer 2 (sketch v2, detail page): the update-available banner and the
- * "Updates & source" card. Everything that was crowding the list row lands
- * here — human source line, last check — with the full technical detail one
- * disclosure deeper under "Source details".
+ * Detail-page release facts. The source endpoint contributes only the useful
+ * installation timestamp; requested/resolved transport strings stay out of
+ * the user-facing taxonomy.
  *
  * Bundled plugins — auto builtins and store-installed officials alike — are
  * pinned to the copy shipped inside the app and update with bb releases, so
@@ -78,7 +64,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">
-            Update available — {availableVersion}
+            Update to {availableVersion}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Compatible with your bb.
@@ -102,160 +88,41 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-export function PluginUpdatesSourceCard({
+export function PluginReleaseFacts({
   plugin,
-  showHeading = true,
   embedded = false,
   releaseVersion,
 }: {
   plugin: PluginListItem;
-  showHeading?: boolean;
-  /** Removes the nested card when this content lives in a detail-stack row. */
+  /** Removes the nested background when this content lives in a detail row. */
   embedded?: boolean;
-  /** Includes release identity in the same fact table on a detail page. */
+  /** Includes current release identity in the same fact table. */
   releaseVersion?: string;
 }) {
-  const queryClient = useQueryClient();
-  const [renderedAt] = useState(() => Date.now());
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
-  const sourceQuery = usePluginSource(plugin.id, { enabled: detailsOpen });
-
-  const checkNow = useMutation({
-    mutationFn: () => checkPluginUpdates(fetch, { id: plugin.id }),
-    onSuccess: () => invalidatePluginList({ queryClient }),
-    onError: (error) => {
-      appToast.error("The update check failed", {
-        description: pluginAdminErrorMessage(error),
-      });
-    },
-  });
+  const sourceQuery = usePluginSource(plugin.id, { enabled: true });
 
   if (!pluginHasUpdateSurfaces(plugin)) return null;
 
-  const state = plugin.updateState;
   const source = sourceQuery.data ?? null;
   const blockedVersion =
-    state.availableVersion === null ? state.blockedVersion : null;
-  const lastChecked =
-    state.lastCheckAt !== null
-      ? `Last checked ${formatRelativeTime({
-          timestamp: state.lastCheckAt,
-          now: renderedAt,
-        })}`
-      : "Never checked";
-  const checkUpdatesLabel = `Check for updates · ${lastChecked}`;
+    plugin.updateState.availableVersion === null
+      ? plugin.updateState.blockedVersion
+      : null;
 
   return (
-    <div className="space-y-3">
-      {showHeading ? (
-        <h3 className="text-sm font-semibold text-foreground">
-          Updates &amp; source
-        </h3>
-      ) : null}
+    <div>
       <ResourceDetailFacts className={embedded ? undefined : "bg-card"}>
         {releaseVersion ? (
-          <ResourceDetailFact label="Version" mono>
+          <ResourceDetailFact label="Current version" mono>
             {releaseVersion}
           </ResourceDetailFact>
         ) : null}
-        <ResourceDetailFact
-          label="Source"
-          mono
-          action={
-            <div className="flex items-center gap-1">
-              <ResourceActionButton
-                label={
-                  detailsOpen ? "Hide source details" : "Show source details"
-                }
-                icon="Info"
-                onClick={() => setDetailsOpen((current) => !current)}
-              />
-              <ResourceActionButton
-                label="Check for updates now"
-                tooltipLabel={checkUpdatesLabel}
-                icon="RotateCcw"
-                loading={checkNow.isPending}
-                disabled={checkNow.isPending}
-                onClick={() => checkNow.mutate()}
-              />
-            </div>
-          }
-          details={
-            detailsOpen ? (
-              <div
-                className="rounded-md border border-border-seam bg-muted/30 px-3 py-2.5"
-                data-testid="plugin-source-details"
-              >
-                {sourceQuery.isPending ? (
-                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Icon name="Loading" className="size-3.5 animate-spin" />
-                    Loading source details…
-                  </p>
-                ) : source === null ? (
-                  <p className="text-xs text-muted-foreground">
-                    Source details are unavailable.
-                  </p>
-                ) : (
-                  <KeyValueGrid
-                    entries={[
-                      { key: "Requested", value: source.requested },
-                      {
-                        key: "Resolved",
-                        value:
-                          source.integrity !== null
-                            ? `${source.resolved} · ${source.integrity}`
-                            : source.resolved,
-                      },
-                      ...(source.registry !== null
-                        ? [{ key: "Registry", value: source.registry }]
-                        : []),
-                      ...(source.engines.bb !== null ||
-                      source.engines.bbPluginSdk !== null
-                        ? [
-                            {
-                              key: "Requires",
-                              value: [
-                                source.engines.bb !== null
-                                  ? `bb ${source.engines.bb}`
-                                  : null,
-                                source.engines.bbPluginSdk !== null
-                                  ? `sdk ${source.engines.bbPluginSdk}`
-                                  : null,
-                              ]
-                                .filter((part): part is string => part !== null)
-                                .join(" · "),
-                            },
-                          ]
-                        : []),
-                      ...(source.installedAt !== null
-                        ? [
-                            {
-                              key: "Installed",
-                              value: formatAbsoluteDate(source.installedAt),
-                              mono: false,
-                            },
-                          ]
-                        : []),
-                      ...(source.history.length > 0
-                        ? [
-                            {
-                              key: "History",
-                              value: source.history
-                                .map((entry) => entry.version)
-                                .join(" ← "),
-                            },
-                          ]
-                        : []),
-                    ]}
-                  />
-                )}
-              </div>
-            ) : undefined
-          }
-        >
-          {plugin.sourceDisplay}
-        </ResourceDetailFact>
+        {source?.installedAt !== null && source?.installedAt !== undefined ? (
+          <ResourceDetailFact label="Installed">
+            {formatAbsoluteDate(source.installedAt)}
+          </ResourceDetailFact>
+        ) : null}
         {blockedVersion !== null ? (
           <ResourceDetailFact
             label="Compatibility"

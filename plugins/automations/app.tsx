@@ -50,6 +50,7 @@ import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-poin
 import {
   ResourceBrowseGrid,
   ResourceCollectionPage,
+  ResourceCollectionViewport,
   ResourceCreateButton,
   ResourceListPanel,
   ResourceListState,
@@ -483,11 +484,11 @@ function automationProjectLabel(
   project: OverviewEntry["project"] | null | undefined,
 ): string {
   if (project == null) return "Workspace";
-  return project.id === PERSONAL_PROJECT_ID ? "Personal" : project.name;
+  return project.id === PERSONAL_PROJECT_ID ? "Local" : project.name;
 }
 
 function automationProjectContextLabel(projectLabel: string): string {
-  return projectLabel === "Personal" ? "Personal" : `Project ${projectLabel}`;
+  return projectLabel;
 }
 
 function automationProjectFilterId(
@@ -596,11 +597,15 @@ function OverviewRow({
       description={
         <ResourceMeta
           items={[
-            triggerLabel,
-            ...(lifecycleLocked ? [lifecycleLabel] : []),
             <ResourceLocationMeta
               label={automationProjectContextLabel(projectLabel)}
+              icon={projectLabel === "Local" ? "Laptop" : "Folder"}
             />,
+            <span className="inline-flex items-center gap-1.5">
+              <Icon name="Clock" className="size-3.5" aria-hidden />
+              {triggerLabel}
+            </span>,
+            lifecycleLabel,
           ]}
         />
       }
@@ -820,61 +825,69 @@ function OverviewView({
       }
     >
       {activeMode === "browse" ? (
-        <ResourceBrowseGrid>
-          {AUTOMATION_CREATE_TEMPLATES.map((template) => (
-            <ResourceTemplateBrowseCard
-              key={template.label}
-              title={template.label}
-              description={template.description}
-              onUse={() => createViaChat(template.prompt)}
-            />
-          ))}
-        </ResourceBrowseGrid>
+        <ResourceCollectionViewport contentClassName="space-y-3">
+          <ResourceBrowseGrid>
+            {AUTOMATION_CREATE_TEMPLATES.map((template) => (
+              <ResourceTemplateBrowseCard
+                key={template.label}
+                title={template.label}
+                description={template.description}
+                onUse={() => createViaChat(template.prompt)}
+              />
+            ))}
+          </ResourceBrowseGrid>
+        </ResourceCollectionViewport>
       ) : (
-        <div id="automations-installed-results" className="space-y-3">
-          <ResourceToolbar
-            searchValue={query}
-            searchPlaceholder="Search automations"
-            onSearchChange={setQuery}
-            controls={
-              <>
-                <ResourceMultiSelectMenu
-                  label="Projects"
-                  icon="Layers"
-                  selectedValues={projectFilters}
-                  options={projectOptions}
-                  onChange={(values) =>
-                    setProjectFilters(values as AutomationProjectFilter[])
-                  }
-                />
-                <ResourceSortMenu
-                  value={sortMode}
-                  direction={sortDirection}
-                  options={[
-                    {
-                      id: "project",
-                      label: "Project",
-                      disabled: projectBucketCount <= 1,
-                    },
-                    { id: "alpha", label: "Automation name" },
-                  ]}
-                  onChange={handleSortChange}
-                />
-              </>
-            }
-          />
-          {body}
-          {error === null && entries !== null && visibleEntries.length > 0 ? (
-            <ResourcePagination
-              page={installedPagination.page}
-              pageSize={installedPagination.pageSize}
-              total={installedPagination.total}
-              visibleCount={installedPagination.visibleCount}
-              onPageChange={installedPagination.setPage}
-              scrollTargetId="automations-installed-results"
+        <ResourceCollectionViewport
+          scrollId="automations-installed-results"
+          toolbar={
+            <ResourceToolbar
+              searchValue={query}
+              searchPlaceholder="Search automations"
+              onSearchChange={setQuery}
+              controls={
+                <>
+                  <ResourceMultiSelectMenu
+                    label="Projects"
+                    icon="Layers"
+                    selectedValues={projectFilters}
+                    options={projectOptions}
+                    onChange={(values) =>
+                      setProjectFilters(values as AutomationProjectFilter[])
+                    }
+                  />
+                  <ResourceSortMenu
+                    value={sortMode}
+                    direction={sortDirection}
+                    options={[
+                      {
+                        id: "project",
+                        label: "Project",
+                        disabled: projectBucketCount <= 1,
+                      },
+                      { id: "alpha", label: "Automation name" },
+                    ]}
+                    onChange={handleSortChange}
+                  />
+                </>
+              }
             />
-          ) : null}
-        </div>
+          }
+          footer={
+            installedPagination.total > installedPagination.pageSize ? (
+              <ResourcePagination
+                page={installedPagination.page}
+                pageSize={installedPagination.pageSize}
+                total={installedPagination.total}
+                visibleCount={installedPagination.visibleCount}
+                onPageChange={installedPagination.setPage}
+                scrollTargetId="automations-installed-results"
+              />
+            ) : undefined
+          }
+        >
+          {body}
+        </ResourceCollectionViewport>
       )}
     </ResourceCollectionPage>
   );
@@ -1004,7 +1017,7 @@ function DetailView({
     overviewEntry !== undefined
       ? automationProjectLabel(overviewEntry.project)
       : route.projectId === PERSONAL_PROJECT_ID
-        ? "Personal"
+        ? "Local"
         : route.projectId;
 
   return (

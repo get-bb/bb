@@ -1,5 +1,4 @@
 import {
-  Fragment,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type Ref,
@@ -11,6 +10,7 @@ import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
+import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-list";
 import {
   SidebarInset,
   SidebarProvider,
@@ -20,6 +20,7 @@ import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
+import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -58,18 +59,24 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getAutomationsRoutePath,
+  getAutomationDetailRoutePath,
   getLegacyProjectComposeRoutePath,
   getPluginsRoutePath,
   getProjectSettingsRoutePath,
+  getRegistrySkillsRoutePath,
   getRootComposeRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
   TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -96,6 +103,164 @@ const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;
 const SIDEBAR_DEFAULT_WIDTH = 320;
+
+export interface ToolsBreadcrumbSegment {
+  label: string;
+  to?: string;
+}
+
+function routeResourceLabel(value: string | undefined, fallback: string) {
+  if (!value) return fallback;
+  let decoded = value;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    // React Router may already have decoded the segment; use it as-is.
+  }
+  const segments = decoded.split("/").filter(Boolean);
+  return segments.at(-1) ?? fallback;
+}
+
+export function resolveToolsBreadcrumbs(
+  pathname: string,
+  search = "",
+  resourceLabel?: string | null,
+): ToolsBreadcrumbSegment[] | null {
+  const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
+  const pluginsCrumb = { label: "Plugins", to: getPluginsRoutePath() };
+  const automationsCrumb = {
+    label: "Automations",
+    to: getAutomationsRoutePath(),
+  };
+  const installedSkillsCrumb = {
+    label: "Installed",
+    to: getSkillsRoutePath(),
+  };
+  const browseSkillsCrumb = {
+    label: "Browse",
+    to: getRegistrySkillsRoutePath(),
+  };
+  const installedPluginsCrumb = {
+    label: "Installed",
+    to: getPluginsRoutePath(),
+  };
+  const installedAutomationsCrumb = {
+    label: "Installed",
+    to: getAutomationsRoutePath(),
+  };
+  const registrySkillDetail = matchPath(
+    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+    pathname,
+  );
+  if (registrySkillDetail) {
+    return [
+      skillsCrumb,
+      browseSkillsCrumb,
+      {
+        label:
+          resourceLabel ??
+          routeResourceLabel(
+            registrySkillDetail.params.registrySkillId,
+            "Skill",
+          ),
+      },
+    ];
+  }
+  const installedSkillDetail = matchPath(
+    TOOLS_SKILL_DETAIL_ROUTE_PATH,
+    pathname,
+  );
+  if (installedSkillDetail) {
+    return [
+      skillsCrumb,
+      installedSkillsCrumb,
+      {
+        label:
+          resourceLabel ??
+          routeResourceLabel(installedSkillDetail.params.skillId, "Skill"),
+      },
+    ];
+  }
+  const isPluginBrowse =
+    pathname === TOOLS_PLUGIN_BROWSE_ROUTE_PATH ||
+    (pathname === getPluginsRoutePath() &&
+      new URLSearchParams(search).get("view") === "browse");
+  if (isPluginBrowse) return [pluginsCrumb, { label: "Browse" }];
+  const pluginDetail = matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, pathname);
+  if (pluginDetail) {
+    return [
+      pluginsCrumb,
+      installedPluginsCrumb,
+      {
+        label:
+          resourceLabel ??
+          routeResourceLabel(pluginDetail.params.pluginId, "Plugin"),
+      },
+    ];
+  }
+  const automationEdit = matchPath(TOOLS_AUTOMATION_EDIT_ROUTE_PATH, pathname);
+  if (automationEdit) {
+    const automationLabel = routeResourceLabel(
+      automationEdit.params.automationId,
+      "Automation",
+    );
+    const automationDetailPath =
+      automationEdit.params.projectId && automationEdit.params.automationId
+        ? getAutomationDetailRoutePath({
+            projectId: automationEdit.params.projectId,
+            automationId: automationEdit.params.automationId,
+          })
+        : getAutomationsRoutePath();
+    return [
+      automationsCrumb,
+      installedAutomationsCrumb,
+      { label: automationLabel, to: automationDetailPath },
+      { label: "Edit" },
+    ];
+  }
+  const automationDetail = matchPath(
+    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+    pathname,
+  );
+  if (automationDetail) {
+    return [
+      automationsCrumb,
+      installedAutomationsCrumb,
+      {
+        label:
+          resourceLabel ??
+          routeResourceLabel(
+            automationDetail.params.automationId,
+            "Automation",
+          ),
+      },
+    ];
+  }
+  const isAutomationBrowse =
+    pathname === TOOLS_AUTOMATION_BROWSE_ROUTE_PATH ||
+    (pathname === getAutomationsRoutePath() &&
+      new URLSearchParams(search).get("view") === "browse");
+  if (isAutomationBrowse) return [automationsCrumb, { label: "Browse" }];
+  const isSkillsBrowse =
+    pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH ||
+    (pathname === getSkillsRoutePath() &&
+      new URLSearchParams(search).get("view") === "browse");
+  if (isSkillsBrowse) return [skillsCrumb, { label: "Browse" }];
+  if (
+    pathname === "/tools" ||
+    pathname === getSkillsRoutePath() ||
+    pathname === "/skills"
+  ) {
+    return [skillsCrumb, { label: "Installed" }];
+  }
+  if (pathname === getPluginsRoutePath()) {
+    return [pluginsCrumb, { label: "Installed" }];
+  }
+  if (pathname === getAutomationsRoutePath() || pathname === "/automations") {
+    return [automationsCrumb, { label: "Installed" }];
+  }
+  return null;
+}
 
 function clampSidebarWidth(value: number) {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value));
@@ -347,42 +512,48 @@ function AppHeader({
   ) : hasCenterContent ? (
     <div className="min-w-0 flex-1">
       {headerBreadcrumbs ? (
-        <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
-          {headerBreadcrumbs.map((segment, index) => {
-            const isLast = index === headerBreadcrumbs.length - 1;
-            return (
-              <Fragment key={`${segment.label}-${index}`}>
-                {index > 0 ? (
-                  <Icon
-                    name="ChevronRight"
-                    className="size-3.5 shrink-0 text-subtle-foreground"
-                  />
-                ) : null}
-                {!isLast && segment.to ? (
-                  <Link
-                    to={segment.to}
-                    className={cn(
-                      "-mx-2 inline-flex min-h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                    )}
-                  >
-                    {segment.label}
-                  </Link>
-                ) : (
-                  <span
-                    className={
-                      isLast
-                        ? "min-w-0 truncate"
-                        : "shrink-0 text-muted-foreground"
-                    }
-                  >
-                    {segment.label}
-                  </span>
-                )}
-              </Fragment>
-            );
-          })}
-        </p>
+        <nav aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+            {headerBreadcrumbs.map((segment, index) => {
+              const isLast = index === headerBreadcrumbs.length - 1;
+              return (
+                <li
+                  key={`${segment.label}-${index}`}
+                  className="flex min-w-0 items-center gap-1.5"
+                >
+                  {index > 0 ? (
+                    <Icon
+                      name="ChevronRight"
+                      className="size-3.5 shrink-0 text-subtle-foreground"
+                    />
+                  ) : null}
+                  {!isLast && segment.to ? (
+                    <Link
+                      to={segment.to}
+                      className={cn(
+                        "-mx-2 inline-flex min-h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                      )}
+                    >
+                      {segment.label}
+                    </Link>
+                  ) : (
+                    <span
+                      aria-current={isLast ? "page" : undefined}
+                      className={
+                        isLast
+                          ? "min-w-0 truncate"
+                          : "shrink-0 text-muted-foreground"
+                      }
+                    >
+                      {segment.label}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
       ) : null}
       {headerTitle ? (
         <p className="truncate text-sm font-semibold">{headerTitle}</p>
@@ -448,8 +619,42 @@ export function AppLayout({ children }: AppLayoutProps) {
   const contentShellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
+  const [resourceRouteLabel, setResourceRouteLabel] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    setResourceRouteLabel(null);
+    function handleResourceRouteLabel(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail;
+      if (
+        typeof detail !== "object" ||
+        detail === null ||
+        !("label" in detail) ||
+        (typeof detail.label !== "string" && detail.label !== null)
+      ) {
+        return;
+      }
+      setResourceRouteLabel(detail.label);
+    }
+    window.addEventListener(
+      RESOURCE_ROUTE_LABEL_EVENT,
+      handleResourceRouteLabel,
+    );
+    return () => {
+      window.removeEventListener(
+        RESOURCE_ROUTE_LABEL_EVENT,
+        handleResourceRouteLabel,
+      );
+    };
+  }, [location.pathname]);
   const navigate = useNavigate();
-  const { appRoutePath, settingsRoutePath } = useAppSettingsRouteMemory();
+  const {
+    appRoutePath,
+    settingsRoutePath,
+    toolsBackRoutePath,
+    toolsRoutePath,
+  } = useAppSettingsRouteMemory();
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {
@@ -510,6 +715,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
+  const isGlobalToolsView =
+    location.pathname === TOOLS_ROUTE_PATH ||
+    matchPath(`${TOOLS_ROUTE_PATH}/*`, location.pathname) !== null;
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -626,51 +834,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
     location.pathname,
   );
-  const toolsBreadcrumbs = (() => {
-    const skillsCrumb = { label: "Skills", to: getSkillsRoutePath() };
-    const pluginsCrumb = { label: "Plugins", to: getPluginsRoutePath() };
-    const automationsCrumb = {
-      label: "Automations",
-      to: getAutomationsRoutePath(),
-    };
-    if (toolsSkillDetailMatch) {
-      return [skillsCrumb, { label: "Skill" }];
-    }
-    if (toolsRegistrySkillDetailMatch) {
-      return [
-        skillsCrumb,
-        {
-          label:
-            toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh",
-        },
-      ];
-    }
-    if (toolsPluginDetailMatch) {
-      return [pluginsCrumb, { label: "Plugin" }];
-    }
-    const automationMatch =
-      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
-    if (automationMatch) {
-      return [automationsCrumb, { label: "Automation" }];
-    }
-    if (location.pathname === getPluginsRoutePath()) {
-      return [{ label: "Plugins" }];
-    }
-    if (
-      location.pathname === getAutomationsRoutePath() ||
-      location.pathname === "/automations"
-    ) {
-      return [{ label: "Automations" }];
-    }
-    if (
-      location.pathname === "/tools" ||
-      location.pathname === getSkillsRoutePath() ||
-      location.pathname === "/skills"
-    ) {
-      return [{ label: "Skills" }];
-    }
-    return null;
-  })();
+  const toolsBreadcrumbs = resolveToolsBreadcrumbs(
+    location.pathname,
+    location.search,
+    resourceRouteLabel,
+  );
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
@@ -689,7 +857,9 @@ export function AppLayout({ children }: AppLayoutProps) {
               subtitle: undefined,
               breadcrumbs: [
                 { label: "Threads", to: getRootComposeRoutePath() },
-                ...(archivedSectionName ? [{ label: archivedSectionName }] : []),
+                ...(archivedSectionName
+                  ? [{ label: archivedSectionName }]
+                  : []),
                 { label: "Archived" },
               ],
             }
@@ -883,12 +1053,20 @@ export function AppLayout({ children }: AppLayoutProps) {
                 showTopReserve={true}
                 appRoutePath={appRoutePath}
               />
+            ) : isGlobalToolsView ? (
+              <ToolsSidebar
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                showTopReserve={true}
+                appRoutePath={toolsBackRoutePath}
+              />
             ) : (
               <AppSidebar
                 onResizeMouseDown={handleResizeMouseDown}
                 isResizing={isSidebarResizing}
                 showTopReserve={true}
                 settingsRoutePath={settingsRoutePath}
+                toolsRoutePath={toolsRoutePath}
               />
             )}
             <SidebarInset>

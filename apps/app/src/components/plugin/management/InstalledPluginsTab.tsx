@@ -15,7 +15,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal } from "./plugin-status";
-import { PluginRowSignalView } from "./PluginRowSignal";
+import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
 
@@ -96,23 +96,29 @@ export function InstalledPluginRow({
   // Reflect the in-flight target immediately; the invalidated list settles it.
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
+  const statusSignal = signal?.kind === "status" ? signal : null;
+  const updateSignal = signal?.kind === "update" ? signal : null;
 
   const openDetail = () =>
     navigate(getPluginDetailRoutePath({ pluginId: plugin.id }));
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow
-        leading={<PluginLogo plugin={plugin} className="size-6 shrink-0" />}
+        leading={
+          <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
+            <PluginLogo plugin={plugin} className="size-6 shrink-0" />
+          </PluginSignalLogo>
+        }
         title={plugin.name ?? plugin.id}
         titleMeta={plugin.provenance === "builtin" ? "Built-in" : undefined}
         description={plugin.description}
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
         trailingMeta={
-          signal !== null ? (
-            <span data-testid={`plugin-${signal.kind}-signal-${plugin.id}`}>
+          updateSignal !== null ? (
+            <span data-testid={`plugin-update-signal-${plugin.id}`}>
               <PluginRowSignalView
-                signal={signal}
+                signal={updateSignal}
                 onUpdateClick={onUpdateClick}
                 onStatusClick={openDetail}
               />

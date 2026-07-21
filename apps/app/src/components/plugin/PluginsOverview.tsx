@@ -7,6 +7,7 @@ import {
 } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceCollectionPage,
+  ResourceCollectionViewport,
   ResourceListState,
   ResourceSortMenu,
   ResourceToolbar,
@@ -166,25 +167,42 @@ export function PluginsOverview() {
     );
   } else {
     content = (
-      <div id="plugins-installed-results" className="space-y-3">
-        <ResourceToolbar
-          searchValue={installedQuery}
-          searchPlaceholder="Search installed plugins"
-          onSearchChange={setInstalledQuery}
-          containedControls
-          controls={
-            <ResourceSortMenu
-              value="alpha"
-              direction={installedSortDirection}
-              options={[{ id: "alpha", label: "Plugin name" }]}
-              onChange={() =>
-                setInstalledSortDirection((current) =>
-                  current === "asc" ? "desc" : "asc",
-                )
-              }
+      <ResourceCollectionViewport
+        scrollId="plugins-installed-results"
+        toolbar={
+          <ResourceToolbar
+            searchValue={installedQuery}
+            searchPlaceholder="Search installed plugins"
+            onSearchChange={setInstalledQuery}
+            containedControls
+            controls={
+              <ResourceSortMenu
+                value="alpha"
+                direction={installedSortDirection}
+                options={[{ id: "alpha", label: "Plugin name" }]}
+                onChange={() =>
+                  setInstalledSortDirection((current) =>
+                    current === "asc" ? "desc" : "asc",
+                  )
+                }
+              />
+            }
+          />
+        }
+        footer={
+          installedPagination.total > installedPagination.pageSize ? (
+            <ResourcePagination
+              page={installedPagination.page}
+              pageSize={installedPagination.pageSize}
+              total={installedPagination.total}
+              visibleCount={installedPagination.visibleCount}
+              onPageChange={installedPagination.setPage}
+              scrollTargetId="plugins-installed-results"
             />
-          }
-        />
+          ) : undefined
+        }
+        contentClassName="space-y-3"
+      >
         {listQuery.isError ? (
           <ResourceListState
             state="error"
@@ -201,25 +219,13 @@ export function PluginsOverview() {
         ) : (
           <InstalledPluginsTab plugins={installedPagination.items} />
         )}
-        {!listQuery.isError &&
-        !(listQuery.isFetching && listQuery.data === undefined) &&
-        visiblePlugins.length > 0 ? (
-          <ResourcePagination
-            page={installedPagination.page}
-            pageSize={installedPagination.pageSize}
-            total={installedPagination.total}
-            visibleCount={installedPagination.visibleCount}
-            onPageChange={installedPagination.setPage}
-            scrollTargetId="plugins-installed-results"
-          />
-        ) : null}
         {!installationEnabled && systemConfig.data !== undefined ? (
           <p className="px-1 text-2xs text-subtle-foreground">
             Browsing and installation are off. Turn on Plugins in Settings →
             Experiments to add plugins.
           </p>
         ) : null}
-      </div>
+      </ResourceCollectionViewport>
     );
   }
 

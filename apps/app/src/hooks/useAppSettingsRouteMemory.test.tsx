@@ -7,7 +7,12 @@ import { useAppSettingsRouteMemory } from "./useAppSettingsRouteMemory";
 
 function RouteMemoryTestSurface() {
   const location = useLocation();
-  const { appRoutePath, settingsRoutePath } = useAppSettingsRouteMemory();
+  const {
+    appRoutePath,
+    settingsRoutePath,
+    toolsBackRoutePath,
+    toolsRoutePath,
+  } = useAppSettingsRouteMemory();
 
   return (
     <>
@@ -18,6 +23,11 @@ function RouteMemoryTestSurface() {
       </div>
       <Link to={appRoutePath}>App</Link>
       <Link to={settingsRoutePath}>Settings</Link>
+      <Link to={toolsRoutePath}>Tools</Link>
+      <Link to={toolsBackRoutePath}>Tools back</Link>
+      <Link to="/tools/plugins/ui-patterns?tab=settings#source">
+        Plugin detail
+      </Link>
       <Link to="/settings/providers/codex?tab=models#preferred">
         Codex settings
       </Link>
@@ -55,6 +65,42 @@ describe("useAppSettingsRouteMemory", () => {
     fireEvent.click(screen.getByRole("link", { name: "Settings" }));
     expect(screen.getByTestId("location").textContent).toBe(
       "/settings/providers/codex?tab=models#preferred",
+    );
+  });
+
+  it("keeps a Tools sub-route while Back to app returns to core app context", () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/projects/proj_one/threads/thr_one?message=12#event-12",
+        ]}
+      >
+        <RouteMemoryTestSurface />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Tools" }));
+    expect(screen.getByTestId("location").textContent).toBe("/tools/skills");
+
+    fireEvent.click(screen.getByRole("link", { name: "Plugin detail" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/tools/plugins/ui-patterns?tab=settings#source",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Tools back" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/projects/proj_one/threads/thr_one?message=12#event-12",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Tools" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/tools/plugins/ui-patterns?tab=settings#source",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("link", { name: "App" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/tools/plugins/ui-patterns?tab=settings#source",
     );
   });
 });

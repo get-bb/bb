@@ -27,6 +27,7 @@ import {
   ResourceDetailFacts,
   ResourceDetailListItem,
   ResourceListState,
+  useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -42,9 +43,10 @@ import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginUpdateBanner,
-  PluginUpdatesSourceCard,
+  PluginReleaseFacts,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
+import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import {
   pluginRuntimeStatusPresentation,
   type PluginRuntimeStatusPresentation,
@@ -65,10 +67,13 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  getAutomationsRoutePath,
   getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
+import {
+  resolveToolsSection,
+  type ToolsSectionId,
+} from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
 
@@ -78,22 +83,10 @@ const WORKER_POOL_OPTIONS = {
 };
 const HIGHLIGHTER_OPTIONS = {};
 
-type ToolsSectionId = "skills" | "plugins" | "automations";
-
-function getToolsSection(pathname: string): ToolsSectionId {
-  if (pathname.startsWith(getPluginsRoutePath())) {
-    return "plugins";
-  }
-  if (pathname.startsWith(getAutomationsRoutePath())) {
-    return "automations";
-  }
-  return "skills";
-}
-
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   if (plugin.provenance === "builtin") return "Built-in";
   if (plugin.provenance === "catalog") return "BB Official";
-  if (plugin.source.startsWith("path:")) return "Local plugin";
+  if (plugin.source.startsWith("path:")) return null;
   return "Direct install";
 }
 
@@ -143,7 +136,7 @@ function ToolsScrollPage({
         <div ref={topSentinelRef} aria-hidden className="h-0" />
         <div
           className={cn(
-            "mx-auto w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
+            "mx-auto box-border h-full w-full space-y-4 px-4 pb-4 pt-3 md:px-5 md:pt-4",
             maxWidthClassName,
           )}
         >
@@ -283,7 +276,10 @@ function PluginActivityState({
   );
 }
 
-function pluginIncludes(plugin: PluginListItem): ReactNode[] {
+function pluginIncludes(
+  plugin: PluginListItem,
+  hasSettings: boolean,
+): ReactNode[] {
   return [
     ...(plugin.app.hasApp
       ? [
@@ -301,35 +297,59 @@ function pluginIncludes(plugin: PluginListItem): ReactNode[] {
             key="cli"
             leading={<Icon name="Terminal" className="size-4" aria-hidden />}
           >
-            <span className="block font-mono">bb {plugin.cliCommand.name}</span>
+            <span className="block">Command</span>
             <span className="block text-xs text-muted-foreground">
-              {plugin.cliCommand.summary}
+              <span className="font-mono">bb {plugin.cliCommand.name}</span>
+              {plugin.cliCommand.summary.length > 0
+                ? ` — ${plugin.cliCommand.summary}`
+                : ""}
             </span>
           </ResourceDetailListItem>,
         ]
       : []),
-    ...plugin.services.map((service) => (
-      <ResourceDetailListItem
-        key={`service:${service.name}`}
-        leading={<Icon name="Workflow" className="size-4" aria-hidden />}
-      >
-        <span className="block">{service.name}</span>
-        <span className="block text-xs text-muted-foreground">
-          Background service
-        </span>
-      </ResourceDetailListItem>
-    )),
-    ...plugin.schedules.map((schedule) => (
-      <ResourceDetailListItem
-        key={`schedule:${schedule.name}`}
-        leading={<Icon name="TimeSchedule" className="size-4" aria-hidden />}
-      >
-        <span className="block">{schedule.name}</span>
-        <span className="block font-mono text-xs text-muted-foreground">
-          {schedule.cron}
-        </span>
-      </ResourceDetailListItem>
-    )),
+    ...(hasSettings
+      ? [
+          <ResourceDetailListItem
+            key="settings"
+            leading={<Icon name="Settings" className="size-4" aria-hidden />}
+          >
+            <span className="block">Settings</span>
+            <span className="block text-xs text-muted-foreground">
+              Configurable behavior
+            </span>
+          </ResourceDetailListItem>,
+        ]
+      : []),
+    ...(plugin.services.length > 0
+      ? [
+          <ResourceDetailListItem
+            key="services"
+            leading={<Icon name="Workflow" className="size-4" aria-hidden />}
+          >
+            <span className="block">Services</span>
+            <span className="block text-xs text-muted-foreground">
+              {plugin.services.length} background{" "}
+              {plugin.services.length === 1 ? "service" : "services"}
+            </span>
+          </ResourceDetailListItem>,
+        ]
+      : []),
+    ...(plugin.schedules.length > 0
+      ? [
+          <ResourceDetailListItem
+            key="schedules"
+            leading={
+              <Icon name="TimeSchedule" className="size-4" aria-hidden />
+            }
+          >
+            <span className="block">Schedules</span>
+            <span className="block text-xs text-muted-foreground">
+              {plugin.schedules.length} recurring{" "}
+              {plugin.schedules.length === 1 ? "schedule" : "schedules"}
+            </span>
+          </ResourceDetailListItem>,
+        ]
+      : []),
   ];
 }
 
@@ -415,8 +435,8 @@ function PluginActivity({
               {schedule.lastError}
             </span>
           ) : (
-            <span className="block font-mono text-xs text-muted-foreground">
-              {schedule.cron}
+            <span className="block text-xs text-muted-foreground">
+              Next {formatAbsoluteDate(schedule.nextRunAt)}
             </span>
           )}
         </ResourceDetailListItem>
@@ -508,7 +528,6 @@ export function PluginDetail({
   pending,
   openSourceDisabled,
   onToggle,
-  onReload,
   onEdit,
   onOpenSource,
   onDelete,
@@ -518,7 +537,6 @@ export function PluginDetail({
   pending: boolean;
   openSourceDisabled: boolean;
   onToggle: (plugin: PluginListItem) => void;
-  onReload: (plugin: PluginListItem) => void;
   onEdit: (plugin: PluginListItem) => void;
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
@@ -540,7 +558,7 @@ export function PluginDetail({
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
-  const includes = pluginIncludes(plugin);
+  const includes = pluginIncludes(plugin, hasSettings);
   const hasActivity =
     (plugin.enabled && runtimeStatus !== null) ||
     plugin.handlerStats.errorCount > 0 ||
@@ -553,11 +571,24 @@ export function PluginDetail({
     <PluginDetailView
       leading={<PluginListLogo plugin={plugin} />}
       title={plugin.name ?? plugin.id}
-      titleMeta={sourceLabel}
+      description={plugin.description}
       metadata={
         <span className="block break-all font-mono">{plugin.rootDir}</span>
       }
-      description={plugin.description}
+      provenance={
+        sourceLabel
+          ? {
+              label: sourceLabel,
+              tooltip:
+                plugin.provenance === "builtin"
+                  ? "Ships with bb"
+                  : plugin.sourceDisplay,
+              accessibleLabel: `${plugin.name ?? plugin.id}: ${sourceLabel}`,
+              appearance:
+                plugin.provenance === "builtin" ? "recessed" : "default",
+            }
+          : undefined
+      }
       enabled={plugin.enabled}
       lifecycleDisabled={pending}
       onEnabledChange={() => onToggle(plugin)}
@@ -581,12 +612,6 @@ export function PluginDetail({
               },
             ]
           : []),
-        {
-          label: "Reload",
-          icon: "ArrowReloadHorizontal" as const,
-          disabled: pending,
-          onSelect: () => onReload(plugin),
-        },
         ...(canRemove
           ? [
               { kind: "separator" as const },
@@ -610,15 +635,14 @@ export function PluginDetail({
                 <PluginUpdateBanner plugin={plugin} />
               ) : null}
               {hasUpdateManagement ? (
-                <PluginUpdatesSourceCard
+                <PluginReleaseFacts
                   plugin={plugin}
-                  showHeading={false}
                   embedded
                   releaseVersion={plugin.version}
                 />
               ) : (
                 <ResourceDetailFacts>
-                  <ResourceDetailFact label="Version" mono>
+                  <ResourceDetailFact label="Current version" mono>
                     {plugin.version}
                   </ResourceDetailFact>
                   <ResourceDetailFact label="Updates">
@@ -656,7 +680,7 @@ export function PluginDetail({
         hasActivity
           ? [
               {
-                label: "Activity",
+                label: "Runtime activity",
                 content: (
                   <PluginActivity
                     plugin={plugin}
@@ -711,22 +735,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
-  const pluginReload = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      const response = await fetch(
-        `/api/v1/plugins/reload?id=${encodeURIComponent(plugin.id)}`,
-        { method: "POST" },
-      );
-      if (!response.ok) throw new Error("Failed to reload plugin");
-    },
-    onSuccess: () => {
-      appToast.success("Plugin reloaded");
-      return listQuery.refetch();
-    },
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
-    },
-  });
   const pluginDelete = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
       const response = await fetch(
@@ -752,14 +760,13 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
     plugins.find((plugin) => plugin.id === pluginId) ?? null;
+  useResourceRouteLabel(selectedPlugin?.name ?? selectedPlugin?.id ?? null);
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
-      : pluginReload.isPending && pluginReload.variables
-        ? pluginReload.variables.id
-        : pluginDelete.isPending && pluginDelete.variables
-          ? pluginDelete.variables.id
-          : null;
+      : pluginDelete.isPending && pluginDelete.variables
+        ? pluginDelete.variables.id
+        : null;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
       navigate(getRootComposeRoutePath(), {
@@ -803,7 +810,6 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           }
           openSourceDisabled={!canOpenPreferredDirectoryTarget}
           onToggle={(target) => pluginToggle.mutate(target)}
-          onReload={(target) => pluginReload.mutate(target)}
           onEdit={handleEditPlugin}
           onOpenSource={handleOpenPluginSource}
           onDelete={setDeleteTarget}
@@ -843,7 +849,7 @@ export function ToolsView() {
   const { pluginId } = useParams<{
     pluginId?: string;
   }>();
-  const activeSection = getToolsSection(location.pathname);
+  const activeSection = resolveToolsSection(location.pathname);
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">

@@ -51,7 +51,6 @@ describe("PluginDetail official catalog lifecycle", () => {
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
-            onReload={() => {}}
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
@@ -79,7 +78,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     ).toBeTruthy();
   });
 
-  it("keeps Reload actionable for built-in plugins without exposing ownership actions", async () => {
+  it("shows built-in provenance with lifecycle controls and no ownership actions", async () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
@@ -97,7 +96,6 @@ describe("PluginDetail official catalog lifecycle", () => {
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
-            onReload={() => {}}
             onEdit={() => {}}
             onOpenSource={() => {}}
             onDelete={() => {}}
@@ -106,18 +104,18 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Automations actions" }),
-      { button: 0 },
+    const builtIn = screen.getByLabelText("Automations: Built-in");
+    expect(builtIn.className).toContain("bg-surface-recessed/75");
+    fireEvent.pointerMove(builtIn);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Ships with bb",
     );
+    expect(
+      screen.getByRole("switch", { name: "Disable Automations" }),
+    ).toBeTruthy();
 
     expect(
-      await screen.findByRole("menuitem", { name: "Reload" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Open source" })).toBeNull();
-    expect(
-      screen.queryByRole("menuitem", { name: /Remove|Uninstall/ }),
+      screen.queryByRole("button", { name: "Automations actions" }),
     ).toBeNull();
   });
 });

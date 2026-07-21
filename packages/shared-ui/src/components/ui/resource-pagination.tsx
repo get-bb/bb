@@ -86,9 +86,9 @@ function scrollToResults(scrollTargetId: string | undefined): void {
     return;
   }
   requestAnimationFrame(() => {
-    document.getElementById(scrollTargetId)?.scrollIntoView?.({
-      block: "start",
-    });
+    const target = document.getElementById(scrollTargetId);
+    if (target === null) return;
+    target.scrollTo?.({ top: 0, behavior: "instant" });
   });
 }
 

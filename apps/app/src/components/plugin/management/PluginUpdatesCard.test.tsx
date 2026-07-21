@@ -1,23 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { appToast } from "@/components/ui/app-toast.js";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
-  pluginListQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
-  PluginUpdatesSourceCard,
+  PluginReleaseFacts,
   pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
-
-interface RecordedRequest {
-  url: string;
-  init: RequestInit | undefined;
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -85,73 +78,8 @@ describe("pluginHasUpdateSurfaces", () => {
   });
 });
 
-describe("PluginUpdatesSourceCard check now", () => {
-  it("POSTs the per-plugin update check and refetches the list", async () => {
-    const requests: RecordedRequest[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        requests.push({ url, init });
-        if (url === "/api/v1/plugins/updates/check") {
-          return jsonResponse({
-            results: [
-              {
-                id: "linear",
-                outcome: "current",
-                installed: { version: "1.6.2", display: "1.6.2" },
-              },
-            ],
-          });
-        }
-        return jsonResponse({ error: "not found" }, 404);
-      }),
-    );
-
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
-    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Check for updates now" }),
-    );
-
-    await vi.waitFor(() => {
-      const post = requests.find((request) =>
-        request.url.endsWith("/updates/check"),
-      );
-      expect(post).toBeDefined();
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ id: "linear" });
-      expect(
-        queryClient.getQueryState(pluginListQueryKey(true))?.isInvalidated,
-      ).toBe(true);
-    });
-  });
-
-  it("toasts the server message when the check fails", async () => {
-    const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "registry unreachable" }, 422)),
-    );
-
-    const { wrapper } = createQueryClientTestHarness();
-    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Check for updates now" }),
-    );
-
-    await vi.waitFor(() => {
-      expect(errorToast).toHaveBeenCalledWith(
-        "The update check failed",
-        expect.objectContaining({ description: "registry unreachable" }),
-      );
-    });
-  });
-});
-
-describe("PluginUpdatesSourceCard source details", () => {
-  it("lazily fetches /source on expand and renders the resolved detail", async () => {
+describe("PluginReleaseFacts", () => {
+  it("shows current version and installation time without transport metadata", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/api/v1/plugins/linear/source") {
         return jsonResponse({
@@ -159,6 +87,7 @@ describe("PluginUpdatesSourceCard source details", () => {
           resolved: "1.6.2",
           integrity: "sha512-9f2c",
           engines: { bb: ">=0.14" },
+          installedAt: 1752200000000,
           history: [{ version: "1.6.2", activatedAt: 1752200000000 }],
         });
       }
@@ -167,21 +96,16 @@ describe("PluginUpdatesSourceCard source details", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<PluginUpdatesSourceCard plugin={plugin()} />, { wrapper });
+    render(<PluginReleaseFacts plugin={plugin()} releaseVersion="1.6.2" />, {
+      wrapper,
+    });
 
-    // Collapsed: no fetch yet (lazy).
-    expect(
-      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/source")),
-    ).toBe(false);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show source details" }),
-    );
-
-    expect(
-      await screen.findByText("npm:@bb-plugins/linear@^1.4.0"),
-    ).toBeTruthy();
-    expect(screen.getByText(/1\.6\.2 · sha512-9f2c/)).toBeTruthy();
+    expect(screen.getByText("Current version")).toBeTruthy();
+    expect(screen.getByText("1.6.2")).toBeTruthy();
+    expect(await screen.findByText("Installed")).toBeTruthy();
+    expect(screen.queryByText("Requested")).toBeNull();
+    expect(screen.queryByText("Resolved")).toBeNull();
+    expect(screen.queryByText(/npm:@bb-plugins/)).toBeNull();
   });
 
   it("surfaces a newer-but-incompatible release on the card, not the list", () => {
@@ -191,7 +115,7 @@ describe("PluginUpdatesSourceCard source details", () => {
     );
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginUpdatesSourceCard
+      <PluginReleaseFacts
         plugin={plugin({
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -216,7 +140,7 @@ describe("PluginUpdatesSourceCard source details", () => {
     );
     const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <PluginUpdatesSourceCard plugin={plugin({ provenance: "builtin" })} />,
+      <PluginReleaseFacts plugin={plugin({ provenance: "builtin" })} />,
       { wrapper },
     );
     expect(container.textContent).toBe("");

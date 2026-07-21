@@ -39,6 +39,7 @@ export type SkillDetailHeaderControl =
       label: string;
       tooltip: string;
       accessibleLabel?: string;
+      appearance?: "default" | "recessed";
     };
 
 export type SkillDetailContentState =
@@ -47,7 +48,7 @@ export type SkillDetailContentState =
   | { kind: "ready"; content: string };
 
 export interface SkillDetailViewProps {
-  leading: ReactNode;
+  leading?: ReactNode;
   title: string;
   path: string;
   pathHref?: string;
@@ -68,16 +69,20 @@ export function SkillInstallControl({
   installed,
   pending,
   onInstall,
+  presentation = "label",
 }: {
   skillName: string;
   installed: boolean;
   pending: boolean;
   onInstall: () => void;
+  presentation?: "label" | "icon";
 }) {
   if (installed) {
     return (
       <ResourceInstalledControl
         accessibleLabel={`Installed ${skillName} as a bb skill`}
+        presentation={presentation}
+        tooltip={`${skillName} is installed`}
       />
     );
   }
@@ -87,6 +92,8 @@ export function SkillInstallControl({
     <ResourceInstallControl
       accessibleLabel={`${label} ${skillName} as a bb skill`}
       pending={pending}
+      presentation={presentation}
+      tooltip={`${label} ${skillName}`}
       onAction={onInstall}
     />
   );
@@ -98,12 +105,14 @@ export function SkillBrowseInstallControl({
   pending,
   onInstall,
   onUninstall,
+  presentation = "label",
 }: {
   skillName: string;
   installed: boolean;
   pending: boolean;
   onInstall: () => void;
   onUninstall?: () => void;
+  presentation?: "label" | "icon";
 }) {
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
 
@@ -114,6 +123,7 @@ export function SkillBrowseInstallControl({
         installed={false}
         pending={pending}
         onInstall={onInstall}
+        presentation={presentation}
       />
     );
   }
@@ -127,6 +137,10 @@ export function SkillBrowseInstallControl({
             : `Installed ${skillName} as a bb skill`
         }
         pending={pending}
+        presentation={presentation}
+        tooltip={
+          onUninstall ? `Uninstall ${skillName}` : `${skillName} is installed`
+        }
         onAction={onUninstall ? () => setConfirmingUninstall(true) : undefined}
       />
       {onUninstall ? (
@@ -161,9 +175,19 @@ export function SkillBundledPluginMetadata({
   providerLabel: string;
 }) {
   return (
-    <span className="text-xs font-normal text-muted-foreground">
-      Bundled with {pluginName} ({providerLabel} plugin)
-    </span>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            tabIndex={0}
+            className="rounded-sm text-xs font-normal text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            Bundled with {pluginName} ({providerLabel} plugin)
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Bundled with plugin</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -171,16 +195,20 @@ function SkillStatusControl({
   label,
   tooltip,
   accessibleLabel,
+  appearance,
 }: {
   label: string;
   tooltip: string;
   accessibleLabel?: string;
+  appearance?: "default" | "recessed";
 }) {
   return (
     <ResourceLifecycleStatus
       label={label}
+      icon={label === "Imported" ? "Download" : undefined}
       accessibleLabel={accessibleLabel}
       tooltip={tooltip}
+      appearance={appearance}
     />
   );
 }
@@ -312,6 +340,7 @@ export function SkillDetailView({
         label={headerControl.label}
         tooltip={headerControl.tooltip}
         accessibleLabel={headerControl.accessibleLabel}
+        appearance={headerControl.appearance}
       />
     ) : undefined;
 
@@ -377,7 +406,7 @@ export function SkillDetailView({
                 surface="recessed"
                 className={
                   selectedFileIsMarkdown
-                    ? "h-[min(72dvh,52rem)] min-h-80 overflow-auto shadow-none"
+                    ? "min-h-80 shadow-none"
                     : "max-h-[60dvh] overflow-auto shadow-none"
                 }
               >

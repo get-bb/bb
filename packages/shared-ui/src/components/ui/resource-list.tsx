@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { Button, type ButtonProps } from "./button";
 import { EmptyStatePanel } from "./empty-state";
 import {
@@ -23,6 +23,36 @@ import {
 import { cn } from "../../lib/utils";
 
 export type ResourceStatusTone = "success" | "warning" | "error" | "muted";
+
+export const RESOURCE_ROUTE_LABEL_EVENT = "bb:resource-route-label";
+
+/**
+ * Supplies the loaded resource name to the host shell without coupling the
+ * shell to a particular resource API. The DOM event also crosses the frontend
+ * plugin boundary, where React context is not shared with the host bundle.
+ */
+export function useResourceRouteLabel(label: string | null | undefined) {
+  useEffect(() => {
+    if (!label || typeof window === "undefined") return;
+
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      window.dispatchEvent(
+        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, { detail: { label } }),
+      );
+    });
+
+    return () => {
+      active = false;
+      window.dispatchEvent(
+        new CustomEvent(RESOURCE_ROUTE_LABEL_EVENT, {
+          detail: { label: null },
+        }),
+      );
+    };
+  }, [label]);
+}
 
 function targetsResourceAction(target: EventTarget): boolean {
   return (
@@ -101,10 +131,16 @@ export function ResourceMeta({
   );
 }
 
-export function ResourceLocationMeta({ label }: { label: string }) {
+export function ResourceLocationMeta({
+  label,
+  icon = "Folder",
+}: {
+  label: string;
+  icon?: IconName;
+}) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5" title={label}>
-      <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+      <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />
       <span className="min-w-0 truncate">{label}</span>
     </span>
   );
@@ -1244,21 +1280,32 @@ export function ResourceDetailFact({
   );
 }
 
-/** Passive lifecycle text for states that are observed, not changed here. */
+/** Passive lifecycle status for states that are observed, not changed here. */
 export function ResourceLifecycleStatus({
   label,
   tooltip,
   accessibleLabel,
+  icon,
+  appearance = "default",
 }: {
   label: ReactNode;
   tooltip?: ReactNode;
   accessibleLabel?: string;
+  icon?: IconName;
+  appearance?: "default" | "recessed";
 }) {
   const status = (
     <span
       aria-label={accessibleLabel}
-      className="inline-flex min-h-7 shrink-0 items-center text-xs font-medium text-muted-foreground"
+      tabIndex={tooltip === undefined ? undefined : 0}
+      className={cn(
+        "inline-flex h-7 min-w-20 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium text-muted-foreground",
+        appearance === "recessed"
+          ? "border-border/45 bg-surface-recessed/75 text-subtle-foreground"
+          : "border-border/70 bg-transparent",
+      )}
     >
+      {icon ? <Icon name={icon} className="size-3.5" aria-hidden /> : null}
       {label}
     </span>
   );
@@ -1280,6 +1327,8 @@ export function ResourceInstallControl({
   pendingLabel = "Installing",
   pending = false,
   disabled = false,
+  presentation = "label",
+  tooltip,
   onAction,
 }: {
   accessibleLabel: string;
@@ -1287,14 +1336,19 @@ export function ResourceInstallControl({
   pendingLabel?: string;
   pending?: boolean;
   disabled?: boolean;
+  presentation?: "label" | "icon";
+  tooltip?: ReactNode;
   onAction: () => void;
 }) {
-  return (
+  const control = (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      className="h-7 min-w-20 shrink-0 justify-center px-2.5 text-xs"
+      className={cn(
+        "h-7 shrink-0 justify-center text-xs",
+        presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2.5",
+      )}
       disabled={disabled || pending}
       aria-busy={pending}
       aria-label={accessibleLabel}
@@ -1303,12 +1357,24 @@ export function ResourceInstallControl({
       {pending ? (
         <span className="inline-flex items-center justify-center gap-1.5">
           <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
-          {pendingLabel}
+          {presentation === "label" ? pendingLabel : null}
         </span>
       ) : (
-        label
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Icon name="Download" className="size-3.5" aria-hidden />
+          {presentation === "label" ? label : null}
+        </span>
       )}
     </Button>
+  );
+  if (presentation !== "icon" || tooltip === undefined) return control;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1324,6 +1390,8 @@ export function ResourceInstalledControl({
   actionLabel = "Uninstall",
   pendingLabel = "Uninstalling",
   pending = false,
+  presentation = "label",
+  tooltip,
   onAction,
 }: {
   accessibleLabel: string;
@@ -1331,32 +1399,52 @@ export function ResourceInstalledControl({
   actionLabel?: string;
   pendingLabel?: string;
   pending?: boolean;
+  presentation?: "label" | "icon";
+  tooltip?: ReactNode;
   onAction?: () => void;
 }) {
   const installedContent = (
     <span className="inline-flex items-center gap-1">
       <Icon name="Check" className="size-3.5" aria-hidden />
-      {label}
+      {presentation === "label" ? label : null}
     </span>
   );
 
   if (onAction === undefined) {
-    return (
+    const status = (
       <span
         aria-label={accessibleLabel}
-        className="inline-flex h-7 min-w-20 shrink-0 items-center justify-center rounded-md border border-success/40 bg-transparent px-2 text-xs font-medium text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
+        tabIndex={
+          presentation === "icon" && tooltip !== undefined ? 0 : undefined
+        }
+        className={cn(
+          "inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-success/30 bg-success/10 text-xs font-medium text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+          presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2",
+        )}
       >
         {installedContent}
       </span>
     );
+    if (presentation !== "icon" || tooltip === undefined) return status;
+    return (
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>{status}</TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   }
 
-  return (
+  const control = (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      className="group/install h-7 min-w-20 shrink-0 justify-center border-success/40 bg-transparent px-2 text-xs text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/40 focus-visible:bg-destructive/10 focus-visible:text-destructive-text"
+      className={cn(
+        "group/install h-7 shrink-0 justify-center border-success/30 bg-success/10 text-xs text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-text focus-visible:border-destructive/40 focus-visible:bg-destructive/10 focus-visible:text-destructive-text",
+        presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2",
+      )}
       disabled={pending}
       aria-label={accessibleLabel}
       onClick={onAction}
@@ -1364,7 +1452,7 @@ export function ResourceInstalledControl({
       {pending ? (
         <span className="inline-flex items-center justify-center gap-1.5">
           <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
-          {pendingLabel}
+          {presentation === "label" ? pendingLabel : null}
         </span>
       ) : (
         <span className="grid place-items-center">
@@ -1373,11 +1461,20 @@ export function ResourceInstalledControl({
           </span>
           <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-1 opacity-0 transition-opacity group-hover/install:opacity-100 group-focus-visible/install:opacity-100">
             <Icon name="Trash2" className="size-3.5" aria-hidden />
-            {actionLabel}
+            {presentation === "label" ? actionLabel : null}
           </span>
         </span>
       )}
     </Button>
+  );
+  if (presentation !== "icon" || tooltip === undefined) return control;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1405,11 +1502,13 @@ export function ResourcePromptEditor({
   value,
   ariaLabel,
   placeholder,
+  hint,
   onChange,
 }: {
   value: string;
   ariaLabel: string;
   placeholder?: string;
+  hint?: ReactNode;
   onChange: (value: string) => void;
 }) {
   return (
@@ -1421,10 +1520,12 @@ export function ResourcePromptEditor({
         className="min-h-52 resize-y rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
         onChange={(event) => onChange(event.target.value)}
       />
-      <div className="flex items-center gap-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-2xs text-muted-foreground">
-        <Icon name="Info" className="size-3.5" aria-hidden />
-        Sent to the agent each time this automation runs
-      </div>
+      {hint ? (
+        <div className="flex items-center gap-1.5 bg-surface-recessed/55 px-3 py-2 text-2xs text-muted-foreground">
+          <Icon name="Info" className="size-3.5" aria-hidden />
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1539,7 +1640,8 @@ export function ResourceCollectionPage<Mode extends string>({
   const activeTabId = `${id}-${activeMode}-tab`;
   const activePanelId = `${id}-${activeMode}-panel`;
   return (
-    <ResourceOverview description={description} className={className}>
+    <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
+      <ResourceTabDescription>{description}</ResourceTabDescription>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1" role="tablist">
           {modes.map((mode) => {
@@ -1600,11 +1702,59 @@ export function ResourceCollectionPage<Mode extends string>({
         role="tabpanel"
         aria-labelledby={activeTabId}
         tabIndex={0}
-        className="focus-visible:outline-none"
+        className="min-h-0 flex-1 focus-visible:outline-none"
       >
         {children}
       </div>
-    </ResourceOverview>
+    </div>
+  );
+}
+
+/**
+ * One bounded collection body shared by Installed and Browse projections.
+ * The toolbar and pagination remain stable while this component owns the
+ * collection's only scrollable region.
+ */
+export function ResourceCollectionViewport({
+  toolbar,
+  children,
+  footer,
+  scrollId,
+  className,
+  contentClassName,
+}: {
+  toolbar?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  scrollId?: string;
+  className?: string;
+  contentClassName?: string;
+}) {
+  return (
+    <div
+      className={cn("flex h-full min-h-0 flex-col gap-3", className)}
+      data-resource-collection-viewport
+    >
+      {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
+      <div
+        id={scrollId}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1",
+          contentClassName,
+        )}
+        data-resource-collection-scroll
+      >
+        {children}
+      </div>
+      {footer ? (
+        <div
+          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3"
+          data-resource-collection-footer
+        >
+          {footer}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1641,7 +1791,12 @@ export function ResourceBrowseGrid({
   className?: string;
 }) {
   return (
-    <div className={cn("grid gap-2.5 sm:grid-cols-2", className)}>
+    <div
+      className={cn(
+        "grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-2.5",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -1888,7 +2043,7 @@ export function ResourceBrowseCard({
   return (
     <div
       className={cn(
-        "group relative flex h-full w-full items-start gap-3 rounded-lg border border-border bg-card p-3.5 text-left",
+        "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] gap-2 rounded-lg border border-border bg-card p-3 text-left",
         onOpen &&
           "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
       )}
@@ -1902,18 +2057,43 @@ export function ResourceBrowseCard({
         />
       ) : null}
       {hasLeading ? (
-        <span className="pointer-events-none relative flex size-6 shrink-0 items-center justify-center">
-          {leading}
+        <span className="pointer-events-none relative col-start-1 row-span-2 flex min-w-0 self-center">
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            {leading}
+          </span>
+          <span className="ml-3 min-w-0 flex-1">{renderIdentity()}</span>
+        </span>
+      ) : (
+        <span className="pointer-events-none relative col-start-1 row-span-2 min-w-0 self-center">
+          {renderIdentity()}
+        </span>
+      )}
+      {headerAction ? (
+        <span
+          data-row-action
+          className="relative col-start-2 row-start-1 flex shrink-0 items-center justify-end whitespace-nowrap"
+        >
+          {headerAction}
         </span>
       ) : null}
-      <span className="pointer-events-none relative min-w-0 flex-1">
+      {footerMeta ? (
+        <span className="pointer-events-none relative col-start-2 row-start-2 flex items-end justify-end text-right">
+          {footerMeta}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  function renderIdentity() {
+    return (
+      <>
         <span className="block truncate text-sm font-medium text-foreground">
           {title}
         </span>
         {description ? (
           <span
             className={cn(
-              "mt-0.5 block text-xs leading-snug text-muted-foreground",
+              "mt-0.5 block text-left text-xs leading-snug text-muted-foreground",
               descriptionLines === 3 ? "line-clamp-3" : "line-clamp-2",
             )}
           >
@@ -1921,24 +2101,13 @@ export function ResourceBrowseCard({
           </span>
         ) : null}
         {byline ? (
-          <span className="mt-1.5 block truncate text-2xs text-subtle-foreground">
+          <span className="mt-1.5 block truncate text-left text-2xs text-subtle-foreground">
             {byline}
           </span>
         ) : null}
-        {footerMeta ? (
-          <span className="mt-2 flex items-center">{footerMeta}</span>
-        ) : null}
-      </span>
-      {headerAction ? (
-        <span
-          data-row-action
-          className="relative mt-0.5 flex shrink-0 items-center whitespace-nowrap"
-        >
-          {headerAction}
-        </span>
-      ) : null}
-    </div>
-  );
+      </>
+    );
+  }
 }
 
 export function ResourceTemplateBrowseCard({
@@ -1955,7 +2124,6 @@ export function ResourceTemplateBrowseCard({
   return (
     <ResourceBrowseCard
       title={title}
-      byline="Starter template"
       description={description}
       descriptionLines={3}
       openLabel={`${actionLabel}: ${title}`}
@@ -1990,7 +2158,7 @@ export function ResourceDetailPage({
   title: ReactNode;
   /** Passive provenance or ownership shown inline with the resource name. */
   titleMeta?: ReactNode;
-  leading: ReactNode;
+  leading?: ReactNode;
   lifecycleControl?: ReactNode;
   overflowMenu?: ReactNode;
   /** Focused page actions, such as Cancel and Save in an edit route. */
@@ -2004,9 +2172,11 @@ export function ResourceDetailPage({
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              {leading}
-            </span>
+            {leading ? (
+              <span className="flex size-4 shrink-0 items-center justify-center">
+                {leading}
+              </span>
+            ) : null}
             <h1 className="min-w-0 truncate text-base font-semibold">
               {title}
             </h1>

@@ -24,7 +24,7 @@ describe("PluginRowSignalView", () => {
     );
 
     const statusButton = screen.getByRole("button", {
-      name: "View details for Degraded: One background service failed.",
+      name: "Degraded: One background service failed.",
     });
     expect(screen.queryByText("Degraded")).toBeNull();
 

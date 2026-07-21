@@ -8,6 +8,7 @@ import {
   ResourceDetailPage,
   ResourceDetailReleaseSection,
   ResourceDetailStack,
+  ResourceLifecycleStatus,
   ResourceOverflowMenu,
   ResourceProperty,
   ResourcePropertyList,
@@ -47,9 +48,9 @@ function PluginDefinitionSection({
 export function PluginDetailView({
   leading,
   title,
-  titleMeta,
-  metadata,
   description,
+  metadata,
+  provenance,
   enabled,
   lifecycleDisabled = false,
   onEnabledChange,
@@ -60,9 +61,14 @@ export function PluginDetailView({
 }: {
   leading: ReactNode;
   title: string;
-  titleMeta?: ReactNode;
-  metadata: ReactNode;
   description?: ReactNode;
+  metadata: ReactNode;
+  provenance?: {
+    label: ReactNode;
+    tooltip?: ReactNode;
+    accessibleLabel?: string;
+    appearance?: "default" | "recessed";
+  };
   enabled?: boolean;
   lifecycleDisabled?: boolean;
   onEnabledChange?: (enabled: boolean) => void;
@@ -73,25 +79,31 @@ export function PluginDetailView({
 }) {
   const hasLifecycleControl =
     enabled !== undefined && onEnabledChange !== undefined;
-  const hasDescription =
-    description !== undefined &&
-    description !== null &&
-    description !== false &&
-    description !== "";
   return (
     <ResourceDetailPage
       leading={leading}
       title={title}
-      titleMeta={titleMeta}
       metadata={metadata}
       lifecycleControl={
-        hasLifecycleControl ? (
-          <Switch
-            checked={enabled}
-            disabled={lifecycleDisabled}
-            aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
-            onCheckedChange={onEnabledChange}
-          />
+        provenance || hasLifecycleControl ? (
+          <div className="flex items-center gap-2">
+            {provenance ? (
+              <ResourceLifecycleStatus
+                label={provenance.label}
+                tooltip={provenance.tooltip}
+                accessibleLabel={provenance.accessibleLabel}
+                appearance={provenance.appearance}
+              />
+            ) : null}
+            {hasLifecycleControl ? (
+              <Switch
+                checked={enabled}
+                disabled={lifecycleDisabled}
+                aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
+                onCheckedChange={onEnabledChange}
+              />
+            ) : null}
+          </div>
         ) : undefined
       }
       overflowMenu={
@@ -103,14 +115,14 @@ export function PluginDetailView({
         ) : undefined
       }
     >
-      {hasDescription ||
+      {description ||
       properties.length > 0 ||
       definitionSections.length > 0 ||
       activitySections.length > 0 ? (
         <ResourceDetailStack>
-          {hasDescription ? (
+          {description ? (
             <ResourceDetailOverviewSection label="About">
-              <p className="text-sm leading-relaxed text-foreground">
+              <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
                 {description}
               </p>
             </ResourceDetailOverviewSection>

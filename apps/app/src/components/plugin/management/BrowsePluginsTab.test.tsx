@@ -95,10 +95,7 @@ describe("BrowsePluginsTab", () => {
     const card = await screen.findByTestId("browse-card-memory");
     expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
 
-    const sourceLine = screen.getByTestId("browse-source-memory");
-    expect(sourceLine.classList.contains("truncate")).toBe(true);
-    expect(sourceLine.getAttribute("title")).toBe(MEMORY_ENTRY.source);
-    expect(sourceLine.textContent).toBe(MEMORY_ENTRY.source);
+    expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
 
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();

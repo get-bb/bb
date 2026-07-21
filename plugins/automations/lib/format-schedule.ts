@@ -92,9 +92,9 @@ export function formatCronCadence(cron: string): string {
 
 export function formatAutomationTrigger(trigger: AutomationTrigger): string {
   if (trigger.triggerType === "once") {
-    return `Once at ${formatScheduleRunTime(trigger.runAt)}`;
+    return "One time";
   }
-  return `${formatCronCadence(trigger.cron)} · ${trigger.timezone}`;
+  return formatCronCadence(trigger.cron);
 }
 
 export function getOneShotLifecycle({

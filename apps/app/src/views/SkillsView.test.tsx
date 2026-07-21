@@ -172,7 +172,9 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("powered by");
     expect(markup).toContain('aria-label="123.5K installs"');
     expect(markup).toContain('aria-label="654 stars"');
-    expect(markup).toContain("grid gap-2.5 sm:grid-cols-2");
+    expect(markup).toContain(
+      "grid grid-cols-[repeat(auto-fit,minmax(min(100%,23rem),1fr))] gap-2.5",
+    );
     expect(markup).not.toContain("overflow-x-auto");
     expect(markup).toContain("Uninstall Useful skill from bb");
     expect(markup).toContain('aria-label="View details for Useful skill"');
@@ -394,8 +396,132 @@ describe("SkillsLibrary installed detail routing", () => {
   });
 });
 
+describe("SkillsLibrary registry detail lifecycle", () => {
+  it("updates an installed detail in place and keeps uninstall available", async () => {
+    const registrySkill = makeRegistrySkill();
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/skills-registry?")) {
+          return new Response(
+            JSON.stringify({
+              skills: [registrySkill],
+              pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith("/api/v1/skills-registry/detail?")) {
+          return new Response(
+            JSON.stringify({
+              id: registrySkill.id,
+              source: registrySkill.source,
+              skillId: registrySkill.skillId,
+              hash: null,
+              files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+            }),
+            { status: 200 },
+          );
+        }
+        if (
+          url === "/api/v1/skills-registry/install" &&
+          init?.method === "POST"
+        ) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const view = renderDom(
+      <MemoryRouter
+        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
+      >
+        <QueryClientWrapper>
+          <Routes>
+            <Route
+              path="/tools/skills/registry/:registrySkillId"
+              element={<SkillsLibrary />}
+            />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const install = await screen.findByRole("button", {
+      name: "Install Useful skill as a bb skill",
+    });
+    expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
+    expect(view.container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
+    fireEvent.click(install);
+
+    const uninstall = await screen.findByRole("button", {
+      name: "Uninstall Useful skill from bb",
+    });
+    expect(uninstall.textContent).toContain("Installed");
+    fireEvent.click(uninstall);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("does not offer installation when a direct registry source is unavailable", async () => {
+    const registrySkill = makeRegistrySkill();
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/skills-registry?")) {
+          return new Response(
+            JSON.stringify({
+              skills: [],
+              pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith("/api/v1/skills-registry/entry?")) {
+          return new Response(JSON.stringify(registrySkill), { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter
+        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
+      >
+        <QueryClientWrapper>
+          <Routes>
+            <Route
+              path="/tools/skills/registry/:registrySkillId"
+              element={<SkillsLibrary />}
+            />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(
+        "This registry skill is no longer available from its source.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Install Useful skill/ }),
+    ).toBeNull();
+  });
+});
+
 describe("RegistrySkillsBrowsePage", () => {
-  it("renders the authoritative page order, exposes social proof, and pages forward", () => {
+  it("renders the authoritative page order, exposes social proof, and pages forward", async () => {
     const onPageChange = vi.fn();
     const alpha = makeRegistrySkill({
       id: "owner/repo/alpha",
@@ -439,6 +565,20 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
     expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
+    expect(
+      screen
+        .getByLabelText("Installed Alpha as a bb skill")
+        .querySelector('[data-icon="Check"]'),
+    ).not.toBeNull();
+    const zuluInstall = screen.getByRole("button", {
+      name: "Install Zulu as a bb skill",
+    });
+    expect(zuluInstall.textContent).toBe("");
+    expect(zuluInstall.querySelector('[data-icon="Download"]')).not.toBeNull();
+    fireEvent.pointerMove(zuluInstall);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Install Zulu",
+    );
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
     const alphaTitle = screen.getByText("Alpha");
@@ -453,7 +593,7 @@ describe("RegistrySkillsBrowsePage", () => {
 });
 
 describe("SkillDetailDialogView", () => {
-  it("keeps disabled menu labels clean and explains restrictions in tooltips", async () => {
+  it("presents built-in ownership passively without an actions menu", async () => {
     const skill = makeSkill({
       name: "bb-cli",
       provider: null,
@@ -468,7 +608,6 @@ describe("SkillDetailDialogView", () => {
         onSelectPath={() => {}}
         content="# bb CLI"
         isLoadingContent={false}
-        isRefreshingContent={false}
         isContentError={false}
         canEdit={false}
         canDelete={false}
@@ -481,24 +620,13 @@ describe("SkillDetailDialogView", () => {
       />,
     );
 
-    expect(screen.queryByText("Built-in", { exact: true })).toBeNull();
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "bb-cli actions" }),
-    );
-    expect(
-      screen
-        .getByRole("menuitem", { name: /Edit/ })
-        .getAttribute("aria-disabled"),
-    ).toBe("true");
-    expect(
-      screen
-        .getByRole("menuitem", { name: /Delete/ })
-        .getAttribute("aria-disabled"),
-    ).toBe("true");
-    expect(screen.queryByText("Built-in skill")).toBeNull();
-    fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Edit" }));
+    const builtIn = screen.getByLabelText("bb-cli is built into bb");
+    expect(builtIn.textContent).toBe("Built-in");
+    expect(builtIn.className).toContain("bg-surface-recessed/75");
+    expect(screen.queryByRole("button", { name: "bb-cli actions" })).toBeNull();
+    fireEvent.pointerMove(builtIn);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Built-in skill",
+      "Ships with bb",
     );
   });
 
@@ -518,7 +646,6 @@ describe("SkillDetailDialogView", () => {
         onSelectPath={() => {}}
         content="# Documents"
         isLoadingContent={false}
-        isRefreshingContent={false}
         isContentError={false}
         canEdit={false}
         canDelete={false}
@@ -540,13 +667,20 @@ describe("SkillDetailDialogView", () => {
     expect(screen.queryByTestId("plugin-logo-documents")).toBeNull();
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
 
+    fireEvent.pointerMove(
+      screen.getByText("Bundled with Documents (Codex plugin)"),
+    );
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Bundled with plugin",
+    );
+
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "documents actions" }),
     );
     expect(screen.queryByText("Bundled with documents")).toBeNull();
     fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Edit" }));
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Bundled with documents",
+      "Bundled with plugin",
     );
   });
 
@@ -566,7 +700,6 @@ describe("SkillDetailDialogView", () => {
         onSelectPath={() => {}}
         content="# Plugin notes"
         isLoadingContent={false}
-        isRefreshingContent={false}
         isContentError={false}
         canEdit={false}
         canDelete={false}
@@ -601,7 +734,6 @@ describe("SkillDetailDialogView", () => {
         onSelectPath={() => {}}
         content="# Code review"
         isLoadingContent={false}
-        isRefreshingContent={false}
         isContentError={false}
         canEdit
         canDelete
@@ -618,7 +750,9 @@ describe("SkillDetailDialogView", () => {
       "code-review is imported from Claude Code",
     );
     expect(imported.textContent).toBe("Imported");
-    expect(imported.className).not.toContain("border");
+    expect(imported.className).toContain("min-w-20");
+    expect(imported.className).toContain("border");
+    expect(imported.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(imported);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Discovered from Claude Code",
@@ -642,7 +776,6 @@ describe("SkillDetailDialogView", () => {
         onSelectPath={() => {}}
         content="# bb skill"
         isLoadingContent={false}
-        isRefreshingContent={false}
         isContentError={false}
         canEdit
         canDelete
@@ -666,6 +799,7 @@ describe("SkillDetailDialogView", () => {
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
     expect(onEdit).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("textbox", { name: "Edit SKILL.md" })).toBeNull();
   });
 });
 
@@ -703,6 +837,11 @@ describe("SkillDetailView registry states", () => {
     expect(sourceLink.getAttribute("target")).toBe("_blank");
     expect(sourceLink.textContent).not.toContain("/SKILL.md");
     expect(screen.queryByText("Registry social proof")).toBeNull();
+    expect(
+      screen
+        .getByRole("heading", { name: "Find skills" })
+        .closest(".overflow-auto"),
+    ).toBeNull();
     const installButton = screen.getByRole("button", {
       name: /Install find-skills/,
     });
@@ -736,7 +875,8 @@ describe("SkillDetailView registry states", () => {
       name: "Uninstall find-skills from bb",
     });
     expect(uninstallButton.className).toContain("group/install");
-    expect(uninstallButton.className).toContain("border-success/40");
+    expect(uninstallButton.className).toContain("border-success/30");
+    expect(uninstallButton.className).toContain("bg-success/10");
     expect(uninstallButton.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect(uninstallButton.innerHTML).toContain("group-hover/install:opacity");
     fireEvent.click(uninstallButton);

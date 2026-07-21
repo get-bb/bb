@@ -12,6 +12,7 @@ const MAX_SEARCH_RESULTS = 200;
 const DETAIL_PREVIEW_LIMIT = 10;
 const GITHUB_STARS_PREVIEW_LIMIT = 48;
 const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
+const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 const REGISTRY_FETCH_CONCURRENCY = 6;
 const REGISTRY_DETAIL_FILE_LIMIT = 200;
@@ -78,6 +79,10 @@ interface RegistrySkillDetail {
 const githubStarsCache = new Map<
   string,
   { stars: number | null; expiresAt: number }
+>();
+const registryDetailCache = new Map<
+  string,
+  { detail: RegistrySkillDetail; expiresAt: number }
 >();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -316,39 +321,64 @@ async function fetchGithubSkillMarkdown(
     `.github/skills/${skillId}/SKILL.md`,
     `${skillId}/SKILL.md`,
   ];
-  for (const candidatePath of candidatePaths) {
-    const url = `https://raw.githubusercontent.com/${repo}/HEAD/${candidatePath
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/")}`;
-    try {
-      const response = await registryFetch(url, {
-        headers: { "user-agent": "bb-skills-registry" },
-      });
-      if (!response.ok) continue;
-      const contents = await response.text();
-      if (contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT) return null;
-      return [{ path: "SKILL.md", contents }];
-    } catch {
-      continue;
-    }
-  }
-  return null;
+  const candidates = await Promise.all(
+    candidatePaths.map(async (candidatePath) => {
+      const url = `https://raw.githubusercontent.com/${repo}/HEAD/${candidatePath
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`;
+      try {
+        const response = await registryFetch(url, {
+          headers: { "user-agent": "bb-skills-registry" },
+        });
+        if (!response.ok) return null;
+        const contents = await response.text();
+        if (contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT) return null;
+        return [{ path: "SKILL.md", contents }];
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return candidates.find((candidate) => candidate !== null) ?? null;
 }
 
 async function fetchRegistrySkillDetail(
   source: string,
   skillId: string,
 ): Promise<RegistrySkillDetail> {
+  const id = `${source}/${skillId}`;
+  const cached = registryDetailCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) return cached.detail;
   const authenticated = await fetchAuthenticatedRegistryDetail(source, skillId);
-  if (authenticated) return authenticated;
-  return {
-    id: `${source}/${skillId}`,
-    source,
-    skillId,
-    hash: null,
-    files: await fetchGithubSkillMarkdown(source, skillId),
-  };
+  const detail =
+    authenticated && hasLoadableSkillContent(authenticated)
+      ? authenticated
+      : ({
+          id,
+          source,
+          skillId,
+          hash: null,
+          files: await fetchGithubSkillMarkdown(source, skillId),
+        } satisfies RegistrySkillDetail);
+  registryDetailCache.set(id, {
+    detail,
+    expiresAt: Date.now() + REGISTRY_DETAIL_CACHE_TTL_MS,
+  });
+  return detail;
+}
+
+function hasLoadableSkillContent(detail: RegistrySkillDetail): boolean {
+  return (
+    detail.files?.some((file) => {
+      const normalizedPath = file.path.replaceAll("\\", "/").toLowerCase();
+      return (
+        (normalizedPath === "skill.md" ||
+          normalizedPath.endsWith("/skill.md")) &&
+        file.contents.trim().length > 0
+      );
+    }) === true
+  );
 }
 
 async function fetchPublicDirectorySkills(
@@ -505,6 +535,26 @@ async function hydrateGithubStars(
   );
 }
 
+async function filterSkillsWithLoadableDetails(
+  skills: RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const loadable = new Array<boolean>(skills.length).fill(false);
+  await mapWithConcurrency(
+    skills.map((skill, index) => ({ skill, index })),
+    REGISTRY_FETCH_CONCURRENCY,
+    async ({ skill, index }) => {
+      try {
+        loadable[index] = hasLoadableSkillContent(
+          await fetchRegistrySkillDetail(skill.source, skill.skillId),
+        );
+      } catch {
+        loadable[index] = false;
+      }
+    },
+  );
+  return skills.filter((_, index) => loadable[index]);
+}
+
 async function listRegistrySkills(
   query: string,
   page: number,
@@ -558,7 +608,10 @@ async function listRegistrySkills(
           ? start + perPage < (apiPage?.total ?? 0)
           : (apiPage?.hasMore ?? false),
     } satisfies RegistryPagination);
-  const hydrated = await hydrateGithubStars(await hydrateDetails(skills));
+  const availableSkills = await filterSkillsWithLoadableDetails(skills);
+  const hydrated = await hydrateGithubStars(
+    await hydrateDetails(availableSkills),
+  );
   return { skills: hydrated, pagination };
 }
 
@@ -700,7 +753,15 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Expected a valid source and skillId",
       );
     }
-    return context.json(await fetchRegistrySkillDetail(source, skillId));
+    const detail = await fetchRegistrySkillDetail(source, skillId);
+    if (!hasLoadableSkillContent(detail)) {
+      throw new ApiError(
+        404,
+        "registry_skill_unavailable",
+        "Registry skill source is unavailable",
+      );
+    }
+    return context.json(detail);
   });
 
   app.post("/skills-registry/install", async (context) => {
