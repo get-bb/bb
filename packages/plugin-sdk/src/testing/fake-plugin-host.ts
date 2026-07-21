@@ -1696,6 +1696,7 @@ function createFakePluginHostInternal(
     "thread.active": [],
     "thread.idle": [],
     "thread.failed": [],
+    "thread.archived": [],
     "thread.deleted": [],
   };
   const disposeHooks: Array<() => void | Promise<void>> = [];
@@ -1949,6 +1950,7 @@ function createFakePluginHostInternal(
           "thread.active": threadEventHandlers["thread.active"].length,
           "thread.idle": threadEventHandlers["thread.idle"].length,
           "thread.failed": threadEventHandlers["thread.failed"].length,
+          "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
         };
       },

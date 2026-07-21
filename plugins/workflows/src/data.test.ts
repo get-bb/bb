@@ -44,7 +44,7 @@ describe("workflow durable data", () => {
       sourceHash: "hash",
       argsJson: "null",
       settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"workerStallTimeoutMs":1800000,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
+        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
       resumedFromRunId: null,
     });
   }
@@ -290,7 +290,7 @@ describe("workflow durable data", () => {
       sourceHash: "hash-2",
       argsJson: "null",
       settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"workerStallTimeoutMs":1800000,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
+        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
       resumedFromRunId: first.id,
     });
     markRunning(second.id);
@@ -545,7 +545,7 @@ describe("workflow durable data", () => {
       sourceHash: "child-hash",
       argsJson: "null",
       settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"workerStallTimeoutMs":1800000,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
+        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
       resumedFromRunId: parent.id,
     });
     const expired = newRun();
@@ -579,7 +579,7 @@ describe("workflow durable data", () => {
       sourceHash: "expired-child-hash",
       argsJson: "null",
       settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"workerStallTimeoutMs":1800000,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
+        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":1,"maxNotificationBytes":16384}',
       resumedFromRunId: parent.id,
     });
     db.prepare(

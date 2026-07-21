@@ -22,6 +22,7 @@ import type {
   TimelineRow,
   TimelineSystemOperationKind,
 } from "@bb/server-contract";
+import type { ThreadChatMessageReference } from "@bb/plugin-sdk";
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
@@ -55,6 +56,8 @@ import type {
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineImageViewSrcResolver,
+  ThreadTimelineConsumerMessageAction,
+  ThreadTimelinePluginMessageAction,
   ThreadTimelineTheme,
   ThreadTimelineUnreadDividerPlacement,
   UserAttachmentImageSrcResolver,
@@ -101,7 +104,10 @@ import {
   EMPTY_PLUGIN_SLOT_SNAPSHOT,
   getPluginSlotSnapshot,
   subscribePluginSlots,
+  type PluginMessageActionSlot,
 } from "@/lib/plugin-slots.js";
+import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import { isPluginSideChatSenderThread } from "@/lib/side-chat-plugin.js";
 import {
   buildMessageDirectiveRegistry,
   MessageDirectiveRegistryProvider,
@@ -145,6 +151,19 @@ export interface ThreadTimelineRowsProps {
    * floating selection menu's "Reply in side chat" action is unavailable.
    */
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
+  /**
+   * Consumer-supplied per-message actions scoped to this surface (the
+   * `ThreadChat` `messageActions` prop), rendered in the per-message action
+   * bar after the slot-registered plugin actions.
+   */
+  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  /**
+   * Whether slot-registered plugin message actions render on this surface.
+   * Default true (the app's native thread surfaces). Embedded chat surfaces
+   * (plugin-hosted ThreadChat, the side-chat panel) pass false so global
+   * actions like "Reply in side chat" don't nest inside themselves.
+   */
+  includePluginMessageActions?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -187,13 +206,27 @@ interface TimelineRendererStaticContextValue {
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   /**
+   * Plugin `messageAction` registrations, subscribed once at the timeline
+   * root. Rows resolve them into per-message actions; empty when the surface
+   * has no thread identity (plugin actions need a real thread context).
+   */
+  pluginMessageActions: readonly PluginMessageActionSlot[];
+  /** Surface-scoped consumer actions; empty when none were supplied. */
+  consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
+  /**
    * Reports an assistant message's text selection to the timeline-level
    * controller. `undefined` when no selection action is wired (Add to chat /
-   * Reply in side chat both absent), which keeps `onSelectProse` off the
-   * messages and the floating menu unmounted.
+   * Reply in side chat / plugin actions all absent), which keeps
+   * `onSelectProse` off the messages and the floating menu unmounted. The
+   * message reference travels with the selection so plugin selection actions
+   * can anchor on the exact message.
    */
   reportProseSelection:
-    | ((rowId: string, selection: MessageProseSelection | null) => void)
+    | ((
+        rowId: string,
+        selection: MessageProseSelection | null,
+        message: ThreadChatMessageReference,
+      ) => void)
     | undefined;
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
@@ -764,6 +797,79 @@ export function findLastActionableUserMessageId(
   return lastMessageId;
 }
 
+const EMPTY_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
+  [];
+
+/**
+ * Resolve the registered plugin `messageAction`s into concrete per-message
+ * actions for one row. Undefined (no actions rendered) when the surface has
+ * no thread identity or nothing is registered; invocation errors are
+ * contained by `runPluginMessageAction`, never breaking the timeline.
+ */
+function buildRowPluginMessageActions(args: {
+  slots: readonly PluginMessageActionSlot[];
+  timelineThreadId: string | undefined;
+  message: ThreadChatMessageReference;
+  openThreadPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
+}): readonly ThreadTimelinePluginMessageAction[] | undefined {
+  const { slots, timelineThreadId, message, openThreadPanel } = args;
+  if (timelineThreadId === undefined || slots.length === 0) {
+    return undefined;
+  }
+  return slots.map((slot) => ({
+    key: `${slot.pluginId}/${slot.id}/${slot.generation}`,
+    pluginId: slot.pluginId,
+    icon: slot.icon ?? null,
+    label: slot.title,
+    onSelect: () =>
+      runPluginMessageAction({
+        slot,
+        threadId: timelineThreadId,
+        message,
+        openThreadPanel,
+      }),
+  }));
+}
+
+/**
+ * Resolve the surface-scoped consumer actions (the `ThreadChat`
+ * `messageActions` prop) for one row: filter by the row's role and contain
+ * `run` errors like the slot-registered plugin actions.
+ */
+function buildRowConsumerMessageActions(args: {
+  actions: readonly ThreadTimelineConsumerMessageAction[];
+  message: ThreadChatMessageReference;
+}): readonly ThreadTimelinePluginMessageAction[] {
+  const { actions, message } = args;
+  return actions
+    .filter(
+      (action) => action.roles === undefined || action.roles.includes(message.role),
+    )
+    .map((action) => ({
+      key: `consumer/${action.id}`,
+      pluginId: action.pluginId,
+      icon: action.icon,
+      label: action.label,
+      onSelect: () => {
+        const warn = (error: unknown) => {
+          console.warn(
+            `ThreadChat messageAction "${action.id}" failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        };
+        try {
+          const result = action.run(message);
+          if (result instanceof Promise) {
+            result.catch(warn);
+          }
+        } catch (error) {
+          warn(error);
+        }
+      },
+    }));
+}
+
 function ConversationRow({
   row,
   showAssistantMessageActions,
@@ -781,6 +887,8 @@ function ConversationRow({
     onSideChatMessage,
     onSendToMainMessage,
     onSelectionAddToChat,
+    pluginMessageActions,
+    consumerMessageActions,
     reportProseSelection,
     threadChildOrigin,
     onOpenLink,
@@ -792,8 +900,35 @@ function ConversationRow({
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
+    threadId,
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
+  // The narrow, stable message reference plugin actions receive — sourced
+  // from row fields, never the row object itself.
+  const messageReference: ThreadChatMessageReference = {
+    id: row.id,
+    threadId: row.threadId,
+    role: row.role,
+    text: row.text,
+    sourceSeqEnd: row.sourceSeqEnd,
+  };
+  const rowSlotActions = buildRowPluginMessageActions({
+    slots: pluginMessageActions,
+    timelineThreadId: threadId,
+    message: messageReference,
+    openThreadPanel: onOpenPluginPanel,
+  });
+  const rowConsumerActions =
+    consumerMessageActions.length === 0
+      ? []
+      : buildRowConsumerMessageActions({
+          actions: consumerMessageActions,
+          message: messageReference,
+        });
+  const rowPluginActions =
+    rowConsumerActions.length === 0
+      ? rowSlotActions
+      : [...(rowSlotActions ?? []), ...rowConsumerActions];
   if (row.role === "user") {
     const senderThreadMetadata =
       row.senderThreadId === null
@@ -824,8 +959,12 @@ function ConversationRow({
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
         senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}
+        senderIsPluginSideChat={isPluginSideChatSenderThread(
+          senderThreadMetadata,
+        )}
         systemMessageKind={row.systemMessageKind}
         systemMessageSubject={row.systemMessageSubject}
+        pluginActions={rowPluginActions}
         text={row.text}
         turnRequest={row.turnRequest}
       />
@@ -863,6 +1002,7 @@ function ConversationRow({
             selection === null
               ? null
               : { ...selection, sourceSeqEnd: row.sourceSeqEnd },
+            messageReference,
           );
   return (
     <ConversationMessageContent
@@ -877,6 +1017,7 @@ function ConversationRow({
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       onOpenPluginPanel={onOpenPluginPanel}
+      pluginActions={rowPluginActions}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
@@ -1762,6 +1903,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => getPluginSlotSnapshot().messageDirectives,
     () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageDirectives,
   );
+  const messageActionSlots = useSyncExternalStore(
+    subscribePluginSlots,
+    () => getPluginSlotSnapshot().messageActions,
+    () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
+  );
   const messageDirectiveRegistry = useMemo(
     () => buildMessageDirectiveRegistry(messageDirectiveSlots),
     [messageDirectiveSlots],
@@ -1780,25 +1926,34 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   // `null` (only emitted by a message that previously had a selection) clears it.
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const onSelectionReplyInSideChat = props.onSelectionReplyInSideChat;
+  const timelineThreadId = props.threadId;
+  const hasPluginSelectionActions =
+    timelineThreadId !== undefined && messageActionSlots.length > 0;
   const hasSelectionActions =
     onSelectionAddToChat !== undefined ||
-    onSelectionReplyInSideChat !== undefined;
+    onSelectionReplyInSideChat !== undefined ||
+    hasPluginSelectionActions;
   const [activeSelection, setActiveSelection] = useState<{
     rowId: string;
     selection: MessageProseSelection;
+    message: ThreadChatMessageReference;
   } | null>(null);
   // Only hand a reporter to the messages when an action exists; otherwise the
   // wrapper stays inert and the floating menu never mounts.
   const reportProseSelection = useMemo<
-    | ((rowId: string, selection: MessageProseSelection | null) => void)
+    | ((
+        rowId: string,
+        selection: MessageProseSelection | null,
+        message: ThreadChatMessageReference,
+      ) => void)
     | undefined
   >(
     () =>
       hasSelectionActions
-        ? (rowId, selection) => {
+        ? (rowId, selection, message) => {
             setActiveSelection((current) => {
               if (selection !== null) {
-                return { rowId, selection };
+                return { rowId, selection, message };
               }
               return current?.rowId === rowId ? null : current;
             });
@@ -1838,6 +1993,39 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     },
     [onSelectionReplyInSideChat],
   );
+  // Plugin actions for the CURRENT selection: `selectedText` is exactly what
+  // the user highlighted; the message reference travels with the selection.
+  const onOpenPluginPanel = props.onOpenPluginPanel;
+  const selectionPluginActions = useMemo<
+    readonly ThreadTimelinePluginMessageAction[]
+  >(() => {
+    if (
+      activeSelection === null ||
+      timelineThreadId === undefined ||
+      messageActionSlots.length === 0
+    ) {
+      return [];
+    }
+    return messageActionSlots.map((slot) => ({
+      key: `${slot.pluginId}/${slot.id}/${slot.generation}`,
+      pluginId: slot.pluginId,
+      icon: slot.icon ?? null,
+      label: slot.title,
+      onSelect: () =>
+        runPluginMessageAction({
+          slot,
+          threadId: timelineThreadId,
+          message: activeSelection.message,
+          selectedText: activeSelection.selection.text,
+          openThreadPanel: onOpenPluginPanel,
+        }),
+    }));
+  }, [
+    activeSelection,
+    messageActionSlots,
+    onOpenPluginPanel,
+    timelineThreadId,
+  ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
     () => ({
       canSpawnChild: props.canSpawnChild ?? false,
@@ -1847,6 +2035,13 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
+      pluginMessageActions:
+        timelineThreadId === undefined ||
+        props.includePluginMessageActions === false
+          ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
+          : messageActionSlots,
+      consumerMessageActions:
+        props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
@@ -1871,8 +2066,12 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onSideChatMessage,
       props.onSendToMainMessage,
       selectionAddToChatHandler,
+      messageActionSlots,
+      props.includePluginMessageActions,
+      props.consumerMessageActions,
       reportProseSelection,
       props.threadChildOrigin,
+      timelineThreadId,
       props.onOpenLink,
       props.onOpenLocalFileLink,
       props.onOpenPluginPanel,
@@ -1931,7 +2130,12 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                 <TimelineSelectionMenu
                   selection={activeSelection?.selection ?? null}
                   onAddToChat={selectionAddToChatHandler}
-                  onReplyInSideChat={handleSelectionReplyInSideChat}
+                  onReplyInSideChat={
+                    onSelectionReplyInSideChat === undefined
+                      ? undefined
+                      : handleSelectionReplyInSideChat
+                  }
+                  pluginActions={selectionPluginActions}
                   onDismiss={dismissSelection}
                 />
               ) : null}

@@ -48,8 +48,8 @@ Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
 ## Add an execution machine
 
-Enable the **Multi-machine** experiment, open Settings → Machines, and choose
-Add machine. Run the generated one-line installer on the computer that should
+Open Settings → Machines and choose Add machine. Run the generated one-line
+installer on the computer that should
 execute work. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
 through the account gate.

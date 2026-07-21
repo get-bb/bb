@@ -154,13 +154,6 @@ export const createThreadRequestSchema = z
         path: ["input"],
       });
     }
-    if (originKind === "fork" && value.input.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "fork input must contain at least one entry",
-        path: ["input"],
-      });
-    }
     if (originKind === null && value.sourceSeqEnd !== undefined) {
       ctx.addIssue({
         code: "custom",
@@ -170,6 +163,42 @@ export const createThreadRequestSchema = z
     }
   });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
+
+const agentOnlyPromptInputSchema = promptInputSchema.and(
+  z.object({ visibility: z.literal("agent-only") }),
+);
+
+export const forkThreadRequestSchema = z
+  .object({
+    sourceThreadId: z.string().min(1),
+    sourceSeqEnd: z.number().int().nonnegative().optional(),
+    input: z.array(promptInputSchema).min(1).optional(),
+    /** Context persisted on the fork start but hidden from user-facing output. */
+    agentContextSeed: z.array(agentOnlyPromptInputSchema).min(1).optional(),
+    title: z.string().min(1).optional(),
+    permissionMode: permissionModeInputSchema.optional(),
+    visibility: threadVisibilitySchema.default("visible"),
+    workspace: z.enum(["isolated", "reuse"]).default("isolated"),
+    origin: threadCreateOriginSchema.default("sdk"),
+    originPluginId: z.string().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.origin === "plugin" && value.originPluginId === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId is required when origin is "plugin"',
+        path: ["originPluginId"],
+      });
+    }
+    if (value.origin !== "plugin" && value.originPluginId !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId requires origin "plugin"',
+        path: ["originPluginId"],
+      });
+    }
+  });
+export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 export const sendMessageRequestSchema = z.object({
   input: z.array(promptInputSchema).min(1),
@@ -378,6 +407,7 @@ export const updateThreadRequestSchema = z
     // together or independently.
     model: z.string().min(1).nullable(),
     reasoningLevel: reasoningLevelSchema.nullable(),
+    visibility: threadVisibilitySchema,
   })
   .partial()
   .refine(
@@ -386,7 +416,8 @@ export const updateThreadRequestSchema = z
       value.sectionId !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
-      value.reasoningLevel !== undefined,
+      value.reasoningLevel !== undefined ||
+      value.visibility !== undefined,
     "At least one field must be provided",
   );
 export type UpdateThreadRequest = z.infer<typeof updateThreadRequestSchema>;
@@ -557,6 +588,8 @@ export const threadListQuerySchema = z.object({
   excludeSideChats: z.enum(["true", "false"]).optional(),
   /** @deprecated Use originKind. */
   childOrigin: threadChildOriginSchema.optional(),
+  /** Include hidden threads; omitted/false keeps the default visible-only list. */
+  includeHidden: z.enum(["true", "false"]).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });

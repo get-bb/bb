@@ -23,13 +23,6 @@ export const WORKFLOW_SETTING_DESCRIPTORS = {
     description: "Agent calls allowed during one workflow run (1-1000).",
     default: "100",
   },
-  workerStallTimeoutMs: {
-    type: "string",
-    label: "Worker stall timeout (milliseconds)",
-    description:
-      "Fail an unresponsive worker after this many milliseconds (60000-86400000).",
-    default: "1800000",
-  },
   totalRunTimeoutMs: {
     type: "string",
     label: "Total run timeout (milliseconds)",
@@ -61,7 +54,6 @@ export interface WorkflowSettings {
   maxActiveRuns: number;
   maxConcurrentAgents: number;
   maxAgentCalls: number;
-  workerStallTimeoutMs: number;
   totalRunTimeoutMs: number;
   retentionDays: number;
   maxNotificationBytes: number;
@@ -72,7 +64,6 @@ export const DEFAULT_WORKFLOW_SETTINGS: Readonly<WorkflowSettings> =
     maxActiveRuns: 4,
     maxConcurrentAgents: 8,
     maxAgentCalls: 100,
-    workerStallTimeoutMs: 30 * 60 * 1_000,
     totalRunTimeoutMs: 24 * 60 * 60 * 1_000,
     retentionDays: 30,
     maxNotificationBytes: 16 * 1_024,
@@ -100,11 +91,6 @@ const INTEGER_FIELDS: Readonly<Record<keyof WorkflowSettings, IntegerField>> =
       label: "Maximum agent calls",
       minimum: 1,
       maximum: 1_000,
-    },
-    workerStallTimeoutMs: {
-      label: "Worker stall timeout",
-      minimum: 60_000,
-      maximum: 86_400_000,
     },
     totalRunTimeoutMs: {
       label: "Total run timeout",
@@ -167,10 +153,6 @@ export function parseWorkflowSettings(
       values.maxAgentCalls,
       INTEGER_FIELDS.maxAgentCalls,
     ),
-    workerStallTimeoutMs: parseBoundedInteger(
-      values.workerStallTimeoutMs,
-      INTEGER_FIELDS.workerStallTimeoutMs,
-    ),
     totalRunTimeoutMs: parseBoundedInteger(
       values.totalRunTimeoutMs,
       INTEGER_FIELDS.totalRunTimeoutMs,
@@ -186,7 +168,9 @@ export function parseWorkflowSettings(
   });
 }
 
-/** Parse a persisted run snapshot without accepting missing or extra policy. */
+const LEGACY_STORED_SETTING_KEYS = new Set(["workerStallTimeoutMs"]);
+
+/** Parse a persisted run snapshot, tolerating only known removed fields. */
 export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Workflow settings snapshot must be an object");
@@ -195,8 +179,12 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   const expected = Object.keys(INTEGER_FIELDS);
   const actual = Object.keys(object);
   if (
-    actual.length !== expected.length ||
-    actual.some((key) => !Object.hasOwn(INTEGER_FIELDS, key))
+    expected.some((key) => !Object.hasOwn(object, key)) ||
+    actual.some(
+      (key) =>
+        !Object.hasOwn(INTEGER_FIELDS, key) &&
+        !LEGACY_STORED_SETTING_KEYS.has(key),
+    )
   ) {
     throw new Error("Workflow settings snapshot has unexpected fields");
   }

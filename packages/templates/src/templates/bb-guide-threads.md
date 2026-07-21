@@ -43,13 +43,31 @@ Spawning:
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization, unread/pending favicon
-  attention, and native parent notifications. Ordinary list, search, history,
-  section, lifecycle, parent-operation, and direct-open behavior is unchanged.
+  attention, and native parent notifications. Thread lists exclude them unless
+  --include-hidden is passed; direct-ID operations remain available.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
   environment already selects its machine. Without the flag, local/primary
   machine resolution is unchanged.
+
+Forking:
+
+  bb thread fork <source-thread-id> [options]
+
+    --prompt <prompt>              Optional first prompt; omit for an idle fork
+    --source-seq-end <seq>         Fork at this source event sequence (tip by default)
+    --workspace <mode>             isolated (default) or reuse
+    --title <title>                Thread title
+    --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
+    --visibility <visibility>      visible (default) or hidden
+    --agent-context-seed <text>    Persist agent-only context without a first run
+    --file <path>                  Host-readable absolute or uploaded file path
+    --image <path>                 Host-readable absolute or uploaded image path
+
+  Forks clone the source provider session on the same machine. Isolated forks
+  create a fresh managed worktree (or personal workspace for personal threads);
+  reuse attaches the source environment. Omit --prompt to create an idle fork.
 
 Listing:
 
@@ -59,6 +77,7 @@ Listing:
     --archived                             Show only archived threads
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
+    --include-hidden                       Include hidden threads
 
   bb thread search <query>                 Search threads and messages
   bb thread history <id>                   List prompt history
@@ -122,16 +141,15 @@ Opening threads and files in the app:
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
-    --mode <mode>                          Message mode: queue (default), steer, or auto
+    --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
-  By default, tell queues: if the agent is working, the message is delivered
-  after the current turn finishes. Use --mode steer to send immediately into
-  the active turn. Prefer steer for urgent redirects; prefer queue for
-  non-urgent follow-ups that can wait until the agent is free.
+  Tell steers by default, delivering the message immediately into the active
+  turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
+  is free.
 
   bb thread stop [id]                      Stop an active or provisioning thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
@@ -147,6 +165,7 @@ Ownership:
     --clear-parent-thread                  Remove parent assignment
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
+    --visibility <visibility>              Set visible or hidden
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread

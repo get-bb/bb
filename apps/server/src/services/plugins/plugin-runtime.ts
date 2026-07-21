@@ -5,16 +5,23 @@ import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
+import {
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Experiments,
+  type Thread,
+} from "@bb/domain";
 import { buildPluginApp } from "@bb/plugin-build";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
+  getExperiments,
   getInstalledPlugin,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
+import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
@@ -149,6 +156,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
+  const baseStatuses = new Map<
+    string,
+    { status: PluginRuntimeStatus; detail: string | null }
+  >();
+  const devBuildProblems = new Map<string, string>();
   const statusListeners = new Map<
     string,
     Set<(status: PluginRuntimeStatus, detail: string | null) => void>
@@ -192,15 +204,38 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // bind-gated bb.server.loopbackBaseUrl.
   let boundLoopbackBaseUrl: string | undefined;
 
-  function setStatus(
+  function publishStatus(
     id: string,
     status: PluginRuntimeStatus,
-    detail: string | null = null,
+    detail: string | null,
   ): void {
     statuses.set(id, { status, detail });
     for (const listener of statusListeners.get(id) ?? []) {
       listener(status, detail);
     }
+  }
+
+  function setStatus(
+    id: string,
+    status: PluginRuntimeStatus,
+    detail: string | null = null,
+  ): void {
+    baseStatuses.set(id, { status, detail });
+    const buildProblem = devBuildProblems.get(id);
+    publishStatus(
+      id,
+      status,
+      [detail, buildProblem]
+        .filter((part): part is string => part !== null && part !== undefined)
+        .join("; ") || null,
+    );
+  }
+
+  function setDevBuildProblem(id: string, message: string | null): void {
+    if (message === null) devBuildProblems.delete(id);
+    else devBuildProblems.set(id, `frontend bundle build failed: ${message}`);
+    const base = baseStatuses.get(id);
+    if (base !== undefined) setStatus(id, base.status, base.detail);
   }
 
   function statsFor(id: string): PluginHandlerStats {
@@ -629,6 +664,26 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return row.provenance === "builtin";
   }
 
+  /**
+   * Per-plugin experiment gate declared in the bundled registry (e.g. the
+   * side-chat builtin behind `sideChatPlugin`). Open for every plugin whose
+   * registry entry names no experiment. Distinct from the global `plugins`
+   * experiment: a bundled plugin's own experiment gates it even when it is
+   * builtin-provenance exempt from the global one.
+   */
+  function pluginExperimentGate(pluginId: string): keyof Experiments | null {
+    const bundled = deps.bundledPlugins ?? BUNDLED_PLUGINS;
+    return (
+      bundled.find((plugin) => plugin.pluginId === pluginId)?.experiment ?? null
+    );
+  }
+
+  function pluginExperimentGateOpen(pluginId: string): boolean {
+    const experiment = pluginExperimentGate(pluginId);
+    if (experiment === null) return true;
+    return getExperiments(deps.db)[experiment];
+  }
+
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && experimentGateExempt(row);
@@ -637,6 +692,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function experimentGateDisabledDetail(
     row: InstalledPluginRow,
   ): string | null {
+    if (!pluginExperimentGateOpen(row.id)) {
+      return `disabled by the "${pluginExperimentGate(row.id)}" experiment`;
+    }
     if (!experimentGateExempt(row)) {
       return 'disabled by the "Plugins" experiment';
     }
@@ -644,11 +702,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    return experimentGateExempt(row) || deps.isEnabled();
+    return (
+      pluginExperimentGateOpen(row.id) &&
+      (experimentGateExempt(row) || deps.isEnabled())
+    );
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return plugin.experimentExempt || deps.isEnabled();
+    return (
+      pluginExperimentGateOpen(plugin.manifest.id) &&
+      (plugin.experimentExempt || deps.isEnabled())
+    );
   }
 
   function shouldExposePluginId(id: string): boolean {
@@ -678,17 +742,29 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    * The backend entry to import for this load. Managed (git:/npm:) installs
    * prefer a fresh, SDK-compatible prebuilt `dist/server.js` (design
    * §3 loader amendment, §6 prebuilt distribution) so consumers never need
-   * npm or node_modules; path installs ALWAYS load from source, so author
-   * iteration via `bb plugin reload` sees edited files. A present-but-stale
-   * or meta-less dist falls back to source with one warning. While the SDK
-   * is pre-1.0, minor bumps are breaking (semver), so compatibility requires
-   * the exact SDK version, not just a matching major.
+   * npm or node_modules. Path installs and source-layout builtins ALWAYS load
+   * from source, so author iteration via `bb plugin reload` and the builtin
+   * dev watcher sees edited files; packaged builtins declare dist/server.js
+   * as their manifest entry and still load that artifact. A present-but-stale
+   * or meta-less managed dist falls back to source with one warning. While
+   * the SDK is pre-1.0, minor bumps are breaking (semver), so compatibility
+   * requires the exact SDK version, not just a matching major.
    */
   async function resolveServerEntry(
     row: InstalledPluginRow,
     manifest: PluginManifest,
   ): Promise<string> {
-    if (row.sourceKind === "path") return manifest.serverEntry;
+    if (
+      row.sourceKind === "path" ||
+      (row.sourceKind === "builtin" &&
+        !isPackagedBuiltinServerEntry({
+          kind: row.sourceKind,
+          manifest,
+          rootDir: row.rootDir,
+        }))
+    ) {
+      return manifest.serverEntry;
+    }
     const distJsPath = join(row.rootDir, "dist", "server.js");
     try {
       await stat(distJsPath);
@@ -1098,6 +1174,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function clearRuntimeState(id: string): void {
     statuses.delete(id);
+    baseStatuses.delete(id);
+    devBuildProblems.delete(id);
     appBundles.delete(id);
     brandingAssets.delete(id);
     needsConfiguration.delete(id);
@@ -1199,6 +1277,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loadOne,
     brandingAssets,
     needsConfiguration,
+    setDevBuildProblem,
     setStatus,
     shouldExposeLoadedPlugin,
     shouldExposePluginId,

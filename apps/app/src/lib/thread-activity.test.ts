@@ -61,26 +61,29 @@ const idleIndicatorState: ThreadListIndicatorState = {
 describe("thread-activity", () => {
   describe("resolveThreadListIndicator", () => {
     it.each([
-      ["isWorkflowActive", "workflow"],
-      ["isBackgroundAgentActive", "background-agent"],
-      ["isBackgroundCommandActive", "background-command"],
-      ["isPlanModeActive", "plan-mode"],
-      ["isGoalActive", "goal"],
+      "hasPendingInteraction",
+      "hasUnsubmittedDraft",
+      "hasUnreadError",
+      "hasUnreadSuccess",
+      "isWorkflowActive",
+      "isBackgroundAgentActive",
+      "isBackgroundCommandActive",
+      "isPlanModeActive",
+      "isGoalActive",
     ] as const)(
-      "prefers %s over concurrent generic runtime work",
-      (flag, expected) => {
+      "prefers runtime work over concurrent %s",
+      (flag) => {
         expect(
           resolveThreadListIndicator({
             ...idleIndicatorState,
             isRuntimeActive: true,
             [flag]: true,
           }),
-        ).toBe(expected);
+        ).toBe("runtime");
       },
     );
 
     it.each([
-      "isRuntimeActive",
       "isWorkflowActive",
       "isBackgroundAgentActive",
       "isBackgroundCommandActive",
@@ -104,6 +107,26 @@ describe("thread-activity", () => {
           isPlanModeActive: true,
         }),
       ).toBe("plan-mode");
+    });
+
+    it("applies idle activity precedence before background work", () => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isBackgroundAgentActive: true,
+          isBackgroundCommandActive: true,
+          isGoalActive: true,
+          isPlanModeActive: true,
+        }),
+      ).toBe("plan-mode");
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isBackgroundAgentActive: true,
+          isBackgroundCommandActive: true,
+          isGoalActive: true,
+        }),
+      ).toBe("goal");
     });
 
     it("applies critical, idle draft, and unread precedence", () => {

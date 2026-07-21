@@ -28,7 +28,6 @@ import {
   listRuns,
   listPendingNotificationRuns,
   listRunningCalls,
-  listStalledCalls,
   listTimedOutRuns,
   markCallReplayedSameRun,
   markNotificationSent,
@@ -1396,16 +1395,6 @@ export function createWorkflowService(
       });
       controllers.get(run.id)?.abort();
     }
-    for (const call of listStalledCalls(db, now, 100)) {
-      const run = getRunRequired(db, call.runId);
-      const settings = settingsForRun(run);
-      const error = `Workflow worker stalled for ${settings.workerStallTimeoutMs} ms`;
-      settleCall(db, { id: call.id, status: "failed", result: null, error });
-      wakeCall(call);
-      if (call.childThreadId !== null) {
-        await stopChild(call.childThreadId);
-      }
-    }
   }
 
   async function maintenanceTick(): Promise<void> {
@@ -1422,8 +1411,8 @@ export function createWorkflowService(
         );
       }
     };
-    // Thread state is authoritative. Settle/re-age calls first, then query
-    // the database again while enforcing stall deadlines.
+    // Thread state is authoritative. Reconcile calls before enforcing the
+    // total run deadline.
     await isolated("reconcile-workers", reconcileRunningCalls);
     await isolated("enforce-timeouts", () => enforceTimeouts(now));
     await isolated("retention", () => {

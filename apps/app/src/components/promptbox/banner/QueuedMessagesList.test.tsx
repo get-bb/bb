@@ -722,6 +722,16 @@ describe("QueuedMessagesList", () => {
     expect(container.textContent).not.toContain("1 attachment");
   });
 
+  it("lets attachment-free previews fill the row before fading overflow", () => {
+    const { container } = renderQueuedMessages([
+      makeQueuedMessage("q_short", "Short queued message"),
+    ]);
+
+    const preview = container.querySelector('[title="Short queued message"]');
+    expect(preview?.classList.contains("flex-1")).toBe(true);
+    expect(preview?.classList.contains("fade-clip-right")).toBe(true);
+  });
+
   it("renders prompt mentions as pills in queued previews", () => {
     const text =
       "Run /goal and open @apps/app/src/foo.ts from @thread:thr_prompt_pills";

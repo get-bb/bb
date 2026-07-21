@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { TasksStore } from "../db";
+import { isSideChatShapedThread } from "../shared/side-chat";
 
 export interface DeliverCommentInput {
   taskId: string;
@@ -67,10 +68,7 @@ export async function deliverCommentToLatestAgent(
   let outcome: CommentDeliveryOutcome;
   try {
     const thread = await bb.sdk.threads.get({ threadId });
-    if (
-      thread.originKind === "side-chat" ||
-      thread.childOrigin === "side-chat"
-    ) {
+    if (isSideChatShapedThread(thread)) {
       outcome = {
         threadId,
         status: "skipped",

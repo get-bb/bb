@@ -392,7 +392,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="named workflow activity wins over the generic runtime spinner"
+        hint="foreground runtime activity wins and shows the Loading03 working spinner"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />
@@ -400,7 +400,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="pending interaction"
-        hint="needs user input - far-right reserved slot shows the grey question icon"
+        hint="foreground runtime remains active, so the working spinner wins over pending input"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -462,7 +462,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="active working + draft"
-        hint="the selected thread has prompt content, so its shimmering pencil replaces the working spinner"
+        hint="foreground runtime activity wins over the saved draft and shows the working spinner"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -484,7 +484,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="inactive working + draft"
-        hint="the draft pencil keeps the same working shimmer even when the thread is not selected"
+        hint="foreground runtime activity wins over the saved draft even when the row is not selected"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -756,7 +756,7 @@ export function ActiveWorkflow() {
       </StoryRow>
       <StoryRow
         label="active workflow + runtime"
-        hint="named workflow activity wins over the generic runtime spinner"
+        hint="foreground runtime activity wins and shows the Loading03 working spinner"
       >
         <SidebarStage>
           <WorkflowAndRuntimeActiveThreadRow />

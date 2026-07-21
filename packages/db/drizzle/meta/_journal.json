@@ -554,6 +554,13 @@
       "when": 1784311522462,
       "tag": "0078_permission_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "6",
+      "when": 1784586995458,
+      "tag": "0079_side_chat_plugin",
+      "breakpoints": true
     }
   ]
 }

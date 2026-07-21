@@ -33,6 +33,17 @@ describe("public thread search route", () => {
         titleFallback: "routehidden",
         visibility: "hidden",
       });
+      const hiddenArchivedThread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "routehiddenarchived",
+        titleFallback: "routehiddenarchived",
+        visibility: "hidden",
+      });
+      archiveThread(
+        harness.deps.db,
+        harness.deps.hub,
+        hiddenArchivedThread.id,
+      );
 
       const response = await harness.app.request(
         "/api/v1/threads/search?query=route&limitPerGroup=10",
@@ -50,7 +61,12 @@ describe("public thread search route", () => {
         [...body.active.results, ...body.archived.results].map(
           (result) => result.thread.id,
         ),
-      ).toContain(hiddenThread.id);
+      ).not.toContain(hiddenThread.id);
+      expect(
+        [...body.active.results, ...body.archived.results].map(
+          (result) => result.thread.id,
+        ),
+      ).not.toContain(hiddenArchivedThread.id);
     });
   });
 

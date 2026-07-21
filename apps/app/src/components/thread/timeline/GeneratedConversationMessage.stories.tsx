@@ -167,6 +167,7 @@ export function Overview() {
               senderThreadId={null}
               senderThreadTitle={null}
               senderChildOrigin={null}
+        senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind={row.systemMessageKind}
               systemMessageSubject={row.systemMessageSubject}
@@ -191,6 +192,7 @@ export function Overview() {
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
             senderChildOrigin={null}
+        senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -214,6 +216,7 @@ export function Overview() {
             senderThreadId={null}
             senderThreadTitle={null}
             senderChildOrigin={null}
+        senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -244,6 +247,7 @@ export function ClippedAgentMessage() {
             senderThreadId="thr_host_hermes"
             senderThreadTitle="Host Hermes on Flue"
             senderChildOrigin={null}
+        senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}

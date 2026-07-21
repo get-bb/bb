@@ -4,6 +4,7 @@ import {
   type PluginComposerAccessoryRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
@@ -119,6 +120,7 @@ export function collectPluginAppRegistrations(
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
+  const messageActions: PluginMessageActionRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
@@ -129,6 +131,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
+    experimental_messageAction: new Set<string>(),
   };
 
   definition.setup({
@@ -199,6 +202,13 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "run" must be a function when set`);
         }
+        if (
+          registration.layout !== undefined &&
+          registration.layout !== "padded" &&
+          registration.layout !== "flush"
+        ) {
+          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+        }
         threadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -208,6 +218,9 @@ export function collectPluginAppRegistrations(
               }
             : {}),
           component: requireComponent(kind, registration.component),
+          ...(registration.layout !== undefined
+            ? { layout: registration.layout }
+            : {}),
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
@@ -277,6 +290,24 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_messageAction(registration) {
+        const kind = "slots.experimental_messageAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.experimental_messageAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        messageActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? {
+                icon: requireNonEmptyString(kind, "icon", registration.icon),
+              }
+            : {}),
+          run: registration.run,
+        });
+      },
     },
   });
 
@@ -290,6 +321,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions,
     fileOpeners,
     messageDirectives,
+    messageActions,
   };
 }
 

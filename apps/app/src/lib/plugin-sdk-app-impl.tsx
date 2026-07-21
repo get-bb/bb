@@ -1,4 +1,6 @@
-import type { PluginSdkApp } from "@bb/plugin-sdk";
+import type { MarkdownProps, PluginSdkApp } from "@bb/plugin-sdk";
+import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
@@ -34,4 +36,17 @@ export const pluginSdkAppImplementation = {
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  // The host-owned components in the SDK (plugin design: deliberate
+  // exception to §5.5) — stable product capabilities, not a UI kit.
+  experimental_ThreadChat: PluginThreadChat,
+  experimental_Markdown: PluginMarkdown,
 } satisfies PluginSdkApp;
+
+/**
+ * The public chat-message markdown renderer: the host's MarkdownPreview with
+ * only the stable content/className surface exposed. Renderer options
+ * (lightbox, link routing, thread mentions) stay host-internal.
+ */
+function PluginMarkdown({ content, className }: MarkdownProps) {
+  return <MarkdownPreview content={content} className={className} />;
+}

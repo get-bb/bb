@@ -604,7 +604,7 @@ function QueuedMessagePreview({
     <div
       className={cn(
         "min-w-0 overflow-hidden text-foreground",
-        !hasAttachments && "fade-clip-right",
+        !hasAttachments && "flex-1 fade-clip-right",
       )}
       title={preview}
     >

@@ -22,6 +22,29 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { usePortalScopeProps } from "@/lib/portal-scope";
+import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
+import type { ThreadTimelinePluginMessageAction } from "./types.js";
+
+/** Plugin-action icon: branding icon when the plugin is known, hint otherwise. */
+function PluginActionIcon({
+  pluginId,
+  icon,
+  className,
+}: {
+  pluginId: string | null;
+  icon: string | null;
+  className?: string;
+}) {
+  return pluginId === null ? (
+    <Icon
+      name={pluginIconName(icon)}
+      className={cn("size-4 shrink-0", className)}
+      aria-hidden="true"
+    />
+  ) : (
+    <PluginIcon pluginId={pluginId} icon={icon} className={className} />
+  );
+}
 
 interface MessageActionBarProps {
   messageText: string;
@@ -41,6 +64,8 @@ interface MessageActionBarProps {
    */
   onSendToMain?: () => void;
   disabled?: boolean;
+  /** Plugin-contributed actions, rendered after the native ones. */
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
 }
 
 interface MessageOverflowAction {
@@ -50,6 +75,10 @@ interface MessageOverflowAction {
     | "Fork"
     | "SideChat"
     | "ArrowTurnBackward";
+  /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
+  plugin?: { pluginId: string | null; icon: string | null };
+  /** Render key when `label` may not be unique (plugin actions). */
+  key?: string;
   label: string;
   onSelect: () => void;
   disabled?: boolean;
@@ -112,7 +141,7 @@ function MobileMessageOverflowPopover({
         >
           {actions.map((action) => (
             <button
-              key={action.label}
+              key={action.key ?? action.label}
               type="button"
               className={MOBILE_OVERFLOW_ITEM_CLASS}
               disabled={action.disabled}
@@ -131,7 +160,15 @@ function MobileMessageOverflowPopover({
                 selectAction(action);
               }}
             >
-              <Icon name={action.icon} className="size-3.5 shrink-0" />
+              {action.plugin ? (
+                <PluginActionIcon
+                  pluginId={action.plugin.pluginId}
+                  icon={action.plugin.icon}
+                  className="size-3.5"
+                />
+              ) : (
+                <Icon name={action.icon} className="size-3.5 shrink-0" />
+              )}
               {action.label}
             </button>
           ))}
@@ -184,6 +221,7 @@ export function MessageActionBar({
   onSideChat,
   onSendToMain,
   disabled,
+  pluginActions = [],
 }: MessageActionBarProps) {
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
@@ -266,10 +304,25 @@ export function MessageActionBar({
           },
         ]
       : []),
+    ...pluginActions.map((action) => ({
+      // Unused when `plugin` is set; a valid member keeps the type narrow.
+      icon: "Copy" as const,
+      plugin: { pluginId: action.pluginId, icon: action.icon },
+      key: action.key,
+      label: action.label,
+      onSelect: action.onSelect,
+    })),
   ];
   const useMobileOverflowPopover = isCompactViewport && isPointerCoarse;
 
-  if (!hasCopy && !hasAddToChat && !onFork && !onSideChat && !onSendToMain) {
+  if (
+    !hasCopy &&
+    !hasAddToChat &&
+    !onFork &&
+    !onSideChat &&
+    !onSendToMain &&
+    pluginActions.length === 0
+  ) {
     return null;
   }
 
@@ -397,6 +450,34 @@ export function MessageActionBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
+        {pluginActions.map((action) => (
+          <Tooltip key={action.key}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
+                onClick={action.onSelect}
+                aria-label={action.label}
+              >
+                <PluginActionIcon
+                  pluginId={action.pluginId}
+                  icon={action.icon}
+                  className="size-3"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
+              {action.label}
+            </TooltipContent>
+          </Tooltip>
+        ))}
         {mobileActionDisplay === "overflow" ? (
           useMobileOverflowPopover ? (
             <MobileMessageOverflowPopover
@@ -422,12 +503,19 @@ export function MessageActionBar({
               >
                 {overflowActions.map((action) => (
                   <DropdownMenuItem
-                    key={action.label}
+                    key={action.key ?? action.label}
                     disabled={action.disabled}
                     onSelect={action.onSelect}
                     textValue={action.label}
                   >
-                    <Icon name={action.icon} aria-hidden="true" />
+                    {action.plugin ? (
+                      <PluginActionIcon
+                        pluginId={action.plugin.pluginId}
+                        icon={action.plugin.icon}
+                      />
+                    ) : (
+                      <Icon name={action.icon} aria-hidden="true" />
+                    )}
                     {action.label}
                   </DropdownMenuItem>
                 ))}

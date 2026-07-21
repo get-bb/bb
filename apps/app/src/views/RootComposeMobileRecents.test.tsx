@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe("RootComposeMobileRecents", () => {
-  it("does not let runtime gating conceal concurrent Plan and Goal activity", () => {
+  it("shows runtime activity before concurrent Plan and Goal activity", () => {
     render(
       <MemoryRouter>
         <RootComposeMobileRecents
@@ -68,12 +68,12 @@ describe("RootComposeMobileRecents", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
-  it("subscribes mobile recents to working draft state", () => {
+  it("keeps runtime activity ahead of mobile working draft state", () => {
     window.localStorage.setItem(
       "bb.promptbox.contents-proj_mobile-thr_mobile-3",
       JSON.stringify({ text: "Keep editing", attachments: [] }),
@@ -90,9 +90,10 @@ describe("RootComposeMobileRecents", () => {
       </MemoryRouter>,
     );
 
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(
-      screen.getByLabelText("Thread working with unsubmitted draft"),
-    ).not.toBeNull();
+      screen.queryByLabelText("Thread working with unsubmitted draft"),
+    ).toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 

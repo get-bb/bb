@@ -126,6 +126,7 @@ function renderAgentMessage(
           senderThreadId="thr_agent"
           senderThreadTitle={senderThreadTitle}
           senderChildOrigin={senderChildOrigin ?? null}
+          senderIsPluginSideChat={false}
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"

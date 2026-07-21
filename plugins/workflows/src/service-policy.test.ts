@@ -211,7 +211,6 @@ describe("workflow service policy integration", () => {
       maxActiveRuns: "1",
       maxConcurrentAgents: "2",
       maxAgentCalls: "3",
-      workerStallTimeoutMs: "60000",
       totalRunTimeoutMs: "120000",
       retentionDays: "7",
       maxNotificationBytes: "2048",
@@ -251,7 +250,6 @@ describe("workflow service policy integration", () => {
       maxActiveRuns: "2",
       maxConcurrentAgents: "4",
       maxAgentCalls: "8",
-      workerStallTimeoutMs: "90000",
       totalRunTimeoutMs: "180000",
       retentionDays: "14",
       maxNotificationBytes: "4096",
@@ -901,47 +899,41 @@ describe("workflow service policy integration", () => {
     await errorWorker;
   });
 
-  it("distinguishes worker stalls and total run timeouts from cancellation", async () => {
-    const stalled = setup();
-    harnesses.push(stalled.harness);
-    const stalledRun = await stalled.start(
-      source(`return await agent("stalled");`),
+  it("keeps quiet workers alive until the total run timeout", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(
+      source(`return await agent("quiet");`),
     );
-    const stalledController = new AbortController();
-    const stalledWorker = stalled.service.runWorker(stalledController.signal);
-    await eventually(() => expect(stalled.childCount()).toBe(1));
-    stalled.db
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    await eventually(() => expect(test.childCount()).toBe(1));
+    test.db
       .prepare(
         `UPDATE workflow_calls SET last_activity_at = ? WHERE run_id = ?`,
       )
-      .run(Date.now() - 2_000_000, stalledRun.id);
-    await eventually(() => {
-      const run = getRunRequired(stalled.db, stalledRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("stalled");
+      .run(Date.now() - 2_000_000, run.id);
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    expect(getRunRequired(test.db, run.id)).toMatchObject({
+      status: "running",
+      error: null,
     });
-    stalledController.abort();
-    await stalledWorker;
+    expect(getCall(test.db, run.id, 0)).toMatchObject({
+      status: "running",
+      error: null,
+    });
 
-    const timedOut = setup();
-    harnesses.push(timedOut.harness);
-    const timedOutRun = await timedOut.start(
-      source(`return await agent("timed-out");`),
-    );
-    const timeoutController = new AbortController();
-    const timeoutWorker = timedOut.service.runWorker(timeoutController.signal);
-    await eventually(() => expect(timedOut.childCount()).toBe(1));
-    timedOut.db
+    test.db
       .prepare(`UPDATE workflow_runs SET started_at = ? WHERE id = ?`)
-      .run(Date.now() - 90_000_000, timedOutRun.id);
+      .run(Date.now() - 90_000_000, run.id);
     await eventually(() => {
-      const run = getRunRequired(timedOut.db, timedOutRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("run timed out");
-      expect(run.error).not.toContain("Cancelled");
+      const timedOutRun = getRunRequired(test.db, run.id);
+      expect(timedOutRun.status).toBe("failed");
+      expect(timedOutRun.error).toContain("run timed out");
+      expect(timedOutRun.error).not.toContain("Cancelled");
     });
-    timeoutController.abort();
-    await timeoutWorker;
+    controller.abort();
+    await worker;
   });
 
   it("leaves clean shutdown state recoverable without a false notification", async () => {

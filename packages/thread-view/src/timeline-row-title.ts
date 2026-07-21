@@ -135,6 +135,11 @@ export type TimelineTitleAction =
       kind: "open-side-chat";
       /** The side-chat child thread to open as a tab in the current thread. */
       threadId: string;
+    }
+  | {
+      kind: "open-plugin-side-chat";
+      /** A side-chat plugin fork to open in that plugin's panel tab. */
+      threadId: string;
     };
 
 export interface TimelineTitle {

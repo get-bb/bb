@@ -6,7 +6,8 @@ You are one of several agents building this plugin in a SHARED worktree on branc
 
 - Design decisions: the manager thread's storage `tasks-plugin-plan.md` (21 numbered decisions). Your prompt quotes what you need; when in doubt ask the manager thread, do not guess.
 - Visual reference: `tasks-plugin-mock.html` in manager thread storage (Linear-like, bb-themed).
-- Plugin platform contract: `docs/plugin-api-and-sdk-reference.md`.
+- Plugin platform contracts: `packages/plugin-sdk/src/backend-contract.ts` and
+  `packages/plugin-sdk/src/app-contract.ts`.
 
 ## Ground rules
 

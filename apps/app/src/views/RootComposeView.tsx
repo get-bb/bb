@@ -77,6 +77,7 @@ import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
@@ -2246,6 +2247,7 @@ export function RootComposeView() {
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
+  const { threadPanelActions: rootPanelThreadPanelActions } = usePluginSlots();
   const {
     activePluginPanelTab,
     activeHostFileEnvironmentId,
@@ -3682,6 +3684,13 @@ export function RootComposeView() {
                 : undefined),
             fileTabs,
             fileTabContent,
+            fileTabContentFillsRegion:
+              activePluginPanelTab !== null &&
+              rootPanelThreadPanelActions.find(
+                (candidate) =>
+                  candidate.pluginId === activePluginPanelTab.pluginId &&
+                  candidate.id === activePluginPanelTab.actionId,
+              )?.layout === "flush",
             renderBrowserDeck,
             isBrowserTabActive,
             isOpen: isSecondaryPanelOpen,

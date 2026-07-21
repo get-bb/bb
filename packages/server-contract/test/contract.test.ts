@@ -75,6 +75,18 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Fork creation requires only a source thread; all other fields either select an optional behavior or receive an explicit server-boundary default.",
+    fields: [
+      "forkThreadRequestSchema.agentContextSeed",
+      "forkThreadRequestSchema.input",
+      "forkThreadRequestSchema.originPluginId",
+      "forkThreadRequestSchema.permissionMode",
+      "forkThreadRequestSchema.sourceSeqEnd",
+      "forkThreadRequestSchema.title",
+    ],
+  },
+  {
+    reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.sectionId",
@@ -159,6 +171,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.title",
+      "updateThreadRequestSchema.visibility",
     ],
   },
   {
@@ -213,6 +226,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
+      "threadListQuerySchema.includeHidden",
       "threadListQuerySchema.offset",
       "threadListQuerySchema.originKind",
       "threadListQuerySchema.parentThreadId",
@@ -1308,24 +1322,23 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("input must contain at least one entry");
   });
 
-  it("rejects empty input for a fork", () => {
-    expect(() =>
-      createThreadRequestSchema.parse({
-        projectId: "proj_123",
-        providerId: "codex",
-        origin: "app",
-        input: [],
-        environment: {
-          type: "host",
-          hostId: "host_abc",
-          workspace: { type: "unmanaged", path: null },
-        },
-        originKind: "fork",
-        sourceSeqEnd: 12,
-        sourceThreadId: "thr_source",
-        startedOnBehalfOf: null,
-      }),
-    ).toThrow("fork input must contain at least one entry");
+  it("accepts empty input for an idle fork", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+      originKind: "fork",
+      sourceSeqEnd: 12,
+      sourceThreadId: "thr_source",
+      startedOnBehalfOf: null,
+    });
+    expect(parsed.input).toEqual([]);
   });
 
   it("accepts empty input for a source-derived side chat preload", () => {
@@ -1713,6 +1726,7 @@ describe("server-contract clients", () => {
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
+      forkThreadRequestSchema: contract.forkThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,

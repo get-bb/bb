@@ -14,6 +14,7 @@ import {
   pruneThreadEventHistoryBestEffort,
   resetActiveThreadEventPruningState,
 } from "../system/event-pruning.js";
+import { emitPluginThreadArchived } from "../plugins/plugin-thread-events.js";
 import {
   dispatchSettledArchivedThreadProviderArchiveCommand,
   requestActiveRuntimeThreadStopIfNeeded,
@@ -66,6 +67,7 @@ export function archiveThreadWithLifecycleEffects(
     mode: "archived",
     threadId: archivedThread.id,
   });
+  emitPluginThreadArchived(archivedThread);
 
   return archivedThread;
 }

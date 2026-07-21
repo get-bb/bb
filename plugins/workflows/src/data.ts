@@ -198,7 +198,7 @@ export const migrations = [
    CREATE INDEX IF NOT EXISTS workflow_calls_child_idx
      ON workflow_calls(child_thread_id);`,
   `ALTER TABLE workflow_runs ADD COLUMN settings_json TEXT NOT NULL
-     DEFAULT '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"workerStallTimeoutMs":1800000,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}';
+     DEFAULT '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}';
    ALTER TABLE workflow_calls ADD COLUMN last_activity_at INTEGER;
    CREATE INDEX IF NOT EXISTS workflow_calls_running_activity_idx
      ON workflow_calls(status, last_activity_at);
@@ -532,27 +532,6 @@ export function listTimedOutRuns(
     )
     .all(now, limit)
     .map(runRow);
-}
-
-export function listStalledCalls(
-  db: Db,
-  now: number,
-  limit: number,
-): WorkflowCallRow[] {
-  return db
-    .prepare(
-      `${CALL_SELECT} WHERE id IN (
-         SELECT calls.id FROM workflow_calls calls
-         JOIN workflow_runs runs ON runs.id = calls.run_id
-         WHERE calls.status = 'running' AND calls.child_thread_id IS NOT NULL
-           AND COALESCE(calls.last_activity_at, calls.started_at, calls.created_at)
-             + json_extract(runs.settings_json, '$.workerStallTimeoutMs') <= ?
-         ORDER BY COALESCE(calls.last_activity_at, calls.started_at, calls.created_at), calls.id
-         LIMIT ?
-       ) ORDER BY COALESCE(last_activity_at, started_at, created_at), id`,
-    )
-    .all(now, limit)
-    .map(callRow);
 }
 
 export function getResumeCall(

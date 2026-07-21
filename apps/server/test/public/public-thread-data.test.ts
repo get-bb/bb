@@ -217,6 +217,55 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("updates visibility and requires includeHidden to list hidden threads", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        title: "Visibility candidate",
+      });
+
+      const updateResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ visibility: "hidden" }),
+        },
+      );
+      expect(updateResponse.status).toBe(200);
+      await expect(readJson(updateResponse)).resolves.toMatchObject({
+        id: thread.id,
+        visibility: "hidden",
+      });
+
+      const defaultListResponse = await harness.app.request(
+        `/api/v1/threads?projectId=${project.id}`,
+      );
+      expect(defaultListResponse.status).toBe(200);
+      const defaultList = z
+        .array(threadSchema)
+        .parse(await readJson(defaultListResponse));
+      expect(defaultList.map((candidate) => candidate.id)).not.toContain(
+        thread.id,
+      );
+
+      const hiddenListResponse = await harness.app.request(
+        `/api/v1/threads?projectId=${project.id}&includeHidden=true`,
+      );
+      expect(hiddenListResponse.status).toBe(200);
+      const hiddenList = z
+        .array(threadSchema)
+        .parse(await readJson(hiddenListResponse));
+      expect(hiddenList).toContainEqual(
+        expect.objectContaining({ id: thread.id, visibility: "hidden" }),
+      );
+    });
+  });
+
   it("allows creating or assigning a hidden thread in a section", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

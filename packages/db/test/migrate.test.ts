@@ -81,6 +81,11 @@ interface MigratedThreadProvenanceRow {
   sourceThreadId: string | null;
 }
 
+interface MigratedThreadVisibilityRow {
+  id: string;
+  visibility: string;
+}
+
 interface MigratedTerminalSessionRow {
   id: string;
   threadId: string | null;
@@ -326,6 +331,7 @@ const threadSectionsMigrationWhen = 1782252763916;
 const threadSectionsRepairMigrationWhen = 1784257485616;
 const queuedMessageGroupingMigrationWhen = 1782273194188;
 const pendingInteractionsMigrationWhen = 1783626227375;
+const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
@@ -340,6 +346,12 @@ const pluginCatalogMigrationPath = resolve(
   "..",
   "drizzle",
   "0072_bizarre_the_liberteens.sql",
+);
+const sideChatVisibilityBackfillMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0079_side_chat_plugin.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -367,6 +379,17 @@ const eventLargeValuesMigrationPath = resolve(
 );
 function closeConnection(db: DbConnection): void {
   db.$client.close();
+}
+
+// Migration 0079 adds the side_chat_plugin experiment column alongside the
+// side-chat visibility backfill. Rewind scenarios that clear its
+// __drizzle_migrations row must also rewind the schema: ALTER TABLE ADD is
+// not re-appliable against a column that already exists (the backfill UPDATE
+// itself is idempotent).
+function dropSideChatPluginExperimentColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
+    .run();
 }
 
 // Thread-search replay scenarios start from a full `migrate(db)` and then roll
@@ -1184,9 +1207,15 @@ describe("migrate", () => {
           inheritedQueue.id,
           fallbackQueue.id,
         );
+      // Roll back from the permission-modes migration onward so it replays;
+      // Drizzle only re-applies migrations newer than the latest applied row,
+      // so every later row (0079) must be cleared with it.
       db.$client
-        .prepare("DELETE FROM __drizzle_migrations WHERE created_at = ?")
-        .run(latestMigrationWhen);
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(permissionModesMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       migrate(db);
 
@@ -1577,6 +1606,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       expect(
         db.$client
@@ -1664,6 +1694,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadSectionsRepairMigrationWhen);
+      dropSideChatPluginExperimentColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 
@@ -3939,6 +3970,73 @@ describe("migrate", () => {
           >("SELECT COUNT(*) AS count FROM plugin_catalog")
           .get(),
       ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills legacy side-chat rows to hidden visibility", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-side-chat-visibility",
+        name: "Migration Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Migration Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/side-chat-visibility",
+        },
+      });
+      const originKindSideChat = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        originKind: "side-chat",
+      });
+      const childOriginSideChat = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const fork = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        originKind: "fork",
+      });
+      db.$client
+        .prepare("UPDATE threads SET child_origin = 'side-chat' WHERE id = ?")
+        .run(childOriginSideChat.id);
+
+      // The merged 0079 also ADDs the experiment column; drop it first so the
+      // ALTER re-applies cleanly and the backfill UPDATE runs on seeded rows.
+      dropSideChatPluginExperimentColumn(db);
+      runMigrationFile({
+        db,
+        migrationPath: sideChatVisibilityBackfillMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedThreadVisibilityRow>(
+            "SELECT id, visibility FROM threads ORDER BY id",
+          )
+          .all()
+          .filter((row) =>
+            [originKindSideChat.id, childOriginSideChat.id, fork.id].includes(
+              row.id,
+            ),
+          )
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      ).toEqual(
+        [
+          { id: originKindSideChat.id, visibility: "hidden" },
+          { id: childOriginSideChat.id, visibility: "hidden" },
+          { id: fork.id, visibility: "visible" },
+        ].sort((left, right) => left.id.localeCompare(right.id)),
+      );
     } finally {
       closeConnection(db);
     }

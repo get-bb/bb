@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
         plugins: false,
+        sideChatPlugin: false,
       });
     });
   });
@@ -26,16 +27,19 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
           plugins: false,
+          sideChatPlugin: false,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -44,7 +48,29 @@ describe("experiments settings", () => {
       ).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        sideChatPlugin: false,
       });
+    });
+  });
+
+  it("normalizes sideChatPlugin off when plugins is off", async () => {
+    await withTestHarness(async (harness) => {
+      const put = await harness.app.request("/api/v1/settings/experiments", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          claudeCodeMockCliTraffic: false,
+          plugins: false,
+          sideChatPlugin: true,
+        }),
+      });
+      expect(put.status).toBe(200);
+      expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        claudeCodeMockCliTraffic: false,
+        plugins: false,
+        sideChatPlugin: false,
+      });
+      expect(getExperiments(harness.db).sideChatPlugin).toBe(false);
     });
   });
 
@@ -59,6 +85,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           plugins: false,
+          sideChatPlugin: false,
         }),
       });
       expect(put.status).toBe(200);

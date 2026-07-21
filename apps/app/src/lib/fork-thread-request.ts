@@ -1,7 +1,4 @@
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { supportsNativeFork } from "@bb/agent-providers";
 import type {
   PermissionMode,
   PromptInput,
@@ -37,11 +34,7 @@ export function isThreadForkable(sourceThread: ForkableThread | null): boolean {
   if (sourceThread === null || sourceThread.environmentId === null) {
     return false;
   }
-  if (!isAgentProviderId(sourceThread.providerId)) {
-    return false;
-  }
-  return getBuiltInAgentProviderInfo(sourceThread.providerId).capabilities
-    .supportsFork;
+  return supportsNativeFork(sourceThread.providerId);
 }
 
 export function buildForkThreadRequest({

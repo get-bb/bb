@@ -403,6 +403,7 @@ function ThreadTrailingIndicator({
   const indicatorKind = resolveThreadListIndicator(statusProps);
   const pluginStatusIsVisible =
     pluginStatus !== null &&
+    indicatorKind !== "runtime" &&
     indicatorKind !== "unread-error" &&
     indicatorKind !== "waiting-for-input";
 

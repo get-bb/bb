@@ -91,7 +91,37 @@ export async function startHostDaemon(
   if (dataDir === undefined) {
     throw new Error("Host daemon data directory is required");
   }
-  const releaseLock = await (options.acquireLock ?? acquireDaemonLock)(dataDir);
+  // The real logger writes into the shared data dir, so it must not exist
+  // before the lock is held (a losing daemon would mutate the winner's
+  // rolling logs). Lock diagnostics delegate to it once it is created below;
+  // until then they fall back to the console. Compromise can only fire after
+  // acquisition, so in practice the logger is already set.
+  let lockDiagnosticsLogger: HostDaemonLogger | null = null;
+  // Losing the lock to another live daemon before the app exists exits
+  // directly; once the app is running it gets a graceful shutdown first.
+  let handleDaemonLockLost: () => void = () => process.exit(1);
+  const releaseLock = await (options.acquireLock ?? acquireDaemonLock)(
+    dataDir,
+    {
+      logger: {
+        warn: (fields, message) => {
+          if (lockDiagnosticsLogger) {
+            lockDiagnosticsLogger.warn(fields, message);
+          } else {
+            console.warn(message, fields);
+          }
+        },
+        error: (fields, message) => {
+          if (lockDiagnosticsLogger) {
+            lockDiagnosticsLogger.error(fields, message);
+          } else {
+            console.error(message, fields);
+          }
+        },
+      },
+      onLockLost: () => handleDaemonLockLost(),
+    },
+  );
 
   let app: Awaited<ReturnType<typeof createHostDaemonApp>> | undefined;
   let machineAuthProxy: MachineAuthProxy | undefined;
@@ -180,6 +210,7 @@ export async function startHostDaemon(
         dataDir,
         transportMode: "worker",
       });
+    lockDiagnosticsLogger = logger;
     if (options.machineCredential !== undefined) {
       machineAuthProxy = await startMachineAuthProxy({
         machineCredential: options.machineCredential,
@@ -247,6 +278,13 @@ export async function startHostDaemon(
       createWebSocket: options.createWebSocket,
       closeMachineAuthProxy: machineAuthProxy?.close,
     });
+    const startedApp = app;
+    handleDaemonLockLost = () => {
+      void startedApp.daemon
+        .shutdown("daemon-lock-lost")
+        .catch(() => undefined)
+        .finally(() => process.exit(1));
+    };
     await app.daemon.start();
     return app.daemon;
   } catch (error) {

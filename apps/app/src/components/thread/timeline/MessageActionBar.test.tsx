@@ -123,6 +123,90 @@ describe("MessageActionBar", () => {
     ]);
   });
 
+  it("renders plugin actions after the native ones and fires their handlers", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+        pluginActions={[
+          {
+            key: "demo/summarize/1",
+            pluginId: "demo",
+            icon: "Zap",
+            label: "Summarize",
+            onSelect,
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
+        .map((button) => button.getAttribute("aria-label"))
+        .filter((label) => label !== "Message actions"),
+    ).toEqual([
+      "Copy message",
+      "Add to chat",
+      "Fork into new thread",
+      "Summarize",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an action bar for a plugin-action-only message", () => {
+    render(
+      <MessageActionBar
+        messageText=""
+        alignment="start"
+        mobileActionDisplay="inline"
+        pluginActions={[
+          {
+            key: "demo/summarize/1",
+            pluginId: "demo",
+            icon: null,
+            label: "Summarize",
+            onSelect: vi.fn(),
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Summarize" })).toBeTruthy();
+  });
+
+  it("includes plugin actions in the mobile overflow menu", () => {
+    mockMobileCoarsePointer();
+    const onSelect = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="overflow"
+        onAddToChat={vi.fn()}
+        pluginActions={[
+          {
+            key: "demo/summarize/1",
+            pluginId: "demo",
+            icon: "Zap",
+            label: "Summarize",
+            onSelect,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
+    if (!content) throw new Error("Missing mobile message action menu");
+    fireEvent.click(within(content).getByRole("button", { name: "Summarize" }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it("renders add-to-chat as an icon action and passes the message text", () => {
     const onAddToChat = vi.fn();
     render(

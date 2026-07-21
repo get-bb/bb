@@ -12,6 +12,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "node ./scripts/generate-plugin-theme.mjs --check && tsc --noEmit"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-7": "npm:typescript@^7.0.2"
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
   }
 }

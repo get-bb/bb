@@ -144,6 +144,8 @@ export interface PluginThreadEventPayloads {
   /** Fired when a thread transitions into `error`. `error` is the latest
    * system/error event message, when one exists. */
   "thread.failed": { thread: ThreadResponse; error: string | null };
+  /** Fired after a thread is archived (including cascade archives). */
+  "thread.archived": { thread: ThreadResponse };
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
 }

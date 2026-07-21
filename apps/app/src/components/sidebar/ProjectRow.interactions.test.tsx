@@ -179,7 +179,7 @@ describe("ProjectRow interactions", () => {
     ).toBe("8px");
   });
 
-  it("shows named workflow rollup before generic runtime activity", () => {
+  it("shows generic runtime activity before a named workflow rollup", () => {
     renderProjectRow(
       vi.fn(),
       {
@@ -222,8 +222,8 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
   });
 
   it("shows a working draft before named work for a collapsed environment", () => {
@@ -264,7 +264,7 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
-  it("uses shared Plan precedence when a top-level section is collapsed", () => {
+  it("uses shared runtime precedence when a top-level section is collapsed", () => {
     const store = createStore();
     const queryClient = new QueryClient();
     const sectionId = "sec_active";
@@ -315,9 +315,9 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 
   it("shows a working draft before Plan for a collapsed section", () => {

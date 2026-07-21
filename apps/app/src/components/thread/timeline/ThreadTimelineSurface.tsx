@@ -30,6 +30,7 @@ import type {
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineSelectionReplyInSideChatHandler,
+  ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
@@ -58,6 +59,10 @@ export interface ThreadTimelineSurfaceProps {
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
+  /** Surface-scoped consumer actions for the per-message action bar. */
+  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  /** Forwarded to ThreadTimelineRows; see its doc. */
+  includePluginMessageActions?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -157,6 +162,8 @@ export function ThreadTimelineSurface({
   onSendToMainMessage,
   onSelectionAddToChat,
   onSelectionReplyInSideChat,
+  consumerMessageActions,
+  includePluginMessageActions,
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
@@ -227,6 +234,8 @@ export function ThreadTimelineSurface({
           onSendToMainMessage={onSendToMainMessage}
           onSelectionAddToChat={onSelectionAddToChat}
           onSelectionReplyInSideChat={onSelectionReplyInSideChat}
+          consumerMessageActions={consumerMessageActions}
+          includePluginMessageActions={includePluginMessageActions}
           onOpenLink={onOpenLink}
           onOpenLocalFileLink={onOpenLocalFileLink}
           onOpenPluginPanel={onOpenPluginPanel}

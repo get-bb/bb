@@ -228,6 +228,11 @@ function threadMatchesProjectThreadSubset(
   ) {
     return false;
   }
+  // Hidden threads never enter subset caches: every subset consumer is a
+  // navigation surface, matching the server's default list exclusion.
+  if (thread.visibility === "hidden") {
+    return false;
+  }
   return true;
 }
 

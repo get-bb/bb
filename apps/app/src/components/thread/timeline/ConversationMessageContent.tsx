@@ -58,6 +58,7 @@ import {
   SelectableMessageProse,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
+import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
@@ -65,6 +66,8 @@ interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: MarkdownMessageDirectives["openThreadPanel"];
+  /** Plugin-contributed per-message actions, resolved by the timeline root. */
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
@@ -92,6 +95,10 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
    * so a message handed back from a side chat reads "Message from side chat". */
   senderChildOrigin: ThreadChildOrigin | null;
+  /** The sender thread is a side-chat plugin hidden fork — the plugin-era
+   * side chat. Renders the same "Message from side chat" affordance, opening
+   * the plugin's panel instead of a legacy tab. */
+  senderIsPluginSideChat: boolean;
   // Family-B taxonomy fields off the row, required and always supplied (legacy
   // rows carry `unlabeled` + `null`). They drive the `system`-initiated message
   // title, icon, and title-only collapse in `GeneratedConversationMessage`.
@@ -180,6 +187,7 @@ interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
   childOrigin: ThreadChildOrigin | null;
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
@@ -193,6 +201,7 @@ interface UserConversationMessageProps {
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
   senderChildOrigin: ThreadChildOrigin | null;
+  senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
   text: string;
@@ -202,6 +211,7 @@ interface UserConversationMessageProps {
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
+  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
   onSideChat?: () => void;
@@ -377,6 +387,7 @@ function UserConversationMessage({
   onAddToChat,
   onOpenLink,
   onOpenLocalFileLink,
+  pluginActions = [],
   projectId,
   resolveMentionLink,
   resolveSegmentLinkHref,
@@ -384,6 +395,7 @@ function UserConversationMessage({
   senderThreadId,
   senderThreadTitle,
   senderChildOrigin,
+  senderIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
   text,
@@ -409,12 +421,13 @@ function UserConversationMessage({
         onTitleAction={onTitleAction}
         sourceKind="agent"
         sourceName={
-          senderChildOrigin === "side-chat"
+          senderChildOrigin === "side-chat" || senderIsPluginSideChat
             ? "side chat"
             : (senderThreadTitle ?? "Agent")
         }
         sourceThreadId={senderThreadId}
         sourceIsSideChat={senderChildOrigin === "side-chat"}
+        sourceIsPluginSideChat={senderIsPluginSideChat}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
@@ -445,6 +458,7 @@ function UserConversationMessage({
         sourceName="BB"
         sourceThreadId={null}
         sourceIsSideChat={false}
+        sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
         text={body.text}
@@ -489,7 +503,9 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {messageText || addToChatAttachments.length > 0 ? (
+        {messageText ||
+        addToChatAttachments.length > 0 ||
+        pluginActions.length > 0 ? (
           <div className="mt-1 flex justify-end">
             <MessageActionBar
               messageText={messageText}
@@ -497,6 +513,7 @@ function UserConversationMessage({
               mobileActionDisplay={mobileActionDisplay}
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
+              pluginActions={pluginActions}
             />
           </div>
         ) : null}
@@ -518,6 +535,7 @@ function AssistantConversationMessage({
   onOpenLink,
   onOpenLocalFileLink,
   onOpenPluginPanel,
+  pluginActions,
   projectId,
   showActions,
   mobileActionDisplay,
@@ -664,6 +682,7 @@ function AssistantConversationMessage({
               onSideChat={onSideChat}
               onSendToMain={onSendToMain}
               disabled={forkDisabled}
+              pluginActions={pluginActions}
             />
           </div>
         </div>
@@ -703,6 +722,7 @@ export function ConversationMessageContent(
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
         childOrigin={props.childOrigin}
+        pluginActions={props.pluginActions}
         initiator={props.initiator}
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
@@ -716,6 +736,7 @@ export function ConversationMessageContent(
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
         senderChildOrigin={props.senderChildOrigin}
+        senderIsPluginSideChat={props.senderIsPluginSideChat}
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
         text={text}
@@ -729,6 +750,7 @@ export function ConversationMessageContent(
       addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
       id={props.id}
+      pluginActions={props.pluginActions}
       onAddToChat={props.onAddToChat}
       onFork={props.onFork}
       onSideChat={props.onSideChat}

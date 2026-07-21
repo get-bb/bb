@@ -361,11 +361,14 @@ bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
+bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly five events. `thread.active` fires when an applied lifecycle
-transition enters the running `active` state. Observe-only handlers run
+Exactly six events. `thread.active` fires when an applied lifecycle
+transition enters the running `active` state. `thread.archived` fires after a
+thread is archived, including cascade archives (archiving a parent archives
+its children too, each with its own event). Observe-only handlers run
 fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
@@ -795,7 +798,7 @@ Slot props contracts (versioned, additive-only):
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. Registration:
-  `{ id, title, icon?, component, run? }`. Activating it calls
+  `{ id, title, icon?, component, layout?, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
   rendering `component` with `{ threadId: string, params: JsonValue | null }`.
@@ -806,6 +809,11 @@ Slot props contracts (versioned, additive-only):
   tab (title refreshed), different params open sibling tabs. The tab pill
   shows your compact plugin icon + the tab title. Errors thrown from `run`
   (sync or async) are contained and logged, never breaking the launcher.
+  `layout` frames the tab content: `"padded"` (default) wraps `component`
+  in the panel's scroll container with standard padding — right for
+  document-like content; `"flush"` gives it the full tab area (no padding,
+  definite height, no host scrolling) — right for app-like content that
+  owns its layout, such as `experimental_ThreadChat`.
 - `composerAccessory` → `{ projectId: string | null, threadId: string | null }`
   — rendered in the composer footer. Registration: `{ id, component }`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
@@ -870,6 +878,53 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
+- `experimental_messageAction` → an action on chat messages: an icon button in the
+  per-message action bar (user and assistant messages) and an entry in the
+  assistant-message text-selection menu. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, icon?, run }`. Activating it calls
+  `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
+  `message` is a narrow stable reference
+  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd }` (never
+  an internal timeline row); `selectedText` is present only for
+  selection-menu invocations and holds the exact highlighted text; and
+  `openPanel({ actionId, title?, params? })` opens one of the same plugin's
+  registered `threadPanelAction` components in the current thread's side
+  panel — same semantics and boolean return as the message-directive
+  `openThreadPanel`. Errors from `run` (sync or async) are contained and
+  logged, never breaking the timeline.
+
+Host components:
+
+- `experimental_ThreadChat` — bb's complete chat surface for an existing thread, rendered
+  wherever plugin React runs (nav panels, thread-panel tabs, homepage and
+  settings sections). This is the deliberate exception to the
+  no-host-components rule: a stable product capability, not a UI kit. Props:
+  `{ threadId, variant?, layout?, focusRequest?, className?,
+leadingContent?, messageActions? }` —
+  `variant` is `"full"` (standard chat controls, default), `"compact"`
+  (side-panel presentation), or `"timeline"` (transcript without a
+  composer); `layout` is `"contained"` (fills and scrolls within the
+  parent, default) or `"document"` (grows with page content);
+  `focusRequest` is a change-detected nonce that focuses the composer;
+  `leadingContent` is a `ReactNode` rendered above the conversation,
+  scrolling with it; `messageActions` is a list of
+  `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
+  rendered in this instance's per-message action bar after the native and
+  slot-registered actions — `roles` limits the action to `"user"` and/or
+  `"assistant"` messages (omitted = both), and `run(message)` receives the
+  same narrow `ThreadChatMessageReference` as the `messageAction` slot;
+  errors from `run` are contained and logged, never breaking the timeline.
+  Unlike the global `messageAction` slot, these actions are scoped to the
+  one `ThreadChat` instance that supplied them. The
+  host owns timeline loading, streaming, drafts, send/queue/steer/stop,
+  attachments, execution controls, pending interactions, and read tracking —
+  do not proxy thread data through your own RPC or rebuild the composer.
+- `experimental_Markdown` — bb's chat-message markdown renderer (same typography,
+  spacing, and code styling as timeline messages). Props:
+  `{ content, className? }`. Use it wherever plugin UI quotes or previews
+  message content (e.g. a reply header) so it reads like the rest of the
+  chat instead of a differently-styled bundled renderer. Renderer options
+  beyond content/className stay host-internal.
 
 Hooks:
 
@@ -1164,9 +1219,9 @@ Remaining reference examples in `examples/plugins/`:
   plugin is `needs-configuration`; `bb plugin reload <id>` remains available
   for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly five
+- Thread events are observe-only; there are exactly six
   (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
-  `thread.deleted`).
+  `thread.archived`, `thread.deleted`).
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

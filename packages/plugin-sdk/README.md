@@ -4,9 +4,10 @@ The typed facade BB plugin authors compile against. The root preserves the
 complete `BbPluginApi` and `BbSdk` contract; `./app` is the frontend runtime
 that `bb plugin build` replaces with BB's shared implementation.
 
-The exhaustive manifest, backend, frontend, SDK, routing, lifecycle, testing,
-and compatibility reference is in
-[`docs/plugin-api-and-sdk-reference.md`](../../docs/plugin-api-and-sdk-reference.md).
+The authoritative contracts are the exported declarations in
+[`src/backend-contract.ts`](src/backend-contract.ts) and
+[`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
+the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
 ## External plugin tests
 

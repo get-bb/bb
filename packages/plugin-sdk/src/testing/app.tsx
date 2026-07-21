@@ -23,6 +23,7 @@ import {
   type experimental_PluginComposerThreadRowStatus,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
+  type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
   type PluginPendingInteractionRegistration,
@@ -36,6 +37,8 @@ import {
   type PluginRpcContract,
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
+  type MarkdownProps,
+  type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
 
@@ -199,6 +202,76 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
 const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
+/**
+ * Stand-in for the host-owned ThreadChat component: a recognizable stub that
+ * records every public prop as a data attribute so plugin tests can assert
+ * what their slot component passed without the real chat engine.
+ * `leadingContent` renders inside the stub; each `messageActions` entry
+ * renders as a button (`data-testid="bb-thread-chat-action-<id>"`) that
+ * invokes its `run` with a synthetic assistant message reference, so plugin
+ * tests can drive the action without the real timeline.
+ */
+function TestThreadChat({
+  threadId,
+  variant = "full",
+  layout = "contained",
+  focusRequest,
+  className,
+  leadingContent,
+  messageActions,
+}: ThreadChatProps) {
+  return (
+    <div
+      data-testid="bb-thread-chat"
+      data-thread-id={threadId}
+      data-variant={variant}
+      data-layout={layout}
+      data-focus-request={focusRequest ?? 0}
+      data-message-actions={(messageActions ?? [])
+        .map((action) => action.id)
+        .join(" ")}
+      className={className}
+    >
+      {leadingContent === undefined ? null : (
+        <div data-testid="bb-thread-chat-leading-content">{leadingContent}</div>
+      )}
+      ThreadChat stub ({threadId})
+      {(messageActions ?? []).map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          data-testid={`bb-thread-chat-action-${action.id}`}
+          data-roles={action.roles === undefined ? "" : action.roles.join(" ")}
+          onClick={() => {
+            void action.run({
+              id: "test-message",
+              threadId,
+              role: action.roles?.[0] ?? "assistant",
+              text: "test message text",
+              sourceSeqEnd: 1,
+            });
+          }}
+        >
+          {action.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Stand-in for the host-owned Markdown renderer: emits the raw source in a
+ * recognizable wrapper so plugin tests can assert what content they passed
+ * without the real renderer.
+ */
+function TestMarkdown({ content, className }: MarkdownProps) {
+  return (
+    <div data-testid="bb-markdown" className={className}>
+      {content}
+    </div>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -262,6 +335,8 @@ const testPluginSdkApp = {
       [binding.api, snapshot.text],
     );
   },
+  experimental_ThreadChat: TestThreadChat,
+  experimental_Markdown: TestMarkdown,
 } satisfies PluginSdkApp;
 
 interface PluginRuntimeHost {
@@ -295,6 +370,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
+  messageActions: PluginMessageActionRegistration[];
 }
 
 type PluginAppModule = { default: unknown };
@@ -379,6 +455,7 @@ function collectRegistrations(
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
+    messageActions: [],
   };
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -390,6 +467,7 @@ function collectRegistrations(
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
+    messageAction: new Set<string>(),
   };
 
   definition.setup({
@@ -460,6 +538,13 @@ function collectRegistrations(
         ) {
           throw new Error(`${kind}: "run" must be a function when set`);
         }
+        if (
+          registration.layout !== undefined &&
+          registration.layout !== "padded" &&
+          registration.layout !== "flush"
+        ) {
+          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+        }
         captured.threadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -467,6 +552,9 @@ function collectRegistrations(
             ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
             : {}),
           component: requireComponent(kind, registration.component),
+          ...(registration.layout !== undefined
+            ? { layout: registration.layout }
+            : {}),
           ...(registration.run !== undefined ? { run: registration.run } : {}),
         });
       },
@@ -534,6 +622,22 @@ function collectRegistrations(
         captured.messageDirectives.push({
           id,
           component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_messageAction(registration) {
+        const kind = "slots.experimental_messageAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.messageAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        captured.messageActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+            : {}),
+          run: registration.run,
         });
       },
     },

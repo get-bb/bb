@@ -413,8 +413,8 @@ proxying relayed requests to the server's own loopback (which serves the SPA
   `url`; `shares --json` also includes the resolved `host`. A machine without
   a live Connect enrollment fails fast with instructions to remove and re-add
   it in Settings → Machines. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; with the bb connect
-  experiment still enabled, `bb plugin enable connect` restores it.
+  (`bb plugin disable connect`) cuts off all remote access;
+  `bb plugin enable connect` restores it.
 
 The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
@@ -425,9 +425,9 @@ ports).
 User-installed plugins are gated behind the "Plugins" experiment (Settings →
 Experiments, off by default). While the experiment is off, user plugin code
 does not load and `bb plugin` commands for user plugins report that plugins are
-disabled. Builtin plugins ship with bb and can remain available; the builtin
-connect plugin is separately gated by "bb connect". Toggling these
-experiments applies live.
+disabled. Builtin plugins, including connect, ship with bb and remain available
+when the Plugins experiment is off. Toggling the Plugins experiment applies
+live to user-installed plugins.
 
 Plugin state lives under the data dir:
 
@@ -465,7 +465,7 @@ the plugin so it can be surfaced as needing attention.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Settings → Plugins or with `bb plugin enable workflows`. Its seven
+under Settings → Plugins or with `bb plugin enable workflows`. Its six
 settings accept base-10 integer strings through Settings → Plugins or
 `bb plugin config workflows set <key> <value>`:
 
@@ -474,12 +474,11 @@ settings accept base-10 integer strings through Settings → Plugins or
 | `maxActiveRuns`        |        `4` |            `1`–`32` | Concurrent runs across the plugin; changes apply live.         |
 | `maxConcurrentAgents`  |        `8` |            `1`–`64` | Concurrent agent calls within one run.                         |
 | `maxAgentCalls`        |      `100` |          `1`–`1000` | Total agent calls within one run.                              |
-| `workerStallTimeoutMs` |  `1800000` |  `60000`–`86400000` | Milliseconds without persisted worker activity before failure. |
 | `totalRunTimeoutMs`    | `86400000` | `60000`–`604800000` | Maximum total run duration in milliseconds.                    |
 | `retentionDays`        |       `30` |          `1`–`3650` | Days to retain completed workflow data.                        |
 | `maxNotificationBytes` |    `16384` |     `1024`–`262144` | Maximum UTF-8 size of a completion notification.               |
 
-The six settings other than `maxActiveRuns` are snapshotted into each new run.
+The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
@@ -533,12 +532,8 @@ npx bb-app --server-port 48886 --host-daemon-port 48887
 ## Source Development
 
 For source development only, `pnpm dev` and `pnpm start` load the repo-root
-dotenv cascade. Contributors can start from [`.env.example`](../.env.example)
-for a local development template:
-
-```bash
-cp .env.example .env
-```
+dotenv cascade. Add a repo-root `.env` only when you need to override the
+defaults described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
 applies to source development. `pnpm dev` loads `.env`, `.env.local`,

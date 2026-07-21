@@ -40,6 +40,17 @@ describe("bb thread list command output", () => {
     });
   });
 
+  it("bb thread list opts into hidden threads explicitly", async () => {
+    const list = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await runCommand(["thread", "list", "--include-hidden"], register);
+
+    expect(list).toHaveBeenCalledWith({
+      query: { includeHidden: "true" },
+    });
+  });
+
   it("bb thread list rejects invalid parent-thread values", async () => {
     const list = vi.fn(async () => []);
     stubServerApi({ "v1.threads.$get": list });

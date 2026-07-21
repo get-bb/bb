@@ -144,12 +144,20 @@ export function registerSystemRoutes(
 
   put(routes.experiments, (context, payload) => {
     const previous = getExperiments(deps.db);
-    setExperiments(deps.db, payload);
+    // sideChatPlugin depends on plugins; normalize here so every reader
+    // (Settings, thread views, plugin runtime) sees one coherent value.
+    setExperiments(deps.db, {
+      ...payload,
+      sideChatPlugin: payload.plugins && payload.sideChatPlugin,
+    });
     // The same kind a config reload broadcasts: every window re-reads
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
     const next = getExperiments(deps.db);
-    if (previous.plugins !== next.plugins) {
+    if (
+      previous.plugins !== next.plugins ||
+      previous.sideChatPlugin !== next.sideChatPlugin
+    ) {
       // Live toggle: plugin-affecting experiments load/unload matching rows.
       void pluginService.onExperimentsChanged().catch((error) => {
         deps.logger.error({ err: error }, "Plugin experiment toggle failed");

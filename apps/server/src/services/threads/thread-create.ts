@@ -6,10 +6,7 @@ import {
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
 import type { Project, Thread, ThreadOriginKind } from "@bb/domain";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -86,6 +83,7 @@ interface CreateProvisioningThreadArgs {
   >[2]["projectDefaults"];
   fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
+  providerInput?: ThreadCreateServiceRequestInput["input"];
 }
 
 interface ResolveForkDescriptorArgs {
@@ -122,10 +120,7 @@ function resolveForkDescriptor(
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
-  if (
-    !isAgentProviderId(args.providerId) ||
-    !getBuiltInAgentProviderInfo(args.providerId).capabilities.supportsFork
-  ) {
+  if (!supportsNativeFork(args.providerId)) {
     return null;
   }
   const sourceProviderThreadId =
@@ -437,6 +432,9 @@ async function createProvisioningThread(
       execution,
       fork: args.fork,
       input: args.request.input,
+      ...(args.providerInput !== undefined
+        ? { providerInput: args.providerInput }
+        : {}),
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     });
@@ -467,12 +465,23 @@ async function createProvisioningThread(
 export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
+  options: {
+    /** Provider-facing input when it differs from the persisted start seed. */
+    providerInput?: ThreadCreateServiceRequestInput["input"];
+  } = {},
 ) {
   const normalizedRequestInput: ThreadCreateServiceRequestInput & {
     visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
   } = {
     ...rawRequestInput,
-    visibility: rawRequestInput.visibility ?? "visible",
+    // Side chats are hidden from navigation; the 0079 backfill applied the
+    // same default to pre-existing rows.
+    visibility:
+      rawRequestInput.visibility ??
+      ((rawRequestInput.originKind ?? rawRequestInput.childOrigin) ===
+      "side-chat"
+        ? "hidden"
+        : "visible"),
   };
   const project = requirePublicProjectForThreadCreate(
     deps,
@@ -522,13 +531,6 @@ export async function createThreadFromRequest(
     (originKind !== null ? requestInput.parentThreadId : undefined);
   const hierarchyParentThreadId =
     originKind === null ? requestInput.parentThreadId : undefined;
-  if (originKind === "fork" && requestInput.input.length === 0) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      "fork input must contain at least one entry",
-    );
-  }
   const parentThread = hierarchyParentThreadId
     ? assertValidParentThread(deps, {
         parentThreadId: hierarchyParentThreadId,
@@ -774,7 +776,7 @@ export async function createThreadFromRequest(
   if (request.originKind !== null && fork === null) {
     throw new ApiError(
       400,
-      "invalid_request",
+      "fork_source_session_unavailable",
       "Cannot fork: source has no active session to clone",
     );
   }
@@ -784,6 +786,9 @@ export async function createThreadFromRequest(
     environmentIntent,
     executionDefaults,
     fork,
+    ...(options.providerInput !== undefined
+      ? { providerInput: options.providerInput }
+      : {}),
     request,
   });
   deps.telemetry.capture({

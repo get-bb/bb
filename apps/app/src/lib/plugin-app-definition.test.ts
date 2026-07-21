@@ -73,6 +73,12 @@ describe("collectPluginAppRegistrations", () => {
         id: "inline-vis",
         component: Component,
       });
+      app.slots.experimental_messageAction({
+        id: "summarize",
+        title: "Summarize",
+        icon: "Zap",
+        run,
+      });
     });
 
     const registrations = collectPluginAppRegistrations(definition);
@@ -126,6 +132,9 @@ describe("collectPluginAppRegistrations", () => {
     expect(registrations.messageDirectives).toEqual([
       { id: "inline-vis", component: Component },
     ]);
+    expect(registrations.messageActions).toEqual([
+      { id: "summarize", title: "Summarize", icon: "Zap", run },
+    ]);
   });
 
   it.each([
@@ -161,6 +170,27 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"id" must match/,
+    ],
+    [
+      "message action without a run function",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_messageAction({
+            id: "no-run",
+            title: "No run",
+            run: undefined as never,
+          });
+        }),
+      /"run" must be a function/,
+    ],
+    [
+      "duplicate message action id",
+      () =>
+        definePluginApp((app) => {
+          app.slots.experimental_messageAction({ id: "a", title: "A", run: () => {} });
+          app.slots.experimental_messageAction({ id: "a", title: "B", run: () => {} });
+        }),
+      /duplicate id "a"/,
     ],
     [
       "duplicate id",

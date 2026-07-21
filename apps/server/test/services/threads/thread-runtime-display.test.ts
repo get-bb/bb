@@ -27,7 +27,7 @@ import type {
   Thread,
   ThreadRuntimeState,
 } from "@bb/domain";
-import { DAEMON_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
+import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -257,12 +257,16 @@ describe("thread runtime display", () => {
     } satisfies ThreadRuntimeState);
   });
 
-  it("shows host-reconnecting while a daemon disconnect is inside the grace period", () => {
+  it("shows host-reconnecting for the full active-work grace after a daemon disconnect", () => {
     const { db, hostId, hub } = setup();
-    const now = 10_000;
+    const now = 60_000;
     const session = openTestSession({ db, hostId });
+    // Well past the short pending-interaction grace, still inside the
+    // active-work window: the thread has not been interrupted yet, so the
+    // DTO must keep advertising the reconnect window.
+    const closedAt = now - DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS + 1_000;
     closeTestSession({
-      closedAt: now - 1_000,
+      closedAt,
       db,
       sessionId: session.id,
     });
@@ -274,16 +278,17 @@ describe("thread runtime display", () => {
       ),
     ).toEqual({
       displayStatus: "host-reconnecting",
-      hostReconnectGraceExpiresAt: now - 1_000 + DAEMON_DISCONNECT_GRACE_MS,
+      hostReconnectGraceExpiresAt:
+        closedAt + DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
     } satisfies ThreadRuntimeState);
   });
 
-  it("shows waiting-for-host after the daemon disconnect grace period expires", () => {
+  it("shows waiting-for-host after the active-work disconnect grace expires", () => {
     const { db, hostId, hub } = setup();
-    const now = 10_000;
+    const now = 60_000;
     const session = openTestSession({ db, hostId });
     closeTestSession({
-      closedAt: now - DAEMON_DISCONNECT_GRACE_MS - 1,
+      closedAt: now - DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS - 1,
       db,
       sessionId: session.id,
     });

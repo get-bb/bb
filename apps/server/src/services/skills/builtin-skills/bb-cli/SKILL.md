@@ -98,11 +98,17 @@ message agents, or inspect projects, providers, and environments.
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
 - Spawn creates a root thread unless you pass `--parent-thread`.
+- Use `bb thread fork <source-thread-id>` to clone a provider session. It
+  creates an idle fork by default; add `--prompt`, select `--workspace
+isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
+  the source thread unless explicitly overridden.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
-  attention or native parent notifications. Hidden threads otherwise retain
-  ordinary list, search, prompt-history, section, lifecycle, parent-operation,
-  and direct-open behavior. Visible is the default.
+  attention or native parent notifications. `bb thread list` excludes them by
+  default; pass `--include-hidden` when a hidden worker must be discovered.
+  Direct-ID lifecycle and messaging operations remain available. Visible is
+  the default. Promote or hide an existing thread with `bb thread update <id>
+--visibility visible|hidden`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the
@@ -234,12 +240,10 @@ or artifacts, validation performed, and blockers.
 <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
-- By default, `bb thread tell` **queues** the message: if the agent is still
-  working, delivery waits until the current turn finishes. Use
-  `--mode steer` to **steer** — send the message immediately into the active
-  turn. Prefer steer when the change is urgent (wrong direction, hard stop,
-  critical clarification). Prefer the default queue when the note is non-urgent
-  and the agent can finish its current work first.
+- `bb thread tell` steers by default, delivering the message immediately into
+  the active turn. Use `--mode queue` when the message is non-urgent and the
+  agent can finish its current work first. Steer is especially important for a
+  wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
 
 ## Inspecting Results
@@ -466,12 +470,12 @@ list --environment "$BB_ENVIRONMENT_ID" --json`, then query only the chosen
   provider with `bb provider models <provider-id> --environment
 "$BB_ENVIRONMENT_ID" --json`. Never guess ACP model IDs. Run every Workflows
   command from a BB project thread.
-- Configure its seven settings with `bb plugin config workflows set <key>
+- Configure its six settings with `bb plugin config workflows set <key>
 <value>`: `maxActiveRuns` (default 4, range 1–32), `maxConcurrentAgents` (8,
-  1–64), `maxAgentCalls` (100, 1–1000), `workerStallTimeoutMs` (1800000,
-  60000–86400000), `totalRunTimeoutMs` (86400000, 60000–604800000),
+  1–64), `maxAgentCalls` (100, 1–1000), `totalRunTimeoutMs` (86400000,
+  60000–604800000),
   `retentionDays` (30, 1–3650), and `maxNotificationBytes` (16384,
-  1024–262144). `maxActiveRuns` applies live; the other six are snapshotted per
+  1024–262144). `maxActiveRuns` applies live; the other five are snapshotted per
   run. No plugin reload is needed after changing them.
 
 ## Theming
@@ -532,6 +536,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   default: turn on **"Plugins"** under Settings → Experiments. Auto-installed
   builtin plugins ship with bb and remain available even when the experiment
   is off (except `connect`, which is gated by the **"bb connect"**
+  experiment, and `side-chat`, which is gated by the **"Side chat plugin"**
   experiment); store-installed official plugins are a user opt-in and stay
   behind the Plugins experiment like other installs.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):

@@ -284,7 +284,7 @@ describe("sidebar organization mode sections", () => {
     expect(mockBuildMachineThreadGroups).toHaveBeenCalledWith([], []);
   });
 
-  it("surfaces shared activity for a collapsed machine section", () => {
+  it("surfaces shared runtime activity for a collapsed machine section", () => {
     const store = createStore();
     store.set(sidebarMachineSectionOrderAtom, ["machine:no-machine"]);
     store.set(sidebarCollapsedMachinesAtom, ["no-machine"]);
@@ -296,6 +296,7 @@ describe("sidebar organization mode sections", () => {
     );
 
     expect(screen.queryByText("Machine activity")).toBeNull();
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 });

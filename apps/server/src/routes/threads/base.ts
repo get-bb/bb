@@ -43,6 +43,7 @@ import {
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
+import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
 import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
@@ -225,6 +226,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(query.originKind ? { originKind: query.originKind } : {}),
       ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
       ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
+      includeHidden: query.includeHidden === "true",
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
       hasParent:
@@ -265,6 +267,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...payload,
       origin: payload.origin,
     });
+    return context.json(toThreadResponseFromThread(deps, { thread }), 201);
+  });
+
+  post(routes.fork, async (context, payload) => {
+    const thread = await createThreadForkFromRequest(deps, payload);
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
@@ -330,6 +337,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;
+    }
+    if ("visibility" in payload) {
+      metadataUpdate.visibility = payload.visibility;
     }
     const updated =
       Object.keys(metadataUpdate).length > 0

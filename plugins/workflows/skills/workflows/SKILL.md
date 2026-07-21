@@ -493,7 +493,7 @@ lifecycle, and direct operations remain available. Workflows does not create a
 temporary Workflow folder.
 
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent
-concurrency and call count, worker stall timeout, total run timeout, retention,
-and UTF-8 completion-message size are snapshotted per run. `status` is bounded
+concurrency and call count, total run timeout, retention, and UTF-8
+completion-message size are snapshotted per run. `status` is bounded
 to compact progress and call counts. Paged JSONL `history` carries ordered
 call-level execution, cache, child-thread, repair, result, and error details.

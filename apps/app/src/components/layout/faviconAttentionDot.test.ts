@@ -14,6 +14,7 @@ function makeSidebarThread(
     hasPendingInteraction: false,
     lastReadAt: 10,
     latestAttentionAt: 20,
+    visibility: "visible",
     ...overrides,
   };
 }

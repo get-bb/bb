@@ -17,6 +17,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
+  experimental_ThreadChat: ThreadChat,
   useComposer,
   useRealtime,
   useRealtimeConnectionState,
@@ -172,6 +173,32 @@ function ComposerProbe() {
   );
 }
 
+const messageActionRuns: unknown[] = [];
+
+function ThreadChatPage({ subPath }: PluginNavPanelProps) {
+  return (
+    <ThreadChat
+      threadId={subPath || "thr_default"}
+      variant="compact"
+      layout="document"
+      focusRequest={2}
+      className="demo-chat"
+      leadingContent={<div>Replying to something earlier</div>}
+      messageActions={[
+        {
+          id: "send-to-main",
+          title: "Send to main thread",
+          icon: "ArrowTurnBackward",
+          roles: ["assistant"],
+          run: (message) => {
+            messageActionRuns.push(message);
+          },
+        },
+      ]}
+    />
+  );
+}
+
 const app = await loadPluginApp(
   definePluginApp((builder) => {
     builder.slots.navPanel({
@@ -180,6 +207,21 @@ const app = await loadPluginApp(
       icon: "FileText",
       path: "panel",
       component: Panel,
+    });
+    builder.slots.navPanel({
+      id: "chat",
+      title: "Chat",
+      icon: "MessageSquarePlus",
+      path: "chat",
+      component: ThreadChatPage,
+    });
+    builder.slots.experimental_messageAction({
+      id: "summarize",
+      title: "Summarize",
+      icon: "Zap",
+      run(context) {
+        messageActionRuns.push(context);
+      },
     });
     builder.slots.messageDirective({
       id: "inline-vis",
@@ -248,6 +290,99 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
+  });
+
+  it("captures messageAction registrations and validates them like the host", async () => {
+    expect(app.messageActions).toHaveLength(1);
+    expect(app.messageActions[0]).toMatchObject({
+      id: "summarize",
+      title: "Summarize",
+      icon: "Zap",
+    });
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageAction({
+            id: "no-run",
+            title: "No run",
+            // @ts-expect-error deliberately invalid: run is required
+            run: undefined,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageAction: "run" must be a function');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_messageAction({
+            id: "dup",
+            title: "One",
+            run: () => {},
+          });
+          builder.slots.experimental_messageAction({
+            id: "dup",
+            title: "Two",
+            run: () => {},
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_messageAction: duplicate id "dup"');
+  });
+
+  it("invokes a captured messageAction run with a plugin-authored context", () => {
+    const openPanel = (options: { actionId: string }) =>
+      options.actionId === "panel";
+    app.messageActions[0]!.run({
+      threadId: "thr_main",
+      message: {
+        id: "msg_1",
+        threadId: "thr_main",
+        role: "assistant",
+        text: "An answer.",
+        sourceSeqEnd: 12,
+      },
+      selectedText: "answer",
+      openPanel,
+    });
+    expect(messageActionRuns).toHaveLength(1);
+    expect(messageActionRuns[0]).toMatchObject({
+      threadId: "thr_main",
+      selectedText: "answer",
+    });
+  });
+
+  it("renders the ThreadChat stub with recorded props inside a slot", () => {
+    const chatPanel = app.navPanels.find((panel) => panel.id === "chat")!;
+    const slot = renderSlot(chatPanel, { subPath: "thr_42" });
+    const stub = slot.getByTestId("bb-thread-chat");
+    expect(stub.getAttribute("data-thread-id")).toBe("thr_42");
+    expect(stub.getAttribute("data-variant")).toBe("compact");
+    expect(stub.getAttribute("data-layout")).toBe("document");
+    expect(stub.getAttribute("data-focus-request")).toBe("2");
+    expect(stub.getAttribute("data-message-actions")).toBe("send-to-main");
+    expect(stub.className).toBe("demo-chat");
+  });
+
+  it("renders leadingContent and drives messageActions through the stub", () => {
+    messageActionRuns.length = 0;
+    const chatPanel = app.navPanels.find((panel) => panel.id === "chat")!;
+    const slot = renderSlot(chatPanel, { subPath: "thr_42" });
+    expect(
+      slot.getByTestId("bb-thread-chat-leading-content").textContent,
+    ).toContain("Replying to something earlier");
+
+    const action = slot.getByTestId("bb-thread-chat-action-send-to-main");
+    expect(action.getAttribute("data-roles")).toBe("assistant");
+    fireEvent.click(action);
+    expect(messageActionRuns).toEqual([
+      {
+        id: "test-message",
+        threadId: "thr_42",
+        role: "assistant",
+        text: "test message text",
+        sourceSeqEnd: 1,
+      },
+    ]);
   });
 });
 

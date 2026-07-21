@@ -116,11 +116,13 @@ export function getThreadListIndicatorLabel(
 export function resolveThreadListIndicator(
   state: ThreadListIndicatorState,
 ): ThreadListIndicatorKind {
+  // Foreground runtime work is the primary row status. Secondary activity and
+  // attention signals become useful again once the runtime is idle.
+  if (state.isRuntimeActive) return "runtime";
   if (state.hasUnreadError) return "unread-error";
   if (state.hasPendingInteraction) return "waiting-for-input";
 
   const hasActiveWork =
-    state.isRuntimeActive ||
     state.isWorkflowActive ||
     state.isBackgroundAgentActive ||
     state.isBackgroundCommandActive ||
@@ -128,11 +130,10 @@ export function resolveThreadListIndicator(
     state.isGoalActive;
   if (state.hasUnsubmittedDraft && hasActiveWork) return "working-draft";
   if (state.isWorkflowActive) return "workflow";
-  if (state.isBackgroundAgentActive) return "background-agent";
-  if (state.isBackgroundCommandActive) return "background-command";
   if (state.isPlanModeActive) return "plan-mode";
   if (state.isGoalActive) return "goal";
-  if (state.isRuntimeActive) return "runtime";
+  if (state.isBackgroundAgentActive) return "background-agent";
+  if (state.isBackgroundCommandActive) return "background-command";
   if (state.hasUnsubmittedDraft) return "draft";
   if (state.hasUnreadSuccess) return "unread-success";
   return "none";

@@ -9,6 +9,8 @@ import {
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
+  type PluginMessageActionContext,
+  type PluginMessageActionRegistration,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
@@ -19,6 +21,8 @@ import {
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
+  type ThreadChatMessageAction,
+  type ThreadChatProps,
 } from "@bb/plugin-sdk";
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
@@ -117,6 +121,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
   "thread.failed": ["thread", "error"],
+  "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
@@ -150,6 +155,7 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
+  experimental_messageAction: PluginMessageActionContext;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -172,6 +178,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "openWorkspaceFile",
     "openThreadPanel",
   ],
+  experimental_messageAction: ["threadId", "message", "selectedText", "openPanel"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -225,6 +232,63 @@ const _assertAllSidebarFooterActionRegistrationFieldsListed: MissingSidebarFoote
   ? true
   : never = true;
 void _assertAllSidebarFooterActionRegistrationFieldsListed;
+
+const MESSAGE_ACTION_REGISTRATION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "run",
+] as const satisfies readonly (keyof PluginMessageActionRegistration)[];
+
+type MissingMessageActionRegistrationField = Exclude<
+  keyof PluginMessageActionRegistration,
+  (typeof MESSAGE_ACTION_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllMessageActionRegistrationFieldsListed: MissingMessageActionRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllMessageActionRegistrationFieldsListed;
+
+/**
+ * Mirrors ThreadChatProps (app-contract.ts), compile-time checked in both
+ * directions like the registration guards above.
+ */
+const THREAD_CHAT_PROP_FIELDS = [
+  "threadId",
+  "variant",
+  "layout",
+  "focusRequest",
+  "className",
+  "leadingContent",
+  "messageActions",
+] as const satisfies readonly (keyof ThreadChatProps)[];
+
+type MissingThreadChatPropField = Exclude<
+  keyof ThreadChatProps,
+  (typeof THREAD_CHAT_PROP_FIELDS)[number]
+>;
+const _assertAllThreadChatPropFieldsListed: MissingThreadChatPropField extends never
+  ? true
+  : never = true;
+void _assertAllThreadChatPropFieldsListed;
+
+/** Mirrors ThreadChatMessageAction (app-contract.ts). */
+const THREAD_CHAT_MESSAGE_ACTION_FIELDS = [
+  "id",
+  "title",
+  "icon",
+  "roles",
+  "run",
+] as const satisfies readonly (keyof ThreadChatMessageAction)[];
+
+type MissingThreadChatMessageActionField = Exclude<
+  keyof ThreadChatMessageAction,
+  (typeof THREAD_CHAT_MESSAGE_ACTION_FIELDS)[number]
+>;
+const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageActionField extends never
+  ? true
+  : never = true;
+void _assertAllThreadChatMessageActionFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");
@@ -296,6 +360,35 @@ describe("bb-plugin-authoring skill", () => {
       ).toContain(field);
     }
     expect(skill).toContain("openSettings");
+  });
+
+  it("documents every messageAction registration field", () => {
+    for (const field of MESSAGE_ACTION_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `messageAction registration field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+    expect(skill).toContain("sourceSeqEnd");
+  });
+
+  it("documents every ThreadChat prop", () => {
+    for (const field of THREAD_CHAT_PROP_FIELDS) {
+      expect(
+        skill,
+        `ThreadChat prop "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
+  });
+
+  it("documents every ThreadChat message-action field", () => {
+    expect(skill).toContain("ThreadChatMessageAction");
+    for (const field of THREAD_CHAT_MESSAGE_ACTION_FIELDS) {
+      expect(
+        skill,
+        `ThreadChatMessageAction field "${field}" is not documented in the skill`,
+      ).toContain(field);
+    }
   });
 
   it("documents the explicit plugin branding contract", () => {

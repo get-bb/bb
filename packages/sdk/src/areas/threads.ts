@@ -13,6 +13,7 @@ import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  ForkThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
   SendQueuedMessageResponse,
@@ -64,6 +65,7 @@ export interface ThreadListArgs {
   excludeSideChats?: boolean;
   sectionId?: string;
   hasParent?: boolean;
+  includeHidden?: boolean;
   limit?: number;
   offset?: number;
   originKind?: ThreadListQuery["originKind"];
@@ -92,6 +94,7 @@ export interface ThreadOutputResponse {
 }
 export type ThreadMutationResult = ThreadResponse;
 export type ThreadSpawnResult = ThreadResponse;
+export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
 export type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 export type ThreadInteractionResolveResult = PendingInteraction;
@@ -152,6 +155,15 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
         prompt: string;
       }
   );
+
+export interface ThreadForkArgs extends Omit<
+  ForkThreadRequest,
+  "origin" | "visibility" | "workspace"
+> {
+  origin?: ForkThreadRequest["origin"];
+  visibility?: ForkThreadRequest["visibility"];
+  workspace?: ForkThreadRequest["workspace"];
+}
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
   threadId: string;
@@ -406,6 +418,7 @@ export interface ThreadsArea {
   ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   events: ThreadEventsArea;
+  fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
@@ -453,6 +466,9 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.excludeSideChats === undefined
       ? {}
       : { excludeSideChats: args.excludeSideChats ? "true" : "false" }),
+    ...(args?.includeHidden === undefined
+      ? {}
+      : { includeHidden: args.includeHidden ? "true" : "false" }),
     ...(args?.limit === undefined ? {} : { limit: String(args.limit) }),
     ...(args?.offset === undefined ? {} : { offset: String(args.offset) }),
     ...(args?.hasParent === undefined
@@ -468,6 +484,7 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
     parentThreadId: args.parentThreadId,
     model: args.model,
     reasoningLevel: args.reasoningLevel,
+    visibility: args.visibility,
   };
 }
 
@@ -511,6 +528,15 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
     startedOnBehalfOf: startedOnBehalfOf ?? null,
     originKind: originKind ?? null,
     childOrigin: childOrigin ?? null,
+  };
+}
+
+function forkJson(args: ThreadForkArgs): ForkThreadRequest {
+  return {
+    ...args,
+    origin: args.origin ?? "sdk",
+    visibility: args.visibility ?? "visible",
+    workspace: args.workspace ?? "isolated",
   };
 }
 
@@ -882,6 +908,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return { ok: true };
     },
     events,
+    async fork(input) {
+      return transport.readJson(
+        transport.api.v1.threads.fork.$post({
+          json: forkJson(input),
+        }),
+      );
+    },
     get: getThread,
     interactions,
     async list(input) {

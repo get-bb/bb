@@ -598,7 +598,7 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
-  it("rejects an empty-input native fork", async () => {
+  it("allows an empty-input native fork to start idle", async () => {
     await withChildBoundaryHarness(
       "empty-native-fork",
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
@@ -608,30 +608,35 @@ describe("thread creation child-thread boundary validation", () => {
           providerThreadId: "provider-parent-session",
         });
 
-        const error = await captureCreateError(() =>
-          createThreadFromRequest(harness.deps, {
-            environment: {
-              type: "host",
-              hostId,
-              workspace: { type: "unmanaged", path },
-            },
-            input: [],
-            origin: "app",
-            originKind: "fork",
-            projectId,
-            providerId: "codex",
-            sourceThreadId,
-            startedOnBehalfOf: {
-              initiator: "agent",
-              senderThreadId: sourceThreadId,
-            },
-          }),
+        const fork = await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: [],
+          origin: "app",
+          originKind: "fork",
+          projectId,
+          providerId: "codex",
+          sourceThreadId,
+          startedOnBehalfOf: {
+            initiator: "agent",
+            senderThreadId: sourceThreadId,
+          },
+        });
+        const queued = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === fork.id,
         );
-        expect(error.status).toBe(400);
-        expect(error.body.code).toBe("invalid_request");
-        expect(error.body.message).toBe(
-          "fork input must contain at least one entry",
-        );
+        if (queued.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queued.command.input).toEqual([]);
+        expect(queued.command.fork).toEqual({
+          sourceProviderThreadId: "provider-parent-session",
+        });
       },
     );
   });
@@ -783,6 +788,9 @@ describe("thread creation child-thread boundary validation", () => {
         expect(persistedSideChat?.originKind).toBe("side-chat");
         expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
         expect(persistedSideChat?.parentThreadId).toBeNull();
+        // Side chats default to hidden when the request omits visibility —
+        // the same policy migration 0079 backfilled onto pre-existing rows.
+        expect(persistedSideChat?.visibility).toBe("hidden");
       },
     );
   });
@@ -936,7 +944,7 @@ describe("thread creation child-thread boundary validation", () => {
           }),
         );
         expect(error.status).toBe(400);
-        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.code).toBe("fork_source_session_unavailable");
         expect(error.body.message).toBe(
           "Cannot fork: source has no active session to clone",
         );
@@ -965,7 +973,7 @@ describe("thread creation child-thread boundary validation", () => {
           }),
         );
         expect(error.status).toBe(400);
-        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.code).toBe("fork_source_session_unavailable");
         expect(error.body.message).toBe(
           "Cannot fork: source has no active session to clone",
         );

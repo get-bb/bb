@@ -26,6 +26,7 @@ function systemTitle({
     sourceName: "BB",
     sourceThreadId: null,
     sourceIsSideChat: false,
+    sourceIsPluginSideChat: false,
     systemMessageKind,
     systemMessageSubject,
   });
@@ -135,6 +136,7 @@ describe("generatedConversationTitle — agent source", () => {
       sourceName: "Worker 2",
       sourceThreadId: "thr_sender",
       sourceIsSideChat: false,
+      sourceIsPluginSideChat: false,
       systemMessageKind: "unlabeled",
       systemMessageSubject: null,
     });

@@ -180,6 +180,13 @@ export interface ThreadSecondaryPanelProps {
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
+  /**
+   * True when the active file tab's content owns its own layout and
+   * scrolling (terminal-style): the slot then provides only a definite
+   * height instead of the padded scroll container. Set for plugin panel
+   * tabs registered with `layout: "flush"`.
+   */
+  fileTabContentFillsRegion?: boolean;
   onFileTabReorder: SecondaryPanelTabReorderHandler;
   /**
    * The browser-tab deck slot. Rendered in the content region so the deck can
@@ -295,6 +302,7 @@ export function ThreadSecondaryPanel({
   metadataContent,
   fileTabs,
   fileTabContent,
+  fileTabContentFillsRegion,
   onFileTabReorder,
   browserDeck,
   isBrowserTabActive = false,
@@ -732,12 +740,12 @@ export function ThreadSecondaryPanel({
         {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
           <div
             className={
-              isTerminalTabActive
+              isTerminalTabActive || fileTabContentFillsRegion
                 ? "min-h-0 flex-1 overflow-hidden"
                 : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
             }
             data-file-preview-scroll-container={
-              isTerminalTabActive ? undefined : ""
+              isTerminalTabActive || fileTabContentFillsRegion ? undefined : ""
             }
           >
             {shouldRenderFileTabContent

@@ -14,12 +14,34 @@ import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import type { PluginMessageActionRegistration } from "@bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
   turnRow,
 } from "@/test/fixtures/thread-timeline-rows";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+  type PluginRegistrationSet,
+} from "@/lib/plugin-slots";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+
+function messageActionRegistrationSet(
+  messageActions: readonly PluginMessageActionRegistration[],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels: [],
+    threadPanelActions: [],
+    composerAccessories: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+    messageActions,
+  };
+}
 
 // ThreadTimelineRows reads route state for the search deep-link scroll, so it
 // must render inside a Router. Production and Ladle always provide one; these
@@ -210,6 +232,7 @@ function mockSelectionMenuMedia({
 
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
 });
 
@@ -1033,6 +1056,301 @@ describe("ThreadTimelineRows actions", () => {
     });
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders plugin message actions on user and assistant rows with the narrow message reference", () => {
+    const run = vi.fn();
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        { id: "summarize", title: "Summarize", icon: "Zap", run },
+      ]),
+    );
+    const onOpenPluginPanel = vi.fn().mockReturnValue(true);
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "user_row",
+            role: "user",
+            text: "A user request.",
+            sourceSeqEnd: 7,
+            threadId: "thr_main",
+          }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "An assistant answer.",
+            sourceSeqEnd: 9,
+            threadId: "thr_main",
+          }),
+        ]}
+        onOpenPluginPanel={onOpenPluginPanel}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const userRow = container.querySelector(
+      '[data-timeline-row-id="user_row"]',
+    );
+    expect(userRow?.querySelector('[aria-label="Summarize"]')).not.toBeNull();
+
+    const assistantRow = container.querySelector(
+      '[data-timeline-row-id="assistant_row"]',
+    );
+    const assistantAction = assistantRow?.querySelector(
+      '[aria-label="Summarize"]',
+    );
+    expect(assistantAction).not.toBeNull();
+    fireEvent.click(assistantAction!);
+    expect(run).toHaveBeenCalledTimes(1);
+    const context = run.mock.calls[0]![0];
+    expect(context.threadId).toBe("thr_main");
+    expect(context.message).toEqual({
+      id: "assistant_row",
+      threadId: "thr_main",
+      role: "assistant",
+      text: "An assistant answer.",
+      sourceSeqEnd: 9,
+    });
+    expect(context.selectedText).toBeUndefined();
+    // openPanel routes through the surface's opener with this plugin's id.
+    expect(
+      context.openPanel({ actionId: "panel", params: { a: 1 } }),
+    ).toBe(true);
+    expect(onOpenPluginPanel).toHaveBeenCalledWith({
+      pluginId: "demo",
+      actionId: "panel",
+      params: { a: 1 },
+    });
+  });
+
+  it("omits plugin message actions when the surface has no thread identity", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        { id: "summarize", title: "Summarize", run: vi.fn() },
+      ]),
+    );
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({ role: "assistant", text: "An answer." }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    expect(markup).not.toContain('aria-label="Summarize"');
+  });
+
+  it("contains plugin message action errors without breaking the timeline", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "explodes",
+          title: "Explodes",
+          run: () => {
+            throw new Error("kaboom");
+          },
+        },
+        {
+          id: "rejects",
+          title: "Rejects",
+          run: () => Promise.reject(new Error("async kaboom")),
+        },
+      ]),
+    );
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            role: "assistant",
+            text: "An answer.",
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Explodes" }));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('messageAction "explodes" failed: kaboom'),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rejects" }));
+    return waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('messageAction "rejects" failed: async kaboom'),
+      ),
+    );
+  });
+
+  it("renders consumer message actions filtered by role with the message reference", () => {
+    const run = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "user_row",
+            role: "user",
+            text: "A user request.",
+            sourceSeqEnd: 7,
+            threadId: "thr_main",
+          }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "An assistant answer.",
+            sourceSeqEnd: 9,
+            threadId: "thr_main",
+          }),
+        ]}
+        consumerMessageActions={[
+          {
+            id: "send-to-main",
+            pluginId: null,
+            icon: "ArrowTurnBackward",
+            label: "Send to main thread",
+            roles: ["assistant"],
+            run,
+          },
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const rowsWithAction = screen.getAllByRole("button", {
+      name: "Send to main thread",
+    });
+    expect(rowsWithAction).toHaveLength(1);
+    expect(
+      rowsWithAction[0]!.closest("[data-timeline-row-id]")?.getAttribute(
+        "data-timeline-row-id",
+      ),
+    ).toBe("assistant_row");
+
+    fireEvent.click(rowsWithAction[0]!);
+    expect(run).toHaveBeenCalledWith({
+      id: "assistant_row",
+      threadId: "thr_main",
+      role: "assistant",
+      text: "An assistant answer.",
+      sourceSeqEnd: 9,
+    });
+  });
+
+  it("renders roleless consumer actions on both roles and contains run errors", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "user_row",
+            role: "user",
+            text: "A user request.",
+            threadId: "thr_main",
+          }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "An assistant answer.",
+            threadId: "thr_main",
+          }),
+        ]}
+        consumerMessageActions={[
+          {
+            id: "explodes",
+            pluginId: null,
+            icon: null,
+            label: "Explodes",
+            run: () => {
+              throw new Error("kaboom");
+            },
+          },
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: "Explodes" });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]!);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('messageAction "explodes" failed: kaboom'),
+    );
+  });
+
+  it("passes the highlighted text to plugin selection actions", async () => {
+    const run = vi.fn();
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        { id: "summarize", title: "Summarize selection", run },
+      ]),
+    );
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({
+            id: "selectable_row",
+            role: "assistant",
+            text: "Select part of this answer.",
+            sourceSeqEnd: 11,
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    const textNode = screen.getByText("Select part of this answer.").firstChild;
+    expect(textNode).not.toBeNull();
+    mockWindowSelection({ node: textNode!, text: "part of this answer" });
+
+    fireEvent(document, new Event("selectionchange"));
+    // The registration also renders in the per-message bar (icon button with
+    // an aria-label); the floating menu button is the label-only one.
+    const selectionAction = await waitFor(() => {
+      const menuButton = screen
+        .getAllByRole("button", { name: "Summarize selection" })
+        .find((button) => !button.hasAttribute("aria-label"));
+      if (menuButton === undefined) {
+        throw new Error("Selection menu action not rendered yet");
+      }
+      return menuButton;
+    });
+    fireEvent.click(selectionAction);
+
+    expect(run).toHaveBeenCalledTimes(1);
+    const context = run.mock.calls[0]![0];
+    expect(context.selectedText).toBe("part of this answer");
+    expect(context.message).toEqual({
+      id: "selectable_row",
+      threadId: "thr_main",
+      role: "assistant",
+      text: "Select part of this answer.",
+      sourceSeqEnd: 11,
+    });
+    // No panel opener on this surface: openPanel reports false, never throws.
+    expect(context.openPanel({ actionId: "panel" })).toBe(false);
   });
 
   it("forces a manually collapsed same-thread search ancestor open", async () => {

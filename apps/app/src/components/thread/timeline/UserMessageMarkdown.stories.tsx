@@ -78,6 +78,7 @@ function UserMessage({
         senderThreadId={null}
         senderThreadTitle={null}
         senderChildOrigin={null}
+        senderIsPluginSideChat={false}
         resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}
         onAddToChat={onAddToChat}

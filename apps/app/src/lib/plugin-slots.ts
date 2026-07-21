@@ -4,6 +4,7 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
+  PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginSettingsSectionRegistration,
@@ -29,6 +30,7 @@ export interface PluginRegistrationSet {
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
+  messageActions?: readonly PluginMessageActionRegistration[];
 }
 
 interface PluginSlotBase {
@@ -60,6 +62,8 @@ export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
+export interface PluginMessageActionSlot
+  extends PluginMessageActionRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -72,6 +76,7 @@ export interface PluginSlotSnapshot {
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
+  messageActions: readonly PluginMessageActionSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -84,6 +89,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   sidebarFooterActions: [],
   fileOpeners: [],
   messageDirectives: [],
+  messageActions: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -103,6 +109,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     sidebarFooterActions: PluginSidebarFooterActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
     messageDirectives: PluginMessageDirectiveSlot[];
+    messageActions: PluginMessageActionSlot[];
   } = {
     homepageSections: [],
     settingsSections: [],
@@ -113,6 +120,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     sidebarFooterActions: [],
     fileOpeners: [],
     messageDirectives: [],
+    messageActions: [],
   };
   for (const pluginId of pluginIds) {
     const set = registrationsByPluginId.get(pluginId);
@@ -148,6 +156,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.messageDirectives) {
       next.messageDirectives.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.messageActions ?? []) {
+      next.messageActions.push({ ...registration, pluginId, generation });
     }
   }
   return next;

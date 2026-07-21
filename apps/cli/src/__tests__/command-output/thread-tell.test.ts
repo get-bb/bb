@@ -27,7 +27,25 @@ describe("bb thread tell command output", () => {
     ).toEqual({
       threadId: "thread-json-tell",
       ok: true,
-      mode: "queue",
+      mode: "steer",
+    });
+  });
+
+  it("bb thread tell --mode queue preserves non-urgent queued delivery", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      ["thread", "tell", "thread-queue-tell", "hello", "--mode", "queue"],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-queue-tell" },
+      json: {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        mode: "queue-if-active",
+      },
     });
   });
 
@@ -75,7 +93,7 @@ describe("bb thread tell command output", () => {
       param: { id: "thread-execution-options" },
       json: {
         input: [{ type: "text", text: "hello", mentions: [] }],
-        mode: "queue-if-active",
+        mode: "steer-if-active",
         model: "gpt-5.5",
         serviceTier: "fast",
         reasoningLevel: "high",
@@ -104,7 +122,7 @@ describe("bb thread tell command output", () => {
       param: { id: "thread-auto-review" },
       json: {
         input: [{ type: "text", text: "hello", mentions: [] }],
-        mode: "queue-if-active",
+        mode: "steer-if-active",
         permissionMode: "auto",
       },
     });
@@ -136,7 +154,7 @@ describe("bb thread tell command output", () => {
           { type: "localFile", path: "/tmp/report.pdf" },
           { type: "localImage", path: "/tmp/screenshot.png" },
         ],
-        mode: "queue-if-active",
+        mode: "steer-if-active",
       },
     });
   });
@@ -155,7 +173,7 @@ describe("bb thread tell command output", () => {
       param: { id: "thread-receiver" },
       json: {
         input: [{ type: "text", text: "hello from sender", mentions: [] }],
-        mode: "queue-if-active",
+        mode: "steer-if-active",
         senderThreadId: "thread-sender",
       },
     });
@@ -172,7 +190,7 @@ describe("bb thread tell command output", () => {
       param: { id: "thread-self" },
       json: {
         input: [{ type: "text", text: "self note", mentions: [] }],
-        mode: "queue-if-active",
+        mode: "steer-if-active",
       },
     });
   });

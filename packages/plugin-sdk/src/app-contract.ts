@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
@@ -227,6 +227,15 @@ export interface PluginThreadPanelActionRegistration {
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginThreadPanelProps>;
   /**
+   * How the host frames the tab content. "padded" (default) wraps the
+   * component in the panel's scroll container with standard padding —
+   * right for document-like content. "flush" gives the component the full
+   * tab area (no padding, definite height, no host scrolling) — right for
+   * app-like content that manages its own layout, such as
+   * `experimental_ThreadChat`.
+   */
+  layout?: "padded" | "flush";
+  /**
    * Runs when the user activates the action: call your RPC methods, show a
    * toast, and/or open panel tabs via `context.openPanel`. Omitted =
    * immediately open a panel tab with defaults. Errors (sync or async) are
@@ -309,6 +318,66 @@ export interface PluginMessageDirectiveRegistration {
   component: ComponentType<PluginMessageDirectiveProps>;
 }
 
+/**
+ * A narrow, stable reference to one rendered chat message — NOT an internal
+ * timeline row. `sourceSeqEnd` is the last source event sequence the message
+ * covers, the anchor the server accepts for provider-history forks.
+ */
+export interface ThreadChatMessageReference {
+  id: string;
+  threadId: string;
+  role: "user" | "assistant";
+  /** Visible text of the message. */
+  text: string;
+  sourceSeqEnd: number;
+}
+
+export interface PluginMessageActionThreadPanelOptions {
+  /** A `threadPanelAction` id registered by this same plugin. */
+  actionId: string;
+  title?: string;
+  params?: JsonValue;
+}
+
+/** Context handed to a `messageAction`'s `run`. */
+export interface PluginMessageActionContext {
+  /** The thread whose timeline surfaced the action. */
+  threadId: string;
+  message: ThreadChatMessageReference;
+  /**
+   * Present only when the action was invoked from the text-selection menu;
+   * the exact text the user highlighted inside `message`.
+   */
+  selectedText?: string;
+  /**
+   * Open one of this plugin's `threadPanelAction` components in the current
+   * thread's side panel — same semantics as the message-directive
+   * `openThreadPanel`. Returns true when the host accepted (the action id
+   * exists and the surface has a panel); false otherwise.
+   */
+  openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
+}
+
+/**
+ * An action on chat messages: an icon button in the per-message action bar
+ * (user and assistant messages) and an entry in the assistant-message
+ * text-selection menu. Host-rendered chrome — the plugin supplies title,
+ * icon hint, and `run` behavior only.
+ */
+export interface PluginMessageActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Tooltip / menu label for the action. */
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon?: string;
+  /**
+   * Runs when the user activates the action. Errors (sync or async) are
+   * contained and logged; they never break the timeline.
+   */
+  run(context: PluginMessageActionContext): void | Promise<void>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -325,6 +394,7 @@ export interface PluginAppSlots {
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
+  experimental_messageAction(registration: PluginMessageActionRegistration): void;
 }
 
 export interface PluginAppBuilder {
@@ -494,6 +564,82 @@ export interface PluginComposerApi {
   focus(): void;
 }
 
+// ---------------------------------------------------------------------------
+// ThreadChat — the host-owned chat component.
+// ---------------------------------------------------------------------------
+
+/**
+ * A consumer-supplied action on the messages of one `ThreadChat` instance,
+ * rendered in the embedded timeline's per-message action bar alongside the
+ * native and slot-registered actions. Unlike the `messageAction` slot this is
+ * scoped to the rendering component, not registered globally.
+ */
+export interface ThreadChatMessageAction {
+  /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
+  id: string;
+  /** Tooltip / menu label for the action. */
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon?: string;
+  /**
+   * Message roles the action applies to. Omitted = both user and assistant
+   * messages.
+   */
+  roles?: readonly ("user" | "assistant")[];
+  /**
+   * Runs when the user activates the action. Errors (sync or async) are
+   * contained and logged; they never break the timeline.
+   */
+  run(message: ThreadChatMessageReference): void | Promise<void>;
+}
+
+/**
+ * Props of the host-owned `ThreadChat` component — one thread's chat
+ * (timeline, and for the composer variants the full send/queue/draft
+ * engine), rendered by the BB app inside a plugin slot. This is the
+ * deliberate exception to the no-host-components rule (§5.5): a stable
+ * product capability, not a UI kit. Versioned additive like slot props;
+ * internal timeline rows, query hooks, and prompt-box configuration are
+ * deliberately not exposed.
+ */
+export interface ThreadChatProps {
+  threadId: string;
+  /**
+   * "full" (default) is the page presentation (centered reading width);
+   * "compact" is the side-panel presentation; "timeline" renders the
+   * transcript without a composer.
+   */
+  variant?: "full" | "compact" | "timeline";
+  /**
+   * "contained" (default) fills and scrolls inside a bounded parent;
+   * "document" grows with its content and defers scrolling to the page.
+   */
+  layout?: "contained" | "document";
+  /** Bump to focus the composer (ignored by `variant: "timeline"`). */
+  focusRequest?: number;
+  className?: string;
+  /** Rendered above the conversation, scrolling with it. */
+  leadingContent?: ReactNode;
+  /**
+   * Actions rendered in this instance's per-message action bar (see
+   * {@link ThreadChatMessageAction}).
+   */
+  messageActions?: readonly ThreadChatMessageAction[];
+}
+
+/**
+ * Props of the host-owned `Markdown` component — bb's chat message renderer
+ * (the same typography, spacing, and code styling as timeline messages).
+ * Use it wherever plugin UI quotes or previews message content so it reads
+ * like the rest of the chat. Like `ThreadChat`, this is a stable product
+ * capability, not a UI kit; renderer internals stay private.
+ */
+export interface MarkdownProps {
+  /** Markdown source, rendered exactly like a chat message body. */
+  content: string;
+  className?: string;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -580,4 +726,15 @@ export interface PluginSdkApp {
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
   useComposer(): PluginComposerApi;
+  /**
+   * The host-owned chat component (see {@link ThreadChatProps}). Together
+   * with `Markdown`, the only components the SDK ships — everything else
+   * stays vendored per §5.5.
+   */
+  experimental_ThreadChat: ComponentType<ThreadChatProps>;
+  /**
+   * The host-owned chat-message markdown renderer (see
+   * {@link MarkdownProps}).
+   */
+  experimental_Markdown: ComponentType<MarkdownProps>;
 }

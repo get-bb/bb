@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { derivePluginId } from "@bb/domain";
 import type { Plugin } from "esbuild";
-import * as pluginSdkAppFacade from "@bb/plugin-sdk/app";
+import * as bundledPluginSdkAppFacade from "@bb/plugin-sdk/app";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
@@ -75,15 +75,46 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
 };
 
 /**
- * Named exports of `@bb/plugin-sdk/app`, read from the facade module itself so
- * a declaration-only manifest cannot drift from the runtime module; the React
- * lists next to it come from
+ * Named exports of `@bb/plugin-sdk/app` are read from a fresh facade module on
+ * every app build. The dev server stays alive while the SDK source changes, so
+ * retaining the first module namespace here would make newly-added exports
+ * unavailable to every subsequent plugin rebuild until the server restarted.
+ * The React lists next to it come from
  * scripts/generate-runtime-export-manifest.mjs instead.
  */
-const PLUGIN_SDK_APP_EXPORTS = Object.keys(pluginSdkAppFacade).sort();
+let freshFacadeImportSequence = 0;
 
-function shimExportsOf(specifier: string): readonly string[] {
-  if (specifier === "@bb/plugin-sdk/app") return PLUGIN_SDK_APP_EXPORTS;
+async function freshModuleExports(moduleUrl: string): Promise<string[]> {
+  const freshUrl = new URL(moduleUrl);
+  freshUrl.searchParams.set(
+    "bb-plugin-build",
+    String(++freshFacadeImportSequence),
+  );
+  const moduleNamespace = await import(freshUrl.href);
+  return Object.keys(moduleNamespace).sort();
+}
+
+async function shimExportsOf(
+  specifier: string,
+  pluginSdkAppModuleUrl: string | undefined,
+): Promise<readonly string[]> {
+  if (specifier === "@bb/plugin-sdk/app") {
+    if (pluginSdkAppModuleUrl !== undefined) {
+      return freshModuleExports(pluginSdkAppModuleUrl);
+    }
+    let resolvedModuleUrl: string;
+    try {
+      resolvedModuleUrl = import.meta.resolve("@bb/plugin-sdk/app");
+    } catch {
+      // The built CLI bundles @bb/plugin-build and the facade itself, but does
+      // not install plugin-build's dependency as a directly resolvable package.
+      // That immutable packaged process cannot gain SDK exports mid-run, so its
+      // bundled namespace is the correct fallback; source dev servers resolve
+      // the workspace facade above and always take the fresh-import path.
+      return Object.keys(bundledPluginSdkAppFacade).sort();
+    }
+    return freshModuleExports(resolvedModuleUrl);
+  }
   const names = RUNTIME_EXPORT_MANIFEST[specifier];
   if (!names) {
     throw new Error(`no runtime export manifest entry for "${specifier}"`);
@@ -92,8 +123,12 @@ function shimExportsOf(specifier: string): readonly string[] {
 }
 
 /** ESM shim re-exporting a `globalThis.__bbPluginRuntime` slot. */
-function shimModuleSource(specifier: string, slot: string): string {
-  const names = shimExportsOf(specifier);
+async function shimModuleSource(
+  specifier: string,
+  slot: string,
+  pluginSdkAppModuleUrl: string | undefined,
+): Promise<string> {
+  const names = await shimExportsOf(specifier, pluginSdkAppModuleUrl);
   return [
     `const runtime = globalThis.__bbPluginRuntime;`,
     `if (runtime == null || runtime.${slot} == null) {`,
@@ -119,7 +154,8 @@ const SHIM_FILTER = new RegExp(
     .join("|")})$`,
 );
 
-function runtimeShimPlugin(): Plugin {
+/** Internal export for focused build tests; not re-exported by the package. */
+export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   return {
     name: "bb-plugin-runtime-shims",
     setup(build) {
@@ -127,13 +163,17 @@ function runtimeShimPlugin(): Plugin {
         path: args.path,
         namespace: SHIM_NAMESPACE,
       }));
-      build.onLoad({ filter: /.*/, namespace: SHIM_NAMESPACE }, (args) => ({
-        contents: shimModuleSource(
-          args.path,
-          RUNTIME_SLOT_BY_SPECIFIER[args.path] ?? args.path,
-        ),
-        loader: "js",
-      }));
+      build.onLoad(
+        { filter: /.*/, namespace: SHIM_NAMESPACE },
+        async (args) => ({
+          contents: await shimModuleSource(
+            args.path,
+            RUNTIME_SLOT_BY_SPECIFIER[args.path] ?? args.path,
+            pluginSdkAppModuleUrl,
+          ),
+          loader: "js",
+        }),
+      );
     },
   };
 }

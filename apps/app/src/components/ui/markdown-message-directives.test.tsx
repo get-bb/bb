@@ -515,6 +515,7 @@ describe("ConversationMessageContent assistant directives", () => {
               senderThreadId={null}
               senderThreadTitle={null}
               senderChildOrigin={null}
+        senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={'::inline-vis{file="user.html"}'}

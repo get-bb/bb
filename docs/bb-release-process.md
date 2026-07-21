@@ -47,11 +47,11 @@ If any input is unclear, ask before bumping the version.
 
 ## Prepare The Release Commit
 
-1. Refresh the release worktree onto local primary `main`.
+1. Refresh the release worktree onto the canonical `main` branch.
 
    ```bash
-   git fetch /Users/michael/Projects/bb main:refs/remotes/primary/main
-   git rebase refs/remotes/primary/main
+   git fetch origin main
+   git rebase origin/main
    ```
 
 2. Check the current npm state.

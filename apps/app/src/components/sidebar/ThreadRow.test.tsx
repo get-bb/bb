@@ -252,7 +252,7 @@ describe("ThreadRow", () => {
     );
   });
 
-  it("replaces the generic working indicator with a shimmering plugin status", () => {
+  it("keeps the runtime spinner ahead of a shimmering plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -270,16 +270,16 @@ describe("ThreadRow", () => {
       }),
     });
 
-    const runningIcon = screen.getByLabelText("Plugin improving draft");
-    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
-    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    const runningIcon = screen.getByLabelText("Thread working");
+    expect(runningIcon.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(runningIcon.classList)).toContain("animate-spin");
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
     expect(
       container.querySelector("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
   });
 
-  it("replaces the active working spinner with a shimmering draft icon", () => {
+  it("keeps the active working spinner ahead of a draft", () => {
     renderThreadRow({
       hasComposerDraft: true,
       isActive: true,
@@ -292,17 +292,18 @@ describe("ThreadRow", () => {
       }),
     });
 
-    const draftIcon = screen.getByLabelText(
-      "Thread working with unsubmitted draft",
-    );
-    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(draftIcon.classList)).toContain(
+    const workingIcon = screen.getByLabelText("Thread working");
+    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
+    expect(Array.from(workingIcon.classList)).toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
-    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    expect(
+      screen.queryByLabelText("Thread working with unsubmitted draft"),
+    ).toBeNull();
   });
 
-  it("keeps the draft icon shimmering when a working thread is not selected", () => {
+  it("keeps the runtime spinner ahead of a draft when the row is not selected", () => {
     renderThreadRow({
       hasComposerDraft: true,
       isActive: false,
@@ -315,14 +316,15 @@ describe("ThreadRow", () => {
       }),
     });
 
-    const draftIcon = screen.getByLabelText(
-      "Thread working with unsubmitted draft",
-    );
-    expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(draftIcon.classList)).toContain(
+    const workingIcon = screen.getByLabelText("Thread working");
+    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
+    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
+    expect(Array.from(workingIcon.classList)).toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
-    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    expect(
+      screen.queryByLabelText("Thread working with unsubmitted draft"),
+    ).toBeNull();
   });
 
   it.each([
@@ -581,7 +583,7 @@ describe("ThreadRow", () => {
     ).toBe("Meta+3");
   });
 
-  it("shows an unread error before pending or active work", () => {
+  it("shows runtime work before unread, pending, draft, and background work", () => {
     renderThreadRow({
       hasComposerDraft: true,
       shortcutKey: "3",
@@ -604,7 +606,8 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Unread thread failed")).not.toBeNull();
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Unread thread failed")).toBeNull();
     expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
     expect(screen.queryByLabelText("Agent working")).toBeNull();
     expect(screen.queryByLabelText("Workflow running")).toBeNull();
@@ -635,28 +638,37 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Agent working")).toBeNull();
   });
 
-  it("shows named workflow work before generic runtime work", () => {
-    renderThreadRow({
-      thread: createThread({
-        title: "Active workflow thread",
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-        activity: {
-          activeWorkflowCount: 1,
-          activeBackgroundAgentCount: 0,
-          activeBackgroundCommandCount: 0,
-          activePlanModeCount: 0,
-          activeGoalCount: 0,
-        },
-      }),
-    });
+  it.each([
+    ["activeWorkflowCount", "Workflow running"],
+    ["activeBackgroundAgentCount", "Background agent running"],
+    ["activeBackgroundCommandCount", "Background command running"],
+    ["activePlanModeCount", "Plan mode active"],
+    ["activeGoalCount", "Goal active"],
+  ] as const)(
+    "shows runtime work before concurrent %s activity",
+    (activityKey, secondaryLabel) => {
+      renderThreadRow({
+        thread: createThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+            [activityKey]: 1,
+          },
+        }),
+      });
 
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
-  });
+      expect(screen.getByLabelText("Thread working")).not.toBeNull();
+      expect(screen.queryByLabelText(secondaryLabel)).toBeNull();
+    },
+  );
 
   it("shows an animated delegated-agent glyph for active background agent work", () => {
     renderThreadRow({
