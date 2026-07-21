@@ -644,6 +644,25 @@
   }
 
   /*
+   * Focused split timelines get a restrained glass lift without changing the
+   * opacity of their content. The translucent ink layers keep custom palettes
+   * intact, while the diagonal sheen mirrors the raised
+   * header treatment in both light and dark themes. The inactive timeline has
+   * no corresponding rule, so its messages retain their normal contrast.
+   */
+  .active-split-timeline-glass {
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--ink) 6%, transparent) 0%,
+      color-mix(in oklab, var(--ink) 3.5%, transparent) 42%,
+      var(--surface-raised) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, var(--ink) 11%, transparent),
+      inset 1px 0 0 color-mix(in oklab, var(--ink) 4%, transparent);
+  }
+
+  /*
    * Opt out of the global thin scrollbar into always-visible classic
    * scrollbars for two-axis data surfaces (e.g. the CSV table preview).
    * Native thin scrollbars render as macOS overlay bars that fade out and

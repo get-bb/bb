@@ -552,6 +552,23 @@ describe("plugin thread-row status shimmer", () => {
   });
 });
 
+describe("active split timeline glass", () => {
+  it("keeps a perceptible theme-derived sheen without dimming or filtering content", () => {
+    const activeSplitTimelineRule = appCss.match(
+      /\.active-split-timeline-glass\s*\{([\s\S]*?)\n\s*\}/,
+    )?.[1];
+
+    expect(activeSplitTimelineRule).toBeDefined();
+    expect(activeSplitTimelineRule).toContain("var(--surface-raised)");
+    expect(activeSplitTimelineRule).toContain("var(--ink)");
+    expect(activeSplitTimelineRule).toContain("transparent");
+    expect(activeSplitTimelineRule).toContain("var(--ink) 6%");
+    expect(activeSplitTimelineRule).toContain("var(--ink) 11%");
+    expect(activeSplitTimelineRule).not.toMatch(/\bopacity\s*:/);
+    expect(activeSplitTimelineRule).not.toMatch(/(?:backdrop-)?filter\s*:/);
+  });
+});
+
 describe("theme.css desktop portal hit testing", () => {
   it("carves portaled overlays out of native window drag regions", () => {
     const rule = css.match(/\[data-bb-portaled-overlay\]\s*\{([^}]*)\}/)?.[1];
