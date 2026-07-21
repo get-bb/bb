@@ -54,7 +54,6 @@ import {
   ResourceCreateButton,
   ResourceListPanel,
   ResourceListState,
-  ResourceLocationMeta,
   ResourceMeta,
   ResourceMultiSelectMenu,
   ResourceRow,
@@ -492,6 +491,28 @@ function automationProjectContextLabel(projectLabel: string): string {
   return projectLabel;
 }
 
+function AutomationOverviewMetaItem({
+  children,
+  icon,
+  title,
+}: {
+  children: ReactNode;
+  icon?: "Clock" | "Folder" | "Laptop";
+  title?: string;
+}) {
+  return (
+    <span
+      className="inline-flex h-4 min-w-0 items-center gap-1.5 whitespace-nowrap leading-4"
+      title={title}
+    >
+      {icon ? (
+        <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />
+      ) : null}
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
+
 function automationProjectFilterId(
   entry: OverviewEntry,
 ): AutomationProjectFilter {
@@ -604,16 +625,17 @@ function OverviewRow({
       description={
         <ResourceMeta
           items={[
-            <ResourceLocationMeta
-              label={automationProjectContextLabel(projectLabel)}
+            <AutomationOverviewMetaItem
               icon={projectLabel === "Local" ? "Laptop" : "Folder"}
-            />,
-            <span className="inline-flex items-center gap-1.5">
-              <Icon name="Clock" className="size-3.5" aria-hidden />
+              title={automationProjectContextLabel(projectLabel)}
+            >
+              {automationProjectContextLabel(projectLabel)}
+            </AutomationOverviewMetaItem>,
+            <AutomationOverviewMetaItem icon="Clock">
               {triggerLabel}
-            </span>,
+            </AutomationOverviewMetaItem>,
             scheduleMetadata ? (
-              <span>
+              <AutomationOverviewMetaItem>
                 {scheduleMetadata.emphasis ? (
                   <span className="font-medium text-foreground">
                     {scheduleMetadata.emphasis}
@@ -621,7 +643,7 @@ function OverviewRow({
                 ) : null}
                 {scheduleMetadata.emphasis ? " " : null}
                 {scheduleMetadata.text}
-              </span>
+              </AutomationOverviewMetaItem>
             ) : null,
           ]}
         />
