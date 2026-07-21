@@ -133,7 +133,7 @@ describe("buildPluginApp", () => {
     // Utilities stay scoped to this plugin's own mounts, with a generic-root
     // fallback for hosts whose portals predate the per-plugin id attribute.
     expect(css).toContain(
-      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]), [data-bb-plugin-decoration="fixture"])',
+      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
     );
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
@@ -150,7 +150,7 @@ describe("buildPluginApp", () => {
     });
   });
 
-  it("preserves authored CSS for plugin mounts and editor decorations", async () => {
+  it("preserves authored CSS unscoped for editor decorations", async () => {
     await writeFixture();
     await writeFile(
       join(root, "app.css"),
@@ -168,7 +168,7 @@ describe("buildPluginApp", () => {
     expect(css).toContain(".fixture-highlight");
     expect(css).toContain("background: hotpink");
     expect(css).toContain("@keyframes fixture-pulse");
-    expect(css).toContain('[data-bb-plugin-decoration="fixture"]');
+    expect(css.match(/@scope/g)).toHaveLength(1);
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {

@@ -610,13 +610,12 @@ export function useComposer(): PluginComposerApi {
     () => createComposerScopeOwnership(scopeOwnershipKey),
     [scopeOwnershipKey],
   );
-  const visualStateOwner = useMemo(
-    () => Symbol(`${pluginId}:${scopeOwnershipKey}`),
+  const { visualStateOwner, visualStateOwnerOrder } = useMemo(
+    () => ({
+      visualStateOwner: Symbol(`${pluginId}:${scopeOwnershipKey}`),
+      visualStateOwnerOrder: composerVisualOwnerSequence++,
+    }),
     [pluginId, scopeOwnershipKey],
-  );
-  const visualStateOwnerOrder = useMemo(
-    () => composerVisualOwnerSequence++,
-    [scopeOwnershipKey],
   );
   const releaseVisualState = useCallback(() => {
     scopeOwnership.invalidate();

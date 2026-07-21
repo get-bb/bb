@@ -1295,7 +1295,7 @@ describe("PromptBoxInternal plugin composer actions", () => {
           active = false;
           cleaned(view.scope);
         };
-      }, []);
+      }, [composer, view.scope]);
       return <button>{view.scope.kind}</button>;
     }
     setPluginSlotRegistrations(

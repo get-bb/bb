@@ -30,9 +30,9 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
  *   second copy (and its "Invalid hook call" crashes) is impossible.
- * - `dist/app.css` — imported plugin CSS plus a plugin-scoped Tailwind v4
- *   pass over the plugin's own sources. Both are scoped to plugin mounts and
- *   editor decoration spans owned by this plugin.
+ * - `dist/app.css` — a plugin-scoped Tailwind v4 pass over the plugin's own
+ *   sources plus its imported CSS. Imported CSS stays unscoped so selectors
+ *   can target editor decorations rendered outside the plugin mount.
  * - `dist/app.meta.json` — SDK compatibility plus authoritative plugin,
  *   artifact-format, and build-version metadata.
  */
@@ -388,7 +388,7 @@ async function buildTailwindCss(
     TW_ANIMATE_CSS,
     PLUGIN_THEME_CSS,
     `@layer utilities {`,
-    `  @scope ([data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin]), [data-bb-plugin-decoration="${pluginId}"]) {`,
+    `  @scope ([data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin])) {`,
     `    @tailwind utilities;`,
     `  }`,
     `}`,
@@ -485,25 +485,18 @@ export async function buildPluginApp(
       plugins: [runtimeShimPlugin()],
     });
 
-    // Esbuild writes imported styles beside app.js. Preserve them and scope
-    // them to this plugin's mounts plus ProseMirror decoration spans; the
-    // latter live in the host editor rather than below PluginSlotMount.
+    // Esbuild writes imported styles beside app.js. Preserve them unscoped:
+    // authored selectors may target ProseMirror decorations in the host
+    // editor, outside PluginSlotMount. Tailwind utilities remain scoped by
+    // buildTailwindCss so their generic class names cannot leak into the host.
     let authoredCss = "";
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
     }
-    const authoredCssScope = `@scope ([data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin]), [data-bb-plugin-decoration="${pluginId}"])`;
-    const scopedAuthoredCss =
-      authoredCss.length === 0
-        ? ""
-        : `${authoredCssScope} {\n${authoredCss}\n}\n`;
     const tailwindCss = (await buildTailwindCss(rootDir, pluginId)).trimEnd();
-    await writeFile(
-      stagedCssPath,
-      `${tailwindCss}\n${scopedAuthoredCss}`,
-    );
+    await writeFile(stagedCssPath, `${tailwindCss}\n${authoredCss}`);
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
