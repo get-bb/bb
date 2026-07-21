@@ -12,6 +12,17 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
+// Node 20 does not expose the browser-compatible Navigator global added in
+// later Node releases. Some shared browser runtimes (currently @pierre/diffs)
+// read navigator.userAgent during module initialization, so give export
+// introspection the same minimal environment on every supported Node version.
+if (typeof globalThis.navigator === "undefined") {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent: "node" },
+  });
+}
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 // Resolve React exactly as the host app does — apps/app owns the runtime the
 // shims will read at load time.
