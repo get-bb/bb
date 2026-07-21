@@ -300,17 +300,26 @@ export function resolveInstalledRegistrySkill(
   registrySkill: RegistrySkill,
   installedSkills: readonly SkillSummary[],
 ): SkillSummary | null {
-  const names = new Set([
-    normalizeSkillName(registrySkill.skillId),
-    normalizeSkillName(registrySkill.name),
-  ]);
+  const registrySlot = normalizeSkillName(registrySkill.skillId);
   return (
-    installedSkills.find(
-      (installedSkill) =>
-        installedSkill.scope === "bb-user" &&
-        installedSkill.provider === null &&
-        names.has(normalizeSkillName(installedSkill.name)),
-    ) ?? null
+    installedSkills.find((installedSkill) => {
+      if (
+        installedSkill.scope !== "bb-user" ||
+        installedSkill.provider !== null ||
+        !installedSkill.manageable
+      ) {
+        return false;
+      }
+      const segments = installedSkill.filePath
+        .replaceAll("\\", "/")
+        .split("/")
+        .filter(Boolean);
+      return (
+        segments.at(-1)?.toLowerCase() === "skill.md" &&
+        segments.at(-3)?.toLowerCase() === "skills" &&
+        normalizeSkillName(segments.at(-2) ?? "") === registrySlot
+      );
+    }) ?? null
   );
 }
 
@@ -1312,6 +1321,8 @@ export function SkillsLibrary() {
   );
   const findVerifiedInstalledRegistrySkill = useCallback(
     (skill: RegistrySkill): SkillSummary | null => {
+      const persistedSkill = findInstalledRegistrySkill(skill);
+      if (persistedSkill !== null) return persistedSkill;
       const installedPath = confirmedRegistryInstalls.get(skill.id);
       if (typeof installedPath !== "string") return null;
       return (
@@ -1323,7 +1334,7 @@ export function SkillsLibrary() {
         ) ?? null
       );
     },
-    [confirmedRegistryInstalls, skills],
+    [confirmedRegistryInstalls, findInstalledRegistrySkill, skills],
   );
   const isRegistrySkillInstalled = useCallback(
     (skill: RegistrySkill): boolean => {

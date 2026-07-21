@@ -518,6 +518,79 @@ describe("SkillsLibrary installed detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
+  it("keeps uninstall available for an installed registry skill after reload", async () => {
+    const registrySkill = makeRegistrySkill();
+    const installedSkill = makeSkill({
+      name: registrySkill.skillId,
+      provider: null,
+      scope: "bb-user",
+      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({
+      skills: [installedSkill],
+    });
+    const removeSkill = vi
+      .spyOn(sdk.skills, "remove")
+      .mockResolvedValue({ deletedPath: "/home/u/.bb/skills/useful-skill" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/skills-registry?")) {
+          return new Response(
+            JSON.stringify({
+              skills: [registrySkill],
+              pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith("/api/v1/skills-registry/detail?")) {
+          return new Response(
+            JSON.stringify({
+              id: registrySkill.id,
+              source: registrySkill.source,
+              skillId: registrySkill.skillId,
+              hash: null,
+              files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter
+        initialEntries={["/tools/skills/registry/owner%2Frepo%2Fuseful-skill"]}
+      >
+        <QueryClientWrapper>
+          <Routes>
+            <Route
+              path="/tools/skills/registry/:registrySkillId"
+              element={<SkillsLibrary />}
+            />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Uninstall Useful skill from bb",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
+    await waitFor(() => {
+      expect(removeSkill).toHaveBeenCalledWith({
+        projectId: PERSONAL_PROJECT_ID,
+        skillId: installedSkill.id,
+        environmentId: null,
+      });
+    });
+  });
+
   it("updates an installed detail in place and keeps uninstall available", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
@@ -1098,6 +1171,45 @@ describe("resolveInstalledRegistrySkill", () => {
       resolveInstalledRegistrySkill(registrySkill, [
         makeSkill({ name: "useful-skill", provider: "codex" }),
       ]),
+    ).toBeNull();
+  });
+
+  it("keys registry install state by the canonical bb skill slot", () => {
+    const registrySkill = makeRegistrySkill();
+    const duplicateSource = makeRegistrySkill({
+      id: "another/repository/useful-skill",
+      source: "another/repository",
+    });
+    const installed = makeSkill({
+      name: "A different display name",
+      provider: null,
+      scope: "bb-user",
+      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+    });
+    const sameNameInAnotherSlot = makeSkill({
+      name: registrySkill.skillId,
+      provider: null,
+      scope: "bb-user",
+      filePath: "/home/u/.bb/skills/not-useful-skill/SKILL.md",
+    });
+    const claudeCopy = makeSkill({
+      name: registrySkill.skillId,
+      provider: "claude-code",
+      scope: "claude-user",
+      filePath: "/home/u/.claude/skills/useful-skill/SKILL.md",
+    });
+
+    expect(resolveInstalledRegistrySkill(registrySkill, [installed])).toBe(
+      installed,
+    );
+    expect(resolveInstalledRegistrySkill(duplicateSource, [installed])).toBe(
+      installed,
+    );
+    expect(
+      resolveInstalledRegistrySkill(registrySkill, [sameNameInAnotherSlot]),
+    ).toBeNull();
+    expect(
+      resolveInstalledRegistrySkill(registrySkill, [claudeCopy]),
     ).toBeNull();
   });
 });
