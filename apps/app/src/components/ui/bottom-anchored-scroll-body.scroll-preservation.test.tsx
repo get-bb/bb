@@ -161,6 +161,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   // Reset the in-memory anchors so tests don't leak captured state.
   const store = getDefaultStore();
   for (const threadId of ["thread-a", "thread-b"]) {
@@ -171,6 +172,25 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody scroll preservation", () => {
+  it("shows the thread scrollbar only while scroll events are active", () => {
+    vi.useFakeTimers();
+    const { scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b"],
+    });
+
+    expect(scrollArea.classList).toContain("thread-scrollbar");
+    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+
+    fireEvent.scroll(scrollArea);
+
+    expect(scrollArea.getAttribute("data-scrollbar-scrolling")).toBe("true");
+
+    vi.runAllTimers();
+
+    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+  });
+
   it("captures the top-most visible row when scrolled mid-timeline", () => {
     const { scrollArea, rowElements } = renderTimeline({
       threadId: "thread-a",

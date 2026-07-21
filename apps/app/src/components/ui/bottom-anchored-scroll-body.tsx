@@ -81,6 +81,7 @@ interface ElementVisibilityArgs {
 
 const BOTTOM_ANCHOR_THRESHOLD_PX = 4;
 const USER_SCROLL_INTENT_MS = 1_000;
+const SCROLLBAR_IDLE_DELAY_MS = 600;
 // ResizeObserver can fire before related flex/sidebar/prompt layout settles.
 // Re-applying briefly covers cascading layout work without an unbounded loop.
 const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
@@ -696,6 +697,19 @@ export function BottomAnchoredScrollBody({
     const scrollContent = scrollContentRef.current;
     if (!scrollArea || !scrollContent) return;
 
+    let scrollbarIdleTimeout: number | null = null;
+    const handleScrollWithTransientScrollbar = () => {
+      scrollArea.dataset.scrollbarScrolling = "true";
+      if (scrollbarIdleTimeout !== null) {
+        window.clearTimeout(scrollbarIdleTimeout);
+      }
+      scrollbarIdleTimeout = window.setTimeout(() => {
+        scrollbarIdleTimeout = null;
+        scrollArea.removeAttribute("data-scrollbar-scrolling");
+      }, SCROLLBAR_IDLE_DELAY_MS);
+      handleScroll();
+    };
+
     let resizeObserver: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(handleScrollAreaResize);
@@ -703,7 +717,7 @@ export function BottomAnchoredScrollBody({
       resizeObserver.observe(scrollContent);
     }
 
-    scrollArea.addEventListener("scroll", handleScroll, {
+    scrollArea.addEventListener("scroll", handleScrollWithTransientScrollbar, {
       passive: true,
     });
     scrollArea.addEventListener("wheel", markWheelScrollIntent, {
@@ -729,7 +743,10 @@ export function BottomAnchoredScrollBody({
 
     return () => {
       resizeObserver?.disconnect();
-      scrollArea.removeEventListener("scroll", handleScroll);
+      scrollArea.removeEventListener(
+        "scroll",
+        handleScrollWithTransientScrollbar,
+      );
       scrollArea.removeEventListener("wheel", markWheelScrollIntent);
       scrollArea.removeEventListener("touchstart", markTouchStartScrollIntent);
       scrollArea.removeEventListener("touchmove", markTouchMoveScrollIntent);
@@ -737,6 +754,10 @@ export function BottomAnchoredScrollBody({
       window.removeEventListener("pointerup", endPointerScrollIntent);
       window.removeEventListener("pointercancel", endPointerScrollIntent);
       window.removeEventListener("keydown", markKeyboardScrollIntent);
+      if (scrollbarIdleTimeout !== null) {
+        window.clearTimeout(scrollbarIdleTimeout);
+      }
+      scrollArea.removeAttribute("data-scrollbar-scrolling");
       cancelQueuedRestore();
     };
   }, [
@@ -758,7 +779,7 @@ export function BottomAnchoredScrollBody({
         <div
           ref={scrollAreaRef}
           className={cn(
-            "@container/page col-start-1 row-start-1 min-h-0 overflow-x-hidden overflow-y-auto",
+            "thread-scrollbar @container/page col-start-1 row-start-1 min-h-0 overflow-x-hidden overflow-y-auto",
             scrollAreaClassName,
           )}
         >

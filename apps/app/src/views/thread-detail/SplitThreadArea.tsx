@@ -699,17 +699,15 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
-        // Flush tiles: no rounding, outer edges flush; a straight recessed
-        // gutter separates panes (see SplitDivider). Bounded panes suppress
+        // Flush tiles: no rounding, outer edges flush; a straight hairline
+        // seam separates panes (see SplitDivider). Bounded panes suppress
         // the content's page-bleed negative margins (see
         // PaneContextValue.isBoundedPane) so content fills the tile exactly.
         aria-hidden={isHiddenByMaximize || undefined}
         // Electron can retain a composited frame from animated descendants
         // (notably the New Thread welcome mark) after visibility changes.
         // Skip subtree painting while preserving the mounted pane and its box.
-        style={
-          isHiddenByMaximize ? { contentVisibility: "hidden" } : undefined
-        }
+        style={isHiddenByMaximize ? { contentVisibility: "hidden" } : undefined}
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
           isHiddenByMaximize && "invisible pointer-events-none",
@@ -745,16 +743,6 @@ function SplitTree(props: SplitTreeProps) {
           }
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
-        />
-        {/* The inactive-pane scrim lives on an overlay ABOVE the pane's content
-            because styles painted on the pane element itself get covered by
-            children with opaque backgrounds (header scrim, composer). */}
-        <div
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "bg-transparent" : "bg-background/40",
-          )}
         />
       </div>
     );
@@ -901,6 +889,7 @@ function WorkspacePaneContent({
           content={content}
           onRequestClose={onRequestClose}
           beginPaneDrag={beginPaneDrag}
+          isFocused={isFocused}
           isBoundedPane={isBoundedPane}
           isTopRow={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}
@@ -940,6 +929,7 @@ function NonThreadPaneContent({
   content,
   onRequestClose,
   beginPaneDrag,
+  isFocused,
   isBoundedPane,
   isTopRow,
   ownsWindowTopLeft,
@@ -947,6 +937,7 @@ function NonThreadPaneContent({
   content: Exclude<PaneContent, { kind: "thread" }>;
   onRequestClose: (() => void) | null;
   beginPaneDrag?: (event: ReactPointerEvent, label: string) => void;
+  isFocused: boolean;
   isBoundedPane: boolean;
   isTopRow: boolean;
   ownsWindowTopLeft: boolean;
@@ -1014,7 +1005,10 @@ function NonThreadPaneContent({
           bordered={false}
           isWindowDragRegion={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}
-          className="border-b border-border-seam-vertical/60"
+          className={cn(
+            "border-b border-border-seam-vertical/60",
+            beginPaneDrag && isFocused && "bg-surface-raised",
+          )}
           center={
             <div
               className={cn(
@@ -1227,22 +1221,21 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       onPointerDown={handlePointerDown}
       className={cn(
-        // A straight 6px gutter between flush tiles — squared ends, no
-        // rounding, only BETWEEN splits (outer edges stay flush). The gutter
-        // is softly recessed so it reads against the identical pane
-        // backgrounds; hover/drag warms it as the resize affordance. The
-        // absolutely-positioned child widens the grab target without
-        // consuming layout space.
-        "group relative z-[5] flex-shrink-0 bg-muted/60 transition-colors",
+        // A one-pixel seam between flush tiles — squared ends, no rounding,
+        // only BETWEEN splits (outer edges stay flush). Hover/drag warms it as
+        // the resize affordance. The absolutely-positioned child preserves a
+        // generous grab target without consuming layout space.
+        "group relative z-[5] flex-shrink-0 transition-colors",
+        horizontal ? "bg-border-seam-vertical" : "bg-border-seam",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
-        horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
+        horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
       )}
     >
       <div
         className={cn(
           "absolute",
-          horizontal ? "-inset-x-1 inset-y-0" : "inset-x-0 -inset-y-1",
+          horizontal ? "-inset-x-1.5 inset-y-0" : "inset-x-0 -inset-y-1.5",
         )}
       />
     </div>

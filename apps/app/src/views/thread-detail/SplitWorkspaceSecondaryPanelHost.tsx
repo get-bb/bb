@@ -255,19 +255,19 @@ export function SplitWorkspaceSecondaryPanelHost({
           </Panel>
           {model === null ? (
             <>
-              {/* Working twin of the panel's gutter-style resize handle: the
-                  seam keeps the split dividers' 6px body and the window panel
-                  stays resizable even while showing the empty state. */}
+              {/* Working twin of the panel's resize handle: the one-pixel seam
+                  matches split dividers while its pseudo-element keeps the
+                  window panel easy to resize in the empty state. */}
               <PanelResizeHandle
                 id="split-workspace-empty-secondary-panel-handle"
                 disabled={!isOpen}
                 onDragging={handleEmptyPanelDragging}
                 hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
                 className={cn(
-                  "relative z-[5] shrink-0 overflow-visible bg-muted/60 transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  "relative z-[5] shrink-0 overflow-visible bg-border-seam-vertical transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
                   PANEL_COLLAPSE_TRANSITION_CLASS,
                   isOpen
-                    ? "w-1.5 cursor-col-resize opacity-100"
+                    ? "w-px cursor-col-resize opacity-100"
                     : "pointer-events-none w-0 opacity-0",
                 )}
                 aria-label="Resize right panel"

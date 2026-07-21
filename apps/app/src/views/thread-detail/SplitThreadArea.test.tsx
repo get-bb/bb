@@ -122,14 +122,28 @@ vi.mock("react-resizable-panels", async () => {
   const Panel = ({ children }: { children?: ReactNode }) => (
     <div data-testid="workspace-panel">{children}</div>
   );
-  const PanelResizeHandle = () => (
-    <div data-testid="workspace-panel-resize-handle" />
+  const PanelResizeHandle = ({
+    className,
+    id,
+  }: {
+    className?: string;
+    id?: string;
+  }) => (
+    <div
+      id={id}
+      className={className}
+      data-testid="workspace-panel-resize-handle"
+    />
   );
   return { Panel, PanelGroup, PanelResizeHandle };
 });
 
 vi.mock("@/components/ui/sidebar.js", () => ({
   useIsSidebarShowing: () => sidebarState.showing,
+}));
+
+vi.mock("@/views/RootComposeView", () => ({
+  RootComposeView: () => <div data-testid="root-compose-view" />,
 }));
 
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
@@ -275,6 +289,8 @@ const docsContent: PaneContent = {
   panelPath: "docs",
   subPath: "",
 };
+
+const newThreadContent: PaneContent = { kind: "new-thread" };
 
 function pluginContent(panelPath: string): PaneContent {
   return {
@@ -705,6 +721,64 @@ describe("SplitThreadArea", () => {
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
   });
 
+  it("keeps unfocused pane content undimmed behind a hairline divider", () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    const inactivePane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-2"]',
+    );
+    expect(
+      inactivePane?.querySelector(':scope > [aria-hidden="true"]'),
+    ).toBeNull();
+
+    const separator = screen.getByRole("separator");
+    expect(separator.classList).toContain("w-px");
+    expect(separator.classList).toContain("bg-border-seam-vertical");
+    expect(separator.classList).not.toContain("w-1.5");
+    expect(separator.firstElementChild?.classList).toContain("-inset-x-1.5");
+  });
+
+  it("marks a focused new-thread split in its header instead of its body", async () => {
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              type: "pane",
+              paneId: "pane-1",
+              content: threadContent("thr-a"),
+            },
+            {
+              type: "pane",
+              paneId: "pane-2",
+              content: newThreadContent,
+            },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+      routeContent: newThreadContent,
+    });
+
+    const newThreadPane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-2"]',
+    );
+    const newThreadHeader = newThreadPane?.querySelector("header");
+    expect(newThreadHeader?.classList).toContain("bg-surface-raised");
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
+    await waitFor(() =>
+      expect(newThreadHeader?.classList).not.toContain("bg-surface-raised"),
+    );
+  });
+
   it("keeps drag updates local and persists the resized pair once on release", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
@@ -903,6 +977,12 @@ describe("SplitThreadArea", () => {
     // the empty state; the toggle stays put and stays pressed.
     fireEvent.pointerDown(pluginPane);
     await screen.findByTestId("split-workspace-empty-panel-state");
+    const emptyPanelHandle = document.getElementById(
+      "split-workspace-empty-secondary-panel-handle",
+    );
+    expect(emptyPanelHandle?.classList).toContain("w-px");
+    expect(emptyPanelHandle?.classList).toContain("bg-border-seam-vertical");
+    expect(emptyPanelHandle?.classList).not.toContain("w-1.5");
     expect(
       screen
         .getByTestId("split-workspace-panel-toggle")

@@ -548,7 +548,7 @@ export function ThreadSecondaryPanel({
         renderAsDrawer && "min-w-0 flex-1",
         !renderAsDrawer && [
           "absolute inset-y-0 left-0",
-          // Inside the split-workspace host, the 6px gutter handle is the
+          // Inside the split-workspace host, the hairline resize handle is the
           // visible seam; elsewhere the panel carries its own hairline border
           // (it slides with the panel through the open/close animation).
           hostLayout === null && "border-l border-border-seam-vertical",
@@ -867,7 +867,7 @@ interface SecondaryPanelResizeHandleProps {
   isConversationCollapsed: boolean;
   /**
    * True inside the split-workspace host, where the panel sits beside split
-   * dividers: the handle renders as the same visible 6px gutter so the grab
+   * dividers: the handle renders as the same visible hairline so the grab
    * target reads (and grabs) like its neighbors instead of an invisible seam.
    */
   matchesSplitDividers: boolean;
@@ -896,12 +896,12 @@ function SecondaryPanelResizeHandle({
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
         matchesSplitDividers
           ? [
-              // Match SplitDivider: a recessed 6px gutter that warms on
-              // hover/drag, so the panel seam looks and grabs exactly like the
-              // split gutters beside it. Collapses away with the panel.
-              "z-[5] bg-muted/60 hover:bg-ring/40",
+              // Match SplitDivider: a one-pixel vertical seam that warms on
+              // hover/drag while the wide pseudo-element keeps it easy to
+              // grab. Collapses away with the panel.
+              "z-[5] bg-border-seam-vertical hover:bg-ring/40",
               isOpen && !isConversationCollapsed
-                ? "w-1.5 opacity-100"
+                ? "w-px opacity-100"
                 : "pointer-events-none w-0 opacity-0",
               isResizing && "bg-ring/40",
             ]
