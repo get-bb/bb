@@ -378,6 +378,7 @@ function GeneratedAgentSourceTitle({
         </span>
       ) : (
         <PromptMentionPill
+          iconName="UserRound"
           resource={{
             kind: "thread",
             threadId: sourceThreadId,

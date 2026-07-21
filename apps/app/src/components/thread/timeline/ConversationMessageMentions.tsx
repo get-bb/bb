@@ -1,6 +1,7 @@
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import {
   getProjectComposeRoutePath,
@@ -16,6 +17,8 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 
 interface PromptMentionPillProps {
+  /** Overrides the resource-derived glyph for a specialized mention context. */
+  iconName?: IconName;
   /** Render visual mention styling without allowing navigation or activation. */
   interactive?: boolean;
   resource: PromptMentionResource;
@@ -126,6 +129,7 @@ function mentionPillClassName(interactive: boolean): string {
 }
 
 export function PromptMentionPill({
+  iconName,
   interactive = true,
   resource,
   resolveMentionLink,
@@ -138,12 +142,14 @@ export function PromptMentionPill({
     resource,
     serializedText,
   });
+  const iconClassName = "size-3.5 shrink-0 self-center text-muted-foreground";
   const labelNode = (
     <>
-      <PromptMentionIcon
-        resource={resource}
-        className="size-3.5 shrink-0 self-center text-muted-foreground"
-      />
+      {iconName ? (
+        <Icon name={iconName} className={iconClassName} aria-hidden />
+      ) : (
+        <PromptMentionIcon resource={resource} className={iconClassName} />
+      )}
       <span className="truncate">{resource.label}</span>
     </>
   );
