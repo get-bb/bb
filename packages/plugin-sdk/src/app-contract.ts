@@ -379,16 +379,56 @@ export interface PluginAppSlots {
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
-  experimental_messageAction(registration: PluginMessageActionRegistration): void;
+  experimental_messageAction(
+    registration: PluginMessageActionRegistration,
+  ): void;
 }
 
 export interface PluginAppComposer {
   customize(registration: ComposerCustomization): void;
 }
 
+/** Stable lifecycle values for one content-script instance in one bb client. */
+export interface PluginContentScriptContext {
+  /** The id of the plugin that owns this script. */
+  readonly pluginId: string;
+  /** Monotonic per-client generation, starting at 1. */
+  readonly generation: number;
+  /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
+  readonly signal: AbortSignal;
+}
+
+/** Cleanup returned by a frontend content script. */
+export type PluginContentScriptDisposer = () => void | Promise<void>;
+
+/**
+ * Trusted same-origin JavaScript/TypeScript mounted once per active frontend
+ * generation in each bb app window or browser tab.
+ */
+export interface PluginContentScriptRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Install behavior into the bb app shell. The host awaits a returned
+   * promise, contains failures, and calls the returned disposer exactly once.
+   */
+  mount(
+    context: PluginContentScriptContext,
+  ):
+    | void
+    | PluginContentScriptDisposer
+    | Promise<void | PluginContentScriptDisposer>;
+}
+
+/** Experimental lifecycle surface for trusted frontend content scripts. */
+export interface PluginAppContentScripts {
+  register(registration: PluginContentScriptRegistration): void;
+}
+
 export interface PluginAppBuilder {
   slots: PluginAppSlots;
   composer: PluginAppComposer;
+  experimental_contentScripts: PluginAppContentScripts;
 }
 
 export type PluginAppSetup = (app: PluginAppBuilder) => void;

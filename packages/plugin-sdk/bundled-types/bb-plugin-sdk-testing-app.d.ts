@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginContentScriptRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -94,6 +94,7 @@ interface CapturedPluginApp {
     fileOpeners: PluginFileOpenerRegistration[];
     messageDirectives: PluginMessageDirectiveRegistration[];
     messageActions: PluginMessageActionRegistration[];
+    contentScripts: PluginContentScriptRegistration[];
 }
 type PluginAppModule = {
     default: unknown;
@@ -106,6 +107,28 @@ type PluginAppSource = PluginAppDefinition | PluginAppModule | (() => Promise<Pl
  * would bind `definePluginApp` before the installer runs.
  */
 declare function loadPluginApp(source: PluginAppSource): Promise<CapturedPluginApp>;
+interface ContentScriptTestMountOptions {
+    pluginId: string;
+    /** Defaults to 1. Pass the host generation you want the plugin to observe. */
+    generation?: number;
+}
+interface MountedPluginContentScripts {
+    inspection: {
+        readonly mountedIds: readonly string[];
+        readonly signal: AbortSignal;
+        readonly disposed: boolean;
+    };
+    lifecycle: {
+        /** Abort, then run returned cleanup functions once in reverse order. */
+        dispose(): Promise<void>;
+    };
+}
+/**
+ * Mount captured content scripts with host-faithful ordering and rollback.
+ * Call this once per simulated app window; each result owns an independent
+ * AbortSignal and cleanup lifecycle.
+ */
+declare function mountPluginContentScripts(app: CapturedPluginApp, options: ContentScriptTestMountOptions): Promise<MountedPluginContentScripts>;
 type PluginRpcTestHandlers<Contract extends PluginRpcContract> = {
     [Method in keyof Contract]: (input: StandardSchemaV1InferInput<Contract[Method]["input"]>) => PluginRpcResult<Contract[Method]> | Promise<PluginRpcResult<Contract[Method]>>;
 };
@@ -174,5 +197,5 @@ declare function renderSlot<Props extends object, Contract extends PluginRpcCont
     component: ComponentType<Props>;
 }, props: Props, options?: RenderSlotOptions<Contract>): RenderedSlot;
 
-export { installTestPluginRuntime, loadPluginApp, renderSlot };
-export type { CapturedPluginApp, ComposerLog, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };
+export { installTestPluginRuntime, loadPluginApp, mountPluginContentScripts, renderSlot };
+export type { CapturedPluginApp, ComposerLog, ContentScriptTestMountOptions, MountedPluginContentScripts, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };

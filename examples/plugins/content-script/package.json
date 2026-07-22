@@ -1,0 +1,23 @@
+{
+  "name": "bb-plugin-content-script-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bbPluginSdk": "^0.4.0"
+  },
+  "bb": {
+    "name": "Content Script Example",
+    "description": "Adds a cleanup-safe focus ring to editable app surfaces.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "app": "./app.ts"
+  },
+  "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/tsconfig": "workspace:*",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

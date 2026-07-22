@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
@@ -42,6 +42,10 @@ import {
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  getPluginFrontendDiagnostics,
+  subscribePluginFrontendDiagnostics,
+} from "@/lib/plugin-frontend";
 import {
   getRootComposeRoutePath,
   getSettingsRoutePath,
@@ -571,6 +575,12 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const name = plugin.name ?? plugin.id;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
+  const frontendDiagnostics = useSyncExternalStore(
+    subscribePluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+  );
+  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
   // A running plugin whose only surface is a settingsSection lets that
   // section own the chrome (its own SettingsSection title + description), so
   // the diagnostic header (version + status pill + manifest description)
@@ -589,6 +599,18 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
         : null;
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
+      {frontendFailure !== null && frontendFailure !== undefined ? (
+        <div
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive"
+          role="alert"
+        >
+          Frontend {frontendFailure.phase} failure
+          {frontendFailure.scriptId === null
+            ? ""
+            : ` in content script “${frontendFailure.scriptId}”`}
+          : {frontendFailure.message}
+        </div>
+      ) : null}
       {sectionOwnsHeader ? null : (
         <div className="space-y-3">
           <div>

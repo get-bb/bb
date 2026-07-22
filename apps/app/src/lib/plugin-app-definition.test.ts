@@ -31,6 +31,7 @@ describe("definePluginApp", () => {
 describe("collectPluginAppRegistrations", () => {
   it("collects every slot kind as plain data", () => {
     const run = () => {};
+    const mount = () => {};
     const definition = definePluginApp((app) => {
       app.slots.homepageSection({
         id: "issues",
@@ -82,6 +83,10 @@ describe("collectPluginAppRegistrations", () => {
         id: "improve-prompt",
         scopes: ["thread", "new-thread"],
         actions: [{ id: "improve", component: Component }],
+      });
+      app.experimental_contentScripts.register({
+        id: "editor-enhancement",
+        mount,
       });
     });
 
@@ -142,6 +147,9 @@ describe("collectPluginAppRegistrations", () => {
         scopes: ["thread", "new-thread"],
         actions: [{ id: "improve", component: Component }],
       },
+    ]);
+    expect(registrations.contentScripts).toEqual([
+      { id: "editor-enhancement", mount },
     ]);
   });
 
@@ -284,6 +292,32 @@ describe("collectPluginAppRegistrations", () => {
   });
 
   it.each([
+    [
+      "content script without a mount function",
+      () =>
+        definePluginApp((app) => {
+          app.experimental_contentScripts.register({
+            id: "missing-mount",
+            mount: undefined as never,
+          });
+        }),
+      /"mount" must be a function/,
+    ],
+    [
+      "duplicate content script id",
+      () =>
+        definePluginApp((app) => {
+          app.experimental_contentScripts.register({
+            id: "dup",
+            mount: () => {},
+          });
+          app.experimental_contentScripts.register({
+            id: "dup",
+            mount: () => {},
+          });
+        }),
+      /duplicate id "dup"/,
+    ],
     [
       "settings section with a non-string title",
       () =>

@@ -1,0 +1,8 @@
+{
+  "extends": "@bb/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["DOM", "ES2022"],
+    "noEmit": true
+  },
+  "include": ["app.ts", "server.ts"]
+}

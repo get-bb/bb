@@ -17,6 +17,8 @@ import {
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginContentScriptDisposer,
+  type PluginContentScriptRegistration,
   type PluginComposerApi,
   type PluginComposerMention,
   type PluginComposerScope,
@@ -384,6 +386,7 @@ export interface CapturedPluginApp {
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  contentScripts: PluginContentScriptRegistration[];
 }
 
 type PluginAppModule = { default: unknown };
@@ -411,6 +414,7 @@ function collectRegistrations(
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
+    contentScripts: [],
   };
   const seenIds = {
     homepageSection: new Set<string>(),
@@ -423,6 +427,7 @@ function collectRegistrations(
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
+    contentScript: new Set<string>(),
   };
 
   definition.setup({
@@ -599,6 +604,17 @@ function collectRegistrations(
         }
       },
     },
+    experimental_contentScripts: {
+      register(registration) {
+        const kind = "experimental_contentScripts.register";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.contentScript, id);
+        if (typeof registration.mount !== "function") {
+          throw new Error(`${kind}: "mount" must be a function`);
+        }
+        captured.contentScripts.push({ id, mount: registration.mount });
+      },
+    },
   });
 
   return captured;
@@ -624,6 +640,90 @@ export async function loadPluginApp(
     );
   }
   return collectRegistrations(definition);
+}
+
+export interface ContentScriptTestMountOptions {
+  pluginId: string;
+  /** Defaults to 1. Pass the host generation you want the plugin to observe. */
+  generation?: number;
+}
+
+export interface MountedPluginContentScripts {
+  inspection: {
+    readonly mountedIds: readonly string[];
+    readonly signal: AbortSignal;
+    readonly disposed: boolean;
+  };
+  lifecycle: {
+    /** Abort, then run returned cleanup functions once in reverse order. */
+    dispose(): Promise<void>;
+  };
+}
+
+/**
+ * Mount captured content scripts with host-faithful ordering and rollback.
+ * Call this once per simulated app window; each result owns an independent
+ * AbortSignal and cleanup lifecycle.
+ */
+export async function mountPluginContentScripts(
+  app: CapturedPluginApp,
+  options: ContentScriptTestMountOptions,
+): Promise<MountedPluginContentScripts> {
+  const controller = new AbortController();
+  const generation = options.generation ?? 1;
+  const mounted: Array<{
+    id: string;
+    dispose: PluginContentScriptDisposer | null;
+  }> = [];
+  let disposed = false;
+
+  const dispose = async (): Promise<void> => {
+    if (disposed) return;
+    disposed = true;
+    controller.abort();
+    for (const script of [...mounted].reverse()) {
+      if (script.dispose === null) continue;
+      try {
+        await script.dispose();
+      } catch (error) {
+        console.warn(
+          `[plugin:${options.pluginId}] content script "${script.id}" cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  };
+
+  try {
+    for (const registration of app.contentScripts) {
+      const result = await registration.mount({
+        pluginId: options.pluginId,
+        generation,
+        signal: controller.signal,
+      });
+      if (result !== undefined && typeof result !== "function") {
+        throw new Error(
+          `content script "${registration.id}" mount must return a cleanup function, a promise of one, or nothing`,
+        );
+      }
+      mounted.push({ id: registration.id, dispose: result ?? null });
+    }
+  } catch (error) {
+    await dispose();
+    throw error;
+  }
+
+  return {
+    inspection: {
+      get mountedIds() {
+        return mounted.map(({ id }) => id);
+      },
+      signal: controller.signal,
+      get disposed() {
+        return disposed;
+      },
+    },
+    lifecycle: { dispose },
+  };
 }
 
 // ---------------------------------------------------------------------------

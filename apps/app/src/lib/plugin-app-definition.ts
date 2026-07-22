@@ -2,6 +2,7 @@ import {
   type ComposerCustomization,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginContentScriptRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -24,6 +25,10 @@ import {
 } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import type { PluginFrontendRecord } from "./plugin-frontend";
 import type { PluginRegistrationSet } from "./plugin-slots";
+
+export type CollectedPluginAppRegistrations = PluginRegistrationSet & {
+  contentScripts: readonly PluginContentScriptRegistration[];
+};
 
 /**
  * `definePluginApp` + the host-side interpreter (plugin design §5.2). A
@@ -62,7 +67,7 @@ export function collectPluginAppRegistrations(
   definition: PluginAppDefinition,
   onComposerCustomizationRejected: (reason: string) => void = (reason) =>
     console.warn(reason),
-): PluginRegistrationSet {
+): CollectedPluginAppRegistrations {
   const homepageSections: PluginHomepageSectionRegistration[] = [];
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
@@ -73,6 +78,7 @@ export function collectPluginAppRegistrations(
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
+  const contentScripts: PluginContentScriptRegistration[] = [];
   const seenIds = {
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
@@ -84,6 +90,7 @@ export function collectPluginAppRegistrations(
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     experimental_messageAction: new Set<string>(),
+    contentScript: new Set<string>(),
   };
 
   definition.setup({
@@ -264,6 +271,17 @@ export function collectPluginAppRegistrations(
         }
       },
     },
+    experimental_contentScripts: {
+      register(registration) {
+        const kind = "experimental_contentScripts.register";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.contentScript, id);
+        if (typeof registration.mount !== "function") {
+          throw new Error(`${kind}: "mount" must be a function`);
+        }
+        contentScripts.push({ id, mount: registration.mount });
+      },
+    },
   });
 
   return {
@@ -277,6 +295,7 @@ export function collectPluginAppRegistrations(
     fileOpeners,
     messageDirectives,
     messageActions,
+    contentScripts,
   };
 }
 

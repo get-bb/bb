@@ -8,6 +8,26 @@ questions listed with it, then remove it from this file in the same change.
 
 ## `@bb/plugin-sdk/app`
 
+### `app.experimental_contentScripts`
+
+Lifecycle-managed trusted same-origin frontend behavior. Registrations are
+`{ id, mount({ pluginId, generation, signal }) }`; mount may return nothing, a
+disposer, or a promise of either. The host mounts in declaration order,
+aborts before reverse-order exact-once cleanup, never overlaps generations,
+rolls back failed candidates, and owns one independent generation per app
+window/tab.
+
+Audit before stabilizing:
+
+- Is the mount timeout (10 seconds) the right policy, and should plugins be
+  able to request a shorter bound?
+- Is `generation` useful enough to keep, and should it count failed candidate
+  attempts or only committed generations?
+- Do stable navigation/context subscriptions belong here, or should lifecycle
+  code remain deliberately page-global while React hooks own route context?
+- Is returning a disposer plus `AbortSignal` sufficient for partial mounts, or
+  should a future context expose additive cleanup registration?
+
 ### `experimental_ThreadChat`
 
 The host-owned chat component: given a `threadId`, renders bb's complete chat

@@ -24,9 +24,16 @@ import * as vaul from "vaul";
 import * as pierreDiffs from "@pierre/diffs";
 import * as pierreDiffsReact from "@pierre/diffs/react";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
-import type { PluginSdkApp } from "@bb/plugin-sdk";
+import type {
+  PluginContentScriptDisposer,
+  PluginContentScriptRegistration,
+  PluginSdkApp,
+} from "@bb/plugin-sdk";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
-import { interpretPluginFrontends } from "./plugin-app-definition";
+import {
+  collectPluginAppRegistrations,
+  isPluginAppDefinition,
+} from "./plugin-app-definition";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
@@ -84,6 +91,41 @@ export type PluginFrontendRecord =
       status: "needs-update";
       sdkMajor: number;
       sdkVersion: string;
+    };
+
+export interface PluginFrontendFailure {
+  phase: "load" | "setup" | "mount" | "dispose";
+  message: string;
+  scriptId: string | null;
+}
+
+export interface PluginFrontendActiveGenerationDiagnostic {
+  generation: number;
+  hash: string;
+  contentScriptIds: readonly string[];
+}
+
+/** Per-window frontend lifecycle state shown in plugin diagnostics. */
+export type PluginFrontendDiagnostic =
+  | {
+      pluginId: string;
+      status: "active";
+      active: PluginFrontendActiveGenerationDiagnostic;
+      lastFailure: PluginFrontendFailure | null;
+    }
+  | {
+      pluginId: string;
+      status: "failed";
+      active: PluginFrontendActiveGenerationDiagnostic | null;
+      lastFailure: PluginFrontendFailure;
+    }
+  | {
+      pluginId: string;
+      status: "needs-update";
+      active: PluginFrontendActiveGenerationDiagnostic | null;
+      sdkMajor: number;
+      sdkVersion: string;
+      lastFailure: null;
     };
 
 export interface PluginFrontendLoaderDeps {
@@ -301,10 +343,23 @@ export interface PluginFrontendReconcileState {
   records: Map<string, PluginFrontendRecord>;
   /** Bundle hash last applied per plugin; an unchanged hash is a no-op. */
   appliedHashes: Map<string, string>;
+  activeGenerations: Map<string, ActivePluginFrontendGeneration>;
+  generationByPluginId: Map<string, number>;
+  pendingControllers: Map<string, AbortController>;
+  diagnostics: Map<string, PluginFrontendDiagnostic>;
+  tornDown: boolean;
 }
 
 export function createPluginFrontendReconcileState(): PluginFrontendReconcileState {
-  return { records: new Map(), appliedHashes: new Map() };
+  return {
+    records: new Map(),
+    appliedHashes: new Map(),
+    activeGenerations: new Map(),
+    generationByPluginId: new Map(),
+    pendingControllers: new Map(),
+    diagnostics: new Map(),
+    tornDown: false,
+  };
 }
 
 export interface PluginFrontendReconcileDeps {
@@ -319,6 +374,204 @@ export interface PluginFrontendReconcileDeps {
   ) => void;
   removeRegistrations: (pluginId: string) => void;
   warn: (message: string) => void;
+  /** Test override; production allows 10s for async mount setup. */
+  mountTimeoutMs?: number;
+  diagnosticsChanged?: () => void;
+}
+
+interface MountedContentScript {
+  id: string;
+  dispose: PluginContentScriptDisposer | null;
+}
+
+interface ActivePluginFrontendGeneration {
+  generation: number;
+  hash: string;
+  controller: AbortController;
+  scripts: MountedContentScript[];
+  disposed: boolean;
+}
+
+const DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS = 10_000;
+
+class ContentScriptMountError extends Error {
+  constructor(
+    readonly scriptId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ContentScriptMountError";
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function publishDiagnostic(
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+  diagnostic: PluginFrontendDiagnostic,
+): void {
+  state.diagnostics.set(diagnostic.pluginId, diagnostic);
+  deps.diagnosticsChanged?.();
+}
+
+async function callDisposer(
+  pluginId: string,
+  scriptId: string,
+  disposer: PluginContentScriptDisposer,
+  deps: PluginFrontendReconcileDeps,
+): Promise<PluginFrontendFailure | null> {
+  try {
+    await disposer();
+    return null;
+  } catch (error) {
+    const message = errorMessage(error);
+    deps.warn(
+      `[plugin:${pluginId}] content script "${scriptId}" cleanup failed: ${message}`,
+    );
+    return { phase: "dispose", message, scriptId };
+  }
+}
+
+async function disposeGeneration(
+  pluginId: string,
+  activation: ActivePluginFrontendGeneration,
+  deps: PluginFrontendReconcileDeps,
+): Promise<PluginFrontendFailure[]> {
+  if (activation.disposed) return [];
+  activation.disposed = true;
+  activation.controller.abort();
+  const failures: PluginFrontendFailure[] = [];
+  for (const script of [...activation.scripts].reverse()) {
+    if (script.dispose === null) continue;
+    const failure = await callDisposer(
+      pluginId,
+      script.id,
+      script.dispose,
+      deps,
+    );
+    if (failure !== null) failures.push(failure);
+  }
+  return failures;
+}
+
+async function deactivateCommittedGeneration(
+  pluginId: string,
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+): Promise<PluginFrontendFailure[]> {
+  const active = state.activeGenerations.get(pluginId);
+  if (active === undefined) return [];
+  const failures = await disposeGeneration(pluginId, active, deps);
+  state.activeGenerations.delete(pluginId);
+  state.appliedHashes.delete(pluginId);
+  deps.removeRegistrations(pluginId);
+  deps.applyCss(pluginId, null);
+  return failures;
+}
+
+async function mountWithTimeout(
+  pluginId: string,
+  registration: PluginContentScriptRegistration,
+  generation: number,
+  controller: AbortController,
+  deps: PluginFrontendReconcileDeps,
+): Promise<PluginContentScriptDisposer | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const mountPromise = Promise.resolve().then(() =>
+    registration.mount({
+      pluginId,
+      generation,
+      signal: controller.signal,
+    }),
+  );
+  const timeoutMs =
+    deps.mountTimeoutMs ?? DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(
+        new ContentScriptMountError(
+          registration.id,
+          `mount timed out after ${timeoutMs}ms`,
+        ),
+      );
+    }, timeoutMs);
+  });
+  try {
+    const disposer = await Promise.race([mountPromise, timeoutPromise]);
+    if (disposer !== undefined && typeof disposer !== "function") {
+      throw new ContentScriptMountError(
+        registration.id,
+        "mount must return a cleanup function, a promise of one, or nothing",
+      );
+    }
+    return disposer ?? null;
+  } catch (error) {
+    if (error instanceof ContentScriptMountError) throw error;
+    throw new ContentScriptMountError(registration.id, errorMessage(error));
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timedOut) {
+      void mountPromise
+        .then(async (lateDisposer) => {
+          if (typeof lateDisposer === "function") {
+            await callDisposer(pluginId, registration.id, lateDisposer, deps);
+          }
+        })
+        .catch(() => {});
+    }
+  }
+}
+
+async function activateContentScripts(
+  pluginId: string,
+  hash: string,
+  generation: number,
+  registrations: readonly PluginContentScriptRegistration[],
+  controller: AbortController,
+  deps: PluginFrontendReconcileDeps,
+): Promise<
+  | { ok: true; activation: ActivePluginFrontendGeneration }
+  | { ok: false; failure: PluginFrontendFailure }
+> {
+  const activation: ActivePluginFrontendGeneration = {
+    generation,
+    hash,
+    controller,
+    scripts: [],
+    disposed: false,
+  };
+  try {
+    for (const registration of registrations) {
+      const dispose = await mountWithTimeout(
+        pluginId,
+        registration,
+        generation,
+        controller,
+        deps,
+      );
+      activation.scripts.push({ id: registration.id, dispose });
+    }
+    return { ok: true, activation };
+  } catch (error) {
+    controller.abort();
+    await disposeGeneration(pluginId, activation, deps);
+    const scriptId =
+      error instanceof ContentScriptMountError ? error.scriptId : null;
+    const message = errorMessage(error);
+    deps.warn(
+      `[plugin:${pluginId}] content script${scriptId === null ? "" : ` "${scriptId}"`} mount failed: ${message}`,
+    );
+    return {
+      ok: false,
+      failure: { phase: "mount", message, scriptId },
+    };
+  }
 }
 
 /**
@@ -332,58 +585,206 @@ export interface PluginFrontendReconcileDeps {
  *   one of each registration;
  * - unchanged hash → untouched (a backend-only reload never remounts UI).
  *
- * A re-import/interpretation failure downgrades that plugin to "failed" and
- * removes its previous UI (stale components would call a disposed backend).
+ * Replacement is transactional and never overlaps generations: bundle/setup
+ * validation happens first, then the prior generation is aborted/disposed
+ * before candidate scripts mount. A failed candidate is rolled back fully and
+ * leaves no stale frontend bound to a replaced backend.
  */
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
 ): Promise<void> {
+  if (state.tornDown) return;
   const candidates = await deps.fetchCandidates();
+  if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
-    deps.removeRegistrations(pluginId);
-    deps.applyCss(pluginId, null);
+    state.pendingControllers.get(pluginId)?.abort();
+    state.pendingControllers.delete(pluginId);
+    await deactivateCommittedGeneration(pluginId, state, deps);
     state.records.delete(pluginId);
     state.appliedHashes.delete(pluginId);
+    state.diagnostics.delete(pluginId);
+    deps.diagnosticsChanged?.();
   }
-  for (const candidate of candidates) {
-    const previous = state.records.get(candidate.pluginId);
-    if (
-      previous !== undefined &&
-      previous.status !== "failed" && // failed bundles retry (e.g. transient fetch error)
-      state.appliedHashes.get(candidate.pluginId) === candidate.bundle.hash
-    ) {
-      continue;
-    }
-    // A fixed plugin gets a fresh chance: clear crashed-slot latches before
-    // the replaced registrations remount their boundaries.
-    deps.resetCrashedSlots(candidate.pluginId);
-    const loaded = await loadPluginFrontends([candidate], {
-      importModule: deps.importModule,
-      injectCss: deps.applyCss,
-      warn: deps.warn,
-    });
-    interpretPluginFrontends(loaded, {
-      setRegistrations: deps.setRegistrations,
-      warn: deps.warn,
-    });
-    const record = loaded.get(candidate.pluginId);
-    if (record === undefined) continue;
-    state.records.set(candidate.pluginId, record);
-    state.appliedHashes.set(candidate.pluginId, candidate.bundle.hash);
-    if (record.status === "loaded") {
-      // The new bundle ships no CSS: drop a previous version's link.
-      if (candidate.bundle.cssUrl === null) {
-        deps.applyCss(candidate.pluginId, null);
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const pluginId = candidate.pluginId;
+      const previous = state.records.get(pluginId);
+      if (
+        previous !== undefined &&
+        previous.status !== "failed" && // failed bundles retry (e.g. transient fetch error)
+        state.appliedHashes.get(pluginId) === candidate.bundle.hash
+      ) {
+        return;
       }
-    } else {
-      // failed / needs-update replacing a previously working frontend.
-      deps.removeRegistrations(candidate.pluginId);
-      deps.applyCss(candidate.pluginId, null);
-    }
+      // A fixed plugin gets a fresh chance: clear crashed-slot latches before
+      // the replaced registrations remount their boundaries.
+      deps.resetCrashedSlots(pluginId);
+      const loaded = await loadPluginFrontends([candidate], {
+        importModule: deps.importModule,
+        // CSS belongs to the committed generation. Import/setup validation does
+        // not inject candidate styles; activation publishes them on success.
+        injectCss: () => {},
+        warn: deps.warn,
+      });
+      const record = loaded.get(pluginId);
+      if (record === undefined) return;
+      if (record.status === "failed") {
+        await deactivateCommittedGeneration(pluginId, state, deps);
+        state.records.set(pluginId, record);
+        publishDiagnostic(state, deps, {
+          pluginId,
+          status: "failed",
+          active: null,
+          lastFailure: {
+            phase: "load",
+            message: record.error,
+            scriptId: null,
+          },
+        });
+        return;
+      }
+      if (record.status === "needs-update") {
+        await deactivateCommittedGeneration(pluginId, state, deps);
+        state.records.set(pluginId, record);
+        publishDiagnostic(state, deps, {
+          pluginId,
+          status: "needs-update",
+          active: null,
+          sdkMajor: record.sdkMajor,
+          sdkVersion: record.sdkVersion,
+          lastFailure: null,
+        });
+        return;
+      }
+
+      let collected: ReturnType<typeof collectPluginAppRegistrations>;
+      try {
+        const definition = record.module.default;
+        if (!isPluginAppDefinition(definition)) {
+          throw new Error(
+            "the bundle's default export is not definePluginApp(...) from @bb/plugin-sdk/app",
+          );
+        }
+        collected = collectPluginAppRegistrations(definition, (reason) => {
+          deps.warn(
+            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
+          );
+        });
+      } catch (error) {
+        const message = errorMessage(error);
+        deps.warn(
+          `[plugin:${pluginId}] frontend registration failed: ${message}`,
+        );
+        await deactivateCommittedGeneration(pluginId, state, deps);
+        const failed: PluginFrontendRecord = {
+          pluginId,
+          status: "failed",
+          error: message,
+        };
+        state.records.set(pluginId, failed);
+        publishDiagnostic(state, deps, {
+          pluginId,
+          status: "failed",
+          active: null,
+          lastFailure: { phase: "setup", message, scriptId: null },
+        });
+        return;
+      }
+
+      const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
+      state.generationByPluginId.set(pluginId, generation);
+      const disposeFailures = await deactivateCommittedGeneration(
+        pluginId,
+        state,
+        deps,
+      );
+      const controller = new AbortController();
+      state.pendingControllers.set(pluginId, controller);
+      const activationResult = await activateContentScripts(
+        pluginId,
+        candidate.bundle.hash,
+        generation,
+        collected.contentScripts,
+        controller,
+        deps,
+      );
+      state.pendingControllers.delete(pluginId);
+      if (state.tornDown) {
+        if (activationResult.ok) {
+          await disposeGeneration(pluginId, activationResult.activation, deps);
+        }
+        return;
+      }
+      if (!activationResult.ok) {
+        const failed: PluginFrontendRecord = {
+          pluginId,
+          status: "failed",
+          error: activationResult.failure.message,
+        };
+        state.records.set(pluginId, failed);
+        publishDiagnostic(state, deps, {
+          pluginId,
+          status: "failed",
+          active: null,
+          lastFailure: activationResult.failure,
+        });
+        return;
+      }
+
+      state.activeGenerations.set(pluginId, activationResult.activation);
+      deps.setRegistrations(pluginId, collected);
+      deps.applyCss(pluginId, candidate.bundle.cssUrl);
+      state.records.set(pluginId, record);
+      state.appliedHashes.set(pluginId, candidate.bundle.hash);
+      publishDiagnostic(state, deps, {
+        pluginId,
+        status: "active",
+        active: {
+          generation: activationResult.activation.generation,
+          hash: activationResult.activation.hash,
+          contentScriptIds: activationResult.activation.scripts.map(
+            ({ id }) => id,
+          ),
+        },
+        lastFailure: disposeFailures[0] ?? null,
+      });
+    }),
+  );
+}
+
+/**
+ * Abort and dispose every active or activating generation in this app
+ * window, then remove its slots and styles. Safe to call repeatedly.
+ */
+export async function disposePluginFrontends(
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  state.tornDown = true;
+  for (const controller of state.pendingControllers.values()) {
+    controller.abort();
   }
+  state.pendingControllers.clear();
+  const pluginIds = new Set([
+    ...state.records.keys(),
+    ...state.activeGenerations.keys(),
+  ]);
+  for (const pluginId of pluginIds) {
+    const active = state.activeGenerations.get(pluginId);
+    if (active !== undefined) {
+      await disposeGeneration(pluginId, active, deps);
+    }
+    deps.removeRegistrations(pluginId);
+    deps.applyCss(pluginId, null);
+  }
+  state.records.clear();
+  state.appliedHashes.clear();
+  state.activeGenerations.clear();
+  state.diagnostics.clear();
+  deps.diagnosticsChanged?.();
 }
 
 /**
@@ -425,6 +826,14 @@ export function createPluginFrontendReconcileScheduler(args: {
 
 const state = createPluginFrontendReconcileState();
 let bootPromise: Promise<void> | null = null;
+let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
+  new Map();
+const browserDiagnosticsListeners = new Set<() => void>();
+
+function publishBrowserDiagnostics(): void {
+  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+  for (const listener of browserDiagnosticsListeners) listener();
+}
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
@@ -434,6 +843,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
   warn: (message) => console.warn(message),
+  diagnosticsChanged: publishBrowserDiagnostics,
 };
 
 /** Load state of every plugin frontend this page load, keyed by plugin id. */
@@ -444,6 +854,43 @@ export function getPluginFrontendRecords(): ReadonlyMap<
   return state.records;
 }
 
+/** Current per-window lifecycle diagnostics for plugin frontend generations. */
+export function getPluginFrontendDiagnostics(): ReadonlyMap<
+  string,
+  PluginFrontendDiagnostic
+> {
+  return browserDiagnosticsSnapshot;
+}
+
+/** Subscribe to per-window frontend diagnostic changes. */
+export function subscribePluginFrontendDiagnostics(
+  listener: () => void,
+): () => void {
+  browserDiagnosticsListeners.add(listener);
+  return () => {
+    browserDiagnosticsListeners.delete(listener);
+  };
+}
+
+/** App-window teardown path; exported for lifecycle tests. */
+export function teardownPluginFrontends(): Promise<void> {
+  return disposePluginFrontends(state, browserReconcileDeps);
+}
+
+let pageHideListenerInstalled = false;
+
+function installPluginFrontendTeardown(): void {
+  if (pageHideListenerInstalled) return;
+  pageHideListenerInstalled = true;
+  window.addEventListener(
+    "pagehide",
+    () => {
+      void teardownPluginFrontends();
+    },
+    { once: true },
+  );
+}
+
 /**
  * Idempotent per page load. Called after system config resolves; runs entirely
  * off the first-paint path.
@@ -451,6 +898,7 @@ export function getPluginFrontendRecords(): ReadonlyMap<
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
+    installPluginFrontendTeardown();
     await reconcilePluginFrontends(state, browserReconcileDeps);
   })().catch((error: unknown) => {
     // Inventory fetch/network failure — plugin UI is absent, app unharmed.

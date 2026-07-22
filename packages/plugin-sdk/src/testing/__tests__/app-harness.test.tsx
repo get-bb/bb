@@ -9,7 +9,12 @@ import type {
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
-import { installTestPluginRuntime, loadPluginApp, renderSlot } from "../app.js";
+import {
+  installTestPluginRuntime,
+  loadPluginApp,
+  mountPluginContentScripts,
+  renderSlot,
+} from "../app.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 
 // Install before touching @bb/plugin-sdk/app — it binds the runtime global
@@ -118,9 +123,7 @@ function ComposerProbe() {
       <span data-testid="composer-attachment-count">
         {view.draft.attachmentCount}
       </span>
-      <span data-testid="composer-is-empty">
-        {String(view.draft.isEmpty)}
-      </span>
+      <span data-testid="composer-is-empty">{String(view.draft.isEmpty)}</span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -237,6 +240,144 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures, mounts, and exactly-once disposes content scripts in lifecycle order", async () => {
+    const events: string[] = [];
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        for (const id of ["first", "second"] as const) {
+          builder.experimental_contentScripts.register({
+            id,
+            async mount({ pluginId, generation, signal }) {
+              await Promise.resolve();
+              events.push(`${id}:mount:${pluginId}:${generation}`);
+              signal.addEventListener(
+                "abort",
+                () => events.push(`${id}:abort`),
+                { once: true },
+              );
+              return () => {
+                events.push(`${id}:dispose`);
+              };
+            },
+          });
+        }
+      }),
+    );
+
+    expect(captured.contentScripts.map(({ id }) => id)).toEqual([
+      "first",
+      "second",
+    ]);
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "demo",
+      generation: 7,
+    });
+    expect(mounted.inspection.mountedIds).toEqual(["first", "second"]);
+    expect(events).toEqual(["first:mount:demo:7", "second:mount:demo:7"]);
+
+    await mounted.lifecycle.dispose();
+    await mounted.lifecycle.dispose();
+    expect(mounted.inspection.disposed).toBe(true);
+    expect(mounted.inspection.signal.aborted).toBe(true);
+    expect(events).toEqual([
+      "first:mount:demo:7",
+      "second:mount:demo:7",
+      "first:abort",
+      "second:abort",
+      "second:dispose",
+      "first:dispose",
+    ]);
+  });
+
+  it("rolls back earlier content scripts when a later mount rejects", async () => {
+    const events: string[] = [];
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.experimental_contentScripts.register({
+          id: "first",
+          mount({ signal }) {
+            signal.addEventListener("abort", () => events.push("first:abort"), {
+              once: true,
+            });
+            events.push("first:mount");
+            return () => {
+              events.push("first:dispose");
+            };
+          },
+        });
+        builder.experimental_contentScripts.register({
+          id: "broken",
+          async mount() {
+            events.push("broken:mount");
+            throw new Error("async mount failed");
+          },
+        });
+      }),
+    );
+
+    await expect(
+      mountPluginContentScripts(captured, { pluginId: "demo" }),
+    ).rejects.toThrow("async mount failed");
+    expect(events).toEqual([
+      "first:mount",
+      "broken:mount",
+      "first:abort",
+      "first:dispose",
+    ]);
+  });
+
+  it("simulates independent content-script instances for multiple app windows", async () => {
+    const signals: AbortSignal[] = [];
+    const cleanup = vi.fn();
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.experimental_contentScripts.register({
+          id: "window-instance",
+          mount({ signal }) {
+            signals.push(signal);
+            return cleanup;
+          },
+        });
+      }),
+    );
+
+    const windowA = await mountPluginContentScripts(captured, {
+      pluginId: "demo",
+    });
+    const windowB = await mountPluginContentScripts(captured, {
+      pluginId: "demo",
+    });
+    await windowA.lifecycle.dispose();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    await windowB.lifecycle.dispose();
+    expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("validates content-script ids and mount functions like the host", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.experimental_contentScripts.register({
+            id: "bad id",
+            mount: () => {},
+          });
+        }),
+      ),
+    ).rejects.toThrow('experimental_contentScripts.register: "id" must match');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.experimental_contentScripts.register({
+            id: "missing",
+            mount: undefined as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow('"mount" must be a function');
+  });
+
   it("rejects registrations the host would reject, with the host's message", async () => {
     await expect(
       loadPluginApp(
