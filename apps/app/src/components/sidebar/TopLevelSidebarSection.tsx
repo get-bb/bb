@@ -164,21 +164,16 @@ export function TopLevelSidebarSection({
           ) : null}
         </span>
         {collapseControl?.isCollapsed && collapsedActivity ? (
-          <>
-            <span
-              data-sidebar-collapsed-activity-edge=""
-              data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
-              className={cn(
-                "pointer-events-none absolute right-1 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:hidden",
-                actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              )}
-            >
-              <CollapsedThreadStatusGlyph activity={collapsedActivity} />
-            </span>
-            <span className="pointer-events-none relative z-20 hidden shrink-0 items-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-              <CollapsedThreadStatusGlyph activity={collapsedActivity} />
-            </span>
-          </>
+          <span
+            data-sidebar-collapsed-activity-edge=""
+            data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
+            className={cn(
+              "pointer-events-none absolute right-1 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:top-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:translate-y-0",
+              actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+            )}
+          >
+            <CollapsedThreadStatusGlyph activity={collapsedActivity} />
+          </span>
         ) : null}
         {actions ? (
           <span

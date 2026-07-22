@@ -66,7 +66,6 @@ describe("bb skill commands", () => {
     expect(String(input)).toBe("http://server/api/v1/skills-registry/install");
     expect(JSON.parse(String(init?.body))).toEqual({
       registrySkillId: "owner/repo/review",
-      projectId: "project-context",
     });
   });
 

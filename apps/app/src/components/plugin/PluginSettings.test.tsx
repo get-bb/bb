@@ -160,6 +160,89 @@ function rowPlugin(
 }
 
 describe("PluginSettingsDetail settings gating", () => {
+  it("clears plugin-scoped drafts and isolates an in-flight save after navigation", async () => {
+    let finishAlphaSave: (response: Response) => void = () => {
+      throw new Error("Alpha save did not start");
+    };
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (
+          url === "/api/v1/plugins/alpha/settings" &&
+          init?.method === "PUT"
+        ) {
+          return new Promise<Response>((resolve) => {
+            finishAlphaSave = resolve;
+          });
+        }
+        const greeting = url.includes("/beta/") ? "bonjour" : "hello";
+        return jsonOk({
+          ...SETTINGS_VIEW,
+          values: { ...SETTINGS_VIEW.values, greeting },
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { rerender } = render(
+      <PluginSettingsDetail
+        plugin={{ ...rowPlugin("running"), id: "alpha" }}
+      />,
+      { wrapper },
+    );
+
+    const alphaGreeting = (await screen.findByLabelText(
+      "Greeting",
+    )) as HTMLInputElement;
+    fireEvent.change(alphaGreeting, { target: { value: "unsaved alpha" } });
+    fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
+    await vi.waitFor(() => {
+      expect(
+        requests.some(
+          (request) =>
+            request.url === "/api/v1/plugins/alpha/settings" &&
+            request.init?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    rerender(
+      <PluginSettingsDetail plugin={{ ...rowPlugin("running"), id: "beta" }} />,
+    );
+    await vi.waitFor(() => {
+      expect(
+        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+      ).toBe("bonjour");
+    });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /save settings/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    finishAlphaSave(
+      jsonOk({
+        ...SETTINGS_VIEW,
+        values: { ...SETTINGS_VIEW.values, greeting: "saved alpha" },
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(
+        (screen.getByLabelText("Greeting") as HTMLInputElement).value,
+      ).toBe("bonjour");
+    });
+    expect(
+      requests.some(
+        (request) =>
+          request.url === "/api/v1/plugins/beta/settings" &&
+          request.init?.method === "PUT",
+      ),
+    ).toBe(false);
+  });
+
   it("renders the settings form for a needs-configuration plugin (regression: the plugin that most needs configuring must be configurable)", async () => {
     vi.stubGlobal(
       "fetch",

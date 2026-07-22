@@ -473,6 +473,7 @@ function buildSkillRecord(
   filePath: string,
   name: string,
   frontmatter: ParsedFrontmatter,
+  linked: boolean,
 ): DiscoveredSkill {
   const rootPath =
     "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
@@ -488,7 +489,14 @@ function buildSkillRecord(
     description: frontmatter.description,
     filePath,
     rootKind: root.rootKind,
+    linked,
   };
+}
+
+async function isSymbolicLinkPath(filePath: string): Promise<boolean> {
+  return (
+    (await fs.lstat(filePath).catch(() => null))?.isSymbolicLink() ?? false
+  );
 }
 
 async function scanSkillRootForSkills(
@@ -516,7 +524,13 @@ async function scanSkillRootForSkills(
     }
     const frontmatter = await parseFrontmatter(skillFilePath);
     records.push(
-      buildSkillRecord(root, skillFilePath, entry.name, frontmatter),
+      buildSkillRecord(
+        root,
+        skillFilePath,
+        entry.name,
+        frontmatter,
+        entry.isSymbolicLink() || (await isSymbolicLinkPath(skillFilePath)),
+      ),
     );
   }
   return records;
@@ -541,6 +555,8 @@ async function scanSingleSkillDirectoryForSkills(
       skillFilePath,
       path.basename(root.rootPath),
       frontmatter,
+      (await isSymbolicLinkPath(root.rootPath)) ||
+        (await isSymbolicLinkPath(skillFilePath)),
     ),
   ];
 }
@@ -561,6 +577,7 @@ async function scanSkillFileForSkills(
       root.filePath,
       frontmatter.name ?? root.fallbackName,
       frontmatter,
+      await isSymbolicLinkPath(root.filePath),
     ),
   ];
 }

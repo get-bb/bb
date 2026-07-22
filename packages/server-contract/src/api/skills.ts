@@ -45,7 +45,6 @@ export type RegistrySkillDetail = z.infer<typeof registrySkillDetailSchema>;
 export const registrySkillInstallRequestSchema = z
   .object({
     registrySkillId: z.string().min(1),
-    projectId: z.string().min(1),
   })
   .strict();
 export type RegistrySkillInstallRequest = z.infer<

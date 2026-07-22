@@ -127,6 +127,7 @@ describe("assembleSkillList", () => {
       description: null,
       rootKind,
       filePath,
+      linked: false,
     };
   }
 
@@ -179,5 +180,24 @@ describe("assembleSkillList", () => {
       ["claude-user", "zed"],
       ["codex-user", "zed"],
     ]);
+  });
+
+  it("keeps linked provider user skills visible but not manageable", () => {
+    const linked = {
+      ...discovered(
+        "shared-link",
+        "provider-user",
+        "/home/.codex/skills/shared-link/SKILL.md",
+      ),
+      linked: true,
+    };
+
+    expect(
+      assembleSkillList([{ provider: "codex", skills: [linked] }])[0],
+    ).toMatchObject({
+      name: "shared-link",
+      scope: "codex-user",
+      manageable: false,
+    });
   });
 });

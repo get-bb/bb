@@ -1530,7 +1530,6 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.skills.registry.install({
         registrySkillId: registrySkill.id,
-        projectId: "proj_123",
       }),
     ).resolves.toEqual({
       ok: true,
@@ -1553,7 +1552,6 @@ describe("@bb/sdk", () => {
         url: "http://bb.test/api/v1/skills-registry/install",
         bodyText: JSON.stringify({
           registrySkillId: registrySkill.id,
-          projectId: "proj_123",
         }),
       },
     ]);

@@ -1180,8 +1180,10 @@ describe("installRegistrySkill", () => {
     expect(request?.[0]).toBe("/api/v1/skills-registry/install");
     expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
       registrySkillId: "owner/repo/skill",
-      projectId: PERSONAL_PROJECT_ID,
     });
+    expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty(
+      "projectId",
+    );
     expect(JSON.parse(String(request?.[1]?.body))).not.toHaveProperty(
       "providers",
     );

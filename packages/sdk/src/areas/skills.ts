@@ -57,9 +57,7 @@ export interface RegistrySkillSourceArgs {
   skillId: string;
 }
 
-export interface RegistrySkillInstallArgs extends RegistrySkillIdArgs {
-  projectId: string;
-}
+export type RegistrySkillInstallArgs = RegistrySkillIdArgs;
 
 export interface SkillsRegistryArea {
   detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;

@@ -274,7 +274,6 @@ export async function installRegistrySkill(args: { skill: RegistrySkill }) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       registrySkillId: args.skill.id,
-      projectId: PERSONAL_PROJECT_ID,
     }),
   });
   const body = (await response.json().catch(() => null)) as {

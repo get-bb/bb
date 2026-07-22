@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  access,
   mkdir,
   readFile,
   realpath,
@@ -56,17 +57,43 @@ export function resolveInterpreterCommand(
   return INTERPRETER_COMMAND[interpreter];
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export async function writeInlineAutomationScript(args: {
   dataDir: string;
   automationId: string;
   content: string;
   scriptFile?: string;
 }): Promise<string> {
-  const storedName = sanitizeScriptFileName(
+  const requestedName = sanitizeScriptFileName(
     args.scriptFile ?? DEFAULT_SCRIPT_FILE_NAME,
   );
   const dir = automationScriptDir(args.dataDir, args.automationId);
   await mkdir(dir, { recursive: true });
+  let storedName = requestedName;
+  if (await pathExists(join(dir, storedName))) {
+    const extension = extname(requestedName);
+    const stem = requestedName.slice(
+      0,
+      requestedName.length - extension.length,
+    );
+    storedName = `${stem}.${randomUUID()}${extension}`;
+  }
   const target = join(dir, storedName);
   const tmp = join(dir, `.${storedName}.${randomUUID()}.tmp`);
   try {
@@ -136,4 +163,19 @@ export async function deleteAutomationScriptDir(args: {
     recursive: true,
     force: true,
   });
+}
+
+export async function deleteAutomationScriptFile(args: {
+  dataDir: string;
+  automationId: string;
+  scriptFile: string;
+}): Promise<void> {
+  const storedName = sanitizeScriptFileName(args.scriptFile);
+  if (storedName !== args.scriptFile) {
+    throw new Error("Invalid stored automation script filename");
+  }
+  await rm(
+    join(automationScriptDir(args.dataDir, args.automationId), storedName),
+    { force: true },
+  );
 }

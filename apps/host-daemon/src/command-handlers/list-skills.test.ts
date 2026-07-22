@@ -122,6 +122,7 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
       description: "proj-bb skill",
       filePath: files["proj-bb"],
       rootKind: "bb-project",
+      linked: false,
     });
     expect(byName(skills, "data-bb")).toBeUndefined();
     expect(byName(skills, "builtin-bb")).toBeUndefined();
@@ -207,6 +208,32 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
     expect(byName(skills, "user-codex")?.rootKind).toBe("provider-user");
     // bb roots are shared across providers.
     expect(byName(skills, "proj-bb")?.rootKind).toBe("bb-project");
+  });
+
+  it("marks followed user skill directory and SKILL.md symlinks as linked", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const skillsRoot = path.join(fixture.codexHome, "skills");
+    const linkedDirectoryTarget = path.join(tempRoot, "linked-skill-target");
+    await writeSkill(
+      path.join(linkedDirectoryTarget, "SKILL.md"),
+      "linked-directory",
+    );
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(
+      linkedDirectoryTarget,
+      path.join(skillsRoot, "linked-directory"),
+    );
+
+    const linkedFileTarget = path.join(tempRoot, "linked-skill-file.md");
+    await writeSkill(linkedFileTarget, "linked-file");
+    const linkedFileRoot = path.join(skillsRoot, "linked-file");
+    await mkdir(linkedFileRoot, { recursive: true });
+    await symlink(linkedFileTarget, path.join(linkedFileRoot, "SKILL.md"));
+
+    const skills = await listSkills(fixture, "codex", fixture.cwd);
+
+    expect(byName(skills, "linked-directory")?.linked).toBe(true);
+    expect(byName(skills, "linked-file")?.linked).toBe(true);
   });
 });
 

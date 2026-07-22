@@ -38,6 +38,7 @@ const INSTALLED_PLUGIN_RESPONSE = {
     description: "Linear integration",
     name: "Linear",
     icon: null,
+    experimental_iconUrl: null,
     status: "running",
     statusDetail: null,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },

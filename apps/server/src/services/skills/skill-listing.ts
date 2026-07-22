@@ -153,7 +153,7 @@ export function assembleSkillList(
             ? (skill.name.split(":", 1)[0] ?? skill.name)
             : null,
         filePath: skill.filePath,
-        manageable: mapped.manageable,
+        manageable: mapped.manageable && !skill.linked,
       });
     }
   }
@@ -348,7 +348,9 @@ async function listServerSkillFiles(
         await walk(entryPath);
         if (truncated) return;
       } else if (entry.isFile()) {
-        files.push(path.relative(rootPath, entryPath).split(path.sep).join("/"));
+        files.push(
+          path.relative(rootPath, entryPath).split(path.sep).join("/"),
+        );
       }
     }
   }
@@ -588,7 +590,8 @@ export async function deleteProjectSkill(
     if (
       realRootPath === null ||
       realSkillPath === null ||
-      realSkillPath !== path.join(realRootPath, path.basename(skillDirectoryPath))
+      realSkillPath !==
+        path.join(realRootPath, path.basename(skillDirectoryPath))
     ) {
       throw new ApiError(404, "not_found", "Skill not found");
     }

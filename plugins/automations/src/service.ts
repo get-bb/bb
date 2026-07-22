@@ -20,6 +20,7 @@ import {
   type Db,
 } from "./data.js";
 import { createAutomationId } from "./ids.js";
+import { resolvePermissionMode } from "./provider-permissions.js";
 import { publishAutomationChange } from "./realtime.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
@@ -44,6 +45,7 @@ import {
 } from "./schedule-helpers.js";
 import {
   deleteAutomationScriptDir,
+  deleteAutomationScriptFile,
   readAutomationScript,
   writeInlineAutomationScript,
 } from "./script-files.js";
@@ -52,6 +54,7 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
+    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -126,12 +129,19 @@ function assertNotRecursiveCreation(
   }
 }
 
+type ResolvedStoredExecution = {
+  execution: AutomationExecution;
+  writtenScriptFile?: string;
+};
+
 async function resolveStoredExecution(args: {
   pluginDataDir: string;
   automationId: string;
   execution: AutomationExecution;
-}): Promise<AutomationExecution> {
-  if (args.execution.mode !== "script") return args.execution;
+}): Promise<ResolvedStoredExecution> {
+  if (args.execution.mode !== "script") {
+    return { execution: args.execution };
+  }
   if (args.execution.script !== undefined) {
     const scriptFile = await writeInlineAutomationScript({
       dataDir: args.pluginDataDir,
@@ -140,9 +150,34 @@ async function resolveStoredExecution(args: {
       scriptFile: args.execution.scriptFile,
     });
     const { script: _script, ...rest } = args.execution;
-    return { ...rest, scriptFile };
+    return {
+      execution: { ...rest, scriptFile },
+      writtenScriptFile: scriptFile,
+    };
   }
-  return args.execution;
+  return { execution: args.execution };
+}
+
+async function discardUncommittedScript(args: {
+  bb: Pick<ServiceApi, "log">;
+  pluginDataDir: string;
+  automationId: string;
+  scriptFile: string | undefined;
+}): Promise<void> {
+  if (args.scriptFile === undefined) return;
+  try {
+    await deleteAutomationScriptFile({
+      dataDir: args.pluginDataDir,
+      automationId: args.automationId,
+      scriptFile: args.scriptFile,
+    });
+  } catch (error) {
+    args.bb.log.warn(
+      `Failed to discard uncommitted script for automation ${args.automationId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 async function toEditableAutomationResponse(args: {
@@ -168,6 +203,42 @@ async function toEditableAutomationResponse(args: {
       }),
     },
   };
+}
+
+async function cleanupSupersededScript(args: {
+  bb: Pick<ServiceApi, "log">;
+  pluginDataDir: string;
+  automationId: string;
+  previous: AutomationExecution;
+  next: AutomationExecution;
+}): Promise<void> {
+  if (args.previous.mode !== "script") return;
+  try {
+    if (args.next.mode !== "script") {
+      await deleteAutomationScriptDir({
+        dataDir: args.pluginDataDir,
+        automationId: args.automationId,
+      });
+      return;
+    }
+    if (
+      args.previous.scriptFile !== undefined &&
+      args.next.scriptFile !== undefined &&
+      args.previous.scriptFile !== args.next.scriptFile
+    ) {
+      await deleteAutomationScriptFile({
+        dataDir: args.pluginDataDir,
+        automationId: args.automationId,
+        scriptFile: args.previous.scriptFile,
+      });
+    }
+  } catch (error) {
+    args.bb.log.warn(
+      `Failed to remove superseded script for automation ${args.automationId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 function encodeRunCursor(startedAt: number, id: string): string {
@@ -324,28 +395,46 @@ export function createAutomationService(args: {
       const now = Date.now();
       validateTrigger(payload.trigger, now);
       assertNotRecursiveCreation(db, payload.createdByThreadId);
+      if (payload.execution.mode === "agent") {
+        await resolvePermissionMode(
+          bb,
+          payload.execution.providerId,
+          payload.execution.permissionMode,
+        );
+      }
       const automationId = createAutomationId();
-      const storedExecution = await resolveStoredExecution({
+      const stored = await resolveStoredExecution({
         pluginDataDir,
         automationId,
         execution: payload.execution,
       });
-      const created = createAutomation(db, {
-        id: automationId,
-        projectId: payload.projectId,
-        name: payload.name,
-        enabled: payload.enabled,
-        trigger: payload.trigger,
-        runMode: storedExecution.mode,
-        execution: storedExecution,
-        origin: payload.origin,
-        createdByThreadId: payload.createdByThreadId ?? null,
-        nextRunAt: computeInitialNextRunAt({
-          trigger: payload.trigger,
+      let created: AutomationRow;
+      try {
+        created = createAutomation(db, {
+          id: automationId,
+          projectId: payload.projectId,
+          name: payload.name,
           enabled: payload.enabled,
-          now,
-        }),
-      });
+          trigger: payload.trigger,
+          runMode: stored.execution.mode,
+          execution: stored.execution,
+          origin: payload.origin,
+          createdByThreadId: payload.createdByThreadId ?? null,
+          nextRunAt: computeInitialNextRunAt({
+            trigger: payload.trigger,
+            enabled: payload.enabled,
+            now,
+          }),
+        });
+      } catch (error) {
+        await discardUncommittedScript({
+          bb,
+          pluginDataDir,
+          automationId,
+          scriptFile: stored.writtenScriptFile,
+        });
+        throw error;
+      }
       publishAutomationChange(bb, payload.projectId, "automations-changed");
       return toAutomationResponse(created);
     },
@@ -362,6 +451,8 @@ export function createAutomationService(args: {
         );
       }
       const now = Date.now();
+      const currentExecution = parseAutomationExecution(current.execution);
+      let stagedScriptFile: string | undefined;
       const patch: Parameters<typeof updateAutomation>[1]["patch"] = {};
       if (input.name !== undefined) patch.name = input.name;
       if (input.trigger !== undefined) {
@@ -372,24 +463,73 @@ export function createAutomationService(args: {
           : null;
       }
       if (input.execution !== undefined) {
-        patch.execution = await resolveStoredExecution({
+        if (input.execution.mode === "agent") {
+          await resolvePermissionMode(
+            bb,
+            input.execution.providerId,
+            input.execution.permissionMode,
+          );
+        }
+        const stored = await resolveStoredExecution({
           pluginDataDir,
           automationId: current.id,
           execution: input.execution,
         });
+        patch.execution = stored.execution;
+        stagedScriptFile = stored.writtenScriptFile;
       }
       if (input.experimental_agent !== undefined) {
+        if (input.experimental_agent.permissionMode !== undefined) {
+          if (currentExecution.mode !== "agent") {
+            throw new Error(
+              "Agent execution options can only update agent automations",
+            );
+          }
+          await resolvePermissionMode(
+            bb,
+            currentExecution.providerId,
+            input.experimental_agent.permissionMode,
+          );
+        }
         patch.execution = applyAgentExecutionUpdate(
-          parseAutomationExecution(current.execution),
+          currentExecution,
           input.experimental_agent,
         );
       }
-      const updated = updateAutomation(db, {
-        projectId: input.projectId,
-        automationId: input.automationId,
-        patch,
-      });
-      if (!updated) throw new Error("Automation not found");
+      let updated: AutomationRow | null;
+      try {
+        updated = updateAutomation(db, {
+          projectId: input.projectId,
+          automationId: input.automationId,
+          patch,
+        });
+      } catch (error) {
+        await discardUncommittedScript({
+          bb,
+          pluginDataDir,
+          automationId: current.id,
+          scriptFile: stagedScriptFile,
+        });
+        throw error;
+      }
+      if (!updated) {
+        await discardUncommittedScript({
+          bb,
+          pluginDataDir,
+          automationId: current.id,
+          scriptFile: stagedScriptFile,
+        });
+        throw new Error("Automation not found");
+      }
+      if (patch.execution !== undefined) {
+        await cleanupSupersededScript({
+          bb,
+          pluginDataDir,
+          automationId: current.id,
+          previous: currentExecution,
+          next: patch.execution,
+        });
+      }
       publishAutomationChange(bb, input.projectId, "automations-changed");
       return toAutomationResponse(updated);
     },

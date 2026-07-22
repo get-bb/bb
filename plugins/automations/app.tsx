@@ -64,9 +64,11 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  type AutomationStatusFilter,
   formatAutomationTrigger,
   formatOverviewScheduleMetadata,
   getOneShotLifecycle,
+  matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
 } from "@/lib/format-schedule";
 
@@ -691,6 +693,9 @@ function OverviewView({
   const [projectFilters, setProjectFilters] = useState<
     AutomationProjectFilter[]
   >([]);
+  const [statusFilters, setStatusFilters] = useState<AutomationStatusFilter[]>(
+    [],
+  );
   const [sortMode, setSortMode] = useState<AutomationSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<AutomationSortDirection>("asc");
@@ -756,6 +761,9 @@ function OverviewView({
       ) {
         return false;
       }
+      if (!matchesAutomationStatusFilters(automation, statusFilters)) {
+        return false;
+      }
       if (normalizedQuery.length === 0) return true;
       return [
         automation.name,
@@ -764,7 +772,7 @@ function OverviewView({
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
     });
-  }, [entries, normalizedQuery, projectFilters]);
+  }, [entries, normalizedQuery, projectFilters, statusFilters]);
   const visibleEntries = useMemo(() => {
     return [...filteredEntries].sort((left, right) => {
       const base =
@@ -784,6 +792,7 @@ function OverviewView({
     resetKey: [
       normalizedQuery,
       projectFilters.join(","),
+      statusFilters.join(","),
       sortMode,
       sortDirection,
     ].join("\u0000"),
@@ -827,8 +836,10 @@ function OverviewView({
         state="empty"
         message={
           normalizedQuery === ""
-            ? "No automations match these projects."
-            : `No automations match "${query}"`
+            ? "No automations match these filters."
+            : projectFilters.length > 0 || statusFilters.length > 0
+              ? `No automations match "${query}" with these filters.`
+              : `No automations match "${query}"`
         }
       />
     );
@@ -900,6 +911,18 @@ function OverviewView({
                     options={projectOptions}
                     onChange={(values) =>
                       setProjectFilters(values as AutomationProjectFilter[])
+                    }
+                  />
+                  <ResourceMultiSelectMenu
+                    label="Status"
+                    icon="SlidersHorizontal"
+                    selectedValues={statusFilters}
+                    options={[
+                      { id: "active", label: "Active" },
+                      { id: "paused", label: "Paused" },
+                    ]}
+                    onChange={(values) =>
+                      setStatusFilters(values as AutomationStatusFilter[])
                     }
                   />
                   <ResourceSortMenu

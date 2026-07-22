@@ -238,11 +238,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         description: "Review the current diff",
         filePath: "/home/user/.bb/skills/review/SKILL.md",
         rootKind: "bb-data-dir",
+        linked: false,
       },
     ],
-  },
-  "host.install_registry_skill": {
-    filePath: "/home/user/.bb/skills/review/SKILL.md",
   },
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
@@ -1011,6 +1009,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  it("uses protocol version 63 for the skill management contract", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(63);
+  });
+
   it("binds Plan cancellation to a required turn id and typed result", () => {
     expect(
       hostDaemonCommandSchema.parse({
@@ -1720,8 +1722,6 @@ describe("host-daemon command schemas", () => {
   });
 
   it("parses section mentions in thread.start", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(59);
-
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",

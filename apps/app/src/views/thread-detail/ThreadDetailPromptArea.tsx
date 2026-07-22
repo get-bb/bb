@@ -568,6 +568,7 @@ export function ThreadDetailPromptArea({
     };
   }, [
     inlineEditingQueuedMessage,
+    inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
     focusQueuedPluginComposer,
     thread.id,

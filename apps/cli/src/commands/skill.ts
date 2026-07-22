@@ -251,23 +251,14 @@ export function registerSkillCommands(
   skill
     .command("install <registry-skill-id>")
     .description("Install a canonical skills.sh entry into bb user skills")
-    .option(
-      "--project <id>",
-      "Project ID (defaults to BB_PROJECT_ID or personal)",
-    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (registrySkillId: string, options: SkillWorkspaceOptions) => {
-          const result = await createCliBbSdk(getUrl()).skills.registry.install(
-            {
-              registrySkillId,
-              projectId: projectId(options, getContext()),
-            },
-          );
-          if (outputJson(options, result)) return;
-          console.log(`Installed ${result.filePath}`);
-        },
-      ),
+      action(async (registrySkillId: string, options: JsonOutputOptions) => {
+        const result = await createCliBbSdk(getUrl()).skills.registry.install({
+          registrySkillId,
+        });
+        if (outputJson(options, result)) return;
+        console.log(`Installed ${result.filePath}`);
+      }),
     );
 }

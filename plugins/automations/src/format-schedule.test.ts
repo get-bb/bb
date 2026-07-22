@@ -1,12 +1,99 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatDetailScheduleStatusLabel,
   formatOverviewScheduleMetadata,
   formatScheduleStatusLabel,
   getOneShotLifecycle,
+  matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
 } from "../lib/format-schedule.js";
 
 const NOW = 2_000;
+
+describe("automation list and detail states", () => {
+  it("omits paused detail metadata without hiding an active next run", () => {
+    const pausedSchedule = {
+      enabled: false,
+      nextRunAt: null,
+      trigger: {
+        triggerType: "schedule" as const,
+        cron: "0 * * * *",
+        timezone: "UTC",
+      },
+      now: NOW,
+    };
+
+    expect(formatDetailScheduleStatusLabel(pausedSchedule)).toBeNull();
+    expect(
+      formatDetailScheduleStatusLabel({
+        ...pausedSchedule,
+        enabled: true,
+        nextRunAt: NOW + 60_000,
+      }),
+    ).toMatch(/^Next /);
+  });
+
+  it("filters active versus paused automations", () => {
+    expect(
+      matchesAutomationStatusFilters({ enabled: true, nextRunAt: NOW }, []),
+    ).toBe(true);
+    expect(
+      matchesAutomationStatusFilters({ enabled: true, nextRunAt: NOW }, [
+        "active",
+      ]),
+    ).toBe(true);
+    expect(
+      matchesAutomationStatusFilters({ enabled: false, nextRunAt: null }, [
+        "paused",
+      ]),
+    ).toBe(true);
+    expect(
+      matchesAutomationStatusFilters(
+        {
+          enabled: false,
+          nextRunAt: null,
+          trigger: { triggerType: "once", runAt: NOW - 1 },
+          runCount: 1,
+          lastRunStatus: "running",
+          now: NOW,
+        },
+        ["active"],
+      ),
+    ).toBe(true);
+    expect(
+      matchesAutomationStatusFilters(
+        {
+          enabled: false,
+          nextRunAt: null,
+          trigger: { triggerType: "once", runAt: NOW - 1 },
+          runCount: 1,
+          lastRunStatus: "succeeded",
+          now: NOW,
+        },
+        ["paused"],
+      ),
+    ).toBe(false);
+    expect(
+      matchesAutomationStatusFilters(
+        {
+          enabled: false,
+          nextRunAt: null,
+          trigger: { triggerType: "once", runAt: NOW - 1 },
+          runCount: 0,
+          lastRunStatus: null,
+          now: NOW,
+        },
+        ["paused"],
+      ),
+    ).toBe(false);
+    expect(
+      matchesAutomationStatusFilters({ enabled: false, nextRunAt: null }, [
+        "active",
+        "paused",
+      ]),
+    ).toBe(true);
+  });
+});
 
 describe("one-shot automation lifecycle", () => {
   it("omits row state repeated by icons or controls and separates the next-run label", () => {

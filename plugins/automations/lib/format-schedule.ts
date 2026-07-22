@@ -25,6 +25,8 @@ export interface OverviewScheduleMetadata {
   text: string;
 }
 
+export type AutomationStatusFilter = "active" | "paused";
+
 export interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
@@ -188,4 +190,33 @@ export function formatOverviewScheduleMetadata(
     return { emphasis: "Next", text: label.slice("Next ".length) };
   }
   return { emphasis: null, text: label };
+}
+
+/** Detail pages omit the paused label because their lifecycle toggle carries it. */
+export function formatDetailScheduleStatusLabel(
+  args: FormatScheduleStatusLabelArgs,
+): string | null {
+  const label = formatScheduleStatusLabel(args);
+  return label === "Paused" ? null : label;
+}
+
+export function matchesAutomationStatusFilters(
+  automation: FormatScheduleStatusLabelArgs,
+  filters: readonly AutomationStatusFilter[],
+): boolean {
+  if (filters.length === 0) return true;
+  if (automation.enabled) return filters.includes("active");
+  if (automation.trigger?.triggerType !== "once") {
+    return filters.includes("paused");
+  }
+  const lifecycle = getOneShotLifecycle({
+    enabled: automation.enabled,
+    trigger: automation.trigger,
+    runCount: automation.runCount ?? 0,
+    lastRunStatus: automation.lastRunStatus ?? null,
+    now: automation.now,
+  });
+  if (lifecycle === "running") return filters.includes("active");
+  if (lifecycle === "paused") return filters.includes("paused");
+  return false;
 }

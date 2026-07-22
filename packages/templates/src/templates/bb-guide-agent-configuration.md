@@ -52,11 +52,14 @@ Skills (.bb/skills/):
   opaque skill ID. `bb skill show|files <skill-id>` reads that exact skill;
   `bb skill show <skill-id> --json` returns the revision required by `bb skill
   update <skill-id> --revision <sha256>`. `bb skill delete <skill-id>` and
-  update are restricted to editable, user-owned skills. Use `bb skill
-  search` to browse skills.sh, `bb skill registry detail <registry-skill-id>`
-  to inspect metadata and the bounded file preview, and `bb skill install
-  <registry-skill-id>` to install a canonical registry identity. These commands
-  default to `BB_PROJECT_ID`, then the personal project; pass `--project` or
-  `--environment` when a different workspace is required.
+  update are restricted to editable, user-owned skills. These workspace-scoped
+  commands default to `BB_PROJECT_ID`, then the personal project; pass
+  `--project` or `--environment` when a different workspace is required.
+
+  Use `bb skill search` to browse skills.sh, `bb skill registry detail
+  <registry-skill-id>` to inspect metadata and the bounded file preview, and
+  `bb skill install <registry-skill-id>` to install that canonical registry
+  identity into bb user skills. Registry commands are server-wide and do not
+  accept workspace selectors.
 
   Use the skill-creator skill to author and iterate on skills.

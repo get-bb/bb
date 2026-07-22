@@ -1,7 +1,6 @@
 import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
-import { requirePublicProject } from "../services/lib/entity-lookup.js";
 import { installServerRegistrySkill } from "../services/skills/registry-skill-install.js";
 
 const SKILLS_BASE_URL = "https://www.skills.sh";
@@ -773,15 +772,19 @@ async function listRegistrySkills(
       : normalizedQuery.length > 0
         ? mappedApiSkills.slice(start, start + perPage)
         : mappedApiSkills;
+  const fetchedTotal =
+    normalizedQuery.length > 0 && mappedApiSkills !== null
+      ? mappedApiSkills.length
+      : (apiPage?.total ?? skills.length);
   const pagination =
     publicPage?.pagination ??
     ({
       page,
       perPage,
-      total: apiPage?.total ?? skills.length,
+      total: fetchedTotal,
       hasMore:
         normalizedQuery.length > 0
-          ? start + perPage < (apiPage?.total ?? 0)
+          ? start + perPage < fetchedTotal
           : (apiPage?.hasMore ?? false),
     } satisfies RegistryPagination);
   const availableSkills = await filterSkillsWithLoadableDetails(skills);
@@ -953,20 +956,14 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
 
   app.post("/skills-registry/install", async (context) => {
     const body: unknown = await context.req.json().catch(() => null);
-    const allowedKeys = new Set(["registrySkillId", "projectId"]);
+    const allowedKeys = new Set(["registrySkillId"]);
     if (
       !isRecord(body) ||
       Object.keys(body).some((key) => !allowedKeys.has(key)) ||
-      typeof body.registrySkillId !== "string" ||
-      typeof body.projectId !== "string"
+      typeof body.registrySkillId !== "string"
     ) {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "Expected registrySkillId and projectId",
-      );
+      throw new ApiError(400, "invalid_request", "Expected registrySkillId");
     }
-    requirePublicProject(deps.db, body.projectId);
     const registrySkill = await resolveRegistrySkillById(body.registrySkillId);
     const result = await installServerRegistrySkill({
       dataDir: deps.config.dataDir,

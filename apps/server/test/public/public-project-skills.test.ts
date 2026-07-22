@@ -174,6 +174,7 @@ function discovered(
     description: `${name} skill`,
     rootKind,
     filePath,
+    linked: false,
   };
 }
 
@@ -310,6 +311,62 @@ describe("public project skills route", () => {
         page: 1,
         perPage: 2,
         total: 3,
+        hasMore: false,
+      });
+    });
+  });
+
+  it("does not advertise authenticated search pages beyond its fetched window", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "test-token");
+      const apiSkills = Array.from({ length: 200 }, (_, index) => ({
+        id: `owner/repo-${index}/skill-${index}`,
+        slug: `skill-${index}`,
+        name: `Skill ${index}`,
+        source: `owner/repo-${index}`,
+        installs: 200 - index,
+        installUrl: null,
+        url: `https://www.skills.sh/owner/repo-${index}/skill-${index}`,
+      }));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          if (url.startsWith("https://www.skills.sh/api/v1/skills/search?")) {
+            return Response.json({
+              data: apiSkills,
+              pagination: { total: 500, hasMore: true },
+            });
+          }
+          if (url.startsWith("https://www.skills.sh/api/v1/skills/")) {
+            return Response.json({
+              hash: "registry-revision",
+              files: [{ path: "SKILL.md", contents: "# Available skill\n" }],
+            });
+          }
+          return new Response(null, { status: 404 });
+        }),
+      );
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry?q=skill&page=16&perPage=12",
+      );
+
+      expect(response.status).toBe(200);
+      const body = (await readJson(response)) as {
+        skills: Array<{ id: string }>;
+        pagination: {
+          page: number;
+          perPage: number;
+          total: number;
+          hasMore: boolean;
+        };
+      };
+      expect(body.skills).toHaveLength(8);
+      expect(body.pagination).toEqual({
+        page: 16,
+        perPage: 12,
+        total: 200,
         hasMore: false,
       });
     });
@@ -490,17 +547,6 @@ describe("public project skills route", () => {
 
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-registry-install",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/registry-install-project",
-      });
-      registerSkillRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-      });
       installServerRegistrySkillMock.mockResolvedValueOnce({
         filePath: "/data/skills/find-skills/SKILL.md",
       });
@@ -525,7 +571,6 @@ describe("public project skills route", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             registrySkillId: "github.com/vercel-labs/skills/find-skills",
-            projectId: project.id,
           }),
         },
       );
@@ -545,14 +590,6 @@ describe("public project skills route", () => {
 
   it("rejects obsolete provider install fields", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-registry-invalid",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/registry-invalid-project",
-      });
-
       const response = await harness.app.request(
         "/api/v1/skills-registry/install",
         {
@@ -560,7 +597,6 @@ describe("public project skills route", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             registrySkillId: "vercel-labs/skills/find-skills",
-            projectId: project.id,
             providers: ["codex"],
           }),
         },
@@ -572,14 +608,6 @@ describe("public project skills route", () => {
 
   it("rejects a registry source that could be parsed as a CLI option", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-registry-option-source",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/registry-option-source-project",
-      });
-
       const response = await harness.app.request(
         "/api/v1/skills-registry/install",
         {
@@ -587,7 +615,6 @@ describe("public project skills route", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             registrySkillId: "--help/find-skills",
-            projectId: project.id,
           }),
         },
       );

@@ -32,6 +32,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
+  formatDetailScheduleStatusLabel,
   formatScheduleRunTime,
   formatScheduleStatusLabel,
   getOneShotLifecycle,
@@ -117,6 +118,18 @@ export function automationScheduleLabel(
   automation: AutomationResponse,
 ): string {
   return formatScheduleStatusLabel({
+    enabled: automation.enabled,
+    nextRunAt: automation.nextRunAt,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
+  });
+}
+
+function automationDetailScheduleLabel(
+  automation: AutomationResponse,
+): string | null {
+  return formatDetailScheduleStatusLabel({
     enabled: automation.enabled,
     nextRunAt: automation.nextRunAt,
     trigger: automation.trigger,
@@ -335,7 +348,7 @@ export function AutomationDetailView({
               <Icon name="Clock" className="size-3.5" aria-hidden />
               {formatAutomationTrigger(automation.trigger)}
             </span>,
-            automationScheduleLabel(automation),
+            automationDetailScheduleLabel(automation),
           ]}
         />
       }

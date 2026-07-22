@@ -302,7 +302,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       {plugin.hasSettings || !settingsAvailable ? (
         <ResourceDetailPanel surface="recessed" className="px-3 py-3">
           {settingsAvailable ? (
-            <PluginSettingsForm pluginId={plugin.id} />
+            <PluginSettingsForm key={plugin.id} pluginId={plugin.id} />
           ) : (
             <p className="text-xs text-muted-foreground">
               {plugin.enabled

@@ -186,7 +186,7 @@ function createStoryQueryClient(): QueryClient {
 }
 
 function SplitWorkspaceStory() {
-  const queryClient = useMemo(createStoryQueryClient, []);
+  const queryClient = useMemo(() => createStoryQueryClient(), []);
   const store = useMemo(() => {
     const nextStore = createStore();
     nextStore.set(splitLayoutAtom, splitLayout);

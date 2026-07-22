@@ -647,6 +647,60 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("rejects unsupported partial permission updates through RPC and CLI", async () => {
+    const { harness } = await bootAutomationsPlugin(["accept-edits", "full"]);
+    const created = await createAgentAutomation(harness);
+
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        execution: {
+          ...agentExecution(),
+          permissionMode: "auto",
+        },
+      }),
+    ).rejects.toThrow(
+      "Permission mode auto is not supported by provider codex.",
+    );
+
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        experimental_agent: { permissionMode: "auto" },
+      }),
+    ).rejects.toThrow(
+      "Permission mode auto is not supported by provider codex.",
+    );
+
+    const cliResult = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--permission-mode",
+      "auto",
+    ]);
+    expect(cliResult.exitCode).toBe(1);
+    expect(cliResult.stderr).toContain(
+      "Permission mode auto is not supported by provider codex.",
+    );
+
+    const unchanged = automationResponseSchema.parse(
+      await harness.callRpc("automations_get", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    );
+    expect(unchanged.execution).toMatchObject({
+      mode: "agent",
+      permissionMode: "accept-edits",
+    });
+
+    await harness.dispose();
+  });
+
   it("dedupes manual runs through RPC idempotency keys", async () => {
     const { harness } = await bootAutomationsPlugin();
     const automation = await createAgentAutomation(harness);
