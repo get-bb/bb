@@ -23,8 +23,11 @@ describe("decodeClaudeCodeJsonRpcRequest", () => {
       params: baseThreadStartParams,
     });
     expect(decoded).toMatchObject({
-      method: "thread/start",
-      params: { workflowsEnabled: false },
+      kind: "request",
+      request: {
+        method: "thread/start",
+        params: { workflowsEnabled: false },
+      },
     });
   });
 
@@ -38,7 +41,12 @@ describe("decodeClaudeCodeJsonRpcRequest", () => {
         method: "thread/start",
         params: withoutWorkflowsEnabled,
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      kind: "invalid_params",
+      id: 1,
+      method: "thread/start",
+      issues: expect.stringContaining("workflowsEnabled"),
+    });
     expect(
       decodeClaudeCodeJsonRpcRequest({
         jsonrpc: "2.0",
@@ -49,6 +57,27 @@ describe("decodeClaudeCodeJsonRpcRequest", () => {
           providerThreadId: "claude-session-1",
         },
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      kind: "invalid_params",
+      id: 2,
+      method: "thread/resume",
+    });
+  });
+
+  it("reports an unknown method separately from invalid params", () => {
+    expect(
+      decodeClaudeCodeJsonRpcRequest({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "turn/teleport",
+        params: {},
+      }),
+    ).toEqual({ kind: "unknown_method", id: 3, method: "turn/teleport" });
+  });
+
+  it("ignores lines that are not requests", () => {
+    expect(
+      decodeClaudeCodeJsonRpcRequest({ jsonrpc: "2.0", id: 4, result: {} }),
+    ).toEqual({ kind: "not_a_request" });
   });
 });

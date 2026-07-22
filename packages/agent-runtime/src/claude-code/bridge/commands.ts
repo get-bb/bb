@@ -180,17 +180,61 @@ export type ThreadStopParams = Extract<
   { method: "thread/stop" }
 >["params"];
 
+const claudeCodeCommandMethods = new Set<string>(
+  claudeCodeCommandSchema.options.map((option) => option.shape.method.value),
+);
+
+/**
+ * A decode failure on a well-formed envelope is a caller-visible error, not
+ * something to drop: the caller is waiting on `id` and would otherwise learn
+ * nothing until its request timed out.
+ */
+export type ClaudeCodeJsonRpcRequestDecodeResult =
+  | { kind: "request"; request: ClaudeCodeJsonRpcRequest }
+  | { kind: "not_a_request" }
+  | { kind: "unknown_method"; id: string | number; method: string }
+  | {
+      kind: "invalid_params";
+      id: string | number;
+      method: string;
+      issues: string;
+    };
+
+function formatZodIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.join(".");
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join("; ");
+}
+
 export function decodeClaudeCodeJsonRpcRequest(
   raw: unknown,
-): ClaudeCodeJsonRpcRequest | null {
+): ClaudeCodeJsonRpcRequestDecodeResult {
   const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
-  if (!envelope.success) return null;
+  if (!envelope.success) return { kind: "not_a_request" };
+
+  const { id, method } = envelope.data;
+  if (!claudeCodeCommandMethods.has(method)) {
+    return { kind: "unknown_method", id, method };
+  }
 
   const command = claudeCodeCommandSchema.safeParse({
-    method: envelope.data.method,
+    method,
     params: envelope.data.params ?? {},
   });
-  if (!command.success) return null;
+  if (!command.success) {
+    return {
+      kind: "invalid_params",
+      id,
+      method,
+      issues: formatZodIssues(command.error),
+    };
+  }
 
-  return { ...command.data, jsonrpc: "2.0", id: envelope.data.id };
+  return {
+    kind: "request",
+    request: { ...command.data, jsonrpc: "2.0", id },
+  };
 }

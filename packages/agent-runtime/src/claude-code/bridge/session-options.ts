@@ -167,6 +167,13 @@ function buildWorkspaceWriteSandbox(
   const allowWrite = params.additionalWorkspaceWriteRoots ?? [];
   return {
     enabled: true,
+    // The SDK defaults this to true, which aborts the whole session when the
+    // host lacks sandbox dependencies (bubblewrap on Linux). Headless servers
+    // routinely lack them, and a missing sandbox should cost the session its
+    // auto-allow, not its ability to run: `autoAllowBashIfSandboxed` only
+    // auto-approves while the sandbox is actually active, so degrading falls
+    // back to bb's own `canUseTool` gating instead of running wide open.
+    failIfUnavailable: false,
     autoAllowBashIfSandboxed: true,
     allowUnsandboxedCommands: params.permissionEscalation === "ask",
     ...(allowWrite.length > 0
