@@ -312,6 +312,53 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
+  it("renders plugin banners above native stack content", () => {
+    setPluginSlotRegistrations("ordered-banner", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerCustomizations: [
+        {
+          id: "ordered",
+          banners: [
+            {
+              id: "header",
+              component: () => <div data-testid="plugin-header">Header</div>,
+            },
+          ],
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    const draft = { text: "Follow up", mentions: [], attachments: [] };
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(
+      <FollowUpPromptBox
+        {...props}
+        stack={<div data-testid="queued-messages">Queued messages</div>}
+        pluginComposerHost={{
+          scope: { kind: "thread", threadId: "thr_test" },
+          draft,
+          textEffectKey: "thread:thr_test",
+          getCurrent: () => draft,
+          setDraft: vi.fn(),
+          focus: vi.fn(),
+        }}
+        pluginComposerScope={{ kind: "thread", threadId: "thr_test" }}
+      />,
+    );
+
+    const pluginHeaderRoot = screen
+      .getByTestId("plugin-header")
+      .closest("[data-bb-plugin-root]");
+    const queuedMessages = screen.getByTestId("queued-messages");
+    expect(queuedMessages.previousElementSibling).toBe(pluginHeaderRoot);
+  });
+
   it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
