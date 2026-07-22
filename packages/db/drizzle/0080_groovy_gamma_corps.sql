@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` ADD `tools_hub` integer DEFAULT false NOT NULL;

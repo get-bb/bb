@@ -281,6 +281,8 @@ function dropRewindAddedTables(db: DbConnection): void {
       .prepare("ALTER TABLE system_experiments DROP COLUMN thread_splits")
       .run();
   }
+  dropSideChatPluginExperimentColumn(db);
+  dropToolsHubExperimentColumn(db);
   // Thread visibility was added after the legacy checkpoints these tests
   // replay, so remove it before applying the forward migration chain again.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
@@ -387,9 +389,27 @@ function closeConnection(db: DbConnection): void {
 // not re-appliable against a column that already exists (the backfill UPDATE
 // itself is idempotent).
 function dropSideChatPluginExperimentColumn(db: DbConnection): void {
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
-    .run();
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+    .all();
+  if (columns.some((column) => column.name === "side_chat_plugin")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
+      .run();
+  }
+}
+
+// Migration 0080 adds the Tools Hub experiment column. Rewind scenarios that
+// clear its migration row must drop the column before replaying the migration.
+function dropToolsHubExperimentColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+    .all();
+  if (columns.some((column) => column.name === "tools_hub")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN tools_hub")
+      .run();
+  }
 }
 
 // Thread-search replay scenarios start from a full `migrate(db)` and then roll
@@ -1216,6 +1236,7 @@ describe("migrate", () => {
         )
         .run(permissionModesMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
+      dropToolsHubExperimentColumn(db);
 
       migrate(db);
 
@@ -1607,6 +1628,7 @@ describe("migrate", () => {
         )
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
+      dropToolsHubExperimentColumn(db);
 
       expect(
         db.$client
@@ -1695,6 +1717,7 @@ describe("migrate", () => {
         )
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
+      dropToolsHubExperimentColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

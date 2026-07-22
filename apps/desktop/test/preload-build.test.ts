@@ -124,6 +124,8 @@ async function startDesktopSmokeServer(
           experiments: {
             claudeCodeMockCliTraffic: false,
             plugins: false,
+            toolsHub: false,
+            sideChatPlugin: false,
           },
           featureFlags: {
             placeholder: false,

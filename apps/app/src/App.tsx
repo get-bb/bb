@@ -40,6 +40,7 @@ import {
   getSettingsRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -123,55 +124,69 @@ function AppRoutes() {
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
             element={<Navigate to={getSettingsRoutePath("archived")} replace />}
           />
-          <Route
-            path={TOOLS_ROUTE_PATH}
-            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
-          />
-          <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
-          <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />
-          <Route
-            path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
-            element={<ToolsView />}
-          />
-          <Route
-            path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
-            element={<ToolsView />}
-          />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
-          <Route
-            path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={
-              <Navigate to={`${TOOLS_PLUGINS_ROUTE_PATH}?view=browse`} replace />
-            }
-          />
-          <Route
-            path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
-            element={<ToolsView />}
-          />
-          <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
-          <Route
-            path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
-            element={
-              <Navigate to={`${AUTOMATIONS_ROUTE_PATH}?view=browse`} replace />
-            }
-          />
-          <Route path={AUTOMATION_DETAIL_ROUTE_PATH} element={<ToolsView />} />
-          <Route
-            path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
-            element={<ToolsView />}
-          />
-          <Route
-            path={LEGACY_SKILLS_ROUTE_PATH}
-            element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
-          />
-          <Route
-            path={LEGACY_AUTOMATIONS_ROUTE_PATH}
-            element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
-          />
-          <Route
-            path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
-            element={<LegacyAutomationDetailRedirect />}
-          />
+          <Route element={<ToolsExperimentGate />}>
+            <Route
+              path={TOOLS_ROUTE_PATH}
+              element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
+            />
+            <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
+            <Route
+              path={TOOLS_SKILL_DETAIL_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route
+              path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route
+              path={TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
+            <Route
+              path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
+              element={
+                <Navigate
+                  to={`${TOOLS_PLUGINS_ROUTE_PATH}?view=browse`}
+                  replace
+                />
+              }
+            />
+            <Route
+              path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
+            <Route
+              path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
+              element={
+                <Navigate
+                  to={`${AUTOMATIONS_ROUTE_PATH}?view=browse`}
+                  replace
+                />
+              }
+            />
+            <Route
+              path={AUTOMATION_DETAIL_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route
+              path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
+              element={<ToolsView />}
+            />
+            <Route
+              path={LEGACY_SKILLS_ROUTE_PATH}
+              element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
+            />
+            <Route
+              path={LEGACY_AUTOMATIONS_ROUTE_PATH}
+              element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
+            />
+            <Route
+              path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
+              element={<LegacyAutomationDetailRedirect />}
+            />
+          </Route>
           <Route path="*" element={<SplitWorkspaceRoute />} />
         </Routes>
       </Suspense>

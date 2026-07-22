@@ -21,6 +21,11 @@ export const experimentsSchema = z.object({
    */
   plugins: z.boolean(),
   /**
+   * Tools Hub: exposes the unified Skills, Plugins, and Automations management
+   * UI. This is a presentation gate only; it does not load or unload tools.
+   */
+  toolsHub: z.boolean(),
+  /**
    * Side chat plugin: replaces the native side-chat implementation with the
    * builtin `side-chat` plugin. ON hides the native "Reply in side chat"
    * entry points and loads the plugin; OFF suppresses the plugin and keeps
@@ -34,5 +39,6 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   plugins: false,
+  toolsHub: false,
   sideChatPlugin: false,
 };

@@ -10,6 +10,7 @@ export function getExperiments(db: DbConnection): Experiments {
     .select({
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
       plugins: systemExperiments.plugins,
+      toolsHub: systemExperiments.toolsHub,
       sideChatPlugin: systemExperiments.sideChatPlugin,
     })
     .from(systemExperiments)
@@ -29,6 +30,7 @@ export function setExperiments(
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
       plugins: experiments.plugins,
+      toolsHub: experiments.toolsHub,
       sideChatPlugin: experiments.sideChatPlugin,
       updatedAt,
     })
@@ -37,6 +39,7 @@ export function setExperiments(
       set: {
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
         plugins: experiments.plugins,
+        toolsHub: experiments.toolsHub,
         sideChatPlugin: experiments.sideChatPlugin,
         updatedAt,
       },

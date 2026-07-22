@@ -60,6 +60,11 @@ understand; development builds always show these diagnostic rows.
   bb settings version [--force]
   bb settings reload
 
+The `toolsHub` experiment exposes the unified Skills, Plugins, and Automations
+management UI. It does not enable or disable installed skills, automation
+execution, plugin runtimes, CLI commands, or backend APIs. Control user plugin
+loading separately with the `plugins` experiment.
+
 Server-backed keyboard shortcuts
 
 Settings → Keyboard records per-command shortcut overrides. They are persisted

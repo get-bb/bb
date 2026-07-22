@@ -149,6 +149,7 @@ export const systemExperiments = sqliteTable("system_experiments", {
     mode: "boolean",
   }).notNull(),
   plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
+  toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
   sideChatPlugin: integer("side_chat_plugin", { mode: "boolean" })
     .notNull()
     .default(false),

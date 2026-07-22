@@ -17,6 +17,8 @@ function renderSection(overrides?: {
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onPluginsEnabledChange={vi.fn()}
       pluginsEnabled={overrides?.pluginsEnabled ?? false}
+      onToolsHubEnabledChange={vi.fn()}
+      toolsHubEnabled={false}
       onSideChatPluginEnabledChange={
         overrides?.onSideChatPluginEnabledChange ?? vi.fn()
       }
@@ -48,6 +50,30 @@ describe("ExperimentsSettingsSection side-chat plugin toggle", () => {
       onSideChatPluginEnabledChange: onChange,
     });
     const toggle = screen.getByLabelText("Side chat plugin");
+    expect(toggle.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("ExperimentsSettingsSection Tools Hub toggle", () => {
+  it("reports Tools Hub changes independently of plugin runtime state", () => {
+    const onChange = vi.fn();
+    render(
+      <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={false}
+        disabled={false}
+        onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
+        onPluginsEnabledChange={vi.fn()}
+        pluginsEnabled={false}
+        onToolsHubEnabledChange={onChange}
+        toolsHubEnabled={false}
+        onSideChatPluginEnabledChange={vi.fn()}
+        sideChatPluginEnabled={false}
+      />,
+    );
+
+    const toggle = screen.getByLabelText("Tools Hub");
     expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);
     expect(onChange).toHaveBeenCalledWith(true);

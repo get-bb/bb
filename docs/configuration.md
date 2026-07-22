@@ -420,6 +420,16 @@ The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
 the plugin, and Settings → Connect drives the plugin's rpc (including shared
 ports).
 
+## Experiments
+
+Experimental surfaces are off by default and can be changed in Settings →
+Experiments or with `bb settings experiment <key> <true|false>`. The `toolsHub`
+experiment exposes the unified Skills, Plugins, and Automations management UI.
+It is a UI-only gate: installed skills, automation execution, plugin runtimes,
+CLI commands, and backend APIs keep working while the Tools Hub is off. The
+separate `plugins` experiment still controls whether user-installed plugin code
+loads.
+
 ## Plugins
 
 User-installed plugins are gated behind the "Plugins" experiment (Settings →

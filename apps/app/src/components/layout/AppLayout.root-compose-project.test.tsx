@@ -19,6 +19,19 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => false,
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      experiments: {
+        claudeCodeMockCliTraffic: false,
+        plugins: false,
+        toolsHub: true,
+        sideChatPlugin: false,
+      },
+    },
+  }),
+}));
+
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ProjectActionsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>

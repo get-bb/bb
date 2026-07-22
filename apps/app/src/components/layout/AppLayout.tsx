@@ -97,6 +97,7 @@ import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -715,9 +716,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Global settings routes swap the app sidebar for the settings sidebar.
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
+  const systemConfigQuery = useSystemConfig();
+  const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
   const isGlobalToolsView =
-    location.pathname === TOOLS_ROUTE_PATH ||
-    matchPath(`${TOOLS_ROUTE_PATH}/*`, location.pathname) !== null;
+    toolsHubEnabled &&
+    (location.pathname === TOOLS_ROUTE_PATH ||
+      matchPath(`${TOOLS_ROUTE_PATH}/*`, location.pathname) !== null);
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,
@@ -1066,7 +1070,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 isResizing={isSidebarResizing}
                 showTopReserve={true}
                 settingsRoutePath={settingsRoutePath}
-                toolsRoutePath={toolsRoutePath}
+                toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
               />
             )}
             <SidebarInset>

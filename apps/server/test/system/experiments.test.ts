@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
         plugins: false,
+        toolsHub: false,
         sideChatPlugin: false,
       });
     });
@@ -27,6 +28,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
           plugins: false,
+          toolsHub: true,
           sideChatPlugin: false,
         }),
       });
@@ -34,11 +36,13 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        toolsHub: true,
         sideChatPlugin: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        toolsHub: true,
         sideChatPlugin: false,
       });
 
@@ -48,6 +52,7 @@ describe("experiments settings", () => {
       ).toEqual({
         claudeCodeMockCliTraffic: true,
         plugins: false,
+        toolsHub: true,
         sideChatPlugin: false,
       });
     });
@@ -61,6 +66,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           plugins: false,
+          toolsHub: false,
           sideChatPlugin: true,
         }),
       });
@@ -68,6 +74,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: false,
         plugins: false,
+        toolsHub: false,
         sideChatPlugin: false,
       });
       expect(getExperiments(harness.db).sideChatPlugin).toBe(false);
@@ -85,6 +92,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
           plugins: false,
+          toolsHub: false,
           sideChatPlugin: false,
         }),
       });

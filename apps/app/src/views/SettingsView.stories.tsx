@@ -343,6 +343,13 @@ function ExperimentsStory() {
         }))
       }
       pluginsEnabled={state.experiments.plugins}
+      onToolsHubEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          toolsHub: enabled,
+        }))
+      }
+      toolsHubEnabled={state.experiments.toolsHub}
       onSideChatPluginEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,

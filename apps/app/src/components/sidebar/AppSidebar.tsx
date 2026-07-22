@@ -73,7 +73,7 @@ interface AppSidebarProps {
   isResizing: boolean;
   showTopReserve: boolean;
   settingsRoutePath: string;
-  toolsRoutePath: string;
+  toolsRoutePath?: string;
 }
 
 export function isThreadSearchKeyboardEventTarget(
@@ -205,6 +205,7 @@ export function AppSidebar({
   }, [closeOnMobile, navigate]);
 
   const handleOpenTools = useCallback(() => {
+    if (toolsRoutePath === undefined) return;
     closeOnMobile();
     void navigate(toolsRoutePath);
   }, [closeOnMobile, navigate, toolsRoutePath]);
@@ -389,7 +390,9 @@ export function AppSidebar({
             splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
-            onOpenTools={handleOpenTools}
+            onOpenTools={
+              toolsRoutePath === undefined ? undefined : handleOpenTools
+            }
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
