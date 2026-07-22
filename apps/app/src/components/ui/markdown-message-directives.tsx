@@ -7,12 +7,10 @@ import {
 import type { Nodes, Parent, RootContent } from "mdast";
 // Side-effect import: augments mdast's `Data` with `hName`/`hProperties`.
 import type {} from "mdast-util-to-hast";
-import type {
-  PluginMessageDirectiveProps,
-  PluginMessageDirectiveThreadPanelOptions,
-} from "@bb/plugin-sdk";
+import type { BbNavigate, PluginMessageDirectiveProps } from "@bb/plugin-sdk";
 import { visit } from "unist-util-visit";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
+import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation.js";
 import type { PluginMessageDirectiveSlot } from "@/lib/plugin-slots.js";
 
 /**
@@ -61,7 +59,9 @@ export interface MarkdownMessageDirectives {
 }
 
 export type MarkdownMessageDirectiveOpenThreadPanel = (
-  options: PluginMessageDirectiveThreadPanelOptions & { pluginId: string },
+  options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0] & {
+    pluginId: string;
+  },
 ) => boolean;
 
 /**
@@ -339,18 +339,25 @@ export function buildMessageDirectiveComponent({
         slotId={slot.id}
         crashFallback={source}
       >
-        <Component
-          attributes={attributes}
-          source={source}
-          message={message}
-          openWorkspaceFile={openWorkspaceFile}
-          openThreadPanel={
-            openThreadPanel === null
-              ? null
-              : (options) =>
-                  openThreadPanel({ ...options, pluginId: slot.pluginId })
-          }
-        />
+        {openThreadPanel === null ? (
+          <Component
+            attributes={attributes}
+            source={source}
+            message={message}
+            openWorkspaceFile={openWorkspaceFile}
+          />
+        ) : (
+          <PluginThreadPanelNavigationProvider
+            openThreadPanel={openThreadPanel}
+          >
+            <Component
+              attributes={attributes}
+              source={source}
+              message={message}
+              openWorkspaceFile={openWorkspaceFile}
+            />
+          </PluginThreadPanelNavigationProvider>
+        )}
       </PluginSlotMount>
     );
   }

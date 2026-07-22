@@ -988,6 +988,18 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
+  examples/plugins/content-script:
+    devDependencies:
+      '@bb/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../../../packages/tsconfig
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   examples/plugins/slack-bot:
     devDependencies:
       '@bb/plugin-sdk':

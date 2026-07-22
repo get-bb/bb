@@ -6,6 +6,7 @@ import {
   applyPluginCss,
   createPluginFrontendReconcileScheduler,
   createPluginFrontendReconcileState,
+  disposePluginFrontends,
   reconcilePluginFrontends,
   type PluginFrontendCandidate,
   type PluginFrontendReconcileDeps,
@@ -49,19 +50,26 @@ function pluginModule(sectionTitle: string): Record<string, unknown> {
   };
 }
 
+function contentScriptModule(
+  setup: Parameters<typeof definePluginApp>[0],
+): Record<string, unknown> {
+  return { default: definePluginApp(setup) };
+}
+
 function makeDeps(initial: PluginFrontendCandidate[] = []) {
   return {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
     importModule: vi.fn(
-      async (): Promise<unknown> => pluginModule("hello"),
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
+    mountTimeoutMs: undefined as number | undefined,
   } satisfies PluginFrontendReconcileDeps;
 }
 
@@ -161,7 +169,7 @@ describe("reconcilePluginFrontends", () => {
     expect(state.appliedHashes.has("hello")).toBe(false);
   });
 
-  it("removes previous UI when a re-import fails, and when the bundle goes needs-update", async () => {
+  it("deactivates stale UI when a replacement import fails or needs an SDK update", async () => {
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps([candidate("hello", "v1")]);
     await reconcilePluginFrontends(state, deps);
@@ -172,6 +180,12 @@ describe("reconcilePluginFrontends", () => {
     expect(state.records.get("hello")).toMatchObject({ status: "failed" });
     expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
+    expect(state.appliedHashes.has("hello")).toBe(false);
+    expect(state.diagnostics.get("hello")).toMatchObject({
+      status: "failed",
+      active: null,
+      lastFailure: { phase: "load" },
+    });
 
     deps.removeRegistrations.mockClear();
     deps.fetchCandidates.mockResolvedValue([
@@ -181,7 +195,298 @@ describe("reconcilePluginFrontends", () => {
     expect(state.records.get("hello")).toMatchObject({
       status: "needs-update",
     });
-    expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
+    expect(deps.removeRegistrations).not.toHaveBeenCalled();
+    expect(state.appliedHashes.has("hello")).toBe(false);
+  });
+
+  it("mounts once, skips repeated reconciliation, and disposes exactly once on reload and removal", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const events: string[] = [];
+    deps.importModule.mockImplementation(async (url: string) => {
+      const version = url.includes("h=v2") ? "v2" : "v1";
+      return contentScriptModule((app) => {
+        app.experimental_contentScripts.register({
+          id: "enhance",
+          mount({ pluginId, generation, signal }) {
+            events.push(`${version}:mount:${pluginId}:${generation}`);
+            signal.addEventListener(
+              "abort",
+              () => events.push(`${version}:abort`),
+              { once: true },
+            );
+            return () => {
+              events.push(`${version}:dispose`);
+            };
+          },
+        });
+      });
+    });
+
+    await reconcilePluginFrontends(state, deps);
+    await reconcilePluginFrontends(state, deps);
+    expect(events).toEqual(["v1:mount:hello:1"]);
+
+    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
+    await reconcilePluginFrontends(state, deps);
+    expect(events).toEqual([
+      "v1:mount:hello:1",
+      "v1:abort",
+      "v1:dispose",
+      "v2:mount:hello:2",
+    ]);
+
+    deps.fetchCandidates.mockResolvedValue([]);
+    await reconcilePluginFrontends(state, deps);
+    await reconcilePluginFrontends(state, deps);
+    expect(events).toEqual([
+      "v1:mount:hello:1",
+      "v1:abort",
+      "v1:dispose",
+      "v2:mount:hello:2",
+      "v2:abort",
+      "v2:dispose",
+    ]);
+  });
+
+  it("disposes the old generation and rolls back a failed multi-script candidate in reverse order", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const events: string[] = [];
+    let oldSignal: AbortSignal | undefined;
+    deps.importModule.mockResolvedValueOnce(
+      contentScriptModule((app) => {
+        app.experimental_contentScripts.register({
+          id: "old",
+          mount({ signal }) {
+            oldSignal = signal;
+            events.push("old:mount");
+            return () => {
+              events.push("old:dispose");
+            };
+          },
+        });
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+
+    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
+    deps.importModule.mockResolvedValueOnce(
+      contentScriptModule((app) => {
+        for (const id of ["first", "second"] as const) {
+          app.experimental_contentScripts.register({
+            id,
+            mount() {
+              events.push(`${id}:mount`);
+              return () => {
+                events.push(`${id}:dispose`);
+              };
+            },
+          });
+        }
+        app.experimental_contentScripts.register({
+          id: "broken",
+          mount() {
+            events.push("broken:mount");
+            throw new Error("candidate exploded");
+          },
+        });
+        app.experimental_contentScripts.register({
+          id: "never",
+          mount() {
+            events.push("never:mount");
+          },
+        });
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+
+    expect(events).toEqual([
+      "old:mount",
+      "old:dispose",
+      "first:mount",
+      "second:mount",
+      "broken:mount",
+      "second:dispose",
+      "first:dispose",
+    ]);
+    expect(oldSignal?.aborted).toBe(true);
+    expect(deps.setRegistrations).toHaveBeenCalledTimes(1);
+    expect(state.appliedHashes.has("hello")).toBe(false);
+    expect(state.diagnostics.get("hello")).toMatchObject({
+      status: "failed",
+      active: null,
+      lastFailure: {
+        phase: "mount",
+        scriptId: "broken",
+        message: "candidate exploded",
+      },
+    });
+  });
+
+  it("contains a throwing replacement setup and deactivates the stale generation", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const cleanup = vi.fn();
+    deps.importModule.mockResolvedValueOnce(
+      contentScriptModule((app) => {
+        app.experimental_contentScripts.register({
+          id: "old",
+          mount: () => cleanup,
+        });
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+
+    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
+    deps.importModule.mockResolvedValueOnce(
+      contentScriptModule(() => {
+        throw new Error("setup failed");
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(state.appliedHashes.has("hello")).toBe(false);
+    expect(state.diagnostics.get("hello")?.lastFailure).toMatchObject({
+      phase: "setup",
+      message: "setup failed",
+    });
+  });
+
+  it("times out a stuck async mount without preventing another plugin from activating", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("stuck", "v1"), candidate("fine", "v1")]);
+    deps.mountTimeoutMs = 1;
+    deps.importModule.mockImplementation(async (url: string) =>
+      url.includes("/stuck/")
+        ? contentScriptModule((app) => {
+            app.experimental_contentScripts.register({
+              id: "never-settles",
+              mount: () => new Promise<void>(() => {}),
+            });
+          })
+        : contentScriptModule((app) => {
+            app.experimental_contentScripts.register({
+              id: "fine",
+              mount: () => {},
+            });
+          }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+
+    expect(state.diagnostics.get("stuck")).toMatchObject({
+      status: "failed",
+      lastFailure: {
+        phase: "mount",
+        scriptId: "never-settles",
+        message: "mount timed out after 1ms",
+      },
+    });
+    expect(state.diagnostics.get("fine")).toMatchObject({ status: "active" });
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "fine",
+      expect.any(Object),
+    );
+  });
+
+  it("aborts async work before cleanup and contains async disposer failures", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const events: string[] = [];
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.experimental_contentScripts.register({
+          id: "async-work",
+          async mount({ signal }) {
+            events.push("mount");
+            signal.addEventListener("abort", () => events.push("abort"), {
+              once: true,
+            });
+            await Promise.resolve();
+            return async () => {
+              events.push(`dispose:${signal.aborted}`);
+              throw new Error("cleanup rejected");
+            };
+          },
+        });
+      }),
+    );
+    await reconcilePluginFrontends(state, deps);
+    deps.fetchCandidates.mockResolvedValue([]);
+    await reconcilePluginFrontends(state, deps);
+
+    expect(events).toEqual(["mount", "abort", "dispose:true"]);
+    expect(deps.warn).toHaveBeenCalledWith(
+      expect.stringContaining("cleanup rejected"),
+    );
+  });
+
+  it("keeps independent instances per app window and tears each down once", async () => {
+    const stateA = createPluginFrontendReconcileState();
+    const stateB = createPluginFrontendReconcileState();
+    const signals: AbortSignal[] = [];
+    const cleanup = vi.fn();
+    const module = contentScriptModule((app) => {
+      app.experimental_contentScripts.register({
+        id: "per-window",
+        mount({ signal }) {
+          signals.push(signal);
+          return cleanup;
+        },
+      });
+    });
+    const depsA = makeDeps([candidate("hello", "v1")]);
+    const depsB = makeDeps([candidate("hello", "v1")]);
+    depsA.importModule.mockResolvedValue(module);
+    depsB.importModule.mockResolvedValue(module);
+
+    await Promise.all([
+      reconcilePluginFrontends(stateA, depsA),
+      reconcilePluginFrontends(stateB, depsB),
+    ]);
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).not.toBe(signals[1]);
+
+    await disposePluginFrontends(stateA, depsA);
+    await disposePluginFrontends(stateA, depsA);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+
+    await disposePluginFrontends(stateB, depsB);
+    expect(signals[1]?.aborted).toBe(true);
+    expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts a pending mount on app teardown and never commits it afterward", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "v1")]);
+    const cleanup = vi.fn();
+    let resolveMount: ((dispose: () => void) => void) | undefined;
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.experimental_contentScripts.register({
+          id: "pending",
+          mount: () =>
+            new Promise<() => void>((resolve) => {
+              resolveMount = resolve;
+            }),
+        });
+      }),
+    );
+
+    const reconcile = reconcilePluginFrontends(state, deps);
+    await vi.waitFor(() => expect(resolveMount).toBeTypeOf("function"));
+    await disposePluginFrontends(state, deps);
+    resolveMount?.(cleanup);
+    await reconcile;
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(deps.setRegistrations).not.toHaveBeenCalled();
+    expect(state.activeGenerations.size).toBe(0);
+    expect(state.diagnostics.size).toBe(0);
   });
 
   it("removes a stale CSS link when the new bundle ships no CSS", async () => {

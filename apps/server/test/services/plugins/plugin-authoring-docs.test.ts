@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@bb/plugin-sdk/app";
 import {
   type BbPluginApi,
+  type PluginAppBuilder,
   type PluginAppSlots,
+  type PluginContentScriptContext,
+  type PluginContentScriptRegistration,
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
@@ -160,6 +163,50 @@ type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
+const APP_BUILDER_FIELDS = [
+  "slots",
+  "composer",
+  "experimental_contentScripts",
+] as const satisfies readonly (keyof PluginAppBuilder)[];
+
+type MissingAppBuilderField = Exclude<
+  keyof PluginAppBuilder,
+  (typeof APP_BUILDER_FIELDS)[number]
+>;
+const _assertAllAppBuilderFieldsListed: MissingAppBuilderField extends never
+  ? true
+  : never = true;
+void _assertAllAppBuilderFieldsListed;
+
+const CONTENT_SCRIPT_CONTEXT_FIELDS = [
+  "pluginId",
+  "generation",
+  "signal",
+] as const satisfies readonly (keyof PluginContentScriptContext)[];
+
+type MissingContentScriptContextField = Exclude<
+  keyof PluginContentScriptContext,
+  (typeof CONTENT_SCRIPT_CONTEXT_FIELDS)[number]
+>;
+const _assertAllContentScriptContextFieldsListed: MissingContentScriptContextField extends never
+  ? true
+  : never = true;
+void _assertAllContentScriptContextFieldsListed;
+
+const CONTENT_SCRIPT_REGISTRATION_FIELDS = [
+  "id",
+  "mount",
+] as const satisfies readonly (keyof PluginContentScriptRegistration)[];
+
+type MissingContentScriptRegistrationField = Exclude<
+  keyof PluginContentScriptRegistration,
+  (typeof CONTENT_SCRIPT_REGISTRATION_FIELDS)[number]
+>;
+const _assertAllContentScriptRegistrationFieldsListed: MissingContentScriptRegistrationField extends never
+  ? true
+  : never = true;
+void _assertAllContentScriptRegistrationFieldsListed;
+
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
   settingsSection: [],
@@ -173,7 +220,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "source",
     "message",
     "openWorkspaceFile",
-    "openThreadPanel",
   ],
   experimental_messageAction: [
     "threadId",
@@ -311,6 +357,28 @@ describe("bb-plugin-authoring skill", () => {
     for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }
+  });
+
+  it("documents the complete frontend content-script lifecycle contract", () => {
+    for (const field of APP_BUILDER_FIELDS) {
+      expect(skill, `PluginAppBuilder.${field} is not documented`).toContain(
+        field,
+      );
+    }
+    for (const field of CONTENT_SCRIPT_CONTEXT_FIELDS) {
+      expect(
+        skill,
+        `content-script context.${field} is not documented`,
+      ).toContain(field);
+    }
+    for (const field of CONTENT_SCRIPT_REGISTRATION_FIELDS) {
+      expect(
+        skill,
+        `content-script registration.${field} is not documented`,
+      ).toContain(field);
+    }
+    expect(skill).toContain("not a security sandbox");
+    expect(skill).toContain("reverse registration order");
   });
 
   it("documents every settings descriptor type", () => {

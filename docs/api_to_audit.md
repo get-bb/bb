@@ -28,6 +28,43 @@ Audit before stabilizing:
 
 ## `@bb/plugin-sdk/app`
 
+### `app.experimental_contentScripts`
+
+Lifecycle-managed trusted same-origin frontend behavior. Registrations are
+`{ id, mount({ pluginId, generation, signal }) }`; mount may return nothing, a
+disposer, or a promise of either. The host mounts in declaration order,
+aborts before reverse-order exact-once cleanup, never overlaps generations,
+rolls back failed candidates, and owns one independent generation per app
+window/tab.
+
+Audit before stabilizing:
+
+- Is the mount timeout (10 seconds) the right policy, and should plugins be
+  able to request a shorter bound?
+- Is `generation` useful enough to keep, and should it count failed candidate
+  attempts or only committed generations?
+- Do stable navigation/context subscriptions belong here, or should lifecycle
+  code remain deliberately page-global while React hooks own route context?
+- Is returning a disposer plus `AbortSignal` sufficient for partial mounts, or
+  should a future context expose additive cleanup registration?
+
+### `BbNavigate.experimental_openThreadPanel`
+
+A general plugin-navigation method that opens one of the current plugin's
+registered `threadPanelAction` tabs in the current thread surface. It accepts
+`{ actionId, title?, params? }` and returns whether the host accepted the
+request. The workflows banner and the Docs, Tasks, and workflows message
+directives are reference consumers.
+
+Audit before stabilizing:
+
+- Should panel opening remain part of `useBbNavigate`, or become a separate
+  navigation hook?
+- Is a false return sufficient for surfaces without a thread panel, or should
+  availability be separately observable for hiding controls?
+- Should a future form accept an explicit thread id for surfaces outside the
+  current thread tree?
+
 ### `experimental_ThreadChat`
 
 The host-owned chat component: given a `threadId`, renders bb's complete chat

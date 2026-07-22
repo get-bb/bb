@@ -12,6 +12,7 @@ import {
   type Mock,
 } from "vitest";
 import type { PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   buildMessageDirectiveRegistry,
@@ -72,15 +73,13 @@ function WorkspaceFileVis(props: PluginMessageDirectiveProps) {
   );
 }
 
-function ThreadPanelVis(props: PluginMessageDirectiveProps) {
-  if (props.openThreadPanel == null) {
-    return <span>thread panel unavailable</span>;
-  }
+function ThreadPanelVis(_props: PluginMessageDirectiveProps) {
+  const navigate = useBbNavigate();
   return (
     <button
       type="button"
       onClick={() =>
-        props.openThreadPanel?.({
+        navigate.experimental_openThreadPanel({
           actionId: "document",
           title: "Plan",
           params: { path: "plan.md" },
@@ -514,7 +513,7 @@ describe("ConversationMessageContent assistant directives", () => {
               senderThreadId={null}
               senderThreadTitle={null}
               senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+              senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text={'::inline-vis{file="user.html"}'}

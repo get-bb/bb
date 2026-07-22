@@ -67,8 +67,8 @@ const WORKFLOW_HEADER_GROUP_CLASS = activityRowClass(
 );
 const WORKFLOW_HEADER_BUTTON_CLASS =
   "flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-none bg-transparent px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
-const WORKFLOW_STOP_BUTTON_CLASS =
-  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait disabled:text-muted-foreground/60";
+const WORKFLOW_OPEN_BUTTON_CLASS =
+  "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -492,17 +492,8 @@ function WorkflowStatusBanner() {
   return <WorkflowStatusBannerLoaded threadId={view.scope.threadId} />;
 }
 
-function WorkflowComposerCard({
-  run,
-  stopping,
-  stopDisabled,
-  onStop,
-}: {
-  run: WorkflowRunView;
-  stopping: boolean;
-  stopDisabled: boolean;
-  onStop: () => void;
-}) {
+function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
+  const navigate = useBbNavigate();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
   const toggleId = useId();
@@ -575,16 +566,17 @@ function WorkflowComposerCard({
         </button>
         <button
           type="button"
-          aria-label={`Stop workflow ${run.name}`}
-          onClick={onStop}
-          disabled={stopDisabled}
-          className={WORKFLOW_STOP_BUTTON_CLASS}
+          aria-label={`Open workflow ${run.name} in side panel`}
+          onClick={() =>
+            navigate.experimental_openThreadPanel({
+              actionId: WORKFLOW_PANEL_ACTION_ID,
+              title: run.name,
+              params: { runId: run.id },
+            })
+          }
+          className={WORKFLOW_OPEN_BUTTON_CLASS}
         >
-          <Icon
-            name={stopping ? "Loading" : "Square"}
-            className={cn("size-3.5", stopping && "animate-spin")}
-            aria-hidden
-          />
+          <Icon name="ArrowRight" className="size-3.5" aria-hidden />
         </button>
       </div>
       <WorkflowPhaseStrip
@@ -617,53 +609,15 @@ function WorkflowComposerCard({
 }
 
 function WorkflowStatusBannerLoaded({ threadId }: { threadId: string }) {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const { state, setRuns } = useActiveWorkflowRuns(threadId);
-  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
-  const [stopError, setStopError] = useState<string | null>(null);
+  const { state } = useActiveWorkflowRuns(threadId);
 
   if (state.status !== "ready" || state.runs.length === 0) return null;
-
-  const stop = async (run: WorkflowRunView) => {
-    setStoppingRunId(run.id);
-    setStopError(null);
-    try {
-      const result = await rpc.call("workflowStopRun", {
-        threadId,
-        runId: run.id,
-      });
-      setRuns((runs) =>
-        runs.flatMap((current) => {
-          if (current.id !== run.id) return [current];
-          return isRunActive(result.run) ? [result.run] : [];
-        }),
-      );
-    } catch (error) {
-      setStopError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setStoppingRunId(null);
-    }
-  };
 
   return (
     <section aria-label="Active workflows" className="space-y-2">
       {state.runs.map((run) => (
-        <WorkflowComposerCard
-          key={run.id}
-          run={run}
-          stopping={stoppingRunId === run.id}
-          stopDisabled={stoppingRunId !== null}
-          onStop={() => void stop(run)}
-        />
+        <WorkflowComposerCard key={run.id} run={run} />
       ))}
-      {stopError === null ? null : (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/20 bg-surface-raised-solid px-3 py-2 text-xs text-destructive-text"
-        >
-          {stopError}
-        </div>
-      )}
     </section>
   );
 }
@@ -672,7 +626,6 @@ function WorkflowPreviewDirective({
   attributes,
   source,
   message,
-  openThreadPanel,
 }: PluginMessageDirectiveProps) {
   const runId = directiveRunId(attributes);
   if (runId === null) {
@@ -688,7 +641,6 @@ function WorkflowPreviewDirective({
       runId={runId}
       threadId={message.threadId}
       source={source}
-      openThreadPanel={openThreadPanel}
     />
   );
 }
@@ -697,13 +649,12 @@ function WorkflowPreviewLoaded({
   runId,
   threadId,
   source,
-  openThreadPanel,
 }: {
   runId: string;
   threadId: string;
   source: string;
-  openThreadPanel: PluginMessageDirectiveProps["openThreadPanel"];
 }) {
+  const navigate = useBbNavigate();
   const { state } = useWorkflowRun(threadId, runId);
   const [expanded, setExpanded] = useState(true);
   const bodyId = useId();
@@ -826,27 +777,25 @@ function WorkflowPreviewLoaded({
           <RefreshWarning message={state.refreshError} />
         </div>
       )}
-      {openThreadPanel == null ? null : (
-        <div className="flex min-h-9 items-center border-t border-border-seam bg-popover px-2">
-          <span className="flex-1" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() =>
-              openThreadPanel?.({
-                actionId: WORKFLOW_PANEL_ACTION_ID,
-                title: run.name,
-                params: { runId: run.id },
-              })
-            }
-          >
-            Open in right panel
-            <Icon name="ArrowRight" className="size-3" aria-hidden />
-          </Button>
-        </div>
-      )}
+      <div className="flex min-h-9 items-center border-t border-border-seam bg-popover px-2">
+        <span className="flex-1" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() =>
+            navigate.experimental_openThreadPanel({
+              actionId: WORKFLOW_PANEL_ACTION_ID,
+              title: run.name,
+              params: { runId: run.id },
+            })
+          }
+        >
+          Open in right panel
+          <Icon name="ArrowRight" className="size-3" aria-hidden />
+        </Button>
+      </div>
     </section>
   );
 }

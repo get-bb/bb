@@ -246,7 +246,12 @@ describe("Docs nav panel", () => {
           rpc: {
             listNotes: () =>
               listNotesResult([
-                { path: "note.md", title: "Note", preview: "", modifiedAtMs: 1 },
+                {
+                  path: "note.md",
+                  title: "Note",
+                  preview: "",
+                  modifiedAtMs: 1,
+                },
               ]),
           },
         },
@@ -416,7 +421,9 @@ describe("Docs nav panel", () => {
     expect(firstBodyCell).toBeTruthy();
     firstBodyCell!.textContent = "Plans";
     fireEvent.input(firstBodyCell!);
-    await waitFor(() => expect(saveNote).toHaveBeenCalled(), { timeout: 2_000 });
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
     expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
       content: expect.stringContaining("| Plans | Ready |"),
     });
@@ -723,23 +730,26 @@ describe("Docs nav panel", () => {
 
   it("opens Docs directive cards in the thread panel or full editor", () => {
     const openThreadPanel = vi.fn(() => true);
-    const slot = renderSlot(app.messageDirectives[0]!, {
-      attributes: {
-        vault: "personal",
-        path: "plans/release.md",
-        title: "Release plan",
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: {
+          vault: "personal",
+          path: "plans/release.md",
+          title: "Release plan",
+        },
+        source:
+          '::docs{vault="personal" path="plans/release.md" title="Release plan"}',
+        message: {
+          id: "msg_1",
+          threadId: "thr_1",
+          turnId: "turn_1",
+          projectId: null,
+        },
+        openWorkspaceFile: null,
       },
-      source:
-        '::docs{vault="personal" path="plans/release.md" title="Release plan"}',
-      message: {
-        id: "msg_1",
-        threadId: "thr_1",
-        turnId: "turn_1",
-        projectId: null,
-      },
-      openWorkspaceFile: null,
-      openThreadPanel,
-    });
+      { openThreadPanel },
+    );
 
     fireEvent.click(slot.getByText("Release plan"));
     expect(slot.queryByText("personal · plans/release.md")).toBeNull();

@@ -727,6 +727,16 @@ import { Button } from "@/components/ui/button"; // vendored source YOU own
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
+  app.experimental_contentScripts.register({
+    id: "editor-enhancement",
+    mount({ pluginId, generation, signal }) {
+      const onKeyDown = (event: KeyboardEvent) => {
+        // Ordinary trusted, same-origin DOM behavior.
+      };
+      document.addEventListener("keydown", onKeyDown, { signal });
+      return () => document.removeEventListener("keydown", onKeyDown);
+    },
+  });
   app.slots.homepageSection({
     id: "issues",
     title: "Open issues",
@@ -793,6 +803,49 @@ export default definePluginApp((app) => {
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
 });
 ```
+
+### Trusted frontend content scripts
+
+`app.experimental_contentScripts.register({ id, mount })` runs ordinary
+bundled JavaScript/TypeScript in the bb app shell without a React slot. It is
+full-trust, same-origin page code — **not a security sandbox**. It can access
+the app DOM and any authenticated client state available to ordinary page
+code, so install only plugins you trust. bb does not use `eval`, `Function`,
+or persisted source strings: the existing `bb.app` build emits a normal CSP-
+compatible ESM bundle.
+
+The host mounts scripts in registration order after the bundle loads and
+`definePluginApp` setup validates. `mount` receives
+`{ pluginId, generation, signal }`: `generation` is a monotonic per-window
+mount attempt number, and `signal` aborts before cleanup starts. A script may
+return nothing, a disposer, or a promise of either; async mount setup is
+time-boxed to 10 seconds. Keep long-running work outside the returned promise,
+observe `signal`, and catch failures in work the host does not await.
+
+A replacement bundle and setup validate before lifecycle cutover. The host
+then aborts and disposes the prior generation before mounting candidate scripts,
+so listeners and observers never overlap. If a mount throws or rejects, the
+host aborts that candidate, disposes already-mounted candidate scripts in
+reverse registration order, and publishes none of its slots or CSS. Import or
+setup failure also deactivates stale UI because the corresponding backend may
+already have been replaced. Disable, stop, removal, and app-window teardown
+follow the same abort-then-reverse-dispose path; every returned disposer is
+called at most once. Each desktop window, browser tab, and remote client owns
+an independent instance.
+
+Synchronous and awaited asynchronous mount/dispose failures are contained and
+logged; they cannot stop sibling plugins from activating. The current
+window's last load/setup/mount/dispose failure appears on the plugin Settings
+detail page. The host cannot catch a detached promise that plugin code creates
+and never returns, so detached work must handle its own errors.
+
+Prefer the existing imported `app.css` pipeline for static styles. A content
+script may create DOM or `<style>` nodes when behavior genuinely requires it,
+but its abort handler/disposer must remove every node, observer, listener,
+timer, and class it owns. The context deliberately has no route/project/thread
+snapshot yet; use stable SDK hooks inside React slots rather than polling or
+installing global navigation observers. Complete cleanup-safe example:
+`examples/plugins/content-script`.
 
 Slot props contracts (versioned, additive-only):
 
@@ -884,7 +937,7 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
 - `messageDirective` → `{ attributes, source, message,
-openWorkspaceFile, openThreadPanel }` — register a leaf
+openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:
   `{ id, component }` where `id` is lowercase kebab-case beginning with a
   letter (e.g. `inline-vis` matches `::inline-vis{file="demo.html"}`).
@@ -896,12 +949,11 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
   open that file in the host's workspace viewer. It is `null` when the message
   surface has no workspace viewer, and it returns whether the host accepted
-  the path. `openThreadPanel` is either
-  `({ actionId, title?, params? }) => boolean` or `null`; it opens one of the
-  same plugin's registered `threadPanelAction` components in the enclosing
-  thread side panel. `params` is typed as `JsonValue`, and the return value
-  reports whether the host accepted the action. Use a normal plugin navigation
-  action as the fallback when the callback is `null` or returns `false`.
+  the path. To open one of the same plugin's registered `threadPanelAction`
+  components, call
+  `useBbNavigate().experimental_openThreadPanel({ actionId, title?, params? })`.
+  `params` is typed as `JsonValue`; use normal plugin navigation as the
+  fallback when it returns false.
   **Host behavior / fallbacks:** only assistant and
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
@@ -925,8 +977,9 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   selection-menu invocations and holds the exact highlighted text; and
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
   registered `threadPanelAction` components in the current thread's side
-  panel — same semantics and boolean return as the message-directive
-  `openThreadPanel`. Errors from `run` (sync or async) are contained and
+  panel — same semantics and boolean return as
+  `useBbNavigate().experimental_openThreadPanel`. Errors from `run` (sync or
+  async) are contained and
   logged, never breaking the timeline.
 
 Host components:
@@ -976,9 +1029,13 @@ Hooks:
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
-{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`.
+{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
+experimental_openThreadPanel({ actionId, title?, params? }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it.
+  composer draft and `focusPrompt: true` to focus it. The experimental panel
+  opener opens one of the current plugin's registered `threadPanelAction` tabs
+  in the current thread surface and returns whether the host accepted it; it
+  returns false on surfaces without a thread side panel.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;
@@ -1175,12 +1232,20 @@ Frontend (`app.tsx`) — `@bb/plugin-sdk/testing/app` (vitest + jsdom):
 
 ```tsx
 // @vitest-environment jsdom
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  mountPluginContentScripts,
+  renderSlot,
+} from "@bb/plugin-sdk/testing/app";
 
 // The thunk matters: app.tsx binds the plugin runtime at module load, so
 // loadPluginApp installs the test runtime BEFORE importing it. (For static
 // imports, call installTestPluginRuntime() in a vitest setup file instead.)
 const app = await loadPluginApp(() => import("./app"));
+const contentScripts = await mountPluginContentScripts(app, {
+  pluginId: "my-plugin",
+  generation: 1,
+});
 
 const slot = renderSlot(
   app.navPanels[0]!,
@@ -1204,11 +1269,15 @@ slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
 slot.inspection.composer; // text, visuals, quotes, mentions, and focus activity
 slot.lifecycle.unmount();
+await contentScripts.lifecycle.dispose();
 ```
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path,
-fileOpener extensions) and returns them typed with defaults filled. Working examples:
+fileOpener extensions, and content-script ids/mount functions) and returns
+them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
+mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
+per-window instances. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
 `thread.idle` reply), `official-plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).

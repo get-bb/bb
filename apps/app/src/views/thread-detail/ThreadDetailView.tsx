@@ -148,6 +148,7 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
+import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@bb/shared-ui/icon";
@@ -2542,7 +2543,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     />
   );
 
-  return (
+  const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
     >
@@ -2711,5 +2712,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         ) : null}
       </UrlOpenRoutingProvider>
     </MarkdownLocalFileContextMenuContext.Provider>
+  );
+  return (
+    <PluginThreadPanelNavigationProvider
+      openThreadPanel={handleOpenTimelinePluginPanel}
+    >
+      {threadDetailContent}
+    </PluginThreadPanelNavigationProvider>
   );
 }

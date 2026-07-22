@@ -169,14 +169,6 @@ interface PluginMessageDirectiveMessage {
  * viewer declined it.
  */
 type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
-interface PluginMessageDirectiveThreadPanelOptions {
-    /** A `threadPanelAction` id registered by this same plugin. */
-    actionId: string;
-    title?: string;
-    params?: JsonValue;
-}
-/** Open this plugin's registered action in the current thread side panel. */
-type PluginMessageDirectiveOpenThreadPanel = (options: PluginMessageDirectiveThreadPanelOptions) => boolean;
 /**
  * Props passed to a `messageDirective` component. Attributes are untrusted
  * strings parsed from the directive; the plugin validates its own fields.
@@ -192,12 +184,6 @@ interface PluginMessageDirectiveProps {
      * when the message surface has no workspace viewer available.
      */
     openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
-    /**
-     * Opens one of this plugin's own `threadPanelAction` components in the
-     * current thread side panel. Omitted by older hosts; null on message
-     * surfaces without a thread panel.
-     */
-    openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
 }
 interface PluginHomepageSectionRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -373,9 +359,10 @@ interface PluginMessageActionContext {
     selectedText?: string;
     /**
      * Open one of this plugin's `threadPanelAction` components in the current
-     * thread's side panel — same semantics as the message-directive
-     * `openThreadPanel`. Returns true when the host accepted (the action id
-     * exists and the surface has a panel); false otherwise.
+     * thread's side panel — the registration-callback equivalent of
+     * `useBbNavigate().experimental_openThreadPanel`. Returns true when the host
+     * accepted (the action id exists and the surface has a panel); false
+     * otherwise.
      */
     openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
 }
@@ -412,9 +399,38 @@ interface PluginAppSlots {
 interface PluginAppComposer {
     customize(registration: ComposerCustomization): void;
 }
+/** Stable lifecycle values for one content-script instance in one bb client. */
+interface PluginContentScriptContext {
+    /** The id of the plugin that owns this script. */
+    readonly pluginId: string;
+    /** Monotonic per-client generation, starting at 1. */
+    readonly generation: number;
+    /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
+    readonly signal: AbortSignal;
+}
+/** Cleanup returned by a frontend content script. */
+type PluginContentScriptDisposer = () => void | Promise<void>;
+/**
+ * Trusted same-origin JavaScript/TypeScript mounted once per active frontend
+ * generation in each bb app window or browser tab.
+ */
+interface PluginContentScriptRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /**
+     * Install behavior into the bb app shell. The host awaits a returned
+     * promise, contains failures, and calls the returned disposer exactly once.
+     */
+    mount(context: PluginContentScriptContext): void | PluginContentScriptDisposer | Promise<void | PluginContentScriptDisposer>;
+}
+/** Experimental lifecycle surface for trusted frontend content scripts. */
+interface PluginAppContentScripts {
+    register(registration: PluginContentScriptRegistration): void;
+}
 interface PluginAppBuilder {
     slots: PluginAppSlots;
     composer: PluginAppComposer;
+    experimental_contentScripts: PluginAppContentScripts;
 }
 type PluginAppSetup = (app: PluginAppBuilder) => void;
 /**
@@ -716,6 +732,16 @@ interface BbNavigate {
         initialPrompt?: string;
         focusPrompt?: boolean;
     }): void;
+    /**
+     * Open one of this plugin's registered thread-panel actions in the current
+     * thread surface. Returns false when the surface has no thread side panel or
+     * the action is unavailable.
+     */
+    experimental_openThreadPanel(options: {
+        actionId: string;
+        title?: string;
+        params?: JsonValue;
+    }): boolean;
 }
 /**
  * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
@@ -764,4 +790,4 @@ declare const useComposer: () => PluginComposerApi;
 declare const useComposerView: () => ComposerView;
 
 export { definePluginApp, experimental_Markdown, experimental_ThreadChat, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppComposer, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenThreadPanel, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginMessageDirectiveThreadPanelOptions, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

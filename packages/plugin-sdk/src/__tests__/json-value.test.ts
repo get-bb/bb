@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
+  BbNavigate,
   JsonValue,
-  PluginMessageDirectiveThreadPanelOptions,
   PluginThreadPanelActionContext,
   PluginThreadPanelProps,
 } from "../index.js";
@@ -11,6 +11,9 @@ import type { JsonValue as AppJsonValue } from "../app.js";
 type OpenPanelOptions = NonNullable<
   Parameters<PluginThreadPanelActionContext["openPanel"]>[0]
 >;
+type NavigatePanelOptions = Parameters<
+  BbNavigate["experimental_openThreadPanel"]
+>[0];
 
 describe("plugin SDK JsonValue contract", () => {
   it("types parameter writes as JsonValue and persisted reads as JsonValue or null", () => {
@@ -18,9 +21,9 @@ describe("plugin SDK JsonValue contract", () => {
     expectTypeOf<OpenPanelOptions["params"]>().toEqualTypeOf<
       JsonValue | undefined
     >();
-    expectTypeOf<
-      PluginMessageDirectiveThreadPanelOptions["params"]
-    >().toEqualTypeOf<JsonValue | undefined>();
+    expectTypeOf<NavigatePanelOptions["params"]>().toEqualTypeOf<
+      JsonValue | undefined
+    >();
     expectTypeOf<
       PluginThreadPanelProps["params"]
     >().toEqualTypeOf<JsonValue | null>();

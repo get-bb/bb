@@ -3,6 +3,7 @@ import {
   useCallback,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -66,6 +67,10 @@ import {
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
+import {
+  getPluginFrontendDiagnostics,
+  subscribePluginFrontendDiagnostics,
+} from "@/lib/plugin-frontend";
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
@@ -738,6 +743,11 @@ export function PluginDetail({
   onDelete: (plugin: PluginListItem) => void;
 }) {
   const { settingsSections } = usePluginSlots();
+  const frontendDiagnostics = useSyncExternalStore(
+    subscribePluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+  );
   if (isLoading) {
     return <PluginsLoadingRows />;
   }
@@ -767,12 +777,27 @@ export function PluginDetail({
     plugin.schedules.length > 0;
   const canEditSource = pluginIsLocalSource(plugin);
   const canRemove = pluginCanBeRemoved(plugin);
+  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
 
   return (
     <PluginDetailView
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={plugin.name ?? plugin.id}
       description={plugin.description}
+      statusAlert={
+        frontendFailure !== null && frontendFailure !== undefined ? (
+          <div
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive"
+            role="alert"
+          >
+            Frontend {frontendFailure.phase} failure
+            {frontendFailure.scriptId === null
+              ? ""
+              : ` in content script “${frontendFailure.scriptId}”`}
+            : {frontendFailure.message}
+          </div>
+        ) : undefined
+      }
       metadata={
         <span className="block break-all font-mono">{plugin.rootDir}</span>
       }

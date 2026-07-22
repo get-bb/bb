@@ -51,6 +51,7 @@ export function PluginDetailView({
   leading,
   title,
   description,
+  statusAlert,
   metadata,
   provenance,
   installed,
@@ -65,6 +66,7 @@ export function PluginDetailView({
   leading: ReactNode;
   title: string;
   description?: ReactNode;
+  statusAlert?: ReactNode;
   metadata: ReactNode;
   provenance?: {
     label: ReactNode;
@@ -138,11 +140,13 @@ export function PluginDetailView({
         ) : undefined
       }
     >
-      {description ||
+      {statusAlert ||
+      description ||
       properties.length > 0 ||
       definitionSections.length > 0 ||
       activitySections.length > 0 ? (
         <ResourceDetailStack>
+          {statusAlert}
           {description ? (
             <ResourceDetailOverviewSection label="About">
               <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">

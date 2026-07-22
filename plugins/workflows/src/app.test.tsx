@@ -117,7 +117,9 @@ describe("workflow composer banner", () => {
       banner,
       {},
       {
-        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
         rpc: {
           workflowActiveRuns: (input) => {
             expect(input).toEqual({ threadId: "thr_scope" });
@@ -133,7 +135,9 @@ describe("workflow composer banner", () => {
     expect(slot.getByText("1/2 agents")).toBeTruthy();
     expect(slot.getAllByRole("region", { name: "Workflow" })).toHaveLength(2);
     expect(
-      slot.getByRole("button", { name: /stop workflow review/i }),
+      slot.getByRole("button", {
+        name: /open workflow review.*in side panel/i,
+      }),
     ).toBeTruthy();
   });
 
@@ -142,7 +146,9 @@ describe("workflow composer banner", () => {
       banner,
       {},
       {
-        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
         rpc: { workflowActiveRuns: () => ({ runs: [run] }) },
       },
     );
@@ -179,7 +185,9 @@ describe("workflow composer banner", () => {
       banner,
       {},
       {
-        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
         rpc: {
           workflowActiveRuns: () => {
             polls += 1;
@@ -207,7 +215,9 @@ describe("workflow composer banner", () => {
       banner,
       {},
       {
-        composer: { scope: { kind: "thread", threadId: "thr_idle" } },
+        composer: {
+          scope: { kind: "thread", threadId: "thr_idle" },
+        },
         rpc: { workflowActiveRuns: () => ({ runs: [] }) },
       },
     );
@@ -216,34 +226,35 @@ describe("workflow composer banner", () => {
     expect(slot.container.childElementCount).toBe(0);
   });
 
-  it("stops a run through typed RPC and collapses when it was the last one", async () => {
+  it("opens the run in the workflow side panel without stopping it", async () => {
+    const openThreadPanel = vi.fn(() => true);
     const slot = renderSlot(
       banner,
       {},
       {
-        composer: { scope: { kind: "thread", threadId: "thr_scope" } },
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        openThreadPanel,
         rpc: {
           workflowActiveRuns: () => ({ runs: [run] }),
-          workflowStopRun: (input) => {
-            expect(input).toEqual({ threadId: "thr_scope", runId: run.id });
-            return {
-              stopped: true,
-              run: { ...run, status: "cancelled" as const },
-            };
-          },
         },
       },
     );
 
     fireEvent.click(
-      await slot.findByRole("button", { name: /stop workflow review/i }),
+      await slot.findByRole("button", {
+        name: /open workflow review.*in side panel/i,
+      }),
     );
-    await waitFor(() => {
-      expect(
-        slot.rpcCalls.some((call) => call.method === "workflowStopRun"),
-      ).toBe(true);
-      expect(slot.container.childElementCount).toBe(0);
+    expect(openThreadPanel).toHaveBeenCalledWith({
+      actionId: "workflow-run",
+      title: "Review the release",
+      params: { runId: run.id },
     });
+    expect(
+      slot.rpcCalls.some((call) => call.method === "workflowStopRun"),
+    ).toBe(false);
   });
 });
 
@@ -256,7 +267,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}" surprise="true"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       { rpc: {} },
     );
@@ -276,9 +286,9 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel,
       },
       {
+        openThreadPanel,
         rpc: {
           workflowRunView: (input) => {
             expect(input).toEqual({ threadId: "thr_origin", runId: run.id });
@@ -362,7 +372,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       { rpc: { workflowRunView: () => ({ run: unphasedRun }) } },
     );
@@ -394,7 +403,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       {
         rpc: {
@@ -460,7 +468,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       {
         rpc: {
@@ -507,7 +514,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       { rpc: { workflowRunView: () => ({ run: succeededRun }) } },
     );
@@ -545,7 +551,6 @@ describe("workflow-preview directive", () => {
         source: `::workflow-preview{run="${run.id}"}`,
         message,
         openWorkspaceFile: null,
-        openThreadPanel: null,
       },
       { rpc: { workflowRunView: () => ({ run: cancelledRun }) } },
     );

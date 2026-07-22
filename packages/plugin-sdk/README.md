@@ -16,12 +16,31 @@ Composer UI extensions register through `app.composer.customize(...)`. A
 host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
 Mounted components use `useComposer()` for writes, effects, and input locking,
 and `useComposerView()` for the reactive scope, layout, draft, and run state.
+Any mounted plugin component can use
+`useBbNavigate().experimental_openThreadPanel(...)` to request one of the
+same plugin's registered thread-panel actions; it returns false when the
+current surface has no thread side panel.
 
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
 for every region in one small app. The deprecated pre-1.0
 `app.slots.composerAccessory(...)` footer API has been removed; migrate footer
 controls to actions or the plus menu and larger content to banners.
+
+## Trusted frontend content scripts
+
+Use `app.experimental_contentScripts.register({ id, mount })` for ordinary
+bundled TypeScript/JavaScript that enhances the bb app shell without rendering
+a React slot. The host supplies `{ pluginId, generation, signal }`, awaits
+mount setup, and owns abort plus exact-once reverse-order disposal across hash
+reload, disable, removal, failed replacement, and app-window teardown. The old
+generation is disposed before candidate mounts, so generations never overlap.
+Content scripts are trusted same-origin page code, not a sandbox.
+
+Static styles should stay in the normal imported `app.css`; scripts may own
+dynamic DOM/style nodes when their disposer removes them. See the
+[`content-script` reference plugin](../../examples/plugins/content-script/README.md)
+for a cleanup-safe editor enhancement.
 
 ## External plugin tests
 
@@ -61,9 +80,14 @@ factory succeeds; a failed factory leaves the old load live.
 Frontend example (`// @vitest-environment jsdom`):
 
 ```tsx
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  mountPluginContentScripts,
+  renderSlot,
+} from "@bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
+const scripts = await mountPluginContentScripts(app, { pluginId: "notes" });
 const slot = renderSlot(
   app.homepageSections[0]!,
   { projectId: "proj_1" },
@@ -76,10 +100,12 @@ const slot = renderSlot(
 await slot.behavior.emitRealtime("notes-changed", null);
 expect(slot.inspection.rpcCalls).toHaveLength(1);
 slot.lifecycle.unmount();
+await scripts.lifecycle.dispose();
 ```
 
-`loadPluginApp` installs the runtime before a thunk import, validates slot and
-panel registrations, and returns captured registrations. `renderSlot` supplies
+`loadPluginApp` installs the runtime before a thunk import and validates all
+registrations. `mountPluginContentScripts` mirrors the host's ordered mount,
+rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies
 RPC, realtime, settings, navigation, context, and scoped composer behavior,
 then returns Testing Library queries plus the same behavior/inspection/lifecycle
 split. Use a setup-file `installTestPluginRuntime()` only when a static app
@@ -97,7 +123,8 @@ temporary directory, secrets are kept in memory, `bb.sdk` is always bound and
 unstubbed calls throw, and cross-plugin/global collision policy is outside one
 fake host.
 
-The frontend harness matches registration validation, RPC/realtime JSON
+The frontend harness matches registration validation, content-script mount and
+cleanup ordering, RPC/realtime JSON
 boundaries, panel and slot props, navigation recording, and composer text,
 scope, quote, mention, focus, and clear behavior. It does not reproduce BB
 layout, CSS, persistence, routing, host authentication, crash boundaries, or
