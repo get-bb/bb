@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { ThreadTimelineOpenPluginPanelHandler } from "@/components/thread/timeline";
 import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
@@ -134,6 +135,7 @@ interface ThreadDetailPromptAreaProps {
   pendingInteractions: readonly PendingInteraction[];
   pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
+  openPluginPanel: ThreadTimelineOpenPluginPanelHandler;
   openThreadDiffPanel: () => void;
   projectId: string;
   /** Click handler for inserted mention pills (navigate to threads, open file previews). */
@@ -202,6 +204,7 @@ export function ThreadDetailPromptArea({
   pendingInteractions,
   pendingInteractionsInitialLoading,
   onChangedFileClick,
+  openPluginPanel,
   openThreadDiffPanel,
   projectId,
   resolveMentionLink,
@@ -521,12 +524,15 @@ export function ThreadDetailPromptArea({
       getCurrent: promptDraft.getCurrent,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
+      openPluginThreadPanel: (pluginId, options) =>
+        openPluginPanel({ pluginId, ...options }),
     }),
     [
       focusBottomPluginComposer,
       promptDraft.getCurrent,
       promptDraft.setDraft,
       promptDraft.storageKey,
+      openPluginPanel,
       thread.id,
     ],
   );
@@ -565,12 +571,15 @@ export function ThreadDetailPromptArea({
         }
       },
       focus: focusQueuedPluginComposer,
+      openPluginThreadPanel: (pluginId, options) =>
+        openPluginPanel({ pluginId, ...options }),
     };
   }, [
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
     focusQueuedPluginComposer,
+    openPluginPanel,
     thread.id,
   ]);
   const normalPluginComposerHost = useMemo<PluginComposerHost>(

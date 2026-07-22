@@ -305,6 +305,18 @@ describe("useComposer", () => {
           </button>
           <button
             type="button"
+            onClick={() =>
+              composer.experimental_openThreadPanel({
+                actionId: "library-panel",
+                title: "UI Patterns",
+                params: { entryId: "button" },
+              })
+            }
+          >
+            {label}-open-panel
+          </button>
+          <button
+            type="button"
             onClick={() => composer.addQuote("picked text")}
           >
             {label}-quote
@@ -375,6 +387,40 @@ describe("useComposer", () => {
     );
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+
+  it("opens one of the calling plugin's thread-panel actions from its composer", () => {
+    const openPluginThreadPanel = vi.fn(() => true);
+    registerComposerProbe("panel");
+    const draft: PromptDraftState = {
+      text: "",
+      mentions: [],
+      attachments: [],
+    };
+    const host: PluginComposerHost = {
+      scope: { kind: "thread", threadId: "thr_panel" },
+      draft,
+      textEffectKey: "thread:thr_panel",
+      getCurrent: () => draft,
+      setDraft: () => {},
+      focus: () => {},
+      openPluginThreadPanel,
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_panel"]}>
+        <PluginComposerHostProvider value={host}>
+          <ComposerCustomizationMount />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("panel-open-panel"));
+    expect(openPluginThreadPanel).toHaveBeenCalledWith("demo", {
+      actionId: "library-panel",
+      title: "UI Patterns",
+      params: { entryId: "button" },
+    });
   });
 
   it("reads, replaces, functionally updates, and clears the latest thread text without leaking to the new-thread scope", () => {

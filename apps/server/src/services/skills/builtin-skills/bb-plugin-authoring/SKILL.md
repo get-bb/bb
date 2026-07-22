@@ -995,7 +995,10 @@ Hooks:
   calls are no-ops);
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret; `scope` reports
+  fresh context at send time; `focus()` focuses the caret;
+  `experimental_openThreadPanel({ actionId, title?, params? })` opens one of
+  YOUR registered `threadPanelAction` components from the enclosing thread
+  composer and returns `false` if the action is unavailable; `scope` reports
   where writes land (`{ kind: "thread", threadId }` inside a thread
   context, `{ kind: "new-thread", projectId }` from nav panels and
   homepage sections — those seed the composer the user lands on next).
@@ -1200,7 +1203,7 @@ await slot.behavior.experimental_setComposerScope(
 );
 slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
-slot.inspection.composer; // text, visuals, quotes, mentions, and focus activity
+slot.inspection.composer; // text, visuals, quotes, mentions, panel opens, and focus
 slot.lifecycle.unmount();
 ```
 

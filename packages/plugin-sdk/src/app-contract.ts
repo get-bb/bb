@@ -608,6 +608,18 @@ export interface PluginComposerApi {
   insertMention(mention: PluginComposerMention): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
+  /**
+   * @experimental
+   *
+   * Open one of this plugin's registered `threadPanelAction` components in
+   * the thread panel enclosing this composer. Returns false when the composer
+   * is not attached to a thread panel or the action id is unavailable.
+   */
+  experimental_openThreadPanel(options: {
+    actionId: string;
+    title?: string;
+    params?: JsonValue;
+  }): boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -1004,7 +1004,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           paramsJson = serializePluginPanelParams(params);
         } catch (error) {
           console.warn(
-            `[plugin:${pluginId}] messageDirective openThreadPanel params are invalid: ${
+            `[plugin:${pluginId}] openThreadPanel params are invalid: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
@@ -2422,6 +2422,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onPullRequestReady={handlePullRequestReady}
       pullRequestMergeMethod={pullRequestMergeMethod}
       onChangedFileClick={handleChangedFileClick}
+      openPluginPanel={handleOpenTimelinePluginPanel}
       openThreadDiffPanel={openSecondaryPanelDiffPanel}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
