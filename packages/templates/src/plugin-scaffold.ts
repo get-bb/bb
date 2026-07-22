@@ -316,7 +316,8 @@ ${componentsSection}
 
 - \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
 - \`bb.name\` and \`bb.description\` — required human-facing identity.
-- \`bb.branding\` — required; declare \`icon\` or \`logo.light\` (and optional
+- \`bb.branding\` — required; declare a named \`icon\`, an
+  \`experimental_icon\` plugin-relative SVG, or \`logo.light\` (with optional
   \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or \`.webp\`
   files.
 - \`engines.bb\` — supported bb app version range.

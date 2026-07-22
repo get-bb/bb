@@ -8,22 +8,23 @@ questions listed with it, then remove it from this file in the same change.
 
 ## Plugin manifest
 
-### `bb.branding.icon` plugin-owned SVG path
+### `bb.branding.experimental_icon`
 
-The existing compact-icon string also accepts a plugin-relative path beginning
-with `./`, such as `./assets/icon.svg`. BB validates and hash-serves the SVG,
-then renders it as a `currentColor` CSS mask across compact plugin chrome.
-Older BB versions already accept the string and safely fall back to Zap. The
-plugin inventory exposes the resolved URL as `experimental_iconUrl` while this
-behavior soaks.
+An optional plugin-relative compact SVG path beginning with `./`, such as
+`./assets/icon.svg`. BB validates and hash-serves the SVG, then renders it as a
+`currentColor` CSS mask across compact plugin chrome. The existing
+`bb.branding.icon` field remains the stable host icon-name hint. Plugin
+inventory exposes the resolved asset as `experimental_iconUrl`.
 
 Audit before stabilizing:
 
 - Do real third-party icons remain legible at every compact size and theme?
 - Is a CSS mask sufficient, or do any valid icons need multicolor rendering?
-- Should the stable inventory keep a separate `iconUrl`, or replace the name
-  and URL fields with a discriminated icon source?
-- Does the `./` path signal stay clear once more manifest assets exist?
+- Should stabilization rename both manifest `experimental_icon` and inventory
+  `experimental_iconUrl`, or replace the named and asset fields with a
+  discriminated icon source?
+- Does requiring a `./` plugin-relative path remain clear once more manifest
+  assets exist?
 
 ## `@bb/plugin-sdk/app`
 

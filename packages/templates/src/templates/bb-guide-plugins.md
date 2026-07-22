@@ -305,7 +305,7 @@ The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` (add --app
 for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
 watches and reloads on every save. The manifest is package.json: required
 `bb.name` and `bb.description` human identity, required `bb.branding` with at
-least `icon` or `logo.light`, `bb.server`
+least `icon`, `experimental_icon`, or `logo.light`, `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`
 (frontend entry), optional `bb.skills` (static skill directories auto-imported
 into agent threads unless filtered by `bb.agents.configure`; default
@@ -321,21 +321,22 @@ list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
 removing the owning plugin makes bb fall back to the default palette.
 
 Branding is explicit. Normally declare `bb.branding.icon` as the plugin's
-canonical identity: use a BB icon name, or a plugin-relative SVG such as
-`./assets/icon.svg` for a plugin-owned glyph. BB hash-serves SVG icons and
-renders them as masks that inherit the surrounding text color. Compact chrome
-prefers that asset, then a named manifest icon, a contribution's local icon
-hint, and finally Zap. Roomy surfaces reuse the same icon when no logo override
-is declared.
+canonical BB icon name. For an experimental plugin-owned compact glyph, set
+`bb.branding.experimental_icon` to a plugin-relative SVG such as
+`./assets/icon.svg`. BB hash-serves the SVG and renders it as a mask that
+inherits the surrounding text color. Compact chrome prefers that asset, then a
+named manifest icon, a contribution's local icon hint, and finally Zap. Roomy
+surfaces reuse the same icon when no logo override is declared.
 
 Add `bb.branding.logo.light` only for intentionally different rich/full-size
 identity artwork; optional `bb.branding.logo.dark` is preferred in dark mode.
 Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
 files are not auto-detected, and a dark logo requires a light logo. Logo-only
-manifests remain supported for compatibility, so at least the icon or light logo
-is required. Do not duplicate the same artwork in both fields. BB rejects nulls,
-empty strings, missing or escaping assets, and unsupported extensions. Reload
-the plugin to pick up branding changes.
+manifests remain supported for compatibility, so at least a named icon,
+experimental icon, or light logo is required. Do not duplicate the same
+artwork across fields. BB rejects nulls, empty strings, missing or escaping
+assets, and unsupported extensions. Reload the plugin to pick up branding
+changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 

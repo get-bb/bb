@@ -27,6 +27,7 @@ async function writeLogoPluginFixture(
     logoDark?: string;
     pluginName?: string;
     brandingIcon?: string | null;
+    experimentalBrandingIcon?: string;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -39,9 +40,13 @@ async function writeLogoPluginFixture(
         name: options.pluginName ?? "Logo fixture",
         description: "Plugin branding fixture.",
         branding: {
-          ...(options.brandingIcon === null
+          ...(options.brandingIcon === null ||
+          options.experimentalBrandingIcon !== undefined
             ? {}
             : { icon: options.brandingIcon ?? "Zap" }),
+          ...(options.experimentalBrandingIcon === undefined
+            ? {}
+            : { experimental_icon: options.experimentalBrandingIcon }),
           ...(options.logoLight === undefined && options.logoDark === undefined
             ? {}
             : {
@@ -80,11 +85,11 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     await harness.cleanup();
   });
 
-  it("serves a path-shaped branding.icon as a hashed compact SVG asset", async () => {
+  it("serves branding.experimental_icon as a hashed compact SVG asset", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-mark");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-mark",
-      brandingIcon: "./assets/icon.svg",
+      experimentalBrandingIcon: "./assets/icon.svg",
       files: { "assets/icon.svg": SVG_LOGO },
     });
 

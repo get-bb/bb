@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
-import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
+import { pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
@@ -126,14 +126,8 @@ async function copyBuiltinPlugin(args: {
     ),
   );
   const logo = packageJson.bb.branding.logo;
-  const compactIcon = packageJson.bb.branding.icon;
-  for (const asset of [
-    compactIcon !== undefined && isPluginOwnedIconPath(compactIcon)
-      ? compactIcon
-      : undefined,
-    logo?.light,
-    logo?.dark,
-  ]) {
+  const compactIcon = packageJson.bb.branding.experimental_icon;
+  for (const asset of [compactIcon, logo?.light, logo?.dark]) {
     if (asset === undefined) continue;
     const sourcePath = path.resolve(args.sourceRoot, asset);
     const targetPath = path.resolve(targetDir, asset);

@@ -4,9 +4,10 @@ import { useSyncExternalStore } from "react";
  * Client-side plugin branding map taken from the GET /api/v1/plugins inventory
  * each time plugin frontends reconcile (boot + the realtime `plugins-changed`
  * broadcast). A tiny external store — not a query — lets compact leaf
- * components resolve `bb.branding.icon` without a QueryClient in scope. The
- * stored entries retain the full branding inventory shape; roomy Settings
- * consumers read the same logo URLs through their query model.
+ * components resolve named and experimental compact branding without a
+ * QueryClient in scope. The stored entries retain the full branding inventory
+ * shape; roomy Settings consumers read the same logo URLs through their query
+ * model.
  */
 
 /** One plugin's logo asset URLs; either is null when that variant is absent. */

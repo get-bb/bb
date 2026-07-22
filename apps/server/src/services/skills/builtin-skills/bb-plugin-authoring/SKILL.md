@@ -62,26 +62,28 @@ The manifest is `package.json`:
   identity. The top-level package `name` remains the package identity and
   source of the plugin id.
 - `bb.branding` (required) — normally declare `bb.branding.icon` as the
-  plugin's canonical identity. Use a BB icon name such as `Zap`, or a
-  plugin-relative SVG path such as `./assets/icon.svg` for artwork the plugin
-  owns. Path-shaped icons are validated, hash-served by BB, and rendered as a
-  CSS mask so their shape inherits the surrounding text color; SVG colors are
-  ignored. BB reuses this icon on roomy surfaces when no logo override is
-  declared. Add `logo.light` only for intentionally different rich/full-size
-  identity artwork; optional `logo.dark` is preferred in dark mode. Logo paths
-  are explicit plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty
-  strings, missing/escaping files, unsupported extensions, and a dark logo
-  without a light logo fail the manifest. There is no root logo auto-detection.
-  Logo-only manifests remain supported for compatibility, so at least the icon
-  or light logo is required. BB uses a declared logo where space permits, such
-  as roomy Settings rows and cards.
+  plugin's canonical BB icon name, such as `Zap`. For an experimental
+  plugin-owned compact glyph, set `bb.branding.experimental_icon` to a
+  plugin-relative SVG path such as `./assets/icon.svg`. BB validates and
+  hash-serves the SVG, then renders it as a CSS mask so its shape inherits the
+  surrounding text color; SVG colors are ignored. BB reuses this icon on roomy
+  surfaces when no logo override is declared. Add `logo.light` only for
+  intentionally different rich/full-size identity artwork; optional
+  `logo.dark` is preferred in dark mode. Logo paths are explicit
+  plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty strings,
+  missing/escaping files, unsupported extensions, and a dark logo without a
+  light logo fail the manifest. There is no root logo auto-detection. Logo-only
+  manifests remain supported for compatibility, so at least a named icon,
+  experimental icon, or light logo is required. BB uses a declared logo where
+  space permits, such as roomy Settings rows and cards.
   Compact sidebar, menu, action, mention, and panel-title surfaces prefer the
   plugin-owned icon asset, then a named manifest icon, then a contribution's
   local `icon` hint, then Zap. Branding changes are picked up on
   `bb plugin reload`. Named inline icons use `currentColor`; compact SVG assets
   should contain only the intended transparent glyph shape. Do not duplicate
-  the same artwork in `icon` and `logo`; reserve logos for intentionally
-  different branded artwork and provide a dark variant when needed.
+  the same artwork across `icon`, `experimental_icon`, and `logo`; reserve
+  logos for intentionally different branded artwork and provide a dark variant
+  when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
   (currently `0.4.1`; the scaffold writes `"^0.4.1"`). Absent means a legacy

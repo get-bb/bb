@@ -2,19 +2,15 @@ import { z } from "zod";
 
 const requiredManifestString = z.string().trim().min(1);
 
-/**
- * `bb.branding.icon` keeps accepting host icon names while a leading `./`
- * opts into a plugin-owned compact SVG asset. Keeping both forms in the
- * existing string field lets older BB versions load the manifest and fall
- * back to their generic icon instead of rejecting a new key.
- */
-export function isPluginOwnedIconPath(icon: string): boolean {
+/** Plugin-owned compact icons are explicit plugin-relative SVG assets. */
+function isPluginOwnedIconPath(icon: string): boolean {
   return icon.startsWith("./");
 }
 
 export const pluginBrandingSchema = z
   .object({
     icon: requiredManifestString.optional(),
+    experimental_icon: requiredManifestString.optional(),
     logo: z
       .object({
         light: requiredManifestString,
@@ -25,23 +21,45 @@ export const pluginBrandingSchema = z
   })
   .strict()
   .superRefine((branding, context) => {
-    if (
-      branding.icon !== undefined &&
-      isPluginOwnedIconPath(branding.icon) &&
-      !branding.icon.toLowerCase().endsWith(".svg")
-    ) {
+    if (branding.icon !== undefined && isPluginOwnedIconPath(branding.icon)) {
       context.addIssue({
         code: "custom",
         path: ["icon"],
         message:
-          'plugin-owned branding.icon paths must point at an .svg file (for example "./assets/icon.svg")',
+          'plugin-owned SVG paths must use branding.experimental_icon (for example "./assets/icon.svg")',
+      });
+    }
+    if (
+      branding.experimental_icon !== undefined &&
+      !isPluginOwnedIconPath(branding.experimental_icon)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["experimental_icon"],
+        message:
+          'must be a plugin-relative path beginning with "./" (for example "./assets/icon.svg")',
+      });
+    }
+    if (
+      branding.experimental_icon !== undefined &&
+      !branding.experimental_icon.toLowerCase().endsWith(".svg")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["experimental_icon"],
+        message:
+          'branding.experimental_icon must point at an .svg file (for example "./assets/icon.svg")',
       });
     }
   })
   .refine(
-    (branding) => branding.icon !== undefined || branding.logo !== undefined,
+    (branding) =>
+      branding.icon !== undefined ||
+      branding.experimental_icon !== undefined ||
+      branding.logo !== undefined,
     {
-      message: "must declare at least branding.icon or branding.logo.light",
+      message:
+        "must declare at least branding.icon, branding.experimental_icon, or branding.logo.light",
     },
   );
 
