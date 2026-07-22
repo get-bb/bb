@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { StrictMode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import {
   cleanup,
   fireEvent,
@@ -37,8 +39,14 @@ describe("PluginComposerActions stories", () => {
     ).toHaveLength(3);
   });
 
-  it("shows and clears a plugin-owned status in the real thread row", async () => {
-    const view = render(<ThreadRowStatus />);
+  it("shows and clears a plugin-provided status in the real thread row", async () => {
+    const view = render(
+      <StrictMode>
+        <MemoryRouter>
+          <ThreadRowStatus />
+        </MemoryRouter>
+      </StrictMode>,
+    );
 
     await waitFor(() => {
       expect(screen.getByLabelText("Improving draft")).toBeDefined();

@@ -1,5 +1,10 @@
-import { useEffect, useState, type ComponentType } from "react";
-import { MemoryRouter } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComposerView } from "@bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
@@ -13,13 +18,17 @@ import {
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
 import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
-import { PluginComposerViewProvider } from "@/components/plugin/plugin-composer-host";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
+import type { PromptDraftState } from "@/lib/prompt-draft";
 import {
   ThreadRow,
   type ThreadRowOptions,
@@ -32,12 +41,6 @@ export default {
 const THREAD_ID = "thr_plugin_composer_story";
 const PROJECT_ID = "proj_plugin_composer_story";
 
-const THREAD_VIEW: ComposerView = {
-  scope: { kind: "thread", threadId: THREAD_ID },
-  layout: "expanded",
-  draft: { text: "", isEmpty: true, attachmentCount: 0 },
-  run: { isRunning: false, isSubmitting: false },
-};
 const THREAD_SCOPES: ComposerView["scope"]["kind"][] = ["thread"];
 
 function registrations(
@@ -136,10 +139,10 @@ function OverflowFixture() {
 }
 
 function ThreadRowStatusAction() {
-  const composer = useComposer();
+  const { setThreadRowStatus } = useComposer();
   const [visible, setVisible] = useState(true);
   useEffect(() => {
-    composer.setThreadRowStatus(
+    setThreadRowStatus(
       visible
         ? {
             icon: "Zap",
@@ -148,8 +151,8 @@ function ThreadRowStatusAction() {
           }
         : null,
     );
-    return () => composer.setThreadRowStatus(null);
-  }, [composer, visible]);
+    return () => setThreadRowStatus(null);
+  }, [setThreadRowStatus, visible]);
 
   return (
     <Button
@@ -175,8 +178,23 @@ const THREAD_ROW_OPTIONS: ThreadRowOptions = {
 };
 
 function ThreadRowStatusFixture() {
-  const [value, setValue] = useState(
-    "Make the release note shorter and easier to scan.",
+  const [draft, setDraft] = useState<PromptDraftState>({
+    text: "Make the release note shorter and easier to scan.",
+    mentions: [],
+    attachments: [],
+  });
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const composerHost = useMemo<PluginComposerHost>(
+    () => ({
+      scope: { kind: "thread", threadId: THREAD_ID },
+      draft,
+      textEffectKey: `story:${THREAD_ID}`,
+      getCurrent: () => draftRef.current,
+      setDraft,
+      focus: () => {},
+    }),
+    [draft],
   );
   const [queryClient] = useState(
     () =>
@@ -189,52 +207,56 @@ function ThreadRowStatusFixture() {
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/threads/${THREAD_ID}`]}>
-        <StoryPluginRegistration
-          pluginId="story-composer-status"
-          actions={STATUS_ACTIONS}
-          scopes={THREAD_SCOPES}
-        />
-        <PluginComposerViewProvider value={THREAD_VIEW}>
-          <div className="grid w-full max-w-4xl gap-4 md:grid-cols-[20rem_minmax(0,1fr)]">
-            <ThreadActionsProvider>
-              <div className="rounded-md bg-sidebar p-2 text-sidebar-foreground">
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <ThreadRow
-                      projectId={PROJECT_ID}
-                      thread={makeThreadListEntry({
-                        id: THREAD_ID,
-                        projectId: PROJECT_ID,
-                        title: "Improve release notes",
-                        titleFallback: "Improve release notes",
-                      })}
-                      isActive={false}
-                      hasComposerDraft={false}
-                      options={THREAD_ROW_OPTIONS}
-                    />
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </div>
-            </ThreadActionsProvider>
-            <PromptBoxInternal
-              value={value}
-              mentionRanges={[]}
-              onChange={(nextValue) => setValue(nextValue)}
-              onSubmit={() => {}}
-              placeholder="Ask a follow-up"
-              typeahead={makeTypeaheadConfig()}
-              mentionMenuPlacement="top"
-              attachments={makeAttachmentsConfig()}
-              submission={{
-                isSubmitting: false,
-                disabled: false,
-                title: "Submit (Enter)",
-              }}
-            />
-          </div>
-        </PluginComposerViewProvider>
-      </MemoryRouter>
+      <StoryPluginRegistration
+        pluginId="story-composer-status"
+        actions={STATUS_ACTIONS}
+        scopes={THREAD_SCOPES}
+      />
+      <PluginComposerHostProvider value={composerHost}>
+        <div className="grid w-full max-w-4xl gap-4 md:grid-cols-[20rem_minmax(0,1fr)]">
+          <ThreadActionsProvider>
+            <div className="rounded-md bg-sidebar p-2 text-sidebar-foreground">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <ThreadRow
+                    projectId={PROJECT_ID}
+                    thread={makeThreadListEntry({
+                      id: THREAD_ID,
+                      projectId: PROJECT_ID,
+                      title: "Improve release notes",
+                      titleFallback: "Improve release notes",
+                    })}
+                    isActive={false}
+                    hasComposerDraft={false}
+                    options={THREAD_ROW_OPTIONS}
+                  />
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </div>
+          </ThreadActionsProvider>
+          <PromptBoxInternal
+            value={draft.text}
+            mentionRanges={draft.mentions}
+            onChange={(text, mentions) =>
+              setDraft((current) => ({
+                ...current,
+                text,
+                mentions: [...mentions],
+              }))
+            }
+            onSubmit={() => {}}
+            placeholder="Ask a follow-up"
+            typeahead={makeTypeaheadConfig()}
+            mentionMenuPlacement="top"
+            attachments={makeAttachmentsConfig()}
+            submission={{
+              isSubmitting: false,
+              disabled: false,
+              title: "Submit (Enter)",
+            }}
+          />
+        </div>
+      </PluginComposerHostProvider>
     </QueryClientProvider>
   );
 }
