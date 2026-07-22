@@ -38,6 +38,11 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 export const BUILTIN_PLUGINS = [
+  {
+    name: "ask-user-question",
+    pluginId: "ask-user-question",
+    defaultEnabled: false,
+  },
   { name: "automations", pluginId: "automations", defaultEnabled: true },
   { name: "connect", pluginId: "connect", defaultEnabled: true },
   {
