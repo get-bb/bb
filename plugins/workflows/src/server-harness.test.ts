@@ -336,6 +336,19 @@ describe("workflows plugin", () => {
     await eventually(() => {
       expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
     });
+    expect(harness.sdk.callsTo("threads.send")[0]?.[0]).toMatchObject({
+      threadId: "thread-test",
+      mode: "steer-if-active",
+      input: [
+        {
+          type: "text",
+          text: expect.stringContaining(
+            `[BB workflow finished · ${started.runId}]`,
+          ),
+          visibility: "agent-only",
+        },
+      ],
+    });
 
     await expect(workflowStatus(harness, started.runId)).resolves.toMatchObject(
       {

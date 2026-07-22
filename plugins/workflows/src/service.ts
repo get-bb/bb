@@ -1137,7 +1137,7 @@ export function createWorkflowService(
     try {
       await bb.sdk.threads.send({
         threadId: latest.originThreadId,
-        mode: "queue-if-active",
+        mode: "steer-if-active",
         input: [
           {
             type: "text",
@@ -1146,6 +1146,7 @@ export function createWorkflowService(
               settings.maxNotificationBytes,
             ),
             mentions: [],
+            visibility: "agent-only",
           },
         ],
       });

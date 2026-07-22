@@ -132,14 +132,17 @@ Workflows declares six plugin settings:
 changes how many queued runs the worker may claim. The other five values are
 snapshotted into each new run and remain fixed for that run, including a resumed
 run. Saving settings does not require a plugin reload.
-Polling the compact `status` summary remains authoritative when a completion message is truncated
-or temporarily cannot be delivered. Completion delivery is at-least-once: a
-successful `threads.send` followed by a crash before its durable acknowledgement
-may produce a duplicate because the API has no idempotency key. Duplicates carry
-the same stable run ID marker. Failed attempts use durable, capped exponential
-backoff. Status exposes notification outcome as `pending`, `delivered`, or
-`abandoned`; a missing or deleted origin permanently records `abandoned` so it
-cannot block retention.
+Terminal runs send an agent-only completion input back to the origin thread. It
+steers an active origin immediately or starts a turn when the origin is idle,
+while remaining absent from the user-facing timeline and search. Polling the
+compact `status` summary remains authoritative when a completion message is
+truncated or temporarily cannot be delivered. Completion delivery is
+at-least-once: a successful `threads.send` followed by a crash before its durable
+acknowledgement may produce a duplicate because the API has no idempotency key.
+Duplicates carry the same stable run ID marker. Failed attempts use durable,
+capped exponential backoff. Status exposes notification outcome as `pending`,
+`delivered`, or `abandoned`; a missing or deleted origin permanently records
+`abandoned` so it cannot block retention.
 
 Useful checks:
 

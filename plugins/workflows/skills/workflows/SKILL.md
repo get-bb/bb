@@ -414,10 +414,11 @@ Plugin-bundled workflow discovery is not supported.
 `bb_workflow_run` also accepts optional JSON `args` and optional `resumeRunId`.
 It returns a durable run ID immediately. Use the compact `bb workflows status`
 summary, paged `bb workflows history`, `bb workflows list`, and
-`bb workflows stop` afterward. Completion is queued
-back to the origin thread, so an active origin is not interrupted. Delivery is
-duplicate-tolerant at-least-once because `threads.send` has no idempotency key.
-CLI status polling remains authoritative.
+`bb workflows stop` afterward. Completion is sent back as an agent-only input:
+it steers an active origin immediately or starts a turn when the origin is idle,
+without rendering a user-facing message. Delivery is duplicate-tolerant
+at-least-once because `threads.send` has no idempotency key. CLI status polling
+remains authoritative.
 
 `list` also returns compact summaries; it is safe for discovery but is not a
 substitute for the redirected detailed history.
