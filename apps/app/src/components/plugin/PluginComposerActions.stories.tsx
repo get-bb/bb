@@ -1,12 +1,17 @@
-import { useEffect, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { MemoryRouter } from "react-router-dom";
 import type { ComposerView } from "@bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
+import {
+  makeAttachmentsConfig,
+  makeThreadListEntry,
+  makeTypeaheadConfig,
+} from "../../../.ladle/story-fixtures";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
+import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -103,6 +108,7 @@ const OVERFLOW_REGISTRATIONS = OVERFLOW_PLUGINS.map(
 );
 
 function OverflowFixture() {
+  const [value, setValue] = useState("");
   return (
     <>
       {OVERFLOW_REGISTRATIONS.map(({ pluginId, actions }) => (
@@ -112,13 +118,22 @@ function OverflowFixture() {
           actions={actions}
         />
       ))}
-      <div className="max-w-xl rounded-2xl border bg-background p-3 shadow-sm">
-        <div className="mb-16 text-sm text-muted-foreground">
-          Composer draft area
-        </div>
-        <div className="flex items-center justify-end gap-1 border-t pt-2">
-          <PluginComposerActions view={NEW_THREAD_VIEW} />
-        </div>
+      <div className="w-full max-w-xl">
+        <PromptBoxInternal
+          value={value}
+          mentionRanges={[]}
+          onChange={(nextValue) => setValue(nextValue)}
+          onSubmit={() => {}}
+          placeholder="Ask a follow-up"
+          typeahead={makeTypeaheadConfig()}
+          mentionMenuPlacement="top"
+          attachments={makeAttachmentsConfig()}
+          submission={{
+            isSubmitting: false,
+            disabled: false,
+            title: "Submit (Enter)",
+          }}
+        />
       </div>
     </>
   );
