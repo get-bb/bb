@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComposerView } from "@bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -12,6 +13,7 @@ import {
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
 import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
+import { PluginComposerViewProvider } from "@/components/plugin/plugin-composer-host";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -22,7 +24,6 @@ import {
   ThreadRow,
   type ThreadRowOptions,
 } from "@/components/sidebar/ThreadRow";
-import { PluginComposerActions } from "./PluginComposerActions";
 
 export default {
   title: "plugins/Composer actions",
@@ -31,16 +32,11 @@ export default {
 const THREAD_ID = "thr_plugin_composer_story";
 const PROJECT_ID = "proj_plugin_composer_story";
 
-const NEW_THREAD_VIEW: ComposerView = {
-  scope: { kind: "new-thread", projectId: PROJECT_ID },
+const THREAD_VIEW: ComposerView = {
+  scope: { kind: "thread", threadId: THREAD_ID },
   layout: "expanded",
   draft: { text: "", isEmpty: true, attachmentCount: 0 },
   run: { isRunning: false, isSubmitting: false },
-};
-
-const THREAD_VIEW: ComposerView = {
-  ...NEW_THREAD_VIEW,
-  scope: { kind: "thread", threadId: THREAD_ID },
 };
 const THREAD_SCOPES: ComposerView["scope"]["kind"][] = ["thread"];
 
@@ -139,82 +135,37 @@ function OverflowFixture() {
   );
 }
 
-function SetValidStatus() {
+function ThreadRowStatusAction() {
   const composer = useComposer();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      onClick={() =>
-        composer.setThreadRowStatus({
-          icon: "Zap",
-          label: "Improving draft",
-          tone: "success",
-        })
-      }
-    >
-      Set valid
-    </Button>
-  );
-}
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    composer.setThreadRowStatus(
+      visible
+        ? {
+            icon: "Zap",
+            label: "Improving draft",
+            tone: "success",
+          }
+        : null,
+    );
+    return () => composer.setThreadRowStatus(null);
+  }, [composer, visible]);
 
-function RejectBlankStatus() {
-  const composer = useComposer();
   return (
     <Button
       type="button"
       size="sm"
       variant="outline"
-      onClick={() =>
-        (composer.setThreadRowStatus as (status: unknown) => void)({
-          icon: "Zap",
-          label: "   ",
-        })
-      }
+      onClick={() => setVisible((current) => !current)}
     >
-      Reject blank
-    </Button>
-  );
-}
-
-function RejectMalformedStatus() {
-  const composer = useComposer();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      onClick={() =>
-        (composer.setThreadRowStatus as (status: unknown) => void)([
-          "malformed",
-        ])
-      }
-    >
-      Reject array
-    </Button>
-  );
-}
-
-function ClearStatus() {
-  const composer = useComposer();
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      onClick={() => composer.setThreadRowStatus(null)}
-    >
-      Clear
+      <Icon name={visible ? "X" : "Zap"} className="mr-1 size-3.5" />
+      {visible ? "Clear thread row status" : "Show thread row status"}
     </Button>
   );
 }
 
 const STATUS_ACTIONS = [
-  { id: "valid", component: SetValidStatus },
-  { id: "blank", component: RejectBlankStatus },
-  { id: "malformed", component: RejectMalformedStatus },
-  { id: "clear", component: ClearStatus },
+  { id: "thread-row-status", component: ThreadRowStatusAction },
 ] as const;
 
 const THREAD_ROW_OPTIONS: ThreadRowOptions = {
@@ -223,46 +174,68 @@ const THREAD_ROW_OPTIONS: ThreadRowOptions = {
   isCompact: false,
 };
 
-function StatusValidationFixture() {
+function ThreadRowStatusFixture() {
+  const [value, setValue] = useState(
+    "Make the release note shorter and easier to scan.",
+  );
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      }),
+  );
   return (
-    <MemoryRouter initialEntries={[`/threads/${THREAD_ID}`]}>
-      <StoryPluginRegistration
-        pluginId="story-composer-status"
-        actions={STATUS_ACTIONS}
-        scopes={THREAD_SCOPES}
-      />
-      <div className="grid max-w-3xl gap-4 md:grid-cols-[20rem_1fr]">
-        <ThreadActionsProvider>
-          <div className="rounded-md bg-sidebar p-2 text-sidebar-foreground">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <ThreadRow
-                  projectId={PROJECT_ID}
-                  thread={makeThreadListEntry({
-                    id: THREAD_ID,
-                    projectId: PROJECT_ID,
-                    title: "Plugin status validation",
-                    titleFallback: "Plugin status validation",
-                  })}
-                  isActive={false}
-                  hasComposerDraft
-                  options={THREAD_ROW_OPTIONS}
-                />
-              </SidebarMenuItem>
-            </SidebarMenu>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[`/threads/${THREAD_ID}`]}>
+        <StoryPluginRegistration
+          pluginId="story-composer-status"
+          actions={STATUS_ACTIONS}
+          scopes={THREAD_SCOPES}
+        />
+        <PluginComposerViewProvider value={THREAD_VIEW}>
+          <div className="grid w-full max-w-4xl gap-4 md:grid-cols-[20rem_minmax(0,1fr)]">
+            <ThreadActionsProvider>
+              <div className="rounded-md bg-sidebar p-2 text-sidebar-foreground">
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <ThreadRow
+                      projectId={PROJECT_ID}
+                      thread={makeThreadListEntry({
+                        id: THREAD_ID,
+                        projectId: PROJECT_ID,
+                        title: "Improve release notes",
+                        titleFallback: "Improve release notes",
+                      })}
+                      isActive={false}
+                      hasComposerDraft={false}
+                      options={THREAD_ROW_OPTIONS}
+                    />
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
+            </ThreadActionsProvider>
+            <PromptBoxInternal
+              value={value}
+              mentionRanges={[]}
+              onChange={(nextValue) => setValue(nextValue)}
+              onSubmit={() => {}}
+              placeholder="Ask a follow-up"
+              typeahead={makeTypeaheadConfig()}
+              mentionMenuPlacement="top"
+              attachments={makeAttachmentsConfig()}
+              submission={{
+                isSubmitting: false,
+                disabled: false,
+                title: "Submit (Enter)",
+              }}
+            />
           </div>
-        </ThreadActionsProvider>
-        <div className="rounded-xl border bg-background p-3">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Set a valid status, then try either rejected payload. The green row
-            status remains until Clear because invalid updates are ignored.
-          </p>
-          <div className="flex flex-wrap items-center gap-1">
-            <PluginComposerActions view={THREAD_VIEW} />
-          </div>
-        </div>
-      </div>
-    </MemoryRouter>
+        </PluginComposerViewProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 
@@ -279,14 +252,14 @@ export function Overflow() {
   );
 }
 
-export function StatusValidation() {
+export function ThreadRowStatus() {
   return (
     <StoryCard>
       <StoryRow
-        label="valid and rejected status"
-        hint="blank and malformed status payloads preserve the last valid thread-row glyph"
+        label="plugin-provided thread status"
+        hint="the composer plugin sets a success icon and label in the real thread row; clear or restore it from the composer action"
       >
-        <StatusValidationFixture />
+        <ThreadRowStatusFixture />
       </StoryRow>
     </StoryCard>
   );

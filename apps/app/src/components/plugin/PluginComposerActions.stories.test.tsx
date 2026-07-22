@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
-import { Overflow } from "./PluginComposerActions.stories";
+import { resetPluginThreadRowStatusesForTest } from "@/lib/plugin-thread-row-status";
+import { Overflow, ThreadRowStatus } from "./PluginComposerActions.stories";
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginThreadRowStatusesForTest();
 });
 
 describe("PluginComposerActions stories", () => {
@@ -27,5 +35,26 @@ describe("PluginComposerActions stories", () => {
         '[data-plugin-composer-action-placement="inline"]',
       ),
     ).toHaveLength(3);
+  });
+
+  it("shows and clears a plugin-owned status in the real thread row", async () => {
+    const view = render(<ThreadRowStatus />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Improving draft")).toBeDefined();
+    });
+    expect(
+      view.container.querySelector("[data-promptbox-action-row]"),
+    ).not.toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear thread row status" }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Improving draft")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Show thread row status" }),
+      ).toBeDefined();
+    });
   });
 });
