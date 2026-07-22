@@ -93,24 +93,3 @@ to align with the main thread's composer baseline.
 Audit before stabilizing: whether `layout` belongs on the registration (one
 value per action) or on `openPanel` (per tab), and whether other slot kinds
 (navPanel) need the same knob.
-
-## `@bb/plugin-sdk`
-
-### `bb.sdk.experimental_skills`
-
-Backend plugins can list, inspect, install, remove, and write skills through
-the same `SkillsArea` used by BB's first-party SDK. The plugin contract exposes
-that area only as `bb.sdk.experimental_skills`; it deliberately omits the
-stable first-party `BbSdk.skills` property so plugin authors cannot depend on
-the experimental surface accidentally.
-
-Audit before stabilizing:
-
-- Should plugins receive the complete `SkillsArea`, or a narrower capability
-  set based on declared permissions?
-- Are install, delete, and write operations scoped tightly enough for
-  third-party code?
-- Do plugin consumers need provenance or manageability facts that the current
-  list and file responses do not expose?
-- Is `skills` the right stable name once real plugin consumers have exercised
-  every operation?

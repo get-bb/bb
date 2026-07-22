@@ -517,13 +517,6 @@ describe("thread events", () => {
 });
 
 describe("sdk", () => {
-  it("exposes plugin skill management only under its experimental name", () => {
-    const { bb } = createFakePluginHost();
-
-    expect("skills" in bb.sdk).toBe(false);
-    expect(bb.sdk.experimental_skills).toBeDefined();
-  });
-
   it("records calls with plugin spawn attribution and runs stubs", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "slack-bot",

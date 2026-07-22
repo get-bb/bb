@@ -677,17 +677,6 @@ export interface PluginStatusApi {
 }
 
 /**
- * The BB SDK surface available to backend plugins.
- *
- * Skill management remains experimental for plugins even though the same
- * area is stable on BB's first-party SDK. The distinct property name keeps
- * plugin code from accidentally depending on an API that has not stabilized.
- */
-export type experimental_PluginBbSdk = Omit<BbSdk, "skills"> & {
-  readonly experimental_skills: BbSdk["skills"];
-};
-
-/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -724,17 +713,15 @@ export interface BbPluginApi {
   /** Server-to-daemon host control-plane declarations. */
   readonly hosts: PluginHosts;
   /**
-   * The BB SDK, bound to this server over loopback (design §4.1).
+   * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer
    * using it from handlers, services, and timers for portability.
-   * Plugin skill management is exposed as `experimental_skills`; the stable
-   * first-party `BbSdk.skills` member is deliberately not exposed here.
    * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
    * this plugin's id so spawned threads are attributed automatically.
    */
-  readonly sdk: experimental_PluginBbSdk;
+  readonly sdk: BbSdk;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

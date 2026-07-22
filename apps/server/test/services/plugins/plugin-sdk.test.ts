@@ -226,9 +226,6 @@ describe("plugin bb.sdk against a running server", () => {
       expect(entry.status).toBe("running");
       const api = requireApi(server.pluginService, "spawner");
 
-      expect("skills" in api.sdk).toBe(false);
-      expect(api.sdk.experimental_skills).toBeDefined();
-
       // A plain read proves the loopback SDK reaches this server instance.
       const projects = await api.sdk.projects.list();
       expect(projects.map((p) => p.id)).toContain(project.id);

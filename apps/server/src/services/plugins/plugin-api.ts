@@ -52,7 +52,6 @@ import type {
   PluginThreadEventName,
   PluginUi,
   StandardSchemaV1,
-  experimental_PluginBbSdk,
 } from "@bb/plugin-sdk";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
@@ -491,14 +490,9 @@ function summarizeParseIssues(error: unknown): string {
  * default attribution (`origin: "plugin"`, `originPluginId: <plugin id>`)
  * unless the plugin sets those fields explicitly.
  */
-function wrapSdkForPlugin(
-  sdk: BbSdk,
-  pluginId: string,
-): experimental_PluginBbSdk {
-  const { skills: experimental_skills, ...sdkWithoutSkills } = sdk;
+function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
-    ...sdkWithoutSkills,
-    experimental_skills,
+    ...sdk,
     threads: {
       ...sdk.threads,
       fork(args: ThreadForkArgs) {
@@ -584,7 +578,7 @@ export function createPluginApi(options: {
   } = options;
   let invalidated = false;
   let activated = false;
-  let wrappedSdk: experimental_PluginBbSdk | undefined;
+  let wrappedSdk: BbSdk | undefined;
   let pendingNeedsConfiguration: string | null = null;
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
@@ -1325,7 +1319,7 @@ export function createPluginApi(options: {
     status,
     server,
     hosts,
-    get sdk(): experimental_PluginBbSdk {
+    get sdk(): BbSdk {
       assertLive();
       const sdk = getSdk();
       if (!sdk) {
