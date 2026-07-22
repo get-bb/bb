@@ -55,7 +55,7 @@ export function promptMentionIconName(
     return "Folder";
   }
   if (resource.kind === "section") {
-    return "ListView";
+    return "SectionAdd";
   }
   if (resource.kind === "command") {
     return promptCommandIconName(resource);

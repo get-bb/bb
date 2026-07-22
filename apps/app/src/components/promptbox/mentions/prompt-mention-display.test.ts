@@ -23,6 +23,6 @@ describe("promptMentionIconName", () => {
         sectionId: "sec_test",
         label: "Test section",
       }),
-    ).toBe("ListView");
+    ).toBe("SectionAdd");
   });
 });
