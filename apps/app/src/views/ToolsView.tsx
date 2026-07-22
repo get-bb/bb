@@ -685,8 +685,6 @@ function AutomationsToolView() {
       : new URLSearchParams(location.search).get("view") === "browse"
         ? "browse"
         : "";
-  const isCollection = !(projectId && automationId);
-
   if (panel === null) {
     return (
       <ToolsScrollPage maxWidthClassName="max-w-3xl">
@@ -720,7 +718,11 @@ function AutomationsToolView() {
       </WorkerPoolContextProvider>
     );
 
-  return <ToolsScrollPage fillViewport={isCollection}>{mount}</ToolsScrollPage>;
+  // No `ToolsScrollPage` here: the automations panel is a plugin nav panel, and
+  // nav panels own their page padding, max width, and scrolling so they render
+  // the same on this route and on the /plugins panel route. Wrapping it again
+  // would double the page padding.
+  return <div className="relative h-full overflow-hidden">{mount}</div>;
 }
 
 export function PluginDetail({

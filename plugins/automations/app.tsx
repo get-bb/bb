@@ -1116,6 +1116,37 @@ function DetailView({
 // Panel root — routes between overview and detail by subPath.
 // ---------------------------------------------------------------------------
 
+/**
+ * The panel's own page frame. The host mounts nav panels full-bleed with zero
+ * padding, so page padding, max width, and page scrolling belong to the
+ * plugin — otherwise the panel renders edge to edge at the full window width
+ * wherever the host does not wrap it (the /plugins panel route).
+ *
+ * `fill` pins the content box to the viewport for the collection, whose
+ * toolbar and pagination stay put while its own viewport scrolls; the detail
+ * route scrolls this frame instead.
+ */
+function AutomationsPageFrame({
+  fill,
+  children,
+}: {
+  fill: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="h-full min-h-0 flex-1 overflow-y-auto">
+      <div
+        className={cn(
+          "mx-auto box-border min-h-full w-full max-w-5xl px-4 pb-4 pt-3 md:px-5 md:pt-4",
+          fill && "h-full",
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
@@ -1144,19 +1175,23 @@ function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   );
   if (parsedRoute !== null) {
     return (
-      <DetailView
-        route={parsedRoute.route}
-        initialEditing={parsedRoute.editing}
-        onBack={backToList}
-      />
+      <AutomationsPageFrame fill={false}>
+        <DetailView
+          route={parsedRoute.route}
+          initialEditing={parsedRoute.editing}
+          onBack={backToList}
+        />
+      </AutomationsPageFrame>
     );
   }
   return (
-    <OverviewView
-      onOpenDetail={openDetail}
-      activeMode={collectionMode}
-      onModeChange={changeCollectionMode}
-    />
+    <AutomationsPageFrame fill>
+      <OverviewView
+        onOpenDetail={openDetail}
+        activeMode={collectionMode}
+        onModeChange={changeCollectionMode}
+      />
+    </AutomationsPageFrame>
   );
 }
 
