@@ -303,7 +303,7 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_APP_SURFACE).toBe("web");
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
     expect(serverConfig.BB_EXTERNAL_URL).toBe("");
-    expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.4-mini");
+    expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-4o-mini-transcribe");
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({ placeholder: false });
