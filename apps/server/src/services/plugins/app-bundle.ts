@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
+import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 
 export interface PluginArtifactMeta {
   sdkMajor: number;
@@ -110,6 +111,9 @@ async function loadPluginBrandingAsset(
 ): Promise<PluginBrandingAssetSnapshot | null> {
   if (manifestPath === undefined) return null;
   const bytes = await readFile(manifestPath);
+  if (variant === "icon") {
+    assertValidPluginCompactIconSvg(bytes);
+  }
   const extension = manifestPath
     .slice(manifestPath.lastIndexOf(".") + 1)
     .toLowerCase();

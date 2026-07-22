@@ -25,7 +25,7 @@ Schedules:
 Agent execution:
 
   --prompt <text> --provider <id> --model <model>
-  [--permission-mode <full|workspace-write|readonly>]
+  [--permission-mode <accept-edits|auto|full>]
   [--environment <environment-id|path> | --new-environment worktree]
   [--base-branch <branch>] [--target-thread <thread-id>]
 

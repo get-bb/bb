@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import { buildPluginApp, runtimeShimPlugin } from "./build-plugin-app.js";
 
-function precedingScopeBounds(css: string, ruleIndex: number): {
+function precedingScopeBounds(
+  css: string,
+  ruleIndex: number,
+): {
   start: number;
   bodyStart: number;
   end: number;
@@ -118,4 +121,44 @@ describe("plugin app runtime shim", () => {
     expect(authoredScope.end).toBeGreaterThan(authoredScope.bodyStart);
     expect(authoredRuleIndex).toBeGreaterThan(authoredScope.end);
   });
+
+  it.each([
+    ["non-SVG XML", "<html/>", /<svg> root element/],
+    ["malformed XML", "<svg><path></svg>", /not valid SVG XML/],
+    [
+      "entity declarations",
+      '<!DOCTYPE svg [<!ENTITY mark "x">]><svg>&mark;</svg>',
+      /must not contain a doctype declaration/,
+    ],
+  ])(
+    "rejects %s in branding.experimental_icon before building",
+    async (_case, icon, expectedError) => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-plugin-icon-"));
+      tempDirs.push(dir);
+      await writeFile(
+        join(dir, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-icon-fixture",
+          version: "0.0.0",
+          bb: {
+            name: "Icon fixture",
+            description: "Verifies compact icon validation.",
+            branding: { experimental_icon: "./icon.svg" },
+            server: "./server.ts",
+            app: "./app.ts",
+          },
+        }),
+      );
+      await writeFile(
+        join(dir, "server.ts"),
+        "export default function plugin() {}\n",
+      );
+      await writeFile(join(dir, "app.ts"), "export default {};\n");
+      await writeFile(join(dir, "icon.svg"), icon);
+
+      await expect(buildPluginApp(dir, "0.9.0-test")).rejects.toThrow(
+        expectedError,
+      );
+    },
+  );
 });

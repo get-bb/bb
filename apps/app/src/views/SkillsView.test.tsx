@@ -44,6 +44,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
     manageable: true,
+    registrySkillId: null,
     ...overrides,
   };
 }
@@ -67,22 +68,20 @@ function makeRegistrySkill(
 }
 
 function renderInstalledSkillRoute() {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            skills: [],
-            pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-    ),
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          skills: [],
+          pagination: { page: 0, perPage: 24, total: 0, hasMore: false },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
   );
+  vi.stubGlobal("fetch", fetchMock);
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   renderDom(
     <MemoryRouter initialEntries={["/tools/skills/installed/skill_missing"]}>
@@ -96,6 +95,7 @@ function renderInstalledSkillRoute() {
       </QueryClientWrapper>
     </MemoryRouter>,
   );
+  return fetchMock;
 }
 
 function render(props: Partial<Parameters<typeof SkillsOverview>[0]>): string {
@@ -552,6 +552,14 @@ describe("SkillsLibrary installed detail routing", () => {
     expect(await screen.findByText("Skill not found.")).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
   });
+
+  it("does not load the registry collection for an installed route", async () => {
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = renderInstalledSkillRoute();
+
+    expect(await screen.findByText("Skill not found.")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
@@ -562,6 +570,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       provider: null,
       scope: "bb-user",
       filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+      registrySkillId: registrySkill.id,
     });
     vi.spyOn(sdk.skills, "list").mockResolvedValue({
       skills: [installedSkill],
@@ -573,14 +582,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.startsWith("/api/v1/skills-registry?")) {
-          return new Response(
-            JSON.stringify({
-              skills: [registrySkill],
-              pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
-            }),
-            { status: 200 },
-          );
+        if (url.startsWith("/api/v1/skills-registry/entry?")) {
+          return new Response(JSON.stringify(registrySkill), { status: 200 });
         }
         if (url.startsWith("/api/v1/skills-registry/detail?")) {
           return new Response(
@@ -635,14 +638,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.startsWith("/api/v1/skills-registry?")) {
-          return new Response(
-            JSON.stringify({
-              skills: [registrySkill],
-              pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
-            }),
-            { status: 200 },
-          );
+        if (url.startsWith("/api/v1/skills-registry/entry?")) {
+          return new Response(JSON.stringify(registrySkill), { status: 200 });
         }
         if (url.startsWith("/api/v1/skills-registry/detail?")) {
           return new Response(
@@ -1192,7 +1189,7 @@ describe("installRegistrySkill", () => {
 });
 
 describe("resolveInstalledRegistrySkill", () => {
-  it("resolves a registry entry only to its canonical bb-user detail", () => {
+  it("resolves a registry entry only to an exact persisted provenance match", () => {
     const registrySkill = makeRegistrySkill({
       skillId: "Useful Skill",
       name: "Useful skill",
@@ -1202,6 +1199,7 @@ describe("resolveInstalledRegistrySkill", () => {
       provider: null,
       scope: "bb-user",
       filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+      registrySkillId: registrySkill.id,
     });
 
     expect(
@@ -1217,7 +1215,7 @@ describe("resolveInstalledRegistrySkill", () => {
     ).toBeNull();
   });
 
-  it("keys registry install state by the canonical bb skill slot", () => {
+  it("does not treat same-path, same-name, or different-source skills as installed", () => {
     const registrySkill = makeRegistrySkill();
     const duplicateSource = makeRegistrySkill({
       id: "another/repository/useful-skill",
@@ -1228,6 +1226,7 @@ describe("resolveInstalledRegistrySkill", () => {
       provider: null,
       scope: "bb-user",
       filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+      registrySkillId: registrySkill.id,
     });
     const sameNameInAnotherSlot = makeSkill({
       name: registrySkill.skillId,
@@ -1245,9 +1244,20 @@ describe("resolveInstalledRegistrySkill", () => {
     expect(resolveInstalledRegistrySkill(registrySkill, [installed])).toBe(
       installed,
     );
-    expect(resolveInstalledRegistrySkill(duplicateSource, [installed])).toBe(
-      installed,
-    );
+    expect(
+      resolveInstalledRegistrySkill(duplicateSource, [installed]),
+    ).toBeNull();
+    expect(
+      resolveInstalledRegistrySkill(registrySkill, [
+        makeSkill({
+          name: registrySkill.skillId,
+          provider: null,
+          scope: "bb-user",
+          filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
+          registrySkillId: null,
+        }),
+      ]),
+    ).toBeNull();
     expect(
       resolveInstalledRegistrySkill(registrySkill, [sameNameInAnotherSlot]),
     ).toBeNull();

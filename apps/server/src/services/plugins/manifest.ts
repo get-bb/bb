@@ -2,6 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
 import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
+import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 
 export interface PluginManifest {
   /** Sanitized plugin id derived from the package name. */
@@ -169,6 +170,9 @@ export async function readPluginManifest(
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
+    }
+    if (label === "bb.branding.experimental_icon") {
+      assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
   }
   const themeIds = new Set<string>();

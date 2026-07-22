@@ -35,12 +35,11 @@ import {
   TOOLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
   getAutomationDetailRoutePath,
-  getPluginDetailRoutePath,
-  getPluginsRoutePath,
   getSettingsRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
+import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -76,20 +75,6 @@ function LegacyAutomationDetailRedirect() {
   );
 }
 
-function LegacyPluginSettingsRedirect() {
-  const { pluginId } = useParams<{ pluginId?: string }>();
-  return (
-    <Navigate
-      to={
-        pluginId
-          ? getPluginDetailRoutePath({ pluginId })
-          : getPluginsRoutePath()
-      }
-      replace
-    />
-  );
-}
-
 function AppRoutes() {
   return (
     <AppLayout>
@@ -102,11 +87,19 @@ function AppRoutes() {
           />
           <Route
             path={SETTINGS_PLUGINS_ROUTE_PATH}
-            element={<Navigate to={getPluginsRoutePath()} replace />}
+            element={
+              <PluginSettingsCompatibilityRoute>
+                <SettingsView />
+              </PluginSettingsCompatibilityRoute>
+            }
           />
           <Route
             path={SETTINGS_PLUGIN_ROUTE_PATH}
-            element={<LegacyPluginSettingsRedirect />}
+            element={
+              <PluginSettingsCompatibilityRoute>
+                <SettingsView />
+              </PluginSettingsCompatibilityRoute>
+            }
           />
           <Route
             path={SETTINGS_PROVIDER_ROUTE_PATH}

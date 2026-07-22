@@ -1,6 +1,7 @@
-import { realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { pluginPackageJsonSchema, type PluginPackageJson } from "@bb/domain";
+import { assertValidPluginCompactIconSvg } from "./svg-asset.js";
 
 function resolveManifestPath(
   rootDir: string,
@@ -65,6 +66,9 @@ export async function validatePluginBuildManifest(
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
+    }
+    if (label === "bb.branding.experimental_icon") {
+      assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
   }
   return parsed.data;

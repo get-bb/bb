@@ -21,6 +21,7 @@
     "@tailwindcss/node": "^4.3.0",
     "@tailwindcss/oxide": "^4.3.0",
     "esbuild": "^0.28.0",
+    "saxes": "^6.0.0",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {

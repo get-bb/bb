@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -13,6 +13,7 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
+import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
 
 function registrationSet(
@@ -30,10 +31,19 @@ function registrationSet(
   };
 }
 
-function renderWithProviders(ui: ReactNode) {
+function LocationProbe() {
+  return <output aria-label="Current path">{useLocation().pathname}</output>;
+}
+
+function renderWithProviders(ui: ReactNode, toolsHubEnabled = false) {
   return render(
     <MemoryRouter>
-      <SidebarProvider>{ui}</SidebarProvider>
+      <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
+        <SidebarProvider>
+          {ui}
+          <LocationProbe />
+        </SidebarProvider>
+      </ToolsHubExperimentProvider>
     </MemoryRouter>,
   );
 }
@@ -107,4 +117,33 @@ describe("PluginSidebarFooterActions", () => {
       expect.stringContaining('sidebarFooterAction "boom" failed: nope'),
     );
   });
+
+  it.each([
+    [false, "/settings/plugins/remote"],
+    [true, "/tools/plugins/remote"],
+  ] as const)(
+    "opens the %s Tools Hub plugin settings destination",
+    (toolsHubEnabled, expectedPath) => {
+      setPluginSlotRegistrations(
+        "remote",
+        registrationSet({
+          sidebarFooterActions: [
+            {
+              id: "settings",
+              title: "Remote settings",
+              icon: "Settings",
+              run: ({ openSettings }) => openSettings(),
+            },
+          ],
+        }),
+      );
+
+      renderWithProviders(<PluginSidebarFooterActions />, toolsHubEnabled);
+      fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
+
+      expect(screen.getByLabelText("Current path").textContent).toBe(
+        expectedPath,
+      );
+    },
+  );
 });

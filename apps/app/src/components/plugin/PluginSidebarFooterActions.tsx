@@ -7,7 +7,11 @@ import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
 } from "@/lib/plugin-slots";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
+import {
+  getPluginDetailRoutePath,
+  getSettingsPluginRoutePath,
+} from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
@@ -39,6 +43,7 @@ function PluginSidebarFooterActionList({
   onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
+  const toolsHubEnabled = useToolsHubExperiment();
   return (
     <>
       {actions.map((action) => (
@@ -57,7 +62,11 @@ function PluginSidebarFooterActionList({
             data-testid={`plugin-sidebar-footer-action-${action.pluginId}-${action.id}`}
             onClick={() => {
               onNavigate?.();
-              runSidebarFooterAction({ action, navigate });
+              runSidebarFooterAction({
+                action,
+                navigate,
+                toolsHubEnabled,
+              });
             }}
           >
             <PluginIcon pluginId={action.pluginId} icon={action.icon} />
@@ -72,12 +81,18 @@ function PluginSidebarFooterActionList({
 function runSidebarFooterAction({
   action,
   navigate,
+  toolsHubEnabled,
 }: {
   action: PluginSidebarFooterActionSlot;
   navigate: ReturnType<typeof useNavigate>;
+  toolsHubEnabled: boolean;
 }): void {
   const openSettings = () => {
-    void navigate(getPluginDetailRoutePath({ pluginId: action.pluginId }));
+    void navigate(
+      toolsHubEnabled
+        ? getPluginDetailRoutePath({ pluginId: action.pluginId })
+        : getSettingsPluginRoutePath(action.pluginId),
+    );
   };
   const warn = (error: unknown) => {
     console.warn(

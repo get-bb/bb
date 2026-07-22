@@ -1,9 +1,51 @@
-import type { ComposerCustomization } from "@bb/plugin-sdk";
+import type {
+  ComposerCustomization,
+  PluginComposerThreadRowStatus,
+} from "@bb/plugin-sdk";
 
 export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 type RejectionReporter = (reason: string) => void;
+
+/**
+ * Parse the runtime value handed to `setThreadRowStatus`. `undefined` means
+ * the value was rejected; `null` remains the explicit clear operation.
+ */
+export function normalizeComposerThreadRowStatus(
+  value: unknown,
+  onRejected: RejectionReporter,
+): PluginComposerThreadRowStatus | null | undefined {
+  const kind = "composer.setThreadRowStatus";
+  if (value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    onRejected(`${kind}: status must be null or a non-array object`);
+    return undefined;
+  }
+
+  const status = value as Record<string, unknown>;
+  const icon = status.icon;
+  if (typeof icon !== "string" || icon.trim() === "") {
+    onRejected(`${kind}: "icon" must be a non-blank string`);
+    return undefined;
+  }
+  const label = status.label;
+  if (typeof label !== "string" || label.trim() === "") {
+    onRejected(`${kind}: "label" must be a non-blank string`);
+    return undefined;
+  }
+  const tone = status.tone;
+  if (tone !== undefined && tone !== "default" && tone !== "success") {
+    onRejected(`${kind}: "tone" must be "default" or "success" when set`);
+    return undefined;
+  }
+
+  return {
+    icon: icon.trim(),
+    label: label.trim(),
+    ...(tone !== undefined ? { tone } : {}),
+  };
+}
 
 export function requireSlotId(kind: string, value: unknown): string {
   if (typeof value !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(value)) {

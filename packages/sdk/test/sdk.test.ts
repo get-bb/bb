@@ -1501,6 +1501,7 @@ describe("@bb/sdk", () => {
               pluginId: null,
               filePath: "/skills/local-skill/SKILL.md",
               manageable: true,
+              registrySkillId: null,
             },
           ],
         },

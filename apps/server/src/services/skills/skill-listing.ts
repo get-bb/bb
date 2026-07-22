@@ -20,6 +20,7 @@ import {
 import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/project-workspace.js";
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
+import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -154,6 +155,7 @@ export function assembleSkillList(
             : null,
         filePath: skill.filePath,
         manageable: mapped.manageable && !skill.linked,
+        registrySkillId: null,
       });
     }
   }
@@ -176,9 +178,13 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
   })
     .map(({ provenance, runtimeSource }): SkillSummary | null => {
       if (runtimeSource.kind !== "tree") return null;
-      const rootPath = deps.skillTreeRegistry.resolve(runtimeSource.treeHash);
-      if (rootPath === undefined) return null;
       const builtin = provenance.kind === "builtin";
+      const rootPath = path.join(
+        builtin
+          ? deps.config.builtinSkillsRootPath
+          : resolveDataDirSkillsRootPath(deps.config.dataDir),
+        runtimeSource.name,
+      );
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
         id: skillId(builtin ? "bb-builtin" : "bb-data-dir", logicalPath),
@@ -189,6 +195,7 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: !builtin,
+        registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
       };
     })
     .filter((skill): skill is SkillSummary => skill !== null)
@@ -214,6 +221,7 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: false,
+        registrySkillId: null,
       };
     })
     .filter((skill): skill is SkillSummary => skill !== null)

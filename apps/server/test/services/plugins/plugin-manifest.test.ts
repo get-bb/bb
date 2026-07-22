@@ -149,6 +149,28 @@ describe("plugin manifest", () => {
     );
   });
 
+  it.each([
+    ["non-SVG XML", "<html/>", /<svg> root element/],
+    ["malformed XML", "<svg><path></svg>", /not valid SVG XML/],
+    [
+      "entity declarations",
+      '<!DOCTYPE svg [<!ENTITY mark "x">]><svg>&mark;</svg>',
+      /must not contain a doctype declaration/,
+    ],
+    ["a foreign namespace", '<x:svg xmlns:x="urn:not-svg"/>', /<svg> root/],
+  ])(
+    "rejects branding.experimental_icon with %s",
+    async (_case, icon, error) => {
+      await writeFile(join(rootDir, "icon.svg"), icon);
+      await writeManifest(undefined, {
+        ...validBb,
+        branding: { experimental_icon: "./icon.svg" },
+      });
+
+      await expect(readPluginManifest(rootDir)).rejects.toThrow(error);
+    },
+  );
+
   it("rejects a dark logo without a light logo", async () => {
     await writeManifest(undefined, {
       ...validBb,

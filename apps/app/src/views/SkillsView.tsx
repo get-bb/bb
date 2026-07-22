@@ -300,24 +300,13 @@ export function resolveInstalledRegistrySkill(
   registrySkill: RegistrySkill,
   installedSkills: readonly SkillSummary[],
 ): SkillSummary | null {
-  const registrySlot = normalizeSkillName(registrySkill.skillId);
   return (
     installedSkills.find((installedSkill) => {
-      if (
-        installedSkill.scope !== "bb-user" ||
-        installedSkill.provider !== null ||
-        !installedSkill.manageable
-      ) {
-        return false;
-      }
-      const segments = installedSkill.filePath
-        .replaceAll("\\", "/")
-        .split("/")
-        .filter(Boolean);
       return (
-        segments.at(-1)?.toLowerCase() === "skill.md" &&
-        segments.at(-3)?.toLowerCase() === "skills" &&
-        normalizeSkillName(segments.at(-2) ?? "") === registrySlot
+        installedSkill.scope === "bb-user" &&
+        installedSkill.provider === null &&
+        installedSkill.manageable &&
+        installedSkill.registrySkillId === registrySkill.id
       );
     }) ?? null
   );
@@ -1263,6 +1252,7 @@ export function SkillsLibrary() {
         page: registryRequestPage,
         perPage: REGISTRY_PAGE_SIZE,
       }),
+    enabled: isRegistryBrowseRoute,
     staleTime: 60_000,
   });
   const registryInstall = useMutation({
@@ -1333,7 +1323,8 @@ export function SkillsLibrary() {
           (installedSkill) =>
             installedSkill.scope === "bb-user" &&
             installedSkill.provider === null &&
-            installedSkill.filePath === installedPath,
+            installedSkill.filePath === installedPath &&
+            installedSkill.registrySkillId === skill.id,
         ) ?? null
       );
     },
@@ -1376,7 +1367,8 @@ export function SkillsLibrary() {
                 (candidate) =>
                   candidate.scope === "bb-user" &&
                   candidate.provider === null &&
-                  candidate.filePath === confirmedPath,
+                  candidate.filePath === confirmedPath &&
+                  candidate.registrySkillId === skill.id,
               ) ?? null)
             : null);
         if (installedSkill === null) {

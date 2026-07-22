@@ -15,11 +15,23 @@ interface UseComposerAttachmentUploadsArgs {
 }
 
 export interface UseComposerAttachmentUploadsResult {
-  attachmentError: string | null;
-  setAttachmentError: (error: string | null) => void;
+  bottomAttachmentError: string | null;
+  setBottomAttachmentError: (error: string | null) => void;
   handleAttachBottomFiles: (files: File[]) => Promise<void>;
+  isAttachingBottomFiles: boolean;
+  inlineAttachmentError: string | null;
+  setInlineAttachmentError: (error: string | null) => void;
   handleAttachInlineFiles: (files: File[]) => Promise<void>;
-  isAttaching: boolean;
+  isAttachingInlineFiles: boolean;
+}
+
+interface AttachmentOperationState {
+  error: string | null;
+  pendingCount: number;
+}
+
+interface InlineAttachmentOperationState extends AttachmentOperationState {
+  editSessionId: number | null;
 }
 
 /**
@@ -35,40 +47,89 @@ export function useComposerAttachmentUploads({
   commitInlineQueuedMessage,
 }: UseComposerAttachmentUploadsArgs): UseComposerAttachmentUploadsResult {
   const uploadPromptAttachment = useUploadPromptAttachment();
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [bottomOperation, setBottomOperation] =
+    useState<AttachmentOperationState>({ error: null, pendingCount: 0 });
+  const [inlineOperation, setInlineOperation] =
+    useState<InlineAttachmentOperationState>({
+      editSessionId: null,
+      error: null,
+      pendingCount: 0,
+    });
 
-  const uploadFiles = useCallback(
-    async (
-      files: File[],
-      attachmentOwner:
-        | { addAttachment: typeof addDraftAttachment; kind: "bottom" }
-        | {
-            editSessionId: number;
-            kind: "queued";
-            ownerThreadId: string;
-            queuedMessageId: string;
-          },
-    ) => {
-      if (files.length === 0) {
-        return;
-      }
-      setAttachmentError(null);
+  const setBottomAttachmentError = useCallback((error: string | null) => {
+    setBottomOperation((current) => ({ ...current, error }));
+  }, []);
+  const setInlineAttachmentError = useCallback(
+    (error: string | null) => {
+      const editSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+      setInlineOperation((current) => ({
+        editSessionId,
+        error,
+        pendingCount:
+          current.editSessionId === editSessionId ? current.pendingCount : 0,
+      }));
+    },
+    [inlineEditingQueuedMessage?.editSessionId],
+  );
+
+  const handleAttachBottomFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setBottomOperation((current) => ({
+        error: null,
+        pendingCount: current.pendingCount + 1,
+      }));
       const failedFiles: string[] = [];
-      for (const file of files) {
-        try {
-          const uploaded = await uploadPromptAttachment.mutateAsync({
-            projectId,
-            file,
-          });
-          if (attachmentOwner.kind === "bottom") {
-            attachmentOwner.addAttachment(uploaded);
-          } else {
+      try {
+        for (const file of files) {
+          try {
+            const uploaded = await uploadPromptAttachment.mutateAsync({
+              projectId,
+              file,
+            });
+            addDraftAttachment(uploaded);
+          } catch {
+            failedFiles.push(file.name);
+          }
+        }
+      } finally {
+        setBottomOperation((current) => ({
+          error:
+            failedFiles.length > 0
+              ? `Failed to attach: ${failedFiles.join(", ")}`
+              : current.error,
+          pendingCount: Math.max(0, current.pendingCount - 1),
+        }));
+      }
+    },
+    [addDraftAttachment, projectId, uploadPromptAttachment],
+  );
+  const handleAttachInlineFiles = useCallback(
+    async (files: File[]) => {
+      if (!inlineEditingQueuedMessage || files.length === 0) return;
+      const { editSessionId, ownerThreadId, queuedMessageId } =
+        inlineEditingQueuedMessage;
+      setInlineOperation((current) => ({
+        editSessionId,
+        error: null,
+        pendingCount:
+          current.editSessionId === editSessionId
+            ? current.pendingCount + 1
+            : 1,
+      }));
+      const failedFiles: string[] = [];
+      try {
+        for (const file of files) {
+          try {
+            const uploaded = await uploadPromptAttachment.mutateAsync({
+              projectId,
+              file,
+            });
             const current = inlineEditingQueuedMessageRef.current;
             if (
-              current &&
-              current.editSessionId === attachmentOwner.editSessionId &&
-              current.ownerThreadId === attachmentOwner.ownerThreadId &&
-              current.queuedMessageId === attachmentOwner.queuedMessageId &&
+              current?.editSessionId === editSessionId &&
+              current.ownerThreadId === ownerThreadId &&
+              current.queuedMessageId === queuedMessageId &&
               !current.draft.attachments.some(
                 (existing) => existing.path === uploaded.path,
               )
@@ -81,50 +142,52 @@ export function useComposerAttachmentUploads({
                 },
               });
             }
+          } catch {
+            failedFiles.push(file.name);
           }
-        } catch {
-          failedFiles.push(file.name);
         }
-      }
-      if (failedFiles.length > 0) {
-        setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
+      } finally {
+        setInlineOperation((current) =>
+          current.editSessionId === editSessionId
+            ? {
+                editSessionId,
+                error:
+                  failedFiles.length > 0 &&
+                  inlineEditingQueuedMessageRef.current?.editSessionId ===
+                    editSessionId
+                    ? `Failed to attach: ${failedFiles.join(", ")}`
+                    : current.error,
+                pendingCount: Math.max(0, current.pendingCount - 1),
+              }
+            : current,
+        );
       }
     },
     [
       commitInlineQueuedMessage,
+      inlineEditingQueuedMessage,
       inlineEditingQueuedMessageRef,
       projectId,
       uploadPromptAttachment,
     ],
   );
-  const handleAttachBottomFiles = useCallback(
-    (files: File[]) =>
-      uploadFiles(files, {
-        addAttachment: addDraftAttachment,
-        kind: "bottom",
-      }),
-    [addDraftAttachment, uploadFiles],
-  );
-  const handleAttachInlineFiles = useCallback(
-    (files: File[]) => {
-      if (!inlineEditingQueuedMessage) {
-        return Promise.resolve();
-      }
-      return uploadFiles(files, {
-        editSessionId: inlineEditingQueuedMessage.editSessionId,
-        kind: "queued",
-        ownerThreadId: inlineEditingQueuedMessage.ownerThreadId,
-        queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
-      });
-    },
-    [inlineEditingQueuedMessage, uploadFiles],
-  );
+
+  const currentInlineEditSessionId =
+    inlineEditingQueuedMessage?.editSessionId ?? null;
+  const isCurrentInlineOperation =
+    inlineOperation.editSessionId === currentInlineEditSessionId;
 
   return {
-    attachmentError,
-    setAttachmentError,
+    bottomAttachmentError: bottomOperation.error,
+    setBottomAttachmentError,
     handleAttachBottomFiles,
+    isAttachingBottomFiles: bottomOperation.pendingCount > 0,
+    inlineAttachmentError: isCurrentInlineOperation
+      ? inlineOperation.error
+      : null,
+    setInlineAttachmentError,
     handleAttachInlineFiles,
-    isAttaching: uploadPromptAttachment.isPending,
+    isAttachingInlineFiles:
+      isCurrentInlineOperation && inlineOperation.pendingCount > 0,
   };
 }

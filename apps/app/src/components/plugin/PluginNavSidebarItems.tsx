@@ -14,6 +14,7 @@ import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSpli
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 
 /**
  * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row
@@ -27,13 +28,16 @@ export function PluginNavSidebarItems(props: {
   splitEnabled?: boolean;
 }) {
   const { navPanels } = usePluginSlots();
-  const visibleNavPanels = navPanels.filter(
-    (panel) =>
-      !(
-        panel.pluginId === AUTOMATIONS_PLUGIN_ID &&
-        panel.path === AUTOMATIONS_PLUGIN_PANEL_PATH
-      ),
-  );
+  const toolsHubEnabled = useToolsHubExperiment();
+  const visibleNavPanels = toolsHubEnabled
+    ? navPanels.filter(
+        (panel) =>
+          !(
+            panel.pluginId === AUTOMATIONS_PLUGIN_ID &&
+            panel.path === AUTOMATIONS_PLUGIN_PANEL_PATH
+          ),
+      )
+    : navPanels;
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
   if (visibleNavPanels.length === 0) return null;

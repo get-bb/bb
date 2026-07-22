@@ -5,10 +5,15 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/ymichael/bb
 
-import { ComposerCustomization } from '@bb/plugin-sdk';
+import { ComposerCustomization, PluginComposerThreadRowStatus } from '@bb/plugin-sdk';
 
 declare const PLUGIN_SLOT_ID_PATTERN: RegExp;
 type RejectionReporter = (reason: string) => void;
+/**
+ * Parse the runtime value handed to `setThreadRowStatus`. `undefined` means
+ * the value was rejected; `null` remains the explicit clear operation.
+ */
+declare function normalizeComposerThreadRowStatus(value: unknown, onRejected: RejectionReporter): PluginComposerThreadRowStatus | null | undefined;
 declare function requireSlotId(kind: string, value: unknown): string;
 declare function requireMessageDirectiveId(kind: string, value: unknown): string;
 declare function requireNonEmptyString(kind: string, field: string, value: unknown): string;
@@ -21,4 +26,4 @@ declare function requireUniqueId(kind: string, seen: Set<string>, id: string): v
  */
 declare function collectComposerCustomization(registration: unknown, seenIds: Set<string>, onRejected: RejectionReporter): ComposerCustomization | null;
 
-export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalString, requireSlotId, requireUniqueId };
+export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, normalizeComposerThreadRowStatus, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalString, requireSlotId, requireUniqueId };

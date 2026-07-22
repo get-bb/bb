@@ -7,6 +7,7 @@ import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { loadPluginBrandingAssets } from "../../../src/services/plugins/app-bundle.js";
 
 // Same origin trick as the app-bundle tests: the harness config's serverPort
 // puts this host on the local-app origin allowlist.
@@ -116,6 +117,17 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
       `${BASE}${disabled?.experimental_iconUrl}`,
     );
     expect(disabledIcon.status).toBe(200);
+  });
+
+  it("validates the exact compact icon bytes before snapshotting them", async () => {
+    const iconPath = join(harness.config.dataDir, "mutable-icon.svg");
+    await writeFile(iconPath, "<html/>");
+
+    await expect(
+      loadPluginBrandingAssets("mutable", {
+        branding: { compactIconPath: iconPath },
+      }),
+    ).rejects.toThrow(/<svg> root element/);
   });
 
   it("serves an explicit light SVG hash-cached as image/svg+xml", async () => {

@@ -7,6 +7,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
+import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
@@ -219,6 +220,12 @@ function collectSkillTreeEntries(
   for (const entry of fs
     .readdirSync(currentPath, { withFileTypes: true })
     .sort(sortDirentsByName)) {
+    if (
+      currentPath === rootPath &&
+      entry.name === REGISTRY_SKILL_PROVENANCE_FILE_NAME
+    ) {
+      continue;
+    }
     const entryPath = path.join(currentPath, entry.name);
     const stat = fs.lstatSync(entryPath);
     if (stat.isSymbolicLink()) {

@@ -253,7 +253,7 @@ export function ThreadDetailPromptArea({
   const focusQueuedPluginComposer = useCallback(() => {
     setEditFocusNonce((nonce) => nonce + 1);
   }, []);
-  const clearAttachmentErrorRef = useRef<() => void>(() => {});
+  const clearInlineAttachmentErrorRef = useRef<() => void>(() => {});
   const {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
@@ -264,7 +264,7 @@ export function ThreadDetailPromptArea({
     ownerThreadId: thread.id,
     queuedMessages,
     onBeginEdit: () => {
-      clearAttachmentErrorRef.current();
+      clearInlineAttachmentErrorRef.current();
       // Focus the composer caret at the end so the restored draft is ready to
       // keep typing (FollowUpPromptBox `focusEndKey`).
       setEditFocusNonce((nonce) => nonce + 1);
@@ -305,11 +305,14 @@ export function ThreadDetailPromptArea({
     commitInlineQueuedMessage,
   });
   const {
-    attachmentError,
-    setAttachmentError,
+    bottomAttachmentError,
+    setBottomAttachmentError,
     handleAttachBottomFiles,
+    isAttachingBottomFiles,
+    inlineAttachmentError,
+    setInlineAttachmentError,
     handleAttachInlineFiles,
-    isAttaching,
+    isAttachingInlineFiles,
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
@@ -317,7 +320,7 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
-  clearAttachmentErrorRef.current = () => setAttachmentError(null);
+  clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
   const promptTextEffects = useComposerTextEffects(promptDraft.storageKey);
   const queuedComposerTextEffectKey = inlineEditingQueuedMessage
     ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
@@ -466,8 +469,8 @@ export function ThreadDetailPromptArea({
     // it leaves the queue — i.e. the steer has been accepted and surfaces in
     // the timeline — rather than clearing the moment the send request resolves.
     sendProcessingPersistence: "until-left-queue",
-    onSendSuccess: () => setAttachmentError(null),
-    onSaveSuccess: () => setAttachmentError(null),
+    onSendSuccess: () => setInlineAttachmentError(null),
+    onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
     activeComposerDraftInput,
@@ -648,7 +651,7 @@ export function ThreadDetailPromptArea({
     }
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
-    setAttachmentError(null);
+    setBottomAttachmentError(null);
 
     try {
       if (isQueuingMessage) {
@@ -692,7 +695,7 @@ export function ThreadDetailPromptArea({
     isDefaultExecutionOptionsLoading,
     promptDraft,
     sendMessage,
-    setAttachmentError,
+    setBottomAttachmentError,
     thread.id,
     runtimeDisplayStatus,
   ]);
@@ -715,7 +718,7 @@ export function ThreadDetailPromptArea({
     if (shortcutRequest.kind === "draft") {
       setIsFollowUpShortcutSending(true);
       promptDraft.clearIfCurrentMatches(submittedDraft);
-      setAttachmentError(null);
+      setBottomAttachmentError(null);
 
       try {
         await sendMessage.mutateAsync(shortcutRequest.request);
@@ -755,7 +758,7 @@ export function ThreadDetailPromptArea({
     promptDraft,
     sendMessage,
     sendQueuedMessageById,
-    setAttachmentError,
+    setBottomAttachmentError,
     thread.id,
   ]);
 
@@ -817,16 +820,16 @@ export function ThreadDetailPromptArea({
     () => ({
       items: currentPromptDraft.attachments,
       projectId,
-      isAttaching,
-      error: attachmentError,
+      isAttaching: isAttachingBottomFiles,
+      error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
       onRemove: promptDraft.removeAttachment,
     }),
     [
-      attachmentError,
+      bottomAttachmentError,
       currentPromptDraft.attachments,
       handleAttachBottomFiles,
-      isAttaching,
+      isAttachingBottomFiles,
       projectId,
       promptDraft.removeAttachment,
     ],
@@ -835,16 +838,16 @@ export function ThreadDetailPromptArea({
     () => ({
       items: activeComposerDraft.attachments,
       projectId,
-      isAttaching,
-      error: attachmentError,
+      isAttaching: isAttachingInlineFiles,
+      error: inlineAttachmentError,
       onAttachFiles: handleAttachInlineFiles,
       onRemove: removeActiveComposerAttachment,
     }),
     [
       activeComposerDraft.attachments,
-      attachmentError,
+      inlineAttachmentError,
       handleAttachInlineFiles,
-      isAttaching,
+      isAttachingInlineFiles,
       projectId,
       removeActiveComposerAttachment,
     ],

@@ -6,14 +6,21 @@ import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import matter from "gray-matter";
 import { ApiError } from "../../errors.js";
+import {
+  REGISTRY_SKILL_PROVENANCE_FILE_NAME,
+  writeRegistrySkillProvenance,
+} from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILLS_INSTALL_TIMEOUT_MS = 120_000;
 const MAX_INSTALL_OUTPUT_BYTES = 1_000_000;
 const MAX_SKILL_FILES = 1_000;
+const MAX_SKILL_DIRECTORIES = 1_000;
 const MAX_SKILL_BYTES = 10 * 1024 * 1024;
 const MAX_SKILL_DEPTH = 24;
 const REGISTRY_SKILLS_CLI_VERSION = "1.5.19";
+const REGISTRY_SKILL_NAME_PATTERN =
+  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
 interface InstallCommandResult {
   ok: boolean;
@@ -131,7 +138,11 @@ async function validateSkillFile(
 ): Promise<void> {
   const content = await fs.readFile(skillFilePath, "utf8").catch(() => null);
   if (content === null) {
-    throw new ApiError(422, "registry_skill_invalid", "Skill is missing SKILL.md");
+    throw new ApiError(
+      422,
+      "registry_skill_invalid",
+      "Skill is missing SKILL.md",
+    );
   }
   let data: Record<string, unknown>;
   try {
@@ -162,8 +173,13 @@ async function copyBoundedSkillTree(args: {
   sourcePath: string;
 }): Promise<void> {
   let fileCount = 0;
+  let directoryCount = 0;
   let totalBytes = 0;
-  async function walk(sourcePath: string, destinationPath: string, depth: number) {
+  async function walk(
+    sourcePath: string,
+    destinationPath: string,
+    depth: number,
+  ) {
     if (depth > MAX_SKILL_DEPTH) {
       throw new Error(`Skill tree exceeds max depth ${MAX_SKILL_DEPTH}`);
     }
@@ -174,8 +190,13 @@ async function copyBoundedSkillTree(args: {
       const sourceEntryPath = path.join(sourcePath, entry.name);
       const destinationEntryPath = path.join(destinationPath, entry.name);
       const stat = await fs.lstat(sourceEntryPath);
-      if (stat.isSymbolicLink()) throw new Error("Skill tree contains a symlink");
+      if (stat.isSymbolicLink())
+        throw new Error("Skill tree contains a symlink");
       if (stat.isDirectory()) {
+        directoryCount += 1;
+        if (directoryCount > MAX_SKILL_DIRECTORIES) {
+          throw new Error("Skill tree exceeds installation limits");
+        }
         await walk(sourceEntryPath, destinationEntryPath, depth + 1);
         continue;
       }
@@ -192,12 +213,125 @@ async function copyBoundedSkillTree(args: {
   await walk(args.sourcePath, args.destinationPath, 0);
 }
 
+type SkillTreeEntry =
+  | { kind: "directory"; path: string }
+  | { kind: "file"; mode: number; path: string; size: number };
+
+async function collectBoundedSkillTree(
+  rootPath: string,
+): Promise<SkillTreeEntry[]> {
+  const rootStat = await fs.lstat(rootPath);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error("Skill root is not a directory");
+  }
+  const entries: SkillTreeEntry[] = [];
+  let fileCount = 0;
+  let directoryCount = 0;
+  let totalBytes = 0;
+
+  async function walk(currentPath: string, depth: number): Promise<void> {
+    if (depth > MAX_SKILL_DEPTH) {
+      throw new Error(`Skill tree exceeds max depth ${MAX_SKILL_DEPTH}`);
+    }
+    const children = await fs.readdir(currentPath, { withFileTypes: true });
+    children.sort((left, right) => left.name.localeCompare(right.name));
+    for (const child of children) {
+      const childPath = path.join(currentPath, child.name);
+      const relativePath = path.relative(rootPath, childPath);
+      const stat = await fs.lstat(childPath);
+      if (stat.isSymbolicLink()) {
+        throw new Error("Skill tree contains a symlink");
+      }
+      if (stat.isDirectory()) {
+        directoryCount += 1;
+        if (directoryCount > MAX_SKILL_DIRECTORIES) {
+          throw new Error("Skill tree exceeds installation limits");
+        }
+        entries.push({ kind: "directory", path: relativePath });
+        await walk(childPath, depth + 1);
+        continue;
+      }
+      if (!stat.isFile()) {
+        throw new Error("Skill tree contains a special file");
+      }
+      fileCount += 1;
+      totalBytes += stat.size;
+      if (fileCount > MAX_SKILL_FILES || totalBytes > MAX_SKILL_BYTES) {
+        throw new Error("Skill tree exceeds installation limits");
+      }
+      entries.push({
+        kind: "file",
+        mode: stat.mode & 0o777,
+        path: relativePath,
+        size: stat.size,
+      });
+    }
+  }
+
+  await walk(rootPath, 0);
+  return entries;
+}
+
+async function boundedSkillTreesMatch(
+  leftRootPath: string,
+  rightRootPath: string,
+): Promise<boolean> {
+  try {
+    const [leftEntries, rightEntries] = await Promise.all([
+      collectBoundedSkillTree(leftRootPath),
+      collectBoundedSkillTree(rightRootPath),
+    ]);
+    if (leftEntries.length !== rightEntries.length) return false;
+    for (const [index, left] of leftEntries.entries()) {
+      const right = rightEntries[index];
+      if (
+        right === undefined ||
+        left.kind !== right.kind ||
+        left.path !== right.path
+      ) {
+        return false;
+      }
+      if (left.kind === "directory" || right.kind === "directory") continue;
+      if (
+        left.size !== right.size ||
+        (process.platform !== "win32" && left.mode !== right.mode)
+      ) {
+        return false;
+      }
+      const [leftBytes, rightBytes] = await Promise.all([
+        fs.readFile(path.join(leftRootPath, left.path)),
+        fs.readFile(path.join(rightRootPath, right.path)),
+      ]);
+      if (!leftBytes.equals(rightBytes)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function installConflict(skillId: string): ApiError {
+  return new ApiError(
+    409,
+    "skill_install_conflict",
+    `Skill "${skillId}" already exists with different or unsafe contents; bb left it unchanged`,
+  );
+}
+
 /** Download and atomically adopt one registry skill into server-owned user storage. */
 export async function installServerRegistrySkill(args: {
   dataDir: string;
   packageRef: string;
+  registrySkillId: string;
   skillId: string;
 }): Promise<{ filePath: string }> {
+  if (!REGISTRY_SKILL_NAME_PATTERN.test(args.skillId)) {
+    throw new ApiError(
+      400,
+      "invalid_registry_skill",
+      "Registry skill id is invalid",
+    );
+  }
   const extractionRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "bb-registry-skill-"),
   );
@@ -209,7 +343,21 @@ export async function installServerRegistrySkill(args: {
     `.tmp-import-${args.skillId}-${randomUUID()}`,
   );
   try {
-    if ((await fs.lstat(finalSkillPath).catch(() => null)) !== null) {
+    const existingTarget = await fs.lstat(finalSkillPath).catch(() => null);
+    const existingProvenanceFile =
+      existingTarget === null
+        ? null
+        : await fs
+            .lstat(
+              path.join(finalSkillPath, REGISTRY_SKILL_PROVENANCE_FILE_NAME),
+            )
+            .catch(() => null);
+    if (
+      existingTarget !== null &&
+      (!existingTarget.isDirectory() ||
+        existingTarget.isSymbolicLink() ||
+        existingProvenanceFile !== null)
+    ) {
       throw new ApiError(
         409,
         "skill_already_installed",
@@ -243,6 +391,34 @@ export async function installServerRegistrySkill(args: {
       await copyBoundedSkillTree({
         sourcePath: extractedSkillPath,
         destinationPath: temporarySkillPath,
+      });
+    } catch (error) {
+      throw new ApiError(
+        422,
+        "registry_skill_invalid",
+        error instanceof Error ? error.message : "Downloaded skill is invalid",
+      );
+    }
+    if (existingTarget !== null) {
+      // Pre-provenance builds wrote registry skills to this same directory.
+      // A path/name match is not ownership: adopt only an exact safe snapshot.
+      if (!(await boundedSkillTreesMatch(temporarySkillPath, finalSkillPath))) {
+        throw installConflict(args.skillId);
+      }
+      try {
+        await writeRegistrySkillProvenance({
+          registrySkillId: args.registrySkillId,
+          skillDirectoryPath: finalSkillPath,
+        });
+      } catch {
+        throw installConflict(args.skillId);
+      }
+      return { filePath: path.join(finalSkillPath, SKILL_FILE_NAME) };
+    }
+    try {
+      await writeRegistrySkillProvenance({
+        registrySkillId: args.registrySkillId,
+        skillDirectoryPath: temporarySkillPath,
       });
     } catch (error) {
       throw new ApiError(

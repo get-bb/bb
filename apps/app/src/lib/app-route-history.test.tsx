@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
+import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
@@ -19,6 +20,7 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
+  getPluginPanelRoutePath,
   getSkillDetailRoutePath,
 } from "./route-paths";
 import { useRouteStateHistoryNavigation } from "./app-route-history";
@@ -148,17 +150,21 @@ function PluginNavigationHarness() {
   );
 }
 
-function RemountablePluginNavigationHarness() {
+function RemountablePluginNavigationHarness({
+  toolsHubEnabled = true,
+}: {
+  toolsHubEnabled?: boolean;
+}) {
   const [mountKey, setMountKey] = useState(0);
   return (
-    <>
+    <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
       <button type="button" onClick={() => setMountKey((value) => value + 1)}>
         Remount plugin
       </button>
       <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
         <PluginNavigationHarness key={mountKey} />
       </PluginContext.Provider>
-    </>
+    </ToolsHubExperimentProvider>
   );
 }
 
@@ -279,5 +285,23 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
+  });
+
+  it("keeps the Automations plugin panel route when Tools Hub is disabled", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <RemountablePluginNavigationHarness toolsHubEnabled={false} />
+      </MemoryRouter>,
+    );
+
+    const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
+    await clickAndExpectPath(
+      "Open direct edit",
+      getPluginPanelRoutePath({
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+        subPath: editSubPath,
+      }),
+    );
   });
 });

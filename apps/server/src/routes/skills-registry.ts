@@ -968,6 +968,7 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     const result = await installServerRegistrySkill({
       dataDir: deps.config.dataDir,
       packageRef: packageRefForSource(registrySkill.source),
+      registrySkillId: registrySkill.id,
       skillId: registrySkill.skillId,
     });
     return context.json({ ok: true, filePath: result.filePath });

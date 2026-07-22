@@ -17,3 +17,4 @@ export {
   type PluginServerBuildResult,
 } from "./build-plugin-server.js";
 export * from "./plugin-dev-loop.js";
+export { assertValidPluginCompactIconSvg } from "./svg-asset.js";

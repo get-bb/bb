@@ -414,6 +414,8 @@ export const skillSummarySchema = z.object({
   filePath: z.string(),
   /** `true` when the skill is user-owned and its full lifecycle is manageable. */
   manageable: z.boolean(),
+  /** Exact registry entry that installed this skill; `null` for every other source. */
+  registrySkillId: z.string().min(1).nullable(),
 });
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
 

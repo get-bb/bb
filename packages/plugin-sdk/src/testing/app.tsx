@@ -47,6 +47,7 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   collectComposerCustomization,
+  normalizeComposerThreadRowStatus,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
   requireMessageDirectiveId,
@@ -1016,8 +1017,13 @@ export function renderSlot<
         if (!composerOwnership.active || composerScope.kind === "new-thread") {
           return;
         }
-        composerLog.threadRowStatus = status;
-        composerLog.threadRowStatusCalls.push(status);
+        const normalizedStatus = normalizeComposerThreadRowStatus(
+          status,
+          (reason) => console.warn(reason),
+        );
+        if (normalizedStatus === undefined) return;
+        composerLog.threadRowStatus = normalizedStatus;
+        composerLog.threadRowStatusCalls.push(normalizedStatus);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();

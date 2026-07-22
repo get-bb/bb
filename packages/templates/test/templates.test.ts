@@ -52,6 +52,8 @@ describe("@bb/templates", () => {
     expect(guide).toContain("bb automation update <automationId>");
     expect(guide).toContain("replace the previous execution completely");
     expect(guide).toContain("--env-json");
+    expect(guide).toContain("--permission-mode <accept-edits|auto|full>");
+    expect(guide).not.toContain("workspace-write|readonly");
   });
 
   it("renders agent thread messages without inline reply guidance", () => {

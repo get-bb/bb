@@ -455,7 +455,7 @@ function EmbeddedThreadChatWithComposer({
     };
   }, []);
 
-  const clearAttachmentErrorRef = useRef<() => void>(() => {});
+  const clearInlineAttachmentErrorRef = useRef<() => void>(() => {});
   const {
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageRef,
@@ -467,7 +467,7 @@ function EmbeddedThreadChatWithComposer({
     ownerThreadId: threadId,
     queuedMessages,
     onBeginEdit: () => {
-      clearAttachmentErrorRef.current();
+      clearInlineAttachmentErrorRef.current();
       setInlineComposerFocusNonce((nonce) => nonce + 1);
     },
   });
@@ -487,11 +487,14 @@ function EmbeddedThreadChatWithComposer({
     commitInlineQueuedMessage,
   });
   const {
-    attachmentError,
-    setAttachmentError,
+    bottomAttachmentError,
+    setBottomAttachmentError,
     handleAttachBottomFiles,
+    isAttachingBottomFiles,
+    inlineAttachmentError,
+    setInlineAttachmentError,
     handleAttachInlineFiles,
-    isAttaching,
+    isAttachingInlineFiles,
   } = useComposerAttachmentUploads({
     projectId,
     addDraftAttachment: promptDraft.addAttachment,
@@ -499,7 +502,7 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
-  clearAttachmentErrorRef.current = () => setAttachmentError(null);
+  clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId,
     providerId,
@@ -538,7 +541,7 @@ function EmbeddedThreadChatWithComposer({
     queuedMessages,
     sendProcessingPersistence: "clear-on-settle",
     canSendNow: () => !isProvisioning,
-    onSaveSuccess: () => setAttachmentError(null),
+    onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
     dismissInlineQueuedMessageEditor,
     activeComposerDraftInput,
@@ -601,7 +604,7 @@ function EmbeddedThreadChatWithComposer({
     }
     onDraftSubmitted?.(submittedInput);
     promptDraft.clearIfCurrentMatches(submittedDraft);
-    setAttachmentError(null);
+    setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
     void (
       sendOrQueueInput
@@ -641,7 +644,7 @@ function EmbeddedThreadChatWithComposer({
     onDraftSubmitted,
     promptDraft,
     sendOrQueueInput,
-    setAttachmentError,
+    setBottomAttachmentError,
   ]);
 
   const isQueueMutationPending =
@@ -673,7 +676,7 @@ function EmbeddedThreadChatWithComposer({
     }
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
-    setAttachmentError(null);
+    setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
     void sendThreadMessage
       .mutateAsync({
@@ -708,7 +711,7 @@ function EmbeddedThreadChatWithComposer({
     promptDraft,
     queuedMessages,
     sendThreadMessage,
-    setAttachmentError,
+    setBottomAttachmentError,
     threadId,
   ]);
 
@@ -1015,16 +1018,16 @@ function EmbeddedThreadChatWithComposer({
     () => ({
       items: currentPromptDraft.attachments,
       projectId,
-      isAttaching,
-      error: attachmentError,
+      isAttaching: isAttachingBottomFiles,
+      error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
       onRemove: promptDraft.removeAttachment,
     }),
     [
-      attachmentError,
+      bottomAttachmentError,
       currentPromptDraft.attachments,
       handleAttachBottomFiles,
-      isAttaching,
+      isAttachingBottomFiles,
       projectId,
       promptDraft.removeAttachment,
     ],
@@ -1033,16 +1036,16 @@ function EmbeddedThreadChatWithComposer({
     () => ({
       items: activeComposerDraft.attachments,
       projectId,
-      isAttaching,
-      error: attachmentError,
+      isAttaching: isAttachingInlineFiles,
+      error: inlineAttachmentError,
       onAttachFiles: handleAttachInlineFiles,
       onRemove: removeActiveComposerAttachment,
     }),
     [
       activeComposerDraft.attachments,
-      attachmentError,
+      inlineAttachmentError,
       handleAttachInlineFiles,
-      isAttaching,
+      isAttachingInlineFiles,
       projectId,
       removeActiveComposerAttachment,
     ],

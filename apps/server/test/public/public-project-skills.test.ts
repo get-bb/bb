@@ -14,6 +14,7 @@ import {
   skillListResponseSchema,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { writeRegistrySkillProvenance } from "../../src/services/skills/registry-skill-provenance.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -583,6 +584,7 @@ describe("public project skills route", () => {
       expect(installServerRegistrySkillMock).toHaveBeenCalledWith({
         dataDir: harness.deps.config.dataDir,
         packageRef: "vercel-labs/skills",
+        registrySkillId: "github.com/vercel-labs/skills/find-skills",
         skillId: "find-skills",
       });
     });
@@ -688,6 +690,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/data/skills/bb-helper/SKILL.md",
           manageable: true,
+          registrySkillId: null,
         },
         {
           id: skillId("/cwd/.claude/skills/cp/SKILL.md"),
@@ -698,6 +701,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
           manageable: true,
+          registrySkillId: null,
         },
         {
           id: skillId("/home/.claude/skills/cu/SKILL.md"),
@@ -708,6 +712,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/home/.claude/skills/cu/SKILL.md",
           manageable: true,
+          registrySkillId: null,
         },
         {
           id: skillId("/home/.codex/skills/cx/SKILL.md"),
@@ -718,6 +723,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/home/.codex/skills/cx/SKILL.md",
           manageable: true,
+          registrySkillId: null,
         },
       ]);
       // Queried once per command-surface provider, with the env workspace cwd.
@@ -731,6 +737,94 @@ describe("public project skills route", () => {
       for (const command of listed) {
         expect(command).toMatchObject({ cwd: "/tmp/skills-env" });
       }
+    });
+  });
+
+  it("reports exact registry provenance only for registry-installed user skills", async () => {
+    await withTestHarness(async (harness) => {
+      const registrySkillDirectory = join(
+        harness.deps.config.dataDir,
+        "skills",
+        "find-skills",
+      );
+      const builtinCollisionDirectory = join(
+        harness.deps.config.builtinSkillsRootPath,
+        "find-skills",
+      );
+      const manualSkillDirectory = join(
+        harness.deps.config.dataDir,
+        "skills",
+        "manual-skill",
+      );
+      await Promise.all([
+        mkdir(registrySkillDirectory, { recursive: true }),
+        mkdir(builtinCollisionDirectory, { recursive: true }),
+        mkdir(manualSkillDirectory, { recursive: true }),
+      ]);
+      const collidingSkillContent =
+        "---\nname: find-skills\ndescription: Find skills.\n---\n";
+      await Promise.all([
+        writeFile(
+          join(registrySkillDirectory, "SKILL.md"),
+          collidingSkillContent,
+        ),
+        writeFile(
+          join(builtinCollisionDirectory, "SKILL.md"),
+          collidingSkillContent,
+        ),
+        writeFile(
+          join(manualSkillDirectory, "SKILL.md"),
+          "---\nname: manual-skill\ndescription: Manual skill.\n---\n",
+        ),
+        writeRegistrySkillProvenance({
+          registrySkillId: "github.com/vercel-labs/skills/find-skills",
+          skillDirectoryPath: registrySkillDirectory,
+        }),
+      ]);
+
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-registry-provenance",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/registry-provenance-project",
+      });
+      registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills?environmentId=`,
+      );
+
+      expect(response.status).toBe(200);
+      const listed = skillListResponseSchema.parse(await readJson(response));
+      const collidingSkills = listed.skills
+        .filter((skill) => skill.name === "find-skills")
+        .map(({ filePath, registrySkillId, scope }) => ({
+          filePath,
+          registrySkillId,
+          scope,
+        }));
+      expect(collidingSkills).toHaveLength(2);
+      expect(collidingSkills).toEqual(
+        expect.arrayContaining([
+          {
+            filePath: join(builtinCollisionDirectory, "SKILL.md"),
+            registrySkillId: null,
+            scope: "bb-builtin",
+          },
+          {
+            filePath: join(registrySkillDirectory, "SKILL.md"),
+            registrySkillId: "github.com/vercel-labs/skills/find-skills",
+            scope: "bb-user",
+          },
+        ]),
+      );
+      expect(
+        listed.skills.find((skill) => skill.name === "manual-skill"),
+      ).toMatchObject({ scope: "bb-user", registrySkillId: null });
     });
   });
 

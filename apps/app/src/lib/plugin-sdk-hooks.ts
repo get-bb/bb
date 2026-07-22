@@ -21,6 +21,7 @@ import type {
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
+import { normalizeComposerThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -56,6 +57,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
+import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 
 /**
  * Host implementations of the `@bb/plugin-sdk/app` hooks (plugin design
@@ -296,6 +298,7 @@ export function useBbContext(): BbContext {
 
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
+  const toolsHubEnabled = useToolsHubExperiment();
   const location = useLocation();
   const openThreadPanel = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
@@ -324,6 +327,7 @@ export function useBbNavigate(): BbNavigate {
   const toPluginPanel = useCallback(
     (path: string, options?: { subPath?: string; replace?: boolean }) => {
       const route =
+        toolsHubEnabled &&
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         path === AUTOMATIONS_PLUGIN_PANEL_PATH
           ? getAutomationPluginPanelRoutePath(options?.subPath ?? "")
@@ -336,7 +340,7 @@ export function useBbNavigate(): BbNavigate {
             });
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
-    [navigate, pluginId],
+    [navigate, pluginId, toolsHubEnabled],
   );
   const toCompose = useCallback(
     (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
@@ -737,11 +741,16 @@ export function useComposer(): PluginComposerApi {
       ) {
         return;
       }
-      if (status !== null) registerVisualStateOwner();
+      const normalizedStatus = normalizeComposerThreadRowStatus(
+        status,
+        (reason) => console.warn(`bb plugin "${pluginId}": ${reason}`),
+      );
+      if (normalizedStatus === undefined) return;
+      if (normalizedStatus !== null) registerVisualStateOwner();
       setPluginThreadRowStatus(
         threadRowStatusThreadId,
         pluginId,
-        status,
+        normalizedStatus,
         visualStateOwner,
       );
     },

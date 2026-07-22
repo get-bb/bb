@@ -30,6 +30,7 @@ describe("bb skill commands", () => {
           scope: "codex-user",
           filePath: "/home/user/.agents/skills/review/SKILL.md",
           manageable: true,
+          registrySkillId: null,
         },
       ],
     }));
