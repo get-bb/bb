@@ -81,9 +81,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
           bb: {
             name,
             description: `${name} builtin plugin fixture.`,
-            branding: {
-              icon: usesPluginOwnedIcon ? "./assets/icon.svg" : "Zap",
-            },
+            branding: usesPluginOwnedIcon
+              ? { experimental_icon: "./assets/icon.svg" }
+              : { icon: "Zap" },
             server: "./src/server.ts",
             app: "./app.tsx",
             skills: ["skills"],
