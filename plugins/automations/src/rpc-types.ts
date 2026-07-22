@@ -287,7 +287,7 @@ export const updateAutomationInputSchema = z
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH).optional(),
     trigger: automationTriggerSchema.optional(),
     execution: automationExecutionRequestSchema.optional(),
-    experimental_agent: agentExecutionUpdateSchema.optional(),
+    agent: agentExecutionUpdateSchema.optional(),
   })
   .strict()
   .refine(
@@ -295,14 +295,13 @@ export const updateAutomationInputSchema = z
       value.name !== undefined ||
       value.trigger !== undefined ||
       value.execution !== undefined ||
-      value.experimental_agent !== undefined,
+      value.agent !== undefined,
     { message: "at least one field is required" },
   )
   .refine(
-    (value) =>
-      value.execution === undefined || value.experimental_agent === undefined,
+    (value) => value.execution === undefined || value.agent === undefined,
     {
-      message: "execution and experimental_agent updates cannot be combined",
+      message: "execution and agent updates cannot be combined",
     },
   );
 export type UpdateAutomationInput = z.infer<typeof updateAutomationInputSchema>;

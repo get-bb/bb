@@ -444,14 +444,14 @@ async function buildUpdateRequest(
   } else {
     const agentUpdate = await buildAgentExecutionUpdate(bb, args);
     if (agentUpdate !== undefined) {
-      request.experimental_agent = agentUpdate;
+      request.agent = agentUpdate;
     }
   }
   if (
     request.name === undefined &&
     request.trigger === undefined &&
     request.execution === undefined &&
-    request.experimental_agent === undefined
+    request.agent === undefined
   ) {
     throw new Error(
       "No changes requested. Provide --name, schedule flags, a complete agent/script execution, or partial agent update flags.",

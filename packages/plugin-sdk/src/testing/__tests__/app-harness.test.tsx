@@ -6,7 +6,6 @@ import { z } from "zod";
 import type {
   PluginComposerApi,
   PluginComposerScope,
-  PluginMessageDirectiveOpenThreadPanel,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -100,11 +99,7 @@ function InlineVis({
   );
 }
 
-function ComposerProbe({
-  openThreadPanel,
-}: {
-  openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
-}) {
+function ComposerProbe() {
   const composer = useComposer();
   const view = useComposerView();
   capturedComposerVisualSetters = {
@@ -123,7 +118,9 @@ function ComposerProbe({
       <span data-testid="composer-attachment-count">
         {view.draft.attachmentCount}
       </span>
-      <span data-testid="composer-is-empty">{String(view.draft.isEmpty)}</span>
+      <span data-testid="composer-is-empty">
+        {String(view.draft.isEmpty)}
+      </span>
       <button type="button" onClick={() => composer.setText("replacement")}>
         replace
       </button>
@@ -167,18 +164,6 @@ function ComposerProbe({
       </button>
       <button type="button" onClick={() => composer.focus()}>
         focus
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          openThreadPanel?.({
-            actionId: "library-panel",
-            title: "UI Patterns",
-            params: { entryId: "button" },
-          })
-        }
-      >
-        open panel
       </button>
     </div>
   );
@@ -737,24 +722,6 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
-  });
-
-  it("passes the Workflows-style thread-panel opener to composer actions", () => {
-    const openThreadPanel = vi.fn(() => true);
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      { openThreadPanel },
-      { composer: { scope: { kind: "thread", threadId: "thr_1" } } },
-    );
-
-    fireEvent.click(slot.getByText("open panel"));
-
-    const expected = {
-      actionId: "library-panel",
-      title: "UI Patterns",
-      params: { entryId: "button" },
-    };
-    expect(openThreadPanel).toHaveBeenCalledWith(expected);
   });
 
   it("records composer thread-row status changes", () => {

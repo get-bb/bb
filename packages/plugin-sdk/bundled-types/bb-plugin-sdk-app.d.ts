@@ -473,14 +473,7 @@ interface ComposerCustomization {
     scopes?: readonly PluginComposerScope["kind"][];
     actions?: readonly {
         id: string;
-        component: ComponentType<{
-            /**
-             * Opens one of this plugin's own `threadPanelAction` components in the
-             * current thread side panel. Omitted by older hosts; null on composer
-             * surfaces without a thread panel.
-             */
-            openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
-        }>;
+        component: ComponentType;
     }[];
     banners?: readonly {
         id: string;

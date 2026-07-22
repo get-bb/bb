@@ -616,7 +616,7 @@ describe("automations server plugin harness", () => {
       await harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: created.id,
-        experimental_agent: {
+        agent: {
           prompt: "updated by RPC",
           permissionMode: "full",
           target: { type: "target-thread", threadId: THREAD_ID },
@@ -640,7 +640,7 @@ describe("automations server plugin harness", () => {
       harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: created.id,
-        experimental_agent: { permissionMode: "write" },
+        agent: { permissionMode: "write" },
       }),
     ).rejects.toThrow();
 
@@ -668,7 +668,7 @@ describe("automations server plugin harness", () => {
       harness.callRpc("automations_update", {
         projectId: PROJECT_ID,
         automationId: created.id,
-        experimental_agent: { permissionMode: "auto" },
+        agent: { permissionMode: "auto" },
       }),
     ).rejects.toThrow(
       "Permission mode auto is not supported by provider codex.",

@@ -1018,11 +1018,7 @@ banners?, richText? })`. Omitted `scopes` means all thread, queued-message,
 - `actions` and `banners` are plugin React components. Calls to
   `useComposer()` and `useComposerView()` inside them are bound to the composer
   that mounted the component. Actions render before native voice/submit and
-  are unavailable in compact layout; banners render above the composer. Action
-  components receive `openThreadPanel`, the same optional callback as message
-  directives. Call it with `{ actionId, title?, params? }`; the host scopes it
-  to the calling plugin, older hosts omit it, and unsupported composer surfaces
-  pass `null`.
+  are unavailable in compact layout; banners render above the composer.
 - `plusMenu` rows are host-rendered so keyboard navigation, focus restoration,
   and mobile layout remain correct. Each `ComposerPlusMenuItem` supplies
   `id`, `label`, optional `icon`, `description`, and `disabled`, plus

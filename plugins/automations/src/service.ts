@@ -442,13 +442,8 @@ export function createAutomationService(args: {
     async update(input) {
       await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
-      if (
-        input.execution !== undefined &&
-        input.experimental_agent !== undefined
-      ) {
-        throw new Error(
-          "execution and experimental_agent updates cannot be combined",
-        );
+      if (input.execution !== undefined && input.agent !== undefined) {
+        throw new Error("execution and agent updates cannot be combined");
       }
       const now = Date.now();
       const currentExecution = parseAutomationExecution(current.execution);
@@ -478,8 +473,8 @@ export function createAutomationService(args: {
         patch.execution = stored.execution;
         stagedScriptFile = stored.writtenScriptFile;
       }
-      if (input.experimental_agent !== undefined) {
-        if (input.experimental_agent.permissionMode !== undefined) {
+      if (input.agent !== undefined) {
+        if (input.agent.permissionMode !== undefined) {
           if (currentExecution.mode !== "agent") {
             throw new Error(
               "Agent execution options can only update agent automations",
@@ -488,12 +483,12 @@ export function createAutomationService(args: {
           await resolvePermissionMode(
             bb,
             currentExecution.providerId,
-            input.experimental_agent.permissionMode,
+            input.agent.permissionMode,
           );
         }
         patch.execution = applyAgentExecutionUpdate(
           currentExecution,
-          input.experimental_agent,
+          input.agent,
         );
       }
       let updated: AutomationRow | null;

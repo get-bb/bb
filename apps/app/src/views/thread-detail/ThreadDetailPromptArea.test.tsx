@@ -23,7 +23,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import type { ThreadTimelineOpenPluginPanelHandler } from "@/components/thread/timeline";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
   resetPluginSlotStoreForTest,
@@ -607,7 +606,6 @@ interface RenderPromptAreaOptions {
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
   pendingInteractionsInitialLoading?: boolean;
-  openPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
   thread?: ThreadWithRuntime;
 }
 
@@ -617,7 +615,6 @@ function buildPromptAreaElement({
   modelFallback = null,
   pendingInteractions = [],
   pendingInteractionsInitialLoading = false,
-  openPluginPanel = vi.fn(() => true),
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
@@ -634,7 +631,6 @@ function buildPromptAreaElement({
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}
       onChangedFileClick={vi.fn()}
-      openPluginPanel={openPluginPanel}
       openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
       pendingInteractions={pendingInteractions}
@@ -693,65 +689,6 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
-  it("keeps thread-panel opens scoped to the calling plugin", () => {
-    const openPluginPanel = vi.fn(() => true);
-    renderPromptArea({ openPluginPanel });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Capture plugin host" }),
-    );
-
-    const result = mocks.pluginComposerHost?.openPluginThreadPanel?.(
-      "ui-patterns",
-      {
-        actionId: "library-panel",
-        title: "UI Patterns",
-        pluginId: "workflows",
-      } as Parameters<
-        NonNullable<PluginComposerHost["openPluginThreadPanel"]>
-      >[1],
-    );
-
-    expect(result).toBe(true);
-    expect(openPluginPanel).toHaveBeenCalledWith({
-      pluginId: "ui-patterns",
-      actionId: "library-panel",
-      title: "UI Patterns",
-    });
-  });
-
-  it("keeps queued-composer panel opens scoped to the calling plugin", () => {
-    const openPluginPanel = vi.fn(() => true);
-    mocks.queuedMessages = [makeQueuedMessage()];
-    renderPromptArea({ openPluginPanel });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    const inlineEditor = within(
-      screen.getByTestId("inline-queued-message-editor"),
-    );
-    fireEvent.click(
-      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
-    );
-
-    const result = mocks.pluginComposerHost?.openPluginThreadPanel?.(
-      "ui-patterns",
-      {
-        actionId: "library-panel",
-        title: "UI Patterns",
-        pluginId: "workflows",
-      } as Parameters<
-        NonNullable<PluginComposerHost["openPluginThreadPanel"]>
-      >[1],
-    );
-
-    expect(result).toBe(true);
-    expect(openPluginPanel).toHaveBeenCalledWith({
-      pluginId: "ui-patterns",
-      actionId: "library-panel",
-      title: "UI Patterns",
-    });
-  });
-
   it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 

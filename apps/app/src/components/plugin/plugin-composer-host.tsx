@@ -9,11 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type {
-  ComposerView,
-  PluginComposerScope,
-  PluginMessageDirectiveThreadPanelOptions,
-} from "@bb/plugin-sdk";
+import type { ComposerView, PluginComposerScope } from "@bb/plugin-sdk";
 import { isComposerDraftEmpty } from "@bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
@@ -32,10 +28,6 @@ export interface PluginComposerHost {
   getCurrent(): PromptDraftState;
   setDraft(next: PromptDraftState): void;
   focus(): void;
-  openPluginThreadPanel?(
-    pluginId: string,
-    options: PluginMessageDirectiveThreadPanelOptions,
-  ): boolean;
 }
 
 export function composerScopeIdentity(scope: PluginComposerScope): string {

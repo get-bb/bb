@@ -16,9 +16,6 @@ import {
 function SectionComponent(_props: Partial<PluginHomepageSectionProps>) {
   return null;
 }
-function ComposerComponent() {
-  return null;
-}
 function PanelComponent(_props: PluginNavPanelProps) {
   return null;
 }
@@ -65,7 +62,7 @@ describe("plugin slot store", () => {
         composerCustomizations: [
           {
             id: "pick",
-            actions: [{ id: "pick", component: ComposerComponent }],
+            actions: [{ id: "pick", component: SectionComponent }],
           },
         ],
       }),
