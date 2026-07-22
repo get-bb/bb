@@ -16,6 +16,10 @@ Composer UI extensions register through `app.composer.customize(...)`. A
 host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
 Mounted components use `useComposer()` for writes, effects, and input locking,
 and `useComposerView()` for the reactive scope, layout, draft, and run state.
+Any mounted plugin component can use
+`useBbNavigate().experimental_openThreadPanel(...)` to request one of the
+same plugin's registered thread-panel actions; it returns false when the
+current surface has no thread side panel.
 
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)

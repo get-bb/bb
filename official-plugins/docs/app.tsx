@@ -678,10 +678,7 @@ function parseDocumentRef(value: unknown): DocumentRef | null {
   return { vaultId, path, title };
 }
 
-function DocsDirectiveCard({
-  attributes,
-  openThreadPanel,
-}: PluginMessageDirectiveProps) {
+function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const navigate = useBbNavigate();
   const document = parseDocumentRef(attributes);
   if (!document) {
@@ -696,16 +693,15 @@ function DocsDirectiveCard({
       subPath: `${document.vaultId}/${document.path}`,
     });
   const openPreview = () => {
-    const opened =
-      openThreadPanel?.({
-        actionId: "document",
+    const opened = navigate.experimental_openThreadPanel({
+      actionId: "document",
+      title: document.title,
+      params: {
+        vaultId: document.vaultId,
+        path: document.path,
         title: document.title,
-        params: {
-          vaultId: document.vaultId,
-          path: document.path,
-          title: document.title,
-        },
-      }) ?? false;
+      },
+    });
     if (!opened) openInDocs();
   };
   return (
@@ -1709,10 +1705,7 @@ function Tree({
             }}
             onDrop={(event) => moveIntoFolder(event, "")}
           >
-            <HugeiconsIcon
-              icon={Folder01Icon}
-              className="size-4 shrink-0"
-            />
+            <HugeiconsIcon icon={Folder01Icon} className="size-4 shrink-0" />
             Move to top level
           </button>
         ) : null}
@@ -2098,9 +2091,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           onNewNote={newNote}
           onNewFolder={() => setFolderDialogOpen(true)}
           onDeleteFile={(path) => void deleteFile(path)}
-          onReorderFiles={(parent, paths) =>
-            void reorderFiles(parent, paths)
-          }
+          onReorderFiles={(parent, paths) => void reorderFiles(parent, paths)}
           onMoveFile={(sourcePath, targetFolder, targetOrder) =>
             void moveFile(sourcePath, targetFolder, targetOrder)
           }

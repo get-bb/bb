@@ -220,7 +220,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "source",
     "message",
     "openWorkspaceFile",
-    "openThreadPanel",
   ],
   experimental_messageAction: [
     "threadId",

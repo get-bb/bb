@@ -28,6 +28,23 @@ Audit before stabilizing:
 - Is returning a disposer plus `AbortSignal` sufficient for partial mounts, or
   should a future context expose additive cleanup registration?
 
+### `BbNavigate.experimental_openThreadPanel`
+
+A general plugin-navigation method that opens one of the current plugin's
+registered `threadPanelAction` tabs in the current thread surface. It accepts
+`{ actionId, title?, params? }` and returns whether the host accepted the
+request. The workflows banner and the Docs, Tasks, and workflows message
+directives are reference consumers.
+
+Audit before stabilizing:
+
+- Should panel opening remain part of `useBbNavigate`, or become a separate
+  navigation hook?
+- Is a false return sufficient for surfaces without a thread panel, or should
+  availability be separately observable for hiding controls?
+- Should a future form accept an explicit thread id for surfaces outside the
+  current thread tree?
+
 ### `experimental_ThreadChat`
 
 The host-owned chat component: given a `threadId`, renders bb's complete chat

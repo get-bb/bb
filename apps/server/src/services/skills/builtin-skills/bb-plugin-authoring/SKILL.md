@@ -931,7 +931,7 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   back to it. Pair with `bb.sdk.files` (rpc from your server) to load and
   CAS-save the content.
 - `messageDirective` → `{ attributes, source, message,
-openWorkspaceFile, openThreadPanel }` — register a leaf
+openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:
   `{ id, component }` where `id` is lowercase kebab-case beginning with a
   letter (e.g. `inline-vis` matches `::inline-vis{file="demo.html"}`).
@@ -943,12 +943,11 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   `(path: string) => boolean` or `null`; pass it a worktree-relative path to
   open that file in the host's workspace viewer. It is `null` when the message
   surface has no workspace viewer, and it returns whether the host accepted
-  the path. `openThreadPanel` is either
-  `({ actionId, title?, params? }) => boolean` or `null`; it opens one of the
-  same plugin's registered `threadPanelAction` components in the enclosing
-  thread side panel. `params` is typed as `JsonValue`, and the return value
-  reports whether the host accepted the action. Use a normal plugin navigation
-  action as the fallback when the callback is `null` or returns `false`.
+  the path. To open one of the same plugin's registered `threadPanelAction`
+  components, call
+  `useBbNavigate().experimental_openThreadPanel({ actionId, title?, params? })`.
+  `params` is typed as `JsonValue`; use normal plugin navigation as the
+  fallback when it returns false.
   **Host behavior / fallbacks:** only assistant and
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
@@ -972,8 +971,9 @@ openWorkspaceFile, openThreadPanel }` — register a leaf
   selection-menu invocations and holds the exact highlighted text; and
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
   registered `threadPanelAction` components in the current thread's side
-  panel — same semantics and boolean return as the message-directive
-  `openThreadPanel`. Errors from `run` (sync or async) are contained and
+  panel — same semantics and boolean return as
+  `useBbNavigate().experimental_openThreadPanel`. Errors from `run` (sync or
+  async) are contained and
   logged, never breaking the timeline.
 
 Host components:
@@ -1022,7 +1022,7 @@ Hooks:
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt).
+- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path, { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?), experimental_openThreadPanel({ actionId, title?, params? }) }`. `toCompose` opens the root compose screen; pass `initialPrompt` to seed the composer draft and `focusPrompt: true` to focus it (the "Create via chat" pattern — drop the user into chat with a prefilled prompt). `experimental_openThreadPanel` opens one of the current plugin's registered `threadPanelAction` tabs in the current thread surface and returns whether the host accepted it; it returns false on surfaces without a thread side panel.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;

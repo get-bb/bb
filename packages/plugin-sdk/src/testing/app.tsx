@@ -101,6 +101,10 @@ export type NavigateCall =
   | {
       method: "toCompose";
       options?: { initialPrompt?: string; focusPrompt?: boolean };
+    }
+  | {
+      method: "experimental_openThreadPanel";
+      options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0];
     };
 
 export interface ComposerLog {
@@ -760,6 +764,10 @@ export interface RenderSlotOptions<
     scope?: PluginComposerScope;
     attachmentCount?: number;
   };
+  /** Host acceptance for `useBbNavigate().experimental_openThreadPanel`. */
+  openThreadPanel?: (
+    options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0],
+  ) => boolean;
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -923,6 +931,13 @@ export function renderSlot<
         method: "toCompose",
         ...(composeOptions !== undefined ? { options: composeOptions } : {}),
       });
+    },
+    experimental_openThreadPanel(panelOptions) {
+      navigateCalls.push({
+        method: "experimental_openThreadPanel",
+        options: panelOptions,
+      });
+      return options.openThreadPanel?.(panelOptions) ?? false;
     },
   };
 

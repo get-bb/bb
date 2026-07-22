@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginContentScriptRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginContentScriptRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, BbNavigate, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -56,6 +56,9 @@ type NavigateCall = {
         initialPrompt?: string;
         focusPrompt?: boolean;
     };
+} | {
+    method: "experimental_openThreadPanel";
+    options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0];
 };
 interface ComposerLog {
     /** Latest plain text in this isolated composer scope. */
@@ -155,6 +158,8 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
         scope?: PluginComposerScope;
         attachmentCount?: number;
     };
+    /** Host acceptance for `useBbNavigate().experimental_openThreadPanel`. */
+    openThreadPanel?: (options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0]) => boolean;
 }
 /** Host-originated inputs a slot test can drive deterministically. */
 interface RenderedSlotBehaviorDrivers {

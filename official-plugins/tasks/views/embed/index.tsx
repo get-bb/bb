@@ -114,7 +114,10 @@ function OpenInTasksButton({
       variant="ghost"
       aria-label={label}
       onClick={() =>
-        navigate.toPluginPanel(PANEL_PATH, subPath === undefined ? {} : { subPath })
+        navigate.toPluginPanel(
+          PANEL_PATH,
+          subPath === undefined ? {} : { subPath },
+        )
       }
     >
       <Icon name="ArrowUpRight" className="size-4" />
@@ -153,10 +156,7 @@ function embedAriaLabel(task: Task): string {
   return `${parts.join(", ")} — open in side panel`;
 }
 
-export function TaskDirectiveCard({
-  attributes,
-  openThreadPanel,
-}: PluginMessageDirectiveProps) {
+export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
   const navigate = useBbNavigate();
   const taskKey = attributes.key?.trim() ?? "";
   const fallbackTitle = attributes.title?.trim() || null;
@@ -238,12 +238,11 @@ export function TaskDirectiveCard({
 
   const { task } = state;
   const openInSidePanel = () => {
-    const opened =
-      openThreadPanel?.({
-        actionId: "task",
-        title: task.key,
-        params: { taskKey: task.key },
-      }) ?? false;
+    const opened = navigate.experimental_openThreadPanel({
+      actionId: "task",
+      title: task.key,
+      params: { taskKey: task.key },
+    });
     if (!opened) {
       navigate.toPluginPanel(PANEL_PATH, {
         subPath: taskDetailSubPath(task.key),
