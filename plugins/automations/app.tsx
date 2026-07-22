@@ -834,7 +834,7 @@ function OverviewView({
     );
   } else {
     body = (
-      <ResourceListPanel fillHeight={hasInstalledPagination}>
+      <ResourceListPanel>
         {installedPagination.items.map((entry) => (
           <OverviewRow
             key={entry.automation.id}
@@ -886,7 +886,6 @@ function OverviewView({
         <ResourceCollectionViewport
           scrollId="automations-installed-results"
           viewportRef={setInstalledViewport}
-          fillContent={hasInstalledPagination}
           toolbar={
             <ResourceToolbar
               searchValue={query}

@@ -181,7 +181,6 @@ export function PluginsOverview() {
       <ResourceCollectionViewport
         scrollId="plugins-installed-results"
         viewportRef={setInstalledViewport}
-        fillContent={hasInstalledPagination}
         toolbar={
           <ResourceToolbar
             searchValue={installedQuery}
@@ -230,10 +229,7 @@ export function PluginsOverview() {
             message={`No plugins match "${installedQuery}"`}
           />
         ) : (
-          <InstalledPluginsTab
-            plugins={installedPagination.items}
-            fillHeight={hasInstalledPagination}
-          />
+          <InstalledPluginsTab plugins={installedPagination.items} />
         )}
         {!installationEnabled && systemConfig.data !== undefined ? (
           <p className="px-1 text-2xs text-subtle-foreground">

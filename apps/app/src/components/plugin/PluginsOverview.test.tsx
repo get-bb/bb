@@ -336,8 +336,8 @@ describe("PluginsOverview", () => {
       );
       const listPanel = document.querySelector("[data-resource-list-panel]");
       expect(viewport?.contains(footer)).toBe(false);
-      expect(collectionContent?.classList.contains("flex-1")).toBe(true);
-      expect(listPanel?.classList.contains("flex-1")).toBe(true);
+      expect(collectionContent).toBeNull();
+      expect(listPanel?.classList.contains("flex-1")).toBe(false);
 
       fireEvent.click(screen.getByRole("button", { name: "Next" }));
       expect(screen.getByText("16–30 of 30")).toBeTruthy();

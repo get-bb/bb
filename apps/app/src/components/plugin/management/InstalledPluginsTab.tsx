@@ -31,10 +31,8 @@ import { PluginLogo } from "./plugin-ui";
  */
 export function InstalledPluginsTab({
   plugins,
-  fillHeight = false,
 }: {
   plugins: readonly PluginListItem[];
-  fillHeight?: boolean;
 }) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
@@ -50,7 +48,7 @@ export function InstalledPluginsTab({
 
   return (
     <>
-      <ResourceListPanel fillHeight={fillHeight}>
+      <ResourceListPanel>
         <div className="divide-y divide-border">
           {plugins.map((plugin) => (
             <InstalledPluginRow

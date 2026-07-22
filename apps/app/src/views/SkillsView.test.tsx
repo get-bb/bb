@@ -243,7 +243,7 @@ describe("SkillsOverview", () => {
     ).toBe(true);
   });
 
-  it("fits whole installed rows to the available height while keeping pagination anchored", async () => {
+  it("fits whole installed rows without stretching the list to the anchored pagination footer", async () => {
     const skills = Array.from({ length: 30 }, (_, index) => {
       const ordinal = String(index + 1).padStart(2, "0");
       return makeSkill({
@@ -311,9 +311,9 @@ describe("SkillsOverview", () => {
       );
       const listPanel = document.querySelector("[data-resource-list-panel]");
       expect(viewport?.contains(footer)).toBe(false);
-      expect(viewport?.classList.contains("[&>div]:!flex")).toBe(true);
-      expect(collectionContent?.classList.contains("flex-1")).toBe(true);
-      expect(listPanel?.classList.contains("flex-1")).toBe(true);
+      expect(viewport?.classList.contains("[&>div]:!flex")).toBe(false);
+      expect(collectionContent).toBeNull();
+      expect(listPanel?.classList.contains("flex-1")).toBe(false);
       fireEvent.click(screen.getByRole("button", { name: "Next" }));
       expect(screen.getByText("16–30 of 30")).toBeTruthy();
 

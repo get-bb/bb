@@ -861,12 +861,10 @@ export function ResourceRowDetailChevron() {
 export function ResourceListPanel({
   children,
   maxHeightClassName,
-  fillHeight = false,
   className,
 }: {
   children: ReactNode;
   maxHeightClassName?: string;
-  fillHeight?: boolean;
   className?: string;
 }) {
   return (
@@ -874,7 +872,6 @@ export function ResourceListPanel({
       data-resource-list-panel
       className={cn(
         "overflow-hidden rounded-lg border border-border bg-card px-4 py-1",
-        fillHeight && "flex-1",
         className,
       )}
     >
@@ -1739,7 +1736,6 @@ export function ResourceCollectionViewport({
   footer,
   scrollId,
   viewportRef,
-  fillContent = false,
   className,
   contentClassName,
 }: {
@@ -1748,16 +1744,9 @@ export function ResourceCollectionViewport({
   footer?: ReactNode;
   scrollId?: string;
   viewportRef?: Ref<HTMLDivElement>;
-  fillContent?: boolean;
   className?: string;
   contentClassName?: string;
 }) {
-  // Radix inserts a display:table wrapper inside its viewport. Paginated fill
-  // layouts need that wrapper to participate in the flex height chain so the
-  // bordered collection reaches the footer without changing row geometry.
-  const fillContentClassName = fillContent
-    ? "[&>div]:!flex [&>div]:min-h-full [&>div]:flex-col"
-    : undefined;
   return (
     <div
       className={cn("flex h-full min-h-0 flex-col gap-3", className)}
@@ -1772,24 +1761,11 @@ export function ResourceCollectionViewport({
         viewportRef={viewportRef}
         viewportProps={{
           id: scrollId,
-          className: cn(
-            "overscroll-contain pr-1",
-            fillContentClassName,
-            contentClassName,
-          ),
+          className: cn("overscroll-contain pr-1", contentClassName),
           "data-resource-collection-scroll": true,
         }}
       >
-        {fillContent ? (
-          <div
-            className="flex flex-1 flex-col"
-            data-resource-collection-content
-          >
-            {children}
-          </div>
-        ) : (
-          children
-        )}
+        {children}
       </ScrollArea>
       {footer ? (
         <div

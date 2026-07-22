@@ -800,7 +800,7 @@ export function SkillsOverview({
       }
     />
   ) : (
-    <ResourceListPanel fillHeight={hasInstalledPagination}>
+    <ResourceListPanel>
       {installedPagination.items.map((skill) => (
         <SkillRow
           key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
@@ -835,7 +835,6 @@ export function SkillsOverview({
         <ResourceCollectionViewport
           scrollId="skills-installed-results"
           viewportRef={setInstalledViewport}
-          fillContent={hasInstalledPagination}
           toolbar={
             <ResourceToolbar
               searchValue={query}
