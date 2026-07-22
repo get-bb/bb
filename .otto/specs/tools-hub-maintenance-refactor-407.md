@@ -17,43 +17,43 @@ Frozen behavior contract: merged **PR #845** (`337641bd07c4016b024a4a1769429f29a
 
 ## Goals / Non-Goals
 
-| | |
-| --- | --- |
-| **Goal** | Break `resource-list.tsx` (2231 lines), `SkillsView.tsx` (1621), and `ToolsView.tsx` (1101) into concern-scoped modules behind stable public import paths. |
-| **Goal** | Extract the tangled Skills **registry data client** out of the `SkillsView` view file; split the 976-line server route into route + proxy + parse layers. |
-| **Goal** | Define ownership/dependency rules and four disjoint work packages that run in **separate worktrees** with no shared file. |
-| **Goal** | Every checkpoint stays green: typecheck, real tests, and real stories pass after each package. |
-| **Non-Goal** | Any product, UX, a11y, pagination, or responsive change. Behavior is frozen by PR #845. |
-| **Non-Goal** | Any wire-protocol change. `HOST_DAEMON_PROTOCOL_VERSION` stays at **63**. |
-| **Non-Goal** | New public API names, renamed exports, dependency upgrades, or "while I'm here" cleanups beyond the moves defined here. |
-| **Non-Goal** | Touching the `toolsHub` experiment gate logic, legacy Settings fallback, or install/provenance semantics. |
+|              |                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Goal**     | Break `resource-list.tsx` (2231 lines), `SkillsView.tsx` (1621), and `ToolsView.tsx` (1101) into concern-scoped modules behind stable public import paths. |
+| **Goal**     | Extract the tangled Skills **registry data client** out of the `SkillsView` view file; split the 976-line server route into route + proxy + parse layers.  |
+| **Goal**     | Define ownership/dependency rules and four disjoint work packages that run in **separate worktrees** with no shared file.                                  |
+| **Goal**     | Every checkpoint stays green: typecheck, real tests, and real stories pass after each package.                                                             |
+| **Non-Goal** | Any product, UX, a11y, pagination, or responsive change. Behavior is frozen by PR #845.                                                                    |
+| **Non-Goal** | Any wire-protocol change. `HOST_DAEMON_PROTOCOL_VERSION` stays at **63**.                                                                                  |
+| **Non-Goal** | New public API names, renamed exports, dependency upgrades, or "while I'm here" cleanups beyond the moves defined here.                                    |
+| **Non-Goal** | Touching the `toolsHub` experiment gate logic, legacy Settings fallback, or install/provenance semantics.                                                  |
 
 ## What Must Be Preserved
 
 Every item below is verified against source, not assumed. These are the invariants each work package protects.
 
-| Invariant | Anchor in the frozen contract |
-| --- | --- |
-| `toolsHub` experiment gating | `ToolsExperimentGate.tsx`, `settings-nav.tsx`, `AppLayout.tsx` route the same way when the flag is on/off. |
-| Legacy Settings compatibility | Skills/Plugins/Automations still reachable via Settings when the experiment is off. |
-| Rendered UX | Overview modules, focused tabs, rows, detail shell, and states render identically. |
-| APIs / routes | `GET /skills-registry`, `/entry`, `/detail`, `POST /skills-registry/install` (registered by `registerSkillsRegistryRoutes` at `apps/server/src/server.ts:457`) behave identically. |
-| CLI / SDK | `packages/sdk/src/areas/skills.ts` public surface (host list/delete skills) and any `bb` skills commands are byte-identical in behavior. |
-| Accessibility | Hover row actions stay keyboard-focus reachable; menu/focus semantics unchanged. |
-| Pagination / responsive | `RESOURCE_GRID_PAGE_SIZE = 12` (`packages/shared-ui/src/components/ui/resource-pagination.tsx`) and grid/responsive breakpoints unchanged. |
-| Install / provenance | `registry-skill-provenance.ts` file format and `registry-skill-install.ts` semantics unchanged. |
-| Wire compatibility | No session payload, WS message, or host RPC command/result field changes. Protocol version unchanged. |
+| Invariant                     | Anchor in the frozen contract                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `toolsHub` experiment gating  | `ToolsExperimentGate.tsx`, `settings-nav.tsx`, `AppLayout.tsx` route the same way when the flag is on/off.                                                                         |
+| Legacy Settings compatibility | Skills/Plugins/Automations still reachable via Settings when the experiment is off.                                                                                                |
+| Rendered UX                   | Overview modules, focused tabs, rows, detail shell, and states render identically.                                                                                                 |
+| APIs / routes                 | `GET /skills-registry`, `/entry`, `/detail`, `POST /skills-registry/install` (registered by `registerSkillsRegistryRoutes` at `apps/server/src/server.ts:457`) behave identically. |
+| CLI / SDK                     | `packages/sdk/src/areas/skills.ts` public surface (host list/delete skills) and any `bb` skills commands are byte-identical in behavior.                                           |
+| Accessibility                 | Hover row actions stay keyboard-focus reachable; menu/focus semantics unchanged.                                                                                                   |
+| Pagination / responsive       | `RESOURCE_GRID_PAGE_SIZE = 12` (`packages/shared-ui/src/components/ui/resource-pagination.tsx`) and grid/responsive breakpoints unchanged.                                         |
+| Install / provenance          | `registry-skill-provenance.ts` file format and `registry-skill-install.ts` semantics unchanged.                                                                                    |
+| Wire compatibility            | No session payload, WS message, or host RPC command/result field changes. Protocol version unchanged.                                                                              |
 
 ## Current Dependency And Coupling Map
 
 Three files carry too many concerns; the server route is oversized but service-backed and cleanly separable into parse/proxy/route layers. Consumers reach the shared UI through import specifiers that this refactor keeps stable.
 
-| File | Lines | Concerns tangled today | Public surface |
-| --- | ---: | --- | --- |
-| `packages/shared-ui/src/components/ui/resource-list.tsx` | 2231 | **69 exports**: atoms, toolbar/menus, rows, detail shell/sections/controls, collection/overview scaffolds | Imported by ≥10 app + plugin files via `@bb/shared-ui/resource-list` |
-| `apps/app/src/views/SkillsView.tsx` | 1621 | Registry **data client** (fetch/parse/install/format) **+** provider-filter helpers **+** Skills tab UI **+** overview **+** rows **+** detail | **21 exports** (manifest below); `ToolsView` imports `SkillsLibrary` |
-| `apps/app/src/views/ToolsView.tsx` | 1101 | Tools router **+** plugin capability rendering **+** plugin detail **+** automations tool view | **3 exports**: `ToolsScrollPage`, `PluginDetail`, `ToolsView` |
-| `apps/server/src/routes/skills-registry.ts` | 976 | Route registration **+** HTML/JSON parsers **+** registry proxy/fetch/hydrate **+** id/url/pagination helpers | Registered via `registerSkillsRegistryRoutes` (imported at `server.ts:26`) |
+| File                                                     | Lines | Concerns tangled today                                                                                                                         | Public surface                                                             |
+| -------------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `packages/shared-ui/src/components/ui/resource-list.tsx` |  2231 | **69 exports**: atoms, toolbar/menus, rows, detail shell/sections/controls, collection/overview scaffolds                                      | Imported by ≥10 app + plugin files via `@bb/shared-ui/resource-list`       |
+| `apps/app/src/views/SkillsView.tsx`                      |  1621 | Registry **data client** (fetch/parse/install/format) **+** provider-filter helpers **+** Skills tab UI **+** overview **+** rows **+** detail | **21 exports** (manifest below); `ToolsView` imports `SkillsLibrary`       |
+| `apps/app/src/views/ToolsView.tsx`                       |  1101 | Tools router **+** plugin capability rendering **+** plugin detail **+** automations tool view                                                 | **3 exports**: `ToolsScrollPage`, `PluginDetail`, `ToolsView`              |
+| `apps/server/src/routes/skills-registry.ts`              |   976 | Route registration **+** HTML/JSON parsers **+** registry proxy/fetch/hydrate **+** id/url/pagination helpers                                  | Registered via `registerSkillsRegistryRoutes` (imported at `server.ts:26`) |
 
 Coupling directions today (all preserved):
 
@@ -83,16 +83,16 @@ Convert `resource-list.tsx` into a barrel over a new `resource/` directory. Depe
 
 Exhaustive 69-export manifest by target module:
 
-| Target module | Depends on | Public exports it owns |
-| --- | --- | --- |
-| `resource/atoms.tsx` (~200) | — | `ResourceStatusTone`, `RESOURCE_ROUTE_LABEL_EVENT`, `useResourceRouteLabel`, `ResourceState`, `ResourceStatus`, `ResourceMeta`, `ResourceLocationMeta`, `ResourceCardStat` |
-| `resource/toolbar.tsx` (~400) | atoms | `ResourceToolbar`, `ResourceTabDescription`, `ResourceOption`, `ResourceOptionMenu`, `ResourceMultiSelectMenu`, `ResourceSortMenu`, `ResourceToolbarAction`, `ResourceCreateTemplate`, `ResourceCreateMenuAction`, `ResourceCreateButton` |
-| `resource/row.tsx` (~450) | atoms | `ResourceOverflowMenuItem`, `ResourceOverflowMenu`, `ResourceActionButton`, `ResourceRow`, `ResourceRowDetailChevron`, `ResourceListPanel`, `ResourceListState` |
-| `resource/detail-shell.tsx` (~400) | toolbar, atoms | `ResourceDetailSurface`, `ResourceDetailPanel`, `ResourcePromptContextItem`, `ResourcePromptPreview`, `ResourceDetailList`, `ResourceDetailCollection`, `ResourceDetailListItem`, `ResourceDetailActionRow`, `ResourcePropertyList`, `ResourceProperty`, `ResourceDetailStack`, `ResourcePromptEditor`, `ResourceSection`, `ResourceSectionTitle`, `ResourceOverview` |
-| `resource/detail-sections.tsx` (~250) | detail-shell | `ResourceDetailSectionKind`, `ResourceDetailSectionProps`, `ResourceDetailSection`, `ResourceDetailOverviewSection`, `ResourceDefinitionSection`, `ResourceDetailConfigurationSection`, `ResourceDetailReleaseSection`, `ResourceDetailIncludesSection`, `ResourceActivitySection`, `ResourceDetailPage` |
-| `resource/detail-controls.tsx` (~250) | detail-shell, atoms | `ResourceDetailFacts`, `ResourceDetailFact`, `ResourceLifecycleStatus`, `ResourceInstallControl`, `ResourceInstalledControl` |
-| `resource/collection.tsx` (~550, raised) | detail, toolbar, atoms | `ResourceCollectionMode`, `ResourceCollectionPage`, `ResourceCollectionViewport`, `ResourceOverviewSection`, `ResourceBrowseGrid`, `ResourceBrowseSectionItem`, `ResourceBrowseSection`, `ResourceOverviewPage`, `ResourceSourceShelf`, `ResourceShelfAction`, `ResourceShelfSeeAllAction`, `ResourceSourceItem`, `ResourceBrowseCard`, `ResourceTemplateBrowseCard` |
-| `resource-list.tsx` (kept, ~15) | all submodules | **Barrel only**: `export * from "./resource/atoms"` … `./collection`. Nothing else. |
+| Target module                            | Depends on             | Public exports it owns                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resource/atoms.tsx` (~200)              | —                      | `ResourceStatusTone`, `RESOURCE_ROUTE_LABEL_EVENT`, `useResourceRouteLabel`, `ResourceState`, `ResourceStatus`, `ResourceMeta`, `ResourceLocationMeta`, `ResourceCardStat`                                                                                                                                                                                            |
+| `resource/toolbar.tsx` (~400)            | atoms                  | `ResourceToolbar`, `ResourceTabDescription`, `ResourceOption`, `ResourceOptionMenu`, `ResourceMultiSelectMenu`, `ResourceSortMenu`, `ResourceToolbarAction`, `ResourceCreateTemplate`, `ResourceCreateMenuAction`, `ResourceCreateButton`                                                                                                                             |
+| `resource/row.tsx` (~450)                | atoms                  | `ResourceOverflowMenuItem`, `ResourceOverflowMenu`, `ResourceActionButton`, `ResourceRow`, `ResourceRowDetailChevron`, `ResourceListPanel`, `ResourceListState`                                                                                                                                                                                                       |
+| `resource/detail-shell.tsx` (~400)       | toolbar, atoms         | `ResourceDetailSurface`, `ResourceDetailPanel`, `ResourcePromptContextItem`, `ResourcePromptPreview`, `ResourceDetailList`, `ResourceDetailCollection`, `ResourceDetailListItem`, `ResourceDetailActionRow`, `ResourcePropertyList`, `ResourceProperty`, `ResourceDetailStack`, `ResourcePromptEditor`, `ResourceSection`, `ResourceSectionTitle`, `ResourceOverview` |
+| `resource/detail-sections.tsx` (~250)    | detail-shell           | `ResourceDetailSectionKind`, `ResourceDetailSectionProps`, `ResourceDetailSection`, `ResourceDetailOverviewSection`, `ResourceDefinitionSection`, `ResourceDetailConfigurationSection`, `ResourceDetailReleaseSection`, `ResourceDetailIncludesSection`, `ResourceActivitySection`, `ResourceDetailPage`                                                              |
+| `resource/detail-controls.tsx` (~250)    | detail-shell, atoms    | `ResourceDetailFacts`, `ResourceDetailFact`, `ResourceLifecycleStatus`, `ResourceInstallControl`, `ResourceInstalledControl`                                                                                                                                                                                                                                          |
+| `resource/collection.tsx` (~550, raised) | detail, toolbar, atoms | `ResourceCollectionMode`, `ResourceCollectionPage`, `ResourceCollectionViewport`, `ResourceOverviewSection`, `ResourceBrowseGrid`, `ResourceBrowseSectionItem`, `ResourceBrowseSection`, `ResourceOverviewPage`, `ResourceSourceShelf`, `ResourceShelfAction`, `ResourceShelfSeeAllAction`, `ResourceSourceItem`, `ResourceBrowseCard`, `ResourceTemplateBrowseCard`  |
+| `resource-list.tsx` (kept, ~15)          | all submodules         | **Barrel only**: `export * from "./resource/atoms"` … `./collection`. Nothing else.                                                                                                                                                                                                                                                                                   |
 
 Count: 8 + 10 + 7 + 15 + 10 + 5 + 14 = **69**, matching the current surface exactly.
 
@@ -103,14 +103,14 @@ Count: 8 + 10 + 7 + 15 + 10 + 5 + 14 = **69**, matching the current surface exac
 
 Frontend data client pulled out of the view; server route split into three layers with a one-way **route → proxy → parse** dependency. No behavior crosses the server/daemon boundary.
 
-| Target module | Owns | Notes |
-| --- | --- | --- |
-| `apps/app/src/lib/skills-registry.ts` (new) | `RegistrySkill*` types, `parseRegistrySkill(s)`, `fetchRegistrySkills`, `fetchRegistrySkillDetail`, `fetchRegistrySkillEntry`, `installRegistrySkill`, `normalizeSkillName`, `resolveInstalledRegistrySkill`, `formatRegistrySource`, `formatInstallCount`, and `REGISTRY_PAGE_SIZE` (= `RESOURCE_GRID_PAGE_SIZE`) | Pure data/format layer. **No React imports.** `SkillsView` re-exports every name from here. |
-| `apps/app/src/lib/skills-filters.ts` (new) | `ResourceProviderFilter`, `ResourceSortMode`, `ResourceSortDirection`, `RESOURCE_PROVIDER_FILTERS`, `providerLabel`, `skillProviderFilterId`, `providerFilterLabel`, `compareNullableProvider`, `applySortDirection` | Pure `SkillSummary` sort/filter helpers, currently internal to `SkillsView`. **No React imports.** Consumed by the Skills tab UI. |
-| `apps/server/src/routes/skills-registry.ts` (slimmed, ~120) | `registerSkillsRegistryRoutes` and its four handlers + request validation only | Calls into proxy. Route stays registered from `server.ts:457`. |
-| `apps/server/src/services/skills/registry-proxy.ts` (new) | Fetch/hydrate: `registryFetch`, `fetchRegistryJson`, `fetchAuthenticatedRegistryDetail`, `fetchGithubSkillMarkdown`, `fetchPublicSkillMarkdown`, `fetchGithubSkillPaths`, `fetchRegistrySkillDetail`, `fetchPublicDirectorySkills`, `hydrateDetails`, `fetchGithubStars`, `hydrateGithubStars`, `mapWithConcurrency`, `filterSkillsWithLoadableDetails`, `listRegistrySkills`, `resolveRegistrySkillById` | Depends only on `registry-parse.ts`. Server-owned product policy stays server-side. |
-| `apps/server/src/services/skills/registry-parse.ts` (new) | Pure parse/id/url: `isRecord`, `decodeHtml`, `stripTags`, `renderedSkillHtmlToMarkdown`, `extractFirstDivContentsAfter`, `parsePublicSkillMarkdown`, `parsePublicHomepageSkills`, `parsePublicDetail`, `parsePublicDetailSkill`, `isApiSkill`, `parseRegistryDetailFiles`, `hasLoadableSkillContent`, `githubRepoForSource`, `parseRegistrySkillId`, `packageRefForSource`, `registrySkillUrl`, `parsePageParameter`, `parsePerPageParameter` | No I/O; deterministic. Directly unit-testable. |
-| `packages/sdk/src/areas/skills.ts` (untouched) | Existing SDK skills surface | **Frozen.** Independent of the registry route; listed only to fence WP4's boundary. |
+| Target module                                               | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                          | Notes                                                                                                                             |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/app/src/lib/skills-registry.ts` (new)                 | `RegistrySkill*` types, `parseRegistrySkill(s)`, `fetchRegistrySkills`, `fetchRegistrySkillDetail`, `fetchRegistrySkillEntry`, `installRegistrySkill`, `normalizeSkillName`, `resolveInstalledRegistrySkill`, `formatRegistrySource`, `formatInstallCount`, and `REGISTRY_PAGE_SIZE` (= `RESOURCE_GRID_PAGE_SIZE`)                                                                                                                            | Pure data/format layer. **No React imports.** `SkillsView` re-exports every name from here.                                       |
+| `apps/app/src/lib/skills-filters.ts` (new)                  | `ResourceProviderFilter`, `ResourceSortMode`, `ResourceSortDirection`, `RESOURCE_PROVIDER_FILTERS`, `providerLabel`, `skillProviderFilterId`, `providerFilterLabel`, `compareNullableProvider`, `applySortDirection`                                                                                                                                                                                                                          | Pure `SkillSummary` sort/filter helpers, currently internal to `SkillsView`. **No React imports.** Consumed by the Skills tab UI. |
+| `apps/server/src/routes/skills-registry.ts` (slimmed, ~120) | `registerSkillsRegistryRoutes` and its four handlers + request validation only                                                                                                                                                                                                                                                                                                                                                                | Calls into proxy. Route stays registered from `server.ts:457`.                                                                    |
+| `apps/server/src/services/skills/registry-proxy.ts` (new)   | Fetch/hydrate: `registryFetch`, `fetchRegistryJson`, `fetchAuthenticatedRegistryDetail`, `fetchGithubSkillMarkdown`, `fetchPublicSkillMarkdown`, `fetchGithubSkillPaths`, `fetchRegistrySkillDetail`, `fetchPublicDirectorySkills`, `hydrateDetails`, `fetchGithubStars`, `hydrateGithubStars`, `mapWithConcurrency`, `filterSkillsWithLoadableDetails`, `listRegistrySkills`, `resolveRegistrySkillById`                                     | Depends only on `registry-parse.ts`. Server-owned product policy stays server-side.                                               |
+| `apps/server/src/services/skills/registry-parse.ts` (new)   | Pure parse/id/url: `isRecord`, `decodeHtml`, `stripTags`, `renderedSkillHtmlToMarkdown`, `extractFirstDivContentsAfter`, `parsePublicSkillMarkdown`, `parsePublicHomepageSkills`, `parsePublicDetail`, `parsePublicDetailSkill`, `isApiSkill`, `parseRegistryDetailFiles`, `hasLoadableSkillContent`, `githubRepoForSource`, `parseRegistrySkillId`, `packageRefForSource`, `registrySkillUrl`, `parsePageParameter`, `parsePerPageParameter` | No I/O; deterministic. Directly unit-testable.                                                                                    |
+| `packages/sdk/src/areas/skills.ts` (untouched)              | Existing SDK skills surface                                                                                                                                                                                                                                                                                                                                                                                                                   | **Frozen.** Independent of the registry route; listed only to fence WP4's boundary.                                               |
 
 > [!IMPORTANT]
 > `registry-skill-provenance.ts`, `registry-skill-install.ts`, and `injected-skills.ts` semantics are frozen. WP4 relocates helpers into `registry-parse.ts`/`registry-proxy.ts` but must not change the provenance file format, install flow, or listing output.
@@ -119,25 +119,28 @@ Frontend data client pulled out of the view; server route split into three layer
 
 Slim both view files to routers; move rendering clusters to concern modules under `components/tools/`. Both view files keep their **exact** public surface as barrels.
 
-| Target module | Owns | Notes |
-| --- | --- | --- |
-| `apps/app/src/views/ToolsView.tsx` (slimmed) | `ToolsView` router, `ToolsScrollPage`, `PluginDetail` re-export, plus internal `ToolsSectionBody`, `PluginsToolView`, `PluginDetailToolView`, `AutomationsToolView` wiring | Keeps its **3 exports** exactly: `ToolsScrollPage`, `PluginDetail`, `ToolsView`. |
-| `apps/app/src/components/tools/PluginCapabilities.tsx` (new) | `PluginCapabilityGroup`, `PluginIncludes`, `PluginActivity`, `PluginActivityState`, `capabilityDetail`, `namedSurface`, `pluginAppSurfaceItems` | Presentational plugin-detail internals (all currently private in `ToolsView`). |
-| `apps/app/src/views/SkillsView.tsx` (slimmed barrel) | The router `SkillsView`, `SkillsLibrary`, `SkillsOverview`, and re-exports of the full 21-name surface | Data client → `lib/skills-registry.ts`; provider filters → `lib/skills-filters.ts`; browse UI → `SkillsBrowse.tsx`. |
-| `apps/app/src/components/tools/SkillsBrowse.tsx` (new) | `RegistrySkillsBrowsePage`, `RegistrySkillDetailView`, and browse-specific internals (`RegistrySkillSocialProof`, `RegistrySkillSourceItem`, `SkillsShAttributionLink`) | Skills discovery UI, consuming the Seam B client. |
+| Target module                                                | Owns                                                                                                                                                                       | Notes                                                                                                                                                      |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/app/src/views/ToolsView.tsx` (slimmed)                 | `ToolsView` router, `ToolsScrollPage`, `PluginDetail` re-export, plus internal `ToolsSectionBody`, `PluginsToolView`, `PluginDetailToolView`, `AutomationsToolView` wiring | Keeps its **3 exports** exactly: `ToolsScrollPage`, `PluginDetail`, `ToolsView`.                                                                           |
+| `apps/app/src/components/tools/PluginCapabilities.tsx` (new) | `PluginCapabilityGroup`, `PluginIncludes`, `PluginActivity`, `PluginActivityState`, `capabilityDetail`, `namedSurface`, `pluginAppSurfaceItems`                            | Presentational plugin-detail internals (all currently private in `ToolsView`).                                                                             |
+| `apps/app/src/views/SkillsView.tsx` (slimmed barrel)         | The router `SkillsView` and re-exports of the full 21-name surface                                                                                                         | Data client → `lib/skills-registry.ts`; installed UI → `SkillsInstalled.tsx`; route/query container → `SkillsLibrary.tsx`; browse UI → `SkillsBrowse.tsx`. |
+| `apps/app/src/components/tools/SkillsInstalled.tsx` (new)    | `ProviderLogo`, `SkillsOverviewProps`, `SkillsOverview`, `SkillDetailDialogViewProps`, `SkillDetailDialogView`, and installed-list/detail internals                        | Presentational installed Skills UI, consuming the Seam B filter helpers.                                                                                   |
+| `apps/app/src/components/tools/SkillsLibrary.tsx` (new)      | `SkillsLibrary` plus internal `SkillDetailPage` and Skills route/query/mutation wiring                                                                                     | Connected Skills container; preserves registry install/uninstall and local create/edit/delete/open behavior.                                               |
+| `apps/app/src/components/tools/SkillsBrowse.tsx` (new)       | `RegistrySkillsBrowsePage`, `RegistrySkillDetailView`, and browse-specific internals (`RegistrySkillSocialProof`, `RegistrySkillSourceItem`, `SkillsShAttributionLink`)    | Skills discovery UI, consuming the Seam B client.                                                                                                          |
 
 Exhaustive frozen 21-name `SkillsView` surface (re-exported from the barrel; no rename, no dropped name):
 
-| # | Name | Kind | Defined in (after refactor) |
-| ---: | --- | --- | --- |
-| 1–5 | `RegistrySkill`, `RegistryPagination`, `RegistrySkillsPage`, `RegistrySkillFile`, `RegistrySkillDetail` | types | `lib/skills-registry.ts` |
-| 6–9 | `fetchRegistrySkills`, `fetchRegistrySkillDetail`, `fetchRegistrySkillEntry`, `installRegistrySkill` | fns | `lib/skills-registry.ts` |
-| 10–13 | `normalizeSkillName`, `resolveInstalledRegistrySkill`, `formatRegistrySource`, `formatInstallCount` | fns | `lib/skills-registry.ts` |
-| 14 | `ProviderLogo` | component | `SkillsView.tsx` |
-| 15 | `RegistrySkillsBrowsePage` | component | `components/tools/SkillsBrowse.tsx` |
-| 16–17 | `SkillsOverviewProps`, `SkillsOverview` | type + component | `SkillsView.tsx` |
-| 18–19 | `SkillDetailDialogViewProps`, `SkillDetailDialogView` | type + component | `SkillsView.tsx` |
-| 20–21 | `SkillsLibrary`, `SkillsView` | components | `SkillsView.tsx` |
+|     # | Name                                                                                                    | Kind             | Defined in (after refactor)            |
+| ----: | ------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------- |
+|   1–5 | `RegistrySkill`, `RegistryPagination`, `RegistrySkillsPage`, `RegistrySkillFile`, `RegistrySkillDetail` | types            | `lib/skills-registry.ts`               |
+|   6–9 | `fetchRegistrySkills`, `fetchRegistrySkillDetail`, `fetchRegistrySkillEntry`, `installRegistrySkill`    | fns              | `lib/skills-registry.ts`               |
+| 10–13 | `normalizeSkillName`, `resolveInstalledRegistrySkill`, `formatRegistrySource`, `formatInstallCount`     | fns              | `lib/skills-registry.ts`               |
+|    14 | `ProviderLogo`                                                                                          | component        | `components/tools/SkillsInstalled.tsx` |
+|    15 | `RegistrySkillsBrowsePage`                                                                              | component        | `components/tools/SkillsBrowse.tsx`    |
+| 16–17 | `SkillsOverviewProps`, `SkillsOverview`                                                                 | type + component | `components/tools/SkillsInstalled.tsx` |
+| 18–19 | `SkillDetailDialogViewProps`, `SkillDetailDialogView`                                                   | type + component | `components/tools/SkillsInstalled.tsx` |
+|    20 | `SkillsLibrary`                                                                                         | component        | `components/tools/SkillsLibrary.tsx`   |
+|    21 | `SkillsView`                                                                                            | component        | `SkillsView.tsx`                       |
 
 ## Ownership And Dependency Rules
 
@@ -151,13 +154,13 @@ Exhaustive frozen 21-name `SkillsView` surface (re-exported from the barrel; no 
 
 Pragmatic, not dogmatic — single-concern modules matter more than a number, and caps are set to be **achievable** given the current cluster sizes.
 
-| Guardrail | Target | Enforcement |
-| --- | --- | --- |
-| Module length | Per-module caps in the Seam A/B tables (detail split three ways; collection raised to ~550) | Reviewer check; no lint rule added. |
-| Concerns per module | 1 cluster from the target tables | Review against this spec. |
-| Barrel files | Re-exports only, no logic | `resource-list.tsx`, `SkillsView.tsx`, `ToolsView.tsx` diffs show only re-exports + kept router. |
-| New public API | **None** — 69 / 21 / 3 surfaces are exact | Any new exported name outside a barrel is a defect. |
-| Cyclomatic growth | None — moves only, no rewrites | Diff is relocation + import fixups. |
+| Guardrail           | Target                                                                                      | Enforcement                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Module length       | Per-module caps in the Seam A/B tables (detail split three ways; collection raised to ~550) | Reviewer check; no lint rule added.                                                              |
+| Concerns per module | 1 cluster from the target tables                                                            | Review against this spec.                                                                        |
+| Barrel files        | Re-exports only, no logic                                                                   | `resource-list.tsx`, `SkillsView.tsx`, `ToolsView.tsx` diffs show only re-exports + kept router. |
+| New public API      | **None** — 69 / 21 / 3 surfaces are exact                                                   | Any new exported name outside a barrel is a defect.                                              |
+| Cyclomatic growth   | None — moves only, no rewrites                                                              | Diff is relocation + import fixups.                                                              |
 
 > [!WARNING]
 > Do not "improve" moved code. Renaming a local, tightening a type, or reordering a prop is a behavior-risk and a merge-conflict source across worktrees. Move verbatim; land improvements in a separate follow-up PR.
@@ -166,14 +169,14 @@ Pragmatic, not dogmatic — single-concern modules matter more than a number, an
 
 Each step ends on a real green checkpoint. Steps within a work package are sequential; the four packages run in parallel worktrees.
 
-| Step | Action | Green checkpoint |
-| --- | --- | --- |
-| 1 | Seam A: create `resource/` submodules per the 69-export manifest, move verbatim, reduce `resource-list.tsx` to a barrel. | `turbo run typecheck --filter=@bb/shared-ui` **and** `--filter=@bb/app` (all consumers); `ToolsResourceSystem.stories.tsx` + `ToolsStateGalleries.stories.tsx` still register and render. |
-| 2 | Seam B backend: extract `registry-parse.ts`, then `registry-proxy.ts` (proxy → parse), slim route to ~120 lines. | `turbo run typecheck --filter=@bb/server`; new `registry-parse.test.ts` passes; existing `skill-listing`/`registry-skill-install` service tests still pass. |
-| 3 | Seam B frontend: create `lib/skills-registry.ts` + `lib/skills-filters.ts`, repoint `SkillsView`. | `turbo run typecheck --filter=@bb/app`; new `skills-registry.test.ts` passes; `SkillsView.test.tsx` passes. |
-| 4 | Seam C Skills: extract `SkillsBrowse.tsx`; reduce `SkillsView.tsx` to router + 21-name barrel. | App typecheck; Skills stories + `SkillsView.test.tsx` pass. |
-| 5 | Seam C Tools: extract `PluginCapabilities.tsx`; reduce `ToolsView.tsx` to router + 3-name surface. | App typecheck; `ToolsView.plugin-detail.test.tsx` + `ToolsResourceSystem`/`ToolsStateGalleries` stories pass. |
-| 6 | Integration: full `@bb/shared-ui` + `@bb/app` + `@bb/server` + `@bb/sdk` typecheck; lint; story-registry check. | All typechecks + lint green; **empty wire diff** (gate below). |
+| Step | Action                                                                                                                   | Green checkpoint                                                                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Seam A: create `resource/` submodules per the 69-export manifest, move verbatim, reduce `resource-list.tsx` to a barrel. | `turbo run typecheck --filter=@bb/shared-ui` **and** `--filter=@bb/app` (all consumers); `ToolsResourceSystem.stories.tsx` + `ToolsStateGalleries.stories.tsx` still register and render. |
+| 2    | Seam B backend: extract `registry-parse.ts`, then `registry-proxy.ts` (proxy → parse), slim route to ~120 lines.         | `turbo run typecheck --filter=@bb/server`; new `registry-parse.test.ts` passes; existing `skill-listing`/`registry-skill-install` service tests still pass.                               |
+| 3    | Seam B frontend: create `lib/skills-registry.ts` + `lib/skills-filters.ts`, repoint `SkillsView`.                        | `turbo run typecheck --filter=@bb/app`; new `skills-registry.test.ts` passes; `SkillsView.test.tsx` passes.                                                                               |
+| 4    | Seam C Skills: extract `SkillsBrowse.tsx`; reduce `SkillsView.tsx` to router + 21-name barrel.                           | App typecheck; Skills stories + `SkillsView.test.tsx` pass.                                                                                                                               |
+| 5    | Seam C Tools: extract `PluginCapabilities.tsx`; reduce `ToolsView.tsx` to router + 3-name surface.                       | App typecheck; `ToolsView.plugin-detail.test.tsx` + `ToolsResourceSystem`/`ToolsStateGalleries` stories pass.                                                                             |
+| 6    | Integration: full `@bb/shared-ui` + `@bb/app` + `@bb/server` + `@bb/sdk` typecheck; lint; story-registry check.          | All typechecks + lint green; **empty wire diff** (gate below).                                                                                                                            |
 
 Wire-compatibility gate at step 6: `git diff` on `packages/host-daemon-contract/` and any session/WS/RPC payload type must be **empty**. If not, the change exceeded scope — stop and bump `HOST_DAEMON_PROTOCOL_VERSION` per repo policy, or revert the offending move.
 
@@ -181,40 +184,40 @@ Wire-compatibility gate at step 6: `git diff` on `packages/host-daemon-contract/
 
 Tests and stories move with the code they cover; assertions do not change. New tests are **required** where pure functions move into fresh modules — the existing service tests do **not** cover the registry route or the moved parsers.
 
-| Coverage | Where | Rule |
-| --- | --- | --- |
-| `ToolsResourceSystem.stories.tsx`, `ToolsStateGalleries.stories.tsx` | Stay in `apps/app`; import shipped components via the `@bb/shared-ui/resource-list` barrel | Story registry must still list every current story; this is Seam A's render gate (there is no separate shared-ui resource test/story to lean on). |
-| `SkillsView.test.tsx` | Stays; imports unchanged (21-name barrel preserved) | Same cases, same expectations. |
-| `ToolsView.plugin-detail.test.tsx` | Stays; `PluginDetail` still exported from `ToolsView` | No change. |
-| **New** `apps/app/src/lib/skills-registry.test.ts` | New | Pure tests for moved client functions: `parseRegistrySkill(s)`, `resolveInstalledRegistrySkill`, `normalizeSkillName`, `formatRegistrySource`, `formatInstallCount`, and `REGISTRY_PAGE_SIZE` wiring. |
-| **New** `apps/server/test/skills/registry-parse.test.ts` | New | Pure tests for moved parse/id/url/pagination: `parseRegistrySkillId`, `registrySkillUrl`, `parsePageParameter`, `parsePerPageParameter`, `parsePublicHomepageSkills`/`parsePublicDetail` on representative fixtures. |
-| Optional route HTTP test | `apps/server/test/skills/` | If a handler's request validation is non-trivially moved, add a focused HTTP test for `GET /skills-registry` + `POST /install`; do **not** claim `skill-listing`/`registry-skill-install` service tests cover the route. |
-| `skill-listing.test.ts`, `registry-skill-install.test.ts`, `injected-skills.test.ts` | Stay; re-point imports where a helper moved into `registry-parse.ts` | These cover the listing/install **services**, not the registry route. |
+| Coverage                                                                             | Where                                                                                      | Rule                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ToolsResourceSystem.stories.tsx`, `ToolsStateGalleries.stories.tsx`                 | Stay in `apps/app`; import shipped components via the `@bb/shared-ui/resource-list` barrel | Story registry must still list every current story; this is Seam A's render gate (there is no separate shared-ui resource test/story to lean on).                                                                        |
+| `SkillsView.test.tsx`                                                                | Stays; imports unchanged (21-name barrel preserved)                                        | Same cases, same expectations.                                                                                                                                                                                           |
+| `ToolsView.plugin-detail.test.tsx`                                                   | Stays; `PluginDetail` still exported from `ToolsView`                                      | No change.                                                                                                                                                                                                               |
+| **New** `apps/app/src/lib/skills-registry.test.ts`                                   | New                                                                                        | Pure tests for moved client functions: `parseRegistrySkill(s)`, `resolveInstalledRegistrySkill`, `normalizeSkillName`, `formatRegistrySource`, `formatInstallCount`, and `REGISTRY_PAGE_SIZE` wiring.                    |
+| **New** `apps/server/test/skills/registry-parse.test.ts`                             | New                                                                                        | Pure tests for moved parse/id/url/pagination: `parseRegistrySkillId`, `registrySkillUrl`, `parsePageParameter`, `parsePerPageParameter`, `parsePublicHomepageSkills`/`parsePublicDetail` on representative fixtures.     |
+| Optional route HTTP test                                                             | `apps/server/test/skills/`                                                                 | If a handler's request validation is non-trivially moved, add a focused HTTP test for `GET /skills-registry` + `POST /install`; do **not** claim `skill-listing`/`registry-skill-install` service tests cover the route. |
+| `skill-listing.test.ts`, `registry-skill-install.test.ts`, `injected-skills.test.ts` | Stay; re-point imports where a helper moved into `registry-parse.ts`                       | These cover the listing/install **services**, not the registry route.                                                                                                                                                    |
 
 ## Parallel Work Packages
 
 Four packages with **disjoint file ownership**, each suitable for its own worktree. The only inter-package contract is the frozen public surface — no two packages edit the same file.
 
-| WP | Owns (exclusive files/dirs) | Depends on | Worktree-safe because |
-| --- | --- | --- | --- |
-| **WP1 — Shared collection infra** | `packages/shared-ui/src/components/ui/resource-list.tsx` + new `resource/` (7 submodules) | none | Only package's own file touched; public barrel path unchanged. |
-| **WP2 — Skills registry client + Skills UI** | `apps/app/src/views/SkillsView.tsx`, new `lib/skills-registry.ts`, `lib/skills-filters.ts`, `components/tools/SkillsBrowse.tsx`, `SkillDetailView.tsx`, `SkillsView.test.tsx`, new `skills-registry.test.ts` | WP1 barrel (path stable) | Consumes WP1 via unchanged specifier; publishes the frozen 21-name surface for WP3. |
-| **WP3 — Tools UI shell + plugins** | `apps/app/src/views/ToolsView.tsx`, `components/tools/PluginDetailView.tsx`, new `PluginCapabilities.tsx`, `ToolsView.plugin-detail.test.tsx`, Tools stories | WP1 barrel; WP2 21-name surface | Never edits `SkillsView.tsx`; imports only its frozen public exports. |
-| **WP4 — Skills backend + SDK fence** | `apps/server/src/routes/skills-registry.ts`, new `services/skills/registry-proxy.ts`, `registry-parse.ts`, `apps/server/test/skills/*`, (`packages/sdk/src/areas/skills.ts` read-only) | none | No app or shared-ui files; server/daemon boundary untouched. |
+| WP                                           | Owns (exclusive files/dirs)                                                                                                                                                                                  | Depends on                      | Worktree-safe because                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------- |
+| **WP1 — Shared collection infra**            | `packages/shared-ui/src/components/ui/resource-list.tsx` + new `resource/` (7 submodules)                                                                                                                    | none                            | Only package's own file touched; public barrel path unchanged.                      |
+| **WP2 — Skills registry client + Skills UI** | `apps/app/src/views/SkillsView.tsx`, new `lib/skills-registry.ts`, `lib/skills-filters.ts`, `components/tools/SkillsBrowse.tsx`, `SkillDetailView.tsx`, `SkillsView.test.tsx`, new `skills-registry.test.ts` | WP1 barrel (path stable)        | Consumes WP1 via unchanged specifier; publishes the frozen 21-name surface for WP3. |
+| **WP3 — Tools UI shell + plugins**           | `apps/app/src/views/ToolsView.tsx`, `components/tools/PluginDetailView.tsx`, new `PluginCapabilities.tsx`, `ToolsView.plugin-detail.test.tsx`, Tools stories                                                 | WP1 barrel; WP2 21-name surface | Never edits `SkillsView.tsx`; imports only its frozen public exports.               |
+| **WP4 — Skills backend + SDK fence**         | `apps/server/src/routes/skills-registry.ts`, new `services/skills/registry-proxy.ts`, `registry-parse.ts`, `apps/server/test/skills/*`, (`packages/sdk/src/areas/skills.ts` read-only)                       | none                            | No app or shared-ui files; server/daemon boundary untouched.                        |
 
 > [!NOTE]
 > WP2 and WP3 both live in `apps/app` but own **disjoint files**. Resolved sequencing: **WP2 lands before WP3** (or at minimum publishes the frozen 21-name surface first) so WP3's import of `SkillsLibrary` never breaks.
 
 ## Risks And Mitigations
 
-| Risk | Severity | Mitigation |
-| --- | :---: | --- |
-| A "verbatim" move silently changes behavior (reordered effects, dropped memo) | 🔴 | Move whole functions unchanged; diff is relocation + import fixups only; existing tests/stories gate each step. |
-| Accidental wire-payload change while slimming the server route | 🔴 | Step-6 gate: empty diff on host-daemon-contract and payload types; protocol version stays 63. |
-| WP2/WP3 collide on `apps/app` files | 🟠 | Disjoint file ownership + frozen 21-name surface; WP2 publishes surface first. |
-| Barrel re-export misses a name, breaking a consumer | 🟠 | `export *` from every submodule; typecheck all consumers (`@bb/app`) at step 1; 69/21/3 counts asserted. |
-| Circular import between new submodules | 🟡 | One-way layering (atoms ← toolbar/row ← detail ← collection; route → proxy → parse). |
-| Moved parsers lose coverage | 🟡 | Required new `registry-parse.test.ts` and `skills-registry.test.ts`; no reliance on service tests for the route. |
+| Risk                                                                          | Severity | Mitigation                                                                                                       |
+| ----------------------------------------------------------------------------- | :------: | ---------------------------------------------------------------------------------------------------------------- |
+| A "verbatim" move silently changes behavior (reordered effects, dropped memo) |    🔴    | Move whole functions unchanged; diff is relocation + import fixups only; existing tests/stories gate each step.  |
+| Accidental wire-payload change while slimming the server route                |    🔴    | Step-6 gate: empty diff on host-daemon-contract and payload types; protocol version stays 63.                    |
+| WP2/WP3 collide on `apps/app` files                                           |    🟠    | Disjoint file ownership + frozen 21-name surface; WP2 publishes surface first.                                   |
+| Barrel re-export misses a name, breaking a consumer                           |    🟠    | `export *` from every submodule; typecheck all consumers (`@bb/app`) at step 1; 69/21/3 counts asserted.         |
+| Circular import between new submodules                                        |    🟡    | One-way layering (atoms ← toolbar/row ← detail ← collection; route → proxy → parse).                             |
+| Moved parsers lose coverage                                                   |    🟡    | Required new `registry-parse.test.ts` and `skills-registry.test.ts`; no reliance on service tests for the route. |
 
 ## Acceptance Criteria
 
