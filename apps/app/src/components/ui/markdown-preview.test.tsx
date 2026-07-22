@@ -68,6 +68,14 @@ describe("MarkdownPreview", () => {
     expect(breakout?.style.getPropertyValue("--md-content-w")).toBe("320px");
   });
 
+  it("keeps the starting number of an ordered list", () => {
+    const { container } = render(
+      <MarkdownPreview content={"> 2. What happens if debt is unpaid?"} />,
+    );
+
+    expect(container.querySelector("ol")?.getAttribute("start")).toBe("2");
+  });
+
   it("HTML-escapes fenced code so it cannot inject markup", () => {
     const { container } = render(
       <MarkdownPreview
