@@ -473,7 +473,14 @@ interface ComposerCustomization {
     scopes?: readonly PluginComposerScope["kind"][];
     actions?: readonly {
         id: string;
-        component: ComponentType;
+        component: ComponentType<{
+            /**
+             * Opens one of this plugin's own `threadPanelAction` components in the
+             * current thread side panel. Omitted by older hosts; null on composer
+             * surfaces without a thread panel.
+             */
+            openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
+        }>;
     }[];
     banners?: readonly {
         id: string;
@@ -618,18 +625,6 @@ interface PluginComposerApi {
     insertMention(mention: PluginComposerMention): void;
     /** Focus the composer caret at the end of the draft. */
     focus(): void;
-    /**
-     * @experimental
-     *
-     * Open one of this plugin's registered `threadPanelAction` components in
-     * the thread panel enclosing this composer. Returns false when the composer
-     * is not attached to a thread panel or the action id is unavailable.
-     */
-    experimental_openThreadPanel(options: {
-        actionId: string;
-        title?: string;
-        params?: JsonValue;
-    }): boolean;
 }
 /**
  * A consumer-supplied action on the messages of one `ThreadChat` instance,

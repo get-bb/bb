@@ -562,7 +562,6 @@ export function useComposer(): PluginComposerApi {
   const setDraft = composerHost?.setDraft ?? routeDraft.setDraft;
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   const hostFocus = composerHost?.focus;
-  const hostOpenPluginThreadPanel = composerHost?.openPluginThreadPanel;
   const focusActiveComposer = useCallback(() => {
     if (hostFocus) {
       hostFocus();
@@ -805,12 +804,6 @@ export function useComposer(): PluginComposerApi {
   );
 
   const focus = focusActiveComposer;
-  const experimentalOpenThreadPanel = useCallback(
-    (
-      options: Parameters<PluginComposerApi["experimental_openThreadPanel"]>[0],
-    ) => hostOpenPluginThreadPanel?.(pluginId, options) ?? false,
-    [hostOpenPluginThreadPanel, pluginId],
-  );
   const composerText = composerHost?.draft.text ?? routeDraft.text;
 
   return useMemo(
@@ -830,7 +823,6 @@ export function useComposer(): PluginComposerApi {
       addQuote,
       insertMention,
       focus,
-      experimental_openThreadPanel: experimentalOpenThreadPanel,
     }),
     [
       addQuote,
@@ -838,7 +830,6 @@ export function useComposer(): PluginComposerApi {
       composerScope,
       composerText,
       focus,
-      experimentalOpenThreadPanel,
       insertMention,
       projectId,
       setText,

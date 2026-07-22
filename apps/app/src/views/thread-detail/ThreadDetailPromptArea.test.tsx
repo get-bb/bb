@@ -693,7 +693,7 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
-  it("forwards plugin-scoped thread-panel opens from the composer host", () => {
+  it("keeps thread-panel opens scoped to the calling plugin", () => {
     const openPluginPanel = vi.fn(() => true);
     renderPromptArea({ openPluginPanel });
     fireEvent.click(
@@ -702,7 +702,46 @@ describe("ThreadDetailPromptArea", () => {
 
     const result = mocks.pluginComposerHost?.openPluginThreadPanel?.(
       "ui-patterns",
-      { actionId: "library-panel", title: "UI Patterns" },
+      {
+        actionId: "library-panel",
+        title: "UI Patterns",
+        pluginId: "workflows",
+      } as Parameters<
+        NonNullable<PluginComposerHost["openPluginThreadPanel"]>
+      >[1],
+    );
+
+    expect(result).toBe(true);
+    expect(openPluginPanel).toHaveBeenCalledWith({
+      pluginId: "ui-patterns",
+      actionId: "library-panel",
+      title: "UI Patterns",
+    });
+  });
+
+  it("keeps queued-composer panel opens scoped to the calling plugin", () => {
+    const openPluginPanel = vi.fn(() => true);
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea({ openPluginPanel });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    const result = mocks.pluginComposerHost?.openPluginThreadPanel?.(
+      "ui-patterns",
+      {
+        actionId: "library-panel",
+        title: "UI Patterns",
+        pluginId: "workflows",
+      } as Parameters<
+        NonNullable<PluginComposerHost["openPluginThreadPanel"]>
+      >[1],
     );
 
     expect(result).toBe(true);

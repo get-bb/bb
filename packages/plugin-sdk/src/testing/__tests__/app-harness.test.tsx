@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   PluginComposerApi,
   PluginComposerScope,
+  PluginMessageDirectiveOpenThreadPanel,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
 } from "../../app-contract.js";
@@ -99,7 +100,11 @@ function InlineVis({
   );
 }
 
-function ComposerProbe() {
+function ComposerProbe({
+  openThreadPanel,
+}: {
+  openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
+}) {
   const composer = useComposer();
   const view = useComposerView();
   capturedComposerVisualSetters = {
@@ -166,7 +171,7 @@ function ComposerProbe() {
       <button
         type="button"
         onClick={() =>
-          composer.experimental_openThreadPanel({
+          openThreadPanel?.({
             actionId: "library-panel",
             title: "UI Patterns",
             params: { entryId: "button" },
@@ -734,17 +739,12 @@ describe("renderSlot", () => {
     expect(slot.composer.focusCount).toBe(3);
   });
 
-  it("records and delegates experimental composer thread-panel opens", () => {
+  it("passes the Workflows-style thread-panel opener to composer actions", () => {
     const openThreadPanel = vi.fn(() => true);
     const slot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
-      {},
-      {
-        composer: {
-          scope: { kind: "thread", threadId: "thr_1" },
-          openThreadPanel,
-        },
-      },
+      { openThreadPanel },
+      { composer: { scope: { kind: "thread", threadId: "thr_1" } } },
     );
 
     fireEvent.click(slot.getByText("open panel"));
@@ -754,7 +754,6 @@ describe("renderSlot", () => {
       title: "UI Patterns",
       params: { entryId: "button" },
     };
-    expect(slot.inspection.composer.threadPanelOpenCalls).toEqual([expected]);
     expect(openThreadPanel).toHaveBeenCalledWith(expected);
   });
 

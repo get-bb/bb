@@ -11,8 +11,8 @@ import {
 } from "react";
 import type {
   ComposerView,
-  PluginComposerApi,
   PluginComposerScope,
+  PluginMessageDirectiveThreadPanelOptions,
 } from "@bb/plugin-sdk";
 import { isComposerDraftEmpty } from "@bb/plugin-sdk/internal/composer-view";
 import type { PromptDraftState } from "@/lib/prompt-draft";
@@ -34,7 +34,7 @@ export interface PluginComposerHost {
   focus(): void;
   openPluginThreadPanel?(
     pluginId: string,
-    options: Parameters<PluginComposerApi["experimental_openThreadPanel"]>[0],
+    options: PluginMessageDirectiveThreadPanelOptions,
   ): boolean;
 }
 

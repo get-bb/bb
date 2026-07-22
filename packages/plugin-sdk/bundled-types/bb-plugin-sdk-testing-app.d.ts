@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerApi, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginComposerMention, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -57,7 +57,6 @@ type NavigateCall = {
         focusPrompt?: boolean;
     };
 };
-type ComposerThreadPanelOpenOptions = Parameters<PluginComposerApi["experimental_openThreadPanel"]>[0];
 interface ComposerLog {
     /** Latest plain text in this isolated composer scope. */
     readonly text: string;
@@ -74,8 +73,6 @@ interface ComposerLog {
     /** Latest host-rendered thread-row status requested by the plugin. */
     threadRowStatus: PluginComposerThreadRowStatus | null;
     threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
-    /** Thread-panel opens requested through the experimental composer bridge. */
-    threadPanelOpenCalls: ComposerThreadPanelOpenOptions[];
     quotes: string[];
     mentions: PluginComposerMention[];
     focusCount: number;
@@ -134,7 +131,6 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
         text?: string;
         scope?: PluginComposerScope;
         attachmentCount?: number;
-        openThreadPanel?: (options: ComposerThreadPanelOpenOptions) => boolean;
     };
 }
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -179,4 +175,4 @@ declare function renderSlot<Props extends object, Contract extends PluginRpcCont
 }, props: Props, options?: RenderSlotOptions<Contract>): RenderedSlot;
 
 export { installTestPluginRuntime, loadPluginApp, renderSlot };
-export type { CapturedPluginApp, ComposerLog, ComposerThreadPanelOpenOptions, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };
+export type { CapturedPluginApp, ComposerLog, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };

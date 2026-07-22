@@ -101,10 +101,6 @@ export type NavigateCall =
       options?: { initialPrompt?: string; focusPrompt?: boolean };
     };
 
-export type ComposerThreadPanelOpenOptions = Parameters<
-  PluginComposerApi["experimental_openThreadPanel"]
->[0];
-
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
   readonly text: string;
@@ -121,8 +117,6 @@ export interface ComposerLog {
   /** Latest host-rendered thread-row status requested by the plugin. */
   threadRowStatus: PluginComposerThreadRowStatus | null;
   threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
-  /** Thread-panel opens requested through the experimental composer bridge. */
-  threadPanelOpenCalls: ComposerThreadPanelOpenOptions[];
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -665,7 +659,6 @@ export interface RenderSlotOptions<
     text?: string;
     scope?: PluginComposerScope;
     attachmentCount?: number;
-    openThreadPanel?: (options: ComposerThreadPanelOpenOptions) => boolean;
   };
 }
 
@@ -870,7 +863,6 @@ export function renderSlot<
     inputLockCalls: [],
     threadRowStatus: null,
     threadRowStatusCalls: [],
-    threadPanelOpenCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -936,14 +928,6 @@ export function renderSlot<
       },
       focus() {
         composerLog.focusCount += 1;
-      },
-      experimental_openThreadPanel(panelOptions) {
-        const normalized = strictJsonRoundTrip(
-          panelOptions,
-          "composer thread-panel options",
-        ) as ComposerThreadPanelOpenOptions;
-        composerLog.threadPanelOpenCalls.push(normalized);
-        return options.composer?.openThreadPanel?.(normalized) ?? false;
       },
     },
   };

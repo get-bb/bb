@@ -525,7 +525,7 @@ export function ThreadDetailPromptArea({
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
       openPluginThreadPanel: (pluginId, options) =>
-        openPluginPanel({ pluginId, ...options }),
+        openPluginPanel({ ...options, pluginId }),
     }),
     [
       focusBottomPluginComposer,
@@ -572,7 +572,7 @@ export function ThreadDetailPromptArea({
       },
       focus: focusQueuedPluginComposer,
       openPluginThreadPanel: (pluginId, options) =>
-        openPluginPanel({ pluginId, ...options }),
+        openPluginPanel({ ...options, pluginId }),
     };
   }, [
     inlineEditingQueuedMessage,

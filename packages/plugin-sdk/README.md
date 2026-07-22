@@ -16,10 +16,10 @@ Composer UI extensions register through `app.composer.customize(...)`. A
 host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
 Mounted components use `useComposer()` for writes, effects, and input locking,
 and `useComposerView()` for the reactive scope, layout, draft, and run state.
-Thread-scoped actions can call
-`composer.experimental_openThreadPanel({ actionId, title?, params? })` to open
-one of their plugin's registered `threadPanelAction` components. The method
-returns `false` when that panel is unavailable.
+Composer action components also receive the same optional `openThreadPanel`
+callback as message directives. Call it with `{ actionId, title?, params? }` to
+open one of the plugin's registered `threadPanelAction` components; older hosts
+omit it, and unsupported composer surfaces pass `null`.
 
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
@@ -103,10 +103,9 @@ fake host.
 
 The frontend harness matches registration validation, RPC/realtime JSON
 boundaries, panel and slot props, navigation recording, and composer text,
-scope, quote, mention, focus, clear, and thread-panel-open behavior. It does not
-reproduce BB layout, CSS, persistence, routing, host authentication, crash
-boundaries, or multi-plugin arbitration; use a live BB test for those
-boundaries.
+scope, quote, mention, focus, and clear behavior. It does not reproduce BB
+layout, CSS, persistence, routing, host authentication, crash boundaries, or
+multi-plugin arbitration; use a live BB test for those boundaries.
 
 ## Declaration surface
 

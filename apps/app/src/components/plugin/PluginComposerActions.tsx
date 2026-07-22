@@ -12,6 +12,7 @@ import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
 import {
   composerScopeIdentity,
+  usePluginComposerHost,
   useOptionalPluginComposerView,
 } from "./plugin-composer-host";
 import { composerCustomizationsForScope } from "./composer-customizations";
@@ -51,6 +52,7 @@ export function usePluginComposerPlusMenuContributions(
 
 export function PluginComposerActions({ view }: { view?: ComposerView }) {
   const providedView = useOptionalPluginComposerView();
+  const composerHost = usePluginComposerHost();
   const { composerCustomizations } = usePluginSlots();
   const composerView = view ?? providedView;
   if (composerView === undefined) return null;
@@ -79,7 +81,15 @@ export function PluginComposerActions({ view }: { view?: ComposerView }) {
         slotId={`${customizationId}/${action.id}`}
         crashFallback={<></>}
       >
-        <action.component />
+        <action.component
+          openThreadPanel={
+            composerHost?.openPluginThreadPanel === undefined
+              ? null
+              : (options) =>
+                  composerHost.openPluginThreadPanel?.(pluginId, options) ??
+                  false
+          }
+        />
       </PluginSlotMount>
     </div>
   ));

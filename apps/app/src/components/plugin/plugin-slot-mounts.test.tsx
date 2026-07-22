@@ -12,7 +12,11 @@ import {
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { PluginComposerApi, PluginThreadPanelProps } from "@bb/plugin-sdk";
+import type {
+  PluginComposerApi,
+  PluginMessageDirectiveOpenThreadPanel,
+  PluginThreadPanelProps,
+} from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -217,7 +221,11 @@ describe("useComposer", () => {
     label: string,
     onRender?: (composer: PluginComposerApi) => void,
   ) {
-    function ComposerProbe() {
+    function ComposerProbe({
+      openThreadPanel,
+    }: {
+      openThreadPanel?: PluginMessageDirectiveOpenThreadPanel | null;
+    }) {
       const composer = useComposer();
       onRender?.(composer);
       const initialMethods = useRef({
@@ -306,7 +314,7 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.experimental_openThreadPanel({
+              openThreadPanel?.({
                 actionId: "library-panel",
                 title: "UI Patterns",
                 params: { entryId: "button" },
