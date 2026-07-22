@@ -3,6 +3,7 @@ import type {
   SystemMessageSubject,
   ThreadEventTurnStatus,
 } from "@bb/domain";
+import { listActiveBackgroundTaskCountsByThreadIds } from "@bb/db";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import {
@@ -24,6 +25,7 @@ import { getLastThreadOutput } from "./thread-data.js";
 export type ChildThreadNotificationSource = ParentSystemThreadMentionSource;
 
 export interface ChildThreadTurnNotificationBatchItem {
+  activeWorkflowCount: number;
   childThread: ChildThreadNotificationSource;
   terminalOutput: string | null;
   turnStatus: ThreadEventTurnStatus;
@@ -77,8 +79,7 @@ const CHILD_THREAD_OUTCOME_BATCH_UPDATES_SLOT =
   "__BB_CHILD_THREAD_OUTCOME_BATCH_UPDATES__";
 const CHILD_THREAD_MENTION_SLOT = "__BB_CHILD_THREAD_MENTION__";
 const CHILD_THREAD_TERMINAL_OUTPUT_EXCERPT_CHAR_LIMIT = 4_000;
-const CHILD_THREAD_OUTPUT_TRUNCATION_MARKER =
-  "\n\n[... output truncated ...]";
+const CHILD_THREAD_OUTPUT_TRUNCATION_MARKER = "\n\n[... output truncated ...]";
 const CHILD_THREAD_INSPECTION_GUIDANCE =
   "Review the thread before deciding next steps.";
 const CHILD_THREAD_INTERRUPTED_GUIDANCE =
@@ -87,6 +88,10 @@ const CHILD_THREAD_BATCH_INTERRUPTED_GUIDANCE =
   "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
 const CHILD_THREAD_NEEDS_ATTENTION_FALLBACK_SUMMARY =
   "It is blocked on a pending interaction.";
+const CHILD_THREAD_RUNNING_WORKFLOW_GUIDANCE =
+  "A workflow it started is still running, so this output is not its final result. The thread will report again when the workflow finishes.";
+const CHILD_THREAD_BATCH_RUNNING_WORKFLOW_GUIDANCE =
+  "Threads with a workflow still running have not finished; they will report again when their workflow does.";
 const childThreadTurnNotificationBatches = new Map<
   string,
   ChildThreadTurnNotificationBatch
@@ -135,7 +140,9 @@ function formatChildThreadCompletionOutputExcerpt(
   );
 }
 
-function formatChildThreadNeedsAttentionSummary(summary: string | null): string {
+function formatChildThreadNeedsAttentionSummary(
+  summary: string | null,
+): string {
   const trimmedSummary = summary?.trim();
   if (!trimmedSummary) {
     return CHILD_THREAD_NEEDS_ATTENTION_FALLBACK_SUMMARY;
@@ -143,19 +150,41 @@ function formatChildThreadNeedsAttentionSummary(summary: string | null): string 
   return trimmedSummary;
 }
 
+/**
+ * A workflow keeps running after the turn that started it completes, so a
+ * child thread can report an outcome while its workflow work is still in
+ * flight. Say so, otherwise the parent reads the excerpt as the final result.
+ */
+function formatChildThreadRunningWorkflowClause(count: number): string {
+  if (count < 1) {
+    return "";
+  }
+  return count === 1
+    ? ", with 1 workflow still running"
+    : `, with ${count} workflows still running`;
+}
+
 function buildSingleChildThreadTurnStatusSegments(
   args: FormatChildThreadTurnStatusLineArgs,
 ): ParentSystemInputSegment[] {
   const { line } = args;
   switch (line.item.turnStatus) {
-    case "completed":
+    case "completed": {
+      const workflowClause = formatChildThreadRunningWorkflowClause(
+        line.item.activeWorkflowCount,
+      );
+      const workflowGuidance =
+        workflowClause === ""
+          ? ""
+          : `\n\n${CHILD_THREAD_RUNNING_WORKFLOW_GUIDANCE}`;
       return [
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` completed:\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}`,
+          text: ` completed${workflowClause}:\n\n${formatChildThreadCompletionOutputExcerpt(line.item.terminalOutput)}${workflowGuidance}`,
         },
       ];
+    }
     case "failed":
       return [
         { kind: "mention", mention: line.mention },
@@ -183,11 +212,14 @@ function buildChildThreadBatchStatusLineSegments(
   args: FormatChildThreadTurnStatusLineArgs,
 ): ParentSystemInputSegment[] {
   const { line } = args;
+  const workflowClause = formatChildThreadRunningWorkflowClause(
+    line.item.activeWorkflowCount,
+  );
   return [
     { kind: "mention", mention: line.mention },
     {
       kind: "text",
-      text: ` ${childThreadTurnStatusLabel(line.item.turnStatus)}.`,
+      text: ` ${childThreadTurnStatusLabel(line.item.turnStatus)}${workflowClause}.`,
     },
   ];
 }
@@ -200,6 +232,20 @@ function getChildThreadCompletionOutput(
     return null;
   }
   return getLastThreadOutput(deps.db, args.childThread.id);
+}
+
+/**
+ * Read at queue time rather than at batch flush, so the count reflects the
+ * moment the turn settled — the same instant the output excerpt is captured.
+ */
+function getChildThreadActiveWorkflowCount(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: QueueChildThreadTurnNotificationArgs,
+): number {
+  const [activity] = listActiveBackgroundTaskCountsByThreadIds(deps.db, {
+    threadIds: [args.childThread.id],
+  });
+  return activity?.activeWorkflowCount ?? 0;
 }
 
 function buildChildThreadTurnStatusBatchSegments(
@@ -221,6 +267,12 @@ function buildChildThreadTurnStatusBatchSegments(
     segments.push({
       kind: "text",
       text: `\n\n${CHILD_THREAD_BATCH_INTERRUPTED_GUIDANCE}`,
+    });
+  }
+  if (args.lines.some((line) => line.item.activeWorkflowCount > 0)) {
+    segments.push({
+      kind: "text",
+      text: `\n\n${CHILD_THREAD_BATCH_RUNNING_WORKFLOW_GUIDANCE}`,
     });
   }
   return segments;
@@ -408,6 +460,7 @@ function queueChildThreadTurnNotificationBatchItem(
   );
   if (existingBatch) {
     existingBatch.items.push({
+      activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
       childThread: args.childThread,
       terminalOutput: getChildThreadCompletionOutput(deps, args),
       turnStatus: args.turnStatus,
@@ -423,6 +476,7 @@ function queueChildThreadTurnNotificationBatchItem(
   childThreadTurnNotificationBatches.set(args.parentThreadId, {
     items: [
       {
+        activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
         childThread: args.childThread,
         terminalOutput: getChildThreadCompletionOutput(deps, args),
         turnStatus: args.turnStatus,

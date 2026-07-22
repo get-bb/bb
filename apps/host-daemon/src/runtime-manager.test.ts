@@ -244,10 +244,12 @@ interface FakeAgentRuntime extends AgentRuntime {
   /** Test-only mutators for the runtime-owned per-thread turn state. */
   endActiveTurn: (threadId: string) => void;
   setActiveTurn: (threadId: string, turnId: string) => void;
+  setOpenBackgroundWork: (hasOpenWork: boolean) => void;
 }
 
 function createFakeRuntime() {
   const activeTurnsByThreadId = new Map<string, string>();
+  let openBackgroundWork = false;
   return {
     ensureProvider: vi.fn(async (_args: EnsureProviderArgs) => undefined),
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
@@ -279,12 +281,16 @@ function createFakeRuntime() {
     ),
     hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
     getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
+    hasOpenBackgroundWork: () => openBackgroundWork,
     shutdown: vi.fn(async () => undefined),
     endActiveTurn: (threadId) => {
       activeTurnsByThreadId.delete(threadId);
     },
     setActiveTurn: (threadId, turnId) => {
       activeTurnsByThreadId.set(threadId, turnId);
+    },
+    setOpenBackgroundWork: (hasOpenWork) => {
+      openBackgroundWork = hasOpenWork;
     },
   } satisfies FakeAgentRuntime;
 }
@@ -1298,6 +1304,41 @@ describe("RuntimeManager", () => {
       }),
     );
     expect(secondRuntime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("keeps an environment runtime while a background task is still open", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime: () => runtime,
+      shellEnv: {
+        PATH: "/old/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    // A workflow outlives its turn, so the runtime has no active turn while it
+    // runs. Evicting here would SIGTERM the provider process running it.
+    runtime.setOpenBackgroundWork(true);
+
+    await manager.replaceBaseShellEnv({
+      PATH: "/new/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")?.runtime).toBe(runtime);
+    expect(runtime.shutdown).not.toHaveBeenCalled();
+
+    runtime.setOpenBackgroundWork(false);
+    await manager.replaceBaseShellEnv({
+      PATH: "/newer/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeUndefined();
+    expect(runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it("keeps an environment runtime while a thread command is being prepared", async () => {

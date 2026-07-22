@@ -1009,8 +1009,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  it("uses protocol version 63 for the skill management contract", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(63);
+  it("uses protocol version 64 for workflow turn-completion timing", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(64);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

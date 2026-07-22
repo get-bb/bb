@@ -3649,9 +3649,8 @@ describe("claude-code provider adapter", () => {
     );
   });
 
-  it("treats workflows and legacy subagents as completion-blocking", () => {
+  it("treats legacy subagents as completion-blocking", () => {
     const blockingTasks = [
-      loadFixture("task-started-workflow.json"),
       {
         type: "system",
         subtype: "task_started",
@@ -3750,6 +3749,114 @@ describe("claude-code provider adapter", () => {
         }),
       );
     }
+  });
+
+  it("completes the turn while a workflow keeps running, leaving the task open", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-workflow" };
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "started the workflow" }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    const started = adapter.translateEvent(
+      loadFixture("task-started-workflow.json"),
+      context,
+    );
+
+    const events = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "end_turn",
+        session_id: "sess-1",
+      },
+      context,
+    );
+
+    // The turn ends so the thread goes idle and the composer sends instead of
+    // queueing, while the still-pending task keeps driving the workflow
+    // indicators.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          status: "pending",
+        }),
+      }),
+    );
+  });
+
+  it("opens a fresh turn when a settled workflow reinvokes the model", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-workflow-settle" };
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "started the workflow" }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    adapter.translateEvent(
+      { type: "result", subtype: "end_turn", session_id: "sess-1" },
+      context,
+    );
+
+    adapter.translateEvent(
+      loadFixture("task-notification-workflow.json"),
+      context,
+    );
+    const reinvoked = adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The workflow finished." }],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
+
+    // The first turn already closed, so the workflow's follow-up work gets its
+    // own turn instead of reopening the settled one.
+    expect(reinvoked).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("turn-2"),
+      }),
+    );
+    expect(
+      adapter.translateEvent(
+        { type: "result", subtype: "end_turn", session_id: "sess-1" },
+        context,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-2"),
+        status: "completed",
+      }),
+    );
   });
 
   it("closes a failed result even while a background agent is open", () => {

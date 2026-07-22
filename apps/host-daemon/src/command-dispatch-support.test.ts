@@ -84,6 +84,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     getActiveThreadIds() {
       return [];
     },
+    hasOpenBackgroundWork() {
+      return false;
+    },
     shutdown: args.shutdown,
   };
 }

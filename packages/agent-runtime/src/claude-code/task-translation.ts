@@ -92,6 +92,13 @@ export function hasOpenClaudeBackgroundTasks(tasks: ClaudeTaskMap): boolean {
  * Backgrounded shell commands are deliberately excluded: they are detached
  * work and may be long-lived (for example, a dev server). Ambient tasks are
  * excluded for the same reason.
+ *
+ * Workflows are excluded too, even though they do reinvoke the parent model.
+ * They routinely run for many minutes, and holding the turn open kept the
+ * thread `active` for their whole duration, which made the composer queue
+ * follow-ups instead of sending them. A workflow therefore lets the turn
+ * complete and the thread go idle; its progress stays visible through the
+ * thread's background-task activity rather than through turn status.
  */
 export function hasCompletionBlockingClaudeTasks(
   tasks: ClaudeTaskMap,
@@ -100,8 +107,7 @@ export function hasCompletionBlockingClaudeTasks(
     if (
       !task.terminal &&
       !task.skipTranscript &&
-      (isBackgroundAgentTaskType(task.taskType) ||
-        task.taskType === LOCAL_WORKFLOW_TASK_TYPE)
+      isBackgroundAgentTaskType(task.taskType)
     ) {
       return true;
     }
