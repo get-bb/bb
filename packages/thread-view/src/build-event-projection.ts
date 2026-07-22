@@ -115,14 +115,14 @@ interface BuildFlatProjectionDataArgs {
 
 interface BuildFlatProjectionDataResult {
   activeThinking: ActiveThinking | null;
-  activeWorkflow: EventProjectionWorkflowMessage | null;
+  activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   messages: EventProjectionMessage[];
 }
 
 interface BuildDetailedProjectionArgs {
   activeThinking: ActiveThinking | null;
-  activeWorkflow: EventProjectionWorkflowMessage | null;
+  activeWorkflows: EventProjectionWorkflowMessage[];
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
@@ -140,10 +140,15 @@ const PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES = new Set([
   "closeAgent",
 ]);
 
-function selectActiveWorkflowMessage(
+/**
+ * Every workflow currently running in the thread, newest start first. A thread
+ * can drive several workflows at once, so this is a list rather than a single
+ * "current" workflow; the prompt-box banner renders one card per entry.
+ */
+function selectActiveWorkflowMessages(
   messages: readonly EventProjectionMessage[],
-): EventProjectionWorkflowMessage | null {
-  let best: EventProjectionWorkflowMessage | null = null;
+): EventProjectionWorkflowMessage[] {
+  const running: EventProjectionWorkflowMessage[] = [];
   for (const message of messages) {
     if (
       message.kind !== "workflow" ||
@@ -155,14 +160,11 @@ function selectActiveWorkflowMessage(
     ) {
       continue;
     }
-    if (
-      best === null ||
-      getMessageStartedAt(message) > getMessageStartedAt(best)
-    ) {
-      best = message;
-    }
+    running.push(message);
   }
-  return best;
+  return running.sort(
+    (a, b) => getMessageStartedAt(b) - getMessageStartedAt(a),
+  );
 }
 
 type EventProjectionCallMessage = Extract<
@@ -931,7 +933,7 @@ function buildFlatProjectionData(
     activeThinking: args.includeActiveThinking
       ? buildProjectionActiveThinking(state, args.options?.threadStatus)
       : null,
-    activeWorkflow: selectActiveWorkflowMessage(messages),
+    activeWorkflows: selectActiveWorkflowMessages(messages),
     activeBackgroundCommands: selectActiveBackgroundCommandMessages(messages),
     messages,
   };
@@ -948,7 +950,7 @@ function buildDetailedProjection(
     ...projection,
     state: {
       activeThinking: args.activeThinking,
-      activeWorkflow: args.activeWorkflow,
+      activeWorkflows: args.activeWorkflows,
       activeBackgroundCommands: args.activeBackgroundCommands,
     },
   }, {
@@ -974,7 +976,7 @@ function buildFullEventProjection(
   });
   return buildDetailedProjection({
     activeThinking: flatProjection.activeThinking,
-    activeWorkflow: flatProjection.activeWorkflow,
+    activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
@@ -991,7 +993,7 @@ export function buildEventProjectionEntries(
     return {
       state: {
         activeThinking: null,
-        activeWorkflow: null,
+        activeWorkflows: [],
         activeBackgroundCommands: [],
       },
       entries: [],
@@ -1009,7 +1011,7 @@ export function buildEventProjectionEntries(
   });
   return buildDetailedProjection({
     activeThinking: null,
-    activeWorkflow: flatProjection.activeWorkflow,
+    activeWorkflows: flatProjection.activeWorkflows,
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
@@ -1026,7 +1028,7 @@ export function buildEventProjection(
     return {
       state: {
         activeThinking: null,
-        activeWorkflow: null,
+        activeWorkflows: [],
         activeBackgroundCommands: [],
       },
       entries: [],

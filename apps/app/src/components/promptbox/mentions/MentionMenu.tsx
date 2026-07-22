@@ -18,10 +18,6 @@ import {
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { shouldLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -238,9 +234,12 @@ function getCommandSectionLabel(kind: CommandSectionKind): string {
 }
 
 // Rows share one icon box; plugin rows show the plugin's logo when it ships
-// one (falling back to the generic bolt), everything else a named icon.
-const ROW_ICON_BASE_CLASS = "size-3.5 shrink-0";
-const ROW_ICON_CLASS = cn(ROW_ICON_BASE_CLASS, "text-muted-foreground");
+// one (falling back to the generic bolt), everything else a named icon. Skills
+// deliberately do NOT show the thread's agent-provider logo: that logo is a
+// property of the composer, not of where the skill was discovered, so painting
+// it on every non-plugin skill mislabels bb-owned skills (`~/.bb/skills`, bb
+// built-ins) as provider-native ones.
+const ROW_ICON_CLASS = "size-3.5 shrink-0 text-muted-foreground";
 
 function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
   if (item.pluginId !== undefined) {
@@ -251,20 +250,6 @@ function getCommandIcon(item: ComposerCommandSuggestion): ReactNode {
         className={ROW_ICON_CLASS}
       />
     );
-  }
-  if (item.source === "skill" && item.providerId) {
-    const providerIcon = getProviderIconInfo(item.providerId);
-    if (providerIcon) {
-      const ProviderIcon = providerIcon.icon;
-      return (
-        <ProviderIcon
-          className={cn(
-            ROW_ICON_BASE_CLASS,
-            getProviderIconColorClass(item.providerId),
-          )}
-        />
-      );
-    }
   }
   return (
     <Icon

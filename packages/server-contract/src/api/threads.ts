@@ -630,7 +630,7 @@ export const threadTimelineQuerySchema = z
     /**
      * When `"true"`, the response omits row generation and returns
      * `rows: []` with the tail-only fields (`activeThinking`,
-     * `activeWorkflow`, `pendingTodos`, `contextWindowUsage`) populated
+     * `activeWorkflows`, `pendingTodos`, `contextWindowUsage`) populated
      * normally. Used by the CLI to read tail state without paying for the full
      * row payload on every `bb status` invocation. Implies `latest` page
      * semantics.
@@ -744,7 +744,8 @@ export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
-  activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
+  /** Running workflows, most recently started first. */
+  activeWorkflows: z.array(timelineWorkflowWorkRowSchema),
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),

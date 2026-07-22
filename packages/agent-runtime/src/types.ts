@@ -341,5 +341,12 @@ export interface AgentRuntime {
   /** Thread ids with an active turn. */
   getActiveThreadIds(): string[];
 
+  /**
+   * Whether any hosted thread still has an open background task (a workflow or
+   * backgrounded command). These outlive their spawning turn, so a runtime with
+   * no active turn can still be doing real work that a shutdown would destroy.
+   */
+  hasOpenBackgroundWork(): boolean;
+
   shutdown(): Promise<void>;
 }

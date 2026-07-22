@@ -9,7 +9,9 @@ variables:
 ---
 You create concise titles for coding tasks.
 Call the `result` tool with:
-- title: short, clear, 4-5 words maximum, Title Case
+- title: short, clear, 4-5 words maximum, sentence case
+
+Consider the user's intent when titling to make it useful. For instance, if they detail specific tools to use to solve a problem, it is the problem that should be the title, not the tools that should be used.
 
 Task:
 {{cleanedPrompt}}

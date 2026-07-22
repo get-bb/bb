@@ -431,6 +431,9 @@ export function createFakeRuntime() {
     getActiveThreadIds() {
       return [...activeTurnsByThreadId.keys()];
     },
+    hasOpenBackgroundWork() {
+      return false;
+    },
     async listModels(args) {
       state.listedModelsProviderId = args.providerId;
       state.listedModelsAcpLaunchSpec = args.acpLaunchSpec;

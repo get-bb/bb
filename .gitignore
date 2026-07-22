@@ -64,6 +64,7 @@ output.txt
 .claude/settings.local.json
 .codex
 .hermes/plans/
+.otto/
 
 # turborepo
 .turbo

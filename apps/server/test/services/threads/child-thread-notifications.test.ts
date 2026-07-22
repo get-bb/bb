@@ -24,6 +24,7 @@ describe("child thread notifications", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child",
             title: "Fix checkout flow",
@@ -48,6 +49,7 @@ describe("child thread notifications", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child",
             title: "Patch deploy script",
@@ -59,9 +61,11 @@ describe("child thread notifications", () => {
     });
 
     expect(message).toContain(
-      ["@thread:thr_child failed.", "", "Review the thread before deciding next steps."].join(
-        "\n",
-      ),
+      [
+        "@thread:thr_child failed.",
+        "",
+        "Review the thread before deciding next steps.",
+      ].join("\n"),
     );
     expect(message).not.toContain("Deploy script failed on preflight.");
   });
@@ -70,6 +74,7 @@ describe("child thread notifications", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child",
             title: "Fix checkout flow",
@@ -90,13 +95,16 @@ describe("child thread notifications", () => {
       ].join("\n"),
     );
     expect(message).not.toContain("Child thread updates:");
-    expect(message).not.toContain("Stopped after writing the checkout summary.");
+    expect(message).not.toContain(
+      "Stopped after writing the checkout summary.",
+    );
   });
 
   it("renders multiple child outcomes as status-only bullet lines", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_one",
             title: "Fix checkout flow",
@@ -105,6 +113,7 @@ describe("child thread notifications", () => {
           turnStatus: "completed",
         },
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_two",
             title: "Patch deploy script",
@@ -133,6 +142,7 @@ describe("child thread notifications", () => {
     const input = buildChildThreadTurnStatusBatchInput({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_one",
             title: "Fix checkout flow",
@@ -141,6 +151,7 @@ describe("child thread notifications", () => {
           turnStatus: "completed",
         },
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_two",
             title: null,
@@ -196,6 +207,7 @@ describe("child thread notifications", () => {
     const input = buildChildThreadTurnStatusBatchInput({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_one",
             title: `Title mentions ${nestedToken}`,
@@ -204,6 +216,7 @@ describe("child thread notifications", () => {
           turnStatus: "completed",
         },
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child_two",
             title: "Second thread",
@@ -237,6 +250,7 @@ describe("child thread notifications", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
+          activeWorkflowCount: 0,
           childThread: testThread({
             id: "thr_child",
             title: "Patch deploy script",
@@ -248,9 +262,73 @@ describe("child thread notifications", () => {
     });
 
     expect(message).toContain(
-      ["@thread:thr_child completed:", "", "No final output was recorded."].join(
-        "\n",
-      ),
+      [
+        "@thread:thr_child completed:",
+        "",
+        "No final output was recorded.",
+      ].join("\n"),
+    );
+  });
+
+  it("flags a still-running workflow on a single completed outcome", () => {
+    const message = renderChildThreadTurnStatusBatchMessage({
+      items: [
+        {
+          activeWorkflowCount: 1,
+          childThread: testThread({
+            id: "thr_child",
+            title: "Rebalance archetypes",
+          }),
+          terminalOutput: "Kicked off the balance pass.",
+          turnStatus: "completed",
+        },
+      ],
+    });
+
+    expect(message).toContain(
+      [
+        "@thread:thr_child completed, with 1 workflow still running:",
+        "",
+        "Kicked off the balance pass.",
+        "",
+        "A workflow it started is still running, so this output is not its final result. The thread will report again when the workflow finishes.",
+      ].join("\n"),
+    );
+  });
+
+  it("pluralizes and flags still-running workflows across batched outcomes", () => {
+    const message = renderChildThreadTurnStatusBatchMessage({
+      items: [
+        {
+          activeWorkflowCount: 2,
+          childThread: testThread({
+            id: "thr_child_one",
+            title: "Rebalance archetypes",
+          }),
+          terminalOutput: "Kicked off two workflows.",
+          turnStatus: "completed",
+        },
+        {
+          activeWorkflowCount: 0,
+          childThread: testThread({
+            id: "thr_child_two",
+            title: "Patch deploy script",
+          }),
+          terminalOutput: "Deploy script failed on preflight.",
+          turnStatus: "failed",
+        },
+      ],
+    });
+
+    expect(message).toContain(
+      [
+        "Child thread updates:",
+        "",
+        "- @thread:thr_child_one completed, with 2 workflows still running.",
+        "- @thread:thr_child_two failed.",
+        "",
+        "Threads with a workflow still running have not finished; they will report again when their workflow does.",
+      ].join("\n"),
     );
   });
 

@@ -51,6 +51,7 @@ import {
 } from "./runtime-thread-identity.js";
 import { RuntimeThreadGoalState } from "./runtime-thread-goal-state.js";
 import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
+import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 import type {
   AgentRuntime,
@@ -235,6 +236,7 @@ function createAgentRuntimeInternal(
   const threadOperationCounts = new Map<string, number>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
+  const backgroundWorkState = new RuntimeBackgroundWorkState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
   const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
 
@@ -278,6 +280,7 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
+      backgroundWorkState.clearThread(threadId);
       turnReplayFilter.clearThread(threadId);
     },
     onStderr: options.onStderr,
@@ -500,6 +503,7 @@ function createAgentRuntimeInternal(
     });
     clearThreadRuntimeConfig(threadId);
     turnState.clearThread(threadId);
+    backgroundWorkState.clearThread(threadId);
     turnReplayFilter.clearThread(threadId);
   }
 
@@ -888,6 +892,7 @@ function createAgentRuntimeInternal(
         replayResult.event,
       );
       turnState.observe(normalizedEvent);
+      backgroundWorkState.observe(normalizedEvent);
       observeProviderSessionIdleState(normalizedEvent);
       if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
         codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
@@ -1659,12 +1664,17 @@ function createAgentRuntimeInternal(
       return turnState.getActiveThreadIds();
     },
 
+    hasOpenBackgroundWork() {
+      return backgroundWorkState.hasOpenWork();
+    },
+
     async shutdown() {
       idleProviderSessionSinceMsByThreadId.clear();
       pendingTurnStartThreadIds.clear();
       threadOperationCounts.clear();
       threadGoalState.clear();
       turnState.clear();
+      backgroundWorkState.clear();
       turnReplayFilter.clear();
       await providerProcesses.shutdown();
     },

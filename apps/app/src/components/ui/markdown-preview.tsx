@@ -873,8 +873,23 @@ function MarkdownUnorderedList({ children }: MarkdownUnorderedListProps) {
   return <ul className="mb-2 list-disc pl-5 text-foreground">{children}</ul>;
 }
 
-function MarkdownOrderedList({ children }: MarkdownOrderedListProps) {
-  return <ol className="mb-2 list-decimal pl-5 text-foreground">{children}</ol>;
+// `start` carries the list's first number (`3.` renders as "3."), so it has to
+// reach the DOM: the marker comes from a CSS counter that otherwise restarts
+// at 1.
+function MarkdownOrderedList({
+  children,
+  className: _className,
+  node: _node,
+  ...orderedListProps
+}: MarkdownOrderedListProps) {
+  return (
+    <ol
+      {...orderedListProps}
+      className="mb-2 list-decimal pl-5 text-foreground"
+    >
+      {children}
+    </ol>
+  );
 }
 
 function MarkdownListItem({ children }: MarkdownListItemProps) {

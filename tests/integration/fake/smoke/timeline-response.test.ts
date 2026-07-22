@@ -47,7 +47,7 @@ function makeTimelineResponse(
     rows,
     activePromptMode: null,
     activeThinking: null,
-    activeWorkflow: null,
+    activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,

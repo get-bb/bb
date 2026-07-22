@@ -18,8 +18,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import { BbHttpError } from "@/lib/sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -330,7 +332,24 @@ vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => ({
-  ThreadWorkflowCard: () => null,
+  ThreadWorkflowCard: ({
+    workflow,
+    isExpanded,
+    onToggle,
+  }: {
+    workflow: TimelineWorkflowWorkRow;
+    isExpanded: boolean;
+    onToggle: () => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="workflow-card"
+      data-expanded={isExpanded}
+      onClick={onToggle}
+    >
+      {workflow.workflowName}
+    </button>
+  ),
 }));
 
 vi.mock(
@@ -602,6 +621,7 @@ function makePluginPendingInteraction(): PendingInteraction {
 
 interface RenderPromptAreaOptions {
   activePromptMode?: ThreadTimelineActivePromptMode | null;
+  activeWorkflows?: TimelineWorkflowWorkRow[];
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
@@ -611,6 +631,7 @@ interface RenderPromptAreaOptions {
 
 function buildPromptAreaElement({
   activePromptMode = null,
+  activeWorkflows = [],
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
@@ -621,7 +642,7 @@ function buildPromptAreaElement({
     <ThreadDetailPromptArea
       activeBackgroundCommands={[]}
       activePromptMode={activePromptMode}
-      activeWorkflow={null}
+      activeWorkflows={activeWorkflows}
       canUseGitUi={false}
       childThreadsSection={null}
       composerFocusRequestNonce={0}
@@ -1254,6 +1275,39 @@ describe("ThreadDetailPromptArea", () => {
     expect(screen.getByTestId("submit-mode").textContent).toBe(
       "blocked:loading-pending-interactions",
     );
+  });
+
+  it("gives every concurrently running workflow its own independently expandable card", () => {
+    renderPromptArea({
+      activeWorkflows: [
+        workflowRow({
+          id: "row-wf-late",
+          status: "pending",
+          taskStatus: "running",
+          workflowName: "rfn-visual-identity",
+        }),
+        workflowRow({
+          id: "row-wf-early",
+          status: "pending",
+          taskStatus: "running",
+          workflowName: "rfn-pass-a-balance",
+        }),
+      ],
+    });
+
+    const cards = screen.getAllByTestId("workflow-card");
+    expect(cards.map((card) => card.textContent)).toEqual([
+      "rfn-visual-identity",
+      "rfn-pass-a-balance",
+    ]);
+
+    // Expanding one workflow must not expand its concurrent sibling.
+    fireEvent.click(cards[1]!);
+    expect(
+      screen
+        .getAllByTestId("workflow-card")
+        .map((card) => card.getAttribute("data-expanded")),
+    ).toEqual(["false", "true"]);
   });
 
   it("keeps Goal above a pending interaction", () => {

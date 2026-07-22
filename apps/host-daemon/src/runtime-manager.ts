@@ -457,9 +457,17 @@ export class RuntimeManager {
     });
   }
 
+  /**
+   * Background tasks outlive their turn, so an entry with no active turn can
+   * still be running a workflow or a backgrounded command inside its provider
+   * process. Shutting that runtime down would kill them, so they count as
+   * active work.
+   */
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
     return (
-      entry.terminals.size > 0 || entry.runtime.getActiveThreadIds().length > 0
+      entry.terminals.size > 0 ||
+      entry.runtime.getActiveThreadIds().length > 0 ||
+      entry.runtime.hasOpenBackgroundWork()
     );
   }
 
