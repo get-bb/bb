@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
+  SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -236,6 +237,39 @@ describe("ThreadRow", () => {
     expect(Array.from(runningIcon.classList)).not.toContain(
       SIDEBAR_WORKING_STATUS_COLOR_CLASS,
     );
+  });
+
+  it("automatically shimmers a plugin status with the running tone", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AiContentGenerator01",
+      label: "Plugin running",
+      tone: "running",
+    });
+    renderThreadRow({ hasComposerDraft: true });
+
+    const runningIcon = screen.getByLabelText("Plugin running");
+    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
+    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
+    expect(Array.from(runningIcon.classList)).toContain(
+      "animate-shine-icon-status",
+    );
+    expect(Array.from(runningIcon.classList)).toContain(
+      SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
+    );
+  });
+
+  it("renders a static destructive plugin status with the error tone", () => {
+    setPluginThreadRowStatus("thr_test", "composer-status-test", {
+      icon: "AlertCircle",
+      label: "Plugin failed",
+      tone: "error",
+    });
+    renderThreadRow({ hasComposerDraft: true });
+
+    const errorIcon = screen.getByLabelText("Plugin failed");
+    expect(errorIcon.getAttribute("data-icon")).toBe("AlertCircle");
+    expect(Array.from(errorIcon.classList)).toContain("text-destructive");
+    expect(Array.from(errorIcon.classList)).not.toContain("animate-shine-icon");
   });
 
   it("keeps the runtime spinner ahead of a plugin status", () => {

@@ -35,8 +35,16 @@ export function normalizeComposerThreadRowStatus(
     return undefined;
   }
   const tone = status.tone;
-  if (tone !== undefined && tone !== "default" && tone !== "success") {
-    onRejected(`${kind}: "tone" must be "default" or "success" when set`);
+  if (
+    tone !== undefined &&
+    tone !== "default" &&
+    tone !== "running" &&
+    tone !== "success" &&
+    tone !== "error"
+  ) {
+    onRejected(
+      `${kind}: "tone" must be "default", "running", "success", or "error" when set`,
+    );
     return undefined;
   }
 

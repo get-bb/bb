@@ -1051,7 +1051,9 @@ experimental_openThreadPanel({ actionId, title?, params? }) }`.
   the editor read-only and busy and auto-releases when the customization
   unmounts or changes scope; `setThreadRowStatus({ icon, label, tone? })`
   replaces the bound thread-row draft glyph (`null` clears it; new-thread
-  calls are no-ops);
+  calls are no-ops): use `tone: "running"` while work is active for an
+  automatically shimmering icon, then replace it with a static
+  `tone: "success"` or `tone: "error"` terminal icon;
   `insertMention({ provider, id, label })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
   fresh context at send time; `focus()` focuses the caret; `scope` reports

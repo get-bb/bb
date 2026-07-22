@@ -895,13 +895,31 @@ describe("renderSlot", () => {
         tone: "default",
       });
     });
-    const validStatus = {
+    const defaultStatus = {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       tone: "default" as const,
     };
-    expect(slot.composer.threadRowStatus).toEqual(validStatus);
-    expect(slot.composer.threadRowStatusCalls).toEqual([validStatus]);
+    expect(slot.composer.threadRowStatus).toEqual(defaultStatus);
+    expect(slot.composer.threadRowStatusCalls).toEqual([defaultStatus]);
+
+    const runningStatus = {
+      icon: "Zap",
+      label: "Plugin running",
+      tone: "running" as const,
+    };
+    act(() => setStatus(runningStatus));
+    expect(slot.composer.threadRowStatus).toEqual(runningStatus);
+
+    const errorStatus = {
+      icon: "AlertCircle",
+      label: "Plugin failed",
+      tone: "error" as const,
+    };
+    act(() => setStatus(errorStatus));
+    expect(slot.composer.threadRowStatus).toEqual(errorStatus);
+    const acceptedStatuses = [defaultStatus, runningStatus, errorStatus];
+    expect(slot.composer.threadRowStatusCalls).toEqual(acceptedStatuses);
 
     const invalidStatuses: Array<{
       value: unknown;
@@ -929,13 +947,14 @@ describe("renderSlot", () => {
           label: "Working",
           tone: null,
         },
-        warning: '"tone" must be "default" or "success" when set',
+        warning:
+          '"tone" must be "default", "running", "success", or "error" when set',
       },
     ];
     for (const invalid of invalidStatuses) {
       act(() => setStatus(invalid.value));
-      expect(slot.composer.threadRowStatus).toEqual(validStatus);
-      expect(slot.composer.threadRowStatusCalls).toEqual([validStatus]);
+      expect(slot.composer.threadRowStatus).toEqual(errorStatus);
+      expect(slot.composer.threadRowStatusCalls).toEqual(acceptedStatuses);
       expect(warn).toHaveBeenLastCalledWith(
         expect.stringContaining(invalid.warning),
       );
@@ -950,7 +969,10 @@ describe("renderSlot", () => {
     expect(rejectionWarningCount()).toBe(invalidStatuses.length);
     act(() => setStatus(null));
     expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toEqual([validStatus, null]);
+    expect(slot.composer.threadRowStatusCalls).toEqual([
+      ...acceptedStatuses,
+      null,
+    ]);
     expect(rejectionWarningCount()).toBe(invalidStatuses.length);
   });
 

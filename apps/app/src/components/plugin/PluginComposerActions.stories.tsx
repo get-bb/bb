@@ -140,30 +140,73 @@ function OverflowFixture() {
 
 function ThreadRowStatusAction() {
   const { setThreadRowStatus } = useComposer();
-  const [visible, setVisible] = useState(true);
+  const [status, setStatus] = useState<
+    "running" | "success" | "error" | "clear"
+  >("running");
   useEffect(() => {
-    setThreadRowStatus(
-      visible
-        ? {
-            icon: "Zap",
-            label: "Improving draft",
-            tone: "success",
-          }
-        : null,
-    );
+    if (status === "running") {
+      setThreadRowStatus({
+        icon: "Zap",
+        label: "Plugin running",
+        tone: "running",
+      });
+    } else if (status === "success") {
+      setThreadRowStatus({
+        icon: "Check",
+        label: "Plugin completed",
+        tone: "success",
+      });
+    } else if (status === "error") {
+      setThreadRowStatus({
+        icon: "AlertCircle",
+        label: "Plugin failed",
+        tone: "error",
+      });
+    } else {
+      setThreadRowStatus(null);
+    }
     return () => setThreadRowStatus(null);
-  }, [setThreadRowStatus, visible]);
+  }, [setThreadRowStatus, status]);
 
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      onClick={() => setVisible((current) => !current)}
-    >
-      <Icon name={visible ? "X" : "Zap"} className="mr-1 size-3.5" />
-      {visible ? "Clear thread row status" : "Show thread row status"}
-    </Button>
+    <div className="flex items-center gap-0.5">
+      <Button
+        type="button"
+        size="icon"
+        variant={status === "running" ? "secondary" : "ghost"}
+        aria-label="Show running plugin run"
+        onClick={() => setStatus("running")}
+      >
+        <Icon name="Zap" className="size-4" aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant={status === "success" ? "secondary" : "ghost"}
+        aria-label="Show successful plugin run"
+        onClick={() => setStatus("success")}
+      >
+        <Icon name="Check" className="size-4" aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant={status === "error" ? "secondary" : "ghost"}
+        aria-label="Show failed plugin run"
+        onClick={() => setStatus("error")}
+      >
+        <Icon name="AlertCircle" className="size-4" aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant={status === "clear" ? "secondary" : "ghost"}
+        aria-label="Clear plugin run status"
+        onClick={() => setStatus("clear")}
+      >
+        <Icon name="X" className="size-4" aria-hidden />
+      </Button>
+    </div>
   );
 }
 
@@ -279,7 +322,7 @@ export function ThreadRowStatus() {
     <StoryCard>
       <StoryRow
         label="plugin-provided thread status"
-        hint="the composer plugin sets a success icon and label in the real thread row; clear or restore it from the composer action"
+        hint="use the composer actions to show a shimmering running icon, static success or failure, and cleanup in the real thread row"
       >
         <ThreadRowStatusFixture />
       </StoryRow>

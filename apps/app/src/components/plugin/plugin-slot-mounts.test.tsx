@@ -998,13 +998,36 @@ describe("useComposer", () => {
         tone: "success",
       }),
     );
-    const validStatus = {
+    const successStatus = {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
       tone: "success" as const,
     };
     expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
-      validStatus,
+      successStatus,
+    );
+
+    act(() =>
+      setStatus({
+        icon: "Zap",
+        label: "Plugin running",
+        tone: "running",
+      }),
+    );
+    expect(getPluginThreadRowStatus("thr_status_validation")).toEqual({
+      icon: "Zap",
+      label: "Plugin running",
+      tone: "running",
+    });
+
+    const errorStatus = {
+      icon: "AlertCircle",
+      label: "Plugin failed",
+      tone: "error" as const,
+    };
+    act(() => setStatus(errorStatus));
+    expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
+      errorStatus,
     );
 
     const invalidStatuses: Array<{
@@ -1033,13 +1056,14 @@ describe("useComposer", () => {
           label: "Working",
           tone: "warning",
         },
-        warning: '"tone" must be "default" or "success" when set',
+        warning:
+          '"tone" must be "default", "running", "success", or "error" when set',
       },
     ];
     for (const invalid of invalidStatuses) {
       act(() => setStatus(invalid.value));
       expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
-        validStatus,
+        errorStatus,
       );
       expect(warn).toHaveBeenLastCalledWith(
         expect.stringContaining(invalid.warning),

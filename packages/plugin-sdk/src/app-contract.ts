@@ -555,8 +555,12 @@ export interface PluginComposerThreadRowStatus {
   icon: string;
   /** Accessible label for the status glyph. */
   label: string;
-  /** Semantic host color for the status glyph. Defaults to the neutral tone. */
-  tone?: "default" | "success";
+  /**
+   * Semantic host treatment for the status glyph. `running` automatically
+   * shimmers; terminal `success` and `error` tones are static. Defaults to the
+   * neutral tone.
+   */
+  tone?: "default" | "running" | "success" | "error";
 }
 
 /** An @-mention pill bound to one of the calling plugin's mention providers. */
