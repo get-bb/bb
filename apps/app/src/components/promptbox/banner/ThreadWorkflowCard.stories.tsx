@@ -200,6 +200,59 @@ const manyPhasesWorkflow = workflowRow({
   usage: { totalTokens: 4_210_000, toolUses: 1_284, durationMs: 1_472_000 },
 });
 
+// A second concurrent run, so the stack of cards a thread shows while it drives
+// several workflows at once can be reviewed. Shorter and earlier in its run than
+// `runningWorkflow` so the two cards do not read as duplicates.
+const secondRunningWorkflow = workflowRow({
+  id: "thr_fixture:workflow:balance:running",
+  status: "pending",
+  taskStatus: "running",
+  workflowName: "bb-balance-pass",
+  description: "Close the remaining balance defects",
+  startedAt: Date.now() - 94_000,
+  workflow: {
+    phases: [
+      { index: 1, title: "Diagnose" },
+      { index: 2, title: "Fix" },
+      { index: 3, title: "Verify" },
+    ],
+    agents: [
+      {
+        index: 1,
+        label: "diag:aggression",
+        state: "done",
+        model: "opus",
+        attempt: 1,
+        cached: false,
+        lastProgressAt: 1780540129098,
+        phaseIndex: 1,
+        phaseTitle: "Diagnose",
+        queuedAt: 1780540127739,
+        startedAt: 1780540127740,
+        tokens: 88_100,
+        toolCalls: 24,
+        durationMs: 61_000,
+      },
+      {
+        index: 2,
+        label: "diag:weight",
+        state: "running",
+        model: "opus",
+        attempt: 1,
+        cached: false,
+        lastProgressAt: 1780540129378,
+        phaseIndex: 1,
+        phaseTitle: "Diagnose",
+        queuedAt: 1780540127739,
+        startedAt: 1780540127740,
+        tokens: 31_500,
+        toolCalls: 7,
+      },
+    ],
+  },
+  usage: { totalTokens: 119_600, toolUses: 31, durationMs: 94_000 },
+});
+
 function FauxComposer() {
   return (
     <div className="rounded-lg border border-border bg-popover p-3">
@@ -217,10 +270,12 @@ function FauxComposer() {
 
 function ToggleableCard({
   workflow,
+  initialExpanded = true,
 }: {
   workflow: typeof runningWorkflow;
+  initialExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(initialExpanded);
   return (
     <ThreadWorkflowCard
       workflow={workflow}
@@ -301,6 +356,28 @@ export function Overview() {
       >
         <ResponsiveStage>
           <CollapsedWorkflowPreview />
+        </ResponsiveStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ConcurrentWorkflows() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="two running"
+        hint="one card per running workflow, newest first; each expands independently"
+      >
+        <ResponsiveStage>
+          <div className="flex flex-col gap-2">
+            <ToggleableCard
+              workflow={secondRunningWorkflow}
+              initialExpanded={false}
+            />
+            <ToggleableCard workflow={runningWorkflow} initialExpanded={false} />
+            <FauxComposer />
+          </div>
         </ResponsiveStage>
       </StoryRow>
     </StoryCard>

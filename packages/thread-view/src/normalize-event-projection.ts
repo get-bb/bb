@@ -350,7 +350,7 @@ class SemanticProjectionBuilder {
     return {
       state: {
         activeThinking: null,
-        activeWorkflow: null,
+        activeWorkflows: [],
         activeBackgroundCommands: [],
       },
       entries,
@@ -368,7 +368,7 @@ class SemanticProjectionBuilder {
     return {
       state: {
         activeThinking: null,
-        activeWorkflow: null,
+        activeWorkflows: [],
         activeBackgroundCommands: [],
       },
       entries: contexts.map((context) => ({

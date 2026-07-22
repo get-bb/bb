@@ -73,7 +73,7 @@ function makeBannerTimeline(): ThreadTimelineResponse {
       prompt: "Plan the work",
     },
     activeThinking: null,
-    activeWorkflow: null,
+    activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: {

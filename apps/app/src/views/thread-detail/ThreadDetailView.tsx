@@ -753,7 +753,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const {
     activePromptMode,
     activeThinking,
-    activeWorkflow,
+    activeWorkflows,
     activeBackgroundCommands,
     contextWindowUsage,
     goal,
@@ -2454,7 +2454,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       activePromptMode={activePromptMode}
       goal={goal}
       modelFallback={modelFallback}
-      activeWorkflow={activeWorkflow}
+      activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}

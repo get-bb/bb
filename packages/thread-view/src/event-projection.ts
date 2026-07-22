@@ -35,14 +35,15 @@ export interface EventProjectionState {
    */
   activeThinking: ActiveThinking | null;
   /**
-   * Root-projection-only active workflow selected before completed turns are
-   * summarized. Nested child projections expose null.
+   * Root-projection-only running workflows, most recently started first,
+   * selected before completed turns are summarized. A thread can run several
+   * workflows concurrently. Empty for nested child projections.
    */
-  activeWorkflow: EventProjectionWorkflowMessage | null;
+  activeWorkflows: EventProjectionWorkflowMessage[];
   /**
    * Root-projection-only running non-workflow background tasks, most recently
    * started first, for the background-activity prompt-box card. Independent of
-   * `activeWorkflow`. Empty for nested child projections.
+   * `activeWorkflows`. Empty for nested child projections.
    */
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
 }

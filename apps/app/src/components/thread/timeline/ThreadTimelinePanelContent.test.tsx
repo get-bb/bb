@@ -43,7 +43,7 @@ vi.mock("./useThreadTimelineController.js", () => ({
   useThreadTimelineController: () => ({
     activePromptMode: null,
     activeThinking: null,
-    activeWorkflow: null,
+    activeWorkflows: [],
     activeBackgroundCommands: [],
     contextWindowUsage: undefined,
     goal: null,
@@ -95,7 +95,7 @@ function baseTimeline(
   return {
     activePromptMode: null,
     activeThinking: null,
-    activeWorkflow: null,
+    activeWorkflows: [],
     activeBackgroundCommands: [],
     contextWindowUsage: undefined,
     goal: null,
@@ -122,7 +122,7 @@ describe("ThreadTimelinePanelContent", () => {
     render(
       <ThreadTimelinePanelContent
         threadId="thr-test"
-        timeline={baseTimeline({ activeWorkflow: workflowRow() })}
+        timeline={baseTimeline({ activeWorkflows: [workflowRow()] })}
       />,
     );
 
@@ -135,7 +135,7 @@ describe("ThreadTimelinePanelContent", () => {
     render(
       <ThreadTimelinePanelContent
         threadId="thr-test"
-        timeline={baseTimeline({ activeWorkflow: workflowRow() })}
+        timeline={baseTimeline({ activeWorkflows: [workflowRow()] })}
       />,
     );
 

@@ -21,7 +21,7 @@ export interface UseThreadTimelineControllerArgs {
 export interface UseThreadTimelineControllerResult {
   activePromptMode: ThreadTimelineResponse["activePromptMode"];
   activeThinking: ThreadTimelineResponse["activeThinking"];
-  activeWorkflow: ThreadTimelineResponse["activeWorkflow"];
+  activeWorkflows: ThreadTimelineResponse["activeWorkflows"];
   activeBackgroundCommands: ThreadTimelineResponse["activeBackgroundCommands"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
   goal: ThreadTimelineResponse["goal"];
@@ -518,7 +518,7 @@ export function useThreadTimelineController({
   return {
     activePromptMode: latestTimeline?.activePromptMode ?? null,
     activeThinking: latestTimeline?.activeThinking ?? null,
-    activeWorkflow: latestTimeline?.activeWorkflow ?? null,
+    activeWorkflows: latestTimeline?.activeWorkflows ?? [],
     activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
     contextWindowUsage: latestTimeline?.contextWindowUsage,
     goal: latestTimeline?.goal ?? null,

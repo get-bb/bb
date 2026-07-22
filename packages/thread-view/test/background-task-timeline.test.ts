@@ -71,16 +71,18 @@ function taskItem(args: {
   workflow?: WorkflowProgressSnapshot;
   skipTranscript?: boolean;
   summary?: string;
+  id?: string;
+  workflowName?: string;
 }): ThreadEventBackgroundTaskItem {
   return {
     type: "backgroundTask",
-    id: "task:wf-1",
+    id: args.id ?? "task:wf-1",
     taskType: "local_workflow",
     description: "Tiny fixture workflow",
     status: args.status,
     taskStatus: args.taskStatus,
     skipTranscript: args.skipTranscript ?? false,
-    workflowName: "fixture-mini",
+    workflowName: args.workflowName ?? "fixture-mini",
     ...(args.workflow ? { workflow: args.workflow } : {}),
     ...(args.summary ? { summary: args.summary } : {}),
     usage: { totalTokens: 26674, toolUses: 0, durationMs: 3277 },
@@ -415,7 +417,7 @@ describe("background task timeline projection", () => {
     );
 
     expect(findWorkflowRows(timeline.rows)).toHaveLength(0);
-    expect(timeline.activeWorkflow).toMatchObject({
+    expect(timeline.activeWorkflows[0]).toMatchObject({
       itemId: "task:wf-1",
       status: "pending",
       taskStatus: "running",
@@ -501,13 +503,121 @@ describe("background task timeline projection", () => {
 
     // A running shell command never hijacks the workflow banner, but it does
     // drive the independent background-activity card.
-    expect(timeline.activeWorkflow).toBeNull();
+    expect(timeline.activeWorkflows).toHaveLength(0);
     expect(timeline.activeBackgroundCommands).toHaveLength(1);
     expect(timeline.activeBackgroundCommands[0]).toMatchObject({
       itemId: "task:bmn5wv33k",
       taskType: "local_bash",
       status: "pending",
     });
+  });
+
+  it("lists every concurrently running workflow most-recent-first", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:wf-early",
+              workflowName: "rfn-pass-a-balance",
+            }),
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:wf-late",
+              workflowName: "rfn-visual-identity",
+            }),
+          },
+          3,
+        ),
+        turnCompleted("turn-1", 4),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    // A thread can drive several workflows at once; the banner must surface all
+    // of them rather than collapsing to the most recently started one.
+    expect(timeline.activeWorkflows.map((row) => row.workflowName)).toEqual([
+      "rfn-visual-identity",
+      "rfn-pass-a-balance",
+    ]);
+  });
+
+  it("drops a workflow from the active list once it settles", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:wf-early",
+              workflowName: "rfn-pass-a-balance",
+            }),
+          },
+          2,
+        ),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({
+              status: "pending",
+              taskStatus: "running",
+              id: "task:wf-late",
+              workflowName: "rfn-visual-identity",
+            }),
+          },
+          3,
+        ),
+        withMeta(
+          {
+            type: "item/backgroundTask/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: taskItem({
+              status: "completed",
+              taskStatus: "completed",
+              id: "task:wf-late",
+              workflowName: "rfn-visual-identity",
+            }),
+          },
+          4,
+        ),
+        turnCompleted("turn-1", 5),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    // The settled workflow hands off to its timeline row; the still-running
+    // sibling keeps its banner card.
+    expect(timeline.activeWorkflows.map((row) => row.workflowName)).toEqual([
+      "rfn-pass-a-balance",
+    ]);
   });
 
   it("lists running background commands and agents most-recent-first and excludes workflows", () => {
@@ -576,7 +686,7 @@ describe("background task timeline projection", () => {
 
     // The workflow drives the workflow banner; non-workflow background tasks
     // drive the background-activity card, ordered most recently started first.
-    expect(timeline.activeWorkflow).toMatchObject({
+    expect(timeline.activeWorkflows[0]).toMatchObject({
       taskType: "local_workflow",
     });
     expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
@@ -724,6 +834,6 @@ describe("background task timeline projection", () => {
     ]);
 
     expect(findWorkflowRows(timeline.rows)).toHaveLength(0);
-    expect(timeline.activeWorkflow).toBeNull();
+    expect(timeline.activeWorkflows).toHaveLength(0);
   });
 });

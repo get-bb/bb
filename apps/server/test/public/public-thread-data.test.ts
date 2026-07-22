@@ -1231,7 +1231,7 @@ describe("public thread data routes", () => {
         await readJson(timelineResponse),
       );
 
-      expect(timeline.activeWorkflow).toMatchObject({
+      expect(timeline.activeWorkflows[0]).toMatchObject({
         itemId: "task:wf-open",
         status: "pending",
         taskStatus: "running",

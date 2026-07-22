@@ -164,8 +164,12 @@ interface ThreadDetailPromptAreaProps {
   goal: ThreadTimelineGoal | null;
   /** Active provider fallback; controls the next model selection until another turn is requested. */
   modelFallback: ThreadTimelineModelFallback | null;
-  /** Running workflow row from the timeline. Null when no workflow is active. */
-  activeWorkflow: TimelineWorkflowWorkRow | null;
+  /**
+   * Running workflow rows from the timeline, most recently started first. A
+   * thread can run several workflows at once, so each gets its own card. Empty
+   * when none are running.
+   */
+  activeWorkflows: TimelineWorkflowWorkRow[];
   /** Running backgrounded shell command rows, most recent first. Empty when none. */
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
@@ -212,7 +216,7 @@ export function ThreadDetailPromptArea({
   activePromptMode,
   goal,
   modelFallback,
-  activeWorkflow,
+  activeWorkflows,
   activeBackgroundCommands,
   parentThreadSection,
   childThreadsSection,
@@ -366,7 +370,20 @@ export function ThreadDetailPromptArea({
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isTodoExpanded, setIsTodoExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
-  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  // Expansion is tracked per workflow id so concurrent workflows expand and
+  // collapse independently.
+  const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const toggleWorkflowExpanded = useCallback((workflowId: string) => {
+    setExpandedWorkflowIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(workflowId)) {
+        next.add(workflowId);
+      }
+      return next;
+    });
+  }, []);
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -1153,11 +1170,14 @@ export function ThreadDetailPromptArea({
   const promptStack = useMemo(
     () => (
       <>
-        <ThreadWorkflowCard
-          workflow={activeWorkflow}
-          isExpanded={isWorkflowExpanded}
-          onToggle={() => setIsWorkflowExpanded((value) => !value)}
-        />
+        {activeWorkflows.map((workflow) => (
+          <ThreadWorkflowCard
+            key={workflow.id}
+            workflow={workflow}
+            isExpanded={expandedWorkflowIds.has(workflow.id)}
+            onToggle={() => toggleWorkflowExpanded(workflow.id)}
+          />
+        ))}
         <ThreadBackgroundCommandsCard
           commands={activeBackgroundCommands}
           isExpanded={isBackgroundCommandsExpanded}
@@ -1259,8 +1279,9 @@ export function ThreadDetailPromptArea({
       activeGoalCard,
       activePromptModeCard,
       isTodoExpanded,
-      activeWorkflow,
-      isWorkflowExpanded,
+      activeWorkflows,
+      expandedWorkflowIds,
+      toggleWorkflowExpanded,
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
       modelFallback,

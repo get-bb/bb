@@ -114,7 +114,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 export interface ThreadTimelineFromEventsResult {
   activePromptMode: ThreadTimelineActivePromptMode | null;
   activeThinking: ActiveThinking | null;
-  activeWorkflow: TimelineWorkflowWorkRow | null;
+  activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
@@ -1230,12 +1230,10 @@ export function buildThreadTimelineFromEvents(
           threadStatus: args.options.threadStatus,
         }),
     activeThinking: projection.state.activeThinking,
-    activeWorkflow: projection.state.activeWorkflow
-      ? buildWorkflowWorkRow(
-          projection.state.activeWorkflow,
-          ROOT_TIMELINE_ROW_ID_PREFIX,
-        )
-      : null,
+    activeWorkflows: projection.state.activeWorkflows.flatMap((message) => {
+      const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
+      return row ? [row] : [];
+    }),
     activeBackgroundCommands: projection.state.activeBackgroundCommands.flatMap(
       (message) => {
         const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);

@@ -54,7 +54,7 @@ function agentProgressLabel(workflow: TimelineWorkflowWorkRow): string | null {
 }
 
 export interface ThreadWorkflowCardProps {
-  workflow: TimelineWorkflowWorkRow | null;
+  workflow: TimelineWorkflowWorkRow;
   isExpanded: boolean;
   onToggle: () => void;
 }
@@ -69,13 +69,16 @@ export interface ThreadWorkflowCardProps {
  * follows the active phase as the run advances, so a long run stays glanceable.
  * Only rendered while the workflow is running — once it settles it drops out of
  * the prompt stack and its timeline row carries the terminal state.
+ *
+ * One card per running workflow: a thread can drive several concurrently, so
+ * the caller maps over `activeWorkflows` and owns per-workflow expansion state.
  */
 export function ThreadWorkflowCard({
   workflow,
   isExpanded,
   onToggle,
 }: ThreadWorkflowCardProps) {
-  if (!workflow || workflow.status !== "pending") {
+  if (workflow.status !== "pending") {
     return null;
   }
   const name = workflow.workflowName ?? workflow.description;

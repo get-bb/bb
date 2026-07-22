@@ -20,7 +20,7 @@ function response(rows: TimelineRow[]): ThreadTimelineResponse {
     rows,
     activePromptMode: null,
     activeThinking: null,
-    activeWorkflow: null,
+    activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
