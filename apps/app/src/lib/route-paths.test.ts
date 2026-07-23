@@ -95,6 +95,7 @@ describe("route path helpers", () => {
       "/tools",
       "/tools/skills",
       "/tools/skills/library/skill_abc123",
+      "/tools/skills/installed/skill_abc123",
       "/tools/skills/registry/moss-skills%2Fmoss-notes",
       "/tools/plugins",
       "/tools/plugins/browse",

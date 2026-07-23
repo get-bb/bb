@@ -16,6 +16,7 @@ import {
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
+  LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
@@ -36,6 +37,7 @@ import {
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
   getAutomationDetailRoutePath,
   getSettingsRoutePath,
+  getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
@@ -70,6 +72,16 @@ function LegacyAutomationDetailRedirect() {
   return (
     <Navigate
       to={getAutomationDetailRoutePath({ projectId, automationId })}
+      replace
+    />
+  );
+}
+
+export function LegacySkillDetailRedirect() {
+  const { skillId } = useParams<{ skillId?: string }>();
+  return (
+    <Navigate
+      to={skillId ? getSkillDetailRoutePath({ skillId }) : SKILLS_ROUTE_PATH}
       replace
     />
   );
@@ -126,6 +138,10 @@ function AppRoutes() {
             <Route
               path={TOOLS_SKILL_DETAIL_ROUTE_PATH}
               element={<ToolsView />}
+            />
+            <Route
+              path={LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH}
+              element={<LegacySkillDetailRedirect />}
             />
             <Route
               path={TOOLS_REGISTRY_SKILLS_ROUTE_PATH}

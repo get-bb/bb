@@ -4,14 +4,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import type { SkillSummary } from "@bb/server-contract";
 import matter from "gray-matter";
 import { ApiError } from "../../errors.js";
 import {
   REGISTRY_SKILL_PROVENANCE_FILE_NAME,
   writeRegistrySkillProvenance,
 } from "./registry-skill-provenance.js";
-import { createSkillId } from "./skill-listing.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILLS_INSTALL_TIMEOUT_MS = 120_000;
@@ -137,7 +135,7 @@ async function runRegistrySkillsCli(args: {
 async function validateSkillFile(
   skillFilePath: string,
   skillId: string,
-): Promise<string> {
+): Promise<void> {
   const content = await fs.readFile(skillFilePath, "utf8").catch(() => null);
   if (content === null) {
     throw new ApiError(
@@ -168,29 +166,6 @@ async function validateSkillFile(
       "Skill metadata does not match the registry entry",
     );
   }
-  return data.description;
-}
-
-function installedSkillResult(args: {
-  description: string;
-  filePath: string;
-  registrySkillId: string;
-  skillId: string;
-}): { filePath: string; skill: SkillSummary } {
-  return {
-    filePath: args.filePath,
-    skill: {
-      id: createSkillId("bb-data-dir", `${args.skillId}/${SKILL_FILE_NAME}`),
-      name: args.skillId,
-      description: args.description,
-      provider: null,
-      scope: "bb-user",
-      pluginId: null,
-      filePath: args.filePath,
-      manageable: true,
-      registrySkillId: args.registrySkillId,
-    },
-  };
 }
 
 async function copyBoundedSkillTree(args: {
@@ -321,7 +296,7 @@ export async function installServerRegistrySkill(args: {
   packageRef: string;
   registrySkillId: string;
   skillId: string;
-}): Promise<{ filePath: string; skill: SkillSummary }> {
+}): Promise<{ filePath: string }> {
   if (!REGISTRY_SKILL_NAME_PATTERN.test(args.skillId)) {
     throw new ApiError(
       400,
@@ -380,7 +355,7 @@ export async function installServerRegistrySkill(args: {
       "skills",
       args.skillId,
     );
-    const description = await validateSkillFile(
+    await validateSkillFile(
       path.join(extractedSkillPath, SKILL_FILE_NAME),
       args.skillId,
     );
@@ -410,11 +385,7 @@ export async function installServerRegistrySkill(args: {
       } catch {
         throw installConflict(args.skillId);
       }
-      return installedSkillResult({
-        ...args,
-        description,
-        filePath: path.join(finalSkillPath, SKILL_FILE_NAME),
-      });
+      return { filePath: path.join(finalSkillPath, SKILL_FILE_NAME) };
     }
     try {
       await writeRegistrySkillProvenance({
@@ -444,11 +415,7 @@ export async function installServerRegistrySkill(args: {
       }
       throw error;
     }
-    return installedSkillResult({
-      ...args,
-      description,
-      filePath: path.join(finalSkillPath, SKILL_FILE_NAME),
-    });
+    return { filePath: path.join(finalSkillPath, SKILL_FILE_NAME) };
   } finally {
     await Promise.all([
       fs.rm(extractionRoot, { recursive: true, force: true }),

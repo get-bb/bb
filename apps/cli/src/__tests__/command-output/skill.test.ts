@@ -53,17 +53,6 @@ describe("bb skill commands", () => {
         JSON.stringify({
           ok: true,
           filePath: "/home/user/.bb/skills/review/SKILL.md",
-          skill: {
-            id: `skill_${"a".repeat(64)}`,
-            name: "review",
-            description: "Review code.",
-            provider: null,
-            scope: "bb-user",
-            pluginId: null,
-            filePath: "/home/user/.bb/skills/review/SKILL.md",
-            manageable: true,
-            registrySkillId: "owner/repo/review",
-          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
