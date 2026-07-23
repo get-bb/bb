@@ -10,7 +10,6 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -159,14 +158,10 @@ function renderRegistryBrowse(
       isLoading={false}
       hasError={false}
       query=""
-      pendingSkillId={null}
       onQueryChange={() => {}}
       onPageChange={() => {}}
-      onInstall={() => {}}
-      onUninstall={() => {}}
-      onCreateFromReference={() => {}}
+      onFork={() => {}}
       onSelect={() => {}}
-      isInstalled={() => false}
       {...overrides}
     />,
   );
@@ -300,15 +295,10 @@ describe("SkillsOverview", () => {
             isLoading={false}
             hasError={false}
             query=""
-            pendingSkillId={null}
             onQueryChange={() => {}}
             onPageChange={() => {}}
-            onInstall={() => {}}
-            onUninstall={() => {}}
-            onCreateFromReference={() => {}}
+            onFork={() => {}}
             onSelect={() => {}}
-            isInstalled={() => true}
-            canUninstall={() => true}
           />
         }
         onCreateSkill={() => {}}
@@ -317,43 +307,6 @@ describe("SkillsOverview", () => {
     );
 
     expect(markup).toContain("Useful skill");
-  });
-
-  it("confirms before removing a saved skill from a Browse card", () => {
-    const registrySkill = makeRegistrySkill();
-    const onUninstall = vi.fn();
-    renderRegistryBrowse({
-      skills: [registrySkill],
-      onUninstall,
-      isInstalled: () => true,
-      canUninstall: () => true,
-    });
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Remove saved Useful skill from bb",
-      }),
-    );
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(
-      screen.getByText('Remove "Useful skill" from your bb skills?'),
-    ).toBeTruthy();
-    expect(onUninstall).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
-    expect(onUninstall).toHaveBeenCalledOnce();
-    expect(onUninstall).toHaveBeenCalledWith(registrySkill);
-  });
-
-  it("keeps name-only saved matches passive without proven provenance", () => {
-    const registrySkill = makeRegistrySkill();
-    renderRegistryBrowse({
-      skills: [registrySkill],
-      isInstalled: () => true,
-      canUninstall: () => false,
-    });
-
-    expect(screen.getByLabelText("Saved Useful skill to bb")).toBeTruthy();
   });
 
   it("disables provider filters that have no matching skills", async () => {
@@ -459,67 +412,6 @@ describe("SkillsLibrary installed detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
-  it("keeps removal available for a saved registry skill after reload", async () => {
-    const registrySkill = makeRegistrySkill();
-    const installedSkill = makeSkill({
-      name: registrySkill.skillId,
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-      registrySkillId: registrySkill.id,
-    });
-    vi.spyOn(sdk.skills, "list").mockResolvedValue({
-      skills: [installedSkill],
-    });
-    const removeSkill = vi
-      .spyOn(sdk.skills, "remove")
-      .mockResolvedValue({ deletedPath: "/home/u/.bb/skills/useful-skill" });
-    stubRegistryFetch(registrySkill);
-    renderRegistrySkillRoute();
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Remove saved Useful skill from bb",
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
-    await waitFor(() => {
-      expect(removeSkill).toHaveBeenCalledWith({
-        projectId: PERSONAL_PROJECT_ID,
-        skillId: installedSkill.id,
-        environmentId: null,
-      });
-    });
-  });
-
-  it("updates a saved detail in place and keeps removal available", async () => {
-    const registrySkill = makeRegistrySkill();
-    const installedSkill = makeSkill({
-      name: registrySkill.skillId,
-      provider: null,
-      scope: "bb-user",
-      filePath: "/home/u/.bb/skills/useful-skill/SKILL.md",
-      registrySkillId: registrySkill.id,
-    });
-    vi.spyOn(sdk.skills, "list")
-      .mockResolvedValueOnce({ skills: [] })
-      .mockResolvedValue({ skills: [installedSkill] });
-    stubRegistryFetch(registrySkill, { installedSkill });
-    renderRegistrySkillRoute();
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Save Useful skill to bb",
-      }),
-    );
-
-    const remove = await screen.findByRole("button", {
-      name: "Remove saved Useful skill from bb",
-    });
-    fireEvent.click(remove);
-    expect(await screen.findByRole("dialog")).toBeTruthy();
-  });
-
   it("does not offer installation when a direct registry source is unavailable", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
@@ -597,7 +489,7 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("renders the authoritative page order, exposes social proof, and pages forward", async () => {
+  it("renders the authoritative page order, exposes social proof, and pages forward", () => {
     const onPageChange = vi.fn();
     const alpha = makeRegistrySkill({
       id: "owner/repo/alpha",
@@ -614,16 +506,13 @@ describe("RegistrySkillsBrowsePage", () => {
       stars: 10,
     });
     const onSelect = vi.fn();
-    const onInstall = vi.fn();
-    const onCreateFromReference = vi.fn();
+    const onFork = vi.fn();
     renderRegistryBrowse({
       skills: [alpha, zulu],
       pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
       onPageChange,
-      onCreateFromReference,
-      onInstall,
+      onFork,
       onSelect,
-      isInstalled: (skill) => skill.id === alpha.id,
     });
     fireEvent.click(
       screen.getByRole("button", { name: "View details for Alpha" }),
@@ -633,9 +522,6 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    const alphaSaved = screen.getByLabelText("Saved Alpha to bb");
-    expect(alphaSaved.textContent).toBe("");
-    expect(alphaSaved.className).toContain("border-transparent");
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",
@@ -645,14 +531,8 @@ describe("RegistrySkillsBrowsePage", () => {
       name: "Fork Zulu into a new bb skill",
     });
     fireEvent.click(zuluCreate);
-    expect(onCreateFromReference).toHaveBeenCalledWith(zulu);
-    const zuluSave = screen.getByRole("button", { name: "Save Zulu to bb" });
-    expect(zuluSave.textContent).toBe("");
-    expect(zuluSave.className).toContain("border-transparent");
-    fireEvent.pointerMove(zuluSave);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Save Zulu");
-    fireEvent.click(zuluSave);
-    expect(onInstall).toHaveBeenCalledWith(zulu);
+    expect(onFork).toHaveBeenCalledWith(zulu);
+    expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
     const alphaTitle = screen.getByText("Alpha");
@@ -667,10 +547,9 @@ describe("RegistrySkillsBrowsePage", () => {
 });
 
 describe("RegistrySkillDetailView reference creation", () => {
-  it("keeps creation available before and after installing without installing itself", () => {
+  it("keeps forking available whether or not a local copy exists", () => {
     const registrySkill = makeRegistrySkill();
-    const onCreateFromReference = vi.fn();
-    const onInstall = vi.fn();
+    const onFork = vi.fn();
     const props = {
       skill: registrySkill,
       detail: {
@@ -680,15 +559,10 @@ describe("RegistrySkillDetailView reference creation", () => {
         hash: null,
         files: [{ path: "SKILL.md", contents: "# Useful skill" }],
       },
-      installed: false,
       installedSkill: null,
       installedPath: null,
-      pending: false,
-      uninstallPending: false,
       onRetry: () => {},
-      onInstall,
-      onUninstall: undefined,
-      onCreateFromReference,
+      onFork,
       onEditInstalledSkill: () => {},
     };
     const view = renderDom(<RegistrySkillDetailView {...props} />);
@@ -698,13 +572,12 @@ describe("RegistrySkillDetailView reference creation", () => {
         name: "Fork Useful skill into a new bb skill",
       }),
     );
-    expect(onCreateFromReference).toHaveBeenCalledWith(registrySkill);
-    expect(onInstall).not.toHaveBeenCalled();
+    expect(onFork).toHaveBeenCalledWith(registrySkill);
+    expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
 
     view.rerender(
       <RegistrySkillDetailView
         {...props}
-        installed
         installedSkill={makeSkill({
           name: registrySkill.skillId,
           provider: null,
@@ -719,8 +592,7 @@ describe("RegistrySkillDetailView reference creation", () => {
         name: "Fork Useful skill into a new bb skill",
       }),
     );
-    expect(onCreateFromReference).toHaveBeenCalledTimes(2);
-    expect(onInstall).not.toHaveBeenCalled();
+    expect(onFork).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
@@ -8,7 +8,6 @@ import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
-import { appToast } from "@/components/ui/app-toast";
 import {
   RegistrySkillDetailView,
   RegistrySkillsBrowsePage,
@@ -24,7 +23,6 @@ import {
   fetchRegistrySkillDetail,
   fetchRegistrySkillEntry,
   fetchRegistrySkills,
-  installRegistrySkill,
   REGISTRY_PAGE_SIZE,
   resolveInstalledRegistrySkill,
 } from "@/lib/skills-registry";
@@ -42,7 +40,6 @@ import {
   useSkillContent,
   useSkillFiles,
 } from "@/hooks/queries/skills-queries";
-import { upsertProjectSkillMutationQuery } from "@/hooks/cache-owners/skills-cache-effects";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 
 const EMPTY_SKILLS: readonly SkillSummary[] = [];
@@ -129,7 +126,6 @@ function SkillDetailPage({
 export function SkillsLibrary() {
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
   const { skillId: routeSkillId, registrySkillId: routeRegistrySkillId } =
     useParams<{
       skillId?: string;
@@ -139,7 +135,6 @@ export function SkillsLibrary() {
   const [registrySearch, setRegistrySearch] = useState("");
   const [registryPage, setRegistryPage] = useState(0);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
-  const deleteSkill = useDeleteSkill(PERSONAL_PROJECT_ID);
   const skills = skillsQuery.data?.skills ?? EMPTY_SKILLS;
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
@@ -161,21 +156,6 @@ export function SkillsLibrary() {
       }),
     enabled: isRegistryBrowseRoute,
     staleTime: 60_000,
-  });
-  const registryInstall = useMutation({
-    mutationFn: installRegistrySkill,
-    onSuccess: (result) => {
-      upsertProjectSkillMutationQuery({
-        projectId: PERSONAL_PROJECT_ID,
-        queryClient,
-        skill: result.skill,
-      });
-      appToast.success("Skill saved");
-      void skillsQuery.refetch();
-    },
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
-    },
   });
   const selectedSkill = useMemo(() => {
     if (routeSkillId === undefined) return null;
@@ -218,38 +198,6 @@ export function SkillsLibrary() {
     (skill: RegistrySkill): SkillSummary | null =>
       resolveInstalledRegistrySkill(skill, skills),
     [skills],
-  );
-  const isRegistrySkillInstalled = useCallback(
-    (skill: RegistrySkill): boolean =>
-      findInstalledRegistrySkill(skill) !== null,
-    [findInstalledRegistrySkill],
-  );
-  const installRegistry = useCallback(
-    (skill: RegistrySkill) => {
-      registryInstall.mutate({ skill });
-    },
-    [registryInstall],
-  );
-  const uninstallRegistry = useCallback(
-    (skill: RegistrySkill) => {
-      const installedSkill = findInstalledRegistrySkill(skill);
-      if (installedSkill === null) return;
-      deleteSkill.mutate(
-        { skillId: installedSkill.id, environmentId: null },
-        {
-          onSuccess: () => {
-            appToast.success("Saved skill removed", {
-              action: {
-                label: "Save again",
-                onClick: () => registryInstall.mutate({ skill }),
-              },
-            });
-            void skillsQuery.refetch();
-          },
-        },
-      );
-    },
-    [deleteSkill, findInstalledRegistrySkill, registryInstall, skillsQuery],
   );
   const openSkill = useCallback(
     (skill: SkillSummary) => {
@@ -326,7 +274,7 @@ export function SkillsLibrary() {
     },
     [navigate],
   );
-  const createRegistrySkillFromReference = useCallback(
+  const forkRegistrySkill = useCallback(
     (skill: RegistrySkill) => {
       navigate(getRootComposeRoutePath(), {
         state: {
@@ -339,17 +287,6 @@ export function SkillsLibrary() {
     },
     [navigate],
   );
-  const pendingRegistrySkillId =
-    registryInstall.isPending && registryInstall.variables
-      ? registryInstall.variables.skill.id
-      : null;
-  const pendingRegistryUninstallSkillId = deleteSkill.isPending
-    ? ((registryQuery.data?.skills ?? []).find(
-        (skill) =>
-          findInstalledRegistrySkill(skill)?.id ===
-          deleteSkill.variables?.skillId,
-      )?.id ?? null)
-    : null;
   const registryDetail = registryDetailQuery.data ?? null;
   const selectedInstalledRegistrySkill = selectedRegistrySkill
     ? findInstalledRegistrySkill(selectedRegistrySkill)
@@ -397,23 +334,10 @@ export function SkillsLibrary() {
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
           detail={registryDetail}
-          installed={isRegistrySkillInstalled(selectedRegistrySkill)}
           installedSkill={selectedInstalledRegistrySkill}
           installedPath={selectedInstalledRegistrySkill?.filePath ?? null}
-          pending={pendingRegistrySkillId === selectedRegistrySkill.id}
-          uninstallPending={
-            deleteSkill.isPending &&
-            selectedInstalledRegistrySkill?.id ===
-              deleteSkill.variables?.skillId
-          }
           onRetry={() => void registryDetailQuery.refetch()}
-          onInstall={installRegistry}
-          onUninstall={
-            selectedInstalledRegistrySkill === null
-              ? undefined
-              : uninstallRegistry
-          }
-          onCreateFromReference={createRegistrySkillFromReference}
+          onFork={forkRegistrySkill}
           onEditInstalledSkill={editSkillViaThread}
         />
       ) : (
@@ -438,18 +362,11 @@ export function SkillsLibrary() {
               }
               hasError={registryQuery.isError}
               query={registrySearch}
-              pendingSkillId={
-                pendingRegistrySkillId ?? pendingRegistryUninstallSkillId
-              }
               onRetry={() => void registryQuery.refetch()}
               onQueryChange={handleRegistryQueryChange}
               onPageChange={setRegistryPage}
-              onInstall={installRegistry}
-              onUninstall={uninstallRegistry}
-              onCreateFromReference={createRegistrySkillFromReference}
+              onFork={forkRegistrySkill}
               onSelect={openRegistrySkill}
-              isInstalled={isRegistrySkillInstalled}
-              canUninstall={isRegistrySkillInstalled}
             />
           }
           onCreateSkill={handleCreateSkill}

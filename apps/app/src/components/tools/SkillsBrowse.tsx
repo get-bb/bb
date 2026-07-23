@@ -23,53 +23,29 @@ import type {
   RegistrySkillDetail,
 } from "@/lib/skills-registry";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import {
-  SkillBrowseInstallControl,
-  SkillDetailView,
-} from "@/components/tools/SkillDetailView";
+import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
 const SKILLS_SH_URL = "https://www.skills.sh/";
-const QUIET_SKILL_SAVE_CONTROL =
-  "border-transparent bg-transparent shadow-none hover:border-transparent focus-visible:border-transparent";
 
 function RegistrySkillActions({
   skillName,
-  saved,
-  pending,
-  onCreateFromReference,
-  onSave,
-  onRemove,
+  onFork,
 }: {
   skillName: string;
-  saved: boolean;
-  pending: boolean;
-  onCreateFromReference: () => void;
-  onSave: () => void;
-  onRemove?: () => void;
+  onFork: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        type="button"
-        variant="default"
-        size="sm"
-        className="h-7 px-2 text-xs max-md:pointer-coarse:h-9"
-        aria-label={`Fork ${skillName} into a new bb skill`}
-        onClick={onCreateFromReference}
-      >
-        <Icon name="Fork" className="size-3.5" aria-hidden />
-        Fork
-      </Button>
-      <SkillBrowseInstallControl
-        skillName={skillName}
-        installed={saved}
-        pending={pending}
-        onInstall={onSave}
-        onUninstall={onRemove}
-        presentation="icon"
-        className={QUIET_SKILL_SAVE_CONTROL}
-      />
-    </div>
+    <Button
+      type="button"
+      variant="default"
+      size="sm"
+      className="h-7 px-2 text-xs max-md:pointer-coarse:h-9"
+      aria-label={`Fork ${skillName} into a new bb skill`}
+      onClick={onFork}
+    >
+      <Icon name="Fork" className="size-3.5" aria-hidden />
+      Fork
+    </Button>
   );
 }
 
@@ -100,22 +76,12 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
 
 function RegistrySkillSourceItem({
   skill,
-  installed,
-  canUninstall,
-  onInstall,
-  onUninstall,
-  onCreateFromReference,
+  onFork,
   onSelect,
-  pending,
 }: {
   skill: RegistrySkill;
-  installed: boolean;
-  canUninstall: boolean;
-  onInstall: (skill: RegistrySkill) => void;
-  onUninstall: (skill: RegistrySkill) => void;
-  onCreateFromReference: (skill: RegistrySkill) => void;
+  onFork: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
-  pending: boolean;
 }) {
   return (
     <ResourceBrowseCard
@@ -127,11 +93,7 @@ function RegistrySkillSourceItem({
       headerAction={
         <RegistrySkillActions
           skillName={skill.name}
-          saved={installed}
-          pending={pending}
-          onCreateFromReference={() => onCreateFromReference(skill)}
-          onSave={() => onInstall(skill)}
-          onRemove={canUninstall ? () => onUninstall(skill) : undefined}
+          onFork={() => onFork(skill)}
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
@@ -159,32 +121,22 @@ export function RegistrySkillsBrowsePage({
   isLoading,
   hasError,
   query,
-  pendingSkillId,
   onRetry,
   onQueryChange,
   onPageChange,
-  onInstall,
-  onUninstall,
-  onCreateFromReference,
+  onFork,
   onSelect,
-  isInstalled,
-  canUninstall = () => false,
 }: {
   skills: readonly RegistrySkill[];
   pagination: RegistryPagination;
   isLoading: boolean;
   hasError: boolean;
   query: string;
-  pendingSkillId: string | null;
   onRetry?: () => void;
   onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
-  onInstall: (skill: RegistrySkill) => void;
-  onUninstall: (skill: RegistrySkill) => void;
-  onCreateFromReference: (skill: RegistrySkill) => void;
+  onFork: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
-  isInstalled: (skill: RegistrySkill) => boolean;
-  canUninstall?: (skill: RegistrySkill) => boolean;
 }) {
   const footer = (
     <div className="space-y-2">
@@ -241,12 +193,7 @@ export function RegistrySkillsBrowsePage({
             <RegistrySkillSourceItem
               key={skill.id}
               skill={skill}
-              installed={isInstalled(skill)}
-              canUninstall={canUninstall(skill)}
-              pending={pendingSkillId === skill.id}
-              onInstall={onInstall}
-              onUninstall={onUninstall}
-              onCreateFromReference={onCreateFromReference}
+              onFork={onFork}
               onSelect={onSelect}
             />
           ))}
@@ -259,34 +206,24 @@ export function RegistrySkillsBrowsePage({
 export function RegistrySkillDetailView({
   skill,
   detail,
-  installed,
   installedSkill,
   installedPath,
-  pending,
-  uninstallPending,
   onRetry,
-  onInstall,
-  onUninstall,
-  onCreateFromReference,
+  onFork,
   onEditInstalledSkill,
 }: {
   skill: RegistrySkill;
   detail: RegistrySkillDetail;
-  installed: boolean;
   installedSkill: SkillSummary | null;
   installedPath: string | null;
-  pending: boolean;
-  uninstallPending: boolean;
   onRetry: () => void;
-  onInstall: (skill: RegistrySkill) => void;
-  onUninstall?: (skill: RegistrySkill) => void;
-  onCreateFromReference: (skill: RegistrySkill) => void;
+  onFork: (skill: RegistrySkill) => void;
   onEditInstalledSkill: (skill: SkillSummary) => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({ enabled: installed && installedPath !== null });
+    useLocalOpenTargets({ enabled: installedPath !== null });
   const files = detail?.files ?? [];
   const selectedFile =
     files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
@@ -299,11 +236,7 @@ export function RegistrySkillDetailView({
       headerActions={
         <RegistrySkillActions
           skillName={skill.name}
-          saved={installed}
-          pending={pending || uninstallPending}
-          onCreateFromReference={() => onCreateFromReference(skill)}
-          onSave={() => onInstall(skill)}
-          onRemove={onUninstall ? () => onUninstall(skill) : undefined}
+          onFork={() => onFork(skill)}
         />
       }
       overflowMenu={
