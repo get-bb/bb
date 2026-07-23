@@ -109,7 +109,6 @@ describe("registry skill contracts", () => {
     const expectedInstall = {
       ok: true,
       filePath: "/tmp/useful-skill/SKILL.md",
-      skill: installedSkill({ filePath: "/tmp/useful-skill/SKILL.md" }),
     };
     const installFetch = stubJsonResponse(expectedInstall);
     await expect(
