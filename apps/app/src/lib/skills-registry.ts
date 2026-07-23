@@ -1,10 +1,4 @@
-import {
-  registrySkillDetailSchema,
-  registrySkillInstallResponseSchema,
-  registrySkillSchema,
-  registrySkillsPageSchema,
-  type SkillSummary,
-} from "@bb/server-contract";
+import type { SkillSummary } from "@bb/server-contract";
 import type {
   RegistryPagination,
   RegistrySkill,
@@ -13,6 +7,7 @@ import type {
   RegistrySkillsPage,
 } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
+import { sdk } from "@/lib/sdk";
 
 export type {
   RegistryPagination,
@@ -24,78 +19,38 @@ export type {
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 export async function fetchRegistrySkills(args: {
   query: string;
   page: number;
   perPage?: number;
 }): Promise<RegistrySkillsPage> {
-  const params = new URLSearchParams();
-  if (args.query.trim().length > 0) params.set("q", args.query.trim());
-  params.set("page", String(args.page));
-  params.set("perPage", String(args.perPage ?? REGISTRY_PAGE_SIZE));
-  const response = await fetch(`/api/v1/skills-registry?${params.toString()}`);
-  if (!response.ok) throw new Error("Failed to load skills registry");
-  const parsed = registrySkillsPageSchema.safeParse(await response.json());
-  if (!parsed.success) {
-    throw new Error("Invalid skills registry response");
-  }
-  return parsed.data;
+  return sdk.skills.registry.search({
+    query: args.query,
+    page: args.page,
+    perPage: args.perPage ?? REGISTRY_PAGE_SIZE,
+  });
 }
 
 export async function fetchRegistrySkillDetail(args: {
   source: string;
   skillId: string;
 }): Promise<RegistrySkillDetail> {
-  const params = new URLSearchParams({
+  return sdk.skills.registry.detail({
     source: args.source,
     skillId: args.skillId,
   });
-  const response = await fetch(
-    `/api/v1/skills-registry/detail?${params.toString()}`,
-  );
-  if (!response.ok) throw new Error("Failed to load skill files");
-  const parsed = registrySkillDetailSchema.safeParse(await response.json());
-  if (!parsed.success) {
-    throw new Error("Invalid skill detail response");
-  }
-  return parsed.data;
 }
 
 export async function fetchRegistrySkillEntry(
   id: string,
 ): Promise<RegistrySkill> {
-  const params = new URLSearchParams({ id });
-  const response = await fetch(
-    `/api/v1/skills-registry/entry?${params.toString()}`,
-  );
-  if (!response.ok) throw new Error("Failed to load registry skill");
-  const parsed = registrySkillSchema.safeParse(await response.json());
-  if (!parsed.success) throw new Error("Invalid registry skill response");
-  return parsed.data;
+  return sdk.skills.registry.get({ registrySkillId: id });
 }
 
-export async function installRegistrySkill(args: { skill: RegistrySkill }) {
-  const response = await fetch("/api/v1/skills-registry/install", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      registrySkillId: args.skill.id,
-    }),
+export function installRegistrySkill(args: { skill: RegistrySkill }) {
+  return sdk.skills.registry.install({
+    registrySkillId: args.skill.id,
   });
-  const body: unknown = await response.json().catch(() => null);
-  const parsed = registrySkillInstallResponseSchema.safeParse(body);
-  if (!response.ok || !parsed.success) {
-    throw new Error(
-      isRecord(body) && typeof body.message === "string"
-        ? body.message
-        : "Skill install failed",
-    );
-  }
-  return parsed.data;
 }
 
 export function normalizeSkillName(value: string): string {

@@ -96,7 +96,7 @@ export function ResourceDetailPage({
   leading?: ReactNode;
   lifecycleControl?: ReactNode;
   overflowMenu?: ReactNode;
-  /** Focused page actions, such as Cancel and Save in an edit route. */
+  /** Focused page actions, such as Create, Cancel, or Save. */
   actions?: ReactNode;
   metadata?: ReactNode;
   description?: ReactNode;
@@ -130,12 +130,9 @@ export function ResourceDetailPage({
         </div>
         {actions || lifecycleControl || overflowMenu ? (
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            {actions ?? (
-              <>
-                {lifecycleControl}
-                {overflowMenu}
-              </>
-            )}
+            {actions}
+            {lifecycleControl}
+            {overflowMenu}
           </div>
         ) : null}
       </div>

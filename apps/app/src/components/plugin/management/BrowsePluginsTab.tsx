@@ -200,37 +200,30 @@ function BrowseCard({
     !entry.compatible && entry.incompatibleReason !== null ? (
       <span className="text-warning-text">{entry.incompatibleReason}</span>
     ) : undefined;
-  const headerAction = entry.installed ? (
-    <ResourceInstalledControl
-      accessibleLabel={
-        installedPluginId === null
-          ? `${entry.displayName} installed`
-          : `Uninstall ${entry.displayName}`
-      }
-      pending={uninstall.isPending}
-      presentation="icon"
-      tooltip={`Uninstall ${entry.displayName}`}
-      onAction={
-        installedPluginId === null
-          ? undefined
-          : () => setConfirmingUninstall(true)
-      }
-    />
-  ) : (
-    <ResourceInstallControl
-      accessibleLabel={`Install ${entry.displayName}`}
-      disabled={!entry.compatible}
-      presentation="icon"
-      tooltip={`Install ${entry.displayName}`}
-      onAction={() =>
-        onInstall({
-          entryId: entry.entryId,
-          displayName: entry.displayName,
-          icon: entry.icon,
-        })
-      }
-    />
-  );
+  const headerAction =
+    installedPluginId !== null ? (
+      <ResourceInstalledControl
+        accessibleLabel={`Uninstall ${entry.displayName}`}
+        pending={uninstall.isPending}
+        presentation="icon"
+        tooltip={`Uninstall ${entry.displayName}`}
+        onAction={() => setConfirmingUninstall(true)}
+      />
+    ) : (
+      <ResourceInstallControl
+        accessibleLabel={`Install ${entry.displayName}`}
+        disabled={!entry.compatible}
+        presentation="icon"
+        tooltip={`Install ${entry.displayName}`}
+        onAction={() =>
+          onInstall({
+            entryId: entry.entryId,
+            displayName: entry.displayName,
+            icon: entry.icon,
+          })
+        }
+      />
+    );
 
   return (
     <>

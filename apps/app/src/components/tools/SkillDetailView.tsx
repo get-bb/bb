@@ -326,15 +326,6 @@ export function SkillDetailView({
         appearance={headerControl.appearance}
       />
     ) : undefined;
-  const actions =
-    headerActions === undefined ? undefined : (
-      <>
-        {headerActions}
-        {lifecycleControl}
-        {overflowMenu}
-      </>
-    );
-
   return (
     <ResourceDetailPage
       leading={leading}
@@ -342,7 +333,7 @@ export function SkillDetailView({
       metadata={<SkillPath path={directoryPath} href={pathHref} />}
       lifecycleControl={lifecycleControl}
       overflowMenu={overflowMenu}
-      actions={actions}
+      actions={headerActions}
     >
       <ResourceDetailStack>
         {files.length > 1 && editor === undefined ? (

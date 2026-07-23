@@ -1,10 +1,21 @@
 import { useSyncExternalStore } from "react";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
+  ResourceActivitySection,
+  ResourceDetailConfigurationSection,
   ResourceDetailFact,
   ResourceDetailFacts,
+  ResourceDetailIncludesSection,
+  ResourceDetailOverviewSection,
+  ResourceDetailPage,
+  ResourceDetailReleaseSection,
+  ResourceDetailStack,
+  ResourceInstalledControl,
+  ResourceLifecycleStatus,
   ResourceListState,
+  ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
+import { Switch } from "@bb/shared-ui/switch";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginReleaseFacts,
@@ -17,7 +28,6 @@ import {
   PluginActivity,
   PluginIncludes,
 } from "@/components/tools/PluginCapabilities";
-import { PluginDetailView } from "@/components/tools/PluginDetailView";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginFrontendDiagnostics,
@@ -36,16 +46,8 @@ export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
 }
 
-function pluginCanBeRemoved(plugin: PluginListItem): boolean {
-  return plugin.provenance !== "builtin";
-}
-
 export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
-}
-
-function PluginsLoadingRows() {
-  return <ResourceListState state="loading" message="Loading plugins" />;
 }
 
 export function PluginDetail({
@@ -74,7 +76,7 @@ export function PluginDetail({
     getPluginFrontendDiagnostics,
   );
   if (isLoading) {
-    return <PluginsLoadingRows />;
+    return <ResourceListState state="loading" message="Loading plugins" />;
   }
 
   if (plugin === null) {
@@ -101,16 +103,86 @@ export function PluginDetail({
     plugin.services.length > 0 ||
     plugin.schedules.length > 0;
   const canEditSource = pluginIsLocalSource(plugin);
-  const canRemove = pluginCanBeRemoved(plugin);
+  const canRemove = plugin.provenance !== "builtin";
   const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
 
+  const pluginName = plugin.name ?? plugin.id;
   return (
-    <PluginDetailView
+    <ResourceDetailPage
       leading={<PluginLogo plugin={plugin} className="size-4" />}
-      title={plugin.name ?? plugin.id}
-      description={plugin.description}
-      statusAlert={
-        frontendFailure !== null && frontendFailure !== undefined ? (
+      title={pluginName}
+      metadata={
+        <span className="block break-all font-mono">{plugin.rootDir}</span>
+      }
+      lifecycleControl={
+        <div className="flex items-center gap-2">
+          {canRemove ? (
+            <ResourceInstalledControl
+              accessibleLabel={`Uninstall ${pluginName}`}
+              label={
+                plugin.provenance === "catalog" ? "BB Official" : undefined
+              }
+              icon={
+                plugin.provenance === "catalog" ? "PackageReceive" : undefined
+              }
+              appearance={
+                plugin.provenance === "catalog" ? "provenance" : undefined
+              }
+              pending={pending}
+              onAction={() => onDelete(plugin)}
+            />
+          ) : sourceLabel ? (
+            <ResourceLifecycleStatus
+              label={sourceLabel}
+              tooltip={
+                plugin.provenance === "builtin"
+                  ? "Ships with bb"
+                  : plugin.sourceDisplay
+              }
+              accessibleLabel={`${pluginName}: ${sourceLabel}`}
+              icon={
+                plugin.provenance === "builtin" ||
+                plugin.provenance === "catalog"
+                  ? "PackageReceive"
+                  : undefined
+              }
+            />
+          ) : null}
+          <Switch
+            checked={plugin.enabled}
+            disabled={pending}
+            aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${pluginName}`}
+            onCheckedChange={() => onToggle(plugin)}
+          />
+        </div>
+      }
+      overflowMenu={
+        canEditSource ? (
+          <ResourceOverflowMenu
+            label={`${pluginName} actions`}
+            items={[
+              {
+                label: "Edit",
+                icon: "Edit",
+                disabled: pending,
+                onSelect: () => onEdit(plugin),
+              },
+              {
+                label: "Open source",
+                icon: "ExternalLink",
+                disabled: pending || openSourceDisabled,
+                disabledReason: openSourceDisabled
+                  ? "No editor configured"
+                  : undefined,
+                onSelect: () => onOpenSource(plugin),
+              },
+            ]}
+          />
+        ) : undefined
+      }
+    >
+      <ResourceDetailStack>
+        {frontendFailure !== null && frontendFailure !== undefined ? (
           <div
             className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive"
             role="alert"
@@ -121,135 +193,53 @@ export function PluginDetail({
               : ` in content script “${frontendFailure.scriptId}”`}
             : {frontendFailure.message}
           </div>
-        ) : undefined
-      }
-      metadata={
-        <span className="block break-all font-mono">{plugin.rootDir}</span>
-      }
-      provenance={
-        sourceLabel && !canRemove
-          ? {
-              label: sourceLabel,
-              tooltip:
-                plugin.provenance === "builtin"
-                  ? "Ships with bb"
-                  : plugin.sourceDisplay,
-              accessibleLabel: `${plugin.name ?? plugin.id}: ${sourceLabel}`,
-              icon:
-                plugin.provenance === "builtin" ||
-                plugin.provenance === "catalog"
-                  ? ("PackageReceive" as const)
-                  : undefined,
-            }
-          : undefined
-      }
-      installed={
-        canRemove
-          ? {
-              accessibleLabel: `Uninstall ${plugin.name ?? plugin.id}`,
-              label:
-                plugin.provenance === "catalog" ? "BB Official" : undefined,
-              icon:
-                plugin.provenance === "catalog"
-                  ? ("PackageReceive" as const)
-                  : undefined,
-              appearance:
-                plugin.provenance === "catalog"
-                  ? ("provenance" as const)
-                  : undefined,
-              pending,
-              onAction: () => onDelete(plugin),
-            }
-          : undefined
-      }
-      enabled={plugin.enabled}
-      lifecycleDisabled={pending}
-      onEnabledChange={() => onToggle(plugin)}
-      overflowItems={[
-        ...(canEditSource
-          ? [
-              {
-                label: "Edit",
-                icon: "Edit" as const,
-                disabled: pending,
-                onSelect: () => onEdit(plugin),
-              },
-              {
-                label: "Open source",
-                icon: "ExternalLink" as const,
-                disabled: pending || openSourceDisabled,
-                disabledReason: openSourceDisabled
-                  ? "No editor configured"
-                  : undefined,
-                onSelect: () => onOpenSource(plugin),
-              },
-            ]
-          : []),
-      ]}
-      definitionSections={[
-        {
-          label: "Release",
-          kind: "release",
-          content: (
-            <div className="space-y-3">
-              {hasUpdateManagement ? (
-                <PluginUpdateBanner plugin={plugin} />
-              ) : null}
-              {hasUpdateManagement ? (
-                <PluginReleaseFacts
-                  plugin={plugin}
-                  embedded
-                  releaseVersion={plugin.version}
-                />
-              ) : (
-                <ResourceDetailFacts>
-                  <ResourceDetailFact label="Current version" mono>
-                    {plugin.version}
-                  </ResourceDetailFact>
-                  <ResourceDetailFact label="Updates">
-                    Included with bb releases
-                  </ResourceDetailFact>
-                </ResourceDetailFacts>
-              )}
-            </div>
-          ),
-        },
-        ...(hasSettings
-          ? [
-              {
-                label: "Settings",
-                kind: "configuration" as const,
-                content: <PluginSettingsDetail plugin={plugin} />,
-              },
-            ]
-          : []),
-        ...(hasIncludes
-          ? [
-              {
-                label: "Includes",
-                kind: "includes" as const,
-                content: (
-                  <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
-                ),
-              },
-            ]
-          : []),
-      ]}
-      activitySections={
-        hasActivity
-          ? [
-              {
-                label: "Runtime activity",
-                content: (
-                  <PluginActivity
-                    plugin={plugin}
-                    runtimeStatus={runtimeStatus}
-                  />
-                ),
-              },
-            ]
-          : []
-      }
-    />
+        ) : null}
+        {plugin.description ? (
+          <ResourceDetailOverviewSection label="About">
+            <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+              {plugin.description}
+            </p>
+          </ResourceDetailOverviewSection>
+        ) : null}
+        <ResourceDetailReleaseSection label="Release">
+          <div className="space-y-3">
+            {hasUpdateManagement ? (
+              <PluginUpdateBanner plugin={plugin} />
+            ) : null}
+            {hasUpdateManagement ? (
+              <PluginReleaseFacts
+                plugin={plugin}
+                embedded
+                releaseVersion={plugin.version}
+              />
+            ) : (
+              <ResourceDetailFacts>
+                <ResourceDetailFact label="Current version" mono>
+                  {plugin.version}
+                </ResourceDetailFact>
+                <ResourceDetailFact label="Updates">
+                  Included with bb releases
+                </ResourceDetailFact>
+              </ResourceDetailFacts>
+            )}
+          </div>
+        </ResourceDetailReleaseSection>
+        {hasSettings ? (
+          <ResourceDetailConfigurationSection label="Settings">
+            <PluginSettingsDetail plugin={plugin} />
+          </ResourceDetailConfigurationSection>
+        ) : null}
+        {hasIncludes ? (
+          <ResourceDetailIncludesSection label="Includes">
+            <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
+          </ResourceDetailIncludesSection>
+        ) : null}
+        {hasActivity ? (
+          <ResourceActivitySection label="Runtime activity">
+            <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
+          </ResourceActivitySection>
+        ) : null}
+      </ResourceDetailStack>
+    </ResourceDetailPage>
   );
 }

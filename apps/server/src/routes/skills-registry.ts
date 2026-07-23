@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
+import { registrySkillInstallRequestSchema } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
 import {
   hasLoadableSkillContent,
-  isRecord,
   packageRefForSource,
   parsePageParameter,
   parsePerPageParameter,
@@ -81,16 +81,15 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
   });
 
   app.post("/skills-registry/install", async (context) => {
-    const body: unknown = await context.req.json().catch(() => null);
-    const allowedKeys = new Set(["registrySkillId"]);
-    if (
-      !isRecord(body) ||
-      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
-      typeof body.registrySkillId !== "string"
-    ) {
+    const body = registrySkillInstallRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    if (!body.success) {
       throw new ApiError(400, "invalid_request", "Expected registrySkillId");
     }
-    const registrySkill = await resolveRegistrySkillById(body.registrySkillId);
+    const registrySkill = await resolveRegistrySkillById(
+      body.data.registrySkillId,
+    );
     const result = await installServerRegistrySkill({
       dataDir: deps.config.dataDir,
       packageRef: packageRefForSource(registrySkill.source),

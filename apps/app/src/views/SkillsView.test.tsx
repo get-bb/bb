@@ -68,6 +68,11 @@ function makeRegistrySkill(
   };
 }
 
+function requestPath(input: RequestInfo | URL): string {
+  const url = new URL(String(input), window.location.origin);
+  return `${url.pathname}${url.search}`;
+}
+
 function LocationStateProbe() {
   const location = useLocation();
   return (
@@ -594,7 +599,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
+        const url = requestPath(input);
         if (url.startsWith("/api/v1/skills-registry/entry?")) {
           return new Response(JSON.stringify(registrySkill), { status: 200 });
         }
@@ -650,7 +655,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
+        const url = requestPath(input);
         if (url.startsWith("/api/v1/skills-registry/entry?")) {
           return new Response(JSON.stringify(registrySkill), { status: 200 });
         }
@@ -718,7 +723,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
+        const url = requestPath(input);
         if (url.startsWith("/api/v1/skills-registry?")) {
           return new Response(
             JSON.stringify({
@@ -769,7 +774,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).startsWith("/api/v1/skills-registry?")) {
+      if (requestPath(input).startsWith("/api/v1/skills-registry?")) {
         return new Response(
           JSON.stringify({
             skills: [registrySkill],
@@ -821,7 +826,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     });
     expect(
       fetchMock.mock.calls.some(
-        ([input]) => String(input) === "/api/v1/skills-registry/install",
+        ([input]) => requestPath(input) === "/api/v1/skills-registry/install",
       ),
     ).toBe(false);
   });
@@ -1349,7 +1354,7 @@ describe("installRegistrySkill", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const request = fetchMock.mock.calls[0];
-    expect(request?.[0]).toBe("/api/v1/skills-registry/install");
+    expect(requestPath(request![0])).toBe("/api/v1/skills-registry/install");
     expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
       registrySkillId: "owner/repo/skill",
     });
@@ -1445,7 +1450,7 @@ describe("resolveInstalledRegistrySkill", () => {
 describe("fetchRegistrySkills", () => {
   it("requests and validates a registry page", async () => {
     const skill = makeRegistrySkill();
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
       ok: true,
       json: async () => ({
         skills: [skill],
@@ -1456,8 +1461,8 @@ describe("fetchRegistrySkills", () => {
 
     const result = await fetchRegistrySkills({ query: "useful", page: 2 });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/skills-registry?q=useful&page=2&perPage=12",
+    expect(requestPath(fetchMock.mock.calls[0]![0])).toBe(
+      "/api/v1/skills-registry?page=2&perPage=12&q=useful",
     );
     expect(result.skills).toEqual([skill]);
     expect(result.pagination).toEqual({
@@ -1472,14 +1477,14 @@ describe("fetchRegistrySkills", () => {
 describe("fetchRegistrySkillEntry", () => {
   it("loads a canonical entry independently of the current browse page", async () => {
     const skill = makeRegistrySkill();
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
       ok: true,
       json: async () => skill,
     }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchRegistrySkillEntry(skill.id)).resolves.toEqual(skill);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(requestPath(fetchMock.mock.calls[0]![0])).toBe(
       "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
     );
   });

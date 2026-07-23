@@ -69,22 +69,6 @@ export function resolveToolsSection(pathname: string): ToolsSectionId {
   return "skills";
 }
 
-export function resolveToolsSectionDefinition(
-  pathname: string,
-): ToolsSectionDefinition {
-  return TOOLS_SECTIONS[resolveToolsSection(pathname)];
-}
-
-export function resolveToolsDocumentTitle(
-  pathname: string,
-  pageLabel?: string | null,
-): string {
-  const sectionLabel = resolveToolsSectionDefinition(pathname).label;
-  return pageLabel && pageLabel !== sectionLabel
-    ? `${pageLabel} · ${sectionLabel}`
-    : sectionLabel;
-}
-
 function routeResourceLabel(value: string | undefined, fallback: string) {
   if (!value) return fallback;
   let decoded = value;
@@ -107,6 +91,7 @@ export function resolveToolsBreadcrumbs(
   search = "",
   resourceLabel?: string | null,
 ): ToolsBreadcrumbSegment[] | null {
+  const view = new URLSearchParams(search).get("view");
   const skillsCrumb = sectionCrumb("skills");
   const pluginsCrumb = sectionCrumb("plugins");
   const automationsCrumb = sectionCrumb("automations");
@@ -161,8 +146,7 @@ export function resolveToolsBreadcrumbs(
   }
   const isPluginBrowse =
     pathname === TOOLS_PLUGIN_BROWSE_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.plugins.to &&
-      new URLSearchParams(search).get("view") === "browse");
+    (pathname === TOOLS_SECTIONS.plugins.to && view === "browse");
   if (isPluginBrowse) return [pluginsCrumb, { label: "Browse" }];
   const pluginDetail = matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, pathname);
   if (pluginDetail) {
@@ -216,13 +200,11 @@ export function resolveToolsBreadcrumbs(
   }
   const isAutomationBrowse =
     pathname === TOOLS_AUTOMATION_BROWSE_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.automations.to &&
-      new URLSearchParams(search).get("view") === "browse");
+    (pathname === TOOLS_SECTIONS.automations.to && view === "browse");
   if (isAutomationBrowse) return [automationsCrumb, { label: "Browse" }];
   const isSkillsBrowse =
     pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.skills.to &&
-      new URLSearchParams(search).get("view") === "browse");
+    (pathname === TOOLS_SECTIONS.skills.to && view === "browse");
   if (isSkillsBrowse) return [skillsCrumb, { label: "Browse" }];
   if (
     pathname === "/tools" ||

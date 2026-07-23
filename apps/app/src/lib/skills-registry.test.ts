@@ -72,7 +72,7 @@ describe("registry skill contracts", () => {
 
     stubJsonResponse({ ...registrySkill, stars: undefined });
     await expect(fetchRegistrySkillEntry(registrySkill.id)).rejects.toThrow(
-      "Invalid registry skill response",
+      "stars",
     );
   });
 

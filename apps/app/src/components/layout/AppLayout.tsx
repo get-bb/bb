@@ -22,11 +22,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
-import {
-  resolveToolsBreadcrumbs,
-  resolveToolsDocumentTitle,
-  resolveToolsSectionDefinition,
-} from "@/components/tools/tools-navigation";
+import { resolveToolsBreadcrumbs } from "@/components/tools/tools-navigation";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -72,11 +68,6 @@ import {
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
-  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-  TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-  TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -293,9 +284,6 @@ function resolveRouteTitle(
   // links still match briefly before AppRoutes redirects them to Tools.
   if (matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname)) {
     return routeTitles[SETTINGS_ROUTE_PATH];
-  }
-  if (pathname === "/tools" || pathname.startsWith("/tools/")) {
-    return { title: resolveToolsSectionDefinition(pathname).label };
   }
   return routeTitles[pathname];
 }
@@ -652,26 +640,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  const toolsPluginDetailMatch = matchPath(
-    TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsSkillDetailMatch = matchPath(
-    TOOLS_SKILL_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsRegistrySkillDetailMatch = matchPath(
-    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsAutomationDetailMatch = matchPath(
-    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-    location.pathname,
-  );
-  const toolsAutomationEditMatch = matchPath(
-    TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
-    location.pathname,
-  );
   const toolsBreadcrumbs = resolveToolsBreadcrumbs(
     location.pathname,
     location.search,
@@ -738,28 +706,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
-    if (toolsSkillDetailMatch) {
-      return resolveToolsDocumentTitle(location.pathname, "Skill");
-    }
-    if (toolsRegistrySkillDetailMatch) {
-      return resolveToolsDocumentTitle(
-        location.pathname,
-        toolsRegistrySkillDetailMatch.params.registrySkillId ?? "skills.sh",
-      );
-    }
-    if (toolsPluginDetailMatch) {
-      return resolveToolsDocumentTitle(location.pathname, "Plugin");
-    }
-    const automationDetailMatch =
-      toolsAutomationEditMatch ?? toolsAutomationDetailMatch;
-    if (automationDetailMatch) {
-      return resolveToolsDocumentTitle(location.pathname, "Automation");
-    }
     if (toolsBreadcrumbs) {
-      return resolveToolsDocumentTitle(
-        location.pathname,
-        toolsBreadcrumbs.at(-1)?.label,
-      );
+      const sectionLabel = toolsBreadcrumbs[0]?.label ?? "BB";
+      const pageLabel = toolsBreadcrumbs.at(-1)?.label ?? sectionLabel;
+      return pageLabel === sectionLabel
+        ? sectionLabel
+        : `${pageLabel} · ${sectionLabel}`;
     }
     if (isArchivedView && projectId) {
       if (isProjectlessProjectId(projectId)) {

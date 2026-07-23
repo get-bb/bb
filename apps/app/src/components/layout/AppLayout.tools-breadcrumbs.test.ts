@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveToolsBreadcrumbs,
-  resolveToolsDocumentTitle,
-  resolveToolsSectionDefinition,
   TOOLS_NAV_ITEMS,
 } from "@/components/tools/tools-navigation";
 
@@ -30,21 +28,6 @@ describe("resolveToolsBreadcrumbs", () => {
         to: "/tools/automations",
       },
     ]);
-    expect(
-      resolveToolsSectionDefinition("/tools/skills/registry/x").label,
-    ).toBe("Skills");
-    expect(resolveToolsSectionDefinition("/tools/plugins/x").label).toBe(
-      "Plugins",
-    );
-    expect(
-      resolveToolsSectionDefinition("/tools/automations/project/x").label,
-    ).toBe("Automations");
-    expect(resolveToolsDocumentTitle("/tools/skills", "Installed")).toBe(
-      "Installed · Skills",
-    );
-    expect(resolveToolsDocumentTitle("/tools/plugins/x", "Plugin")).toBe(
-      "Plugin · Plugins",
-    );
   });
 
   it("includes the selected collection tab", () => {

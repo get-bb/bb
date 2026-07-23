@@ -35,6 +35,8 @@ import {
   pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
 import {
+  removePlugin,
+  setPluginEnabled,
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
@@ -245,27 +247,15 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     ),
   });
   const pluginToggle = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      const action = plugin.enabled ? "disable" : "enable";
-      const response = await fetch(
-        `/api/v1/plugins/${encodeURIComponent(plugin.id)}/${action}`,
-        { method: "POST" },
-      );
-      if (!response.ok) throw new Error(`Failed to ${action} plugin`);
-    },
+    mutationFn: (plugin: PluginListItem) =>
+      setPluginEnabled(fetch, plugin.id, !plugin.enabled),
     onSuccess: () => listQuery.refetch(),
     onError: (error) => {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
   const pluginDelete = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      const response = await fetch(
-        `/api/v1/plugins/${encodeURIComponent(plugin.id)}`,
-        { method: "DELETE" },
-      );
-      if (!response.ok) throw new Error("Failed to delete plugin");
-    },
+    mutationFn: (plugin: PluginListItem) => removePlugin(fetch, plugin.id),
     onSuccess: (_data, deletedPlugin) => {
       appToast.success(
         pluginIsLocalSource(deletedPlugin)
