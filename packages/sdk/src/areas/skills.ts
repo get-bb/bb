@@ -2,9 +2,11 @@ import {
   registrySkillDetailSchema,
   registrySkillInstallRequestSchema,
   registrySkillInstallResponseSchema,
+  registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
   type DeleteSkillRequest,
+  type RegistryRepositoryStars,
   type RegistrySkill,
   type RegistrySkillDetail,
   type RegistrySkillInstallResponse,
@@ -57,6 +59,10 @@ export interface RegistrySkillSourceArgs {
   skillId: string;
 }
 
+export interface RegistryRepositoryArgs {
+  source: string;
+}
+
 export type RegistrySkillInstallArgs = RegistrySkillIdArgs;
 
 export interface SkillsRegistryArea {
@@ -65,6 +71,9 @@ export interface SkillsRegistryArea {
   install(
     args: RegistrySkillInstallArgs,
   ): Promise<RegistrySkillInstallResponse>;
+  repositoryStars(
+    args: RegistryRepositoryArgs,
+  ): Promise<RegistryRepositoryStars>;
   search(args?: RegistrySkillsSearchArgs): Promise<RegistrySkillsPage>;
 }
 
@@ -122,6 +131,13 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         },
+      );
+    },
+    async repositoryStars(input) {
+      const query = new URLSearchParams({ source: input.source });
+      return requestParsed(
+        `/api/v1/skills-registry/repository-stars?${query.toString()}`,
+        registryRepositoryStarsSchema,
       );
     },
     async search(input = {}) {

@@ -533,6 +533,56 @@ describe("public project skills route", () => {
     });
   });
 
+  it("loads and caches GitHub stars separately from the registry list", async () => {
+    await withTestHarness(async (harness) => {
+      vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+      const homepage = [
+        String.raw`\"source\":\"owner/shared-repo\",\"skillId\":\"first-skill\",\"name\":\"First skill\",\"installs\":200`,
+        String.raw`\"source\":\"owner/shared-repo\",\"skillId\":\"second-skill\",\"name\":\"Second skill\",\"installs\":100`,
+      ].join("\n");
+      const fetchMock = vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "https://www.skills.sh/") {
+          return new Response(homepage, { status: 200 });
+        }
+        if (url === "https://api.github.com/repos/owner/shared-repo") {
+          return Response.json({ stargazers_count: 27_053 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const listResponse = await harness.app.request(
+        "/api/v1/skills-registry?page=0&perPage=24",
+      );
+      const listBody = (await readJson(listResponse)) as {
+        skills: Array<{ stars: number | null }>;
+      };
+
+      expect(listResponse.status).toBe(200);
+      expect(listBody.skills.map((skill) => skill.stars)).toEqual([null, null]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const firstStarsResponse = await harness.app.request(
+        "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo",
+      );
+      const secondStarsResponse = await harness.app.request(
+        "/api/v1/skills-registry/repository-stars?source=github.com%2Fowner%2Fshared-repo",
+      );
+
+      expect(firstStarsResponse.status).toBe(200);
+      expect(await readJson(firstStarsResponse)).toEqual({ stars: 27_053 });
+      expect(secondStarsResponse.status).toBe(200);
+      expect(await readJson(secondStarsResponse)).toEqual({ stars: 27_053 });
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            String(input) === "https://api.github.com/repos/owner/shared-repo",
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
       const skill: SkillSummary = {

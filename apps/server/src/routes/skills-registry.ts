@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { registrySkillInstallRequestSchema } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
 import {
+  githubRepoForSource,
   hasLoadableSkillContent,
   packageRefForSource,
   parsePageParameter,
@@ -10,6 +11,7 @@ import {
   REGISTRY_SOURCE_PATTERN,
 } from "../services/skills/registry-parse.js";
 import {
+  fetchRegistryRepositoryStars,
   fetchRegistrySkillDetail,
   listRegistrySkills,
   resolveRegistrySkillById,
@@ -50,6 +52,32 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     return context.json(await resolveRegistrySkillById(id));
+  });
+
+  app.get("/skills-registry/repository-stars", async (context) => {
+    const source = context.req.query("source");
+    if (
+      source === undefined ||
+      source.length === 0 ||
+      source.length > 2_048 ||
+      !REGISTRY_SOURCE_PATTERN.test(source) ||
+      githubRepoForSource(source) === null
+    ) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Expected a valid GitHub repository source",
+      );
+    }
+    const stars = await fetchRegistryRepositoryStars(source);
+    if (stars === null) {
+      throw new ApiError(
+        503,
+        "registry_repository_stars_unavailable",
+        "GitHub repository stars are unavailable",
+      );
+    }
+    return context.json({ stars });
   });
 
   app.get("/skills-registry/detail", async (context) => {

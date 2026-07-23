@@ -28,6 +28,13 @@ export const registrySkillsPageSchema = z.object({
 });
 export type RegistrySkillsPage = z.infer<typeof registrySkillsPageSchema>;
 
+export const registryRepositoryStarsSchema = z.object({
+  stars: z.number().int().nonnegative(),
+});
+export type RegistryRepositoryStars = z.infer<
+  typeof registryRepositoryStarsSchema
+>;
+
 export const registrySkillFileSchema = z.object({
   path: z.string().min(1),
   contents: z.string(),

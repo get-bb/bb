@@ -70,6 +70,48 @@ describe("bb skill commands", () => {
     });
   });
 
+  it("deduplicates repository stars while printing registry search results", async () => {
+    const skill = {
+      id: "owner/repo/review",
+      source: "owner/repo",
+      skillId: "review",
+      name: "Review",
+      installs: 42,
+      stars: null,
+      installUrl: "https://github.com/owner/repo",
+      url: "https://www.skills.sh/owner/repo/review",
+      topic: null,
+      summary: "Review a change",
+    };
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(
+        Response.json({
+          skills: [
+            skill,
+            {
+              ...skill,
+              id: "owner/repo/test",
+              skillId: "test",
+              name: "Test",
+            },
+          ],
+          pagination: { page: 0, perPage: 24, total: 2, hasMore: false },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ stars: 27_053 }));
+
+    await runCommand(["skill", "search"], register);
+
+    const output = collectLogLines(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("27053");
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.map(([input]) => String(input)),
+    ).toEqual([
+      "http://server/api/v1/skills-registry?page=0&perPage=24",
+      "http://server/api/v1/skills-registry/repository-stars?source=owner%2Frepo",
+    ]);
+  });
+
   it("prints registry metadata and the bounded file preview", async () => {
     const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     vi.mocked(globalThis.fetch)
@@ -152,6 +194,11 @@ describe("bb skill commands", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          stars: 27_053,
+        }),
       );
 
     await runCommand(
@@ -160,7 +207,7 @@ describe("bb skill commands", () => {
     );
 
     expect(vi.mocked(console.log)).toHaveBeenCalledWith(
-      JSON.stringify({ skill: entry, detail }, null, 2),
+      JSON.stringify({ skill: { ...entry, stars: 27_053 }, detail }, null, 2),
     );
   });
 

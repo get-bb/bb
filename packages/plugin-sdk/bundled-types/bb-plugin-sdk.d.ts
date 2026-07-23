@@ -3336,6 +3336,10 @@ declare const registrySkillsPageSchema: z$1.ZodObject<{
     }, z$1.core.$strip>;
 }, z$1.core.$strip>;
 type RegistrySkillsPage = z$1.infer<typeof registrySkillsPageSchema>;
+declare const registryRepositoryStarsSchema: z$1.ZodObject<{
+    stars: z$1.ZodNumber;
+}, z$1.core.$strip>;
+type RegistryRepositoryStars = z$1.infer<typeof registryRepositoryStarsSchema>;
 declare const registrySkillDetailSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     source: z$1.ZodString;
@@ -10853,11 +10857,15 @@ interface RegistrySkillSourceArgs {
     source: string;
     skillId: string;
 }
+interface RegistryRepositoryArgs {
+    source: string;
+}
 type RegistrySkillInstallArgs = RegistrySkillIdArgs;
 interface SkillsRegistryArea {
     detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;
     get(args: RegistrySkillIdArgs): Promise<RegistrySkill>;
     install(args: RegistrySkillInstallArgs): Promise<RegistrySkillInstallResponse>;
+    repositoryStars(args: RegistryRepositoryArgs): Promise<RegistryRepositoryStars>;
     search(args?: RegistrySkillsSearchArgs): Promise<RegistrySkillsPage>;
 }
 interface SkillsArea {

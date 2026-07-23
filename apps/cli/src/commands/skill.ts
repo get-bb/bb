@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { RegistrySkill } from "@bb/server-contract";
+import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import type { ContextSnapshot } from "../context-env.js";
@@ -58,6 +60,35 @@ function addWorkspaceOptions(command: Command): Command {
     )
     .option("--environment <id>", "Project environment workspace")
     .option("--json", "Print machine-readable JSON output");
+}
+
+async function enrichRegistryStars(
+  registry: SkillsRegistryArea,
+  skills: readonly RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const sources = [
+    ...new Map(
+      skills
+        .filter((skill) => skill.stars === null)
+        .map((skill) => [skill.source.toLowerCase(), skill.source]),
+    ).entries(),
+  ];
+  const starsBySource = new Map(
+    await Promise.all(
+      sources.map(async ([sourceKey, source]) => {
+        const stars = await registry
+          .repositoryStars({ source })
+          .then((result) => result.stars)
+          .catch(() => null);
+        return [sourceKey, stars] as const;
+      }),
+    ),
+  );
+  return skills.map((skill) => {
+    if (skill.stars !== null) return skill;
+    const stars = starsBySource.get(skill.source.toLowerCase());
+    return stars === null || stars === undefined ? skill : { ...skill, stars };
+  });
 }
 
 export function registerSkillCommands(
@@ -188,12 +219,17 @@ export function registerSkillCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (query: string | undefined, options: SkillSearchOptions) => {
-        const result = await createCliBbSdk(getUrl()).skills.registry.search({
+        const registry = createCliBbSdk(getUrl()).skills.registry;
+        const result = await registry.search({
           query,
           page: parseNonnegativeInteger(options.page, 0),
           perPage: parseNonnegativeInteger(options.perPage, 24),
         });
-        if (outputJson(options, result)) return;
+        const enrichedResult = {
+          ...result,
+          skills: await enrichRegistryStars(registry, result.skills),
+        };
+        if (outputJson(options, enrichedResult)) return;
         console.log(
           renderBorderlessTable(
             {
@@ -201,7 +237,7 @@ export function registerSkillCommands(
               colWidths: [48, 12, 10, 48],
               trimTrailingWhitespace: true,
             },
-            result.skills.map((entry) => [
+            enrichedResult.skills.map((entry) => [
               entry.id,
               String(entry.installs),
               entry.stars === null ? "—" : String(entry.stars),
@@ -222,19 +258,23 @@ export function registerSkillCommands(
       action(async (registrySkillId: string, options: JsonOutputOptions) => {
         const registry = createCliBbSdk(getUrl()).skills.registry;
         const skillEntry = await registry.get({ registrySkillId });
-        const detail = await registry.detail({
-          source: skillEntry.source,
-          skillId: skillEntry.skillId,
-        });
-        const result = { skill: skillEntry, detail };
+        const [detail, [enrichedSkillEntry]] = await Promise.all([
+          registry.detail({
+            source: skillEntry.source,
+            skillId: skillEntry.skillId,
+          }),
+          enrichRegistryStars(registry, [skillEntry]),
+        ]);
+        const result = { skill: enrichedSkillEntry ?? skillEntry, detail };
         if (outputJson(options, result)) return;
-        console.log(`Name: ${skillEntry.name}`);
-        console.log(`ID: ${skillEntry.id}`);
-        console.log(`Source: ${skillEntry.source}`);
-        console.log(`Installs: ${skillEntry.installs}`);
-        console.log(`Stars: ${skillEntry.stars ?? "—"}`);
-        console.log(`URL: ${skillEntry.url}`);
-        if (skillEntry.summary) console.log(`Summary: ${skillEntry.summary}`);
+        console.log(`Name: ${result.skill.name}`);
+        console.log(`ID: ${result.skill.id}`);
+        console.log(`Source: ${result.skill.source}`);
+        console.log(`Installs: ${result.skill.installs}`);
+        console.log(`Stars: ${result.skill.stars ?? "—"}`);
+        console.log(`URL: ${result.skill.url}`);
+        if (result.skill.summary)
+          console.log(`Summary: ${result.skill.summary}`);
         console.log(`Revision: ${detail.hash ?? "unknown"}`);
         if (detail.files === null) {
           console.log("Files: unavailable");

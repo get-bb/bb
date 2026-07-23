@@ -3,6 +3,7 @@ import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRegistrySkillReferencePrompt,
+  fetchRegistryRepositoryStars,
   fetchRegistrySkillDetail,
   fetchRegistrySkillEntry,
   fetchRegistrySkills,
@@ -11,6 +12,7 @@ import {
   installRegistrySkill,
   normalizeSkillName,
   REGISTRY_PAGE_SIZE,
+  registryRepositoryKey,
   resolveInstalledRegistrySkill,
 } from "./skills-registry";
 import type { RegistrySkill } from "./skills-registry";
@@ -121,6 +123,17 @@ describe("registry skill contracts", () => {
     });
   });
 
+  it("loads repository stars through the shared schema", async () => {
+    const starsFetch = stubJsonResponse({ stars: 27_053 });
+
+    await expect(
+      fetchRegistryRepositoryStars("github.com/owner/repo"),
+    ).resolves.toBe(27_053);
+    expect(requestPath(starsFetch.mock.calls[0]![0])).toBe(
+      "/api/v1/skills-registry/repository-stars?source=github.com%2Fowner%2Frepo",
+    );
+  });
+
   it("preserves the server's install error message", async () => {
     stubJsonResponse({ message: "Skill is already installed" }, 409);
 
@@ -194,6 +207,11 @@ describe("registry skill formatting", () => {
   it("formats sources and compact install counts at the existing thresholds", () => {
     expect(formatRegistrySource("github.com/owner/repo")).toBe("owner/repo");
     expect(formatRegistrySource("owner/repo")).toBe("owner/repo");
+    expect(registryRepositoryKey("https://github.com/Owner/Repo")).toBe(
+      "owner/repo",
+    );
+    expect(registryRepositoryKey("github.com/OWNER/REPO")).toBe("owner/repo");
+    expect(registryRepositoryKey("Owner/Repo")).toBe("owner/repo");
     expect(formatInstallCount(999)).toBe("999");
     expect(formatInstallCount(1_000)).toBe("1.0K");
     expect(formatInstallCount(1_250_000)).toBe("1.3M");

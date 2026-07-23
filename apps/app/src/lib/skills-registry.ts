@@ -51,6 +51,12 @@ export async function fetchRegistrySkillEntry(
   return sdk.skills.registry.get({ registrySkillId: id });
 }
 
+export async function fetchRegistryRepositoryStars(
+  source: string,
+): Promise<number> {
+  return (await sdk.skills.registry.repositoryStars({ source })).stars;
+}
+
 export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   try {
     return await sdk.skills.registry.install({
@@ -121,6 +127,17 @@ export function formatRegistrySource(source: string): string {
   return source.startsWith(githubPrefix)
     ? source.slice(githubPrefix.length)
     : source;
+}
+
+export function registryRepositoryKey(source: string): string {
+  const githubUrlPrefix = "https://github.com/";
+  const githubHostPrefix = "github.com/";
+  const normalized = source.startsWith(githubUrlPrefix)
+    ? source.slice(githubUrlPrefix.length)
+    : source.startsWith(githubHostPrefix)
+      ? source.slice(githubHostPrefix.length)
+      : source;
+  return normalized.toLowerCase();
 }
 
 export function formatInstallCount(count: number): string {

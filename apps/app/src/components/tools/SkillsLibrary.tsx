@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
@@ -22,8 +22,10 @@ import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
   fetchRegistrySkillEntry,
+  fetchRegistryRepositoryStars,
   fetchRegistrySkills,
   REGISTRY_PAGE_SIZE,
+  registryRepositoryKey,
   resolveInstalledRegistrySkill,
 } from "@/lib/skills-registry";
 import type { RegistryPagination, RegistrySkill } from "@/lib/skills-registry";
@@ -157,6 +159,43 @@ export function SkillsLibrary() {
     enabled: isRegistryBrowseRoute,
     staleTime: 60_000,
   });
+  const registryRepositorySources = useMemo(() => {
+    const sources = new Map<string, string>();
+    for (const skill of registryQuery.data?.skills ?? []) {
+      if (skill.stars === null) {
+        const repositoryKey = registryRepositoryKey(skill.source);
+        if (!sources.has(repositoryKey)) {
+          sources.set(repositoryKey, skill.source);
+        }
+      }
+    }
+    return [...sources.entries()].map(([repositoryKey, source]) => ({
+      repositoryKey,
+      source,
+    }));
+  }, [registryQuery.data?.skills]);
+  const registryRepositoryStarQueries = useQueries({
+    queries: registryRepositorySources.map(({ repositoryKey, source }) => ({
+      queryKey: ["skills-registry-repository-stars", repositoryKey],
+      queryFn: () => fetchRegistryRepositoryStars(source),
+      enabled: isRegistryBrowseRoute,
+      staleTime: 6 * 60 * 60_000,
+      retry: false,
+    })),
+  });
+  const registryRepositoryStars = new Map(
+    registryRepositorySources.flatMap(({ repositoryKey }, index) => {
+      const stars = registryRepositoryStarQueries[index]?.data;
+      return stars === undefined ? [] : ([[repositoryKey, stars]] as const);
+    }),
+  );
+  const registrySkills = (registryQuery.data?.skills ?? []).map((skill) => {
+    if (skill.stars !== null) return skill;
+    const stars = registryRepositoryStars.get(
+      registryRepositoryKey(skill.source),
+    );
+    return stars === undefined ? skill : { ...skill, stars };
+  });
   const selectedSkill = useMemo(() => {
     if (routeSkillId === undefined) return null;
     return skills.find((skill) => skill.id === routeSkillId) ?? null;
@@ -166,13 +205,13 @@ export function SkillsLibrary() {
       return null;
     }
     return (
-      (registryQuery.data?.skills ?? []).find(
+      registrySkills.find(
         (skill) =>
           skill.id === routeRegistrySkillId ||
           skill.skillId === routeRegistrySkillId,
       ) ?? null
     );
-  }, [registryQuery.data, routeRegistrySkillId]);
+  }, [registrySkills, routeRegistrySkillId]);
   const registryEntryQuery = useQuery({
     queryKey: ["skills-registry-entry", routeRegistrySkillId ?? "none"],
     queryFn: () => fetchRegistrySkillEntry(routeRegistrySkillId!),
@@ -350,7 +389,7 @@ export function SkillsLibrary() {
           onModeChange={changeCollectionMode}
           browseContent={
             <RegistrySkillsBrowsePage
-              skills={registryQuery.data?.skills ?? []}
+              skills={registrySkills}
               pagination={
                 registryQuery.data?.pagination ?? {
                   ...EMPTY_REGISTRY_PAGINATION,

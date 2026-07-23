@@ -453,6 +453,79 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       ),
     ).toBe(false);
   });
+
+  it("loads repository stars once and progressively updates every matching card", async () => {
+    const firstSkill = makeRegistrySkill({
+      id: "owner/shared-repo/first-skill",
+      source: "owner/shared-repo",
+      skillId: "first-skill",
+      name: "First skill",
+      stars: null,
+    });
+    const secondSkill = makeRegistrySkill({
+      id: "owner/shared-repo/second-skill",
+      source: "owner/shared-repo",
+      skillId: "second-skill",
+      name: "Second skill",
+      stars: null,
+    });
+    let resolveStars: ((response: Response) => void) | undefined;
+    const starsResponse = new Promise<Response>((resolve) => {
+      resolveStars = resolve;
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        return Promise.resolve(
+          Response.json({
+            skills: [firstSkill, secondSkill],
+            pagination: {
+              page: 0,
+              perPage: 24,
+              total: 2,
+              hasMore: false,
+            },
+          }),
+        );
+      }
+      if (
+        url ===
+        "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo"
+      ) {
+        return starsResponse;
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("Second skill")).toBeTruthy();
+    expect(screen.queryByLabelText(/stars$/u)).toBeNull();
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            requestPath(input) ===
+            "/api/v1/skills-registry/repository-stars?source=owner%2Fshared-repo",
+        ),
+      ).toHaveLength(1);
+    });
+
+    resolveStars?.(Response.json({ stars: 27_053 }));
+
+    expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
+  });
 });
 
 describe("RegistrySkillsBrowsePage", () => {

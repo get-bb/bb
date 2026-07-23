@@ -25,6 +25,7 @@ import {
 
 const MAX_SEARCH_RESULTS = 200;
 const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
+const GITHUB_REPOSITORY_STARS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 
@@ -37,6 +38,11 @@ const githubSkillPathCache = new Map<
   { paths: string[]; expiresAt: number }
 >();
 const githubSkillPathRequests = new Map<string, Promise<string[] | null>>();
+const githubRepositoryStarsCache = new Map<
+  string,
+  { stars: number; expiresAt: number }
+>();
+const githubRepositoryStarsRequests = new Map<string, Promise<number | null>>();
 
 function registryFetch(
   input: string | URL,
@@ -227,6 +233,54 @@ async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
     }
   })();
   githubSkillPathRequests.set(repo, request);
+  return request;
+}
+
+export async function fetchRegistryRepositoryStars(
+  source: string,
+): Promise<number | null> {
+  const repo = githubRepoForSource(source);
+  if (repo === null) return null;
+  const cacheKey = repo.toLowerCase();
+  const cached = githubRepositoryStarsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.stars;
+
+  const inFlight = githubRepositoryStarsRequests.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const response = await registryFetch(
+        `https://api.github.com/repos/${repo}`,
+        {
+          headers: {
+            accept: "application/vnd.github+json",
+            "user-agent": "bb-skills-registry",
+          },
+        },
+      );
+      if (!response.ok) return null;
+      const body: unknown = await response.json().catch(() => null);
+      if (
+        !isRecord(body) ||
+        typeof body.stargazers_count !== "number" ||
+        !Number.isInteger(body.stargazers_count) ||
+        body.stargazers_count < 0
+      ) {
+        return null;
+      }
+      githubRepositoryStarsCache.set(cacheKey, {
+        stars: body.stargazers_count,
+        expiresAt: Date.now() + GITHUB_REPOSITORY_STARS_CACHE_TTL_MS,
+      });
+      return body.stargazers_count;
+    } catch {
+      return null;
+    } finally {
+      githubRepositoryStarsRequests.delete(cacheKey);
+    }
+  })();
+  githubRepositoryStarsRequests.set(cacheKey, request);
   return request;
 }
 
