@@ -1,4 +1,8 @@
 import type { ReactNode } from "react";
+import type {
+  PluginDetailCapability,
+  PluginDetailCapabilityKind,
+} from "@bb/server-contract";
 import {
   ResourceDetailCollection,
   ResourceDetailListItem,
@@ -12,10 +16,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
-import {
-  usePluginSettingsView,
-  type PluginListItem,
-} from "@/hooks/queries/plugin-settings-queries";
+import { type PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -249,39 +250,37 @@ function PluginCapabilityGroup({
 
 export function PluginIncludes({
   plugin,
+  capabilities,
   hasSettings,
 }: {
   plugin: PluginListItem;
+  capabilities: readonly PluginDetailCapability[];
   hasSettings: boolean;
 }) {
   const slots = usePluginSlots();
-  const settingsQuery = usePluginSettingsView(plugin.id, {
-    enabled: plugin.hasSettings,
-  });
   const settingsSections = slots.settingsSections.filter(
     (slot) => slot.pluginId === plugin.id,
   );
   const appItems = pluginAppSurfaceItems(plugin.id, slots);
+  const declaredApp = capabilities.some(
+    (capability) => capability.kind === "frontend-app",
+  );
   if (
-    plugin.app.hasApp &&
+    (declaredApp || plugin.app.hasApp) &&
     appItems.length === 0 &&
     settingsSections.length === 0
   ) {
     appItems.push({
       key: "frontend-app",
       label: "Frontend app",
-      detail: "Surface names are available while the plugin app is loaded",
+      detail: plugin.app.hasApp
+        ? "Surface names are unavailable"
+        : "Available when the plugin is enabled",
     });
   }
 
   const settingsItems: PluginCapabilityItem[] = [
-    ...Object.entries(settingsQuery.data?.schema ?? {}).map(
-      ([key, descriptor]) => ({
-        key: `setting:${key}`,
-        label: descriptor.label,
-        detail: capabilityDetail("Setting", key),
-      }),
-    ),
+    ...capabilityItems(capabilities, ["setting"]),
     ...settingsSections.map((slot) =>
       namedSurface(
         "settings-section",
@@ -295,9 +294,7 @@ export function PluginIncludes({
     settingsItems.push({
       key: "settings",
       label: "Configurable behavior",
-      detail: settingsQuery.isLoading
-        ? "Loading setting names…"
-        : "Setting names are unavailable",
+      detail: "Setting names are unavailable",
     });
   }
 
@@ -310,37 +307,52 @@ export function PluginIncludes({
     {
       icon: "Terminal",
       label: "Command",
-      items: plugin.cliCommand
-        ? [
-            {
-              key: plugin.cliCommand.name,
-              label: `bb ${plugin.cliCommand.name}`,
-              detail: plugin.cliCommand.summary || undefined,
-              mono: true,
-            },
-          ]
-        : [],
+      items: capabilityItems(capabilities, ["command"]),
     },
     { icon: "Settings", label: "Settings", items: settingsItems },
     {
       icon: "Workflow",
       label: "Services",
-      items: plugin.services.map((service) => ({
-        key: service.name,
-        label: service.name,
-        detail: "Background service",
-        mono: true,
-      })),
+      items: capabilityItems(capabilities, ["service"]),
     },
     {
       icon: "TimeSchedule",
       label: "Schedules",
-      items: plugin.schedules.map((schedule) => ({
-        key: schedule.name,
-        label: schedule.name,
-        detail: capabilityDetail("Cron", schedule.cron),
-        mono: true,
-      })),
+      items: capabilityItems(capabilities, ["schedule"]),
+    },
+    {
+      icon: "Zap",
+      label: "Agent capabilities",
+      items: capabilityItems(capabilities, [
+        "skill-root",
+        "agent-tool",
+        "agent-configuration",
+        "instructions",
+      ]),
+    },
+    {
+      icon: "MessageSquare",
+      label: "Thread integrations",
+      items: capabilityItems(capabilities, [
+        "thread-action",
+        "mention-provider",
+      ]),
+    },
+    {
+      icon: "Palette",
+      label: "Themes",
+      items: capabilityItems(capabilities, ["theme"]),
+    },
+    {
+      icon: "Code",
+      label: "Server",
+      items: capabilityItems(capabilities, [
+        "server-extension",
+        "http-route",
+        "rpc-method",
+        "event-handler",
+        "database",
+      ]),
     },
   ];
 
@@ -358,6 +370,29 @@ export function PluginIncludes({
       )}
     </ResourceDetailCollection>
   );
+}
+
+function capabilityItems(
+  capabilities: readonly PluginDetailCapability[],
+  kinds: readonly PluginDetailCapabilityKind[],
+): PluginCapabilityItem[] {
+  const acceptedKinds = new Set(kinds);
+  return capabilities
+    .filter((capability) => acceptedKinds.has(capability.kind))
+    .map((capability) => ({
+      key: `${capability.kind}:${capability.id}`,
+      label: capability.label,
+      detail:
+        capability.kind === "setting"
+          ? capabilityDetail(capability.detail ?? "Setting", capability.id)
+          : capability.detail,
+      mono:
+        capability.kind === "command" ||
+        capability.kind === "agent-tool" ||
+        capability.kind === "rpc-method" ||
+        capability.kind === "http-route" ||
+        capability.kind === "event-handler",
+    }));
 }
 
 export function PluginActivity({

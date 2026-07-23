@@ -16,6 +16,7 @@ import {
   ResourceOverflowMenu,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import type { PluginDetailCapability } from "@bb/server-contract";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginReleaseFacts,
@@ -53,6 +54,7 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
 export function PluginDetail({
   isLoading,
   plugin,
+  capabilities,
   pending,
   openSourceDisabled,
   onToggle,
@@ -62,6 +64,7 @@ export function PluginDetail({
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
+  capabilities: readonly PluginDetailCapability[];
   pending: boolean;
   openSourceDisabled: boolean;
   onToggle: (plugin: PluginListItem) => void;
@@ -92,11 +95,7 @@ export function PluginDetail({
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
   const hasIncludes =
-    plugin.app.hasApp ||
-    plugin.cliCommand !== null ||
-    hasSettings ||
-    plugin.services.length > 0 ||
-    plugin.schedules.length > 0;
+    capabilities.length > 0 || plugin.app.hasApp || hasSettings;
   const hasActivity =
     (plugin.enabled && runtimeStatus !== null) ||
     plugin.handlerStats.errorCount > 0 ||
@@ -231,7 +230,11 @@ export function PluginDetail({
         ) : null}
         {hasIncludes ? (
           <ResourceDetailIncludesSection label="Includes">
-            <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
+            <PluginIncludes
+              plugin={plugin}
+              capabilities={capabilities}
+              hasSettings={hasSettings}
+            />
           </ResourceDetailIncludesSection>
         ) : null}
         {hasActivity ? (

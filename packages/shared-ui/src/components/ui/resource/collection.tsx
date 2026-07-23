@@ -426,6 +426,7 @@ type ResourceBrowseCardProps = {
   title: ReactNode;
   description?: ReactNode;
   descriptionLines?: 2 | 3;
+  descriptionPlacement?: "identity" | "center";
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
@@ -439,6 +440,7 @@ export function ResourceBrowseCard({
   title,
   description,
   descriptionLines = 2,
+  descriptionPlacement = "identity",
   byline,
   headerAction,
   footerMeta,
@@ -450,7 +452,10 @@ export function ResourceBrowseCard({
   return (
     <div
       className={cn(
-        "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] gap-2 rounded-lg border border-border bg-card p-3 text-left",
+        "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg border border-border bg-card p-3 text-left",
+        descriptionPlacement === "center"
+          ? "grid-rows-[auto_1fr_auto]"
+          : "grid-rows-[auto_1fr]",
         onOpen &&
           "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
       )}
@@ -464,17 +469,41 @@ export function ResourceBrowseCard({
         />
       ) : null}
       {hasLeading ? (
-        <span className="pointer-events-none relative col-start-1 row-span-2 flex min-w-0 self-center">
+        <span
+          className={cn(
+            "pointer-events-none relative col-start-1 flex min-w-0",
+            descriptionPlacement === "center"
+              ? "row-start-1 self-start"
+              : "row-span-2 self-center",
+          )}
+        >
           <span className="flex size-6 shrink-0 items-center justify-center">
             {leading}
           </span>
           <span className="ml-3 min-w-0 flex-1">{renderIdentity()}</span>
         </span>
       ) : (
-        <span className="pointer-events-none relative col-start-1 row-span-2 min-w-0 self-center">
+        <span
+          className={cn(
+            "pointer-events-none relative col-start-1 min-w-0",
+            descriptionPlacement === "center"
+              ? "row-start-1 self-start"
+              : "row-span-2 self-center",
+          )}
+        >
           {renderIdentity()}
         </span>
       )}
+      {descriptionPlacement === "center" && description ? (
+        <span
+          className={cn(
+            "pointer-events-none relative col-span-2 row-start-2 self-center text-center text-xs leading-snug text-muted-foreground",
+            descriptionLines === 3 ? "line-clamp-3" : "line-clamp-2",
+          )}
+        >
+          {description}
+        </span>
+      ) : null}
       {headerAction ? (
         <span
           data-row-action
@@ -484,7 +513,12 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-2 flex items-end justify-end text-right">
+        <span
+          className={cn(
+            "pointer-events-none relative col-start-2 flex items-end justify-end text-right",
+            descriptionPlacement === "center" ? "row-start-3" : "row-start-2",
+          )}
+        >
           {footerMeta}
         </span>
       ) : null}
@@ -497,7 +531,7 @@ export function ResourceBrowseCard({
         <span className="block truncate text-sm font-medium text-foreground">
           {title}
         </span>
-        {description ? (
+        {descriptionPlacement === "identity" && description ? (
           <span
             className={cn(
               "mt-0.5 block text-left text-xs leading-snug text-muted-foreground",

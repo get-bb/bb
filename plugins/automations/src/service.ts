@@ -26,6 +26,8 @@ import {
   AUTOMATION_RUNS_LIMIT_MAX,
   automationRunListResponseSchema,
   automationsOverviewResponseSchema,
+  automationDetailPageSchema,
+  type AutomationDetailPage,
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationRunListResponse,
@@ -66,6 +68,10 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<AutomationResponse>;
+  detail(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationDetailPage>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -387,6 +393,30 @@ export function createAutomationService(args: {
       return toEditableAutomationResponse({
         pluginDataDir,
         row: requireProjectAutomation(db, input),
+      });
+    },
+
+    async detail(input) {
+      const automation = await toEditableAutomationResponse({
+        pluginDataDir,
+        row: requireProjectAutomation(db, input),
+      });
+      let projectName = input.projectId;
+      try {
+        const project = projectSummarySchema.parse(
+          await bb.sdk.projects.get({ projectId: input.projectId }),
+        );
+        projectName = project.name ?? project.id;
+      } catch (error) {
+        bb.log.warn(
+          `Failed to load project ${input.projectId} for automation detail: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      return automationDetailPageSchema.parse({
+        automation,
+        project: { id: input.projectId, name: projectName },
       });
     },
 

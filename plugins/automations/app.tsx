@@ -19,6 +19,7 @@ import {
 import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
+  AutomationDetailPage,
   AutomationResponse,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -257,6 +258,7 @@ function useOverview(): {
 
 function useAutomation(route: DetailRoute): {
   automation: AutomationResponse | null;
+  project: AutomationDetailPage["project"] | null;
   error: string | null;
   missing: boolean;
   refetch: () => void;
@@ -265,9 +267,10 @@ function useAutomation(route: DetailRoute): {
   const { projectId, automationId } = route;
   const [state, setState] = useState<{
     automation: AutomationResponse | null;
+    project: AutomationDetailPage["project"] | null;
     error: string | null;
     missing: boolean;
-  }>({ automation: null, error: null, missing: false });
+  }>({ automation: null, project: null, error: null, missing: false });
   const requestRef = useRef(0);
 
   const refetch = useCallback(() => {
@@ -276,22 +279,33 @@ function useAutomation(route: DetailRoute): {
     rpc.call("automations_get", { projectId, automationId }).then(
       (result) => {
         if (requestRef.current !== requestId) return;
-        const automation = result as AutomationResponse | null;
+        const detail = result as AutomationDetailPage | null;
         setState({
-          automation: automation ?? null,
+          automation: detail?.automation ?? null,
+          project: detail?.project ?? null,
           error: null,
-          missing: automation === null,
+          missing: detail === null,
         });
       },
       (error: unknown) => {
         if (requestRef.current !== requestId) return;
-        setState({ automation: null, error: errorText(error), missing: false });
+        setState({
+          automation: null,
+          project: null,
+          error: errorText(error),
+          missing: false,
+        });
       },
     );
   }, [rpc, projectId, automationId]);
 
   useEffect(() => {
-    setState({ automation: null, error: null, missing: false });
+    setState({
+      automation: null,
+      project: null,
+      error: null,
+      missing: false,
+    });
     refetch();
     return () => {
       requestRef.current += 1;
@@ -972,8 +986,7 @@ function DetailView({
   onBack: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { automation, error, missing, refetch } = useAutomation(route);
-  const overviewState = useOverview();
+  const { automation, project, error, missing, refetch } = useAutomation(route);
   const runsState = useRuns(route);
   const mutations = useMutations();
   const [actionPending, setActionPending] = useState(false);
@@ -1075,14 +1088,9 @@ function DetailView({
     );
   }
 
-  const overviewEntry = overviewState.entries?.find(
-    (entry) =>
-      entry.automation.projectId === route.projectId &&
-      entry.automation.id === route.automationId,
-  );
   const projectLabel =
-    overviewEntry !== undefined
-      ? automationProjectLabel(overviewEntry.project)
+    project !== null
+      ? automationProjectLabel(project)
       : route.projectId === PERSONAL_PROJECT_ID
         ? "Local"
         : route.projectId;

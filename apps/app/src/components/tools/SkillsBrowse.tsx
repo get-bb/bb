@@ -19,7 +19,7 @@ import {
 import type {
   RegistryPagination,
   RegistrySkill,
-  RegistrySkillDetail,
+  RegistrySkillDetailPage,
 } from "@/lib/skills-registry";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
@@ -86,6 +86,7 @@ function RegistrySkillSourceItem({
       title={skill.name}
       byline={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? undefined}
+      descriptionPlacement="center"
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
@@ -203,7 +204,6 @@ export function RegistrySkillsBrowsePage({
 }
 
 export function RegistrySkillDetailView({
-  skill,
   detail,
   localSkill,
   localPath,
@@ -211,19 +211,19 @@ export function RegistrySkillDetailView({
   onFork,
   onEditLocalSkill,
 }: {
-  skill: RegistrySkill;
-  detail: RegistrySkillDetail;
+  detail: RegistrySkillDetailPage;
   localSkill: SkillSummary | null;
   localPath: string | null;
   onRetry: () => void;
   onFork: (skill: RegistrySkill) => void;
   onEditLocalSkill: (skill: SkillSummary) => void;
 }) {
+  const { skill } = detail;
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
     useLocalOpenTargets({ enabled: localPath !== null });
-  const files = detail?.files ?? [];
+  const files = detail.skill.files;
   const selectedFile =
     files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
   const path = localPath ?? `skills.sh/${skill.source}/${skill.skillId}`;

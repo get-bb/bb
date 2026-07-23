@@ -1,11 +1,16 @@
 import type {
   InstalledPlugin,
+  PluginDetailCapability,
   PluginSettingDescriptor,
   PluginSettingsResponse,
 } from "@bb/server-contract";
-import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
+import {
+  pluginDetailPageSchema,
+  pluginSettingsUpdateRequestSchema,
+} from "@bb/server-contract";
 import { useQuery, type QueryKey } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
+import { appSurfaceRequestInit } from "@/lib/app-surface";
 
 type FetchLike = typeof fetch;
 
@@ -55,6 +60,11 @@ export interface PluginListItem {
 
 export interface PluginListResult {
   plugins: PluginListItem[];
+}
+
+export interface PluginDetailResult {
+  plugin: PluginListItem;
+  capabilities: PluginDetailCapability[];
 }
 
 export function toEpochMs(
@@ -128,6 +138,24 @@ export async function fetchPluginList(
   return { plugins: result.plugins.map(toPluginListItem) };
 }
 
+export async function fetchPluginDetail(
+  fetchImpl: FetchLike,
+  pluginId: string,
+): Promise<PluginDetailResult | null> {
+  const response = await fetchImpl.call(
+    globalThis,
+    `/api/v1/plugins/${encodeURIComponent(pluginId)}`,
+    appSurfaceRequestInit(),
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Plugin detail request failed");
+  const detail = pluginDetailPageSchema.parse(await response.json());
+  return {
+    plugin: toPluginListItem(detail.plugin),
+    capabilities: detail.capabilities,
+  };
+}
+
 export type PluginSettingFieldDescriptor = PluginSettingDescriptor;
 
 export interface PluginSettingsView {
@@ -191,6 +219,10 @@ export function pluginSettingsViewQueryKey(pluginId: string): QueryKey {
   return ["plugin-settings-view", pluginId];
 }
 
+export function pluginDetailQueryKey(pluginId: string): QueryKey {
+  return ["plugin-detail", pluginId];
+}
+
 export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
   return ["plugin-settings-view"];
 }
@@ -200,6 +232,15 @@ export function usePluginList(args: { enabled: boolean }) {
     queryKey: pluginListQueryKey(args.enabled),
     queryFn: () => fetchPluginList(fetch),
     enabled: args.enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function usePluginDetail(pluginId: string) {
+  return useQuery({
+    queryKey: pluginDetailQueryKey(pluginId),
+    queryFn: () => fetchPluginDetail(fetch, pluginId),
+    enabled: pluginId.length > 0,
     staleTime: 30_000,
   });
 }

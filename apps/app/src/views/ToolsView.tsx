@@ -1,10 +1,4 @@
-import {
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { Suspense, useCallback, useState, type ReactNode } from "react";
 import {
   matchPath,
   useLocation,
@@ -12,7 +6,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@/components/ui/overflow-fade";
@@ -37,9 +31,10 @@ import {
 import {
   removePlugin,
   setPluginEnabled,
-  usePluginList,
+  usePluginDetail,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
   createDiffWorker,
@@ -232,19 +227,18 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
 
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
-  const listQuery = usePluginList({ enabled: true });
-  const plugins = useMemo(
-    () => listQuery.data?.plugins ?? [],
-    [listQuery.data],
-  );
+  const detailQuery = usePluginDetail(pluginId);
+  const selectedPlugin = detailQuery.data?.plugin ?? null;
   const {
     canOpenPreferredDirectoryTarget,
     openPathInPreferredDirectoryTarget,
   } = useLocalOpenTargets({
-    enabled: plugins.some(
-      (plugin) => pluginIsLocalSource(plugin) && plugin.rootDir !== null,
-    ),
+    enabled:
+      selectedPlugin !== null &&
+      pluginIsLocalSource(selectedPlugin) &&
+      selectedPlugin.rootDir !== null,
   });
   const pluginToggle = useMutation({
     mutationFn: async (plugin: PluginListItem) => {
@@ -255,7 +249,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         throw new Error(`Failed to ${action} plugin`);
       }
     },
-    onSuccess: () => listQuery.refetch(),
+    onSuccess: async () => {
+      invalidatePluginList({ queryClient });
+      await detailQuery.refetch();
+    },
     onError: (error) => {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
@@ -275,16 +272,14 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           : "Plugin uninstalled",
       );
       setDeleteTarget(null);
+      invalidatePluginList({ queryClient });
       navigate(getPluginsRoutePath());
-      return listQuery.refetch();
     },
     onError: (error) => {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
-  const isLoading = listQuery.isFetching && listQuery.data === undefined;
-  const selectedPlugin =
-    plugins.find((plugin) => plugin.id === pluginId) ?? null;
+  const isLoading = detailQuery.isFetching && detailQuery.data === undefined;
   useResourceRouteLabel(selectedPlugin?.name ?? selectedPlugin?.id ?? null);
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
@@ -320,16 +315,17 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
 
   return (
     <ToolsScrollPage>
-      {listQuery.isError ? (
+      {detailQuery.isError ? (
         <ResourceListState
           state="error"
           message="Couldn't load plugin."
-          onRetry={() => void listQuery.refetch()}
+          onRetry={() => void detailQuery.refetch()}
         />
       ) : (
         <PluginDetail
           isLoading={isLoading}
           plugin={selectedPlugin}
+          capabilities={detailQuery.data?.capabilities ?? []}
           pending={
             selectedPlugin !== null && pendingPluginId === selectedPlugin.id
           }

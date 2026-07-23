@@ -3,6 +3,7 @@ import type {
   RegistryPagination,
   RegistrySkill,
   RegistrySkillDetail,
+  RegistrySkillDetailPage,
   RegistrySkillFile,
   RegistrySkillsPage,
 } from "@bb/server-contract";
@@ -13,6 +14,7 @@ export type {
   RegistryPagination,
   RegistrySkill,
   RegistrySkillDetail,
+  RegistrySkillDetailPage,
   RegistrySkillFile,
   RegistrySkillsPage,
 };
