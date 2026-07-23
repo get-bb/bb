@@ -53,6 +53,8 @@ export interface SkillDetailViewProps {
   path: string;
   pathHref?: string;
   headerControl?: SkillDetailHeaderControl;
+  /** Extra contextual actions displayed beside the lifecycle control. */
+  headerActions?: ReactNode;
   overflowMenu?: ReactNode;
   files: readonly string[];
   selectedPath: string;
@@ -286,6 +288,7 @@ export function SkillDetailView({
   path,
   pathHref,
   headerControl,
+  headerActions,
   overflowMenu,
   files,
   selectedPath,
@@ -323,6 +326,14 @@ export function SkillDetailView({
         appearance={headerControl.appearance}
       />
     ) : undefined;
+  const actions =
+    headerActions === undefined ? undefined : (
+      <>
+        {headerActions}
+        {lifecycleControl}
+        {overflowMenu}
+      </>
+    );
 
   return (
     <ResourceDetailPage
@@ -331,6 +342,7 @@ export function SkillDetailView({
       metadata={<SkillPath path={directoryPath} href={pathHref} />}
       lifecycleControl={lifecycleControl}
       overflowMenu={overflowMenu}
+      actions={actions}
     >
       <ResourceDetailStack>
         {files.length > 1 && editor === undefined ? (

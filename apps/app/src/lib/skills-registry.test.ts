@@ -2,6 +2,7 @@ import type { SkillSummary } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
   fetchRegistrySkillEntry,
   fetchRegistrySkills,
@@ -123,6 +124,21 @@ describe("registry skill matching", () => {
 });
 
 describe("registry skill formatting", () => {
+  it("builds an editable prompt that preserves source identity without copying it", () => {
+    expect(buildRegistrySkillReferencePrompt(registrySkill)).toBe(
+      [
+        'Create a new, distinct bb skill using "Useful skill" as a reference.',
+        "",
+        "Reference skill: owner/repo/useful-skill",
+        "Reference URL: https://skills.sh/owner/repo/useful-skill",
+        "",
+        "Do not install, copy, modify, or overwrite the reference skill. Create a separate skill with its own name and files.",
+        "",
+        "Desired changes: [Describe how your new skill should differ from the reference.]",
+      ].join("\n"),
+    );
+  });
+
   it("normalizes names using the existing registry slug behavior", () => {
     expect(normalizeSkillName("  Ship & Review_IT  ")).toBe("ship-review-it");
   });

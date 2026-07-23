@@ -121,6 +121,26 @@ export function resolveInstalledRegistrySkill(
   );
 }
 
+/**
+ * Seeds a new-thread composer to author a distinct skill with a skills.sh
+ * entry as inspiration. The registry identity and URL let the agent retrieve
+ * the same source without treating it as an install or edit target.
+ */
+export function buildRegistrySkillReferencePrompt(
+  skill: RegistrySkill,
+): string {
+  return [
+    `Create a new, distinct bb skill using "${skill.name}" as a reference.`,
+    "",
+    `Reference skill: ${skill.id}`,
+    `Reference URL: ${skill.url}`,
+    "",
+    "Do not install, copy, modify, or overwrite the reference skill. Create a separate skill with its own name and files.",
+    "",
+    "Desired changes: [Describe how your new skill should differ from the reference.]",
+  ].join("\n");
+}
+
 export function formatRegistrySource(source: string): string {
   const githubPrefix = "github.com/";
   return source.startsWith(githubPrefix)

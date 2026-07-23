@@ -4,6 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
+  ResourceActionButton,
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCardStat,
@@ -61,6 +62,7 @@ function RegistrySkillSourceItem({
   canUninstall,
   onInstall,
   onUninstall,
+  onCreateFromReference,
   onSelect,
   pending,
 }: {
@@ -69,6 +71,7 @@ function RegistrySkillSourceItem({
   canUninstall: boolean;
   onInstall: (skill: RegistrySkill) => void;
   onUninstall: (skill: RegistrySkill) => void;
+  onCreateFromReference: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   pending: boolean;
 }) {
@@ -80,14 +83,22 @@ function RegistrySkillSourceItem({
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
-        <SkillBrowseInstallControl
-          skillName={skill.name}
-          installed={installed}
-          pending={pending}
-          onInstall={() => onInstall(skill)}
-          onUninstall={canUninstall ? () => onUninstall(skill) : undefined}
-          presentation="icon"
-        />
+        <div className="flex items-center gap-1">
+          <ResourceActionButton
+            label={`Create a new skill from ${skill.name} as a reference`}
+            tooltipLabel="Create from reference"
+            icon="AiContentGenerator01"
+            onClick={() => onCreateFromReference(skill)}
+          />
+          <SkillBrowseInstallControl
+            skillName={skill.name}
+            installed={installed}
+            pending={pending}
+            onInstall={() => onInstall(skill)}
+            onUninstall={canUninstall ? () => onUninstall(skill) : undefined}
+            presentation="icon"
+          />
+        </div>
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
     />
@@ -120,6 +131,7 @@ export function RegistrySkillsBrowsePage({
   onPageChange,
   onInstall,
   onUninstall,
+  onCreateFromReference,
   onSelect,
   isInstalled,
   canUninstall = () => false,
@@ -135,6 +147,7 @@ export function RegistrySkillsBrowsePage({
   onPageChange: (page: number) => void;
   onInstall: (skill: RegistrySkill) => void;
   onUninstall: (skill: RegistrySkill) => void;
+  onCreateFromReference: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
   isInstalled: (skill: RegistrySkill) => boolean;
   canUninstall?: (skill: RegistrySkill) => boolean;
@@ -201,6 +214,7 @@ export function RegistrySkillsBrowsePage({
               pending={pendingSkillId === skill.id}
               onInstall={onInstall}
               onUninstall={onUninstall}
+              onCreateFromReference={onCreateFromReference}
               onSelect={onSelect}
             />
           ))}
@@ -223,6 +237,7 @@ export function RegistrySkillDetailView({
   onRetry,
   onInstall,
   onUninstall,
+  onCreateFromReference,
   onEditInstalledSkill,
 }: {
   skill: RegistrySkill;
@@ -237,6 +252,7 @@ export function RegistrySkillDetailView({
   onRetry: () => void;
   onInstall: (skill: RegistrySkill) => void;
   onUninstall?: (skill: RegistrySkill) => void;
+  onCreateFromReference: (skill: RegistrySkill) => void;
   onEditInstalledSkill: (skill: SkillSummary) => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
@@ -260,6 +276,16 @@ export function RegistrySkillDetailView({
         onInstall: () => onInstall(skill),
         onUninstall: onUninstall ? () => onUninstall(skill) : undefined,
       }}
+      headerActions={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onCreateFromReference(skill)}
+        >
+          Create from reference
+        </Button>
+      }
       overflowMenu={
         installedSkill !== null && installedPath !== null ? (
           <ResourceOverflowMenu

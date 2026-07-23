@@ -9,13 +9,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
 import { SkillDetailView } from "../components/tools/SkillDetailView";
+import { RegistrySkillDetailView } from "../components/tools/SkillsBrowse";
 import {
   fetchRegistrySkills,
   fetchRegistrySkillEntry,
@@ -65,6 +66,15 @@ function makeRegistrySkill(
     summary: "A useful skill.",
     ...overrides,
   };
+}
+
+function LocationStateProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location-state">
+      {JSON.stringify(location.state)}
+    </output>
+  );
 }
 
 function renderInstalledSkillRoute() {
@@ -185,6 +195,7 @@ describe("SkillsOverview", () => {
             onPageChange={() => {}}
             onInstall={() => {}}
             onUninstall={() => {}}
+            onCreateFromReference={() => {}}
             onSelect={() => {}}
             isInstalled={() => true}
             canUninstall={() => true}
@@ -388,6 +399,7 @@ describe("SkillsOverview", () => {
         onPageChange={() => {}}
         onInstall={() => {}}
         onUninstall={onUninstall}
+        onCreateFromReference={() => {}}
         onSelect={() => {}}
         isInstalled={() => true}
         canUninstall={() => true}
@@ -424,6 +436,7 @@ describe("SkillsOverview", () => {
         onPageChange={() => {}}
         onInstall={() => {}}
         onUninstall={() => {}}
+        onCreateFromReference={() => {}}
         onSelect={() => {}}
         isInstalled={() => true}
         canUninstall={() => false}
@@ -745,6 +758,70 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     expect(
       screen.queryByRole("button", { name: /Install Useful skill/ }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Create a new skill from Useful skill as a reference/,
+      }),
+    ).toBeNull();
+  });
+
+  it("opens the composer from a registry card with the reference prompt", async () => {
+    const registrySkill = makeRegistrySkill();
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("/api/v1/skills-registry?")) {
+        return new Response(
+          JSON.stringify({
+            skills: [registrySkill],
+            pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+            <Route path="/" element={<LocationStateProbe />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Create a new skill from Useful skill as a reference",
+      }),
+    );
+
+    const state = JSON.parse(
+      (await screen.findByTestId("location-state")).textContent ?? "null",
+    );
+    expect(state).toEqual({
+      focusPrompt: true,
+      initialPrompt: [
+        'Create a new, distinct bb skill using "Useful skill" as a reference.',
+        "",
+        "Reference skill: owner/repo/useful-skill",
+        "Reference URL: https://skills.sh/owner/repo/useful-skill",
+        "",
+        "Do not install, copy, modify, or overwrite the reference skill. Create a separate skill with its own name and files.",
+        "",
+        "Desired changes: [Describe how your new skill should differ from the reference.]",
+      ].join("\n"),
+      replaceInitialPrompt: true,
+      createDraftKind: "skill",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => String(input) === "/api/v1/skills-registry/install",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -766,6 +843,7 @@ describe("RegistrySkillsBrowsePage", () => {
       stars: 10,
     });
     const onSelect = vi.fn();
+    const onCreateFromReference = vi.fn();
     renderDom(
       <RegistrySkillsBrowsePage
         skills={[alpha, zulu]}
@@ -778,6 +856,7 @@ describe("RegistrySkillsBrowsePage", () => {
         onPageChange={onPageChange}
         onInstall={() => {}}
         onUninstall={() => {}}
+        onCreateFromReference={onCreateFromReference}
         onSelect={onSelect}
         isInstalled={(skill) => skill.id === alpha.id}
       />,
@@ -798,6 +877,16 @@ describe("RegistrySkillsBrowsePage", () => {
         .getByLabelText("Installed Alpha as a bb skill")
         .querySelector('[data-icon="Check"]'),
     ).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Create a new skill from Alpha as a reference",
+      }),
+    ).toBeTruthy();
+    const zuluCreate = screen.getByRole("button", {
+      name: "Create a new skill from Zulu as a reference",
+    });
+    fireEvent.click(zuluCreate);
+    expect(onCreateFromReference).toHaveBeenCalledWith(zulu);
     const zuluInstall = screen.getByRole("button", {
       name: "Install Zulu as a bb skill",
     });
@@ -817,6 +906,62 @@ describe("RegistrySkillsBrowsePage", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("RegistrySkillDetailView reference creation", () => {
+  it("keeps creation available before and after installing without installing itself", () => {
+    const registrySkill = makeRegistrySkill();
+    const onCreateFromReference = vi.fn();
+    const onInstall = vi.fn();
+    const props = {
+      skill: registrySkill,
+      detail: {
+        id: registrySkill.id,
+        source: registrySkill.source,
+        skillId: registrySkill.skillId,
+        hash: null,
+        files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+      },
+      isLoadingDetail: false,
+      isDetailError: false,
+      installed: false,
+      installedSkill: null,
+      installedPath: null,
+      pending: false,
+      uninstallPending: false,
+      onRetry: () => {},
+      onInstall,
+      onUninstall: undefined,
+      onCreateFromReference,
+      onEditInstalledSkill: () => {},
+    };
+    const view = renderDom(<RegistrySkillDetailView {...props} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create from reference" }),
+    );
+    expect(onCreateFromReference).toHaveBeenCalledWith(registrySkill);
+    expect(onInstall).not.toHaveBeenCalled();
+
+    view.rerender(
+      <RegistrySkillDetailView
+        {...props}
+        installed
+        installedSkill={makeSkill({
+          name: registrySkill.skillId,
+          provider: null,
+          scope: "bb-user",
+          registrySkillId: registrySkill.id,
+        })}
+        installedPath="/home/u/.bb/skills/useful-skill/SKILL.md"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create from reference" }),
+    );
+    expect(onCreateFromReference).toHaveBeenCalledTimes(2);
+    expect(onInstall).not.toHaveBeenCalled();
   });
 });
 

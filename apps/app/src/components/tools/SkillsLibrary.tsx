@@ -20,6 +20,7 @@ import {
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
 import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
 import {
+  buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
   fetchRegistrySkillEntry,
   fetchRegistrySkills,
@@ -392,6 +393,19 @@ export function SkillsLibrary() {
     },
     [navigate],
   );
+  const createRegistrySkillFromReference = useCallback(
+    (skill: RegistrySkill) => {
+      navigate(getRootComposeRoutePath(), {
+        state: {
+          focusPrompt: true,
+          initialPrompt: buildRegistrySkillReferencePrompt(skill),
+          replaceInitialPrompt: true,
+          createDraftKind: "skill",
+        },
+      });
+    },
+    [navigate],
+  );
   const pendingRegistrySkillId =
     registryInstall.isPending && registryInstall.variables
       ? registryInstall.variables.skill.id
@@ -472,6 +486,7 @@ export function SkillsLibrary() {
               ? uninstallRegistry
               : undefined
           }
+          onCreateFromReference={createRegistrySkillFromReference}
           onEditInstalledSkill={editSkillViaThread}
         />
       ) : (
@@ -504,6 +519,7 @@ export function SkillsLibrary() {
               onPageChange={setRegistryPage}
               onInstall={installRegistry}
               onUninstall={uninstallRegistry}
+              onCreateFromReference={createRegistrySkillFromReference}
               onSelect={openRegistrySkill}
               isInstalled={isRegistrySkillInstalled}
               canUninstall={canUninstallRegistrySkill}
