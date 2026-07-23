@@ -29,6 +29,8 @@ import {
 } from "@/components/tools/SkillDetailView";
 
 const SKILLS_SH_URL = "https://www.skills.sh/";
+const QUIET_SKILL_SAVE_CONTROL =
+  "border-transparent bg-transparent shadow-none hover:border-transparent focus-visible:border-transparent";
 
 function RegistrySkillActions({
   skillName,
@@ -64,6 +66,8 @@ function RegistrySkillActions({
         pending={pending}
         onInstall={onSave}
         onUninstall={onRemove}
+        presentation="icon"
+        className={QUIET_SKILL_SAVE_CONTROL}
       />
     </div>
   );

@@ -633,7 +633,9 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(screen.getByLabelText("Saved Alpha to bb")).toBeTruthy();
+    const alphaSaved = screen.getByLabelText("Saved Alpha to bb");
+    expect(alphaSaved.textContent).toBe("");
+    expect(alphaSaved.className).toContain("border-transparent");
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",
@@ -644,7 +646,12 @@ describe("RegistrySkillsBrowsePage", () => {
     });
     fireEvent.click(zuluCreate);
     expect(onCreateFromReference).toHaveBeenCalledWith(zulu);
-    fireEvent.click(screen.getByRole("button", { name: "Save Zulu to bb" }));
+    const zuluSave = screen.getByRole("button", { name: "Save Zulu to bb" });
+    expect(zuluSave.textContent).toBe("");
+    expect(zuluSave.className).toContain("border-transparent");
+    fireEvent.pointerMove(zuluSave);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Save Zulu");
+    fireEvent.click(zuluSave);
     expect(onInstall).toHaveBeenCalledWith(zulu);
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();

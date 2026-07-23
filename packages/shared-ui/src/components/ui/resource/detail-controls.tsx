@@ -119,6 +119,7 @@ export function ResourceInstallControl({
   disabled = false,
   presentation = "label",
   tooltip,
+  className,
   onAction,
 }: {
   accessibleLabel: string;
@@ -128,6 +129,7 @@ export function ResourceInstallControl({
   disabled?: boolean;
   presentation?: "label" | "icon";
   tooltip?: ReactNode;
+  className?: string;
   onAction: () => void;
 }) {
   const control = (
@@ -138,6 +140,7 @@ export function ResourceInstallControl({
       className={cn(
         "h-7 shrink-0 justify-center text-xs",
         presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2.5",
+        className,
       )}
       disabled={disabled || pending}
       aria-busy={pending}
@@ -176,6 +179,7 @@ export function ResourceInstalledControl({
   pending = false,
   presentation = "label",
   tooltip,
+  className,
   onAction,
 }: {
   accessibleLabel: string;
@@ -187,6 +191,7 @@ export function ResourceInstalledControl({
   pending?: boolean;
   presentation?: "label" | "icon";
   tooltip?: ReactNode;
+  className?: string;
   onAction?: () => void;
 }) {
   const installedContent = (
@@ -206,6 +211,7 @@ export function ResourceInstalledControl({
         className={cn(
           "inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-success/30 bg-success/10 text-xs font-medium text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
           presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2",
+          className,
         )}
       >
         {installedContent}
@@ -225,6 +231,7 @@ export function ResourceInstalledControl({
           ? "border-success/30 bg-success/10 text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
           : "border-border/70 bg-transparent text-muted-foreground",
         presentation === "icon" ? "w-7 px-0" : "min-w-20 px-2",
+        className,
       )}
       disabled={pending}
       aria-label={accessibleLabel}

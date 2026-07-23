@@ -71,12 +71,14 @@ export function SkillInstallControl({
   pending,
   onInstall,
   presentation = "label",
+  className,
 }: {
   skillName: string;
   installed: boolean;
   pending: boolean;
   onInstall: () => void;
   presentation?: "label" | "icon";
+  className?: string;
 }) {
   if (installed) {
     return (
@@ -85,6 +87,7 @@ export function SkillInstallControl({
         label="Saved"
         presentation={presentation}
         tooltip={`${skillName} is saved`}
+        className={className}
       />
     );
   }
@@ -98,6 +101,7 @@ export function SkillInstallControl({
       pending={pending}
       presentation={presentation}
       tooltip={`${label} ${skillName}`}
+      className={className}
       onAction={onInstall}
     />
   );
@@ -110,6 +114,7 @@ export function SkillBrowseInstallControl({
   onInstall,
   onUninstall,
   presentation = "label",
+  className,
 }: {
   skillName: string;
   installed: boolean;
@@ -117,6 +122,7 @@ export function SkillBrowseInstallControl({
   onInstall: () => void;
   onUninstall?: () => void;
   presentation?: "label" | "icon";
+  className?: string;
 }) {
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
 
@@ -128,6 +134,7 @@ export function SkillBrowseInstallControl({
         pending={pending}
         onInstall={onInstall}
         presentation={presentation}
+        className={className}
       />
     );
   }
@@ -148,6 +155,7 @@ export function SkillBrowseInstallControl({
         tooltip={
           onUninstall ? `Remove saved ${skillName}` : `${skillName} is saved`
         }
+        className={className}
         onAction={onUninstall ? () => setConfirmingUninstall(true) : undefined}
       />
       {onUninstall ? (
