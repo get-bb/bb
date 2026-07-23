@@ -185,14 +185,14 @@ function LiveToolsPage({ target }: { target: LivePath }) {
   );
 }
 
-async function resolveInstalledSkillDetailPath(): Promise<string> {
+async function resolveLibrarySkillDetailPath(): Promise<string> {
   const response = await sdk.skills.list({
     projectId: PERSONAL_PROJECT_ID,
     environmentId: null,
   });
   const skill = response.skills[0];
   if (skill === undefined) {
-    throw new Error("The live server has no installed skill to open.");
+    throw new Error("The live server has no library skill to open.");
   }
   return getSkillDetailRoutePath({
     skillId: skill.id,
@@ -371,7 +371,7 @@ async function resolveScriptAutomationEditPath(): Promise<string> {
   return getAutomationEditRoutePath(await resolveAutomationRoute("script"));
 }
 
-export function SkillsInstalled() {
+export function SkillsLibrary() {
   return <LiveToolsPage target={getSkillsRoutePath()} />;
 }
 
@@ -380,7 +380,7 @@ export function SkillsRegistry() {
 }
 
 export function SkillDetail() {
-  return <LiveToolsPage target={resolveInstalledSkillDetailPath} />;
+  return <LiveToolsPage target={resolveLibrarySkillDetailPath} />;
 }
 
 export function SkillDetailMultipleFiles() {

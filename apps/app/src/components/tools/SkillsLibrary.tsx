@@ -15,7 +15,7 @@ import {
 import {
   SkillDetailDialogView,
   SkillsOverview,
-} from "@/components/tools/SkillsInstalled";
+} from "@/components/tools/SkillsCollection";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
 import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
 import {
@@ -50,7 +50,7 @@ const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
   hasMore: false,
 };
 
-type SkillsCollectionMode = "installed" | "browse";
+type SkillsCollectionMode = "library" | "browse";
 
 /**
  * View a skill's SKILL.md. Writable user-owned local skills can start an edit
@@ -131,7 +131,7 @@ export function SkillsLibrary() {
       skillId?: string;
       registrySkillId?: string;
     }>();
-  const [installedQuery, setInstalledQuery] = useState("");
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [registrySearch, setRegistrySearch] = useState("");
   const [registryPage, setRegistryPage] = useState(0);
   const skillsQuery = useProjectSkills(PERSONAL_PROJECT_ID);
@@ -194,7 +194,7 @@ export function SkillsLibrary() {
     enabled: selectedRegistrySkill !== null,
     staleTime: 5 * 60_000,
   });
-  const findInstalledRegistrySkill = useCallback(
+  const findLocalRegistrySkill = useCallback(
     (skill: RegistrySkill): SkillSummary | null =>
       resolveInstalledRegistrySkill(skill, skills),
     [skills],
@@ -227,11 +227,11 @@ export function SkillsLibrary() {
   );
   const openRegistrySkill = useCallback(
     (skill: RegistrySkill) => {
-      const installedSkill = findInstalledRegistrySkill(skill);
-      if (installedSkill !== null) {
+      const localSkill = findLocalRegistrySkill(skill);
+      if (localSkill !== null) {
         navigate(
           getSkillDetailRoutePath({
-            skillId: installedSkill.id,
+            skillId: localSkill.id,
           }),
         );
         return;
@@ -239,7 +239,7 @@ export function SkillsLibrary() {
       if (!isRegistryBrowseRoute) setRegistryPage(0);
       navigate(getRegistrySkillDetailRoutePath({ registrySkillId: skill.id }));
     },
-    [findInstalledRegistrySkill, isRegistryBrowseRoute, navigate],
+    [findLocalRegistrySkill, isRegistryBrowseRoute, navigate],
   );
   const handleRegistryQueryChange = useCallback((nextQuery: string) => {
     setRegistrySearch(nextQuery);
@@ -288,8 +288,8 @@ export function SkillsLibrary() {
     [navigate],
   );
   const registryDetail = registryDetailQuery.data ?? null;
-  const selectedInstalledRegistrySkill = selectedRegistrySkill
-    ? findInstalledRegistrySkill(selectedRegistrySkill)
+  const selectedLocalRegistrySkill = selectedRegistrySkill
+    ? findLocalRegistrySkill(selectedRegistrySkill)
     : null;
   return (
     <>
@@ -334,19 +334,19 @@ export function SkillsLibrary() {
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
           detail={registryDetail}
-          installedSkill={selectedInstalledRegistrySkill}
-          installedPath={selectedInstalledRegistrySkill?.filePath ?? null}
+          localSkill={selectedLocalRegistrySkill}
+          localPath={selectedLocalRegistrySkill?.filePath ?? null}
           onRetry={() => void registryDetailQuery.refetch()}
           onFork={forkRegistrySkill}
-          onEditInstalledSkill={editSkillViaThread}
+          onEditLocalSkill={editSkillViaThread}
         />
       ) : (
         <SkillsOverview
           skills={skills}
           isLoading={isLoading}
           hasError={hasError}
-          query={installedQuery}
-          activeMode={isRegistryBrowseRoute ? "browse" : "installed"}
+          query={libraryQuery}
+          activeMode={isRegistryBrowseRoute ? "browse" : "library"}
           onModeChange={changeCollectionMode}
           browseContent={
             <RegistrySkillsBrowsePage
@@ -371,7 +371,7 @@ export function SkillsLibrary() {
           }
           onCreateSkill={handleCreateSkill}
           onSelectSkill={openSkill}
-          onQueryChange={setInstalledQuery}
+          onQueryChange={setLibraryQuery}
           onRetry={() => void skillsQuery.refetch()}
         />
       )}

@@ -88,7 +88,7 @@ function sectionCrumb(id: ToolsSectionId): ToolsBreadcrumbSegment {
 
 function collectionCrumb(
   id: ToolsSectionId,
-  label: "Browse" | "Installed",
+  label: "Browse" | "Installed" | "Library",
   to = TOOLS_SECTIONS[id].to,
 ): ToolsBreadcrumbSegment {
   return { label, to };
@@ -109,7 +109,7 @@ const DETAIL_ROUTES = [
   {
     pattern: TOOLS_SKILL_DETAIL_ROUTE_PATH,
     section: "skills",
-    collection: collectionCrumb("skills", "Installed"),
+    collection: collectionCrumb("skills", "Library"),
     param: "skillId",
     fallback: "Skill",
   },
@@ -196,7 +196,10 @@ export function resolveToolsBreadcrumbs(
       pathname === section.to ||
       ROOT_ROUTE_ALIASES[section.id].includes(pathname)
     ) {
-      return [sectionCrumb(section.id), { label: "Installed" }];
+      return [
+        sectionCrumb(section.id),
+        { label: section.id === "skills" ? "Library" : "Installed" },
+      ];
     }
   }
   return null;

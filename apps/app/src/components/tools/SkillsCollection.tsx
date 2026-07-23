@@ -158,7 +158,7 @@ export interface SkillsOverviewProps {
   onRetry?: () => void;
 }
 
-type SkillsCollectionMode = "installed" | "browse";
+type SkillsCollectionMode = "library" | "browse";
 
 /**
  * Presentational Skills list: provider-grouped, searchable, typeahead-style
@@ -169,7 +169,7 @@ export function SkillsOverview({
   isLoading,
   hasError,
   query = "",
-  activeMode = "installed",
+  activeMode = "library",
   browseContent,
   onModeChange = () => {},
   onCreateSkill,
@@ -183,9 +183,10 @@ export function SkillsOverview({
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
-  const [installedViewport, setInstalledViewport] =
-    useState<HTMLDivElement | null>(null);
-  const installedPageSize = useResourceViewportPageSize(installedViewport);
+  const [libraryViewport, setLibraryViewport] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const libraryPageSize = useResourceViewportPageSize(libraryViewport);
   const normalizedQuery = query.trim().toLowerCase();
   const providerCounts = useMemo(() => {
     const counts = new Map<ResourceProviderFilter, number>();
@@ -245,8 +246,8 @@ export function SkillsOverview({
       return sortDirection === "asc" ? base : -base;
     });
   }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
-  const installedPagination = useResourcePagination(visibleSkills, {
-    pageSize: installedPageSize,
+  const libraryPagination = useResourcePagination(visibleSkills, {
+    pageSize: libraryPageSize,
     resetKey: [
       normalizedQuery,
       providerFilters.join(","),
@@ -254,10 +255,10 @@ export function SkillsOverview({
       sortDirection,
     ].join("\u0000"),
   });
-  const hasInstalledPagination =
+  const hasLibraryPagination =
     !hasError &&
     !isLoading &&
-    installedPagination.total > installedPagination.pageSize;
+    libraryPagination.total > libraryPagination.pageSize;
   const handleSortChange = useCallback(
     (nextSort: string) => {
       if (nextSort !== "provider" && nextSort !== "alpha") return;
@@ -271,7 +272,7 @@ export function SkillsOverview({
     },
     [providerBucketCount, sortMode],
   );
-  const installedBody = hasError ? (
+  const libraryBody = hasError ? (
     <ResourceListState
       state="error"
       message="Couldn't load skills."
@@ -284,7 +285,7 @@ export function SkillsOverview({
       state="empty"
       message={
         normalizedQuery === "" && providerFilters.length === 0
-          ? "No skills installed."
+          ? "No skills in your library."
           : normalizedQuery === ""
             ? "No skills match these agents."
             : `No skills match "${query}"`
@@ -292,7 +293,7 @@ export function SkillsOverview({
     />
   ) : (
     <ResourceListPanel>
-      {installedPagination.items.map((skill) => (
+      {libraryPagination.items.map((skill) => (
         <SkillRow
           key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
           skill={skill}
@@ -307,7 +308,7 @@ export function SkillsOverview({
       id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
       modes={[
-        { id: "installed", label: "Installed", count: skills.length },
+        { id: "library", label: "Library", count: skills.length },
         { id: "browse", label: "Browse" },
       ]}
       activeMode={activeMode}
@@ -324,8 +325,8 @@ export function SkillsOverview({
         browseContent
       ) : (
         <ResourceCollectionViewport
-          scrollId="skills-installed-results"
-          viewportRef={setInstalledViewport}
+          scrollId="skills-library-results"
+          viewportRef={setLibraryViewport}
           toolbar={
             <ResourceToolbar
               searchValue={query}
@@ -360,19 +361,19 @@ export function SkillsOverview({
             />
           }
           footer={
-            hasInstalledPagination ? (
+            hasLibraryPagination ? (
               <ResourcePagination
-                page={installedPagination.page}
-                pageSize={installedPagination.pageSize}
-                total={installedPagination.total}
-                visibleCount={installedPagination.visibleCount}
-                onPageChange={installedPagination.setPage}
-                scrollTargetId="skills-installed-results"
+                page={libraryPagination.page}
+                pageSize={libraryPagination.pageSize}
+                total={libraryPagination.total}
+                visibleCount={libraryPagination.visibleCount}
+                onPageChange={libraryPagination.setPage}
+                scrollTargetId="skills-library-results"
               />
             ) : undefined
           }
         >
-          {installedBody}
+          {libraryBody}
         </ResourceCollectionViewport>
       )}
     </ResourceCollectionPage>

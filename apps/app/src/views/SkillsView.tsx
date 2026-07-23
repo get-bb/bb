@@ -22,12 +22,12 @@ export { RegistrySkillsBrowsePage } from "@/components/tools/SkillsBrowse";
 export type {
   SkillDetailDialogViewProps,
   SkillsOverviewProps,
-} from "@/components/tools/SkillsInstalled";
+} from "@/components/tools/SkillsCollection";
 export {
   ProviderLogo,
   SkillDetailDialogView,
   SkillsOverview,
-} from "@/components/tools/SkillsInstalled";
+} from "@/components/tools/SkillsCollection";
 export { SkillsLibrary } from "@/components/tools/SkillsLibrary";
 
 export function SkillsView() {

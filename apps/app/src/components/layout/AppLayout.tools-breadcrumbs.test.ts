@@ -31,6 +31,10 @@ describe("resolveToolsBreadcrumbs", () => {
   });
 
   it("includes the selected collection tab", () => {
+    expect(resolveToolsBreadcrumbs("/tools/skills")).toEqual([
+      { label: "Skills", to: "/tools/skills" },
+      { label: "Library" },
+    ]);
     expect(resolveToolsBreadcrumbs("/tools/skills", "?view=browse")).toEqual([
       { label: "Skills", to: "/tools/skills" },
       { label: "Browse" },
@@ -48,6 +52,17 @@ describe("resolveToolsBreadcrumbs", () => {
   });
 
   it("makes every detail ancestor clickable and keeps the resource passive", () => {
+    expect(
+      resolveToolsBreadcrumbs(
+        "/tools/skills/library/skill_abc123",
+        "",
+        "Example Skill",
+      ),
+    ).toEqual([
+      { label: "Skills", to: "/tools/skills" },
+      { label: "Library", to: "/tools/skills" },
+      { label: "Example Skill" },
+    ]);
     expect(
       resolveToolsBreadcrumbs(
         "/tools/skills/registry/vercel-labs%2Fskills%2Ffind-skills",

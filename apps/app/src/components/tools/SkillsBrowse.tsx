@@ -206,33 +206,33 @@ export function RegistrySkillsBrowsePage({
 export function RegistrySkillDetailView({
   skill,
   detail,
-  installedSkill,
-  installedPath,
+  localSkill,
+  localPath,
   onRetry,
   onFork,
-  onEditInstalledSkill,
+  onEditLocalSkill,
 }: {
   skill: RegistrySkill;
   detail: RegistrySkillDetail;
-  installedSkill: SkillSummary | null;
-  installedPath: string | null;
+  localSkill: SkillSummary | null;
+  localPath: string | null;
   onRetry: () => void;
   onFork: (skill: RegistrySkill) => void;
-  onEditInstalledSkill: (skill: SkillSummary) => void;
+  onEditLocalSkill: (skill: SkillSummary) => void;
 }) {
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => setSelectedPath("SKILL.md"), [skill.id]);
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({ enabled: installedPath !== null });
+    useLocalOpenTargets({ enabled: localPath !== null });
   const files = detail?.files ?? [];
   const selectedFile =
     files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
-  const path = installedPath ?? `skills.sh/${skill.source}/${skill.skillId}`;
+  const path = localPath ?? `skills.sh/${skill.source}/${skill.skillId}`;
   return (
     <SkillDetailView
       title={skill.name}
       path={path}
-      pathHref={installedPath === null ? skill.url : undefined}
+      pathHref={localPath === null ? skill.url : undefined}
       headerActions={
         <RegistrySkillActions
           skillName={skill.name}
@@ -240,14 +240,14 @@ export function RegistrySkillDetailView({
         />
       }
       overflowMenu={
-        installedSkill !== null && installedPath !== null ? (
+        localSkill !== null && localPath !== null ? (
           <ResourceOverflowMenu
             label={`${skill.name} actions`}
             items={[
               {
                 label: "Edit",
                 icon: "Edit",
-                onSelect: () => onEditInstalledSkill(installedSkill),
+                onSelect: () => onEditLocalSkill(localSkill),
               },
               {
                 label: "Open source",
@@ -258,7 +258,7 @@ export function RegistrySkillDetailView({
                   : "No editor configured",
                 onSelect: () => {
                   void openPathInPreferredFileTarget({
-                    path: installedPath,
+                    path: localPath,
                     lineNumber: null,
                   });
                 },

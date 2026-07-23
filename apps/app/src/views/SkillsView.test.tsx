@@ -78,7 +78,7 @@ function LocationStateProbe() {
   );
 }
 
-function renderInstalledSkillRoute() {
+function renderLibrarySkillRoute() {
   const fetchMock = vi.fn(
     async () =>
       new Response(
@@ -95,11 +95,11 @@ function renderInstalledSkillRoute() {
   vi.stubGlobal("fetch", fetchMock);
   const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
   renderDom(
-    <MemoryRouter initialEntries={["/tools/skills/installed/skill_missing"]}>
+    <MemoryRouter initialEntries={["/tools/skills/library/skill_missing"]}>
       <QueryClientWrapper>
         <Routes>
           <Route
-            path="/tools/skills/installed/:skillId"
+            path="/tools/skills/library/:skillId"
             element={<SkillsLibrary />}
           />
         </Routes>
@@ -171,62 +171,45 @@ function stubRegistryFetch(
   registrySkill: RegistrySkill,
   options: {
     detail?: boolean;
-    installedSkill?: SkillSummary;
     list?: boolean;
   } = {},
 ) {
-  const fetchMock = vi.fn(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = requestPath(input);
-      if (url.startsWith("/api/v1/skills-registry?")) {
-        return new Response(
-          JSON.stringify({
-            skills: options.list ? [registrySkill] : [],
-            pagination: {
-              page: 0,
-              perPage: 24,
-              total: options.list ? 1 : 0,
-              hasMore: false,
-            },
-          }),
-          { status: 200 },
-        );
-      }
-      if (url.startsWith("/api/v1/skills-registry/entry?")) {
-        return new Response(JSON.stringify(registrySkill), { status: 200 });
-      }
-      if (
-        url.startsWith("/api/v1/skills-registry/detail?") &&
-        options.detail !== false
-      ) {
-        return new Response(
-          JSON.stringify({
-            id: registrySkill.id,
-            source: registrySkill.source,
-            skillId: registrySkill.skillId,
-            hash: null,
-            files: [{ path: "SKILL.md", contents: "# Useful skill" }],
-          }),
-          { status: 200 },
-        );
-      }
-      if (
-        url === "/api/v1/skills-registry/install" &&
-        init?.method === "POST" &&
-        options.installedSkill
-      ) {
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            filePath: options.installedSkill.filePath,
-            skill: options.installedSkill,
-          }),
-          { status: 200 },
-        );
-      }
-      return new Response(null, { status: 404 });
-    },
-  );
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestPath(input);
+    if (url.startsWith("/api/v1/skills-registry?")) {
+      return new Response(
+        JSON.stringify({
+          skills: options.list ? [registrySkill] : [],
+          pagination: {
+            page: 0,
+            perPage: 24,
+            total: options.list ? 1 : 0,
+            hasMore: false,
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    if (url.startsWith("/api/v1/skills-registry/entry?")) {
+      return new Response(JSON.stringify(registrySkill), { status: 200 });
+    }
+    if (
+      url.startsWith("/api/v1/skills-registry/detail?") &&
+      options.detail !== false
+    ) {
+      return new Response(
+        JSON.stringify({
+          id: registrySkill.id,
+          source: registrySkill.source,
+          skillId: registrySkill.skillId,
+          hash: null,
+          files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response(null, { status: 404 });
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -267,12 +250,12 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('aria-label="Agent"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
-    expect(markup).toContain("Installed");
+    expect(markup).toContain("Library");
     expect(markup).toContain("Browse");
     expect(markup).toContain("Built-in");
     expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
-    expect(markup.indexOf("Installed")).toBeLessThan(
+    expect(markup.indexOf("Library")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
     expect(markup.indexOf("bb-skill")).toBeLessThan(
@@ -376,34 +359,34 @@ describe("SkillsOverview", () => {
   });
 });
 
-describe("SkillsLibrary installed detail routing", () => {
-  it("keeps a detail loading state while the installed skill list resolves", () => {
+describe("SkillsLibrary library detail routing", () => {
+  it("keeps a detail loading state while the skill library resolves", () => {
     vi.spyOn(sdk.skills, "list").mockImplementation(
       () => new Promise(() => {}),
     );
 
-    renderInstalledSkillRoute();
+    renderLibrarySkillRoute();
 
     expect(screen.getByText("Loading skill")).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
   });
 
-  it("shows a retryable detail error when installed skills fail to load", async () => {
+  it("shows a retryable detail error when the skill library fails to load", async () => {
     vi.spyOn(sdk.skills, "list").mockRejectedValue(
       new Error("skills unavailable"),
     );
 
-    renderInstalledSkillRoute();
+    renderLibrarySkillRoute();
 
     expect(await screen.findByText("Couldn't load skill.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
   });
 
-  it("shows not found on an unknown installed skill detail route", async () => {
+  it("shows not found on an unknown library skill detail route", async () => {
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
 
-    const fetchMock = renderInstalledSkillRoute();
+    const fetchMock = renderLibrarySkillRoute();
 
     expect(await screen.findByText("Skill not found.")).toBeTruthy();
     expect(screen.queryByText("New bb skill")).toBeNull();
@@ -559,11 +542,11 @@ describe("RegistrySkillDetailView reference creation", () => {
         hash: null,
         files: [{ path: "SKILL.md", contents: "# Useful skill" }],
       },
-      installedSkill: null,
-      installedPath: null,
+      localSkill: null,
+      localPath: null,
       onRetry: () => {},
       onFork,
-      onEditInstalledSkill: () => {},
+      onEditLocalSkill: () => {},
     };
     const view = renderDom(<RegistrySkillDetailView {...props} />);
 
@@ -578,13 +561,13 @@ describe("RegistrySkillDetailView reference creation", () => {
     view.rerender(
       <RegistrySkillDetailView
         {...props}
-        installedSkill={makeSkill({
+        localSkill={makeSkill({
           name: registrySkill.skillId,
           provider: null,
           scope: "bb-user",
           registrySkillId: registrySkill.id,
         })}
-        installedPath="/home/u/.bb/skills/useful-skill/SKILL.md"
+        localPath="/home/u/.bb/skills/useful-skill/SKILL.md"
       />,
     );
     fireEvent.click(
