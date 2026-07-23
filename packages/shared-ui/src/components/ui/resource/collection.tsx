@@ -497,7 +497,7 @@ export function ResourceBrowseCard({
       {descriptionPlacement === "center" && description ? (
         <span
           className={cn(
-            "pointer-events-none relative col-span-2 row-start-2 self-center text-center text-xs leading-snug text-muted-foreground",
+            "pointer-events-none relative col-span-2 row-start-2 w-full self-center px-3 text-left text-xs leading-snug text-muted-foreground",
             descriptionLines === 3 ? "line-clamp-3" : "line-clamp-2",
           )}
         >
