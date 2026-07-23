@@ -68,6 +68,24 @@ describe("TopLevelSidebarSection", () => {
     expect(action.parentElement?.className).not.toContain("absolute");
   });
 
+  it("aligns section actions with the trailing edge used by thread statuses", () => {
+    render(
+      <TopLevelSidebarSection
+        label="Extensions"
+        actions={<button type="button">New thread</button>}
+      >
+        <div>Plugin thread</div>
+      </TopLevelSidebarSection>,
+    );
+
+    const header = screen
+      .getByTitle("Extensions")
+      .closest('[data-sidebar-sticky-tier="label"]');
+
+    expect(header?.className).toContain("pr-0");
+    expect(header?.className).not.toContain("pr-1");
+  });
+
   it("pins collapsed child activity to the sidebar edge independently of row actions", () => {
     render(
       <TopLevelSidebarSection
