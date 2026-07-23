@@ -326,9 +326,9 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getAllByLabelText("Thread working")).not.toHaveLength(0);
-    expectCollapsedActivityAtSidebarEdge("Thread working");
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(screen.getAllByLabelText("Plan mode active")).not.toHaveLength(0);
+    expectCollapsedActivityAtSidebarEdge("Plan mode active");
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
 

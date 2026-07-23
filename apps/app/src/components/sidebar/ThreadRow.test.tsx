@@ -520,53 +520,32 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the active working spinner ahead of a draft", () => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      isActive: true,
-      thread: createThread({
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    });
+  it.each([true, false] as const)(
+    "keeps the working-draft pencil ahead of the runtime spinner when isActive=%s",
+    (isActive) => {
+      renderThreadRow({
+        hasComposerDraft: true,
+        isActive,
+        thread: createThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+        }),
+      });
 
-    const workingIcon = screen.getByLabelText("Thread working");
-    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
-    expect(Array.from(workingIcon.classList)).toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
-    expect(
-      screen.queryByLabelText("Thread working with unsubmitted draft"),
-    ).toBeNull();
-  });
-
-  it("keeps the runtime spinner ahead of a draft when the row is not selected", () => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      isActive: false,
-      thread: createThread({
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    });
-
-    const workingIcon = screen.getByLabelText("Thread working");
-    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
-    expect(Array.from(workingIcon.classList)).toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
-    expect(
-      screen.queryByLabelText("Thread working with unsubmitted draft"),
-    ).toBeNull();
-  });
+      const draftIcon = screen.getByLabelText(
+        "Thread working with unsubmitted draft",
+      );
+      expect(draftIcon.getAttribute("data-icon")).toBe("Edit");
+      expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+      expect(Array.from(draftIcon.classList)).toContain(
+        SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+      );
+      expect(screen.queryByLabelText("Thread working")).toBeNull();
+    },
+  );
 
   it.each([
     "activeWorkflowCount",
@@ -824,15 +803,27 @@ describe("ThreadRow", () => {
     ).toBe("Meta+3");
   });
 
-  it("shows runtime work before unread, pending, draft, and background work", () => {
+  it("shows the pending-input glyph while the runtime is still active", () => {
+    // A thread blocked on AskUserQuestion keeps an active runtime for as long as
+    // the question is open, so the spinner must not win this row.
     renderThreadRow({
-      hasComposerDraft: true,
+      thread: createThread({
+        hasPendingInteraction: true,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    expect(screen.getByLabelText("Thread needs user input")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows runtime work before workflow and background work", () => {
+    renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
-        status: "error",
-        hasPendingInteraction: true,
-        lastReadAt: 1_000,
-        latestAttentionAt: 2_000,
         activity: {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 1,
@@ -883,8 +874,6 @@ describe("ThreadRow", () => {
     ["activeWorkflowCount", "Workflow running"],
     ["activeBackgroundAgentCount", "Background agent running"],
     ["activeBackgroundCommandCount", "Background command running"],
-    ["activePlanModeCount", "Plan mode active"],
-    ["activeGoalCount", "Goal active"],
   ] as const)(
     "shows runtime work before concurrent %s activity",
     (activityKey, secondaryLabel) => {
@@ -908,6 +897,37 @@ describe("ThreadRow", () => {
 
       expect(screen.getByLabelText("Thread working")).not.toBeNull();
       expect(screen.queryByLabelText(secondaryLabel)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["activePlanModeCount", "Plan mode active"],
+    ["activeGoalCount", "Goal active"],
+  ] as const)(
+    "shows concurrent %s activity before runtime work",
+    (activityKey, modeLabel) => {
+      // Plan and goal describe how the running turn behaves, and their glyphs
+      // shimmer, so they stay legible instead of collapsing into the spinner.
+      renderThreadRow({
+        thread: createThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+            [activityKey]: 1,
+          },
+        }),
+      });
+
+      expect(screen.getByLabelText(modeLabel)).not.toBeNull();
+      expect(screen.queryByLabelText("Thread working")).toBeNull();
     },
   );
 

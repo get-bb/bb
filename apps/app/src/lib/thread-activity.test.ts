@@ -96,15 +96,29 @@ describe("thread-activity", () => {
 
   describe("resolveThreadListIndicator", () => {
     it.each([
-      "hasPendingInteraction",
-      "hasUnsubmittedDraft",
-      "hasUnreadError",
+      ["hasPendingInteraction", "waiting-for-input"],
+      ["hasUnreadError", "unread-error"],
+      ["hasUnsubmittedDraft", "working-draft"],
+      ["isPlanModeActive", "plan-mode"],
+      ["isGoalActive", "goal"],
+    ] as const)("shows %s as %s over the runtime spinner", (flag, kind) => {
+      // The runtime stays active for as long as a question or approval is open,
+      // so the spinner must not mask it. Plan and goal describe the running turn
+      // and shimmer on their own, so they outrank it too.
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isRuntimeActive: true,
+          [flag]: true,
+        }),
+      ).toBe(kind);
+    });
+
+    it.each([
       "hasUnreadSuccess",
       "isWorkflowActive",
       "isBackgroundAgentActive",
       "isBackgroundCommandActive",
-      "isPlanModeActive",
-      "isGoalActive",
     ] as const)("prefers runtime work over concurrent %s", (flag) => {
       expect(
         resolveThreadListIndicator({
