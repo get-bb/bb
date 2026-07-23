@@ -4,9 +4,6 @@ import {
   hasLoadableSkillContent,
   isApiSkill,
   isRecord,
-  packageRefForSource,
-  parsePageParameter,
-  parsePerPageParameter,
   parsePublicDetail,
   parsePublicDetailSkill,
   parsePublicHomepageSkills,
@@ -14,8 +11,6 @@ import {
   parseRegistryDetailFiles,
   parseRegistrySkillId,
   REGISTRY_DETAIL_FILE_SIZE_LIMIT,
-  REGISTRY_SKILL_NAME_PATTERN,
-  REGISTRY_SOURCE_PATTERN,
   registrySkillUrl,
   SKILLS_BASE_URL,
   type RegistryPagination,
@@ -49,17 +44,7 @@ const githubSkillPathCache = new Map<
 >();
 const githubSkillPathRequests = new Map<string, Promise<string[] | null>>();
 
-export {
-  hasLoadableSkillContent,
-  isRecord,
-  packageRefForSource,
-  parsePageParameter,
-  parsePerPageParameter,
-  REGISTRY_SKILL_NAME_PATTERN,
-  REGISTRY_SOURCE_PATTERN,
-};
-
-export function registryFetch(
+function registryFetch(
   input: string | URL,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -69,9 +54,7 @@ export function registryFetch(
   });
 }
 
-export async function fetchRegistryJson(
-  url: URL,
-): Promise<SkillsApiPage | null> {
+async function fetchRegistryJson(url: URL): Promise<SkillsApiPage | null> {
   const token = process.env.VERCEL_OIDC_TOKEN;
   if (!token) return null;
   const response = await registryFetch(url, {
@@ -99,7 +82,7 @@ export async function fetchRegistryJson(
   return { skills, total, hasMore };
 }
 
-export async function fetchAuthenticatedRegistryDetail(
+async function fetchAuthenticatedRegistryDetail(
   source: string,
   skillId: string,
 ): Promise<RegistrySkillDetail | null> {
@@ -130,7 +113,7 @@ export async function fetchAuthenticatedRegistryDetail(
   };
 }
 
-export async function fetchGithubSkillMarkdown(
+async function fetchGithubSkillMarkdown(
   source: string,
   skillId: string,
 ): Promise<RegistrySkillFile[] | null> {
@@ -200,7 +183,7 @@ export async function fetchGithubSkillMarkdown(
   }
 }
 
-export async function fetchPublicSkillMarkdown(
+async function fetchPublicSkillMarkdown(
   source: string,
   skillId: string,
 ): Promise<RegistrySkillFile[] | null> {
@@ -215,9 +198,7 @@ export async function fetchPublicSkillMarkdown(
   }
 }
 
-export async function fetchGithubSkillPaths(
-  repo: string,
-): Promise<string[] | null> {
+async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
   const cached = githubSkillPathCache.get(repo);
   if (cached && cached.expiresAt > Date.now()) return cached.paths;
 
@@ -290,7 +271,7 @@ export async function fetchRegistrySkillDetail(
   return detail;
 }
 
-export async function fetchPublicDirectorySkills(
+async function fetchPublicDirectorySkills(
   query: string,
   page: number,
   perPage: number,
@@ -335,7 +316,7 @@ export async function fetchPublicDirectorySkills(
   };
 }
 
-export async function hydrateDetails(
+async function hydrateDetails(
   skills: RegistrySkill[],
 ): Promise<RegistrySkill[]> {
   const hydrated = await Promise.all(
@@ -352,7 +333,7 @@ export async function hydrateDetails(
   return [...hydrated, ...skills.slice(DETAIL_PREVIEW_LIMIT)];
 }
 
-export async function fetchGithubStars(source: string): Promise<number | null> {
+async function fetchGithubStars(source: string): Promise<number | null> {
   const repo = githubRepoForSource(source);
   if (repo === null) return null;
 
@@ -391,7 +372,7 @@ export async function fetchGithubStars(source: string): Promise<number | null> {
   return stars;
 }
 
-export async function mapWithConcurrency<T>(
+async function mapWithConcurrency<T>(
   values: readonly T[],
   concurrency: number,
   task: (value: T) => Promise<void>,
@@ -410,7 +391,7 @@ export async function mapWithConcurrency<T>(
   await Promise.all(workers);
 }
 
-export async function hydrateGithubStars(
+async function hydrateGithubStars(
   skills: RegistrySkill[],
 ): Promise<RegistrySkill[]> {
   const sources = [
@@ -433,7 +414,7 @@ export async function hydrateGithubStars(
   );
 }
 
-export async function filterSkillsWithLoadableDetails(
+async function filterSkillsWithLoadableDetails(
   skills: RegistrySkill[],
 ): Promise<RegistrySkill[]> {
   const loadable = new Array<boolean>(skills.length).fill(false);

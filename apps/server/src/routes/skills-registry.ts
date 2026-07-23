@@ -1,15 +1,17 @@
 import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import {
-  fetchRegistrySkillDetail,
   hasLoadableSkillContent,
   isRecord,
-  listRegistrySkills,
   packageRefForSource,
   parsePageParameter,
   parsePerPageParameter,
   REGISTRY_SKILL_NAME_PATTERN,
   REGISTRY_SOURCE_PATTERN,
+} from "../services/skills/registry-parse.js";
+import {
+  fetchRegistrySkillDetail,
+  listRegistrySkills,
   resolveRegistrySkillById,
 } from "../services/skills/registry-proxy.js";
 import { installServerRegistrySkill } from "../services/skills/registry-skill-install.js";
