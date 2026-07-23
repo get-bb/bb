@@ -319,7 +319,7 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("Useful skill");
   });
 
-  it("confirms before uninstalling an installed skill from a Browse card", () => {
+  it("confirms before removing a saved skill from a Browse card", () => {
     const registrySkill = makeRegistrySkill();
     const onUninstall = vi.fn();
     renderRegistryBrowse({
@@ -329,10 +329,13 @@ describe("SkillsOverview", () => {
       canUninstall: () => true,
     });
 
-    fireEvent.click(
+    fireEvent.pointerDown(
       screen.getByRole("button", {
-        name: "Uninstall Useful skill from bb",
+        name: "More actions for Useful skill",
       }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Remove saved skill" }),
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(
@@ -340,12 +343,12 @@ describe("SkillsOverview", () => {
     ).toBeTruthy();
     expect(onUninstall).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
     expect(onUninstall).toHaveBeenCalledOnce();
     expect(onUninstall).toHaveBeenCalledWith(registrySkill);
   });
 
-  it("keeps name-only installed matches passive without proven provenance", () => {
+  it("keeps name-only saved matches passive without proven provenance", () => {
     const registrySkill = makeRegistrySkill();
     renderRegistryBrowse({
       skills: [registrySkill],
@@ -353,14 +356,16 @@ describe("SkillsOverview", () => {
       canUninstall: () => false,
     });
 
-    expect(
-      screen.getByLabelText("Installed Useful skill as a bb skill"),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", {
-        name: "Uninstall Useful skill from bb",
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "More actions for Useful skill",
       }),
-    ).toBeNull();
+    );
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Saved" })
+        .hasAttribute("data-disabled"),
+    ).toBe(true);
   });
 
   it("disables provider filters that have no matching skills", async () => {
@@ -466,7 +471,7 @@ describe("SkillsLibrary installed detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
-  it("keeps uninstall available for an installed registry skill after reload", async () => {
+  it("keeps removal available for a saved registry skill after reload", async () => {
     const registrySkill = makeRegistrySkill();
     const installedSkill = makeSkill({
       name: registrySkill.skillId,
@@ -484,12 +489,15 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     stubRegistryFetch(registrySkill);
     renderRegistrySkillRoute();
 
-    fireEvent.click(
+    fireEvent.pointerDown(
       await screen.findByRole("button", {
-        name: "Uninstall Useful skill from bb",
+        name: "More actions for Useful skill",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Remove saved skill" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
     await waitFor(() => {
       expect(removeSkill).toHaveBeenCalledWith({
         projectId: PERSONAL_PROJECT_ID,
@@ -499,7 +507,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     });
   });
 
-  it("updates an installed detail in place and keeps uninstall available", async () => {
+  it("updates a saved detail in place and keeps removal available", async () => {
     const registrySkill = makeRegistrySkill();
     const installedSkill = makeSkill({
       name: registrySkill.skillId,
@@ -514,16 +522,20 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     stubRegistryFetch(registrySkill, { installedSkill });
     renderRegistrySkillRoute();
 
-    const install = await screen.findByRole("button", {
-      name: "Install Useful skill as a bb skill",
-    });
-    fireEvent.click(install);
+    fireEvent.pointerDown(
+      await screen.findByRole("button", {
+        name: "More actions for Useful skill",
+      }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save" }));
 
-    const uninstall = await screen.findByRole("button", {
-      name: "Uninstall Useful skill from bb",
+    const actions = await screen.findByRole("button", {
+      name: "More actions for Useful skill",
     });
-    expect(uninstall.textContent).toContain("Installed");
-    fireEvent.click(uninstall);
+    fireEvent.pointerDown(actions);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Remove saved skill" }),
+    );
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
@@ -539,7 +551,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: /Install Useful skill/ }),
+      screen.queryByRole("button", { name: /More actions for Useful skill/ }),
     ).toBeNull();
     expect(
       screen.queryByRole("button", {
@@ -621,12 +633,14 @@ describe("RegistrySkillsBrowsePage", () => {
       stars: 10,
     });
     const onSelect = vi.fn();
+    const onInstall = vi.fn();
     const onCreateFromReference = vi.fn();
     renderRegistryBrowse({
       skills: [alpha, zulu],
       pagination: { page: 0, perPage: 24, total: 48, hasMore: true },
       onPageChange,
       onCreateFromReference,
+      onInstall,
       onSelect,
       isInstalled: (skill) => skill.id === alpha.id,
     });
@@ -638,7 +652,9 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(screen.getByLabelText("Installed Alpha as a bb skill")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "More actions for Alpha" }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", {
         name: "Create a new skill from Alpha as a reference",
@@ -649,14 +665,11 @@ describe("RegistrySkillsBrowsePage", () => {
     });
     fireEvent.click(zuluCreate);
     expect(onCreateFromReference).toHaveBeenCalledWith(zulu);
-    const zuluInstall = screen.getByRole("button", {
-      name: "Install Zulu as a bb skill",
-    });
-    expect(zuluInstall.textContent).toBe("");
-    fireEvent.pointerMove(zuluInstall);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Install Zulu",
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More actions for Zulu" }),
     );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save" }));
+    expect(onInstall).toHaveBeenCalledWith(zulu);
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
     const alphaTitle = screen.getByText("Alpha");
@@ -698,7 +711,9 @@ describe("RegistrySkillDetailView reference creation", () => {
     const view = renderDom(<RegistrySkillDetailView {...props} />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Create from reference" }),
+      screen.getByRole("button", {
+        name: "Create a new skill from Useful skill as a reference",
+      }),
     );
     expect(onCreateFromReference).toHaveBeenCalledWith(registrySkill);
     expect(onInstall).not.toHaveBeenCalled();
@@ -717,7 +732,9 @@ describe("RegistrySkillDetailView reference creation", () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Create from reference" }),
+      screen.getByRole("button", {
+        name: "Create a new skill from Useful skill as a reference",
+      }),
     );
     expect(onCreateFromReference).toHaveBeenCalledTimes(2);
     expect(onInstall).not.toHaveBeenCalled();
@@ -829,7 +846,7 @@ describe("SkillDetailDialogView", () => {
 });
 
 describe("SkillDetailView registry states", () => {
-  it("omits social proof, links before install, and confirms uninstall", () => {
+  it("omits social proof, links before saving, and confirms removal", () => {
     const onInstall = vi.fn();
     const onUninstall = vi.fn();
     const view = renderDom(
@@ -867,10 +884,10 @@ describe("SkillDetailView registry states", () => {
         .getByRole("heading", { name: "Find skills" })
         .closest(".overflow-auto"),
     ).toBeNull();
-    const installButton = screen.getByRole("button", {
-      name: /Install find-skills/,
+    const saveButton = screen.getByRole("button", {
+      name: /Save find-skills/,
     });
-    fireEvent.click(installButton);
+    fireEvent.click(saveButton);
     expect(onInstall).toHaveBeenCalledOnce();
 
     view.rerender(
@@ -895,14 +912,14 @@ describe("SkillDetailView registry states", () => {
 
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText("Registry social proof")).toBeNull();
-    const uninstallButton = screen.getByRole("button", {
-      name: "Uninstall find-skills from bb",
+    const removeButton = screen.getByRole("button", {
+      name: "Remove saved find-skills from bb",
     });
-    fireEvent.click(uninstallButton);
+    fireEvent.click(removeButton);
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(onUninstall).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall skill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
     expect(onUninstall).toHaveBeenCalledOnce();
   });
 });

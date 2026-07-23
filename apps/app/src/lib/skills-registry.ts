@@ -61,11 +61,11 @@ export async function installRegistrySkill(args: { skill: RegistrySkill }) {
       throw new Error(
         isRecord(error.body) && typeof error.body.message === "string"
           ? error.body.message
-          : "Skill install failed",
+          : "Couldn't save skill",
       );
     }
     if (error instanceof Error && error.name === "ZodError") {
-      throw new Error("Skill install failed");
+      throw new Error("Couldn't save skill");
     }
     throw error;
   }

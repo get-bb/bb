@@ -81,17 +81,20 @@ export function SkillInstallControl({
   if (installed) {
     return (
       <ResourceInstalledControl
-        accessibleLabel={`Installed ${skillName} as a bb skill`}
+        accessibleLabel={`Saved ${skillName} to bb`}
+        label="Saved"
         presentation={presentation}
-        tooltip={`${skillName} is installed`}
+        tooltip={`${skillName} is saved`}
       />
     );
   }
 
-  const label = pending ? "Installing" : "Install";
+  const label = pending ? "Saving" : "Save";
   return (
     <ResourceInstallControl
-      accessibleLabel={`${label} ${skillName} as a bb skill`}
+      accessibleLabel={`${label} ${skillName} to bb`}
+      label="Save"
+      pendingLabel="Saving"
       pending={pending}
       presentation={presentation}
       tooltip={`${label} ${skillName}`}
@@ -134,13 +137,16 @@ export function SkillBrowseInstallControl({
       <ResourceInstalledControl
         accessibleLabel={
           onUninstall
-            ? `Uninstall ${skillName} from bb`
-            : `Installed ${skillName} as a bb skill`
+            ? `Remove saved ${skillName} from bb`
+            : `Saved ${skillName} to bb`
         }
+        label="Saved"
+        actionLabel="Remove"
+        pendingLabel="Removing"
         pending={pending}
         presentation={presentation}
         tooltip={
-          onUninstall ? `Uninstall ${skillName}` : `${skillName} is installed`
+          onUninstall ? `Remove saved ${skillName}` : `${skillName} is saved`
         }
         onAction={onUninstall ? () => setConfirmingUninstall(true) : undefined}
       />
@@ -152,9 +158,9 @@ export function SkillBrowseInstallControl({
           }}
         >
           <ConfirmDeleteDialogContent
-            title="Uninstall skill?"
+            title="Remove saved skill?"
             description={`Remove "${skillName}" from your bb skills?`}
-            confirmLabel="Uninstall skill"
+            confirmLabel="Remove skill"
             pending={pending}
             onConfirm={() => {
               onUninstall();

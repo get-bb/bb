@@ -170,7 +170,7 @@ export function SkillsLibrary() {
         queryClient,
         skill: result.skill,
       });
-      appToast.success("Skill installed");
+      appToast.success("Skill saved");
       void skillsQuery.refetch();
     },
     onError: (error) => {
@@ -238,9 +238,9 @@ export function SkillsLibrary() {
         { skillId: installedSkill.id, environmentId: null },
         {
           onSuccess: () => {
-            appToast.success("Skill uninstalled", {
+            appToast.success("Saved skill removed", {
               action: {
-                label: "Reinstall",
+                label: "Save again",
                 onClick: () => registryInstall.mutate({ skill }),
               },
             });

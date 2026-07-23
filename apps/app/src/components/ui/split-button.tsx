@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { buttonVariants } from "@bb/shared-ui/button";
+import { buttonVariants, type ButtonProps } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -16,6 +16,7 @@ const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
 
 interface SplitButtonAction {
   ariaKeyshortcuts?: string;
+  disabled?: boolean;
   groupLabel?: string;
   label: string;
   onSelect: () => void;
@@ -26,6 +27,7 @@ interface SplitButtonProps {
   primaryAction: SplitButtonAction;
   secondaryActions: SplitButtonAction[];
   disabled?: boolean;
+  variant?: NonNullable<ButtonProps["variant"]>;
   /** Escape hatch for targeted overrides (e.g. tighter padding for icon-only primaries). Applied to both buttons. */
   className?: string;
   triggerLabel?: string;
@@ -40,6 +42,7 @@ function SplitButton({
   primaryAction,
   secondaryActions,
   disabled = false,
+  variant = "outline",
   className,
   triggerLabel = "More actions",
   mobileTitle,
@@ -47,8 +50,10 @@ function SplitButton({
   modal,
 }: SplitButtonProps) {
   const base = cn(
-    buttonVariants({ variant: "outline", size: "sm" }),
-    SPLIT_BUTTON_TOOLBAR_CLASS,
+    buttonVariants({ variant, size: "sm" }),
+    variant === "outline"
+      ? SPLIT_BUTTON_TOOLBAR_CLASS
+      : "h-7 px-2 text-xs max-md:pointer-coarse:h-9",
     className,
   );
 
@@ -56,7 +61,7 @@ function SplitButton({
     <div className="inline-flex items-center">
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || primaryAction.disabled}
         className={cn(
           base,
           "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
@@ -104,6 +109,7 @@ function SplitButton({
                 <DropdownMenuItem
                   onSelect={action.onSelect}
                   textValue={action.label}
+                  disabled={action.disabled}
                 >
                   {action.content ?? action.label}
                 </DropdownMenuItem>

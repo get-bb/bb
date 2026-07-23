@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
-import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
-  ResourceActionButton,
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCardStat,
@@ -23,12 +22,117 @@ import type {
   RegistrySkillDetail,
 } from "@/lib/skills-registry";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
+import { SkillDetailView } from "@/components/tools/SkillDetailView";
+import { SplitButton } from "@/components/ui/split-button";
 import {
-  SkillBrowseInstallControl,
-  SkillDetailView,
-} from "@/components/tools/SkillDetailView";
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog";
 
 const SKILLS_SH_URL = "https://www.skills.sh/";
+
+function RegistrySkillActions({
+  skillName,
+  saved,
+  canRemove,
+  saving,
+  removing,
+  onCreateFromReference,
+  onSave,
+  onRemove,
+}: {
+  skillName: string;
+  saved: boolean;
+  canRemove: boolean;
+  saving: boolean;
+  removing: boolean;
+  onCreateFromReference: () => void;
+  onSave: () => void;
+  onRemove?: () => void;
+}) {
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const lifecyclePending = saving || removing;
+  const lifecycleLabel = saving
+    ? "Saving"
+    : removing
+      ? "Removing"
+      : saved
+        ? canRemove
+          ? "Remove saved skill"
+          : "Saved"
+        : "Save";
+  return (
+    <>
+      <SplitButton
+        variant="default"
+        primaryAction={{
+          label: `Create a new skill from ${skillName} as a reference`,
+          onSelect: onCreateFromReference,
+          content: (
+            <>
+              <Icon
+                name="AiContentGenerator01"
+                className="size-3.5"
+                aria-hidden
+              />
+              Create from reference
+            </>
+          ),
+        }}
+        secondaryActions={[
+          {
+            label: lifecycleLabel,
+            disabled: lifecyclePending || (saved && !canRemove),
+            onSelect:
+              saved && onRemove ? () => setConfirmingRemove(true) : onSave,
+            content: (
+              <>
+                <Icon
+                  name={
+                    lifecyclePending
+                      ? "Loading"
+                      : saved
+                        ? canRemove
+                          ? "Trash2"
+                          : "Check"
+                        : "Download"
+                  }
+                  className={
+                    lifecyclePending ? "size-4 animate-spin" : "size-4"
+                  }
+                  aria-hidden
+                />
+                {lifecycleLabel}
+              </>
+            ),
+          },
+        ]}
+        triggerLabel={`More actions for ${skillName}`}
+        mobileTitle={`${skillName} actions`}
+      />
+      {saved && canRemove && onRemove ? (
+        <ConfirmDeleteDialog
+          open={confirmingRemove}
+          onOpenChange={(open) => {
+            if (!removing) setConfirmingRemove(open);
+          }}
+        >
+          <ConfirmDeleteDialogContent
+            title="Remove saved skill?"
+            description={`Remove "${skillName}" from your bb skills?`}
+            confirmLabel="Remove skill"
+            pending={removing}
+            onConfirm={() => {
+              onRemove();
+              setConfirmingRemove(false);
+            }}
+            onCancel={() => setConfirmingRemove(false)}
+          />
+        </ConfirmDeleteDialog>
+      ) : null}
+    </>
+  );
+}
 
 function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
   const installs = formatInstallCount(skill.installs);
@@ -82,22 +186,16 @@ function RegistrySkillSourceItem({
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
-        <div className="flex items-center gap-1">
-          <ResourceActionButton
-            label={`Create a new skill from ${skill.name} as a reference`}
-            tooltipLabel="Create from reference"
-            icon="AiContentGenerator01"
-            onClick={() => onCreateFromReference(skill)}
-          />
-          <SkillBrowseInstallControl
-            skillName={skill.name}
-            installed={installed}
-            pending={pending}
-            onInstall={() => onInstall(skill)}
-            onUninstall={canUninstall ? () => onUninstall(skill) : undefined}
-            presentation="icon"
-          />
-        </div>
+        <RegistrySkillActions
+          skillName={skill.name}
+          saved={installed}
+          canRemove={canUninstall}
+          saving={pending && !installed}
+          removing={pending && installed}
+          onCreateFromReference={() => onCreateFromReference(skill)}
+          onSave={() => onInstall(skill)}
+          onRemove={canUninstall ? () => onUninstall(skill) : undefined}
+        />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
     />
@@ -261,23 +359,17 @@ export function RegistrySkillDetailView({
       title={skill.name}
       path={path}
       pathHref={installedPath === null ? skill.url : undefined}
-      headerControl={{
-        kind: "install",
-        skillName: skill.name,
-        installed,
-        pending: pending || uninstallPending,
-        onInstall: () => onInstall(skill),
-        onUninstall: onUninstall ? () => onUninstall(skill) : undefined,
-      }}
       headerActions={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onCreateFromReference(skill)}
-        >
-          Create from reference
-        </Button>
+        <RegistrySkillActions
+          skillName={skill.name}
+          saved={installed}
+          canRemove={onUninstall !== undefined}
+          saving={pending}
+          removing={uninstallPending}
+          onCreateFromReference={() => onCreateFromReference(skill)}
+          onSave={() => onInstall(skill)}
+          onRemove={onUninstall ? () => onUninstall(skill) : undefined}
+        />
       }
       overflowMenu={
         installedSkill !== null && installedPath !== null ? (
