@@ -828,6 +828,34 @@ describe("SkillsLibrary registry detail lifecycle", () => {
 });
 
 describe("RegistrySkillsBrowsePage", () => {
+  it("uses the shared error state and retry action", () => {
+    const onRetry = vi.fn();
+    renderDom(
+      <RegistrySkillsBrowsePage
+        skills={[]}
+        pagination={{ page: 0, perPage: 24, total: 0, hasMore: false }}
+        isLoading={false}
+        hasError
+        query=""
+        pendingSkillId={null}
+        onRetry={onRetry}
+        onQueryChange={() => {}}
+        onPageChange={() => {}}
+        onInstall={() => {}}
+        onUninstall={() => {}}
+        onCreateFromReference={() => {}}
+        onSelect={() => {}}
+        isInstalled={() => false}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Couldn't load skills.sh.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
   it("renders the authoritative page order, exposes social proof, and pages forward", async () => {
     const onPageChange = vi.fn();
     const alpha = makeRegistrySkill({

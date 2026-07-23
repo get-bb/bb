@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
-import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon } from "@bb/shared-ui/icon";
-import { Input } from "@bb/shared-ui/input";
 import {
   RESOURCE_GRID_PAGE_SIZE,
   ResourcePagination,
   useResourcePagination,
 } from "@bb/shared-ui/resource-pagination";
 import {
+  ResourceBrowseCard,
+  ResourceBrowseGrid,
   ResourceCollectionViewport,
   ResourceInstallControl,
   ResourceInstalledControl,
+  ResourceListState,
+  ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import {
   ConfirmDeleteDialog,
@@ -84,19 +85,11 @@ export function BrowsePluginsTab({
             )}
           </div>
 
-          <div className="relative min-w-48">
-            <Icon
-              name="Search"
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
-            />
-            <Input
-              value={query}
-              placeholder="Search plugins…"
-              aria-label="Search plugins"
-              className="h-8 pl-8 text-xs"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
+          <ResourceToolbar
+            searchValue={query}
+            searchPlaceholder="Search plugins"
+            onSearchChange={setQuery}
+          />
         </div>
       }
       footer={
@@ -119,16 +112,21 @@ export function BrowsePluginsTab({
       ) : null}
 
       {searchQuery.isPending ? (
-        <p className="flex items-center gap-2 py-6 text-xs text-muted-foreground">
-          <Icon name="Spinner" className="size-3.5 animate-spin" />
-          Searching catalog…
-        </p>
+        <ResourceListState state="loading" message="Loading plugins" />
       ) : entries.length === 0 ? (
-        <EmptyState
+        <ResourceListState
+          state={searchQuery.isError ? "error" : "empty"}
           message={
             searchQuery.isError
               ? "BB's official plugins are unavailable."
               : "No plugins match this search."
+          }
+          onRetry={
+            searchQuery.isError
+              ? () => {
+                  void searchQuery.refetch();
+                }
+              : undefined
           }
         />
       ) : (
@@ -138,7 +136,7 @@ export function BrowsePluginsTab({
               <h3 className="mb-2 text-sm font-semibold text-foreground">
                 {category}
               </h3>
-              <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
+              <ResourceBrowseGrid>
                 {categoryEntries.map((entry) => (
                   <BrowseCard
                     key={entry.entryId}
@@ -148,7 +146,7 @@ export function BrowsePluginsTab({
                     onOpenInstalled={onOpenInstalled}
                   />
                 ))}
-              </div>
+              </ResourceBrowseGrid>
             </div>
           ))}
         </div>
@@ -190,86 +188,71 @@ function BrowseCard({
     },
   });
 
-  const identity = (
-    <>
-      <PlaceholderBadge
-        className="size-6"
-        iconName={pluginIconName(entry.icon)}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
-          {entry.displayName}
-        </p>
-        {entry.description.length > 0 ? (
-          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-            {entry.description}
-          </p>
-        ) : null}
-        {!entry.compatible && entry.incompatibleReason !== null ? (
-          <p className="text-2xs text-warning-text">
-            {entry.incompatibleReason}
-          </p>
-        ) : null}
-      </div>
-    </>
+  const leading = (
+    <PlaceholderBadge
+      className="size-6"
+      iconName={pluginIconName(entry.icon)}
+    />
+  );
+  const description =
+    entry.description.length > 0 ? entry.description : undefined;
+  const byline =
+    !entry.compatible && entry.incompatibleReason !== null ? (
+      <span className="text-warning-text">{entry.incompatibleReason}</span>
+    ) : undefined;
+  const headerAction = entry.installed ? (
+    <ResourceInstalledControl
+      accessibleLabel={
+        installedPluginId === null
+          ? `${entry.displayName} installed`
+          : `Uninstall ${entry.displayName}`
+      }
+      pending={uninstall.isPending}
+      presentation="icon"
+      tooltip={`Uninstall ${entry.displayName}`}
+      onAction={
+        installedPluginId === null
+          ? undefined
+          : () => setConfirmingUninstall(true)
+      }
+    />
+  ) : (
+    <ResourceInstallControl
+      accessibleLabel={`Install ${entry.displayName}`}
+      disabled={!entry.compatible}
+      presentation="icon"
+      tooltip={`Install ${entry.displayName}`}
+      onAction={() =>
+        onInstall({
+          entryId: entry.entryId,
+          displayName: entry.displayName,
+          icon: entry.icon,
+        })
+      }
+    />
   );
 
   return (
     <>
-      <div
-        className="flex items-start gap-3 rounded-lg border border-border bg-card p-3.5"
-        data-testid={`browse-card-${entry.entryId}`}
-      >
-        {installedPluginId === null ? (
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            {identity}
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="-m-1 flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-md p-1 text-left outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-focus-ring"
-            aria-label={`Open ${entry.displayName} details`}
-            onClick={() => onOpenInstalled(installedPluginId)}
-          >
-            {identity}
-          </button>
-        )}
-        {entry.installed ? (
-          <span className="mt-0.5">
-            <ResourceInstalledControl
-              accessibleLabel={
-                installedPluginId === null
-                  ? `${entry.displayName} installed`
-                  : `Uninstall ${entry.displayName}`
-              }
-              pending={uninstall.isPending}
-              presentation="icon"
-              tooltip={`Uninstall ${entry.displayName}`}
-              onAction={
-                installedPluginId === null
-                  ? undefined
-                  : () => setConfirmingUninstall(true)
-              }
-            />
-          </span>
-        ) : (
-          <span className="mt-0.5">
-            <ResourceInstallControl
-              accessibleLabel={`Install ${entry.displayName}`}
-              disabled={!entry.compatible}
-              presentation="icon"
-              tooltip={`Install ${entry.displayName}`}
-              onAction={() =>
-                onInstall({
-                  entryId: entry.entryId,
-                  displayName: entry.displayName,
-                  icon: entry.icon,
-                })
-              }
-            />
-          </span>
-        )}
-      </div>
+      {installedPluginId === null ? (
+        <ResourceBrowseCard
+          leading={leading}
+          title={entry.displayName}
+          description={description}
+          byline={byline}
+          headerAction={headerAction}
+        />
+      ) : (
+        <ResourceBrowseCard
+          leading={leading}
+          title={entry.displayName}
+          description={description}
+          byline={byline}
+          headerAction={headerAction}
+          openLabel={`Open ${entry.displayName} details`}
+          onOpen={() => onOpenInstalled(installedPluginId)}
+        />
+      )}
       <ConfirmDeleteDialog
         open={confirmingUninstall}
         onOpenChange={(open) => {

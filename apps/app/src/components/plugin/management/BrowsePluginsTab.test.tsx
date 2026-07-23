@@ -28,6 +28,15 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
 
 const CATALOG_STATUS = { pluginCount: 4 };
 
+const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
+  ...MEMORY_ENTRY,
+  entryId: "future-memory",
+  pluginId: "future-memory",
+  displayName: "Future Memory",
+  compatible: false,
+  incompatibleReason: "Requires a newer BB version",
+};
+
 const INSTALLED_MEMORY_PLUGIN = {
   id: "memory",
   source: "builtin:memory",
@@ -70,7 +79,7 @@ describe("BrowsePluginsTab", () => {
         }
         if (url === "/api/v1/plugin-catalog/search?q=") {
           return jsonResponse({
-            results: [MEMORY_ENTRY],
+            results: [MEMORY_ENTRY, INCOMPATIBLE_ENTRY],
           });
         }
         if (url === "/api/v1/plugins") {
@@ -92,11 +101,19 @@ describe("BrowsePluginsTab", () => {
     );
 
     expect(await screen.findByText("BB Official plugins")).toBeTruthy();
-    const card = await screen.findByTestId("browse-card-memory");
-    expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
-    expect(card.parentElement?.className).toContain("lg:grid-cols-2");
+    expect(await screen.findByText("Memory")).toBeTruthy();
+    expect(document.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    expect(
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toBeTruthy();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
+    expect(screen.getByText("Requires a newer BB version")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Install Future Memory" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
 
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
@@ -113,6 +130,42 @@ describe("BrowsePluginsTab", () => {
       displayName: "Memory",
       icon: "Brain",
     });
+  });
+
+  it("uses the shared error state and retries catalog searches", async () => {
+    let searchAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          searchAttempts += 1;
+          return searchAttempts === 1
+            ? jsonResponse({ error: "unavailable" }, 503)
+            : jsonResponse({ results: [MEMORY_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <BrowsePluginsTab onInstall={() => {}} onOpenInstalled={() => {}} />,
+      { wrapper },
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "BB's official plugins are unavailable.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Memory")).toBeTruthy();
+    expect(searchAttempts).toBe(2);
   });
 
   it("marks installed entries instead of offering install", async () => {

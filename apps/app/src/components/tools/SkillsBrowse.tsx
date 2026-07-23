@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceActionButton,
@@ -181,16 +180,11 @@ export function RegistrySkillsBrowsePage({
       contentClassName="space-y-4"
     >
       {hasError ? (
-        <EmptyStatePanel role="alert" className="py-6">
-          <div className="flex flex-col items-center gap-2">
-            <span>Couldn't load skills.sh.</span>
-            {onRetry ? (
-              <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </div>
-        </EmptyStatePanel>
+        <ResourceListState
+          state="error"
+          message="Couldn't load skills.sh."
+          onRetry={onRetry}
+        />
       ) : isLoading ? (
         <ResourceListState
           state="loading"
@@ -198,11 +192,14 @@ export function RegistrySkillsBrowsePage({
           loadingRows={REGISTRY_PAGE_SIZE}
         />
       ) : skills.length === 0 ? (
-        <EmptyStatePanel className="py-6">
-          {query.trim().length === 0
-            ? "No skills.sh resources available."
-            : `No skills.sh resources match "${query}"`}
-        </EmptyStatePanel>
+        <ResourceListState
+          state="empty"
+          message={
+            query.trim().length === 0
+              ? "No skills.sh resources available."
+              : `No skills.sh resources match "${query}"`
+          }
+        />
       ) : (
         <ResourceBrowseGrid>
           {skills.map((skill) => (
