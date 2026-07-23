@@ -86,7 +86,6 @@ function RegistrySkillSourceItem({
       title={skill.name}
       byline={`by ${formatRegistrySource(skill.source)}`}
       description={skill.summary ?? undefined}
-      descriptionPlacement="center"
       openLabel={`View details for ${skill.name}`}
       onOpen={() => onSelect(skill)}
       headerAction={
