@@ -24,18 +24,10 @@ import {
 } from "./registry-parse.js";
 
 const MAX_SEARCH_RESULTS = 200;
-const DETAIL_PREVIEW_LIMIT = 10;
-const GITHUB_STARS_PREVIEW_LIMIT = 48;
-const GITHUB_STARS_CACHE_TTL_MS = 30 * 60 * 1000;
 const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
-const REGISTRY_FETCH_CONCURRENCY = 6;
 
-const githubStarsCache = new Map<
-  string,
-  { stars: number | null; expiresAt: number }
->();
 const registryDetailCache = new Map<
   string,
   { detail: RegistrySkillDetail; expiresAt: number }
@@ -313,124 +305,6 @@ async function fetchPublicDirectorySkills(
   };
 }
 
-async function hydrateDetails(
-  skills: RegistrySkill[],
-): Promise<RegistrySkill[]> {
-  const hydrated = await Promise.all(
-    skills.slice(0, DETAIL_PREVIEW_LIMIT).map(async (skill) => {
-      try {
-        const response = await registryFetch(skill.url);
-        if (!response.ok) return skill;
-        return { ...skill, ...parsePublicDetail(await response.text()) };
-      } catch {
-        return skill;
-      }
-    }),
-  );
-  return [...hydrated, ...skills.slice(DETAIL_PREVIEW_LIMIT)];
-}
-
-async function fetchGithubStars(source: string): Promise<number | null> {
-  const repo = githubRepoForSource(source);
-  if (repo === null) return null;
-
-  const cached = githubStarsCache.get(repo);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now) return cached.stars;
-
-  let stars: number | null = null;
-  try {
-    const separatorIndex = repo.indexOf("/");
-    const owner = repo.slice(0, separatorIndex);
-    const repoName = repo.slice(separatorIndex + 1);
-    const response = await registryFetch(
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`,
-      {
-        headers: {
-          accept: "application/vnd.github+json",
-          "user-agent": "bb-skills-registry",
-        },
-      },
-    );
-    if (response.ok) {
-      const body = await response.json().catch(() => null);
-      if (isRecord(body) && typeof body.stargazers_count === "number") {
-        stars = body.stargazers_count;
-      }
-    }
-  } catch {
-    stars = null;
-  }
-
-  githubStarsCache.set(repo, {
-    stars,
-    expiresAt: now + GITHUB_STARS_CACHE_TTL_MS,
-  });
-  return stars;
-}
-
-async function mapWithConcurrency<T>(
-  values: readonly T[],
-  concurrency: number,
-  task: (value: T) => Promise<void>,
-): Promise<void> {
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, values.length) },
-    async () => {
-      while (nextIndex < values.length) {
-        const value = values[nextIndex];
-        nextIndex += 1;
-        if (value !== undefined) await task(value);
-      }
-    },
-  );
-  await Promise.all(workers);
-}
-
-async function hydrateGithubStars(
-  skills: RegistrySkill[],
-): Promise<RegistrySkill[]> {
-  const sources = [
-    ...new Set(
-      skills.slice(0, GITHUB_STARS_PREVIEW_LIMIT).map((skill) => skill.source),
-    ),
-  ];
-  const starsBySource = new Map<string, number | null>();
-  await mapWithConcurrency(
-    sources,
-    REGISTRY_FETCH_CONCURRENCY,
-    async (source) => {
-      starsBySource.set(source, await fetchGithubStars(source));
-    },
-  );
-  return skills.map((skill) =>
-    starsBySource.has(skill.source)
-      ? { ...skill, stars: starsBySource.get(skill.source) ?? null }
-      : skill,
-  );
-}
-
-async function filterSkillsWithLoadableDetails(
-  skills: RegistrySkill[],
-): Promise<RegistrySkill[]> {
-  const loadable = new Array<boolean>(skills.length).fill(false);
-  await mapWithConcurrency(
-    skills.map((skill, index) => ({ skill, index })),
-    REGISTRY_FETCH_CONCURRENCY,
-    async ({ skill, index }) => {
-      try {
-        loadable[index] = hasLoadableSkillContent(
-          await fetchRegistrySkillDetail(skill.source, skill.skillId),
-        );
-      } catch {
-        loadable[index] = false;
-      }
-    },
-  );
-  return skills.filter((_, index) => loadable[index]);
-}
-
 export async function listRegistrySkills(
   query: string,
   page: number,
@@ -488,22 +362,7 @@ export async function listRegistrySkills(
           ? start + perPage < fetchedTotal
           : (apiPage?.hasMore ?? false),
     } satisfies RegistryPagination);
-  const availableSkills = await filterSkillsWithLoadableDetails(skills);
-  const hydrated = await hydrateGithubStars(
-    await hydrateDetails(availableSkills),
-  );
-  // Preserve the registry's stable ranking/page boundaries while browsing,
-  // then correct the count once its terminal page proves the eligible total.
-  // This keeps every loadable entry reachable without eagerly resolving the
-  // entire catalog before page one can render.
-  const eligiblePagination =
-    !pagination.hasMore && skills.length > 0
-      ? {
-          ...pagination,
-          total: page * perPage + availableSkills.length,
-        }
-      : pagination;
-  return { skills: hydrated, pagination: eligiblePagination };
+  return { skills, pagination };
 }
 
 export async function resolveRegistrySkillById(
