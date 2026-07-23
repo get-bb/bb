@@ -684,8 +684,6 @@ describe("RegistrySkillDetailView reference creation", () => {
         hash: null,
         files: [{ path: "SKILL.md", contents: "# Useful skill" }],
       },
-      isLoadingDetail: false,
-      isDetailError: false,
       installed: false,
       installedSkill: null,
       installedPath: null,

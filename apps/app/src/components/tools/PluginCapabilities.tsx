@@ -53,7 +53,7 @@ function pluginActivityIcon(
   };
 }
 
-export function PluginActivityState({
+function PluginActivityState({
   state,
   resourceLabel,
 }: {
@@ -90,7 +90,7 @@ interface PluginCapabilityItem {
   mono?: boolean;
 }
 
-export function capabilityDetail(kind: string, id?: string): ReactNode {
+function capabilityDetail(kind: string, id?: string): ReactNode {
   return (
     <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
       <span>{kind}</span>
@@ -99,7 +99,7 @@ export function capabilityDetail(kind: string, id?: string): ReactNode {
   );
 }
 
-export function namedSurface(
+function namedSurface(
   prefix: string,
   id: string,
   title: string | undefined,
@@ -125,23 +125,21 @@ function namedSlotItems(
     .map((slot) => namedSurface(prefix, slot.id, slot.title, kind));
 }
 
-export function pluginAppSurfaceItems(
+function pluginAppSurfaceItems(
   pluginId: string,
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
+  const namedSlots = [
+    [slots.navPanels, "nav", "Navigation panel"],
+    [slots.homepageSections, "homepage", "Homepage section"],
+    [slots.threadPanelActions, "thread-panel", "Thread panel action"],
+    [slots.pendingInteractions, "input", "Input renderer"],
+    [slots.sidebarFooterActions, "sidebar", "Sidebar action"],
+    [slots.messageActions, "message-action", "Message action"],
+  ] as const;
   return [
-    ...namedSlotItems(pluginId, slots.navPanels, "nav", "Navigation panel"),
-    ...namedSlotItems(
-      pluginId,
-      slots.homepageSections,
-      "homepage",
-      "Homepage section",
-    ),
-    ...namedSlotItems(
-      pluginId,
-      slots.threadPanelActions,
-      "thread-panel",
-      "Thread panel action",
+    ...namedSlots.flatMap(([items, prefix, kind]) =>
+      namedSlotItems(pluginId, items, prefix, kind),
     ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
@@ -179,18 +177,6 @@ export function pluginAppSurfaceItems(
           ),
         ),
       ]),
-    ...namedSlotItems(
-      pluginId,
-      slots.pendingInteractions,
-      "input",
-      "Input renderer",
-    ),
-    ...namedSlotItems(
-      pluginId,
-      slots.sidebarFooterActions,
-      "sidebar",
-      "Sidebar action",
-    ),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
@@ -212,16 +198,10 @@ export function pluginAppSurfaceItems(
         detail: "Message renderer",
         mono: true,
       })),
-    ...namedSlotItems(
-      pluginId,
-      slots.messageActions,
-      "message-action",
-      "Message action",
-    ),
   ];
 }
 
-export function PluginCapabilityGroup({
+function PluginCapabilityGroup({
   icon,
   label,
   items,
@@ -321,60 +301,61 @@ export function PluginIncludes({
     });
   }
 
-  return (
-    <ResourceDetailCollection>
-      {appItems.length > 0 ? (
-        <PluginCapabilityGroup
-          icon="AppWindow"
-          label="App surfaces"
-          items={appItems}
-        />
-      ) : null}
-      {plugin.cliCommand ? (
-        <PluginCapabilityGroup
-          icon="Terminal"
-          label="Command"
-          items={[
+  const groups: Array<{
+    icon: IconName;
+    label: string;
+    items: PluginCapabilityItem[];
+  }> = [
+    { icon: "AppWindow", label: "App surfaces", items: appItems },
+    {
+      icon: "Terminal",
+      label: "Command",
+      items: plugin.cliCommand
+        ? [
             {
               key: plugin.cliCommand.name,
               label: `bb ${plugin.cliCommand.name}`,
               detail: plugin.cliCommand.summary || undefined,
               mono: true,
             },
-          ]}
-        />
-      ) : null}
-      {settingsItems.length > 0 ? (
-        <PluginCapabilityGroup
-          icon="Settings"
-          label="Settings"
-          items={settingsItems}
-        />
-      ) : null}
-      {plugin.services.length > 0 ? (
-        <PluginCapabilityGroup
-          icon="Workflow"
-          label="Services"
-          items={plugin.services.map((service) => ({
-            key: service.name,
-            label: service.name,
-            detail: "Background service",
-            mono: true,
-          }))}
-        />
-      ) : null}
-      {plugin.schedules.length > 0 ? (
-        <PluginCapabilityGroup
-          icon="TimeSchedule"
-          label="Schedules"
-          items={plugin.schedules.map((schedule) => ({
-            key: schedule.name,
-            label: schedule.name,
-            detail: capabilityDetail("Cron", schedule.cron),
-            mono: true,
-          }))}
-        />
-      ) : null}
+          ]
+        : [],
+    },
+    { icon: "Settings", label: "Settings", items: settingsItems },
+    {
+      icon: "Workflow",
+      label: "Services",
+      items: plugin.services.map((service) => ({
+        key: service.name,
+        label: service.name,
+        detail: "Background service",
+        mono: true,
+      })),
+    },
+    {
+      icon: "TimeSchedule",
+      label: "Schedules",
+      items: plugin.schedules.map((schedule) => ({
+        key: schedule.name,
+        label: schedule.name,
+        detail: capabilityDetail("Cron", schedule.cron),
+        mono: true,
+      })),
+    },
+  ];
+
+  return (
+    <ResourceDetailCollection>
+      {groups.map(({ icon, label, items }) =>
+        items.length > 0 ? (
+          <PluginCapabilityGroup
+            key={label}
+            icon={icon}
+            label={label}
+            items={items}
+          />
+        ) : null,
+      )}
     </ResourceDetailCollection>
   );
 }

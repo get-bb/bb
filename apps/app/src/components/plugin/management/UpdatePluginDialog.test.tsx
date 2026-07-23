@@ -100,40 +100,49 @@ describe("UpdatePluginDialog", () => {
     ).toBe(true);
   });
 
-  it("renders a rolled-back outcome in place, pointing at Update failed", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        // The exact applyUpdate result shape from plugin-service.
-        jsonResponse({
-          applied: false,
-          from: { version: "1.6.2", display: "1.6.2" },
-          to: { version: "1.7.0", display: "1.7.0" },
-          outcome: "rolled-back",
-          detail: "factory threw during activation",
-        }),
-      ),
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <UpdatePluginDialog
-        plugin={plugin({ availableVersion: "1.7.0" })}
-        open
-        onOpenChange={() => {}}
-      />,
-      { wrapper },
-    );
+  it.each([
+    ["Update failed", undefined],
+    ["Needs attention", "Needs attention"],
+  ])(
+    "renders a rolled-back outcome pointing at %s",
+    async (label, failureStateLabel) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          // The exact applyUpdate result shape from plugin-service.
+          jsonResponse({
+            applied: false,
+            from: { version: "1.6.2", display: "1.6.2" },
+            to: { version: "1.7.0", display: "1.7.0" },
+            outcome: "rolled-back",
+            detail: "factory threw during activation",
+          }),
+        ),
+      );
+      const { wrapper } = createQueryClientTestHarness();
+      render(
+        <UpdatePluginDialog
+          plugin={plugin({ availableVersion: "1.7.0" })}
+          open
+          failureStateLabel={failureStateLabel}
+          onOpenChange={() => {}}
+        />,
+        { wrapper },
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+      fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-    expect(await screen.findByText("Update failed — rolled back")).toBeTruthy();
-    expect(screen.getByText("factory threw during activation")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "The plugin is marked “Update failed” in the installed list until an update succeeds.",
-      ),
-    ).toBeTruthy();
-  });
+      expect(
+        await screen.findByText("Update failed — rolled back"),
+      ).toBeTruthy();
+      expect(screen.getByText("factory threw during activation")).toBeTruthy();
+      expect(
+        screen.getByText(
+          `The plugin is marked “${label}” in the installed list until an update succeeds.`,
+        ),
+      ).toBeTruthy();
+    },
+  );
 
   it("treats a malformed 2xx update response as an error, never success", async () => {
     vi.stubGlobal(

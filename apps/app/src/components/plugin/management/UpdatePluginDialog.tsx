@@ -29,6 +29,7 @@ export interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  failureStateLabel?: string;
 }
 
 /**
@@ -42,6 +43,7 @@ export function UpdatePluginDialog({
   plugin,
   open,
   onOpenChange,
+  failureStateLabel = "Update failed",
 }: UpdatePluginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,6 +52,7 @@ export function UpdatePluginDialog({
           <UpdatePluginDialogContent
             plugin={plugin}
             onOpenChange={onOpenChange}
+            failureStateLabel={failureStateLabel}
           />
         ) : null}
       </DialogContent>
@@ -60,9 +63,11 @@ export function UpdatePluginDialog({
 function UpdatePluginDialogContent({
   plugin,
   onOpenChange,
+  failureStateLabel,
 }: {
   plugin: PluginListItem;
   onOpenChange: (open: boolean) => void;
+  failureStateLabel: string;
 }) {
   const queryClient = useQueryClient();
   const name = plugin.name ?? plugin.id;
@@ -119,8 +124,8 @@ function UpdatePluginDialogContent({
             </p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            The plugin is marked &ldquo;Update failed&rdquo; in the installed
-            list until an update succeeds.
+            The plugin is marked &ldquo;{failureStateLabel}&rdquo; in the
+            installed list until an update succeeds.
           </p>
         </div>
         <DialogFooter>

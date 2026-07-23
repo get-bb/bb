@@ -224,8 +224,6 @@ export function RegistrySkillsBrowsePage({
 export function RegistrySkillDetailView({
   skill,
   detail,
-  isLoadingDetail,
-  isDetailError,
   installed,
   installedSkill,
   installedPath,
@@ -238,9 +236,7 @@ export function RegistrySkillDetailView({
   onEditInstalledSkill,
 }: {
   skill: RegistrySkill;
-  detail: RegistrySkillDetail | null;
-  isLoadingDetail: boolean;
-  isDetailError: boolean;
+  detail: RegistrySkillDetail;
   installed: boolean;
   installedSkill: SkillSummary | null;
   installedPath: string | null;
@@ -291,27 +287,16 @@ export function RegistrySkillDetailView({
               {
                 label: "Edit",
                 icon: "Edit",
-                disabled: installedSkill === null,
-                disabledReason:
-                  installedSkill === null
-                    ? "Finishing installation"
-                    : undefined,
-                onSelect: () => {
-                  if (installedSkill) onEditInstalledSkill(installedSkill);
-                },
+                onSelect: () => onEditInstalledSkill(installedSkill),
               },
               {
                 label: "Open source",
                 icon: "ExternalLink",
-                disabled: installedPath === null || !canOpenPreferredFileTarget,
-                disabledReason:
-                  installedPath === null
-                    ? "Finishing installation"
-                    : !canOpenPreferredFileTarget
-                      ? "No editor configured"
-                      : undefined,
+                disabled: !canOpenPreferredFileTarget,
+                disabledReason: canOpenPreferredFileTarget
+                  ? undefined
+                  : "No editor configured",
                 onSelect: () => {
-                  if (installedPath === null) return;
                   void openPathInPreferredFileTarget({
                     path: installedPath,
                     lineNumber: null,
@@ -326,21 +311,13 @@ export function RegistrySkillDetailView({
       selectedPath={selectedFile?.path ?? selectedPath}
       onSelectFile={setSelectedPath}
       contentState={
-        isDetailError || (!isLoadingDetail && detail === null)
-          ? {
+        selectedFile
+          ? { kind: "ready", content: selectedFile.contents }
+          : {
               kind: "error",
-              message: "The source SKILL.md preview is unavailable.",
+              message: "The source does not include SKILL.md content.",
               onRetry,
             }
-          : isLoadingDetail
-            ? { kind: "loading" }
-            : selectedFile
-              ? { kind: "ready", content: selectedFile.contents }
-              : {
-                  kind: "error",
-                  message: "The source does not include SKILL.md content.",
-                  onRetry,
-                }
       }
     />
   );

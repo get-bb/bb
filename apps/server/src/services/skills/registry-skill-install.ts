@@ -197,45 +197,17 @@ async function copyBoundedSkillTree(args: {
   destinationPath: string;
   sourcePath: string;
 }): Promise<void> {
-  let fileCount = 0;
-  let directoryCount = 0;
-  let totalBytes = 0;
-  async function walk(
-    sourcePath: string,
-    destinationPath: string,
-    depth: number,
-  ) {
-    if (depth > MAX_SKILL_DEPTH) {
-      throw new Error(`Skill tree exceeds max depth ${MAX_SKILL_DEPTH}`);
+  const entries = await collectBoundedSkillTree(args.sourcePath);
+  await fs.mkdir(args.destinationPath, { recursive: true });
+  for (const entry of entries) {
+    const destinationPath = path.join(args.destinationPath, entry.path);
+    if (entry.kind === "directory") {
+      await fs.mkdir(destinationPath);
+      continue;
     }
-    await fs.mkdir(destinationPath, { recursive: true });
-    const entries = await fs.readdir(sourcePath, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const sourceEntryPath = path.join(sourcePath, entry.name);
-      const destinationEntryPath = path.join(destinationPath, entry.name);
-      const stat = await fs.lstat(sourceEntryPath);
-      if (stat.isSymbolicLink())
-        throw new Error("Skill tree contains a symlink");
-      if (stat.isDirectory()) {
-        directoryCount += 1;
-        if (directoryCount > MAX_SKILL_DIRECTORIES) {
-          throw new Error("Skill tree exceeds installation limits");
-        }
-        await walk(sourceEntryPath, destinationEntryPath, depth + 1);
-        continue;
-      }
-      if (!stat.isFile()) throw new Error("Skill tree contains a special file");
-      fileCount += 1;
-      totalBytes += stat.size;
-      if (fileCount > MAX_SKILL_FILES || totalBytes > MAX_SKILL_BYTES) {
-        throw new Error("Skill tree exceeds installation limits");
-      }
-      await fs.copyFile(sourceEntryPath, destinationEntryPath);
-      await fs.chmod(destinationEntryPath, stat.mode & 0o777);
-    }
+    await fs.copyFile(path.join(args.sourcePath, entry.path), destinationPath);
+    await fs.chmod(destinationPath, entry.mode);
   }
-  await walk(args.sourcePath, args.destinationPath, 0);
 }
 
 type SkillTreeEntry =

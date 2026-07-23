@@ -53,7 +53,7 @@ import {
 import {
   AddPluginDialog,
   type AddPluginInitial,
-} from "./plugins/AddPluginDialog";
+} from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "./plugins/BrowsePluginsTab";
 import { InstalledPluginsTab } from "./plugins/InstalledPluginsTab";
 import {

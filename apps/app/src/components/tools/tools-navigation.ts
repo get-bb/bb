@@ -86,80 +86,67 @@ function sectionCrumb(id: ToolsSectionId): ToolsBreadcrumbSegment {
   return { label: section.label, to: section.to };
 }
 
+function collectionCrumb(
+  id: ToolsSectionId,
+  label: "Browse" | "Installed",
+  to = TOOLS_SECTIONS[id].to,
+): ToolsBreadcrumbSegment {
+  return { label, to };
+}
+
+const DETAIL_ROUTES = [
+  {
+    pattern: TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
+    section: "skills",
+    collection: collectionCrumb(
+      "skills",
+      "Browse",
+      getRegistrySkillsRoutePath(),
+    ),
+    param: "registrySkillId",
+    fallback: "Skill",
+  },
+  {
+    pattern: TOOLS_SKILL_DETAIL_ROUTE_PATH,
+    section: "skills",
+    collection: collectionCrumb("skills", "Installed"),
+    param: "skillId",
+    fallback: "Skill",
+  },
+  {
+    pattern: TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+    section: "plugins",
+    collection: collectionCrumb("plugins", "Installed"),
+    param: "pluginId",
+    fallback: "Plugin",
+  },
+  {
+    pattern: TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+    section: "automations",
+    collection: collectionCrumb("automations", "Installed"),
+    param: "automationId",
+    fallback: "Automation",
+  },
+] as const;
+
+const BROWSE_ROUTES = [
+  ["skills", TOOLS_REGISTRY_SKILLS_ROUTE_PATH],
+  ["plugins", TOOLS_PLUGIN_BROWSE_ROUTE_PATH],
+  ["automations", TOOLS_AUTOMATION_BROWSE_ROUTE_PATH],
+] as const;
+
+const ROOT_ROUTE_ALIASES: Record<ToolsSectionId, readonly string[]> = {
+  skills: ["/tools", "/skills"],
+  plugins: [],
+  automations: ["/automations"],
+};
+
 export function resolveToolsBreadcrumbs(
   pathname: string,
   search = "",
   resourceLabel?: string | null,
 ): ToolsBreadcrumbSegment[] | null {
   const view = new URLSearchParams(search).get("view");
-  const skillsCrumb = sectionCrumb("skills");
-  const pluginsCrumb = sectionCrumb("plugins");
-  const automationsCrumb = sectionCrumb("automations");
-  const installedSkillsCrumb = {
-    label: "Installed",
-    to: TOOLS_SECTIONS.skills.to,
-  };
-  const browseSkillsCrumb = {
-    label: "Browse",
-    to: getRegistrySkillsRoutePath(),
-  };
-  const installedPluginsCrumb = {
-    label: "Installed",
-    to: TOOLS_SECTIONS.plugins.to,
-  };
-  const installedAutomationsCrumb = {
-    label: "Installed",
-    to: TOOLS_SECTIONS.automations.to,
-  };
-  const registrySkillDetail = matchPath(
-    TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (registrySkillDetail) {
-    return [
-      skillsCrumb,
-      browseSkillsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(
-            registrySkillDetail.params.registrySkillId,
-            "Skill",
-          ),
-      },
-    ];
-  }
-  const installedSkillDetail = matchPath(
-    TOOLS_SKILL_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (installedSkillDetail) {
-    return [
-      skillsCrumb,
-      installedSkillsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(installedSkillDetail.params.skillId, "Skill"),
-      },
-    ];
-  }
-  const isPluginBrowse =
-    pathname === TOOLS_PLUGIN_BROWSE_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.plugins.to && view === "browse");
-  if (isPluginBrowse) return [pluginsCrumb, { label: "Browse" }];
-  const pluginDetail = matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, pathname);
-  if (pluginDetail) {
-    return [
-      pluginsCrumb,
-      installedPluginsCrumb,
-      {
-        label:
-          resourceLabel ??
-          routeResourceLabel(pluginDetail.params.pluginId, "Plugin"),
-      },
-    ];
-  }
   const automationEdit = matchPath(TOOLS_AUTOMATION_EDIT_ROUTE_PATH, pathname);
   if (automationEdit) {
     const automationLabel = routeResourceLabel(
@@ -174,53 +161,43 @@ export function resolveToolsBreadcrumbs(
           })
         : TOOLS_SECTIONS.automations.to;
     return [
-      automationsCrumb,
-      installedAutomationsCrumb,
+      sectionCrumb("automations"),
+      collectionCrumb("automations", "Installed"),
       { label: automationLabel, to: automationDetailPath },
       { label: "Edit" },
     ];
   }
-  const automationDetail = matchPath(
-    TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-    pathname,
-  );
-  if (automationDetail) {
+
+  for (const detail of DETAIL_ROUTES) {
+    const match = matchPath(detail.pattern, pathname);
+    if (!match) continue;
     return [
-      automationsCrumb,
-      installedAutomationsCrumb,
+      sectionCrumb(detail.section),
+      detail.collection,
       {
         label:
           resourceLabel ??
-          routeResourceLabel(
-            automationDetail.params.automationId,
-            "Automation",
-          ),
+          routeResourceLabel(match.params[detail.param], detail.fallback),
       },
     ];
   }
-  const isAutomationBrowse =
-    pathname === TOOLS_AUTOMATION_BROWSE_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.automations.to && view === "browse");
-  if (isAutomationBrowse) return [automationsCrumb, { label: "Browse" }];
-  const isSkillsBrowse =
-    pathname === TOOLS_REGISTRY_SKILLS_ROUTE_PATH ||
-    (pathname === TOOLS_SECTIONS.skills.to && view === "browse");
-  if (isSkillsBrowse) return [skillsCrumb, { label: "Browse" }];
-  if (
-    pathname === "/tools" ||
-    pathname === TOOLS_SECTIONS.skills.to ||
-    pathname === "/skills"
-  ) {
-    return [skillsCrumb, { label: "Installed" }];
+
+  for (const [section, browseRoute] of BROWSE_ROUTES) {
+    if (
+      pathname === browseRoute ||
+      (pathname === TOOLS_SECTIONS[section].to && view === "browse")
+    ) {
+      return [sectionCrumb(section), { label: "Browse" }];
+    }
   }
-  if (pathname === TOOLS_SECTIONS.plugins.to) {
-    return [pluginsCrumb, { label: "Installed" }];
-  }
-  if (
-    pathname === TOOLS_SECTIONS.automations.to ||
-    pathname === "/automations"
-  ) {
-    return [automationsCrumb, { label: "Installed" }];
+
+  for (const section of TOOLS_NAV_ITEMS) {
+    if (
+      pathname === section.to ||
+      ROOT_ROUTE_ALIASES[section.id].includes(pathname)
+    ) {
+      return [sectionCrumb(section.id), { label: "Installed" }];
+    }
   }
   return null;
 }

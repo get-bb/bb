@@ -10,7 +10,7 @@ import {
   usePluginCatalogStatus,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import type { AddPluginInitial } from "./AddPluginDialog";
+import type { AddPluginInitial } from "@/components/plugin/management/AddPluginDialog";
 import {
   PlaceholderBadge,
   SUCCESS_TEXT_STYLE,

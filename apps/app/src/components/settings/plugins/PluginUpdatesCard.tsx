@@ -18,7 +18,7 @@ import {
   SUCCESS_BANNER_STYLE,
   formatAbsoluteDate,
 } from "./plugin-ui";
-import { UpdatePluginDialog } from "./UpdatePluginDialog";
+import { UpdatePluginDialog } from "@/components/plugin/management/UpdatePluginDialog";
 
 /**
  * Layer 2 (sketch v2, detail page): the update-available banner and the
@@ -92,6 +92,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
       <UpdatePluginDialog
         plugin={plugin}
         open={updateOpen}
+        failureStateLabel="Needs attention"
         onOpenChange={setUpdateOpen}
       />
     </>
@@ -279,6 +280,7 @@ export function PluginUpdatesSourceCard({
         <UpdatePluginDialog
           plugin={plugin}
           open={blockedOpen}
+          failureStateLabel="Needs attention"
           onOpenChange={setBlockedOpen}
         />
       ) : null}

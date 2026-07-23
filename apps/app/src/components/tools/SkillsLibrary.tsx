@@ -230,10 +230,6 @@ export function SkillsLibrary() {
     },
     [registryInstall],
   );
-  const canUninstallRegistrySkill = useCallback(
-    (skill: RegistrySkill) => findInstalledRegistrySkill(skill) !== null,
-    [findInstalledRegistrySkill],
-  );
   const uninstallRegistry = useCallback(
     (skill: RegistrySkill) => {
       const installedSkill = findInstalledRegistrySkill(skill);
@@ -397,12 +393,10 @@ export function SkillsLibrary() {
           message="This registry skill is no longer available from its source."
           onRetry={() => void registryDetailQuery.refetch()}
         />
-      ) : selectedRegistrySkill ? (
+      ) : selectedRegistrySkill && registryDetail ? (
         <RegistrySkillDetailView
           skill={selectedRegistrySkill}
           detail={registryDetail}
-          isLoadingDetail={false}
-          isDetailError={false}
           installed={isRegistrySkillInstalled(selectedRegistrySkill)}
           installedSkill={selectedInstalledRegistrySkill}
           installedPath={selectedInstalledRegistrySkill?.filePath ?? null}
@@ -415,9 +409,9 @@ export function SkillsLibrary() {
           onRetry={() => void registryDetailQuery.refetch()}
           onInstall={installRegistry}
           onUninstall={
-            canUninstallRegistrySkill(selectedRegistrySkill)
-              ? uninstallRegistry
-              : undefined
+            selectedInstalledRegistrySkill === null
+              ? undefined
+              : uninstallRegistry
           }
           onCreateFromReference={createRegistrySkillFromReference}
           onEditInstalledSkill={editSkillViaThread}
@@ -455,7 +449,7 @@ export function SkillsLibrary() {
               onCreateFromReference={createRegistrySkillFromReference}
               onSelect={openRegistrySkill}
               isInstalled={isRegistrySkillInstalled}
-              canUninstall={canUninstallRegistrySkill}
+              canUninstall={isRegistrySkillInstalled}
             />
           }
           onCreateSkill={handleCreateSkill}

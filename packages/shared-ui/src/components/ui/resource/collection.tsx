@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode, Ref } from "react";
 import { Button, type ButtonProps } from "../button";
 import { Icon, type IconName } from "../icon";
 import { ScrollArea } from "../scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../tabs";
 import { cn } from "../../../lib/utils";
 import { ResourceOverview, ResourceSectionTitle } from "./detail-shell";
 import { ResourceTabDescription, ResourceToolbar } from "./toolbar";
@@ -38,76 +39,46 @@ export function ResourceCollectionPage<Mode extends string>({
   children: ReactNode;
   className?: string;
 }) {
-  const activeTabId = `${id}-${activeMode}-tab`;
-  const activePanelId = `${id}-${activeMode}-panel`;
   return (
-    <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
+    <Tabs
+      id={id}
+      value={activeMode}
+      onValueChange={(value) => {
+        const mode = modes.find((candidate) => candidate.id === value);
+        if (mode) onModeChange(mode.id);
+      }}
+      className={cn("flex h-full min-h-0 flex-col gap-4", className)}
+    >
       <ResourceTabDescription>{description}</ResourceTabDescription>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1" role="tablist">
-          {modes.map((mode) => {
-            const active = mode.id === activeMode;
-            const modeIndex = modes.indexOf(mode);
-            return (
-              <button
-                key={mode.id}
-                id={`${id}-${mode.id}-tab`}
-                type="button"
-                role="tab"
-                aria-label={mode.accessibleLabel}
-                aria-selected={active}
-                aria-controls={`${id}-${mode.id}-panel`}
-                tabIndex={active ? 0 : -1}
-                className={cn(
-                  "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium",
-                  active
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => onModeChange(mode.id)}
-                onKeyDown={(event) => {
-                  let nextIndex: number | null = null;
-                  if (event.key === "ArrowRight") {
-                    nextIndex = (modeIndex + 1) % modes.length;
-                  } else if (event.key === "ArrowLeft") {
-                    nextIndex = (modeIndex - 1 + modes.length) % modes.length;
-                  } else if (event.key === "Home") {
-                    nextIndex = 0;
-                  } else if (event.key === "End") {
-                    nextIndex = modes.length - 1;
-                  }
-                  if (nextIndex === null) return;
-                  event.preventDefault();
-                  const nextMode = modes[nextIndex];
-                  if (nextMode === undefined) return;
-                  onModeChange(nextMode.id);
-                  document.getElementById(`${id}-${nextMode.id}-tab`)?.focus();
-                }}
-              >
-                {mode.label}
-                {mode.count !== undefined ? (
-                  <span className="text-2xs text-subtle-foreground">
-                    {mode.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+        <TabsList className="h-auto justify-start gap-1 rounded-none bg-transparent p-0">
+          {modes.map((mode) => (
+            <TabsTrigger
+              key={mode.id}
+              value={mode.id}
+              aria-label={mode.accessibleLabel}
+              className="cursor-pointer gap-1.5 px-3 py-1 text-muted-foreground shadow-none hover:text-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+            >
+              {mode.label}
+              {mode.count !== undefined ? (
+                <span className="text-2xs text-subtle-foreground">
+                  {mode.count}
+                </span>
+              ) : null}
+            </TabsTrigger>
+          ))}
+        </TabsList>
         {actions ? (
           <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
         ) : null}
       </div>
-      <div
-        id={activePanelId}
-        role="tabpanel"
-        aria-labelledby={activeTabId}
-        tabIndex={0}
-        className="min-h-0 flex-1 focus-visible:outline-none"
+      <TabsContent
+        value={activeMode}
+        className="m-0 min-h-0 flex-1 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
       >
         {children}
-      </div>
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 

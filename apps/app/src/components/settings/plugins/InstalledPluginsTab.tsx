@@ -13,7 +13,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal } from "./plugin-update-signals";
-import { UpdatePluginDialog } from "./UpdatePluginDialog";
+import { UpdatePluginDialog } from "@/components/plugin/management/UpdatePluginDialog";
 import {
   ATTENTION_TINT_STYLE,
   PluginLogo,
@@ -62,6 +62,7 @@ export function InstalledPluginsTab({
         <UpdatePluginDialog
           plugin={updateTarget}
           open
+          failureStateLabel="Needs attention"
           onOpenChange={(open) => {
             if (!open) setUpdateTargetId(null);
           }}
