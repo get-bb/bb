@@ -11,7 +11,6 @@ import {
   hasLoadableSkillContent,
   isApiSkill,
   isRecord,
-  parsePublicDetail,
   parsePublicDetailSkill,
   parsePublicHomepageSkills,
   parsePublicSkillMarkdown,
@@ -26,6 +25,7 @@ import {
 const MAX_SEARCH_RESULTS = 200;
 const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
 const GITHUB_REPOSITORY_STARS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const REGISTRY_ENTRY_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 
@@ -33,6 +33,11 @@ const registryDetailCache = new Map<
   string,
   { detail: RegistrySkillDetail; expiresAt: number }
 >();
+const registryEntryCache = new Map<
+  string,
+  { entry: RegistrySkill; expiresAt: number }
+>();
+const registryEntryRequests = new Map<string, Promise<RegistrySkill>>();
 const githubSkillPathCache = new Map<
   string,
   { paths: string[]; expiresAt: number }
@@ -422,23 +427,45 @@ export async function listRegistrySkills(
 export async function resolveRegistrySkillById(
   id: string,
 ): Promise<RegistrySkill> {
-  const { source, skillId } = parseRegistrySkillId(id);
-  const response = await registryFetch(registrySkillUrl(id));
-  if (!response.ok) {
-    throw new ApiError(
-      404,
-      "registry_skill_not_found",
-      "Registry skill not found",
-    );
-  }
-  const html = await response.text();
-  const skill = parsePublicDetailSkill(html, id, source, skillId);
-  if (!skill) {
-    throw new ApiError(
-      404,
-      "registry_skill_not_found",
-      "Registry skill not found",
-    );
-  }
-  return { ...skill, ...parsePublicDetail(html) };
+  const cached = registryEntryCache.get(id);
+  if (cached && cached.expiresAt > Date.now()) return cached.entry;
+
+  const inFlight = registryEntryRequests.get(id);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    try {
+      const { source, skillId } = parseRegistrySkillId(id);
+      const response = await registryFetch(registrySkillUrl(id));
+      if (!response.ok) {
+        throw new ApiError(
+          404,
+          "registry_skill_not_found",
+          "Registry skill not found",
+        );
+      }
+      const entry = parsePublicDetailSkill(
+        await response.text(),
+        id,
+        source,
+        skillId,
+      );
+      if (!entry) {
+        throw new ApiError(
+          404,
+          "registry_skill_not_found",
+          "Registry skill not found",
+        );
+      }
+      registryEntryCache.set(id, {
+        entry,
+        expiresAt: Date.now() + REGISTRY_ENTRY_CACHE_TTL_MS,
+      });
+      return entry;
+    } finally {
+      registryEntryRequests.delete(id);
+    }
+  })();
+  registryEntryRequests.set(id, request);
+  return request;
 }

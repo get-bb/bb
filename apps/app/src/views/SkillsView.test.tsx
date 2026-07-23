@@ -526,6 +526,69 @@ describe("SkillsLibrary registry detail lifecycle", () => {
 
     expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
   });
+
+  it("renders registry cards before progressively loading their descriptions", async () => {
+    const registrySkill = makeRegistrySkill({ summary: null });
+    let resolveEntry: ((response: Response) => void) | undefined;
+    const entryResponse = new Promise<Response>((resolve) => {
+      resolveEntry = resolve;
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = requestPath(input);
+      if (url.startsWith("/api/v1/skills-registry?")) {
+        return Promise.resolve(
+          Response.json({
+            skills: [registrySkill],
+            pagination: {
+              page: 0,
+              perPage: 24,
+              total: 1,
+              hasMore: false,
+            },
+          }),
+        );
+      }
+      if (
+        url === "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill"
+      ) {
+        return entryResponse;
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/tools/skills" element={<SkillsLibrary />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Useful skill")).toBeTruthy();
+    expect(screen.queryByText("Loaded after the card")).toBeNull();
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input]) =>
+            requestPath(input) ===
+            "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
+        ),
+      ).toHaveLength(1);
+    });
+
+    resolveEntry?.(
+      Response.json({
+        ...registrySkill,
+        summary: "Loaded after the card",
+      }),
+    );
+
+    expect(await screen.findByText("Loaded after the card")).toBeTruthy();
+  });
 });
 
 describe("RegistrySkillsBrowsePage", () => {

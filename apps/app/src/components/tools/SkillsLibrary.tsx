@@ -183,6 +183,28 @@ export function SkillsLibrary() {
       retry: false,
     })),
   });
+  const registryDescriptionSkills = useMemo(
+    () =>
+      (registryQuery.data?.skills ?? []).filter(
+        (skill) => skill.summary === null,
+      ),
+    [registryQuery.data?.skills],
+  );
+  const registryDescriptionQueries = useQueries({
+    queries: registryDescriptionSkills.map((skill) => ({
+      queryKey: ["skills-registry-entry", skill.id],
+      queryFn: () => fetchRegistrySkillEntry(skill.id),
+      enabled: isRegistryBrowseRoute,
+      staleTime: 30 * 60_000,
+      retry: false,
+    })),
+  });
+  const registryDescriptions = new Map(
+    registryDescriptionSkills.flatMap((skill, index) => {
+      const entry = registryDescriptionQueries[index]?.data;
+      return entry === undefined ? [] : ([[skill.id, entry]] as const);
+    }),
+  );
   const registryRepositoryStars = new Map(
     registryRepositorySources.flatMap(({ repositoryKey }, index) => {
       const stars = registryRepositoryStarQueries[index]?.data;
@@ -190,11 +212,16 @@ export function SkillsLibrary() {
     }),
   );
   const registrySkills = (registryQuery.data?.skills ?? []).map((skill) => {
-    if (skill.stars !== null) return skill;
+    const entry = registryDescriptions.get(skill.id);
+    const describedSkill =
+      entry === undefined
+        ? skill
+        : { ...skill, topic: entry.topic, summary: entry.summary };
+    if (describedSkill.stars !== null) return describedSkill;
     const stars = registryRepositoryStars.get(
-      registryRepositoryKey(skill.source),
+      registryRepositoryKey(describedSkill.source),
     );
-    return stars === undefined ? skill : { ...skill, stars };
+    return stars === undefined ? describedSkill : { ...describedSkill, stars };
   });
   const selectedSkill = useMemo(() => {
     if (routeSkillId === undefined) return null;

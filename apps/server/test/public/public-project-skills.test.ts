@@ -583,6 +583,45 @@ describe("public project skills route", () => {
     });
   });
 
+  it("caches registry card descriptions independently of the list", async () => {
+    await withTestHarness(async (harness) => {
+      const registryEntryHtml = [
+        registryHtml({
+          source: "owner/summary-repo",
+          skillId: "summary-skill",
+        }),
+        "Summary</div><p>Loaded card description.</p>SKILL.md",
+      ].join("");
+      const fetchMock = vi.fn(async (input: string | URL) => {
+        if (
+          String(input) ===
+          "https://www.skills.sh/owner/summary-repo/summary-skill"
+        ) {
+          return new Response(registryEntryHtml, { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const firstResponse = await harness.app.request(
+        "/api/v1/skills-registry/entry?id=owner%2Fsummary-repo%2Fsummary-skill",
+      );
+      const secondResponse = await harness.app.request(
+        "/api/v1/skills-registry/entry?id=owner%2Fsummary-repo%2Fsummary-skill",
+      );
+
+      expect(firstResponse.status).toBe(200);
+      expect(await readJson(firstResponse)).toMatchObject({
+        summary: "Loaded card description.",
+      });
+      expect(secondResponse.status).toBe(200);
+      expect(await readJson(secondResponse)).toMatchObject({
+        summary: "Loaded card description.",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
       const skill: SkillSummary = {

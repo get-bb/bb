@@ -209,9 +209,10 @@ export function parsePublicDetailSkill(
       url: registrySkillUrl(id),
       topic: detail.topic,
       summary:
-        typeof body.description === "string"
+        detail.summary ??
+        (typeof body.description === "string"
           ? body.description.slice(0, 280)
-          : detail.summary,
+          : null),
     };
   }
   return null;
