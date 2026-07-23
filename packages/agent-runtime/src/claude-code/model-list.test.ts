@@ -35,19 +35,28 @@ const DISCOVERED_MODELS: ModelInfo[] = [
   },
 ];
 
+const CURATED_MODELS = [
+  "claude-fable-5",
+  "claude-opus-4-8[1m]",
+  "claude-opus-4-7[1m]",
+  "claude-sonnet-5",
+];
+
 describe("buildClaudeCodeModels", () => {
-  it("only exposes curated identifiers covered by account-scoped discovery", () => {
+  it("always offers the curated catalog and appends discovered extras", () => {
     const result = buildClaudeCodeModels(DISCOVERED_MODELS);
 
+    // Discovery is additive: every curated row survives, and only the reported
+    // model BB has no curated entry for (Haiku's dated id) is appended.
     expect(result.models.map((model) => model.model)).toEqual([
-      "claude-fable-5",
-      "claude-opus-4-8[1m]",
-      "claude-sonnet-5",
+      ...CURATED_MODELS,
       "claude-haiku-4-5-20251001",
     ]);
     expect(result.models.find((model) => model.isDefault)?.model).toBe(
       "claude-opus-4-8[1m]",
     );
+    // Selected-only rows stay discovery-gated — they only label a selection the
+    // user already has.
     expect(result.selectedOnlyModels.map((model) => model.model)).toEqual([
       "opus[1m]",
       "sonnet",
@@ -60,11 +69,16 @@ describe("buildClaudeCodeModels", () => {
     ).toBe(false);
   });
 
-  it("returns an empty catalog when the provider reports no models", () => {
-    expect(buildClaudeCodeModels([])).toEqual({
-      models: [],
-      selectedOnlyModels: [],
-    });
+  // A probe that returns nothing must not strand the picker. This is the whole
+  // point of the always-offered base set.
+  it("still offers the curated catalog when the provider reports no models", () => {
+    const result = buildClaudeCodeModels([]);
+
+    expect(result.models.map((model) => model.model)).toEqual(CURATED_MODELS);
+    expect(result.models.find((model) => model.isDefault)?.model).toBe(
+      "claude-opus-4-8[1m]",
+    );
+    expect(result.selectedOnlyModels).toEqual([]);
   });
 
   it("keeps authoritative models that do not have curated metadata yet", () => {
@@ -79,13 +93,34 @@ describe("buildClaudeCodeModels", () => {
       },
     ]);
 
-    expect(result.models).toEqual([
+    expect(result.models.map((model) => model.model)).toEqual([
+      ...CURATED_MODELS,
+      "claude-future-6",
+    ]);
+    expect(result.models.at(-1)).toEqual(
       expect.objectContaining({
         model: "claude-future-6",
         displayName: "Future 6",
-        isDefault: true,
+        isDefault: false,
         defaultReasoningEffort: "high",
       }),
+    );
+  });
+
+  // The account's own default wins over BB's product default when the probe
+  // reports one, so a curated row can never override the provider's choice.
+  it("prefers the discovered default model", () => {
+    const result = buildClaudeCodeModels([
+      {
+        value: "default",
+        resolvedModel: "claude-sonnet-5",
+        displayName: "Default (recommended)",
+        description: "Sonnet 5",
+      },
     ]);
+
+    expect(result.models.find((model) => model.isDefault)?.model).toBe(
+      "claude-sonnet-5",
+    );
   });
 });

@@ -739,16 +739,97 @@ describe("resolveSystemExecutionOptions", () => {
           providerId: "claude-code",
           code: "failed",
         });
-        expect(response.models).toEqual([
-          expect.objectContaining({
-            model: "claude-example-preview",
-            displayName: "Example Preview",
-          }),
+        // A transient failure serves the provisional alias catalog, and custom
+        // models stay appended after it.
+        expect(response.models.map((model) => model.model)).toEqual([
+          "claude-fable-5",
+          "claude-opus-4-8[1m]",
+          "claude-opus-4-7[1m]",
+          "claude-sonnet-5",
+          "claude-example-preview",
         ]);
         expect(response.selectedOnlyModels).toEqual([]);
       },
     );
   });
+
+  it("serves the curated Claude catalog when the model probe fails transiently", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-claude-provisional",
+      });
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          "claude-code": {
+            errorCode: "command_timeout",
+            errorMessage: "Model probe timed out",
+          },
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "claude-code",
+      });
+
+      // The catalog is provisional, so the error must still be reported:
+      // callers gate thread model recovery on `modelLoadError` being null.
+      expect(response.modelLoadError).toEqual({
+        providerId: "claude-code",
+        code: "timeout",
+      });
+      expect(response.models.map((model) => model.model)).toEqual([
+        "claude-fable-5",
+        "claude-opus-4-8[1m]",
+        "claude-opus-4-7[1m]",
+        "claude-sonnet-5",
+      ]);
+      expect(
+        response.models
+          .filter((model) => model.isDefault)
+          .map((model) => model.model),
+      ).toEqual(["claude-opus-4-8[1m]"]);
+    });
+  });
+
+  it.each([
+    ["auth required", "auth_required"],
+    ["missing executable", "missing_executable"],
+  ] as const)(
+    "offers no provisional Claude models for %s setup failures",
+    async (_name, errorCode) => {
+      await withTestHarness({}, async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: `host-execution-options-claude-${errorCode}`,
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          modelErrorsByProviderId: {
+            "claude-code": {
+              errorCode,
+              errorMessage: "Claude Code is not usable",
+            },
+          },
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "claude-code",
+        });
+
+        // These are actionable setup states the app routes to an install/auth
+        // prompt. Offering models would only defer the failure to submit time.
+        expect(response.modelLoadError).toEqual({
+          providerId: "claude-code",
+          code: errorCode,
+        });
+        expect(response.models).toEqual([]);
+      });
+    },
+  );
 
   it("logs model load fallback errors without stack-bearing err objects", async () => {
     await withTestHarness(async (harness) => {

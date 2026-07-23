@@ -1,4 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  listBuiltInAgentProviderInfos,
+  listClaudeCodeFallbackModels,
+} from "@bb/agent-providers";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemConfigResponse,
@@ -8,6 +12,11 @@ import type {
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import {
+  claudeModelCatalogCacheKey,
+  readCachedClaudeModelCatalog,
+  writeCachedClaudeModelCatalog,
+} from "@/lib/claude-model-catalog-cache";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
@@ -36,6 +45,32 @@ interface QueryOptions {
 
 const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
+const CLAUDE_CODE_PROVIDER_ID = "claude-code";
+
+// Claude's account-scoped model probe spawns a CLI process on the host, so
+// waiting for it leaves the composer with no model list for seconds. Render a
+// provisional catalog immediately and let the authoritative rows replace it when
+// the probe lands.
+//
+// Prefer the last catalog this account actually reported: its ids match what the
+// fresh probe will return, so a selection made during the preload window
+// survives instead of snapping back to a default. The curated aliases are only
+// for a cold cache, where no account-scoped ids are known yet.
+//
+// Callers must gate model recovery on `isPlaceholderData` either way: a cached
+// catalog can be stale, so absence from this list is not evidence that a stored
+// model was retired.
+function claudeCodePlaceholderExecutionOptions(
+  cacheKey: string,
+): SystemExecutionOptionsResponse {
+  const cached = readCachedClaudeModelCatalog(cacheKey);
+  return {
+    providers: listBuiltInAgentProviderInfos(),
+    models: cached?.models ?? listClaudeCodeFallbackModels(),
+    selectedOnlyModels: cached?.selectedOnlyModels ?? [],
+    modelLoadError: null,
+  };
+}
 
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
@@ -68,6 +103,11 @@ export function useSystemExecutionOptions(
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
+  const isClaudeCode = providerId === CLAUDE_CODE_PROVIDER_ID;
+  const catalogCacheKey = claudeModelCatalogCacheKey({
+    environmentId,
+    hostId,
+  });
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
@@ -75,17 +115,34 @@ export function useSystemExecutionOptions(
       hostId,
       providerId,
     }),
-    queryFn: ({ signal }) =>
-      sdk.system.executionOptions({
+    queryFn: async ({ signal }) => {
+      const response = await sdk.system.executionOptions({
         environmentId: args.environmentId,
         hostId: args.hostId,
         providerId: args.providerId,
         signal,
-      }),
+      });
+      // Only a verified catalog is worth remembering. Caching a provisional list
+      // would let the server's probe-failure fallback masquerade as this
+      // account's real models on the next cold load.
+      if (isClaudeCode && response.modelLoadError === null) {
+        writeCachedClaudeModelCatalog(catalogCacheKey, {
+          models: response.models,
+          selectedOnlyModels: response.selectedOnlyModels,
+        });
+      }
+      return response;
+    },
     enabled,
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
+    ...(isClaudeCode
+      ? {
+          placeholderData: () =>
+            claudeCodePlaceholderExecutionOptions(catalogCacheKey),
+        }
+      : {}),
   });
 }
 

@@ -8,6 +8,7 @@ import type {
 import {
   buildAcpProviderInfo,
   listBuiltInAgentProviderInfos,
+  listClaudeCodeFallbackModels,
 } from "@bb/agent-providers";
 import {
   formatCustomAcpAgentProviderId,
@@ -483,15 +484,41 @@ async function loadSystemProviderModels(
       },
       "Failed to resolve provider models",
     );
+    const modelLoadError = buildModelLoadError({
+      error,
+      provider,
+    });
     return {
-      models: [],
-      selectedOnlyModels: [],
-      modelLoadError: buildModelLoadError({
-        error,
-        provider,
+      models: listFallbackModelsForLoadError({
+        code: modelLoadError.code,
+        providerId: provider.id,
       }),
+      selectedOnlyModels: [],
+      modelLoadError,
     };
   }
+}
+
+// A transient probe failure is not evidence that a model was retired, so the
+// picker gets a provisional list instead of an empty one. `modelLoadError` stays
+// set, which is what keeps callers treating this list as unverified: absence
+// from it must never trigger thread model recovery. `missing_executable` and
+// `auth_required` are excluded on purpose — those are actionable setup states
+// the app routes to an install/auth prompt, so offering models there would only
+// defer the real failure to submit time.
+function listFallbackModelsForLoadError({
+  code,
+  providerId,
+}: {
+  code: SystemExecutionOptionsModelLoadErrorCode;
+  providerId: string;
+}): AvailableModel[] {
+  if (providerId !== "claude-code") {
+    return [];
+  }
+  return code === "timeout" || code === "failed"
+    ? listClaudeCodeFallbackModels()
+    : [];
 }
 
 function buildModelLoadError({

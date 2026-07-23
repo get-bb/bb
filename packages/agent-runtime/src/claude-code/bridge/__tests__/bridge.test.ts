@@ -1632,18 +1632,18 @@ describe("bridge", () => {
     const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels({
       PATH: binDir,
     });
-    expect(models).toEqual([
+    // The curated catalog is always offered, so a probe reporting only Opus and
+    // Sonnet still yields every curated row; the probe's default wins.
+    expect(models.map((model) => model.model)).toEqual([
+      "claude-fable-5",
+      "claude-opus-4-8[1m]",
+      "claude-opus-4-7[1m]",
+      "claude-sonnet-5",
+    ]);
+    expect(models.filter((model) => model.isDefault)).toEqual([
       expect.objectContaining({
-        id: "claude-opus-4-8[1m]",
         model: "claude-opus-4-8[1m]",
         displayName: "Opus 4.8 (1M)",
-        isDefault: true,
-      }),
-      expect.objectContaining({
-        id: "claude-sonnet-5",
-        model: "claude-sonnet-5",
-        displayName: "Sonnet 5",
-        isDefault: false,
       }),
     ]);
     expect(selectedOnlyModels.map((model) => model.model)).toEqual([

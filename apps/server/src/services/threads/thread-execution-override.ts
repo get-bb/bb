@@ -243,7 +243,9 @@ async function loadThreadProviderModels(
     );
   }
   // Selected-only models are browsable in the picker's collapsed "More
-  // models" section, so they are valid swap targets too.
+  // models" section, so they are valid swap targets too. The curated Claude
+  // catalog needs no special handling here: it is always present in
+  // `result.models`, so any row the picker can offer already validates.
   return [...result.models, ...result.selectedOnlyModels];
 }
 
