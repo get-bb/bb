@@ -247,15 +247,27 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     ),
   });
   const pluginToggle = useMutation({
-    mutationFn: (plugin: PluginListItem) =>
-      setPluginEnabled(fetch, plugin.id, !plugin.enabled),
+    mutationFn: async (plugin: PluginListItem) => {
+      const action = plugin.enabled ? "disable" : "enable";
+      try {
+        await setPluginEnabled(fetch, plugin.id, !plugin.enabled);
+      } catch {
+        throw new Error(`Failed to ${action} plugin`);
+      }
+    },
     onSuccess: () => listQuery.refetch(),
     onError: (error) => {
       appToast.error(error instanceof Error ? error.message : String(error));
     },
   });
   const pluginDelete = useMutation({
-    mutationFn: (plugin: PluginListItem) => removePlugin(fetch, plugin.id),
+    mutationFn: async (plugin: PluginListItem) => {
+      try {
+        await removePlugin(fetch, plugin.id);
+      } catch {
+        throw new Error("Failed to delete plugin");
+      }
+    },
     onSuccess: (_data, deletedPlugin) => {
       appToast.success(
         pluginIsLocalSource(deletedPlugin)

@@ -7,7 +7,7 @@ import type {
   RegistrySkillsPage,
 } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 
 export type {
   RegistryPagination,
@@ -18,6 +18,10 @@ export type {
 };
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 export async function fetchRegistrySkills(args: {
   query: string;
@@ -47,10 +51,24 @@ export async function fetchRegistrySkillEntry(
   return sdk.skills.registry.get({ registrySkillId: id });
 }
 
-export function installRegistrySkill(args: { skill: RegistrySkill }) {
-  return sdk.skills.registry.install({
-    registrySkillId: args.skill.id,
-  });
+export async function installRegistrySkill(args: { skill: RegistrySkill }) {
+  try {
+    return await sdk.skills.registry.install({
+      registrySkillId: args.skill.id,
+    });
+  } catch (error) {
+    if (error instanceof BbHttpError) {
+      throw new Error(
+        isRecord(error.body) && typeof error.body.message === "string"
+          ? error.body.message
+          : "Skill install failed",
+      );
+    }
+    if (error instanceof Error && error.name === "ZodError") {
+      throw new Error("Skill install failed");
+    }
+    throw error;
+  }
 }
 
 export function normalizeSkillName(value: string): string {

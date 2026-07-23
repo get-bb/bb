@@ -97,6 +97,14 @@ describe("registry skill contracts", () => {
       installRegistrySkill({ skill: registrySkill }),
     ).resolves.toEqual({ ok: true, filePath: "/tmp/useful-skill/SKILL.md" });
   });
+
+  it("preserves the server's install error message", async () => {
+    stubJsonResponse({ message: "Skill is already installed" }, 409);
+
+    await expect(
+      installRegistrySkill({ skill: registrySkill }),
+    ).rejects.toThrow("Skill is already installed");
+  });
 });
 
 describe("registry skill matching", () => {
