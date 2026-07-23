@@ -32,6 +32,7 @@ export const registrySkillFileSchema = z.object({
   path: z.string().min(1),
   contents: z.string(),
 });
+export type RegistrySkillFile = z.infer<typeof registrySkillFileSchema>;
 
 export const registrySkillDetailSchema = z.object({
   id: z.string().min(1),

@@ -1,12 +1,14 @@
 import type { SkillSummary } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchRegistrySkillDetail,
+  fetchRegistrySkillEntry,
+  fetchRegistrySkills,
   formatInstallCount,
   formatRegistrySource,
+  installRegistrySkill,
   normalizeSkillName,
-  parseRegistrySkill,
-  parseRegistrySkills,
   REGISTRY_PAGE_SIZE,
   resolveInstalledRegistrySkill,
 } from "./skills-registry";
@@ -40,24 +42,59 @@ function installedSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
   };
 }
 
-describe("registry skill parsing", () => {
-  it("parses a complete registry skill and normalizes an omitted stars value", () => {
-    expect(parseRegistrySkill(registrySkill)).toEqual(registrySkill);
-    expect(parseRegistrySkill({ ...registrySkill, stars: undefined })).toEqual({
-      ...registrySkill,
-      stars: null,
-    });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function stubJsonResponse(body: unknown, status = 200) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      }),
+    ),
+  );
+}
+
+describe("registry skill contracts", () => {
+  it("uses the shared page and entry schemas at the HTTP boundary", async () => {
+    const page = {
+      skills: [registrySkill],
+      pagination: { page: 0, perPage: 12, total: 1, hasMore: false },
+    };
+    stubJsonResponse(page);
+    await expect(fetchRegistrySkills({ query: "", page: 0 })).resolves.toEqual(
+      page,
+    );
+
+    stubJsonResponse({ ...registrySkill, stars: undefined });
+    await expect(fetchRegistrySkillEntry(registrySkill.id)).rejects.toThrow(
+      "Invalid registry skill response",
+    );
   });
 
-  it("rejects malformed entries and filters them from registry pages", () => {
-    const malformed = { ...registrySkill, installs: "1234" };
+  it("uses the shared detail and install schemas at the HTTP boundary", async () => {
+    const detail = {
+      id: registrySkill.id,
+      source: registrySkill.source,
+      skillId: registrySkill.skillId,
+      hash: null,
+      files: [{ path: "SKILL.md", contents: "# Useful skill" }],
+    };
+    stubJsonResponse(detail);
+    await expect(
+      fetchRegistrySkillDetail({
+        source: registrySkill.source,
+        skillId: registrySkill.skillId,
+      }),
+    ).resolves.toEqual(detail);
 
-    expect(parseRegistrySkill(malformed)).toBeNull();
-    expect(parseRegistrySkill(null)).toBeNull();
-    expect(parseRegistrySkills({ skills: [malformed, registrySkill] })).toEqual(
-      [registrySkill],
-    );
-    expect(parseRegistrySkills({ skills: "not-an-array" })).toEqual([]);
+    stubJsonResponse({ ok: true, filePath: "/tmp/useful-skill/SKILL.md" });
+    await expect(
+      installRegistrySkill({ skill: registrySkill }),
+    ).resolves.toEqual({ ok: true, filePath: "/tmp/useful-skill/SKILL.md" });
   });
 });
 
