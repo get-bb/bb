@@ -114,31 +114,35 @@ export function namedSurface(
   };
 }
 
+function namedSlotItems(
+  pluginId: string,
+  slots: readonly { pluginId: string; id: string; title?: string }[],
+  prefix: string,
+  kind: string,
+): PluginCapabilityItem[] {
+  return slots
+    .filter((slot) => slot.pluginId === pluginId)
+    .map((slot) => namedSurface(prefix, slot.id, slot.title, kind));
+}
+
 export function pluginAppSurfaceItems(
   pluginId: string,
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
   return [
-    ...slots.navPanels
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("nav", slot.id, slot.title, "Navigation panel"),
-      ),
-    ...slots.homepageSections
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("homepage", slot.id, slot.title, "Homepage section"),
-      ),
-    ...slots.threadPanelActions
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface(
-          "thread-panel",
-          slot.id,
-          slot.title,
-          "Thread panel action",
-        ),
-      ),
+    ...namedSlotItems(pluginId, slots.navPanels, "nav", "Navigation panel"),
+    ...namedSlotItems(
+      pluginId,
+      slots.homepageSections,
+      "homepage",
+      "Homepage section",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadPanelActions,
+      "thread-panel",
+      "Thread panel action",
+    ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
       .flatMap((slot) => [
@@ -175,16 +179,18 @@ export function pluginAppSurfaceItems(
           ),
         ),
       ]),
-    ...slots.pendingInteractions
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("input", slot.id, undefined, "Input renderer"),
-      ),
-    ...slots.sidebarFooterActions
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("sidebar", slot.id, slot.title, "Sidebar action"),
-      ),
+    ...namedSlotItems(
+      pluginId,
+      slots.pendingInteractions,
+      "input",
+      "Input renderer",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.sidebarFooterActions,
+      "sidebar",
+      "Sidebar action",
+    ),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
@@ -206,11 +212,12 @@ export function pluginAppSurfaceItems(
         detail: "Message renderer",
         mono: true,
       })),
-    ...slots.messageActions
-      .filter((slot) => slot.pluginId === pluginId)
-      .map((slot) =>
-        namedSurface("message-action", slot.id, slot.title, "Message action"),
-      ),
+    ...namedSlotItems(
+      pluginId,
+      slots.messageActions,
+      "message-action",
+      "Message action",
+    ),
   ];
 }
 

@@ -1,4 +1,9 @@
 import { ApiError } from "../../errors.js";
+import type {
+  RegistrySkill,
+  RegistrySkillDetail,
+  RegistrySkillFile,
+} from "@bb/server-contract";
 
 export const SKILLS_BASE_URL = "https://www.skills.sh";
 const DEFAULT_PAGE_SIZE = 24;
@@ -10,31 +15,6 @@ const REGISTRY_DETAIL_TOTAL_SIZE_LIMIT = 5_000_000;
 export const REGISTRY_SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 export const REGISTRY_SOURCE_PATTERN = /^(?!-)\S+$/u;
-
-export interface RegistrySkill {
-  id: string;
-  source: string;
-  skillId: string;
-  name: string;
-  installs: number;
-  stars: number | null;
-  installUrl: string | null;
-  url: string;
-  topic: string | null;
-  summary: string | null;
-}
-
-export interface RegistryPagination {
-  page: number;
-  perPage: number;
-  total: number;
-  hasMore: boolean;
-}
-
-export interface RegistrySkillsPage {
-  skills: RegistrySkill[];
-  pagination: RegistryPagination;
-}
 
 export interface SkillsApiSkill {
   id: string;
@@ -50,19 +30,6 @@ export interface SkillsApiPage {
   skills: SkillsApiSkill[];
   total: number;
   hasMore: boolean;
-}
-
-export interface RegistrySkillFile {
-  path: string;
-  contents: string;
-}
-
-export interface RegistrySkillDetail {
-  id: string;
-  source: string;
-  skillId: string;
-  hash: string | null;
-  files: RegistrySkillFile[] | null;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

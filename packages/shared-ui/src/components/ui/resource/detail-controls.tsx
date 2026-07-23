@@ -9,6 +9,18 @@ import {
 } from "../tooltip";
 import { cn } from "../../../lib/utils";
 
+function withTooltip(control: ReactNode, tooltip: ReactNode | undefined) {
+  if (tooltip === undefined) return control;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{control}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function ResourceDetailFacts({
   children,
   className,
@@ -95,15 +107,7 @@ export function ResourceLifecycleStatus({
       {label}
     </span>
   );
-  if (tooltip === undefined) return status;
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>{status}</TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return withTooltip(status, tooltip);
 }
 
 /** Canonical action for a resource that can be added from a browse surface. */
@@ -153,15 +157,7 @@ export function ResourceInstallControl({
       )}
     </Button>
   );
-  if (presentation !== "icon" || tooltip === undefined) return control;
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>{control}</TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return withTooltip(control, presentation === "icon" ? tooltip : undefined);
 }
 
 /**
@@ -215,15 +211,7 @@ export function ResourceInstalledControl({
         {installedContent}
       </span>
     );
-    if (presentation !== "icon" || tooltip === undefined) return status;
-    return (
-      <TooltipProvider delayDuration={250}>
-        <Tooltip>
-          <TooltipTrigger asChild>{status}</TooltipTrigger>
-          <TooltipContent>{tooltip}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
+    return withTooltip(status, presentation === "icon" ? tooltip : undefined);
   }
 
   const control = (
@@ -260,13 +248,5 @@ export function ResourceInstalledControl({
       )}
     </Button>
   );
-  if (presentation !== "icon" || tooltip === undefined) return control;
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>{control}</TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return withTooltip(control, presentation === "icon" ? tooltip : undefined);
 }

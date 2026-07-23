@@ -1488,6 +1488,17 @@ describe("@bb/sdk", () => {
       topic: null,
       summary: null,
     };
+    const installedRegistrySkill = {
+      id: `skill_${"b".repeat(64)}`,
+      name: registrySkill.skillId,
+      description: "A useful skill",
+      provider: null,
+      scope: "bb-user",
+      pluginId: null,
+      filePath: "/skills/useful-skill/SKILL.md",
+      manageable: true,
+      registrySkillId: registrySkill.id,
+    };
     const queue = createFetchQueue([
       {
         body: {
@@ -1512,7 +1523,13 @@ describe("@bb/sdk", () => {
           pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
         },
       },
-      { body: { ok: true, filePath: "/skills/useful-skill/SKILL.md" } },
+      {
+        body: {
+          ok: true,
+          filePath: installedRegistrySkill.filePath,
+          skill: installedRegistrySkill,
+        },
+      },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
@@ -1534,7 +1551,8 @@ describe("@bb/sdk", () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      filePath: "/skills/useful-skill/SKILL.md",
+      filePath: installedRegistrySkill.filePath,
+      skill: installedRegistrySkill,
     });
 
     expect(queue.requests).toEqual([

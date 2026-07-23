@@ -182,21 +182,7 @@ export function ResourceDetailActionRow({
   );
 }
 
-export function ResourcePropertyList({
-  children,
-  className,
-  surface,
-}: {
-  children: ReactNode;
-  className?: string;
-  surface?: ResourceDetailSurface;
-}) {
-  return (
-    <ResourceDetailPanel surface={surface} className={className}>
-      {children}
-    </ResourceDetailPanel>
-  );
-}
+export const ResourcePropertyList = ResourceDetailPanel;
 
 export function ResourceDetailStack({
   children,

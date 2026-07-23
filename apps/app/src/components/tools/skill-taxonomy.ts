@@ -11,12 +11,6 @@ export type SkillScopeOwnership =
   | "imported"
   | "bundled";
 
-export interface SkillScopeDefinition {
-  label: string;
-  ownership: SkillScopeOwnership;
-  editability: "always" | "when-manageable" | "never";
-}
-
 export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   "bb-builtin": "Built-in",
   "bb-user": "bb · user",
@@ -28,63 +22,37 @@ export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   plugin: "Plugin",
 };
 
-/** Canonical ownership/editability taxonomy for every server skill scope. */
-export const SKILL_SCOPE_DEFINITIONS: Record<SkillScope, SkillScopeDefinition> =
-  {
-    "bb-builtin": {
-      label: SKILL_SCOPE_LABELS["bb-builtin"],
-      ownership: "built-in",
-      editability: "never",
-    },
-    "bb-user": {
-      label: SKILL_SCOPE_LABELS["bb-user"],
-      ownership: "user",
-      editability: "always",
-    },
-    "bb-project": {
-      label: SKILL_SCOPE_LABELS["bb-project"],
-      ownership: "project",
-      editability: "always",
-    },
-    "claude-user": {
-      label: SKILL_SCOPE_LABELS["claude-user"],
-      ownership: "imported",
-      editability: "when-manageable",
-    },
-    "claude-project": {
-      label: SKILL_SCOPE_LABELS["claude-project"],
-      ownership: "imported",
-      editability: "when-manageable",
-    },
-    "codex-user": {
-      label: SKILL_SCOPE_LABELS["codex-user"],
-      ownership: "imported",
-      editability: "when-manageable",
-    },
-    "codex-project": {
-      label: SKILL_SCOPE_LABELS["codex-project"],
-      ownership: "imported",
-      editability: "when-manageable",
-    },
-    plugin: {
-      label: SKILL_SCOPE_LABELS.plugin,
-      ownership: "bundled",
-      editability: "never",
-    },
-  };
+export const SKILL_SCOPE_OWNERSHIP: Record<SkillScope, SkillScopeOwnership> = {
+  "bb-builtin": "built-in",
+  "bb-user": "user",
+  "bb-project": "project",
+  "claude-user": "imported",
+  "claude-project": "imported",
+  "codex-user": "imported",
+  "codex-project": "imported",
+  plugin: "bundled",
+};
 
 export function isKnownSkillScope(
   value: string | undefined,
 ): value is SkillScope {
-  return value !== undefined && value in SKILL_SCOPE_DEFINITIONS;
+  return value !== undefined && value in SKILL_SCOPE_LABELS;
 }
 
 export function isSkillEditable(
   skill: SkillSummary,
 ): skill is SkillSummary & { scope: EditableSkillScope } {
-  const editability = SKILL_SCOPE_DEFINITIONS[skill.scope].editability;
-  return (
-    editability === "always" ||
-    (editability === "when-manageable" && skill.manageable)
-  );
+  switch (skill.scope) {
+    case "bb-user":
+    case "bb-project":
+      return true;
+    case "claude-user":
+    case "claude-project":
+    case "codex-user":
+    case "codex-project":
+      return skill.manageable;
+    case "bb-builtin":
+    case "plugin":
+      return false;
+  }
 }

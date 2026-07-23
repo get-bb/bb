@@ -42,42 +42,28 @@ export function ResourceDetailSection({
  * settings, or an error.
  */
 
-export function ResourceDetailOverviewSection(
-  props: ResourceDetailSectionProps,
-) {
-  return <ResourceDetailSection {...props} kind="overview" />;
+function section(kind: ResourceDetailSectionKind) {
+  return function ResourceKindSection(props: ResourceDetailSectionProps) {
+    return <ResourceDetailSection {...props} kind={kind} />;
+  };
 }
+
+export const ResourceDetailOverviewSection = section("overview");
 
 /** The editable or inspectable primary content that defines a resource. */
-export function ResourceDefinitionSection(props: ResourceDetailSectionProps) {
-  return <ResourceDetailSection {...props} kind="definition" />;
-}
+export const ResourceDefinitionSection = section("definition");
 
 /** Behavior-changing fields and settings. */
-export function ResourceDetailConfigurationSection(
-  props: ResourceDetailSectionProps,
-) {
-  return <ResourceDetailSection {...props} kind="configuration" />;
-}
+export const ResourceDetailConfigurationSection = section("configuration");
 
 /** Version, delivery source, compatibility, and update policy. */
-export function ResourceDetailReleaseSection(
-  props: ResourceDetailSectionProps,
-) {
-  return <ResourceDetailSection {...props} kind="release" />;
-}
+export const ResourceDetailReleaseSection = section("release");
 
 /** Child resources and capabilities contributed by the resource. */
-export function ResourceDetailIncludesSection(
-  props: ResourceDetailSectionProps,
-) {
-  return <ResourceDetailSection {...props} kind="includes" />;
-}
+export const ResourceDetailIncludesSection = section("includes");
 
 /** Current state and historical events produced by a resource. */
-export function ResourceActivitySection(props: ResourceDetailSectionProps) {
-  return <ResourceDetailSection {...props} kind="activity" />;
-}
+export const ResourceActivitySection = section("activity");
 
 export function ResourceDetailPage({
   title,

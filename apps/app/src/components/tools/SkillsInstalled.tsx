@@ -31,19 +31,30 @@ import {
   getProviderIconColorClass,
   getProviderIconInfo,
 } from "@/lib/provider-icon";
-import {
-  applySortDirection,
-  compareNullableProvider,
-  providerFilterLabel,
-  providerLabel,
-  RESOURCE_PROVIDER_FILTERS,
-  skillProviderFilterId,
-} from "@/lib/skills-filters";
-import type {
-  ResourceProviderFilter,
-  ResourceSortDirection,
-  ResourceSortMode,
-} from "@/lib/skills-filters";
+
+type ResourceProviderFilter = "bb" | SkillProvider;
+type ResourceSortMode = "provider" | "alpha";
+type ResourceSortDirection = "asc" | "desc";
+
+const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
+  "bb",
+  "claude-code",
+  "codex",
+];
+
+function providerLabel(provider: SkillProvider | null): string {
+  return provider === null
+    ? "bb"
+    : (getProviderIconInfo(provider)?.ariaLabel ?? provider);
+}
+
+function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
+  return skill.provider ?? "bb";
+}
+
+function providerFilterLabel(provider: ResourceProviderFilter): string {
+  return provider === "bb" ? "bb" : providerLabel(provider);
+}
 
 export function ProviderLogo({
   providerId,
@@ -97,23 +108,13 @@ function providerPluginDisplayName(skill: SkillSummary): string {
   return name.length === 0 ? name : name[0].toUpperCase() + name.slice(1);
 }
 
-function bundledWithPluginReason(skill: SkillSummary): string {
-  return "Bundled with plugin";
-}
-
 function includedPluginDescription(skill: SkillSummary): string {
   return `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider)} plugin)`;
 }
 
-function skillEditDisabledReason(skill: SkillSummary): string {
+function skillMutationDisabledReason(skill: SkillSummary): string {
   if (skill.scope === "bb-builtin") return "Built-in skill";
-  if (skill.scope === "plugin") return bundledWithPluginReason(skill);
-  return `Bundled with ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`;
-}
-
-function skillDeleteDisabledReason(skill: SkillSummary): string {
-  if (skill.scope === "bb-builtin") return "Built-in skill";
-  if (skill.scope === "plugin") return bundledWithPluginReason(skill);
+  if (skill.scope === "plugin") return "Bundled with plugin";
   return `Bundled with ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`;
 }
 
@@ -237,10 +238,11 @@ export function SkillsOverview({
     return [...filtered].sort((left, right) => {
       const base =
         sortMode === "provider"
-          ? compareNullableProvider(left.provider, right.provider) ||
-            left.name.localeCompare(right.name)
+          ? providerLabel(left.provider).localeCompare(
+              providerLabel(right.provider),
+            ) || left.name.localeCompare(right.name)
           : left.name.localeCompare(right.name);
-      return applySortDirection(base, sortDirection);
+      return sortDirection === "asc" ? base : -base;
     });
   }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
   const installedPagination = useResourcePagination(visibleSkills, {
@@ -427,8 +429,7 @@ export function SkillDetailDialogView({
   if (skill === null) return null;
   const bundledPluginName =
     skill.scope === "plugin" ? providerPluginNameForSkill(skill) : null;
-  const editDisabledReason = skillEditDisabledReason(skill);
-  const deleteDisabledReason = skillDeleteDisabledReason(skill);
+  const disabledReason = skillMutationDisabledReason(skill);
   const canEditSelectedPath = canEdit && selectedPath === "SKILL.md";
   const headerActions =
     skill.scope !== "plugin" &&
@@ -442,7 +443,7 @@ export function SkillDetailDialogView({
             icon: "Edit" as const,
             disabled: !canEditSelectedPath,
             disabledReason: !canEdit
-              ? editDisabledReason
+              ? disabledReason
               : selectedPath !== "SKILL.md"
                 ? "Only SKILL.md can be edited"
                 : undefined,
@@ -463,7 +464,7 @@ export function SkillDetailDialogView({
             icon: "Trash2" as const,
             tone: "destructive" as const,
             disabled: !canDelete,
-            disabledReason: !canDelete ? deleteDisabledReason : undefined,
+            disabledReason: !canDelete ? disabledReason : undefined,
             onSelect: () => setConfirmingDelete(true),
           },
         ]}

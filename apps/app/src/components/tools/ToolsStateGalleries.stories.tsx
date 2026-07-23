@@ -27,7 +27,10 @@ import {
   pluginRuntimeStatusDefinition,
   type PluginRowSignal,
 } from "@/components/plugin/management/plugin-status";
-import { SKILL_SCOPE_DEFINITIONS } from "@/components/tools/skill-taxonomy";
+import {
+  SKILL_SCOPE_LABELS,
+  SKILL_SCOPE_OWNERSHIP,
+} from "@/components/tools/skill-taxonomy";
 import {
   formatAutomationTrigger,
   formatScheduleStatusLabel,
@@ -396,12 +399,11 @@ export function Skills() {
         description="Each server scope maps to one provenance treatment. Editability never changes this label."
       >
         {skillScopeSchema.options.map((scope) => {
-          const definition = SKILL_SCOPE_DEFINITIONS[scope];
           return (
             <StoryRow
               key={scope}
               label={scope}
-              hint={`${definition.label} · ${definition.ownership}`}
+              hint={`${SKILL_SCOPE_LABELS[scope]} · ${SKILL_SCOPE_OWNERSHIP[scope]}`}
             >
               <SkillProvenanceTreatment scope={scope} />
             </StoryRow>

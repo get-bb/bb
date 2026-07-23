@@ -3,107 +3,30 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const RESOURCE_LIST_EXPORTS = [
-  "RESOURCE_ROUTE_LABEL_EVENT",
-  "ResourceActionButton",
-  "ResourceActivitySection",
-  "ResourceBrowseCard",
-  "ResourceBrowseGrid",
-  "ResourceBrowseSection",
-  "ResourceBrowseSectionItem",
-  "ResourceCardStat",
-  "ResourceCollectionMode",
-  "ResourceCollectionPage",
-  "ResourceCollectionViewport",
-  "ResourceCreateButton",
-  "ResourceCreateMenuAction",
-  "ResourceCreateTemplate",
-  "ResourceDefinitionSection",
-  "ResourceDetailActionRow",
-  "ResourceDetailCollection",
-  "ResourceDetailConfigurationSection",
-  "ResourceDetailFact",
-  "ResourceDetailFacts",
-  "ResourceDetailIncludesSection",
-  "ResourceDetailList",
-  "ResourceDetailListItem",
-  "ResourceDetailOverviewSection",
-  "ResourceDetailPage",
-  "ResourceDetailPanel",
-  "ResourceDetailReleaseSection",
-  "ResourceDetailSection",
-  "ResourceDetailSectionKind",
-  "ResourceDetailSectionProps",
-  "ResourceDetailStack",
-  "ResourceDetailSurface",
-  "ResourceInstallControl",
-  "ResourceInstalledControl",
-  "ResourceLifecycleStatus",
-  "ResourceListPanel",
-  "ResourceListState",
-  "ResourceLocationMeta",
-  "ResourceMeta",
-  "ResourceMultiSelectMenu",
-  "ResourceOption",
-  "ResourceOptionMenu",
-  "ResourceOverflowMenu",
-  "ResourceOverflowMenuItem",
-  "ResourceOverview",
-  "ResourceOverviewPage",
-  "ResourceOverviewSection",
-  "ResourcePromptContextItem",
-  "ResourcePromptEditor",
-  "ResourcePromptPreview",
-  "ResourceProperty",
-  "ResourcePropertyList",
-  "ResourceRow",
-  "ResourceRowDetailChevron",
-  "ResourceSection",
-  "ResourceSectionTitle",
-  "ResourceShelfAction",
-  "ResourceShelfSeeAllAction",
-  "ResourceSortMenu",
-  "ResourceSourceItem",
-  "ResourceSourceShelf",
-  "ResourceState",
-  "ResourceStatus",
-  "ResourceStatusTone",
-  "ResourceTabDescription",
-  "ResourceTemplateBrowseCard",
-  "ResourceToolbar",
-  "ResourceToolbarAction",
-  "useResourceRouteLabel",
-] as const;
+function names(value: string): string[] {
+  return value.trim().split(/\s+/u);
+}
 
-const SKILLS_VIEW_EXPORTS = [
-  "ProviderLogo",
-  "RegistryPagination",
-  "RegistrySkill",
-  "RegistrySkillDetail",
-  "RegistrySkillFile",
-  "RegistrySkillsBrowsePage",
-  "RegistrySkillsPage",
-  "SkillDetailDialogView",
-  "SkillDetailDialogViewProps",
-  "SkillsLibrary",
-  "SkillsOverview",
-  "SkillsOverviewProps",
-  "SkillsView",
-  "fetchRegistrySkillDetail",
-  "fetchRegistrySkillEntry",
-  "fetchRegistrySkills",
-  "formatInstallCount",
-  "formatRegistrySource",
-  "installRegistrySkill",
-  "normalizeSkillName",
-  "resolveInstalledRegistrySkill",
-] as const;
+const RESOURCE_LIST_EXPORTS = names(`
+  RESOURCE_ROUTE_LABEL_EVENT ResourceActionButton ResourceActivitySection ResourceBrowseCard ResourceBrowseGrid ResourceBrowseSection ResourceBrowseSectionItem
+  ResourceCardStat ResourceCollectionMode ResourceCollectionPage ResourceCollectionViewport ResourceCreateButton ResourceCreateMenuAction ResourceCreateTemplate
+  ResourceDefinitionSection ResourceDetailActionRow ResourceDetailCollection ResourceDetailConfigurationSection ResourceDetailFact ResourceDetailFacts
+  ResourceDetailIncludesSection ResourceDetailList ResourceDetailListItem ResourceDetailOverviewSection ResourceDetailPage ResourceDetailPanel ResourceDetailReleaseSection
+  ResourceDetailSection ResourceDetailSectionKind ResourceDetailSectionProps ResourceDetailStack ResourceDetailSurface ResourceInstallControl ResourceInstalledControl
+  ResourceLifecycleStatus ResourceListPanel ResourceListState ResourceLocationMeta ResourceMeta ResourceMultiSelectMenu ResourceOption ResourceOptionMenu
+  ResourceOverflowMenu ResourceOverflowMenuItem ResourceOverview ResourceOverviewPage ResourceOverviewSection ResourcePromptContextItem ResourcePromptEditor
+  ResourcePromptPreview ResourceProperty ResourcePropertyList ResourceRow ResourceRowDetailChevron ResourceSection ResourceSectionTitle ResourceShelfAction
+  ResourceShelfSeeAllAction ResourceSortMenu ResourceSourceItem ResourceSourceShelf ResourceState ResourceStatus ResourceStatusTone ResourceTabDescription
+  ResourceTemplateBrowseCard ResourceToolbar ResourceToolbarAction useResourceRouteLabel
+`);
 
-const TOOLS_VIEW_EXPORTS = [
-  "PluginDetail",
-  "ToolsScrollPage",
-  "ToolsView",
-] as const;
+const SKILLS_VIEW_EXPORTS = names(`
+  ProviderLogo RegistryPagination RegistrySkill RegistrySkillDetail RegistrySkillFile RegistrySkillsBrowsePage RegistrySkillsPage SkillDetailDialogView
+  SkillDetailDialogViewProps SkillsLibrary SkillsOverview SkillsOverviewProps SkillsView fetchRegistrySkillDetail fetchRegistrySkillEntry fetchRegistrySkills
+  formatInstallCount formatRegistrySource installRegistrySkill normalizeSkillName resolveInstalledRegistrySkill
+`);
+
+const TOOLS_VIEW_EXPORTS = names(`PluginDetail ToolsScrollPage ToolsView`);
 
 function exportedNames(filePath: string): string[] {
   const sourceFile = ts.createSourceFile(
@@ -111,20 +34,16 @@ function exportedNames(filePath: string): string[] {
     readFileSync(filePath, "utf8"),
     ts.ScriptTarget.Latest,
     true,
-    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    ts.ScriptKind.TSX,
   );
-  const names: string[] = [];
+  const exported: string[] = [];
 
   for (const statement of sourceFile.statements) {
     if (ts.isExportDeclaration(statement)) {
-      if (
-        statement.exportClause === undefined ||
-        !ts.isNamedExports(statement.exportClause)
-      ) {
+      if (!statement.exportClause || !ts.isNamedExports(statement.exportClause))
         throw new Error(`${filePath} must use explicit named exports`);
-      }
-      names.push(
-        ...statement.exportClause.elements.map((element) => element.name.text),
+      exported.push(
+        ...statement.exportClause.elements.map(({ name }) => name.text),
       );
       continue;
     }
@@ -132,76 +51,38 @@ function exportedNames(filePath: string): string[] {
     const modifiers = ts.canHaveModifiers(statement)
       ? ts.getModifiers(statement)
       : undefined;
-    if (
-      modifiers?.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-      ) !== true
-    ) {
+    if (!modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword))
       continue;
-    }
     if (
-      modifiers.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword,
-      )
+      modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword) ||
+      !ts.isFunctionDeclaration(statement) ||
+      !statement.name
     ) {
-      throw new Error(`${filePath} must not add a default export`);
+      throw new Error(`${filePath} must use explicit named exports`);
     }
-
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(declaration.name)) {
-          throw new Error(`${filePath} must use named exported declarations`);
-        }
-        names.push(declaration.name.text);
-      }
-    } else if (
-      (ts.isFunctionDeclaration(statement) ||
-        ts.isClassDeclaration(statement) ||
-        ts.isInterfaceDeclaration(statement) ||
-        ts.isTypeAliasDeclaration(statement) ||
-        ts.isEnumDeclaration(statement) ||
-        ts.isModuleDeclaration(statement)) &&
-      statement.name !== undefined &&
-      ts.isIdentifier(statement.name)
-    ) {
-      names.push(statement.name.text);
-    } else {
-      throw new Error(`${filePath} has an unsupported exported declaration`);
-    }
+    exported.push(statement.name.text);
   }
 
-  return names.sort();
+  return exported.sort();
 }
 
 describe("Tools Hub public export contracts", () => {
+  const here = (path: string) => new URL(path, import.meta.url);
   const surfaces = [
-    {
-      name: "shared resource list",
-      filePath: fileURLToPath(
-        new URL(
-          "../../../../packages/shared-ui/src/components/ui/resource-list.tsx",
-          import.meta.url,
-        ),
+    [
+      "shared resource list",
+      here(
+        "../../../../packages/shared-ui/src/components/ui/resource-list.tsx",
       ),
-      expected: RESOURCE_LIST_EXPORTS,
-    },
-    {
-      name: "SkillsView",
-      filePath: fileURLToPath(new URL("./SkillsView.tsx", import.meta.url)),
-      expected: SKILLS_VIEW_EXPORTS,
-    },
-    {
-      name: "ToolsView",
-      filePath: fileURLToPath(new URL("./ToolsView.tsx", import.meta.url)),
-      expected: TOOLS_VIEW_EXPORTS,
-    },
+      RESOURCE_LIST_EXPORTS,
+    ],
+    ["SkillsView", here("./SkillsView.tsx"), SKILLS_VIEW_EXPORTS],
+    ["ToolsView", here("./ToolsView.tsx"), TOOLS_VIEW_EXPORTS],
   ] as const;
 
-  for (const surface of surfaces) {
-    it(`keeps the exact ${surface.name} surface`, () => {
-      expect(exportedNames(surface.filePath)).toEqual(
-        [...surface.expected].sort(),
-      );
+  for (const [name, url, expected] of surfaces) {
+    it(`keeps the exact ${name} surface`, () => {
+      expect(exportedNames(fileURLToPath(url))).toEqual([...expected].sort());
     });
   }
 });

@@ -80,6 +80,13 @@ describe("installServerRegistrySkill", () => {
       const skillDirectory = join(dataDir, "skills", "find-skills");
 
       expect(result.filePath).toBe(join(skillDirectory, "SKILL.md"));
+      expect(result.skill).toMatchObject({
+        id: "skill_c739bd4db868030e208f2a1a95aaece6c840dff4561c7b743be42c87cc8fcdf1",
+        name: "find-skills",
+        description: "Test skill.",
+        filePath: result.filePath,
+        registrySkillId: "github.com/vercel-labs/skills/find-skills",
+      });
       expect(readRegistrySkillProvenance(skillDirectory)).toBe(
         "github.com/vercel-labs/skills/find-skills",
       );

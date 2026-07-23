@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { skillSummarySchema } from "./projects.js";
 
 export const registrySkillSchema = z.object({
   id: z.string().min(1),
@@ -55,6 +56,7 @@ export type RegistrySkillInstallRequest = z.infer<
 export const registrySkillInstallResponseSchema = z.object({
   ok: z.literal(true),
   filePath: z.string().min(1),
+  skill: skillSummarySchema,
 });
 export type RegistrySkillInstallResponse = z.infer<
   typeof registrySkillInstallResponseSchema

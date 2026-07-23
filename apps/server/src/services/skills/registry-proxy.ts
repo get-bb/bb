@@ -1,4 +1,11 @@
 import { ApiError } from "../../errors.js";
+import type {
+  RegistryPagination,
+  RegistrySkill,
+  RegistrySkillDetail,
+  RegistrySkillFile,
+  RegistrySkillsPage,
+} from "@bb/server-contract";
 import {
   githubRepoForSource,
   hasLoadableSkillContent,
@@ -13,11 +20,6 @@ import {
   REGISTRY_DETAIL_FILE_SIZE_LIMIT,
   registrySkillUrl,
   SKILLS_BASE_URL,
-  type RegistryPagination,
-  type RegistrySkill,
-  type RegistrySkillDetail,
-  type RegistrySkillFile,
-  type RegistrySkillsPage,
   type SkillsApiPage,
 } from "./registry-parse.js";
 
@@ -113,6 +115,29 @@ async function fetchAuthenticatedRegistryDetail(
   };
 }
 
+async function fetchGithubMarkdown(
+  repo: string,
+  filePath: string,
+): Promise<RegistrySkillFile[] | null> {
+  try {
+    const encodedPath = filePath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    const response = await registryFetch(
+      `https://raw.githubusercontent.com/${repo}/HEAD/${encodedPath}`,
+      { headers: { "user-agent": "bb-skills-registry" } },
+    );
+    if (!response.ok) return null;
+    const contents = await response.text();
+    return contents.length <= REGISTRY_DETAIL_FILE_SIZE_LIMIT
+      ? [{ path: "SKILL.md", contents }]
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchGithubSkillMarkdown(
   source: string,
   skillId: string,
@@ -127,23 +152,9 @@ async function fetchGithubSkillMarkdown(
     `${skillId}/SKILL.md`,
   ];
   const candidates = await Promise.all(
-    candidatePaths.map(async (candidatePath) => {
-      const url = `https://raw.githubusercontent.com/${repo}/HEAD/${candidatePath
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/")}`;
-      try {
-        const response = await registryFetch(url, {
-          headers: { "user-agent": "bb-skills-registry" },
-        });
-        if (!response.ok) return null;
-        const contents = await response.text();
-        if (contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT) return null;
-        return [{ path: "SKILL.md", contents }];
-      } catch {
-        return null;
-      }
-    }),
+    candidatePaths.map((candidatePath) =>
+      fetchGithubMarkdown(repo, candidatePath),
+    ),
   );
   const directMatch = candidates.find((candidate) => candidate !== null);
   if (directMatch) return directMatch;
@@ -166,21 +177,7 @@ async function fetchGithubSkillMarkdown(
     )[0];
   if (!nestedPath) return null;
 
-  try {
-    const response = await registryFetch(
-      `https://raw.githubusercontent.com/${repo}/HEAD/${nestedPath
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/")}`,
-      { headers: { "user-agent": "bb-skills-registry" } },
-    );
-    if (!response.ok) return null;
-    const contents = await response.text();
-    if (contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT) return null;
-    return [{ path: "SKILL.md", contents }];
-  } catch {
-    return null;
-  }
+  return fetchGithubMarkdown(repo, nestedPath);
 }
 
 async function fetchPublicSkillMarkdown(

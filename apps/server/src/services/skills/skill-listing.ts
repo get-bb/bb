@@ -162,7 +162,10 @@ export function assembleSkillList(
   return [...byPath.values()].sort(compareSkillSummaries);
 }
 
-function skillId(identitySeed: string, logicalPath: string): string {
+export function createSkillId(
+  identitySeed: string,
+  logicalPath: string,
+): string {
   return `skill_${createHash("sha256")
     .update(`${identitySeed}\0${logicalPath}`)
     .digest("hex")}`;
@@ -187,7 +190,7 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
       );
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
-        id: skillId(builtin ? "bb-builtin" : "bb-data-dir", logicalPath),
+        id: createSkillId(builtin ? "bb-builtin" : "bb-data-dir", logicalPath),
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,
@@ -213,7 +216,7 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
       if (rootPath === undefined) return null;
       const logicalPath = `${runtimeSource.name}/${runtimeSource.entryPath}`;
       return {
-        id: skillId(`bb-plugin:${provenance.pluginId}`, logicalPath),
+        id: createSkillId(`bb-plugin:${provenance.pluginId}`, logicalPath),
         name: runtimeSource.name,
         description: runtimeSource.description,
         provider: null,

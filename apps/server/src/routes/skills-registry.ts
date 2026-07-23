@@ -96,6 +96,6 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
       registrySkillId: registrySkill.id,
       skillId: registrySkill.skillId,
     });
-    return context.json({ ok: true, filePath: result.filePath });
+    return context.json({ ok: true, ...result });
   });
 }

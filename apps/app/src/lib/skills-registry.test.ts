@@ -48,15 +48,20 @@ afterEach(() => {
 });
 
 function stubJsonResponse(body: unknown, status = 200) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify(body), {
         status,
         headers: { "content-type": "application/json" },
       }),
-    ),
   );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function requestPath(input: RequestInfo | URL): string {
+  const url = new URL(String(input), "http://localhost");
+  return `${url.pathname}${url.search}`;
 }
 
 describe("registry skill contracts", () => {
@@ -65,14 +70,23 @@ describe("registry skill contracts", () => {
       skills: [registrySkill],
       pagination: { page: 0, perPage: 12, total: 1, hasMore: false },
     };
-    stubJsonResponse(page);
+    const pageFetch = stubJsonResponse(page);
     await expect(fetchRegistrySkills({ query: "", page: 0 })).resolves.toEqual(
       page,
     );
+    expect(requestPath(pageFetch.mock.calls[0]![0])).toBe(
+      "/api/v1/skills-registry?page=0&perPage=12",
+    );
 
-    stubJsonResponse({ ...registrySkill, stars: undefined });
+    const entryFetch = stubJsonResponse({
+      ...registrySkill,
+      stars: undefined,
+    });
     await expect(fetchRegistrySkillEntry(registrySkill.id)).rejects.toThrow(
       "stars",
+    );
+    expect(requestPath(entryFetch.mock.calls[0]![0])).toBe(
+      "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
     );
   });
 
@@ -92,10 +106,20 @@ describe("registry skill contracts", () => {
       }),
     ).resolves.toEqual(detail);
 
-    stubJsonResponse({ ok: true, filePath: "/tmp/useful-skill/SKILL.md" });
+    const expectedInstall = {
+      ok: true,
+      filePath: "/tmp/useful-skill/SKILL.md",
+      skill: installedSkill({ filePath: "/tmp/useful-skill/SKILL.md" }),
+    };
+    const installFetch = stubJsonResponse(expectedInstall);
     await expect(
       installRegistrySkill({ skill: registrySkill }),
-    ).resolves.toEqual({ ok: true, filePath: "/tmp/useful-skill/SKILL.md" });
+    ).resolves.toEqual(expectedInstall);
+    const [input, init] = installFetch.mock.calls[0]!;
+    expect(requestPath(input)).toBe("/api/v1/skills-registry/install");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      registrySkillId: registrySkill.id,
+    });
   });
 
   it("preserves the server's install error message", async () => {
