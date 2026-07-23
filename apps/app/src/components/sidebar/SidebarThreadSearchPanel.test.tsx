@@ -468,9 +468,11 @@ describe("ProjectListActionButtons", () => {
       </Provider>,
     );
 
-    expect(
-      screen.getByRole("img", { name: "New thread — open in split" }),
-    ).not.toBeNull();
+    const splitMap = screen.getByRole("img", {
+      name: "New thread — open in split",
+    });
+    const label = screen.getByText("New thread");
+    expect(label.nextElementSibling).toBe(splitMap);
   });
 
   it("exposes the active search option on the combobox input", () => {

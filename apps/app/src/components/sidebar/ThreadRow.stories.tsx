@@ -4,6 +4,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { createStore, Provider } from "jotai";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
@@ -14,6 +15,7 @@ import {
   type CollapsedChildActivity,
 } from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
 const childActivity = (
   overrides: Partial<CollapsedChildActivity> = {},
@@ -763,5 +765,87 @@ export function ActiveWorkflow() {
         </SidebarStage>
       </StoryRow>
     </StoryCard>
+  );
+}
+
+export function SplitViewStatus() {
+  const [store] = useState(createStore);
+
+  useEffect(() => {
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-working",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-idle",
+            content: {
+              kind: "thread",
+              projectId: "proj_demo",
+              threadId: "thr_split_idle",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-working",
+            content: {
+              kind: "thread",
+              projectId: "proj_demo",
+              threadId: "thr_split_working",
+            },
+          },
+        ],
+      },
+    });
+    return () => store.set(splitLayoutAtom, null);
+  }, [store]);
+
+  return (
+    <Provider store={store}>
+      <StoryCard>
+        <StoryRow
+          label="idle split"
+          hint="pane mini-map occupies the trailing status slot"
+        >
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_split_idle",
+                title: "Static split position",
+                titleFallback: "Static split position",
+              })}
+              isActive={false}
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+        <StoryRow
+          label="working split"
+          hint="the same trailing pane mini-map shimmers while work is active"
+        >
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_split_working",
+                title: "Working in split view",
+                titleFallback: "Working in split view",
+                status: "active",
+                runtime: {
+                  displayStatus: "active",
+                  hostReconnectGraceExpiresAt: null,
+                },
+              })}
+              isActive
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+      </StoryCard>
+    </Provider>
   );
 }

@@ -3,7 +3,9 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
@@ -20,6 +22,9 @@ import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
@@ -165,12 +170,230 @@ function renderThreadRow({
   };
 }
 
+function renderSplitThreadRow({
+  hasComposerDraft = false,
+  options = DEFAULT_OPTIONS,
+  pluginStatus,
+  thread = createThread(),
+}: {
+  hasComposerDraft?: boolean;
+  options?: ThreadRowOptions;
+  pluginStatus?: PluginComposerThreadRowStatus;
+  thread?: ThreadListEntry;
+} = {}) {
+  if (pluginStatus) {
+    setPluginThreadRowStatus(thread.id, "split-status-test", pluginStatus);
+  }
+  const store = createStore();
+  store.set(splitLayoutAtom, {
+    focusedPaneId: "pane-thread",
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane-thread",
+          content: {
+            kind: "thread",
+            projectId: thread.projectId,
+            threadId: thread.id,
+          },
+        },
+        {
+          type: "pane",
+          paneId: "pane-compose",
+          content: { kind: "new-thread" },
+        },
+      ],
+    },
+  });
+
+  return render(
+    <Provider store={store}>
+      <ThreadRowTestHarness
+        hasComposerDraft={hasComposerDraft}
+        options={options}
+        thread={thread}
+      />
+    </Provider>,
+  );
+}
+
 afterEach(() => {
   cleanup();
   resetPluginThreadRowStatusesForTest();
+  window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("ThreadRow", () => {
+  const splitWorkingCases: Array<{
+    label: string;
+    pluginStatus?: PluginComposerThreadRowStatus;
+    thread: ThreadListEntry;
+  }> = [
+    {
+      label: "runtime + pending input",
+      thread: createThread({
+        status: "active",
+        hasPendingInteraction: true,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    },
+    {
+      label: "workflow + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "background agent + unread error",
+      thread: createThread({
+        status: "error",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "background command + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "plan mode + unread error",
+      thread: createThread({
+        status: "error",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "goal + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
+      }),
+    },
+    {
+      label: "plugin running + unread error",
+      pluginStatus: {
+        icon: "AiContentGenerator01",
+        label: "Plugin running",
+        tone: "running",
+      },
+      thread: createThread({ status: "error" }),
+    },
+  ];
+
+  it.each(splitWorkingCases)(
+    "shimmers the split map for $label",
+    ({ pluginStatus, thread }) => {
+      const { container } = renderSplitThreadRow({ pluginStatus, thread });
+
+      const splitMap = screen.getByRole("img", { name: /open in split/ });
+      expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
+      expect(
+        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
+      ).not.toBeNull();
+      expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
+    },
+  );
+
+  it.each([
+    ["idle", createThread()],
+    ["unread error only", createThread({ status: "error" })],
+  ])("keeps the split map static for %s", (_label, thread) => {
+    renderSplitThreadRow({ thread });
+
+    const splitMap = screen.getByRole("img", { name: /open in split/ });
+    expect(Array.from(splitMap.classList)).not.toContain("animate-shine-icon");
+  });
+
+  it.each([
+    {
+      label: "pending input",
+      expectedStatus: "Thread needs user input",
+      thread: createThread({ hasPendingInteraction: true }),
+    },
+    {
+      label: "unread error",
+      expectedStatus: "Unread thread failed",
+      thread: createThread({ status: "error" }),
+    },
+    {
+      label: "plugin status",
+      expectedStatus: "Plugin improving draft",
+      pluginStatus: {
+        icon: "AiContentGenerator01" as const,
+        label: "Plugin improving draft",
+      },
+      thread: createThread(),
+    },
+    {
+      label: "collapsed child workflow",
+      expectedStatus: "Workflow running",
+      options: {
+        kind: "parent" as const,
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        childActivity: {
+          ...NO_COLLAPSED_CHILD_ACTIVITY,
+          workflow: true,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+      thread: createThread(),
+    },
+  ])(
+    "preserves the $label status in the split map accessible name",
+    ({ expectedStatus, options, pluginStatus, thread }) => {
+      renderSplitThreadRow({ options, pluginStatus, thread });
+
+      expect(
+        screen
+          .getByRole("img", { name: /open in split/ })
+          .getAttribute("aria-label"),
+      ).toBe(`Thread — open in split; ${expectedStatus}`);
+    },
+  );
+
   it("puts the draft icon in the trailing status slot", () => {
     const { container } = renderThreadRow({
       hasComposerDraft: true,

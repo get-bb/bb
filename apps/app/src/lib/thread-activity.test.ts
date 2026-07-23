@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getCollapsedChildActivity,
+  hasThreadListWorkingActivity,
   isBusyThread,
   isUnreadDoneThread,
   resolveThreadListIndicator,
@@ -59,6 +60,40 @@ const idleIndicatorState: ThreadListIndicatorState = {
 };
 
 describe("thread-activity", () => {
+  describe("hasThreadListWorkingActivity", () => {
+    it.each([
+      "isRuntimeActive",
+      "isWorkflowActive",
+      "isBackgroundAgentActive",
+      "isBackgroundCommandActive",
+      "isPlanModeActive",
+      "isGoalActive",
+    ] as const)(
+      "keeps %s working despite higher-priority attention states",
+      (flag) => {
+        expect(
+          hasThreadListWorkingActivity({
+            ...idleIndicatorState,
+            hasPendingInteraction: true,
+            hasUnreadError: true,
+            [flag]: true,
+          }),
+        ).toBe(true);
+      },
+    );
+
+    it("includes plugin work without treating attention-only states as work", () => {
+      const attentionOnly = {
+        ...idleIndicatorState,
+        hasPendingInteraction: true,
+        hasUnreadError: true,
+      };
+
+      expect(hasThreadListWorkingActivity(attentionOnly)).toBe(false);
+      expect(hasThreadListWorkingActivity(attentionOnly, true)).toBe(true);
+    });
+  });
+
   describe("resolveThreadListIndicator", () => {
     it.each([
       "hasPendingInteraction",
@@ -70,18 +105,15 @@ describe("thread-activity", () => {
       "isBackgroundCommandActive",
       "isPlanModeActive",
       "isGoalActive",
-    ] as const)(
-      "prefers runtime work over concurrent %s",
-      (flag) => {
-        expect(
-          resolveThreadListIndicator({
-            ...idleIndicatorState,
-            isRuntimeActive: true,
-            [flag]: true,
-          }),
-        ).toBe("runtime");
-      },
-    );
+    ] as const)("prefers runtime work over concurrent %s", (flag) => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isRuntimeActive: true,
+          [flag]: true,
+        }),
+      ).toBe("runtime");
+    });
 
     it.each([
       "isWorkflowActive",

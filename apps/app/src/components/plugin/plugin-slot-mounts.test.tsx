@@ -1562,9 +1562,11 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       </Provider>,
     );
 
-    expect(
-      screen.getByRole("img", { name: "Demo board — open in split" }),
-    ).not.toBeNull();
+    const splitMap = screen.getByRole("img", {
+      name: "Demo board — open in split",
+    });
+    const label = screen.getByText("Demo board");
+    expect(label.nextElementSibling).toBe(splitMap);
   });
 
   it("keeps the sidebar entry active on nested plugin panel routes", () => {
