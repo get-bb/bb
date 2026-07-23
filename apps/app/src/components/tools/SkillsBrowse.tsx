@@ -75,7 +75,7 @@ function RegistrySkillActions({
                 className="size-3.5"
                 aria-hidden
               />
-              Create
+              Create similar
             </>
           ),
         }}

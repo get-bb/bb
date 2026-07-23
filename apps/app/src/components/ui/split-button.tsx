@@ -58,13 +58,14 @@ function SplitButton({
   );
 
   return (
-    <div className="inline-flex items-center">
+    <div className="inline-flex items-stretch">
       <button
         type="button"
         disabled={disabled || primaryAction.disabled}
         className={cn(
           base,
-          "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
+          "rounded-r-none focus-visible:z-10",
+          variant === "outline" && "border-r-0 pr-1",
         )}
         aria-label={primaryAction.label}
         aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
@@ -79,8 +80,10 @@ function SplitButton({
             disabled={disabled}
             className={cn(
               base,
-              "rounded-l-none border-l-0 px-1 focus-visible:z-10",
-              "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+              "rounded-l-none focus-visible:z-10",
+              variant === "outline"
+                ? "border-l-0 px-1 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+                : "border-l border-l-background/20 px-1.5 hover:bg-foreground/90 data-[state=open]:bg-foreground/85 data-[state=open]:text-background",
             )}
             aria-label={triggerLabel}
           >
