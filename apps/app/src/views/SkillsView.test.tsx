@@ -329,13 +329,10 @@ describe("SkillsOverview", () => {
       canUninstall: () => true,
     });
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", {
-        name: "More actions for Useful skill",
-      }),
-    );
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Remove saved skill" }),
+      screen.getByRole("button", {
+        name: "Remove saved Useful skill from bb",
+      }),
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(
@@ -356,16 +353,7 @@ describe("SkillsOverview", () => {
       canUninstall: () => false,
     });
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", {
-        name: "More actions for Useful skill",
-      }),
-    );
-    expect(
-      screen
-        .getByRole("menuitem", { name: "Saved" })
-        .hasAttribute("data-disabled"),
-    ).toBe(true);
+    expect(screen.getByLabelText("Saved Useful skill to bb")).toBeTruthy();
   });
 
   it("disables provider filters that have no matching skills", async () => {
@@ -489,13 +477,10 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     stubRegistryFetch(registrySkill);
     renderRegistrySkillRoute();
 
-    fireEvent.pointerDown(
-      await screen.findByRole("button", {
-        name: "More actions for Useful skill",
-      }),
-    );
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Remove saved skill" }),
+      await screen.findByRole("button", {
+        name: "Remove saved Useful skill from bb",
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
     await waitFor(() => {
@@ -522,20 +507,16 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     stubRegistryFetch(registrySkill, { installedSkill });
     renderRegistrySkillRoute();
 
-    fireEvent.pointerDown(
+    fireEvent.click(
       await screen.findByRole("button", {
-        name: "More actions for Useful skill",
+        name: "Save Useful skill to bb",
       }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Save" }));
 
-    const actions = await screen.findByRole("button", {
-      name: "More actions for Useful skill",
+    const remove = await screen.findByRole("button", {
+      name: "Remove saved Useful skill from bb",
     });
-    fireEvent.pointerDown(actions);
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Remove saved skill" }),
-    );
+    fireEvent.click(remove);
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
@@ -551,11 +532,11 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: /More actions for Useful skill/ }),
+      screen.queryByRole("button", { name: /Fork Useful skill/ }),
     ).toBeNull();
     expect(
       screen.queryByRole("button", {
-        name: /Create a new skill from Useful skill as a reference/,
+        name: /Fork Useful skill/,
       }),
     ).toBeNull();
   });
@@ -578,7 +559,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Create a new skill from Useful skill as a reference",
+        name: "Fork Useful skill into a new bb skill",
       }),
     );
 
@@ -652,23 +633,18 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "More actions for Alpha" }),
-    ).toBeTruthy();
+    expect(screen.getByLabelText("Saved Alpha to bb")).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: "Create a new skill from Alpha as a reference",
+        name: "Fork Alpha into a new bb skill",
       }),
     ).toBeTruthy();
     const zuluCreate = screen.getByRole("button", {
-      name: "Create a new skill from Zulu as a reference",
+      name: "Fork Zulu into a new bb skill",
     });
     fireEvent.click(zuluCreate);
     expect(onCreateFromReference).toHaveBeenCalledWith(zulu);
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "More actions for Zulu" }),
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Zulu to bb" }));
     expect(onInstall).toHaveBeenCalledWith(zulu);
 
     expect(screen.queryByRole("button", { name: "Sort" })).toBeNull();
@@ -712,7 +688,7 @@ describe("RegistrySkillDetailView reference creation", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Create a new skill from Useful skill as a reference",
+        name: "Fork Useful skill into a new bb skill",
       }),
     );
     expect(onCreateFromReference).toHaveBeenCalledWith(registrySkill);
@@ -733,7 +709,7 @@ describe("RegistrySkillDetailView reference creation", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Create a new skill from Useful skill as a reference",
+        name: "Fork Useful skill into a new bb skill",
       }),
     );
     expect(onCreateFromReference).toHaveBeenCalledTimes(2);

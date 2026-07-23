@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { buttonVariants, type ButtonProps } from "@bb/shared-ui/button";
+import { buttonVariants } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -16,7 +16,6 @@ const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
 
 interface SplitButtonAction {
   ariaKeyshortcuts?: string;
-  disabled?: boolean;
   groupLabel?: string;
   label: string;
   onSelect: () => void;
@@ -27,7 +26,6 @@ interface SplitButtonProps {
   primaryAction: SplitButtonAction;
   secondaryActions: SplitButtonAction[];
   disabled?: boolean;
-  variant?: NonNullable<ButtonProps["variant"]>;
   /** Escape hatch for targeted overrides (e.g. tighter padding for icon-only primaries). Applied to both buttons. */
   className?: string;
   triggerLabel?: string;
@@ -42,7 +40,6 @@ function SplitButton({
   primaryAction,
   secondaryActions,
   disabled = false,
-  variant = "outline",
   className,
   triggerLabel = "More actions",
   mobileTitle,
@@ -50,22 +47,19 @@ function SplitButton({
   modal,
 }: SplitButtonProps) {
   const base = cn(
-    buttonVariants({ variant, size: "sm" }),
-    variant === "outline"
-      ? SPLIT_BUTTON_TOOLBAR_CLASS
-      : "h-7 px-2 text-xs max-md:pointer-coarse:h-9",
+    buttonVariants({ variant: "outline", size: "sm" }),
+    SPLIT_BUTTON_TOOLBAR_CLASS,
     className,
   );
 
   return (
-    <div className="inline-flex items-stretch">
+    <div className="inline-flex items-center">
       <button
         type="button"
-        disabled={disabled || primaryAction.disabled}
+        disabled={disabled}
         className={cn(
           base,
-          "rounded-r-none focus-visible:z-10",
-          variant === "outline" && "border-r-0 pr-1",
+          "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
         )}
         aria-label={primaryAction.label}
         aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
@@ -80,10 +74,8 @@ function SplitButton({
             disabled={disabled}
             className={cn(
               base,
-              "rounded-l-none focus-visible:z-10",
-              variant === "outline"
-                ? "border-l-0 px-1 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-                : "border-l border-l-background/20 px-1.5 hover:bg-foreground/90 data-[state=open]:bg-foreground/85 data-[state=open]:text-background",
+              "rounded-l-none border-l-0 px-1 focus-visible:z-10",
+              "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
             )}
             aria-label={triggerLabel}
           >
@@ -112,7 +104,6 @@ function SplitButton({
                 <DropdownMenuItem
                   onSelect={action.onSelect}
                   textValue={action.label}
-                  disabled={action.disabled}
                 >
                   {action.content ?? action.label}
                 </DropdownMenuItem>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
+import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
@@ -22,115 +23,49 @@ import type {
   RegistrySkillDetail,
 } from "@/lib/skills-registry";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { SkillDetailView } from "@/components/tools/SkillDetailView";
-import { SplitButton } from "@/components/ui/split-button";
 import {
-  ConfirmDeleteDialog,
-  ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+  SkillBrowseInstallControl,
+  SkillDetailView,
+} from "@/components/tools/SkillDetailView";
 
 const SKILLS_SH_URL = "https://www.skills.sh/";
 
 function RegistrySkillActions({
   skillName,
   saved,
-  canRemove,
-  saving,
-  removing,
+  pending,
   onCreateFromReference,
   onSave,
   onRemove,
 }: {
   skillName: string;
   saved: boolean;
-  canRemove: boolean;
-  saving: boolean;
-  removing: boolean;
+  pending: boolean;
   onCreateFromReference: () => void;
   onSave: () => void;
   onRemove?: () => void;
 }) {
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const lifecyclePending = saving || removing;
-  const lifecycleLabel = saving
-    ? "Saving"
-    : removing
-      ? "Removing"
-      : saved
-        ? canRemove
-          ? "Remove saved skill"
-          : "Saved"
-        : "Save";
   return (
-    <>
-      <SplitButton
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
         variant="default"
-        primaryAction={{
-          label: `Create a new skill from ${skillName} as a reference`,
-          onSelect: onCreateFromReference,
-          content: (
-            <>
-              <Icon
-                name="AiContentGenerator01"
-                className="size-3.5"
-                aria-hidden
-              />
-              Create similar
-            </>
-          ),
-        }}
-        secondaryActions={[
-          {
-            label: lifecycleLabel,
-            disabled: lifecyclePending || (saved && !canRemove),
-            onSelect:
-              saved && onRemove ? () => setConfirmingRemove(true) : onSave,
-            content: (
-              <>
-                <Icon
-                  name={
-                    lifecyclePending
-                      ? "Loading"
-                      : saved
-                        ? canRemove
-                          ? "Trash2"
-                          : "Check"
-                        : "Download"
-                  }
-                  className={
-                    lifecyclePending ? "size-4 animate-spin" : "size-4"
-                  }
-                  aria-hidden
-                />
-                {lifecycleLabel}
-              </>
-            ),
-          },
-        ]}
-        triggerLabel={`More actions for ${skillName}`}
-        mobileTitle={`${skillName} actions`}
+        size="sm"
+        className="h-7 px-2 text-xs max-md:pointer-coarse:h-9"
+        aria-label={`Fork ${skillName} into a new bb skill`}
+        onClick={onCreateFromReference}
+      >
+        <Icon name="Fork" className="size-3.5" aria-hidden />
+        Fork
+      </Button>
+      <SkillBrowseInstallControl
+        skillName={skillName}
+        installed={saved}
+        pending={pending}
+        onInstall={onSave}
+        onUninstall={onRemove}
       />
-      {saved && canRemove && onRemove ? (
-        <ConfirmDeleteDialog
-          open={confirmingRemove}
-          onOpenChange={(open) => {
-            if (!removing) setConfirmingRemove(open);
-          }}
-        >
-          <ConfirmDeleteDialogContent
-            title="Remove saved skill?"
-            description={`Remove "${skillName}" from your bb skills?`}
-            confirmLabel="Remove skill"
-            pending={removing}
-            onConfirm={() => {
-              onRemove();
-              setConfirmingRemove(false);
-            }}
-            onCancel={() => setConfirmingRemove(false)}
-          />
-        </ConfirmDeleteDialog>
-      ) : null}
-    </>
+    </div>
   );
 }
 
@@ -189,9 +124,7 @@ function RegistrySkillSourceItem({
         <RegistrySkillActions
           skillName={skill.name}
           saved={installed}
-          canRemove={canUninstall}
-          saving={pending && !installed}
-          removing={pending && installed}
+          pending={pending}
           onCreateFromReference={() => onCreateFromReference(skill)}
           onSave={() => onInstall(skill)}
           onRemove={canUninstall ? () => onUninstall(skill) : undefined}
@@ -363,9 +296,7 @@ export function RegistrySkillDetailView({
         <RegistrySkillActions
           skillName={skill.name}
           saved={installed}
-          canRemove={onUninstall !== undefined}
-          saving={pending}
-          removing={uninstallPending}
+          pending={pending || uninstallPending}
           onCreateFromReference={() => onCreateFromReference(skill)}
           onSave={() => onInstall(skill)}
           onRemove={onUninstall ? () => onUninstall(skill) : undefined}
