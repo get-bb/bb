@@ -114,6 +114,7 @@ export function ResourceLifecycleStatus({
 export function ResourceInstallControl({
   accessibleLabel,
   label = "Install",
+  icon = "Download",
   pendingLabel = "Installing",
   pending = false,
   disabled = false,
@@ -124,6 +125,7 @@ export function ResourceInstallControl({
 }: {
   accessibleLabel: string;
   label?: string;
+  icon?: IconName;
   pendingLabel?: string;
   pending?: boolean;
   disabled?: boolean;
@@ -154,7 +156,7 @@ export function ResourceInstallControl({
         </span>
       ) : (
         <span className="inline-flex items-center justify-center gap-1.5">
-          <Icon name="Download" className="size-3.5" aria-hidden />
+          <Icon name={icon} className="size-3.5" aria-hidden />
           {presentation === "label" ? label : null}
         </span>
       )}

@@ -508,8 +508,8 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",
-      }),
-    ).toBeTruthy();
+      }).textContent,
+    ).toBe("");
     const zuluCreate = screen.getByRole("button", {
       name: "Fork Zulu into a new bb skill",
     });
@@ -550,11 +550,11 @@ describe("RegistrySkillDetailView reference creation", () => {
     };
     const view = renderDom(<RegistrySkillDetailView {...props} />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Fork Useful skill into a new bb skill",
-      }),
-    );
+    const forkButton = screen.getByRole("button", {
+      name: "Fork Useful skill into a new bb skill",
+    });
+    expect(forkButton.textContent).toContain("Fork");
+    fireEvent.click(forkButton);
     expect(onFork).toHaveBeenCalledWith(registrySkill);
     expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
 

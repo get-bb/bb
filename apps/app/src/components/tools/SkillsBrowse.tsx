@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCardStat,
   ResourceCollectionViewport,
+  ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
   ResourceToolbar,
@@ -30,22 +29,21 @@ const SKILLS_SH_URL = "https://www.skills.sh/";
 function RegistrySkillActions({
   skillName,
   onFork,
+  presentation = "label",
 }: {
   skillName: string;
   onFork: () => void;
+  presentation?: "label" | "icon";
 }) {
   return (
-    <Button
-      type="button"
-      variant="default"
-      size="sm"
-      className="h-7 px-2 text-xs max-md:pointer-coarse:h-9"
-      aria-label={`Fork ${skillName} into a new bb skill`}
-      onClick={onFork}
-    >
-      <Icon name="Fork" className="size-3.5" aria-hidden />
-      Fork
-    </Button>
+    <ResourceInstallControl
+      accessibleLabel={`Fork ${skillName} into a new bb skill`}
+      label="Fork"
+      icon="Fork"
+      presentation={presentation}
+      tooltip={`Fork ${skillName}`}
+      onAction={onFork}
+    />
   );
 }
 
@@ -94,6 +92,7 @@ function RegistrySkillSourceItem({
         <RegistrySkillActions
           skillName={skill.name}
           onFork={() => onFork(skill)}
+          presentation="icon"
         />
       }
       footerMeta={<RegistrySkillSocialProof skill={skill} />}
