@@ -31,6 +31,7 @@ const {
   mockResourceLoaders,
   mockSettingsInMemory,
   mockModelRuntime,
+  oauthRegistrationState,
 } = vi.hoisted(() => {
   const mockResourceLoaders: MockPiResourceLoader[] = [];
 
@@ -57,8 +58,15 @@ const {
       getModel: vi.fn(() => undefined),
       refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
     },
+    oauthRegistrationState: { registered: false },
   };
 });
+
+vi.mock("@earendil-works/pi-ai/bun-oauth", () => ({
+  registerBunOAuthFlows: () => {
+    oauthRegistrationState.registered = true;
+  },
+}));
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   // Keep the real SessionManager.forkFrom so the fork test exercises genuine
@@ -164,6 +172,10 @@ function createAgentEndEvent(): AgentSessionEvent {
 }
 
 describe("pi bridge", () => {
+  it("registers static OAuth loaders for the standalone Pi bundle", () => {
+    expect(oauthRegistrationState.registered).toBe(true);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockResourceLoaders.length = 0;

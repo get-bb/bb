@@ -26,6 +26,7 @@ import {
   type ContextUsage,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import {
   PiSdkSession,
   type PiSdkSessionOptions,
@@ -42,6 +43,10 @@ import {
 } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
+
+// Pi normally loads OAuth flows through relative dynamic imports. This bridge
+// ships as one file, so register Pi's static loaders before auth is resolved.
+registerBunOAuthFlows();
 
 // ---------------------------------------------------------------------------
 // Command schema — defines what JSON-RPC requests this bridge accepts
