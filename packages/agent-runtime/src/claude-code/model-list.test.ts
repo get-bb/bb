@@ -5,15 +5,15 @@ import { buildClaudeCodeModels } from "./model-list.js";
 const DISCOVERED_MODELS: ModelInfo[] = [
   {
     value: "default",
-    resolvedModel: "claude-opus-4-8[1m]",
+    resolvedModel: "claude-opus-5[1m]",
     displayName: "Default (recommended)",
-    description: "Opus 4.8 with 1M context",
+    description: "Opus 5 with 1M context",
   },
   {
     value: "opus[1m]",
-    resolvedModel: "claude-opus-4-8[1m]",
+    resolvedModel: "claude-opus-5[1m]",
     displayName: "Opus",
-    description: "Opus 4.8 with 1M context",
+    description: "Opus 5 with 1M context",
   },
   {
     value: "claude-fable-5[1m]",
@@ -37,6 +37,7 @@ const DISCOVERED_MODELS: ModelInfo[] = [
 
 const CURATED_MODELS = [
   "claude-fable-5",
+  "claude-opus-5[1m]",
   "claude-opus-4-8[1m]",
   "claude-opus-4-7[1m]",
   "claude-sonnet-5",
@@ -53,7 +54,7 @@ describe("buildClaudeCodeModels", () => {
       "claude-haiku-4-5-20251001",
     ]);
     expect(result.models.find((model) => model.isDefault)?.model).toBe(
-      "claude-opus-4-8[1m]",
+      "claude-opus-5[1m]",
     );
     // Selected-only rows stay discovery-gated — they only label a selection the
     // user already has.
@@ -76,7 +77,7 @@ describe("buildClaudeCodeModels", () => {
 
     expect(result.models.map((model) => model.model)).toEqual(CURATED_MODELS);
     expect(result.models.find((model) => model.isDefault)?.model).toBe(
-      "claude-opus-4-8[1m]",
+      "claude-opus-5[1m]",
     );
     expect(result.selectedOnlyModels).toEqual([]);
   });

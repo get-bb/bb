@@ -31,7 +31,7 @@ export const CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS: readonly ModelReasoningEffo
     MAX_REASONING_EFFORT,
   ];
 
-export const DEFAULT_CLAUDE_CODE_MODEL = "claude-opus-4-8[1m]";
+export const DEFAULT_CLAUDE_CODE_MODEL = "claude-opus-5[1m]";
 
 /**
  * BB's curated, version-pinned Claude Code models. Lives here rather than in the
@@ -59,6 +59,14 @@ export const CLAUDE_CODE_ACTIVE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: DEFAULT_CLAUDE_CODE_MODEL,
     model: DEFAULT_CLAUDE_CODE_MODEL,
+    displayName: "Opus 5 (1M)",
+    description: "Opus 5 with 1M context for complex long coding sessions",
+    supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
+    id: "claude-opus-4-8[1m]",
+    model: "claude-opus-4-8[1m]",
     displayName: "Opus 4.8 (1M)",
     description: "Opus 4.8 with 1M context for complex long coding sessions",
     supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,

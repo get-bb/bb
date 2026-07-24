@@ -403,6 +403,7 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.modelOptions.map((option) => option.value)).toEqual(
         [
           "claude-fable-5",
+          "claude-opus-5[1m]",
           "claude-opus-4-8[1m]",
           "claude-opus-4-7[1m]",
           "claude-sonnet-5",

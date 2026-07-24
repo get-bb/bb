@@ -743,6 +743,7 @@ describe("resolveSystemExecutionOptions", () => {
         // models stay appended after it.
         expect(response.models.map((model) => model.model)).toEqual([
           "claude-fable-5",
+          "claude-opus-5[1m]",
           "claude-opus-4-8[1m]",
           "claude-opus-4-7[1m]",
           "claude-sonnet-5",
@@ -782,6 +783,7 @@ describe("resolveSystemExecutionOptions", () => {
       });
       expect(response.models.map((model) => model.model)).toEqual([
         "claude-fable-5",
+        "claude-opus-5[1m]",
         "claude-opus-4-8[1m]",
         "claude-opus-4-7[1m]",
         "claude-sonnet-5",
@@ -790,7 +792,7 @@ describe("resolveSystemExecutionOptions", () => {
         response.models
           .filter((model) => model.isDefault)
           .map((model) => model.model),
-      ).toEqual(["claude-opus-4-8[1m]"]);
+      ).toEqual(["claude-opus-5[1m]"]);
     });
   });
 

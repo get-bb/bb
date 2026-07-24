@@ -128,10 +128,11 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
     id: "opus[1m]",
     model: "opus[1m]",
-    displayName: "Opus Alias (1M, Legacy)",
-    description: "Legacy moving Opus 1M alias retained for existing selections",
-    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
-    defaultReasoningEffort: "medium",
+    displayName: "Opus Alias (1M, Current)",
+    description:
+      "Moving Opus 1M alias accepted by Claude Code; resolves to the current Opus 1M model",
+    supportedReasoningEfforts: CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
   },
   {
     id: "opus",
