@@ -1,6 +1,5 @@
 import {
   automationListResponseSchema,
-  automationDetailPageSchema,
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
@@ -30,7 +29,7 @@ export const automationRpcContract = defineRpcContract({
   },
   automations_get: {
     input: projectAutomationInputSchema,
-    output: automationDetailPageSchema,
+    output: automationResponseSchema,
   },
   automations_create: {
     input: createAutomationInputSchema,
@@ -71,7 +70,7 @@ export function createRpcHandlers(service: AutomationService) {
       return service.list(input);
     },
     automations_get(input: z.output<typeof projectAutomationInputSchema>) {
-      return service.detail(input);
+      return service.get(input);
     },
     automations_create(input: z.output<typeof createAutomationInputSchema>) {
       return service.create(input);

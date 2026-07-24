@@ -90,59 +90,6 @@ describe("plugin service", () => {
     expect(service.getApi("greeter")).toBeDefined();
   });
 
-  it("models declared and live capabilities in the plugin detail contract", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-capabilities",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.cli.register({
-            name: "capabilities",
-            summary: "Inspect capabilities",
-            run: async () => ({ exitCode: 0 }),
-          });
-          bb.settings.define({
-            apiToken: { type: "string", label: "API token" },
-          });
-        }
-      `,
-    });
-    await service.installPath(rootDir);
-
-    expect(service.detail("capabilities")).toMatchObject({
-      plugin: { id: "capabilities", status: "running" },
-      capabilities: expect.arrayContaining([
-        {
-          kind: "server-extension",
-          id: "server",
-          label: "Server extension",
-          detail: null,
-        },
-        {
-          kind: "command",
-          id: "capabilities",
-          label: "bb capabilities",
-          detail: "Inspect capabilities",
-        },
-        {
-          kind: "setting",
-          id: "apiToken",
-          label: "API token",
-          detail: "Setting",
-        },
-      ]),
-    });
-
-    await service.setEnabled("capabilities", false);
-    expect(service.detail("capabilities")?.capabilities).toEqual([
-      {
-        kind: "server-extension",
-        id: "server",
-        label: "Server extension",
-        detail: null,
-      },
-    ]);
-  });
-
   it("marks a throwing factory as error without affecting others", async () => {
     const bad = await writePlugin(workDir, {
       name: "bb-plugin-bad",

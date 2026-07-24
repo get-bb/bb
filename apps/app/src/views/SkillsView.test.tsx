@@ -670,13 +670,13 @@ describe("RegistrySkillDetailView reference creation", () => {
     const registrySkill = makeRegistrySkill();
     const onFork = vi.fn();
     const props = {
+      skill: registrySkill,
       detail: {
-        kind: "registry" as const,
-        skill: {
-          ...registrySkill,
-          hash: null,
-          files: [{ path: "SKILL.md", contents: "# Useful skill" }],
-        },
+        id: registrySkill.id,
+        source: registrySkill.source,
+        skillId: registrySkill.skillId,
+        hash: null,
+        files: [{ path: "SKILL.md", contents: "# Useful skill" }],
       },
       localSkill: null,
       localPath: null,
@@ -691,7 +691,7 @@ describe("RegistrySkillDetailView reference creation", () => {
     });
     expect(forkButton.textContent).toContain("Fork");
     fireEvent.click(forkButton);
-    expect(onFork).toHaveBeenCalledWith(props.detail.skill);
+    expect(onFork).toHaveBeenCalledWith(registrySkill);
     expect(screen.queryByRole("button", { name: /Save .* to bb/ })).toBeNull();
 
     view.rerender(

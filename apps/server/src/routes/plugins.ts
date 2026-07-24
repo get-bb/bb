@@ -548,14 +548,6 @@ export function registerPluginRoutes(
     return context.json(source);
   });
 
-  app.get("/plugins/:id", (context) => {
-    const detail = plugins.detail(context.req.param("id"));
-    if (detail === undefined) {
-      return context.json({ error: "unknown plugin" }, 404);
-    }
-    return context.json(detail);
-  });
-
   app.post("/plugins/reload", async (context) => {
     const id = context.req.query("id") ?? undefined;
     if (!plugins.isEnabled() && (id === undefined || !gateAllowsPlugin(id))) {

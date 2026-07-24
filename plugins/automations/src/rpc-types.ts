@@ -355,23 +355,10 @@ export type AutomationRunRpcResponse = z.infer<
   typeof automationRunRpcResponseSchema
 >;
 
-export const automationProjectSummarySchema = z
-  .object({ id: z.string(), name: z.string() })
-  .strict();
-
-/** Canonical identity and definition model for one Automation detail page. */
-export const automationDetailPageSchema = z
-  .object({
-    automation: automationResponseSchema,
-    project: automationProjectSummarySchema,
-  })
-  .strict();
-export type AutomationDetailPage = z.infer<typeof automationDetailPageSchema>;
-
 export const automationsOverviewEntrySchema = z
   .object({
     automation: automationResponseSchema,
-    project: automationProjectSummarySchema,
+    project: z.object({ id: z.string(), name: z.string() }).strict(),
   })
   .strict();
 export const automationsOverviewResponseSchema = z

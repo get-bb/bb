@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
+  pluginSettingsViewQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -91,7 +92,6 @@ describe("PluginDetail official catalog lifecycle", () => {
           <PluginDetail
             isLoading={false}
             plugin={GITHUB_PLUGIN}
-            capabilities={[]}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -148,7 +148,6 @@ describe("PluginDetail official catalog lifecycle", () => {
               provenance: "direct",
               catalogEntryId: null,
             }}
-            capabilities={[]}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -183,7 +182,6 @@ describe("PluginDetail official catalog lifecycle", () => {
               provenance: "builtin",
               catalogEntryId: null,
             }}
-            capabilities={[]}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -278,45 +276,24 @@ describe("PluginDetail capability inventory", () => {
         },
       ],
     } satisfies PluginListItem;
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    queryClient.setQueryData(pluginSettingsViewQueryKey(plugin.id), {
+      schema: {
+        apiToken: {
+          type: "string",
+          label: "API token",
+          secret: true,
+        },
+      },
+      values: { apiToken: { set: true } },
+    });
     const { container } = render(
       <MemoryRouter>
         <QueryClientWrapper>
           <PluginDetail
             isLoading={false}
             plugin={plugin}
-            capabilities={[
-              {
-                kind: "command",
-                id: "capability",
-                label: "bb capability",
-                detail: "Inspect contributed capabilities.",
-              },
-              {
-                kind: "setting",
-                id: "apiToken",
-                label: "API token",
-                detail: "Setting",
-              },
-              {
-                kind: "service",
-                id: "watch",
-                label: "watch",
-                detail: "Background service",
-              },
-              {
-                kind: "service",
-                id: "sync",
-                label: "sync",
-                detail: "Background service",
-              },
-              {
-                kind: "schedule",
-                id: "daily-cleanup",
-                label: "daily-cleanup",
-                detail: "Cron · 0 9 * * *",
-              },
-            ]}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -345,7 +322,7 @@ describe("PluginDetail capability inventory", () => {
     expect(inventory.getByText("watch")).toBeTruthy();
     expect(inventory.getByText("sync")).toBeTruthy();
     expect(inventory.getByText("daily-cleanup")).toBeTruthy();
-    expect(includes?.textContent).toContain("0 9 * * *");
+    expect(inventory.getByText("0 9 * * *")).toBeTruthy();
     expect(includes?.textContent).not.toContain("2 background services");
 
     const groups = includes?.querySelectorAll("[data-plugin-capability-group]");

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { skillFilesResponseSchema, skillSummarySchema } from "./projects.js";
 
 export const registrySkillSchema = z.object({
   id: z.string().min(1),
@@ -50,42 +49,6 @@ export const registrySkillDetailSchema = z.object({
   files: z.array(registrySkillFileSchema).nullable(),
 });
 export type RegistrySkillDetail = z.infer<typeof registrySkillDetailSchema>;
-
-export const librarySkillDetailPageSchema = z
-  .object({
-    kind: z.literal("library"),
-    skill: skillSummarySchema,
-    files: skillFilesResponseSchema.shape.files,
-    filesTruncated: skillFilesResponseSchema.shape.truncated,
-  })
-  .strict();
-export type LibrarySkillDetailPage = z.infer<
-  typeof librarySkillDetailPageSchema
->;
-
-export const registrySkillDetailPageSchema = z
-  .object({
-    kind: z.literal("registry"),
-    skill: registrySkillSchema.extend({
-      hash: z.string().nullable(),
-      files: z.array(registrySkillFileSchema),
-    }),
-  })
-  .strict();
-export type RegistrySkillDetailPage = z.infer<
-  typeof registrySkillDetailPageSchema
->;
-
-/**
- * Canonical data models for the two Skills Hub detail pages. File contents
- * remain lazy for library skills so changing the selected file does not reload
- * page identity.
- */
-export const skillDetailPageSchema = z.discriminatedUnion("kind", [
-  librarySkillDetailPageSchema,
-  registrySkillDetailPageSchema,
-]);
-export type SkillDetailPage = z.infer<typeof skillDetailPageSchema>;
 
 export const registrySkillInstallRequestSchema = z
   .object({

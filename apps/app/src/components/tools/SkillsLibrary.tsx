@@ -3,11 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { buildSkillEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
-import type {
-  EditableSkillScope,
-  LibrarySkillDetailPage,
-  SkillSummary,
-} from "@bb/server-contract";
+import type { EditableSkillScope, SkillSummary } from "@bb/server-contract";
 import {
   ResourceListState,
   useResourceRouteLabel,
@@ -32,11 +28,7 @@ import {
   registryRepositoryKey,
   resolveInstalledRegistrySkill,
 } from "@/lib/skills-registry";
-import type {
-  RegistryPagination,
-  RegistrySkill,
-  RegistrySkillDetailPage,
-} from "@/lib/skills-registry";
+import type { RegistryPagination, RegistrySkill } from "@/lib/skills-registry";
 import {
   getRegistrySkillDetailRoutePath,
   getRegistrySkillsRoutePath,
@@ -85,15 +77,6 @@ function SkillDetailPage({
   const filesQuery = useSkillFiles(projectId, skill);
   const contentQuery = useSkillContent(projectId, skill, selectedPath);
   const deleteSkill = useDeleteSkill(projectId);
-  const detail: LibrarySkillDetailPage | null =
-    skill === null
-      ? null
-      : {
-          kind: "library",
-          skill,
-          files: filesQuery.data?.files ?? ["SKILL.md"],
-          filesTruncated: filesQuery.data?.truncated ?? false,
-        };
   // Skills live on the local host (personal project), so the SKILL.md is a real
   // local file we can hand to the user's editor.
   const { canOpenPreferredFileTarget, openPathInPreferredFileTarget } =
@@ -106,8 +89,8 @@ function SkillDetailPage({
 
   return (
     <SkillDetailDialogView
-      skill={detail?.skill ?? null}
-      files={detail?.files ?? ["SKILL.md"]}
+      skill={skill}
+      files={filesQuery.data?.files ?? ["SKILL.md"]}
       selectedPath={selectedPath}
       onSelectPath={setSelectedPath}
       content={contentQuery.data?.content ?? ""}
@@ -371,19 +354,6 @@ export function SkillsLibrary() {
     [navigate],
   );
   const registryDetail = registryDetailQuery.data ?? null;
-  const registryDetailPage: RegistrySkillDetailPage | null =
-    selectedRegistrySkill !== null &&
-    registryDetail !== null &&
-    registryDetail.files !== null
-      ? {
-          kind: "registry",
-          skill: {
-            ...selectedRegistrySkill,
-            hash: registryDetail.hash,
-            files: registryDetail.files,
-          },
-        }
-      : null;
   const selectedLocalRegistrySkill = selectedRegistrySkill
     ? findLocalRegistrySkill(selectedRegistrySkill)
     : null;
@@ -420,15 +390,16 @@ export function SkillsLibrary() {
       ) : selectedRegistrySkill && registryDetailQuery.isLoading ? (
         <ResourceListState state="loading" message="Checking skill source" />
       ) : selectedRegistrySkill &&
-        (registryDetailQuery.isError || registryDetailPage === null) ? (
+        (registryDetailQuery.isError || registryDetail === null) ? (
         <ResourceListState
           state="error"
           message="This registry skill is no longer available from its source."
           onRetry={() => void registryDetailQuery.refetch()}
         />
-      ) : selectedRegistrySkill && registryDetailPage ? (
+      ) : selectedRegistrySkill && registryDetail ? (
         <RegistrySkillDetailView
-          detail={registryDetailPage}
+          skill={selectedRegistrySkill}
+          detail={registryDetail}
           localSkill={selectedLocalRegistrySkill}
           localPath={selectedLocalRegistrySkill?.filePath ?? null}
           onRetry={() => void registryDetailQuery.refetch()}

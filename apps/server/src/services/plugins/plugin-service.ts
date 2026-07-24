@@ -1,6 +1,6 @@
-import { statSync, watch } from "node:fs";
+import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
@@ -25,10 +25,6 @@ import {
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
-import type {
-  PluginDetailCapability,
-  PluginDetailPage,
-} from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
   deleteAllPluginSettings,
@@ -160,7 +156,6 @@ export interface PluginService {
   /** React to experiments that affect plugin loading being toggled at runtime. */
   onExperimentsChanged(): Promise<void>;
   list(): PluginListEntry[];
-  detail(id: string): PluginDetailPage | undefined;
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
   /** Read a loaded plugin palette by its globally namespaced id. */
@@ -1334,147 +1329,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
   }
 
-  function detail(id: string): PluginDetailPage | undefined {
-    const plugin = list().find((entry) => entry.id === id);
-    if (plugin === undefined) return undefined;
-
-    const loadedCandidate = loaded.get(id);
-    const loadedPlugin =
-      loadedCandidate !== undefined && shouldExposeLoadedPlugin(loadedCandidate)
-        ? loadedCandidate
-        : undefined;
-    const manifest = loadedPlugin?.manifest ?? identities.get(id)?.manifest;
-    const capabilities: PluginDetailCapability[] = [];
-    const add = (
-      kind: PluginDetailCapability["kind"],
-      capabilityId: string,
-      label: string,
-      capabilityDetail: string | null,
-    ): void => {
-      capabilities.push({
-        kind,
-        id: capabilityId,
-        label,
-        detail: capabilityDetail,
-      });
-    };
-
-    if (manifest !== undefined) {
-      if (manifest.appEntry !== undefined) {
-        add("frontend-app", "app", "Frontend app", null);
-      }
-      add("server-extension", "server", "Server extension", null);
-      for (const rootPath of manifest.skillsRootPaths) {
-        try {
-          if (!statSync(rootPath).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-        const displayPath = relative(manifest.rootDir, rootPath) || ".";
-        add("skill-root", displayPath, displayPath, "Skill collection");
-      }
-      for (const theme of manifest.themes) {
-        add("theme", theme.id, theme.name, theme.description);
-      }
-    }
-
-    if (loadedPlugin !== undefined) {
-      const handle = loadedPlugin.handle;
-      const cli = handle.cli.registration;
-      if (cli !== null) {
-        add("command", cli.name, `bb ${cli.name}`, cli.summary);
-      }
-      for (const [settingId, descriptor] of Object.entries(
-        handle.settings.descriptors,
-      )) {
-        add("setting", settingId, descriptor.label, "Setting");
-      }
-      for (const service of loadedPlugin.services) {
-        add(
-          "service",
-          service.record.name,
-          service.record.name,
-          "Background service",
-        );
-      }
-      for (const schedule of handle.schedules) {
-        add(
-          "schedule",
-          schedule.name,
-          schedule.name,
-          `Cron · ${schedule.cron}`,
-        );
-      }
-      for (const tool of handle.agentTools) {
-        add("agent-tool", tool.name, tool.name, tool.description);
-      }
-      for (const route of handle.httpRoutes) {
-        add(
-          "http-route",
-          `${route.method}:${route.path}`,
-          `${route.method} ${route.path}`,
-          `HTTP route · ${route.auth} auth`,
-        );
-      }
-      for (const method of handle.rpcHandlers.keys()) {
-        add("rpc-method", method, method, "RPC method");
-      }
-      for (const action of handle.threadActions) {
-        add("thread-action", action.id, action.title, "Thread action");
-      }
-      for (const provider of handle.mentionProviders) {
-        add(
-          "mention-provider",
-          provider.id,
-          provider.label,
-          `Mention provider · ${provider.triggers.join(", ")}`,
-        );
-      }
-      for (const [eventName, handlers] of Object.entries(
-        handle.threadEventHandlers,
-      )) {
-        if (handlers.length > 0) {
-          add(
-            "event-handler",
-            eventName,
-            eventName,
-            `${handlers.length} event ${handlers.length === 1 ? "handler" : "handlers"}`,
-          );
-        }
-      }
-      if (handle.databaseHandles.length > 0) {
-        add(
-          "database",
-          "storage",
-          "Plugin storage",
-          `${handle.databaseHandles.length} ${handle.databaseHandles.length === 1 ? "database" : "databases"}`,
-        );
-      }
-      if (handle.agentConfigurationProvider !== null) {
-        add(
-          "agent-configuration",
-          "agent-configuration",
-          "Agent configuration",
-          "Selects tools, skills, and instructions per session",
-        );
-      }
-      if (handle.instructionProvider !== null) {
-        add(
-          "instructions",
-          "instructions",
-          "Agent instructions",
-          "Contributes dynamic thread instructions",
-        );
-      }
-    }
-
-    return { plugin, capabilities };
-  }
-
   return {
     isEnabled: () => deps.isEnabled(),
     isBuiltin: isBuiltinPluginId,
-    detail,
 
     listThemes() {
       return [...loaded.entries()]

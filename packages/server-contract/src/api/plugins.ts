@@ -172,50 +172,6 @@ export const installedPluginSchema = z.object({
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
 
-export const pluginDetailCapabilityKindSchema = z.enum([
-  "frontend-app",
-  "server-extension",
-  "skill-root",
-  "theme",
-  "command",
-  "setting",
-  "service",
-  "schedule",
-  "agent-tool",
-  "http-route",
-  "rpc-method",
-  "thread-action",
-  "mention-provider",
-  "event-handler",
-  "database",
-  "agent-configuration",
-  "instructions",
-]);
-export type PluginDetailCapabilityKind = z.infer<
-  typeof pluginDetailCapabilityKindSchema
->;
-
-export const pluginDetailCapabilitySchema = z
-  .object({
-    kind: pluginDetailCapabilityKindSchema,
-    id: z.string().min(1),
-    label: z.string().min(1),
-    detail: z.string().nullable(),
-  })
-  .strict();
-export type PluginDetailCapability = z.infer<
-  typeof pluginDetailCapabilitySchema
->;
-
-/** Canonical server-owned model for one Tools Hub plugin detail page. */
-export const pluginDetailPageSchema = z
-  .object({
-    plugin: installedPluginSchema,
-    capabilities: z.array(pluginDetailCapabilitySchema),
-  })
-  .strict();
-export type PluginDetailPage = z.infer<typeof pluginDetailPageSchema>;
-
 export const pluginListResponseSchema = z.object({
   enabled: z.boolean(),
   plugins: z.array(installedPluginSchema),

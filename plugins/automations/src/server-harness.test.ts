@@ -8,7 +8,6 @@ import {
 import plugin from "./server.js";
 import {
   automationListResponseSchema,
-  automationDetailPageSchema,
   automationsOverviewResponseSchema,
   automationResponseSchema,
   automationRunListResponseSchema,
@@ -211,14 +210,12 @@ describe("automations server plugin harness", () => {
       }),
     );
 
-    const detail = automationDetailPageSchema.parse(
+    const found = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
       }),
     );
-    expect(detail.project).toEqual({ id: PROJECT_ID, name: "Test Project" });
-    const found = detail.automation;
     expect(found).toMatchObject({
       id: created.id,
       name: "RPC agent",
@@ -307,12 +304,12 @@ describe("automations server plugin harness", () => {
         await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
       )[0]?.id,
     ).toBe(created.id);
-    const editable = automationDetailPageSchema.parse(
+    const editable = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
       }),
-    ).automation;
+    );
     expect(editable.execution).toMatchObject({
       mode: "script",
       script: "echo ok",
@@ -376,12 +373,12 @@ describe("automations server plugin harness", () => {
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
     });
-    const updatedEditable = automationDetailPageSchema.parse(
+    const updatedEditable = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
       }),
-    ).automation;
+    );
     expect(updatedEditable.execution).toEqual({
       mode: "script",
       script: "echo updated",
@@ -690,12 +687,12 @@ describe("automations server plugin harness", () => {
       "Permission mode auto is not supported by provider codex.",
     );
 
-    const unchanged = automationDetailPageSchema.parse(
+    const unchanged = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: created.id,
       }),
-    ).automation;
+    );
     expect(unchanged.execution).toMatchObject({
       mode: "agent",
       permissionMode: "accept-edits",
@@ -810,12 +807,12 @@ describe("automations server plugin harness", () => {
       }),
     });
 
-    const disabled = automationDetailPageSchema.parse(
+    const disabled = automationResponseSchema.parse(
       await harness.callRpc("automations_get", {
         projectId: PROJECT_ID,
         automationId: automation.id,
       }),
-    ).automation;
+    );
     expect(disabled).toMatchObject({
       enabled: false,
       nextRunAt: null,
