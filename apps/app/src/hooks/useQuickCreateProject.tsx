@@ -6,9 +6,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deriveProjectNameFromPath } from "@bb/domain";
+import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
+import { useHosts } from "@/hooks/queries/host-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -36,15 +37,18 @@ export interface QuickCreateProjectController {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
+  hosts: readonly Host[];
   projectPathDialog: QuickCreateProjectDialogState;
   submitProjectPath: ProjectPathDialogSubmitHandler;
 }
 
 const quickCreateProjectContext =
   createContext<QuickCreateProjectController | null>(null);
+const EMPTY_HOSTS: readonly Host[] = [];
 
 export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
+  const hosts = useHosts().data ?? EMPTY_HOSTS;
   const navigate = useNavigate();
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -81,8 +85,12 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   });
 
   const openCreateDialog = useCallback(() => {
+    if (hosts.length > 1) {
+      controller.projectPathDialog.onOpen({ kind: "create" });
+      return;
+    }
     controller.openPicker({ kind: "create" });
-  }, [controller]);
+  }, [controller, hosts.length]);
 
   return useMemo(
     () => ({
@@ -92,10 +100,11 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       platform: controller.platform,
       hostId: controller.hostId,
       hostName: controller.hostName,
+      hosts,
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, isPending, openCreateDialog],
+    [controller, hosts, isPending, openCreateDialog],
   );
 }
 

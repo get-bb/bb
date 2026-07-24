@@ -1,0 +1,99 @@
+// @vitest-environment jsdom
+
+import { act, cleanup, renderHook } from "@testing-library/react";
+import type { Host } from "@bb/domain";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useQuickCreateProject } from "./useQuickCreateProject";
+
+const mocks = vi.hoisted(() => ({
+  hosts: [] as Host[],
+  mutate: vi.fn(),
+  navigate: vi.fn(),
+  onClose: vi.fn(),
+  onOpen: vi.fn(),
+  onOpenChange: vi.fn(),
+  openPicker: vi.fn(),
+  setRootComposeProjectId: vi.fn(),
+}));
+
+vi.mock("react-router-dom", () => ({
+  useLocation: () => ({ pathname: "/" }),
+  useNavigate: () => mocks.navigate,
+}));
+
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useCreateProject: () => ({ isPending: false, mutate: mocks.mutate }),
+}));
+
+vi.mock("@/hooks/queries/host-queries", () => ({
+  useHosts: () => ({ data: mocks.hosts }),
+}));
+
+vi.mock("@/hooks/useLocalPathPicker", () => ({
+  useLocalPathPicker: () => ({
+    isAvailable: true,
+    hostId: "host_atum",
+    hostName: "atum",
+    openPicker: mocks.openPicker,
+    platform: "linux",
+    projectPathDialog: {
+      isOpen: false,
+      onClose: mocks.onClose,
+      onOpen: mocks.onOpen,
+      onOpenChange: mocks.onOpenChange,
+      target: null,
+    },
+    submitProjectPath: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/root-compose-selection", () => ({
+  useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
+}));
+
+function host(id: string, name: string): Host {
+  return {
+    id,
+    name,
+    type: "persistent",
+    status: "connected",
+    lastSeenAt: null,
+    lastRejectedProtocolVersion: null,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+beforeEach(() => {
+  mocks.hosts = [host("host_atum", "atum")];
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe("useQuickCreateProject", () => {
+  it("opens the dialog instead of the native primary-host picker when several machines exist", () => {
+    mocks.hosts = [host("host_atum", "atum"), host("host_thoth", "Thoth")];
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    act(() => result.current.openCreateDialog());
+
+    expect(mocks.onOpen).toHaveBeenCalledWith({ kind: "create" });
+    expect(mocks.openPicker).not.toHaveBeenCalled();
+    expect(result.current.hosts.map((item) => item.id)).toEqual([
+      "host_atum",
+      "host_thoth",
+    ]);
+  });
+
+  it("keeps the current picker behavior with one machine", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    act(() => result.current.openCreateDialog());
+
+    expect(mocks.openPicker).toHaveBeenCalledWith({ kind: "create" });
+    expect(mocks.onOpen).not.toHaveBeenCalled();
+  });
+});

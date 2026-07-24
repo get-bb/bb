@@ -1111,6 +1111,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               platform={quickCreateProject.platform}
               hostId={quickCreateProject.hostId}
               hostName={quickCreateProject.hostName}
+              hosts={quickCreateProject.hosts}
               onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
               onSubmit={quickCreateProject.submitProjectPath}
             />

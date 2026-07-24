@@ -77,9 +77,13 @@ export function useLocalPathPicker({
   const closeDialog = projectPathDialog.onClose;
 
   const submitPath = useCallback(
-    (path: string, target: ProjectPathDialogTarget) => {
-      if (isPending || !hostId) return;
-      submit({ path, hostId, target, closeDialog });
+    (
+      path: string,
+      target: ProjectPathDialogTarget,
+      selectedHostId: string | null = hostId,
+    ) => {
+      if (isPending || !selectedHostId) return;
+      submit({ path, hostId: selectedHostId, target, closeDialog });
     },
     [closeDialog, hostId, isPending, submit],
   );
@@ -118,8 +122,8 @@ export function useLocalPathPicker({
   );
 
   const submitProjectPath = useCallback<ProjectPathDialogSubmitHandler>(
-    (target, path) => {
-      submitPath(path, target);
+    (target, path, selectedHostId) => {
+      submitPath(path, target, selectedHostId);
     },
     [submitPath],
   );

@@ -1,3 +1,5 @@
+<!-- Diátaxis: how-to -->
+
 # Using bb on multiple devices
 
 There are two separate ways to use more than one device with bb:
@@ -85,7 +87,9 @@ service.
 
 After it connects:
 
-1. Add that machine's project path or clone source in project settings.
+1. To create a project from that machine, choose New project, select the
+   machine, and browse to its folder. To map an existing project there instead,
+   add its path or clone source in project settings.
 2. Select the machine when creating a thread, or use `bb thread spawn --machine
 <id-or-name> ...`.
 3. Inspect enrolled machines with `bb machine list`.

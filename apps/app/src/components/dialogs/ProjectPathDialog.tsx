@@ -3,6 +3,7 @@ import {
   deriveProjectNameFromPath,
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
+  type Host,
 } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -15,7 +16,9 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
 export type ProjectPathDialogTarget =
@@ -37,6 +40,7 @@ export type ProjectPathDialogTarget =
 export type ProjectPathDialogSubmitHandler = (
   target: ProjectPathDialogTarget,
   path: string,
+  hostId: string | null,
 ) => Promise<void> | void;
 
 interface ProjectPathDialogProps {
@@ -45,6 +49,7 @@ interface ProjectPathDialogProps {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
+  hosts?: readonly Host[];
   onOpenChange: (open: boolean) => void;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
@@ -55,6 +60,7 @@ export function ProjectPathDialog({
   platform,
   hostId,
   hostName,
+  hosts,
   onOpenChange,
   onSubmit,
 }: ProjectPathDialogProps) {
@@ -69,6 +75,7 @@ export function ProjectPathDialog({
             platform={platform}
             hostId={hostId}
             hostName={hostName}
+            hosts={hosts}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -83,6 +90,7 @@ export interface ProjectPathDialogContentProps {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
+  hosts?: readonly Host[];
   onSubmit: ProjectPathDialogSubmitHandler;
 }
 
@@ -139,10 +147,31 @@ export function ProjectPathDialogContent({
   platform,
   hostId,
   hostName,
+  hosts,
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
+  const machineOptions = target.kind === "create" ? hosts : undefined;
+  const firstConnectedHostId = machineOptions?.find(
+    (host) => host.status === "connected",
+  )?.id;
+  const initialHostId =
+    hostId !== null &&
+    (machineOptions === undefined ||
+      machineOptions.some(
+        (host) => host.id === hostId && host.status === "connected",
+      ))
+      ? hostId
+      : (firstConnectedHostId ?? hostId);
+  const [selectedHostId, setSelectedHostId] = useState(initialHostId);
+  const selectedHost = machineOptions?.find(
+    (host) => host.id === selectedHostId,
+  );
+  const selectedHostName = selectedHost?.name ?? hostName;
+  const selectedHostConnected =
+    selectedHost === undefined || selectedHost.status === "connected";
+  const showMachinePicker = (machineOptions?.length ?? 0) > 1;
   // No-host fallback only: the browser owns the path when a host is present.
   const [manualPath, setManualPath] = useState(
     target.kind === "update" ? target.currentPath : "",
@@ -153,13 +182,13 @@ export function ProjectPathDialogContent({
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
   );
-  const copy = getPlatformCopy(platform, hostName);
+  const copy = getPlatformCopy(platform, selectedHostName);
   const placeholder =
     target.kind === "update"
       ? target.currentPath || copy.placeholder
       : copy.placeholder;
 
-  const selectedPath = hostId
+  const selectedPath = selectedHostId
     ? browserDirectory
     : normalizeProjectPathInput(manualPath) || null;
   const derivedProjectName = selectedPath
@@ -195,7 +224,7 @@ export function ProjectPathDialogContent({
       return;
     }
 
-    void onSubmit(target, normalizedPath);
+    void onSubmit(target, normalizedPath, selectedHostId);
   };
 
   return (
@@ -203,20 +232,67 @@ export function ProjectPathDialogContent({
       <DialogHeader>
         <DialogTitle>{getDialogTitle(target.kind)}</DialogTitle>
         <DialogDescription>
-          {hostId
+          {selectedHostId
             ? `Browse to the project folder${
-                hostName ? ` on ${hostName}` : ""
+                selectedHostName ? ` on ${selectedHostName}` : ""
               }, or edit the path directly.`
             : copy.description}
         </DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
-        {hostId ? (
+        {showMachinePicker ? (
+          <div
+            role="radiogroup"
+            aria-label="Machine"
+            className="grid max-h-36 gap-1 overflow-y-auto rounded-md border p-1"
+          >
+            {machineOptions?.map((host) => {
+              const connected = host.status === "connected";
+              const selected = host.id === selectedHostId;
+              return (
+                <label
+                  key={host.id}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none ring-ring focus-within:ring-2",
+                    selected
+                      ? "bg-state-active text-foreground"
+                      : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+                    pending || !connected
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`project-machine-${inputId}`}
+                    aria-label={host.name}
+                    checked={selected}
+                    disabled={pending || !connected}
+                    className="sr-only"
+                    onChange={() => {
+                      setSelectedHostId(host.id);
+                      setBrowserDirectory(null);
+                    }}
+                  />
+                  <MachineStatusDot connected={connected} />
+                  <span className="min-w-0 flex-1 truncate">{host.name}</span>
+                  {!connected ? (
+                    <span className="text-xs text-subtle-foreground">
+                      Offline
+                    </span>
+                  ) : null}
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+        {selectedHostId ? (
           <RemotePathBrowser
-            hostId={hostId}
+            key={selectedHostId}
+            hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}
             onDirectoryChange={setBrowserDirectory}
-            disabled={pending}
+            disabled={pending || !selectedHostConnected}
           />
         ) : (
           <Input
@@ -248,7 +324,10 @@ export function ProjectPathDialogContent({
           </div>
         ) : null}
         <DialogFooter>
-          <Button type="submit" disabled={pending || !selectedPath}>
+          <Button
+            type="submit"
+            disabled={pending || !selectedPath || !selectedHostConnected}
+          >
             {getDialogSubmitLabel(target.kind)}
           </Button>
         </DialogFooter>
