@@ -1,6 +1,6 @@
 import { renderTemplate } from "@bb/templates";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import { InferenceTimeoutError, inferenceComplete } from "./inference.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 

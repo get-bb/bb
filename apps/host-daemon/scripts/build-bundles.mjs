@@ -25,7 +25,9 @@ async function main() {
       bundle: true,
       conditions: ["source"],
       entryPoints: [target.entryPoint],
-      external: createNativeExternalPatterns(),
+      external: createNativeExternalPatterns({
+        bundledPackages: target.bundledPackages,
+      }),
       format: "esm",
       legalComments: "none",
       minify: true,

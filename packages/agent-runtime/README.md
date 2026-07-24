@@ -187,5 +187,5 @@ mapping, unhandled-event envelopes, command-output normalization) live in
 - `@bb/domain` — shared types (ThreadEvent, ProviderThreadEvent, PromptInput, ToolCallRequest, etc.)
 - `@bb/templates` — markdown templates for provider instructions
 - `@anthropic-ai/claude-agent-sdk` — Claude Code
-- `@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent` — Pi
+- `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent` — Pi
 - `zod` — schema validation at provider boundaries

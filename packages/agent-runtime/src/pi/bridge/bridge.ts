@@ -24,8 +24,8 @@ import {
   SessionManager,
   type AgentSessionEvent,
   type ContextUsage,
-} from "@mariozechner/pi-coding-agent";
-import type { ImageContent } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import {
   PiSdkSession,
   type PiSdkSessionOptions,
@@ -41,6 +41,7 @@ import {
   type ToolCallForwarder,
 } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
+import { getPiModelRuntime } from "./model-runtime.js";
 
 // ---------------------------------------------------------------------------
 // Command schema — defines what JSON-RPC requests this bridge accepts
@@ -79,7 +80,13 @@ const piInstructionOverrideSchemaOptions = {
   path: ["appendSystemPrompt"],
 };
 
-const piReasoningLevelValues = ["low", "medium", "high", "xhigh"] as const;
+const piReasoningLevelValues = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
 const piReasoningLevelSchema = z.enum(piReasoningLevelValues);
 type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 const piAdditionalSkillPathsSchema = z.array(z.string()).optional();
@@ -600,14 +607,14 @@ type ThreadResumeParams = Extract<
   PiCommand,
   { method: "thread/resume" }
 >["params"];
-type ThreadForkParams = Extract<
-  PiCommand,
-  { method: "thread/fork" }
->["params"];
+type ThreadForkParams = Extract<PiCommand, { method: "thread/fork" }>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
 type ThreadStopParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
-type PiSessionParams = ThreadStartParams | ThreadResumeParams | ThreadForkParams;
+type PiSessionParams =
+  | ThreadStartParams
+  | ThreadResumeParams
+  | ThreadForkParams;
 
 function buildPiSessionParams(
   params: PiSessionParams,
@@ -633,7 +640,7 @@ function buildPiSessionParams(
 
 async function handleModelList(id: string | number): Promise<void> {
   try {
-    sendResult(id, await listPiBridgeModels());
+    sendResult(id, await listPiBridgeModels(await getPiModelRuntime()));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
@@ -664,7 +671,7 @@ async function startPiThreadSession({
 
   const sessionSerial = nextSessionSerial();
   const session = new PiSdkSession(
-    sessionOptions,
+    { ...sessionOptions, modelRuntime: await getPiModelRuntime() },
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
   );

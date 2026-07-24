@@ -7,7 +7,10 @@
  * the Pi SDK and produces `ThreadEvent[]`.
  */
 
-import { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import {
+  getBuiltinModels,
+  getBuiltinProviders,
+} from "@earendil-works/pi-ai/providers/all";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import { z } from "zod";
 import type {
@@ -188,16 +191,6 @@ interface PiContextWindowModel {
   provider: string;
 }
 
-const piContextWindowModelSchema = z
-  .object({
-    id: z.string(),
-    provider: z.string(),
-    contextWindow: z.number().optional(),
-  })
-  .passthrough();
-
-const piContextWindowModelsSchema = z.array(piContextWindowModelSchema);
-
 // Keep Pi's SDK-level turn_start/turn_end outside the translated event union
 // until replay proves they represent bb turn boundaries rather than internal
 // provider subturns.
@@ -266,6 +259,7 @@ const piAgentEndEventSchema = z
   .object({
     type: z.literal("agent_end"),
     messages: z.array(piConversationMessageSchema),
+    willRetry: z.boolean().default(false),
   })
   .passthrough();
 
@@ -610,10 +604,6 @@ type PiModelContextWindowResolver = (
   lastAssistant: PiAssistantMessage | undefined,
 ) => number | null;
 
-function createPiModelRegistry(): ModelRegistry {
-  return ModelRegistry.create(AuthStorage.create());
-}
-
 function buildPiModelContextWindowLookup(
   models: readonly PiContextWindowModel[],
 ): PiModelContextWindowLookup {
@@ -633,19 +623,12 @@ function buildPiModelContextWindowLookup(
 }
 
 function createPiModelContextWindowResolver(): PiModelContextWindowResolver {
-  return (lastAssistant) => {
-    if (!toOptionalString(lastAssistant?.model)) {
-      return null;
-    }
-
-    // Resolve against a fresh registry so models.json overrides and custom
-    // model definitions are reflected without module-level cached state.
-    const models = piContextWindowModelsSchema.parse(
-      createPiModelRegistry().getAll(),
-    );
-    const modelContextWindowLookup = buildPiModelContextWindowLookup(models);
-    return resolvePiModelContextWindow(lastAssistant, modelContextWindowLookup);
-  };
+  const models = getBuiltinProviders().flatMap((provider) =>
+    getBuiltinModels(provider),
+  );
+  const modelContextWindowLookup = buildPiModelContextWindowLookup(models);
+  return (lastAssistant) =>
+    resolvePiModelContextWindow(lastAssistant, modelContextWindowLookup);
 }
 
 // ---------------------------------------------------------------------------
@@ -962,6 +945,21 @@ export function createPiProviderAdapter(
           break;
         }
         const lastAssistant = findLastAssistantMessage(piEvent.data.messages);
+        if (piEvent.data.willRetry) {
+          return lastAssistant && isPiAssistantError(lastAssistant)
+            ? [
+                {
+                  type: "provider/error",
+                  threadId,
+                  providerThreadId: "",
+                  scope: turnScope(currentTurnId),
+                  message: "Provider error",
+                  detail: lastAssistant.errorMessage,
+                  willRetry: true,
+                },
+              ]
+            : [];
+        }
         if (lastAssistant && isPiAssistantError(lastAssistant)) {
           resetPiCommandOutputSnapshots(state);
           return translatePiErrorEnvelope({

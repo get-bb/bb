@@ -1,33 +1,26 @@
 import type { AvailableModel } from "@bb/domain";
-import type { KnownProvider } from "@mariozechner/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { buildPiAvailableModels } from "../model-list.js";
 
-export async function listPiBridgeModels(): Promise<{
+export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const [piAiModule, piCodingAgentModule] = await Promise.all([
-    import("@mariozechner/pi-ai"),
-    import("@mariozechner/pi-coding-agent"),
-  ]);
-
-  const authStorage = piCodingAgentModule.AuthStorage.create();
-  const providers = piAiModule.getProviders();
+  await modelRuntime.refresh({
+    allowNetwork: true,
+    signal: AbortSignal.timeout(5_000),
+  });
+  const availableModels = await modelRuntime.getAvailable();
 
   return buildPiAvailableModels({
-    providers,
-    getModels(provider: KnownProvider) {
-      return piAiModule.getModels(provider).map((model) => ({
-        id: model.id,
-        input: model.input,
-        name: model.name,
-        provider: model.provider,
-        reasoning: model.reasoning,
-        supportsXhigh: piAiModule.supportsXhigh(model),
-      }));
-    },
-    hasAuth(provider: KnownProvider) {
-      return authStorage.hasAuth(provider);
-    },
+    models: availableModels.map((model) => ({
+      id: model.id,
+      input: [...model.input],
+      name: model.name,
+      provider: model.provider,
+      reasoning: model.reasoning,
+      supportedThinkingLevels: getSupportedThinkingLevels(model),
+    })),
   });
 }

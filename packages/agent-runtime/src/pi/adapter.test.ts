@@ -7,7 +7,7 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
-import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { createPiProviderAdapter } from "./adapter.js";
 import { buildPiAvailableModels } from "./model-list.js";
 import type { ProviderExecutionContext } from "../provider-adapter.js";
@@ -20,6 +20,42 @@ function loadFixture(name: string): AgentSessionEvent {
   return JSON.parse(
     readFileSync(resolve(FIXTURES, name), "utf8"),
   ) as AgentSessionEvent;
+}
+
+function createPiAgentErrorEvent(
+  errorMessage: string,
+  willRetry: boolean,
+): AgentSessionEvent {
+  return {
+    type: "agent_end",
+    messages: [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage,
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-haiku-4-5",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        timestamp: 1777995781000,
+      },
+    ],
+    willRetry,
+  };
 }
 
 const fullProviderExecutionContext = {
@@ -659,40 +695,7 @@ describe("pi provider adapter", () => {
     adapter.translateEvent(loadFixture("agent-start.json"), context);
 
     const events = adapter.translateEvent(
-      {
-        type: "agent_end",
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "Say exactly: PI SDK DIAGNOSTIC" }],
-            timestamp: 1777995780000,
-          },
-          {
-            role: "assistant",
-            content: [],
-            stopReason: "error",
-            errorMessage: quotaMessage,
-            api: "anthropic-messages",
-            provider: "anthropic",
-            model: "claude-haiku-4-5",
-            usage: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: 0,
-              cost: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                total: 0,
-              },
-            },
-            timestamp: 1777995781000,
-          },
-        ],
-      } satisfies AgentSessionEvent,
+      createPiAgentErrorEvent(quotaMessage, false),
       context,
     );
 
@@ -714,6 +717,39 @@ describe("pi provider adapter", () => {
       },
     ]);
     expect(events.some((event) => event.type === "item/completed")).toBe(false);
+  });
+
+  it("keeps the Pi turn active while the SDK retries an assistant error", () => {
+    const adapter = createPiProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+    adapter.translateEvent(loadFixture("agent-start.json"), context);
+
+    const retryEvents = adapter.translateEvent(
+      createPiAgentErrorEvent("temporary provider failure", true),
+      context,
+    );
+    const completedEvents = adapter.translateEvent(
+      loadFixture("agent-end-with-message.json"),
+      context,
+    );
+
+    expect(retryEvents).toEqual([
+      expect.objectContaining({
+        type: "provider/error",
+        detail: "temporary provider failure",
+        willRetry: true,
+      }),
+    ]);
+    expect(retryEvents.some((event) => event.type === "turn/completed")).toBe(
+      false,
+    );
+    expect(completedEvents).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
   });
 
   it("translateEvent compaction_start emits a compaction item", () => {
@@ -1914,45 +1950,24 @@ describe("pi provider adapter", () => {
 
   it("builds a dynamic model list from the Pi catalog", () => {
     const { models } = buildPiAvailableModels({
-      providers: ["anthropic", "openai", "google"],
-      getModels: (provider) => {
-        switch (provider) {
-          case "anthropic":
-            return [
-              {
-                id: "claude-sonnet-4",
-                name: "Claude Sonnet 4",
-                provider: "anthropic",
-                reasoning: true,
-                input: ["text", "image"],
-                supportsXhigh: false,
-              },
-            ];
-          case "openai":
-            return [
-              {
-                id: "codex-mini",
-                name: "Codex Mini",
-                provider: "openai",
-                reasoning: true,
-                input: ["text"],
-                supportsXhigh: false,
-              },
-            ];
-          default:
-            return [
-              {
-                id: "gemini-2.5-pro",
-                name: "Gemini 2.5 Pro",
-                provider: "google",
-                reasoning: true,
-                input: ["text"],
-                supportsXhigh: false,
-              },
-            ];
-        }
-      },
-      hasAuth: (provider) => provider !== "google",
+      models: [
+        {
+          id: "claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          provider: "anthropic",
+          reasoning: true,
+          input: ["text", "image"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "codex-mini",
+          name: "Codex Mini",
+          provider: "openai",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+      ],
     });
 
     const ids = models.map((model) => model.id);
@@ -1966,15 +1981,14 @@ describe("pi provider adapter", () => {
 
   it("routes dated Pi versions to the selected-only bucket", () => {
     const { models, selectedOnlyModels } = buildPiAvailableModels({
-      providers: ["anthropic"],
-      getModels: () => [
+      models: [
         {
           id: "claude-opus-4-8",
           name: "Claude Opus 4.8",
           provider: "anthropic",
           reasoning: true,
           input: ["text"],
-          supportsXhigh: true,
+          supportedThinkingLevels: ["low", "medium", "high", "xhigh"],
         },
         {
           id: "claude-opus-4-6-20240620",
@@ -1982,10 +1996,9 @@ describe("pi provider adapter", () => {
           provider: "anthropic",
           reasoning: true,
           input: ["text"],
-          supportsXhigh: false,
+          supportedThinkingLevels: ["low", "medium", "high"],
         },
       ],
-      hasAuth: () => true,
     });
 
     expect(models.map((model) => model.id)).toEqual([

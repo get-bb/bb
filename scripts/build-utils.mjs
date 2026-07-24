@@ -36,7 +36,8 @@ export const NATIVE_EXTERNAL_PACKAGES = [
   "lightningcss",
   // jiti loads plugin server entries as TypeScript at runtime and lazily
   // require()s its own transform files (babel.cjs); bundling it breaks that
-  // lazy resolution, so it must stay external + a shipped dependency.
+  // lazy resolution, so it must stay external + a shipped dependency unless a
+  // bundle target explicitly uses the bundle-safe `jiti/static` entry point.
   "jiti",
 ];
 
@@ -47,8 +48,13 @@ export function externalPackagePatterns(packageNames) {
   ]);
 }
 
-export function createNativeExternalPatterns() {
-  return externalPackagePatterns(NATIVE_EXTERNAL_PACKAGES);
+export function createNativeExternalPatterns({ bundledPackages = [] } = {}) {
+  const bundledPackageSet = new Set(bundledPackages);
+  return externalPackagePatterns(
+    NATIVE_EXTERNAL_PACKAGES.filter(
+      (packageName) => !bundledPackageSet.has(packageName),
+    ),
+  );
 }
 
 export async function removeFileAndMap(outfile) {

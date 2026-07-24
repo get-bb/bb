@@ -51,16 +51,17 @@ case "$(uname -s)" in
 esac
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "bb-app requires Node.js 20.19 or newer (Node.js 22 LTS is recommended), but node is not on PATH." >&2
+  echo "bb-app requires Node.js 22.19, 24, or 26, but node is not on PATH." >&2
   exit 1
 fi
 node_version=$(node -p 'process.versions.node')
 node_supported=$(node -e '
   const [major, minor] = process.versions.node.split(".").map(Number);
-  process.exit(major > 20 || (major === 20 && minor >= 19) ? 0 : 1);
+  const supported = (major === 22 && minor >= 19) || major === 24 || major === 26;
+  process.exit(supported ? 0 : 1);
 ' && echo yes || echo no)
 if [ "$node_supported" != yes ]; then
-  echo "Node.js $node_version is too old; bb-app requires Node.js 20.19 or newer (Node.js 22 LTS is recommended)." >&2
+  echo "Node.js $node_version is unsupported; bb-app requires Node.js 22.19, 24, or 26." >&2
   exit 1
 fi
 node_bin=$(command -v node)

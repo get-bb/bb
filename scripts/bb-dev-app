@@ -136,17 +136,15 @@ require_command() {
 }
 
 assert_desktop_node_runtime() {
-  local major version exec_path
-  major="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || true)"
+  local version exec_path
   version="$(node -p "process.version" 2>/dev/null || echo "unknown")"
   exec_path="$(command -v node || echo "unknown")"
 
-  if [[ ! "${major}" == <-> ]]; then
-    die "Could not determine Node version for desktop dev"
-  fi
-
-  if (( major > 22 )); then
-    die "Desktop dev requires Node 20 or 22 because Electron's postinstall runtime is not reliable on Node ${major}. Current node is ${version} at ${exec_path}. Install/use Node 22 or set BB_DEV_NODE_BIN_DIR to a Node 22 bin directory."
+  if ! node -e '
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    process.exit(major === 22 && minor >= 19 ? 0 : 1);
+  '; then
+    die "Desktop dev requires Node 22.19 because Electron's postinstall runtime is not reliable on newer Node releases. Current node is ${version} at ${exec_path}. Install/use Node 22.19 or set BB_DEV_NODE_BIN_DIR to a Node 22.19 bin directory."
   fi
 }
 

@@ -37,6 +37,7 @@ export const bundleTargets = [
   },
   {
     banner: NODE_ESM_REQUIRE_BANNER,
+    bundledPackages: ["jiti"],
     entryPoint: resolve(
       workspaceRoot,
       "packages",

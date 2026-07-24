@@ -27,9 +27,9 @@ bb runs from npm and orchestrates coding agents you already have installed.
 
 ### Prerequisites
 
-- Node.js 22 LTS or newer. Node `20.19.x` is best-effort only.
+- Node.js 22.19, 24, or 26.
 - Git.
-- At least one supported agent provider: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://developers.openai.com/codex/cli), Cursor via ACP, [Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent), or another ACP-compatible agent.
+- At least one supported agent provider: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://developers.openai.com/codex/cli), Cursor via ACP, [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent), or another ACP-compatible agent.
 
 If you already use one of these providers, bb will pick up your existing
 credentials. If you use multiple providers, you can mix and match per task.
@@ -114,7 +114,7 @@ bb uses whichever providers you have configured. Common providers:
 | `codex`       | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                  |
 | `claude-code` | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                   |
 | `cursor`      | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                     |
-| `pi`          | See the [Pi coding agent docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
+| `pi`          | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
 | `opencode`    | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                |
 | `grok`        | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                           |
 | `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`. |
