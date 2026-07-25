@@ -81,4 +81,9 @@ describe("normalizeDirectiveAttributes / reconstructDirectiveSource", () => {
       reconstructDirectiveSource("inline-vis", { file: 'demo"x".html' }),
     ).toBe('::inline-vis{file="demo\\"x\\".html"}');
   });
+
+  it("uses the supplied marker for non-leaf directive kinds", () => {
+    expect(reconstructDirectiveSource("30", {}, ":")).toBe(":30");
+    expect(reconstructDirectiveSource("note", {}, ":::")).toBe(":::note");
+  });
 });

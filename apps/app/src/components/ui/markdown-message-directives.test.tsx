@@ -215,6 +215,56 @@ describe("MarkdownPreview message directives", () => {
     expect(screen.getByText('::inline-vis{file="still-streaming')).toBeTruthy();
   });
 
+  it("renders incidental prose colons literally without dropping text", () => {
+    // Regression: `remark-directive` parses `13:30`, `a:b`, and `:D` as text
+    // directives. Before the fix these fell through to mdast-util-to-hast as
+    // empty block `<div>`s, which split the paragraph and deleted the colon
+    // text — e.g. "next run 13:30." rendered as "next run 13" + a stray line
+    // break + ". ...".
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    const sentence =
+      "Watchdog runs every 30 min UTC, next run 13:30. It checks a:b and :D too.";
+    const { container } = render(
+      <MarkdownPreview
+        content={sentence}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs).toHaveLength(1);
+    // Exact text preserved: no dropped `:30` / `:b` / `:D`.
+    expect(paragraphs[0]?.textContent).toBe(sentence);
+    // No block element was injected mid-paragraph to break the line.
+    expect(paragraphs[0]?.querySelector("div")).toBeNull();
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+  });
+
+  it("renders a container directive as literal source text", () => {
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    render(
+      <MarkdownPreview
+        content={":::note\nhello\n:::"}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+    expect(screen.getByText(/:::note/)).toBeTruthy();
+  });
+
   it("falls back to original directive text when the plugin component crashes", () => {
     const registry = buildMessageDirectiveRegistry([
       slot({ id: "inline-vis", pluginId: "demo", component: CrashVis }),
