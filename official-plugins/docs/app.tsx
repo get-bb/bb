@@ -1944,7 +1944,12 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
 
   if (!data || !activeVaultId)
     return (
-      <div className="p-6 text-sm text-muted-foreground">Loading vaults…</div>
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
+        role="status"
+      >
+        Loading vaults…
+      </div>
     );
 
   const selectedFolder = filePath ? dirname(filePath) : "";

@@ -101,6 +101,24 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("keeps the vault loading state clear of top-left app chrome", () => {
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "" },
+      { rpc: { listNotes: () => new Promise(() => undefined) } },
+    );
+
+    const loading = slot.getByText("Loading vaults…");
+    expect(loading.className.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "flex",
+        "flex-1",
+        "items-center",
+        "justify-center",
+      ]),
+    );
+  });
+
   it("moves the sidebar toggle into the shared panel header", async () => {
     const panel = app.navPanels[0]!;
     const slot = renderSlot(

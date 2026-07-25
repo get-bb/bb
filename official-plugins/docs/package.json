@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-simple-notes",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Create and edit Markdown documents across local and connected-host vaults.",
   "private": true,
   "license": "MIT",
