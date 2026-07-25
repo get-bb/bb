@@ -375,6 +375,70 @@ describe("Docs mention provider", () => {
     ]);
   });
 
+  it("ignores YAML frontmatter when deriving note titles and previews", async () => {
+    const { harness } = await loadNotebook({
+      "defensibility.md": [
+        "---",
+        "type: knowledge",
+        "summary: Product strategy metadata",
+        "---",
+        "# AI application-layer defensibility",
+        "",
+        "Durable product strategy.",
+      ].join("\n"),
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "defensibility",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "personal:defensibility.md",
+        title: "AI application-layer defensibility",
+        subtitle: "Personal · Durable product strategy.",
+        icon: "FileText",
+      },
+    ]);
+  });
+
+  it("uses a YAML frontmatter title when the body has no document heading", async () => {
+    const { harness } = await loadNotebook({
+      "california-report.md": [
+        "---",
+        'title: "6th Annual Report: Evaluation of California\'s Caregiver Services"',
+        "type: knowledge",
+        "---",
+        "## Key findings used in wiki",
+        "",
+        "CareNav assessments identify unmet caregiver needs.",
+      ].join("\n"),
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "california",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "personal:california-report.md",
+        title:
+          "6th Annual Report: Evaluation of California's Caregiver Services",
+        subtitle:
+          "Personal · CareNav assessments identify unmet caregiver needs.",
+        icon: "FileText",
+      },
+    ]);
+  });
+
   it("resolves the note's current content at send time", async () => {
     const { harness } = await loadNotebook({
       "ideas.md": "# Fresh Ideas\n\nBuild the mention flow.",
@@ -420,6 +484,26 @@ describe("Docs vault operations", () => {
     await expect(
       host.harness.setSettings({ directory: "/Elsewhere" }),
     ).rejects.toThrow('unknown setting "directory"');
+  });
+
+  it("keeps a frontmatter-managed document at its existing path", async () => {
+    const { harness } = await loadNotebook({
+      "stable-wiki-slug.md": [
+        "---",
+        "title: A different display title",
+        "type: knowledge",
+        "---",
+        "# A different display title",
+      ].join("\n"),
+    });
+
+    await expect(
+      harness.callRpc("renameToTitle", {
+        vaultId: "personal",
+        path: "stable-wiki-slug.md",
+      }),
+    ).resolves.toEqual({ path: "stable-wiki-slug.md" });
+    expect(harness.sdk.callsTo("files.move")).toEqual([]);
   });
 
   it("registers the agent-discoverable Docs CLI", async () => {

@@ -27,6 +27,10 @@ provider, and directive are all Docs.
   `.markdown` files, so it can be selected under Settings → File openers or
   chosen from a file link's Open with menu. Workspace and absolute host files
   retain compare-and-swap saves even when they are outside a Docs vault.
+- **YAML frontmatter:** fenced frontmatter supplies the document title when it
+  has a string `title`, stays out of the rendered body and search preview, and
+  is preserved byte-for-byte when the rich editor saves body changes. Docs
+  also leaves frontmatter-managed filenames unchanged on save.
 - **Tables:** GitHub-flavored Markdown tables render as editable cells. Use Tab
   and Shift+Tab to move between cells (Tab from the final cell adds a row), and
   drag column boundaries to resize them. Saves remain portable Markdown.

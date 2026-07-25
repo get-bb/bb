@@ -20,6 +20,7 @@ import {
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
+import { parseMarkdownDocument } from "./markdown-document.js";
 import {
   Editor,
   Extension,
@@ -503,6 +504,7 @@ function TiptapEditor({
   useEffect(() => {
     ensureEditorStyles();
     if (!rootRef.current) return;
+    const markdownDocument = parseMarkdownDocument(initialValue);
     let editor: Editor;
     const upload = async (file: File) => {
       if (!file.type.startsWith("image/")) return false;
@@ -539,7 +541,7 @@ function TiptapEditor({
           linkify: true,
         }),
       ],
-      content: displayMarkdown(initialValue, previewBaseUrl, notePath),
+      content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
       autofocus: "end",
       editorProps: {
         handlePaste(_view, event) {
@@ -562,6 +564,7 @@ function TiptapEditor({
       },
     });
     const getMarkdown = () =>
+      markdownDocument.frontmatter +
       storedMarkdown(
         editor.storage.markdown.getMarkdown(),
         previewBaseUrl,

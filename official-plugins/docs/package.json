@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-simple-notes",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Create and edit Markdown documents across local and connected-host vaults.",
   "private": true,
   "license": "MIT",
@@ -80,6 +80,7 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
     "tiptap-markdown": "^0.8.10",
+    "yaml": "^2.8.2",
     "zod": "^4.3.6"
   }
 }

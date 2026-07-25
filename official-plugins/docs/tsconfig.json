@@ -13,6 +13,7 @@
   "include": [
     "server.ts",
     "server.test.ts",
+    "markdown-document.ts",
     "app.tsx",
     "app.test.tsx",
     "vitest.config.ts"

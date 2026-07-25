@@ -429,6 +429,59 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("hides and preserves YAML frontmatter when editing a document", async () => {
+    const frontmatter = [
+      "---\r\n",
+      "title: Wiki page\r\n",
+      "type: knowledge\r\n",
+      "---\r\n",
+    ].join("");
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/wiki-page.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "wiki-page.md",
+                title: "Wiki page",
+                preview: "Original body.",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({
+            content: `${frontmatter}# Wiki page\r\n\r\nOriginal body.`,
+            sha256: "sha",
+          }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "wiki-page.md" }),
+          saveNote,
+        },
+      },
+    );
+
+    const body = await slot.findByText("Original body.");
+    const editor = slot.container.querySelector(".tiptap");
+    expect(editor?.textContent).not.toContain("type: knowledge");
+    expect(editor?.querySelector("hr")).toBeNull();
+
+    body.textContent = "Edited body.";
+    fireEvent.input(body);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: expect.stringMatching(
+        /^---\r\ntitle: Wiki page\r\ntype: knowledge\r\n---\r\n# Wiki page\n\nEdited body\./,
+      ),
+    });
+  });
+
   it("renders nested folders, images, and sandboxed HTML directives", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
