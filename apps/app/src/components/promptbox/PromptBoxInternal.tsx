@@ -19,6 +19,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -2319,6 +2320,27 @@ export function PromptBoxInternal({
     resetZenModeAfterSubmit();
   }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
 
+  const handleSubmitPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      const currentEditor = editorRef.current;
+      if (
+        !currentEditor ||
+        currentEditor.isDestroyed ||
+        !currentEditor.isFocused
+      ) {
+        return;
+      }
+
+      // Focus transfer happens before click. On iOS, moving focus from the
+      // editor to this button begins keyboard dismissal and resizes the app
+      // shell before the form can submit. Keep the editor focused; the click
+      // still owns the commit, while genuine outside focus dismisses normally.
+      event.preventDefault();
+    },
+    [],
+  );
+
   // A no-argument built-in command (currently only `/compact`) is a complete
   // action the moment it is selected, so applying it with Enter should also
   // submit instead of leaving the pill parked for a second Enter. The submit is
@@ -3028,6 +3050,7 @@ export function PromptBoxInternal({
                       variant="default"
                       aria-label={effectiveSubmitTitle}
                       disabled={!canSubmit}
+                      onPointerDown={handleSubmitPointerDown}
                       className={cn(
                         showCompactLayout
                           ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
