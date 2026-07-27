@@ -28,6 +28,7 @@ interface CapturedLog {
 }
 
 interface CapturingLogger {
+  debugs: CapturedLog[];
   infos: CapturedLog[];
   logger: ServerLogger;
   warnings: CapturedLog[];
@@ -64,6 +65,7 @@ afterEach(async () => {
 });
 
 function createCapturingLogger(): CapturingLogger {
+  const debugs: CapturedLog[] = [];
   const infos: CapturedLog[] = [];
   const warnings: CapturedLog[] = [];
   function captureTo(target: CapturedLog[]) {
@@ -83,10 +85,11 @@ function createCapturingLogger(): CapturingLogger {
     };
   }
   return {
+    debugs,
     infos,
     warnings,
     logger: {
-      debug: () => undefined,
+      debug: captureTo(debugs),
       error: () => undefined,
       info: captureTo(infos),
       warn: captureTo(warnings),
@@ -360,7 +363,7 @@ describe("injected skill source discovery", () => {
       name: "bb-cli",
       description: "User override copy.",
     });
-    const { logger, infos, warnings } = createCapturingLogger();
+    const { logger, debugs, warnings } = createCapturingLogger();
 
     const sources = await resolveInjectedSkillSources(logger, {
       builtinSkillsRootPath,
@@ -376,7 +379,7 @@ describe("injected skill source discovery", () => {
       }),
     ]);
     expect(warnings).toEqual([]);
-    expect(infos).toEqual([
+    expect(debugs).toEqual([
       expect.objectContaining({
         message: "Built-in injected skill overridden by user skill",
       }),
@@ -397,7 +400,7 @@ describe("injected skill source discovery", () => {
       name: "stories",
       description: "Local stories skill.",
     });
-    const { logger, infos, warnings } = createCapturingLogger();
+    const { logger, debugs, warnings } = createCapturingLogger();
 
     const sources = await resolveInjectedSkillSources(logger, {
       additionalSkillsRootPaths: [inheritedSkillsRootPath],
@@ -414,7 +417,7 @@ describe("injected skill source discovery", () => {
       }),
     ]);
     expect(warnings).toEqual([]);
-    expect(infos).toEqual([
+    expect(debugs).toEqual([
       expect.objectContaining({
         message:
           "Lower-priority injected skill overridden by higher-priority skill",
@@ -437,7 +440,7 @@ describe("injected skill source discovery", () => {
       name: "stories",
       description: "Prod stories skill.",
     });
-    const { logger, infos, warnings } = createCapturingLogger();
+    const { logger, debugs, warnings } = createCapturingLogger();
 
     const sources = await resolveInjectedSkillSources(logger, {
       additionalSkillsRootPaths: [parentSkillsRootPath, prodSkillsRootPath],
@@ -454,7 +457,7 @@ describe("injected skill source discovery", () => {
       }),
     ]);
     expect(warnings).toEqual([]);
-    expect(infos).toEqual([
+    expect(debugs).toEqual([
       expect.objectContaining({
         message:
           "Lower-priority injected skill overridden by higher-priority skill",

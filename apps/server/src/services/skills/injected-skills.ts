@@ -581,7 +581,7 @@ function excludeOverriddenBuiltins(
     if (!userClaimedNames.has(source.name)) {
       return true;
     }
-    logger.info(
+    logger.debug(
       {
         name: source.name,
         sourceRootPath: sourceRootPath(source),
@@ -603,7 +603,7 @@ function excludeOverriddenLowerPriorityUserSources(
     if (!higherPriorityNames.has(source.name)) {
       return true;
     }
-    logger.info(
+    logger.debug(
       {
         name: source.name,
         sourceRootPath: sourceRootPath(source),
