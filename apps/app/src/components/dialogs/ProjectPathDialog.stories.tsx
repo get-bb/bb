@@ -3,6 +3,9 @@ import {
   type ProjectPathDialogTarget,
 } from "./ProjectPathDialog";
 import {
+  HOST_IDS,
+  HOST_NAMES,
+  makeHost,
   PROJECT_IDS,
   PROJECT_NAMES,
 } from "../../../.ladle/story-fixtures";
@@ -29,6 +32,14 @@ const addSourceTarget: ProjectPathDialogTarget = {
   projectId: PROJECT_IDS.bb,
   projectName: PROJECT_NAMES.bb,
 };
+
+const connectedMachine = makeHost();
+const offlineMachine = makeHost({
+  id: HOST_IDS.remote,
+  name: HOST_NAMES.remote,
+  status: "disconnected",
+});
+const offlineLocalMachine = makeHost({ status: "disconnected" });
 
 export function Overview() {
   return (
@@ -108,7 +119,42 @@ export function Overview() {
           />
         </DialogStage>
       </StoryRow>
-      <StoryRow label="pending" hint="submit in flight — input + submit disabled">
+      <StoryRow
+        label="machine picker"
+        hint='kind="create" with several machines — offline rows are disabled; the folder browser below needs a live host, so it reads as empty here'
+      >
+        <DialogStage>
+          <ProjectPathDialogContent
+            target={createTarget}
+            pending={false}
+            platform="darwin"
+            hostId={connectedMachine.id}
+            hostName={connectedMachine.name}
+            hosts={[connectedMachine, offlineMachine]}
+            onSubmit={noop}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="machines all offline"
+        hint="no machine can be browsed — no row is selected and submit stays disabled"
+      >
+        <DialogStage>
+          <ProjectPathDialogContent
+            target={createTarget}
+            pending={false}
+            platform="darwin"
+            hostId={null}
+            hostName={null}
+            hosts={[offlineLocalMachine, offlineMachine]}
+            onSubmit={noop}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="pending"
+        hint="submit in flight — input + submit disabled"
+      >
         <DialogStage>
           <ProjectPathDialogContent
             target={updateTarget}

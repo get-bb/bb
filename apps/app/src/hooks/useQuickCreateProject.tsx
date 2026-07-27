@@ -6,9 +6,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deriveProjectNameFromPath } from "@bb/domain";
+import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
+import { useHosts } from "@/hooks/queries/host-queries";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
@@ -36,15 +37,23 @@ export interface QuickCreateProjectController {
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
+  hosts: readonly Host[];
   projectPathDialog: QuickCreateProjectDialogState;
   submitProjectPath: ProjectPathDialogSubmitHandler;
 }
 
 const quickCreateProjectContext =
   createContext<QuickCreateProjectController | null>(null);
+const EMPTY_HOSTS: readonly Host[] = [];
 
 export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
+  const hostsQuery = useHosts();
+  const hosts = hostsQuery.data ?? EMPTY_HOSTS;
+  const isLoadingHosts = hostsQuery.isPending;
+  const connectedHostCount = hosts.filter(
+    (host) => host.status === "connected",
+  ).length;
   const navigate = useNavigate();
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -80,9 +89,18 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     submit,
   });
 
+  // Only *connected* machines are choosable, so a lone stale enrollment must
+  // not cost desktop users the native folder picker. While the host list is
+  // still loading we can't yet tell single- from multi-machine: open the
+  // dialog, which grows the picker once the list arrives, rather than
+  // committing to the primary host behind the user's back.
   const openCreateDialog = useCallback(() => {
+    if (isLoadingHosts || connectedHostCount > 1) {
+      controller.projectPathDialog.onOpen({ kind: "create" });
+      return;
+    }
     controller.openPicker({ kind: "create" });
-  }, [controller]);
+  }, [connectedHostCount, controller, isLoadingHosts]);
 
   return useMemo(
     () => ({
@@ -92,10 +110,11 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       platform: controller.platform,
       hostId: controller.hostId,
       hostName: controller.hostName,
+      hosts,
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, isPending, openCreateDialog],
+    [controller, hosts, isPending, openCreateDialog],
   );
 }
 
