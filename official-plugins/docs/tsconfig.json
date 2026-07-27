@@ -14,6 +14,7 @@
     "server.ts",
     "server.test.ts",
     "markdown-document.ts",
+    "markdown-document.test.ts",
     "app.tsx",
     "app.test.tsx",
     "vitest.config.ts"

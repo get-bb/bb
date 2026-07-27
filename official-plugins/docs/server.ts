@@ -589,8 +589,14 @@ function summarizeMarkdown(
   const firstHeadingIndex = lines.findIndex(
     (line) => markdownHeadingLevel(line) !== null,
   );
+  // A frontmatter title only supersedes a heading that repeats it. Any other
+  // opening heading is body content and belongs in the preview.
   const previewHeadingIndex =
-    titleLineIndex >= 0 ? titleLineIndex : firstHeadingIndex;
+    titleLineIndex >= 0
+      ? titleLineIndex
+      : firstHeadingIndex >= 0 && cleanedLines[firstHeadingIndex] === title
+        ? firstHeadingIndex
+        : -1;
   const preview = cleanedLines
     .filter(
       (line, index) =>
@@ -1574,7 +1580,10 @@ export default async function plugin(bb: BbPluginApi) {
       const vaultId = input.vaultId;
       const currentPath = requireVaultPath(input.path, { extension: ".md" });
       const file = await readFile(vaultId, currentPath);
-      if (parseMarkdownDocument(file.content).frontmatter) {
+      // Frontmatter that names the document owns the display title, so the
+      // filename is managed by hand. Frontmatter without a title still lets the
+      // H1 drive the filename.
+      if (parseMarkdownDocument(file.content).title) {
         return { path: currentPath };
       }
       const base = kebabCase(deriveTitle(file.content, ""));

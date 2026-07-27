@@ -23,21 +23,32 @@ function readLine(content: string, start: number): MarkdownLine {
   };
 }
 
-function parseFrontmatterTitle(source: string): string | null {
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Frontmatter is a YAML mapping. A document that merely opens with a thematic
+ * break (`---`) followed by prose, a list, or invalid YAML is not frontmatter,
+ * so the fenced block must parse to a mapping (or to nothing) before we hide it
+ * from the editor. Returns null when the block is not frontmatter.
+ */
+function parseFrontmatterMetadata(
+  source: string,
+): Record<string, unknown> | null {
+  let metadata: unknown;
   try {
-    const metadata: unknown = parse(source, { maxAliasCount: 20 });
-    if (
-      typeof metadata !== "object" ||
-      metadata === null ||
-      Array.isArray(metadata)
-    ) {
-      return null;
-    }
-    const title = (metadata as Record<string, unknown>).title;
-    return typeof title === "string" && title.trim() ? title.trim() : null;
+    metadata = parse(source, { maxAliasCount: 20 });
   } catch {
     return null;
   }
+  if (metadata === null || metadata === undefined) return {};
+  return isMapping(metadata) ? metadata : null;
+}
+
+function frontmatterTitle(metadata: Record<string, unknown>): string | null {
+  const title = metadata.title;
+  return typeof title === "string" && title.trim() ? title.trim() : null;
 }
 
 export function parseMarkdownDocument(content: string): MarkdownDocument {
@@ -52,10 +63,12 @@ export function parseMarkdownDocument(content: string): MarkdownDocument {
     const line = readLine(content, lineStart);
     if (line.text === "---" || line.text === "...") {
       const frontmatterSource = content.slice(firstLine.nextStart, line.start);
+      const metadata = parseFrontmatterMetadata(frontmatterSource);
+      if (!metadata) break;
       return {
         frontmatter: content.slice(0, line.nextStart),
         body: content.slice(line.nextStart),
-        title: parseFrontmatterTitle(frontmatterSource),
+        title: frontmatterTitle(metadata),
       };
     }
     if (line.nextStart === lineStart) break;
