@@ -224,7 +224,9 @@ function renderSplitThreadRow({
 afterEach(() => {
   cleanup();
   resetPluginThreadRowStatusesForTest();
+  // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("ThreadRow", () => {

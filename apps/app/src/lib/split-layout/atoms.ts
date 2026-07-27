@@ -1,10 +1,6 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import {
-  createNullableLocalStorageEnumStorage,
-  createLocalStorageSyncStorage,
-  type SyncStorage,
-} from "@/lib/browser-storage";
+import { createTabScopedStorage, type SyncStorage } from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { findPane, listPanes, removePane } from "./ops";
 import {
@@ -15,7 +11,7 @@ import {
 import type { SplitLayout } from "./types";
 
 function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
-  return createLocalStorageSyncStorage<SplitLayout | null>({
+  return createTabScopedStorage<SplitLayout | null>({
     // A malformed or stale value deserializes to null, which the split area
     // reads as "seed a single pane from the current route".
     parse: (storedValue) => deserializeSplitLayout(storedValue),
@@ -25,10 +21,15 @@ function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
 
 /**
  * Global split layout, shared across projects like {@link
- * sidebarCollapsedAtoms}. Null until the first thread view seeds a single pane
- * from the route; persisted through the versioned split-layout codec so reload
- * restores the arrangement (the URL's thread claims focus). The focused pane is
- * carried inside {@link SplitLayout.focusedPaneId}, not a separate atom.
+ * sidebarCollapsedAtoms} but scoped to one tab. Null until the first thread
+ * view seeds a single pane from the route; persisted through the versioned
+ * split-layout codec so reload restores the arrangement (the URL's thread
+ * claims focus). The focused pane is carried inside {@link
+ * SplitLayout.focusedPaneId}, not a separate atom.
+ *
+ * Tab-scoped rather than cross-tab synced: which thread sits in which pane is a
+ * property of the window you are looking at, so a second tab must never adopt
+ * the first tab's panes (issue #873). See {@link createTabScopedStorage}.
  */
 export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
   SPLIT_LAYOUT_STORAGE_KEY,
@@ -39,20 +40,25 @@ export const splitLayoutAtom = atomWithStorage<SplitLayout | null>(
 
 export const MAXIMIZED_PANE_STORAGE_KEY = "bb.splitLayout.maximizedPaneId";
 
-function isPersistedPaneId(value: string): value is string {
-  return value.length > 0;
-}
-
 /**
  * The pane temporarily filling the split workspace. This is persisted beside,
  * rather than inside, the versioned split tree so maximizing never rewrites or
  * migrates the exact arrangement and sizes it will restore. SplitThreadArea
  * validates the id against the hydrated layout and clears stale values.
+ *
+ * Tab-scoped for the same reason as {@link splitLayoutAtom}: it names a pane in
+ * that tab's layout.
  */
 export const maximizedPaneIdAtom = atomWithStorage<string | null>(
   MAXIMIZED_PANE_STORAGE_KEY,
   null,
-  createNullableLocalStorageEnumStorage(isPersistedPaneId),
+  createTabScopedStorage<string | null>({
+    parse: (storedValue, initialValue) =>
+      storedValue !== null && storedValue.length > 0
+        ? storedValue
+        : initialValue,
+    serialize: (value) => value ?? "",
+  }),
   { getOnInit: true },
 );
 
