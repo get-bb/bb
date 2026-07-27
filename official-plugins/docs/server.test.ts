@@ -375,6 +375,122 @@ describe("Docs mention provider", () => {
     ]);
   });
 
+  it("ignores YAML frontmatter when deriving note titles and previews", async () => {
+    const { harness } = await loadNotebook({
+      "defensibility.md": [
+        "---",
+        "type: knowledge",
+        "summary: Product strategy metadata",
+        "---",
+        "# AI application-layer defensibility",
+        "",
+        "Durable product strategy.",
+      ].join("\n"),
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "defensibility",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "personal:defensibility.md",
+        title: "AI application-layer defensibility",
+        subtitle: "Personal · Durable product strategy.",
+        icon: "FileText",
+      },
+    ]);
+  });
+
+  it("uses a YAML frontmatter title when the body has no document heading", async () => {
+    const { harness } = await loadNotebook({
+      "california-report.md": [
+        "---",
+        'title: "6th Annual Report: Evaluation of California\'s Caregiver Services"',
+        "type: knowledge",
+        "---",
+        "## Key findings used in wiki",
+        "",
+        "CareNav assessments identify unmet caregiver needs.",
+      ].join("\n"),
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "california",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "personal:california-report.md",
+        title:
+          "6th Annual Report: Evaluation of California's Caregiver Services",
+        // The H2 is body content, not the title, so the preview keeps it.
+        subtitle:
+          "Personal · Key findings used in wiki CareNav assessments identify unmet caregiver needs.",
+        icon: "FileText",
+      },
+    ]);
+  });
+
+  it("drops only a heading that repeats the frontmatter title", async () => {
+    const { harness } = await loadNotebook({
+      "echoed-title.md": [
+        "---",
+        "title: Caregiver services",
+        "---",
+        "# Caregiver services",
+        "",
+        "CareNav assessments identify unmet caregiver needs.",
+      ].join("\n"),
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "echoed",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toEqual([
+      {
+        id: "personal:echoed-title.md",
+        title: "Caregiver services",
+        subtitle:
+          "Personal · CareNav assessments identify unmet caregiver needs.",
+        icon: "FileText",
+      },
+    ]);
+  });
+
+  it("keeps a section opened by a thematic break in the preview", async () => {
+    const { harness } = await loadNotebook({
+      "thematic-break.md": "---\n\nSome intro text.\n\n---\n\nMore text.\n",
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+
+    // The opening `---` is a thematic break, not frontmatter, so the section it
+    // introduces stays searchable instead of being swallowed as metadata.
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "thematic",
+        projectId: null,
+        threadId: null,
+      }),
+    ).resolves.toMatchObject([
+      { subtitle: "Personal · Some intro text. More text." },
+    ]);
+  });
+
   it("resolves the note's current content at send time", async () => {
     const { harness } = await loadNotebook({
       "ideas.md": "# Fresh Ideas\n\nBuild the mention flow.",
@@ -420,6 +536,42 @@ describe("Docs vault operations", () => {
     await expect(
       host.harness.setSettings({ directory: "/Elsewhere" }),
     ).rejects.toThrow('unknown setting "directory"');
+  });
+
+  it("keeps a frontmatter-managed document at its existing path", async () => {
+    const { harness } = await loadNotebook({
+      "stable-wiki-slug.md": [
+        "---",
+        "title: A different display title",
+        "type: knowledge",
+        "---",
+        "# A different display title",
+      ].join("\n"),
+    });
+
+    await expect(
+      harness.callRpc("renameToTitle", {
+        vaultId: "personal",
+        path: "stable-wiki-slug.md",
+      }),
+    ).resolves.toEqual({ path: "stable-wiki-slug.md" });
+    expect(harness.sdk.callsTo("files.move")).toEqual([]);
+  });
+
+  it("still follows the H1 when frontmatter has no title", async () => {
+    const { harness } = await loadNotebook({
+      "old-slug.md": ["---", "tags: [a]", "---", "# Brand new title"].join(
+        "\n",
+      ),
+    });
+
+    await expect(
+      harness.callRpc("renameToTitle", {
+        vaultId: "personal",
+        path: "old-slug.md",
+      }),
+    ).resolves.toEqual({ path: "brand-new-title.md" });
+    expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
   });
 
   it("registers the agent-discoverable Docs CLI", async () => {

@@ -2,6 +2,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parseMarkdownDocument } from "./markdown-document.js";
 import {
   defineRpcContract,
   type BbPluginApi,
@@ -557,22 +558,60 @@ function cleanLine(line: string): string {
     .trim();
 }
 
-function deriveTitle(content: string, fallback: string): string {
-  for (const line of content.split("\n")) {
-    const stripped = cleanLine(line);
-    if (stripped && !stripped.startsWith("::html{"))
-      return stripped.slice(0, 120);
-  }
-  return fallback;
+function markdownHeadingLevel(line: string): number | null {
+  const match = line.match(/^\s{0,3}(#{1,6})(?:[\t ]+|$)/);
+  return match ? match[1]!.length : null;
 }
 
-function derivePreview(content: string, title: string): string {
-  return content
-    .split("\n")
-    .map(cleanLine)
-    .filter((line) => line && line !== title && !line.startsWith("::html{"))
+function summarizeMarkdown(
+  content: string,
+  fallback: string,
+): { title: string; preview: string } {
+  const document = parseMarkdownDocument(content);
+  const lines = document.body.split("\n");
+  const cleanedLines = lines.map(cleanLine);
+  const firstContentIndex = cleanedLines.findIndex(
+    (line) => line && !line.startsWith("::html{"),
+  );
+  const documentHeadingIndex = document.frontmatter
+    ? lines.findIndex((line) => markdownHeadingLevel(line) === 1)
+    : -1;
+  const titleLineIndex = document.title
+    ? -1
+    : documentHeadingIndex >= 0
+      ? documentHeadingIndex
+      : firstContentIndex;
+  const title = (
+    document.title ??
+    (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
+    fallback
+  ).slice(0, 120);
+  const firstHeadingIndex = lines.findIndex(
+    (line) => markdownHeadingLevel(line) !== null,
+  );
+  // A frontmatter title only supersedes a heading that repeats it. Any other
+  // opening heading is body content and belongs in the preview.
+  const previewHeadingIndex =
+    titleLineIndex >= 0
+      ? titleLineIndex
+      : firstHeadingIndex >= 0 && cleanedLines[firstHeadingIndex] === title
+        ? firstHeadingIndex
+        : -1;
+  const preview = cleanedLines
+    .filter(
+      (line, index) =>
+        index !== previewHeadingIndex &&
+        line &&
+        line !== title &&
+        !line.startsWith("::html{"),
+    )
     .join(" ")
     .slice(0, PREVIEW_LENGTH);
+  return { title, preview };
+}
+
+function deriveTitle(content: string, fallback: string): string {
+  return summarizeMarkdown(content, fallback).title;
 }
 
 function kebabCase(text: string): string {
@@ -833,11 +872,11 @@ export default async function plugin(bb: BbPluginApi) {
           rootPath: vault.rootPath,
         });
         const fallback = path.posix.basename(notePath).replace(/\.md$/i, "");
-        const title = deriveTitle(file.content, fallback);
+        const summary = summarizeMarkdown(file.content, fallback);
         notes.push({
           path: notePath,
-          title,
-          preview: derivePreview(file.content, title),
+          title: summary.title,
+          preview: summary.preview,
           modifiedAtMs: file.modifiedAtMs ?? 0,
         });
       } catch {
@@ -1541,6 +1580,12 @@ export default async function plugin(bb: BbPluginApi) {
       const vaultId = input.vaultId;
       const currentPath = requireVaultPath(input.path, { extension: ".md" });
       const file = await readFile(vaultId, currentPath);
+      // Frontmatter that names the document owns the display title, so the
+      // filename is managed by hand. Frontmatter without a title still lets the
+      // H1 drive the filename.
+      if (parseMarkdownDocument(file.content).title) {
+        return { path: currentPath };
+      }
       const base = kebabCase(deriveTitle(file.content, ""));
       if (!base) return { path: currentPath };
       const parent = path.posix.dirname(currentPath);
