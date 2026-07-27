@@ -47,6 +47,7 @@ const offline = host({
   name: "Offline Mac",
   status: "disconnected",
 });
+const offlineKunst = host({ ...kunst, status: "disconnected" });
 
 afterEach(() => {
   cleanup();
@@ -115,5 +116,31 @@ describe("ProjectPathDialog machine selection", () => {
       "/home/deploy/repos/givecare",
       "host_atum",
     );
+  });
+
+  // With machines listed but none selectable there is no host to resolve a
+  // path against, so the manual-path fallback must not invite a submit that
+  // the picker hook would drop without feedback.
+  it("blocks submission when every listed machine is offline", () => {
+    const onSubmit = vi.fn();
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId={null}
+        hostName={null}
+        hosts={[offline, offlineKunst]}
+        onOpenChange={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Project path")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Add project" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

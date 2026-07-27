@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useQuickCreateProject } from "./useQuickCreateProject";
 
 const mocks = vi.hoisted(() => ({
-  hosts: [] as Host[],
+  hosts: [] as Host[] | undefined,
+  isLoadingHosts: false,
   mutate: vi.fn(),
   navigate: vi.fn(),
   onClose: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
-  useHosts: () => ({ data: mocks.hosts }),
+  useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
@@ -51,12 +52,16 @@ vi.mock("@/lib/root-compose-selection", () => ({
   useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
 }));
 
-function host(id: string, name: string): Host {
+function host(
+  id: string,
+  name: string,
+  status: Host["status"] = "connected",
+): Host {
   return {
     id,
     name,
     type: "persistent",
-    status: "connected",
+    status,
     lastSeenAt: null,
     lastRejectedProtocolVersion: null,
     createdAt: 0,
@@ -66,6 +71,7 @@ function host(id: string, name: string): Host {
 
 beforeEach(() => {
   mocks.hosts = [host("host_atum", "atum")];
+  mocks.isLoadingHosts = false;
 });
 
 afterEach(() => {
@@ -95,5 +101,29 @@ describe("useQuickCreateProject", () => {
 
     expect(mocks.openPicker).toHaveBeenCalledWith({ kind: "create" });
     expect(mocks.onOpen).not.toHaveBeenCalled();
+  });
+
+  it("keeps the native picker when the only other machine is offline", () => {
+    mocks.hosts = [
+      host("host_atum", "atum"),
+      host("host_dead", "Old laptop", "disconnected"),
+    ];
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    act(() => result.current.openCreateDialog());
+
+    expect(mocks.openPicker).toHaveBeenCalledWith({ kind: "create" });
+    expect(mocks.onOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens the dialog while the machine list is still loading", () => {
+    mocks.hosts = undefined;
+    mocks.isLoadingHosts = true;
+    const { result } = renderHook(() => useQuickCreateProject());
+
+    act(() => result.current.openCreateDialog());
+
+    expect(mocks.onOpen).toHaveBeenCalledWith({ kind: "create" });
+    expect(mocks.openPicker).not.toHaveBeenCalled();
   });
 });

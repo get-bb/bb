@@ -172,6 +172,10 @@ export function ProjectPathDialogContent({
   const selectedHostConnected =
     selectedHost === undefined || selectedHost.status === "connected";
   const showMachinePicker = (machineOptions?.length ?? 0) > 1;
+  // Machines are listed but none can be browsed. The manual-path fallback is
+  // meaningless here — there is no host to resolve the path against, so a
+  // submit would be dropped without feedback.
+  const noMachineAvailable = showMachinePicker && selectedHostId === null;
   // No-host fallback only: the browser owns the path when a host is present.
   const [manualPath, setManualPath] = useState(
     target.kind === "update" ? target.currentPath : "",
@@ -236,7 +240,9 @@ export function ProjectPathDialogContent({
             ? `Browse to the project folder${
                 selectedHostName ? ` on ${selectedHostName}` : ""
               }, or edit the path directly.`
-            : copy.description}
+            : noMachineAvailable
+              ? "No machine is online. Start one to choose a project folder."
+              : copy.description}
         </DialogDescription>
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
@@ -294,6 +300,10 @@ export function ProjectPathDialogContent({
             onDirectoryChange={setBrowserDirectory}
             disabled={pending || !selectedHostConnected}
           />
+        ) : noMachineAvailable ? (
+          <p className="rounded-md border px-3 py-6 text-center text-sm text-muted-foreground">
+            Every machine is offline. Bring one online to browse its folders.
+          </p>
         ) : (
           <Input
             id={inputId}
@@ -326,7 +336,12 @@ export function ProjectPathDialogContent({
         <DialogFooter>
           <Button
             type="submit"
-            disabled={pending || !selectedPath || !selectedHostConnected}
+            disabled={
+              pending ||
+              !selectedPath ||
+              !selectedHostConnected ||
+              noMachineAvailable
+            }
           >
             {getDialogSubmitLabel(target.kind)}
           </Button>

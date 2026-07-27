@@ -1,5 +1,3 @@
-<!-- Diátaxis: how-to -->
-
 # Using bb on multiple devices
 
 There are two separate ways to use more than one device with bb:
