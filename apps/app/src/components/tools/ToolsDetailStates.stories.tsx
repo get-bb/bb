@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { AutomationDetailView } from "bb-plugin-automations/detail-view";
 import type {
@@ -9,19 +9,24 @@ import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
+import {
+  removePluginSlotRegistrations,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { PluginDetail } from "@/components/tools/PluginDetail";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
 /**
  * Every state each tool type's detail page can be in, rendered as the real
- * page rather than as a table of extracted controls. One story per tool type:
- * scroll it and you have reviewed that type.
+ * page. One story per tool type: scroll it and you have reviewed that type.
  *
- * `ToolsResourceSystem.stories.tsx` covers the same pages wired to a live
- * server. These are fixture-driven, so they cover the states a healthy local
- * server will not reproduce on demand — loading, missing, failed, empty, and
- * disabled. `detail-page-recipes.test.tsx` enforces section order and labels;
- * these stories are where a human judges wording and hierarchy.
+ * These are the whole Tools story surface, deliberately. Anything a running
+ * server would show you is better seen in the running app, and anything that
+ * must not regress belongs in a test — `detail-page-recipes.test.tsx` pins
+ * section order and labels, `SkillsView.test.tsx` and `ToolsSidebar.test.tsx`
+ * pin routing. What is left, and what these cover, is the states a healthy
+ * local server will not produce on demand: loading, missing, failed, empty,
+ * and disabled — plus content ugly enough to break a layout.
  */
 export default {
   title: "Tools/Detail states",
@@ -316,6 +321,42 @@ const FULL_PLUGIN: PluginListItem = {
   ],
 };
 
+/**
+ * The shapes fixtures usually flatter away: an id long enough to have no break
+ * opportunity, prose that outgrows one line, and every capability group
+ * populated at once.
+ */
+const AWKWARD_PLUGIN: PluginListItem = {
+  ...FULL_PLUGIN,
+  id: "enterprise-issue-tracker-synchronization",
+  name: "Enterprise Issue Tracker Synchronization",
+  rootDir:
+    "/Users/you/.bb/plugins/enterprise-issue-tracker-synchronization/packages/runtime",
+  description:
+    "Keeps issues, pull requests, review comments, and release checklists synchronized between bb threads and your issue tracker, including bidirectional status mapping, attachment mirroring, and per-project field translation.",
+  cliCommand: {
+    name: "enterprise-issue-tracker-sync",
+    summary:
+      "Synchronize issues, pull requests, and release checklists in both directions",
+  },
+  capabilities: [
+    ...FULL_PLUGIN.capabilities,
+    {
+      kind: "agent-tool",
+      id: "enterprise_issue_tracker_bulk_transition",
+      label: "enterprise_issue_tracker_bulk_transition",
+      detail:
+        "Transition many issues at once, respecting per-project workflow rules and required fields",
+    },
+    {
+      kind: "thread-integration",
+      id: "mention:release-checklist",
+      label: "Release checklists",
+      detail: "Mentions with @ and #",
+    },
+  ],
+};
+
 function Plugin({ plugin }: { plugin: PluginListItem | null }) {
   return (
     <PluginDetail
@@ -329,6 +370,42 @@ function Plugin({ plugin }: { plugin: PluginListItem | null }) {
       onDelete={noop}
     />
   );
+}
+
+/**
+ * App surfaces reach Includes through the browser slot registry rather than the
+ * server payload, because a React component cannot cross that boundary. The
+ * story registers them the same way a loaded plugin frontend would.
+ */
+function PluginWithAppSurfaces() {
+  useEffect(() => {
+    setPluginSlotRegistrations(PLUGIN.id, {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "issues",
+          title: "Issues",
+          icon: "Github",
+          path: "issues",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [
+        {
+          id: "open-pr",
+          title: "Open pull request",
+          icon: "GitPullRequest",
+          component: () => null,
+        },
+      ],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    return () => removePluginSlotRegistrations(PLUGIN.id);
+  }, []);
+  return <Plugin plugin={{ ...PLUGIN, app: { hasApp: true, bundle: null } }} />;
 }
 
 export function PluginStates() {
@@ -377,6 +454,20 @@ export function PluginStates() {
             handlerStats: { count: 12, totalMs: 340, maxMs: 90, errorCount: 3 },
           }}
         />
+      </State>
+
+      <State
+        name="App surfaces"
+        note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Includes; the manifest alone cannot name them."
+      >
+        <PluginWithAppSurfaces />
+      </State>
+
+      <State
+        name="Awkward content"
+        note="Long unbroken names, a wordy description, and every capability group at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
+      >
+        <Plugin plugin={AWKWARD_PLUGIN} />
       </State>
 
       <State name="Route loading" note="Before the plugin list resolves.">
