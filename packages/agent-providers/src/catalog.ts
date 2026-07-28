@@ -181,7 +181,7 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
-  reasoningLevels: ["low", "medium", "high", "xhigh"],
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
 
 // ACP agents manage reasoning effort internally; "medium" is the single

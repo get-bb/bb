@@ -87,7 +87,7 @@ describe("appendCustomModels", () => {
       piModels[0].supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
       ),
-    ).toEqual(["low", "medium", "high", "xhigh"]);
+    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 
   it("falls back to the model id when displayName is omitted", () => {
@@ -924,10 +924,7 @@ describe("resolveSystemExecutionOptions", () => {
               capabilities: expect.objectContaining({
                 supportsFork: false,
                 supportsServiceTier: true,
-                supportedPermissionModes: [
-                  "accept-edits",
-                  "full",
-                ],
+                supportedPermissionModes: ["accept-edits", "full"],
               }),
             }),
           ]),
