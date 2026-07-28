@@ -43,6 +43,7 @@ const installedPlugin = {
   services: [],
   schedules: [],
   cliCommand: null,
+  capabilities: [],
   hasSettings: false,
   app: { hasApp: false, bundle: null },
   logoUrl: null,

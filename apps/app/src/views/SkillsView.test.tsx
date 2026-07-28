@@ -388,7 +388,10 @@ describe("SkillsLibrary library detail routing", () => {
 
     const fetchMock = renderLibrarySkillRoute();
 
-    expect(await screen.findByText("Skill not found.")).toBeTruthy();
+    const notFound = await screen.findByText("Skill not found.");
+    // Skill detail-route states use the same detail-width treatment as the
+    // plugin and automation routes rather than a list-shaped empty state.
+    expect(notFound.closest("[data-resource-detail-state]")).not.toBeNull();
     expect(screen.queryByText("New bb skill")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
