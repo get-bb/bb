@@ -1,4 +1,5 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
+import type { SkillProvider } from "@bb/server-contract";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { AutomationDetailView } from "bb-plugin-automations/detail-view";
 import type {
@@ -14,6 +15,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "@/components/tools/PluginDetail";
+import { ProviderLogo } from "@/components/tools/SkillsCollection";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
 /**
@@ -112,6 +114,26 @@ function State({
 
 const SKILL_PATH = "/Users/you/.bb/skills/writing-voice/SKILL.md";
 
+/**
+ * The leading slot carries the skill's provider, exactly as the real library
+ * rows and detail route do — a provider logo when the skill is discovered
+ * under one, the bb mark when it is not. Omitting it here would make every
+ * state below misrepresent the page.
+ */
+function SkillLeading({ provider }: { provider: SkillProvider | null }) {
+  if (provider === null) {
+    return (
+      <img
+        src="/bb-mark.svg"
+        alt=""
+        aria-hidden
+        className="size-4 object-contain dark:invert"
+      />
+    );
+  }
+  return <ProviderLogo providerId={provider} className="size-4" />;
+}
+
 function Skill({
   files = [SKILL_PATH],
   contentState = {
@@ -120,13 +142,16 @@ function Skill({
       "# writing-voice\n\nLead with the answer. Cut hedging. Prefer short sentences.",
   },
   headerControl,
+  provider = null,
 }: {
   files?: readonly string[];
   contentState?: Parameters<typeof SkillDetailView>[0]["contentState"];
   headerControl?: Parameters<typeof SkillDetailView>[0]["headerControl"];
+  provider?: SkillProvider | null;
 }) {
   return (
     <SkillDetailView
+      leading={<SkillLeading provider={provider} />}
       title="writing-voice"
       path={SKILL_PATH}
       files={files}
@@ -158,6 +183,13 @@ export function SkillStates() {
         <Skill
           files={[SKILL_PATH, "/Users/you/.bb/skills/writing-voice/tone.md"]}
         />
+      </State>
+
+      <State
+        name="Provider-owned"
+        note="A skill discovered under Claude Code or Codex carries that provider's logo where a bb-owned skill carries the bb mark."
+      >
+        <Skill provider="claude-code" />
       </State>
 
       <State
