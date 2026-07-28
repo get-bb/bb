@@ -5487,6 +5487,29 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"conflict">;
         currentSha256: z$1.ZodNullable<z$1.ZodString>;
     }, z$1.core.$strip>], "outcome">, "onlineRpc", false>;
+    "host.install_global_skills": HostDaemonCommandDescriptor<"host.install_global_skills", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.install_global_skills">;
+        skills: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            treeHash: z$1.ZodString;
+            entryPath: z$1.ZodString;
+        }, z$1.core.$strict>>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        installations: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            path: z$1.ZodString;
+        }, z$1.core.$strict>>;
+    }, z$1.core.$strict>, "onlineRpc", false>;
+    "host.global_skills_status": HostDaemonCommandDescriptor<"host.global_skills_status", z$1.ZodObject<{
+        type: z$1.ZodLiteral<"host.global_skills_status">;
+        names: z$1.ZodArray<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        entries: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            path: z$1.ZodString;
+            treeHash: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strict>>;
+    }, z$1.core.$strict>, "onlineRpc", true>;
     "host.list_branches": HostDaemonCommandDescriptor<"host.list_branches", z$1.ZodObject<{
         type: z$1.ZodLiteral<"host.list_branches">;
         path: z$1.ZodString;
@@ -7340,6 +7363,46 @@ type SystemVersionResponse = z$1.infer<typeof systemVersionResponseSchema>;
 declare const systemConfigReloadResponseSchema: z$1.ZodObject<{
     ok: z$1.ZodLiteral<true>;
 }, z$1.core.$strip>;
+declare const systemCliSkillsStatusResponseSchema: z$1.ZodObject<{
+    machines: z$1.ZodArray<z$1.ZodObject<{
+        hostId: z$1.ZodString;
+        hostName: z$1.ZodString;
+        status: z$1.ZodEnum<{
+            unknown: "unknown";
+            missing: "missing";
+            installed: "installed";
+            outdated: "outdated";
+        }>;
+    }, z$1.core.$strip>>;
+}, z$1.core.$strip>;
+type SystemCliSkillsStatusResponse = z$1.infer<typeof systemCliSkillsStatusResponseSchema>;
+/** The machines to copy the built-in bb CLI skills onto. */
+declare const systemInstallCliSkillsRequestSchema: z$1.ZodObject<{
+    hostIds: z$1.ZodArray<z$1.ZodString>;
+}, z$1.core.$strip>;
+type SystemInstallCliSkillsRequest = z$1.infer<typeof systemInstallCliSkillsRequestSchema>;
+/**
+ * One entry per requested machine. A machine that is offline or otherwise
+ * refuses the install fails on its own without taking the others down, so the
+ * caller can report exactly which machines got the skills.
+ */
+declare const systemInstallCliSkillsResponseSchema: z$1.ZodObject<{
+    results: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        ok: z$1.ZodLiteral<true>;
+        hostId: z$1.ZodString;
+        hostName: z$1.ZodString;
+        installations: z$1.ZodArray<z$1.ZodObject<{
+            name: z$1.ZodString;
+            path: z$1.ZodString;
+        }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        ok: z$1.ZodLiteral<false>;
+        hostId: z$1.ZodString;
+        hostName: z$1.ZodString;
+        errorMessage: z$1.ZodString;
+    }, z$1.core.$strip>], "ok">>;
+}, z$1.core.$strip>;
+type SystemInstallCliSkillsResponse = z$1.infer<typeof systemInstallCliSkillsResponseSchema>;
 type SystemConfigReloadResponse = z$1.infer<typeof systemConfigReloadResponseSchema>;
 
 declare const terminalSessionSchema: z$1.ZodObject<{
@@ -10934,6 +10997,14 @@ type SystemAttentionResult = SystemAttentionResponse;
 type SystemConfigResult = SystemConfigResponse;
 type SystemExecutionOptionsResult = SystemExecutionOptionsResponse;
 type SystemReloadConfigResult = SystemConfigReloadResponse;
+type SystemInstallCliSkillsArgs = SystemInstallCliSkillsRequest;
+interface SystemCliSkillsStatusArgs {
+    /** Omit for every enrolled machine. */
+    hostIds?: readonly string[];
+    signal?: AbortSignal;
+}
+type SystemCliSkillsStatusResult = SystemCliSkillsStatusResponse;
+type SystemInstallCliSkillsResult = SystemInstallCliSkillsResponse;
 type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
 type SystemUpdateExperimentsResult = Experiments;
 type SystemUpdateGeneralSettingsResult = AppSettings;
@@ -10944,6 +11015,14 @@ interface SystemArea {
     attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
     config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
     executionOptions(args?: SystemExecutionOptionsArgs): Promise<SystemExecutionOptionsResult>;
+    /**
+     * Copy bb's built-in CLI skills into each named machine's global agent skill
+     * roots (`~/.agents/skills` and `~/.claude/skills`). Machines install
+     * independently; the result reports each machine's outcome.
+     */
+    /** Per-machine install state of bb's built-in CLI skills. */
+    cliSkillsStatus(args?: SystemCliSkillsStatusArgs): Promise<SystemCliSkillsStatusResult>;
+    installCliSkills(args: SystemInstallCliSkillsArgs): Promise<SystemInstallCliSkillsResult>;
     reloadConfig(): Promise<SystemReloadConfigResult>;
     transcribeVoice(args: SystemVoiceTranscriptionArgs): Promise<SystemVoiceTranscriptionResult>;
     updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
