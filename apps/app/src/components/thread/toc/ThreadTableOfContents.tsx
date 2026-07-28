@@ -218,10 +218,10 @@ function TocItemPreview({
 }
 
 /**
- * Builds the user/agent item lists for the minimap. Prefers the full
- * conversation outline (the whole thread, independent of pagination); falls
- * back to the loaded timeline window so the minimap still renders on first
- * paint and in environments without the outline endpoint (e.g. stories).
+ * Builds the user/agent item lists for the minimap. The full outline owns the
+ * paginated history; the loaded timeline window overlays it so in-flight
+ * messages stay current without reprojecting the entire thread on every event.
+ * With no outline (first paint/stories), the timeline still stands alone.
  */
 function useConversationTocItems({
   outlineItems,
@@ -231,29 +231,23 @@ function useConversationTocItems({
   timelineRows: readonly TimelineRow[];
 }) {
   return useMemo(() => {
-    const userItems: TocItem[] = [];
-    const agentItems: TocItem[] = [];
-
-    if (outlineItems && outlineItems.length > 0) {
-      for (const item of outlineItems) {
-        const tocItem = outlineItemToTocItem(item);
-        if (tocItem.role === "user") {
-          userItems.push(tocItem);
-        } else {
-          agentItems.push(tocItem);
-        }
-      }
-      return { agentItems, userItems };
+    const itemsById = new Map<string, TocItem>();
+    for (const item of outlineItems ?? []) {
+      itemsById.set(item.id, outlineItemToTocItem(item));
     }
-
     for (const row of timelineRows) {
       if (row.kind !== "conversation") continue;
-      const item: TocItem = {
+      itemsById.set(row.id, {
         id: row.id,
         label: toTocLabel({ attachments: row.attachments, text: row.text }),
         role: row.role,
-      };
-      if (row.role === "user") {
+      });
+    }
+
+    const userItems: TocItem[] = [];
+    const agentItems: TocItem[] = [];
+    for (const item of itemsById.values()) {
+      if (item.role === "user") {
         userItems.push(item);
       } else {
         agentItems.push(item);

@@ -12,9 +12,9 @@
  * Why this isn't a flat `invalidateQueries(prefix)` table:
  * - Scoping uses notification metadata, not just the change kind. Thread changes
  *   carry `projectId`, `eventTypes`, and `hasPendingInteraction` so we invalidate
- *   only the affected project's lists, only refresh prompt history when an
- *   appended batch actually contained a turn request, and patch the sidebar
- *   pending-interaction badge from metadata instead of refetching.
+ *   only the affected project's lists, refresh the full conversation outline
+ *   only at stable boundaries, refresh prompt history only for turn requests,
+ *   and patch the sidebar pending-interaction badge without refetching.
  * - Some handlers do surgical `setQueryData` rather than invalidation
  *   (`patchThreadListPendingInteractionState`) or mark queries stale without an
  *   active refetch (`mark*Stale` for read-state changes), which a uniform
@@ -101,6 +101,7 @@ import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,
   getProjectSourceDependentInvalidationQueryKeys,
+  getThreadConversationOutlineInvalidationQueryKeys,
   getThreadDetailInvalidationQueryKeys,
   getThreadListInvalidationQueryKeys,
   getThreadPendingInteractionInvalidationQueryKeys,
@@ -151,6 +152,27 @@ export function resolveTrailingRefetchDelayMs(
   return Math.min(
     TRAILING_REFETCH_MAX_INTERVAL_MS,
     Math.max(TRAILING_REFETCH_MIN_INTERVAL_MS, observedFetchDurationMs),
+  );
+}
+
+const THREAD_CONVERSATION_OUTLINE_BOUNDARY_EVENT_TYPES: ReadonlySet<ThreadEventType> =
+  new Set([
+    "turn/completed",
+    "system/manager/user_message",
+    "system/thread/interrupted",
+    "system/error",
+    "provider/error",
+    "item/backgroundTask/completed",
+  ]);
+
+function shouldInvalidateThreadConversationOutline(
+  eventTypes: readonly ThreadEventType[] | undefined,
+): boolean {
+  if (!eventTypes || eventTypes.length === 0) {
+    return true;
+  }
+  return eventTypes.some((eventType) =>
+    THREAD_CONVERSATION_OUTLINE_BOUNDARY_EVENT_TYPES.has(eventType),
   );
 }
 
@@ -660,14 +682,23 @@ function dirtyThreadSearchQueries(): QueryKey[] {
 }
 
 function dirtyThreadTimelineQueries({
+  eventTypes,
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
-  // Window only: completed turn-summary-details are immutable, so realtime
-  // event batches must not refetch open detail panels (see helper docs).
+  // Keep the loaded window live for every append, but reproject the full
+  // outline only at stable conversation boundaries. The TOC overlays this
+  // window on the cached outline while a turn is in flight.
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
     queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+  });
+  if (!shouldInvalidateThreadConversationOutline(eventTypes)) {
+    return;
+  }
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: getThreadConversationOutlineInvalidationQueryKeys({ threadId }),
   });
 }
 
