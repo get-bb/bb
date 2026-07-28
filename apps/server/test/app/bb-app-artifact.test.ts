@@ -176,4 +176,42 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
       isRepoMode(mode) ? 2 : 0,
     );
   });
+
+  it("keeps serving the previous artifact when a rebuild fails, and retries after", async () => {
+    const test = await fixture(mode);
+    let failNextPack = false;
+    const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
+      if (command === "pnpm") return "built";
+      if (failNextPack) throw new Error("npm pack exploded");
+      return (await execFileAsync(command, [...args], { cwd })).stdout;
+    };
+    const options = {
+      dataDir: join(test.root, "data"),
+      commandRunner: runner,
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      protocolVersion: 51,
+    };
+
+    const tarball = await createBbAppArtifactService(options).getTarballPath();
+
+    // A later process restarts, its rebuild fails, and the artifact it would
+    // have replaced must survive: daemons keep an installable package instead
+    // of a 404 with nothing on disk.
+    failNextPack = true;
+    await writeFile(join(test.packageRoot, "README.md"), "updated\n");
+    const service = createBbAppArtifactService(options);
+    await expect(service.getTarballPath()).rejects.toThrow("npm pack exploded");
+    expect(
+      (await execFileAsync("tar", ["-xOzf", tarball, "package/README.md"]))
+        .stdout,
+    ).toBe("fixture\n");
+
+    // The rejection is not memoized, so the next request rebuilds for real.
+    failNextPack = false;
+    await expect(service.getTarballPath()).resolves.toBe(tarball);
+    expect(
+      (await execFileAsync("tar", ["-xOzf", tarball, "package/README.md"]))
+        .stdout,
+    ).toBe("updated\n");
+  });
 });
