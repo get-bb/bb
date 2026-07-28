@@ -131,6 +131,35 @@ describe("pi bridge model list", () => {
     stderr.mockRestore();
   });
 
+  it("does not block later callers on a retry after the first attempt fails", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    getAvailable.mockResolvedValue([]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    refresh.mockResolvedValueOnce({ aborted: true, errors: new Map() });
+    await listPiBridgeModels(modelRuntime);
+
+    // A host with no route to pi.dev would otherwise pay the full timeout on
+    // every early picker render. The retry must run in the background.
+    let retrySettled = false;
+    refresh.mockImplementationOnce(
+      () =>
+        new Promise(() => {
+          retrySettled = true;
+        }),
+    );
+
+    await listPiBridgeModels(modelRuntime);
+
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(retrySettled).toBe(true); // retry started...
+    // ...and the call returned without awaiting it.
+
+    stderr.mockRestore();
+  });
+
   it("refreshes over the network at most once per process after it succeeds", async () => {
     getAvailable.mockResolvedValue([]);
     getSupportedThinkingLevels.mockReturnValue(["off"]);

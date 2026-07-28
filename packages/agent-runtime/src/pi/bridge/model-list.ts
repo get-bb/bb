@@ -5,9 +5,8 @@ import { buildPiAvailableModels } from "../model-list.js";
 
 const NETWORK_REFRESH_TIMEOUT_MS = 5_000;
 
-// A failed attempt costs the full timeout, so cap how many picker renders can
-// pay it. Three keeps worst-case cumulative stall bounded while still letting
-// a transient failure recover without restarting the bridge.
+// Retries run in the background and cost the caller nothing, so this only
+// bounds pointless work on a host that has no route to pi.dev at all.
 const NETWORK_REFRESH_MAX_ATTEMPTS = 3;
 
 // The network refresh fans out one request per provider to pi.dev and can
@@ -19,11 +18,20 @@ const NETWORK_REFRESH_MAX_ATTEMPTS = 3;
 // from the persisted model store plus the bundled static catalog, which yields
 // the same model set.
 //
+// Only the first attempt blocks a caller. A host with no route to pi.dev would
+// otherwise pay the full timeout on every early picker render, so once the
+// first attempt settles, later calls kick off a background retry and answer
+// immediately from the current catalog. That keeps worst-case added latency at
+// one timeout while still recovering from a transient failure without
+// restarting the bridge.
+//
 // Held as a promise rather than a boolean so concurrent `model/list` calls
 // await the same refresh instead of racing past it into a half-refreshed
 // snapshot.
 let networkRefresh: Promise<void> | undefined;
 let networkRefreshAttempts = 0;
+let networkRefreshSucceeded = false;
+let firstAttemptSettled = false;
 
 function logRefreshProblem(message: string): void {
   process.stderr.write(`pi bridge: model catalog refresh ${message}\n`);
@@ -57,27 +65,38 @@ async function runNetworkRefresh(modelRuntime: ModelRuntime): Promise<void> {
 }
 
 async function ensureNetworkRefresh(modelRuntime: ModelRuntime): Promise<void> {
-  if (isPiOffline()) {
+  if (isPiOffline() || networkRefreshSucceeded) {
     return;
   }
-  if (!networkRefresh) {
-    if (networkRefreshAttempts >= NETWORK_REFRESH_MAX_ATTEMPTS) {
-      return;
-    }
+  if (
+    !networkRefresh &&
+    networkRefreshAttempts < NETWORK_REFRESH_MAX_ATTEMPTS
+  ) {
     networkRefreshAttempts += 1;
-    networkRefresh = runNetworkRefresh(modelRuntime).catch((error: unknown) => {
-      // Drop the memo so the next call can retry, and never fail
-      // `model/list` on it: the persisted store plus the bundled static
-      // catalog still produce a usable model set.
-      networkRefresh = undefined;
-      logRefreshProblem(
-        `attempt ${networkRefreshAttempts}/${NETWORK_REFRESH_MAX_ATTEMPTS} ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
+    const attempt = networkRefreshAttempts;
+    networkRefresh = runNetworkRefresh(modelRuntime)
+      .then(() => {
+        networkRefreshSucceeded = true;
+      })
+      // Never fail `model/list` on a refresh problem: the persisted store plus
+      // the bundled static catalog still produce a usable model set.
+      .catch((error: unknown) => {
+        logRefreshProblem(
+          `attempt ${attempt}/${NETWORK_REFRESH_MAX_ATTEMPTS} ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      })
+      .finally(() => {
+        networkRefresh = undefined;
+        firstAttemptSettled = true;
+      });
   }
-  await networkRefresh;
+  // Block only until the first attempt settles. Callers that arrive later get
+  // the current catalog immediately while any retry runs in the background.
+  if (!firstAttemptSettled) {
+    await networkRefresh;
+  }
 }
 
 export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
@@ -103,4 +122,6 @@ export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
 export function resetPiModelNetworkRefreshForTests(): void {
   networkRefresh = undefined;
   networkRefreshAttempts = 0;
+  networkRefreshSucceeded = false;
+  firstAttemptSettled = false;
 }
