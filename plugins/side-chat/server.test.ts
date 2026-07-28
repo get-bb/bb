@@ -110,7 +110,7 @@ describe("createSideChat rpc", () => {
       sourceThreadId: "thr_src",
       sourceSeqEnd: 42,
       visibility: "hidden",
-      workspace: "isolated",
+      workspace: "reuse",
       agentContextSeed: [
         {
           type: "text",
@@ -210,7 +210,7 @@ describe("createSideChat rpc", () => {
       sourceThreadId: "thr_src",
       sourceSeqEnd: 7,
       visibility: "hidden",
-      workspace: "isolated",
+      workspace: "reuse",
     });
   });
 
@@ -229,7 +229,7 @@ describe("createSideChat rpc", () => {
     expect(fork).toHaveBeenCalledWith({
       sourceThreadId: "thr_src",
       visibility: "hidden",
-      workspace: "isolated",
+      workspace: "reuse",
     });
   });
 });

@@ -42,6 +42,7 @@ export function PluginThreadChat({
   variant = "full",
   layout = "contained",
   focusRequest,
+  permissionPolicy = "inherit",
   className,
   leadingContent,
   messageActions,
@@ -57,6 +58,7 @@ export function PluginThreadChat({
         variant={variant}
         layout={layout}
         focusRequest={focusRequest}
+        permissionPolicy={permissionPolicy}
         leadingContent={leadingContent}
         messageActions={messageActions}
       />
@@ -69,6 +71,7 @@ interface PluginThreadChatBodyProps {
   variant: "full" | "compact" | "timeline";
   layout: "contained" | "document";
   focusRequest: number | undefined;
+  permissionPolicy: "inherit" | "editable";
   leadingContent: ReactNode;
   messageActions: readonly ThreadChatMessageAction[] | undefined;
 }
@@ -78,6 +81,7 @@ function PluginThreadChatBody({
   variant,
   layout,
   focusRequest,
+  permissionPolicy,
   leadingContent,
   messageActions,
 }: PluginThreadChatBodyProps) {
@@ -231,9 +235,11 @@ function PluginThreadChatBody({
         executionDefaultsThreadId: threadId,
         executionResetKey: threadId,
         executionEnvironmentId: thread.environmentId ?? undefined,
-        // The thread's own resolved defaults, never widened by a plugin
-        // surface: sends run with exactly what the thread would use.
-        permissionPolicy: "snapshot",
+        // "inherit" pins sends to the thread's own resolved defaults, never
+        // widened by a plugin surface. "editable" is the opt-in that hands
+        // the picker to the user for this thread alone.
+        permissionPolicy:
+          permissionPolicy === "editable" ? "editable" : "snapshot",
         environmentSummary,
         pluginComposerBottomScope: { kind: "thread", threadId },
         composerIdentity: `plugin-thread-chat:${threadId}`,

@@ -988,13 +988,18 @@ Host components:
   wherever plugin React runs (nav panels, thread-panel tabs, homepage and
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
-  `{ threadId, variant?, layout?, focusRequest?, className?,
-leadingContent?, messageActions? }` —
+  `{ threadId, variant?, layout?, focusRequest?, permissionPolicy?,
+className?, leadingContent?, messageActions? }` —
   `variant` is `"full"` (standard chat controls, default), `"compact"`
   (side-panel presentation), or `"timeline"` (transcript without a
   composer); `layout` is `"contained"` (fills and scrolls within the
   parent, default) or `"document"` (grows with page content);
   `focusRequest` is a change-detected nonce that focuses the composer;
+  `permissionPolicy` is `"inherit"` (default — sends run with the thread's
+  own resolved permission mode and the picker renders as a dimmed label, so
+  a plugin surface can never widen permissions) or `"editable"` (the
+  instance gets a live picker, letting the user set a mode for this thread
+  independently of the one it was forked from);
   `leadingContent` is a `ReactNode` rendered above the conversation,
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`

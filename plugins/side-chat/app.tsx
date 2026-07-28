@@ -292,6 +292,10 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
         threadId={parsed.threadId}
         variant="compact"
         layout="contained"
+        // The side chat is its own thread: a quick aside may deserve tighter
+        // (or looser) permissions than the thread it forked from, so the
+        // picker stays live here instead of mirroring the source thread.
+        permissionPolicy="editable"
         className="min-h-0 flex-1"
         leadingContent={<ReplyingTo anchorText={parsed.sourceMessageText} />}
         messageActions={messageActions}

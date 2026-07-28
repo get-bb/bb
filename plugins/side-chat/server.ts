@@ -179,7 +179,12 @@ export default async function plugin(bb: BbPluginApi) {
       const forkArgs = {
         sourceThreadId,
         visibility: "hidden" as const,
-        workspace: "isolated" as const,
+        // A side chat is an aside about the work the source thread is doing,
+        // so it runs in that thread's environment rather than provisioning a
+        // worktree of its own. "isolated" would branch a fresh checkout per
+        // side chat, where the files under discussion are a copy that never
+        // reflects what the source thread has since changed.
+        workspace: "reuse" as const,
         ...(seedText !== null
           ? {
               agentContextSeed: [

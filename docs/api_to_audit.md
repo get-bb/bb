@@ -72,14 +72,26 @@ surface (timeline, streaming, composer, drafts, send/queue/steer/stop,
 attachments, execution controls, pending interactions, read tracking) anywhere
 plugin React runs — nav panels, thread-panel tabs, homepage/settings sections.
 Props: `threadId`, `variant: "full" | "compact" | "timeline"`,
-`layout: "contained" | "document"`, `focusRequest`, `className`, plus
-`leadingContent` (rendered above the conversation) and `messageActions`
-(per-instance actions receiving a `ThreadChatMessageReference`).
+`layout: "contained" | "document"`, `focusRequest`, `className`,
+`permissionPolicy: "inherit" | "editable"`, plus `leadingContent` (rendered
+above the conversation) and `messageActions` (per-instance actions receiving a
+`ThreadChatMessageReference`).
+
+`permissionPolicy` defaults to `"inherit"`: sends use the thread's own
+resolved permission mode and the picker renders dimmed, so a plugin surface
+can never widen permissions. `"editable"` gives the instance a live picker
+whose selection is component-local (it seeds from the thread's resolved
+default and is recorded on the thread when a message is sent), letting a
+forked thread such as a side chat run at a different mode than its source.
 
 Audit before stabilizing:
 
 - Is the `variant`/`layout` split the right axis, or should presentation be a
   single mode enum once more consumers exist?
+- Should `permissionPolicy: "editable"` require a manifest permission rather
+  than being a free prop, given it lets a plugin surface offer Full Access?
+- Should the editable selection persist across panel remounts instead of
+  re-seeding from the thread's recorded default?
 - Do `leadingContent`/`messageActions` stay, or migrate to slots once the
   side-chat plugin is no longer the only consumer?
 - Does `focusRequest` (change-detected nonce) hold up, or should focus be an

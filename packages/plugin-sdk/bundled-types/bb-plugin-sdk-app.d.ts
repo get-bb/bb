@@ -687,6 +687,15 @@ interface ThreadChatProps {
     layout?: "contained" | "document";
     /** Bump to focus the composer (ignored by `variant: "timeline"`). */
     focusRequest?: number;
+    /**
+     * Who controls the permission mode sends run with. "inherit" (default)
+     * pins every send to the thread's own resolved default and renders the
+     * picker as a dimmed label — a plugin surface can never widen it.
+     * "editable" gives this chat its own picker, so the user can raise or
+     * lower permissions for this thread independently of the thread it was
+     * forked from. Ignored by `variant: "timeline"` (no composer).
+     */
+    permissionPolicy?: "inherit" | "editable";
     className?: string;
     /** Rendered above the conversation, scrolling with it. */
     leadingContent?: ReactNode;
