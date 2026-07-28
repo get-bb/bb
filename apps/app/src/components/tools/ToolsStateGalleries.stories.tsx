@@ -12,8 +12,6 @@ import {
   ResourceLifecycleStatus,
   ResourceListState,
 } from "@bb/shared-ui/resource-list";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
 import { Switch } from "@bb/shared-ui/switch";
 import { AutomationRunStatusIndicator } from "bb-plugin-automations/detail-view";
 import {
@@ -772,71 +770,61 @@ function PluginDetailStory({ plugin }: { plugin: PluginListItem | null }) {
  * enforcement lives in `detail-page-recipes.test.tsx`.
  */
 export function PluginDetailRecipe() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-      }),
-  );
   return (
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <Gallery
-          title="Plugin detail recipe"
-          description="About → Includes → Settings? → Activity? → Release. About, Includes, and Release never disappear; Settings and Activity only appear in their fixed positions."
-        >
-          <DetailStory
-            title="Full plugin"
-            description="Command, skills, agent tools, thread integrations, themes, services, and schedules all resolve into Includes and Activity."
-          >
-            <PluginDetailStory plugin={FULL_PLUGIN} />
-          </DetailStory>
+    <Gallery
+      title="Plugin detail recipe"
+      description="About → Includes → Settings? → Activity? → Release. About, Includes, and Release never disappear; Settings and Activity only appear in their fixed positions."
+    >
+      <DetailStory
+        title="Full plugin"
+        description="Command, skills, agent tools, thread integrations, themes, services, and schedules all resolve into Includes and Activity."
+      >
+        <PluginDetailStory plugin={FULL_PLUGIN} />
+      </DetailStory>
 
-          <DetailStory
-            title="Minimal plugin"
-            description="Nothing user-facing is declared, so Includes stays and explains itself instead of vanishing."
-          >
-            <PluginDetailStory plugin={RECIPE_PLUGIN} />
-          </DetailStory>
+      <DetailStory
+        title="Minimal plugin"
+        description="Nothing user-facing is declared, so Includes stays and explains itself instead of vanishing."
+      >
+        <PluginDetailStory plugin={RECIPE_PLUGIN} />
+      </DetailStory>
 
-          <DetailStory
-            title="Disabled plugin"
-            description="Manifest-declared skills and themes stay accurate; the live capabilities are honestly deferred until the plugin is enabled."
-          >
-            <PluginDetailStory plugin={DISABLED_PLUGIN} />
-          </DetailStory>
+      <DetailStory
+        title="Disabled plugin"
+        description="Manifest-declared skills and themes stay accurate; the live capabilities are honestly deferred until the plugin is enabled."
+      >
+        <PluginDetailStory plugin={DISABLED_PLUGIN} />
+      </DetailStory>
 
-          <DetailStory
-            title="Not found"
-            description="A missing plugin keeps the detail page width rather than collapsing to a bare list-shaped empty state."
-          >
-            <PluginDetailStory plugin={null} />
-          </DetailStory>
+      <DetailStory
+        title="Not found"
+        description="A missing plugin keeps the detail page width rather than collapsing to a bare list-shaped empty state."
+      >
+        <PluginDetailStory plugin={null} />
+      </DetailStory>
 
-          <DetailStory
-            title="Loading"
-            description="The same shared treatment and width used by skill and automation detail routes."
-          >
-            <ResourceListState
-              state="loading"
-              message="Loading plugins"
-              layout="detail"
-            />
-          </DetailStory>
+      <DetailStory
+        title="Loading"
+        description="The same shared treatment and width used by skill and automation detail routes."
+      >
+        <ResourceListState
+          state="loading"
+          message="Loading plugins"
+          layout="detail"
+        />
+      </DetailStory>
 
-          <DetailStory
-            title="Error"
-            description="A failed detail route explains what failed and offers a specific retry."
-          >
-            <ResourceListState
-              state="error"
-              message="Couldn't load plugin."
-              layout="detail"
-              onRetry={noop}
-            />
-          </DetailStory>
-        </Gallery>
-      </MemoryRouter>
-    </QueryClientProvider>
+      <DetailStory
+        title="Error"
+        description="A failed detail route explains what failed and offers a specific retry."
+      >
+        <ResourceListState
+          state="error"
+          message="Couldn't load plugin."
+          layout="detail"
+          onRetry={noop}
+        />
+      </DetailStory>
+    </Gallery>
   );
 }
