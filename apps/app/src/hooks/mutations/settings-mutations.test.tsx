@@ -59,7 +59,7 @@ function systemConfig(): SystemConfigResponse {
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
-    featureFlags: { placeholder: false },
+    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
     hostDaemonPort: null,
     primaryHostId: null,
     primaryHostPlatform: null,

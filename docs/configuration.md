@@ -430,6 +430,38 @@ CLI commands, and backend APIs keep working while the Tools Hub is off. The
 separate `plugins` experiment still controls whether user-installed plugin code
 loads.
 
+## Thread Timeline Window
+
+A thread-timeline window is bounded by segment (user-message) count *and* by
+event count. Segment count alone is a weak bound on work, because an agentic
+turn can be thousands of events: a thread with 21 user messages and 21k events
+used to reproject its entire history on every timeline request. That projection
+is synchronous, so it blocked the server's event loop — which also delayed
+`/internal/session/events`, the endpoint the host daemon awaits before every
+dynamic tool call and before registering every interactive request. One slow
+thread therefore slowed agent work on *every* thread on the host.
+
+A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default
+1500) and returns however many whole turns fit. Older turns load automatically
+as you scroll toward the top of the loaded window; a manual "Load older
+messages" button remains on surfaces that render no scroll body, and after a
+failed page so a broken fetch is retried on request rather than in a loop.
+Nothing becomes unreachable — pagination still walks the full history, and the
+head-state banners (goal, pending todos, running workflows, background
+commands) are resolved by thread-scoped lookups rather than by scanning the
+window, so a narrow window cannot drop them mid-session. A turn larger than the
+whole budget is still rendered in full, since a turn cannot be split, so the
+budget bounds long *threads* rather than a single long *turn*.
+
+Raising the budget far above the default restores the previous
+unbounded-in-practice behavior; it is an operator escape hatch set at server
+start, not a product setting.
+
+Timeline builds slower than 150ms log `Thread timeline build blocked the event
+loop` with a per-stage breakdown, and event-loop stalls over 500ms log `Event
+loop stalled`. Both log at `info`, so they are visible in `~/.bb/logs/` without
+raising `BB_LOG_LEVEL`.
+
 ## Plugins
 
 User-installed plugins are gated behind the "Plugins" experiment (Settings →

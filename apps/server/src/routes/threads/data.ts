@@ -45,13 +45,14 @@ import { requireThreadStoragePath } from "../../services/threads/thread-storage.
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   buildThreadConversationOutline,
-  buildThreadTimeline,
+  buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
 } from "../../services/threads/timeline.js";
+import { createSlowThreadTimelineBuildLogger } from "../../services/threads/timeline-build-log.js";
 import {
   buildThreadTimelineCacheKey,
   buildThreadTimelineParamsKey,
@@ -348,6 +349,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   // whole window — the big streaming win.
   const timelineCache = createThreadTimelineCache();
   const timelineLatestRowsCache = createTimelineLatestRowsCache();
+  const slowTimelineBuildLogger = createSlowThreadTimelineBuildLogger({
+    logger: deps.logger,
+  });
   // The conversation outline reprojects the entire thread, so memoize it per
   // (thread, maxSeq): repeated polls at a stable revision are served from
   // cache. Any appended event bumps maxSeq and forces a rebuild, so a thread
@@ -377,6 +381,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const includeProviderUnhandledOperations =
       deps.config.isDevelopment ||
       getAppSettings(deps.db).showUnhandledProviderEvents;
+    // Resolved once at server start. The timeline caches deliberately do NOT
+    // key on it: if this ever becomes per-request or per-thread, they must,
+    // because the same `maxSeq` names a different set of rows under a
+    // different budget and a client only echoes `afterSequence`.
+    const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
@@ -389,17 +398,23 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     };
     const full = timelineCache.getOrBuild(
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-      () =>
-        truncateTimelineResponseOutputs(
-          buildThreadTimeline(deps.db, thread, {
+      () => {
+        const { profile, response } = buildThreadTimelineWithProfile(
+          deps.db,
+          thread,
+          {
+            eventBudget,
             includeProviderUnhandledOperations,
             includeNestedRows,
             maxSeq,
             page,
             providerDisplayName,
             summaryOnly,
-          }),
-        ),
+          },
+        );
+        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
+        return truncateTimelineResponseOutputs(response);
+      },
     );
 
     // Delta: when the client tells us the revision it currently holds and our

@@ -65,6 +65,11 @@ management UI. It does not enable or disable installed skills, automation
 execution, plugin runtimes, CLI commands, or backend APIs. Control user plugin
 loading separately with the `plugins` experiment.
 
+Thread timeline windows are bounded by event count as well as user-message
+count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread
+stops reprojecting its whole history — and blocking the server event loop — on
+every update. Older turns load automatically as you scroll toward the top.
+
 Server-backed keyboard shortcuts
 
 Settings → Keyboard records per-command shortcut overrides. They are persisted

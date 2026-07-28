@@ -61,6 +61,13 @@ message agents, or inspect projects, providers, and environments.
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools; the separate `plugins` experiment controls user plugin runtime loading.
+- Thread timeline windows are capped by event count as well as by user-message
+  count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
+  with few user messages but many events would otherwise reproject its whole
+  history on every timeline request, blocking the server event loop and
+  delaying the daemon endpoints the agent awaits between tool calls. Older
+  turns load automatically as you scroll toward the top; nothing becomes
+  unreachable.
 
 ## Agent Instructions
 
