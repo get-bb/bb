@@ -8,6 +8,9 @@ import type {
 } from "@bb/server-contract";
 import {
   BRANCH_NAMES,
+  HOST_IDS,
+  HOST_NAMES,
+  makeHost,
   makeProject,
   makeThreadListEntry,
 } from "../../../.ladle/story-fixtures";
@@ -23,6 +26,7 @@ import {
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
 import {
+  hostsQueryKey,
   sidebarNavigationQueryKey,
   threadSearchQueryKey,
 } from "@/hooks/queries/query-keys";
@@ -34,6 +38,10 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  sidebarOrganizationModeAtom,
+  type SidebarOrganizationMode,
+} from "./sidebarCollapsedAtoms";
 
 export default {
   title: "Sidebar/Overview",
@@ -208,6 +216,30 @@ const loadedSidebarNavigation = {
   ],
 } satisfies SidebarBootstrapResponse;
 
+const machineStoryHosts = [
+  makeHost(),
+  makeHost({ id: HOST_IDS.remote, name: HOST_NAMES.remote }),
+];
+
+const machineSidebarNavigation = {
+  ...loadedSidebarNavigation,
+  personalProject: {
+    ...loadedSidebarNavigation.personalProject,
+    threads: loadedSidebarNavigation.personalProject.threads.map((thread) => ({
+      ...thread,
+      environmentHostId: HOST_IDS.local,
+    })),
+  },
+  projects: loadedSidebarNavigation.projects.map((project) => ({
+    ...project,
+    threads: project.threads.map((thread) => ({
+      ...thread,
+      environmentHostId:
+        project.id === docsProject.id ? HOST_IDS.remote : HOST_IDS.local,
+    })),
+  })),
+} satisfies SidebarBootstrapResponse;
+
 const searchResponse = {
   active: {
     total: 2,
@@ -313,15 +345,21 @@ function LoadingSidebar() {
   );
 }
 
-function LoadedSidebar() {
+function LoadedSidebar({
+  hosts,
+  navigation = loadedSidebarNavigation,
+}: {
+  hosts?: typeof machineStoryHosts;
+  navigation?: SidebarBootstrapResponse;
+}) {
   const queryClient = useQueryClient();
   const [isSeeded, setIsSeeded] = useState(false);
 
   useEffect(() => {
-    queryClient.setQueryData(
-      SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
-      loadedSidebarNavigation,
-    );
+    queryClient.setQueryData(SIDEBAR_NAVIGATION_STORY_QUERY_KEY, navigation);
+    if (hosts) {
+      queryClient.setQueryData(hostsQueryKey(), hosts);
+    }
     setIsSeeded(true);
 
     return () => {
@@ -329,8 +367,14 @@ function LoadedSidebar() {
         queryKey: SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
         exact: true,
       });
+      if (hosts) {
+        queryClient.removeQueries({
+          queryKey: hostsQueryKey(),
+          exact: true,
+        });
+      }
     };
-  }, [queryClient]);
+  }, [hosts, navigation, queryClient]);
 
   if (!isSeeded) {
     return <LoadingSidebar />;
@@ -340,6 +384,30 @@ function LoadedSidebar() {
     <Suspense fallback={<LoadingSidebar />}>
       <ProjectList onNewProject={noop} onProjectSelect={noop} />
     </Suspense>
+  );
+}
+
+function OrganizationSidebar({
+  hosts,
+  mode,
+  navigation,
+}: {
+  hosts?: typeof machineStoryHosts;
+  mode: SidebarOrganizationMode;
+  navigation?: SidebarBootstrapResponse;
+}) {
+  const [store] = useState(() => {
+    const next = createStore();
+    next.set(sidebarOrganizationModeAtom, mode);
+    return next;
+  });
+
+  return (
+    <Provider store={store}>
+      <SidebarFrame>
+        <LoadedSidebar hosts={hosts} navigation={navigation} />
+      </SidebarFrame>
+    </Provider>
   );
 }
 
@@ -441,6 +509,40 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="search">
         <SearchSidebar />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ByProjectOrganization() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow label="By project" hint="loose projectless threads">
+        <OrganizationSidebar mode="project" />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ManualOrganization() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow label="Manually" hint="threads not filed into a section">
+        <OrganizationSidebar mode="chronological" />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ByMachineOrganization() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow label="By machine" hint="threads grouped by execution machine">
+        <OrganizationSidebar
+          mode="machine"
+          hosts={machineStoryHosts}
+          navigation={machineSidebarNavigation}
+        />
       </StoryRow>
     </StoryCard>
   );

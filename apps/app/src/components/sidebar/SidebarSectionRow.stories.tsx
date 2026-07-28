@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import { SidebarStickyStack } from "@/components/ui/sidebar.js";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -7,6 +8,7 @@ import {
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 import { DropPreviewRow } from "./ProjectRow";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
 export default {
   title: "sidebar/Section row",
@@ -27,6 +29,43 @@ function SidebarStage({ children }: { children: ReactNode }) {
         <div className="space-y-0.5">{children}</div>
       </SidebarStickyStack>
     </div>
+  );
+}
+
+function SplitViewSidebarStage({ children }: { children: ReactNode }) {
+  const [store] = useState(() => {
+    const splitStore = createStore();
+    splitStore.set(splitLayoutAtom, {
+      focusedPaneId: "pane-build",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-build",
+            content: {
+              kind: "thread",
+              projectId: "project-work",
+              threadId: "thread-build",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-compose",
+            content: { kind: "new-thread" },
+          },
+        ],
+      },
+    });
+    return splitStore;
+  });
+
+  return (
+    <Provider store={store}>
+      <SidebarStage>{children}</SidebarStage>
+    </Provider>
   );
 }
 
@@ -73,6 +112,26 @@ export function Overview() {
             onRename={noop}
           />
         </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="collapsed split view"
+        hint="a hidden split thread replaces its activity glyph with the pane mini-map"
+      >
+        <SplitViewSidebarStage>
+          <SidebarSectionRow
+            name="Build"
+            label="Work / Build"
+            depth={2}
+            activity={activity({ working: true })}
+            collapsedThreads={[
+              { id: "thread-build", projectId: "project-work" },
+            ]}
+            isCollapsed
+            onToggleCollapsed={noop}
+            onCreateThread={noop}
+            onRename={noop}
+          />
+        </SplitViewSidebarStage>
       </StoryRow>
       <StoryRow
         label="collapsed plan mode"

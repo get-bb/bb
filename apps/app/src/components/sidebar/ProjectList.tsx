@@ -1134,6 +1134,7 @@ function ProjectModeSections({
     threads: {
       ...threadsSection,
       activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
+      collapsedThreads: personalThreads,
       content: (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
@@ -1421,6 +1422,7 @@ export function MachineModeSections({
     threads: {
       ...threadsSection,
       activity: getCollapsedChildActivity(nonPinnedThreads, draftThreadIds),
+      collapsedThreads: nonPinnedThreads,
       content: (
         <ProjectThreadTree
           threadListState={allThreadsListState}
@@ -1466,6 +1468,7 @@ export function MachineModeSections({
             actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
             actionsMobileAlways
             collapsedActivity={section.activity}
+            collapsedThreads={section.threadListState.threads}
             collapseControl={{
               isCollapsed: collapsedMachineKeys.has(section.key),
               onToggleCollapsed: () => toggleMachineCollapsed(section.key),
@@ -1937,6 +1940,11 @@ function ProjectListComponent({
       onReorderPinnedRoot={handleReorderPinnedRoot}
     />
   );
+  const pinnedSectionThreads = threads.filter(
+    (thread) =>
+      pinnedSidebarState.effectivePinnedThreadIds.has(thread.id) &&
+      isSidebarProjectThread(thread),
+  );
   // One Threads-header cluster shared by every organization and section state.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
@@ -1952,21 +1960,15 @@ function ProjectListComponent({
     />
   );
   const pinnedSection: BuiltInSidebarSectionOptions = {
-    activity: getCollapsedChildActivity(
-      threads.filter(
-        (thread) =>
-          pinnedSidebarState.effectivePinnedThreadIds.has(thread.id) &&
-          isSidebarProjectThread(thread),
-      ),
-      draftThreadIds,
-    ),
+    activity: getCollapsedChildActivity(pinnedSectionThreads, draftThreadIds),
+    collapsedThreads: pinnedSectionThreads,
     label: "Pinned",
     content: pinnedSectionContent,
     actions: renderSectionDisplayOptions("pinned"),
     actionsOpen: isSectionDisplayOptionsOpen("pinned"),
   };
   const threadsSection = {
-    label: "Threads",
+    label: organizationMode === "chronological" ? "Unorganized" : "Threads",
     actions: threadsSectionActions,
     actionsOpen: threadsDisplayOptionsMenuOpen,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;

@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { TopLevelSidebarSection } from "./ProjectList";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("TopLevelSidebarSection", () => {
@@ -94,5 +99,53 @@ describe("TopLevelSidebarSection", () => {
     expect(edgeSlot).toBeInstanceOf(HTMLElement);
     expect((edgeSlot as HTMLElement).className).toContain("absolute");
     expect((edgeSlot as HTMLElement).className).toContain("right-1");
+  });
+
+  it("rolls a hidden split thread up to a collapsed top-level section", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-thread",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-thread",
+            content: {
+              kind: "thread",
+              projectId: "project-one",
+              threadId: "thread-one",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-compose",
+            content: { kind: "new-thread" },
+          },
+        ],
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <TopLevelSidebarSection
+          label="Pinned"
+          collapsedActivity={NO_COLLAPSED_CHILD_ACTIVITY}
+          collapsedThreads={[{ id: "thread-one", projectId: "project-one" }]}
+          collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
+        >
+          <div>Pinned thread</div>
+        </TopLevelSidebarSection>
+      </Provider>,
+    );
+
+    expect(
+      screen.getByRole("img", {
+        name: "Pinned — contains a thread open in split",
+      }),
+    ).not.toBeNull();
+    expect(screen.queryByText("Pinned thread")).toBeNull();
   });
 });

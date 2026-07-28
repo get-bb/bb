@@ -40,6 +40,14 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import {
+  useThreadGroupSplitIndicator,
+  type ThreadSplitIndicatorTarget,
+} from "./paneContentSplitIndicator";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+
+const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
 interface SidebarSectionRowProps {
   // Leaf segment shown on the header ("Q3").
@@ -48,6 +56,7 @@ interface SidebarSectionRowProps {
   // Render depth (section nesting + section offset); drives indentation.
   depth: number;
   activity: CollapsedChildActivity;
+  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
   // Pin depth among parent rows when sticky; absent = not pinned (past the cap).
@@ -68,6 +77,7 @@ function SidebarSectionRowComponent({
   label,
   depth,
   activity,
+  collapsedThreads = EMPTY_SPLIT_INDICATOR_THREADS,
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive = false,
@@ -79,17 +89,34 @@ function SidebarSectionRowComponent({
   stickyLevel,
 }: SidebarSectionRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const collapsedSplitIndicator = useThreadGroupSplitIndicator(
+    collapsedThreads,
+    threadSplitsEnabled && isCollapsed,
+  );
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
-  // Collapsed: the header speaks for its hidden descendants through one glyph
-  // (pending > working > unread). Expanded: descendants show their own glyphs.
-  const showRollupGlyph =
+  // Collapsed: the header speaks for its hidden descendants through one
+  // trailing indicator. Split membership takes the slot when present, matching
+  // the individual thread row; otherwise activity keeps its normal priority.
+  const showRollupIndicator =
     isCollapsed &&
-    (activity.pending ||
+    (collapsedSplitIndicator.miniMap !== null ||
+      activity.pending ||
       activity.working ||
       activity.hasUnsubmittedDraft ||
       activity.unread ||
       activity.unreadError);
+  const renderRollupIndicator = () =>
+    collapsedSplitIndicator.miniMap ? (
+      <SplitPaneMiniMap
+        slots={collapsedSplitIndicator.miniMap}
+        label={`${label} — contains a thread open in split`}
+        isWorking={activity.working}
+      />
+    ) : (
+      <CollapsedThreadStatusGlyph activity={activity} />
+    );
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
     // Only the non-sticky header needs `relative`; a sticky tier is already a
@@ -141,7 +168,7 @@ function SidebarSectionRowComponent({
           onToggle={onToggleCollapsed}
         />
       </span>
-      {showRollupGlyph ? (
+      {showRollupIndicator ? (
         <span
           data-sidebar-collapsed-activity-edge=""
           data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
@@ -150,7 +177,7 @@ function SidebarSectionRowComponent({
             hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
           )}
         >
-          <CollapsedThreadStatusGlyph activity={activity} />
+          {renderRollupIndicator()}
         </span>
       ) : null}
       <span
@@ -174,9 +201,9 @@ function SidebarSectionRowComponent({
             )}
             onClick={stopActionsClick}
           >
-            {showRollupGlyph ? (
+            {showRollupIndicator ? (
               <span className="hidden shrink-0 items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-                <CollapsedThreadStatusGlyph activity={activity} />
+                {renderRollupIndicator()}
               </span>
             ) : null}
             {hasMenuActions ? (
@@ -241,9 +268,9 @@ function SidebarSectionRowComponent({
               </Tooltip>
             ) : null}
           </span>
-        ) : showRollupGlyph ? (
+        ) : showRollupIndicator ? (
           <span className="hidden size-full items-center justify-center text-subtle-foreground max-md:pointer-coarse:inline-flex">
-            <CollapsedThreadStatusGlyph activity={activity} />
+            {renderRollupIndicator()}
           </span>
         ) : null}
       </span>

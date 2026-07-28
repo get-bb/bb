@@ -137,10 +137,8 @@ describe("usePortalScopeProps", () => {
 
     fireEvent.contextMenu(screen.getByText("Context target"));
 
-    expect(
-      baseElement
-        .querySelector('[role="menu"]')
-        ?.getAttribute("data-bb-portaled-overlay"),
-    ).toBe("");
+    const menu = baseElement.querySelector('[role="menu"]');
+    expect(menu?.getAttribute("data-bb-portaled-overlay")).toBe("");
+    expect(menu?.classList.contains("z-[70]")).toBe(true);
   });
 });

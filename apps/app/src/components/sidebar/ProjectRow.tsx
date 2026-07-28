@@ -1344,6 +1344,10 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   // expanded section adds no height (mounting it added the wrapper's margin).
   const showChildrenArea =
     showChildren || (sectionDnd?.activeThread != null && !isCollapsed);
+  const sectionThreads = useMemo(
+    () => getProjectThreadItemDescendants(section.items),
+    [section.items],
+  );
 
   const childrenArea = showChildrenArea ? (
     <div className="relative space-y-px">
@@ -1490,6 +1494,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
           onToggleCollapsed: handleToggleCollapsed,
         }}
         collapsedActivity={section.activity}
+        collapsedThreads={sectionThreads}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
@@ -1516,6 +1521,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         label={section.name}
         depth={headerDepth}
         activity={section.activity}
+        collapsedThreads={sectionThreads}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
@@ -1937,6 +1943,7 @@ export const ChronologicalSectionThreadSections = memo(
     const looseItems = renderedRootItems.filter(
       (item) => item.kind !== "section",
     );
+    const looseThreads = getProjectThreadItemDescendants(looseItems);
 
     // No sortableParentKey: the outer SectionDndSortableList below provides the
     // SortableContext spanning both the sections and loose-threads sections.
@@ -2043,10 +2050,8 @@ export const ChronologicalSectionThreadSections = memo(
           },
           threads: {
             ...builtInSections.threads,
-            activity: getCollapsedChildActivity(
-              getProjectThreadItemDescendants(looseItems),
-              draftThreadIds,
-            ),
+            activity: getCollapsedChildActivity(looseThreads, draftThreadIds),
+            collapsedThreads: looseThreads,
             content: threadsContent,
           },
         }
@@ -2251,6 +2256,7 @@ function ProjectRowComponent({
             onToggleCollapsed: handleProjectRowToggle,
           }}
           collapsedActivity={projectActivity}
+          collapsedThreads={projectThreads}
           consumeClickSuppression={consumeProjectClickSuppression}
           dragBindings={projectDragBindings}
           sectionRef={projectRowRef}

@@ -10,6 +10,7 @@ import {
 } from "./TopLevelSidebarSection";
 import { useSidebarSortable } from "./sortableMotion";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import type { ThreadSplitIndicatorTarget } from "./paneContentSplitIndicator";
 
 interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
   disabled: boolean;
@@ -20,6 +21,7 @@ export interface BuiltInSidebarSectionOptions {
   activity?: CollapsedChildActivity;
   actions?: ReactNode;
   actionsOpen?: boolean;
+  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
   content: ReactNode;
   isDropTargetActive?: boolean;
   label: string;
@@ -77,6 +79,7 @@ function BuiltInSidebarSection({
   actions,
   actionsOpen,
   activity,
+  collapsedThreads,
   consumeClickSuppression,
   content,
   disabled,
@@ -94,6 +97,7 @@ function BuiltInSidebarSection({
       actions={actions}
       actionsOpen={actionsOpen}
       collapsedActivity={activity}
+      collapsedThreads={collapsedThreads}
       actionsMobileAlways
       collapseControl={{
         isCollapsed,

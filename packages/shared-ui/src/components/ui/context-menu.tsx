@@ -77,6 +77,10 @@ type ContextMenuSeparatorProps = React.ComponentPropsWithoutRef<
 
 type ContextMenuShortcutProps = React.HTMLAttributes<HTMLSpanElement>;
 
+// Sticky application chrome can reach z-60 (for example sidebar group labels).
+// Context menus portal to the document root and must paint above those tiers.
+const CONTEXT_MENU_LAYER_CLASS = "z-[70]";
+
 const ContextMenu = ContextMenuPrimitive.Root;
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 const ContextMenuGroup = ContextMenuPrimitive.Group;
@@ -135,7 +139,8 @@ const ContextMenuSubContent = React.forwardRef<
     // too so plugin CSS reaches sub-menu items (see portal-scope.ts).
     {...usePortalScopeProps()}
     className={cn(
-      "z-50 min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+      CONTEXT_MENU_LAYER_CLASS,
+      "min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
       className,
     )}
     {...props}
@@ -154,7 +159,8 @@ const ContextMenuContent = React.forwardRef<
       // when rendered from a plugin slot (see portal-scope.ts).
       {...usePortalScopeProps()}
       className={cn(
-        "z-50 min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        CONTEXT_MENU_LAYER_CLASS,
+        "min-w-28 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className,
       )}
       {...props}

@@ -2,11 +2,18 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+});
 
 describe("SidebarSectionRow", () => {
   it("renders the section name before the disclosure without a sidebar icon", () => {
@@ -66,5 +73,77 @@ describe("SidebarSectionRow", () => {
     expect(edgeSlot).toBeInstanceOf(HTMLElement);
     expect((edgeSlot as HTMLElement).className).toContain("absolute");
     expect((edgeSlot as HTMLElement).className).toContain("right-0");
+  });
+
+  it("rolls hidden split threads up to the collapsed section row", () => {
+    const store = createStore();
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-second-thread",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.34, 0.33, 0.33],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-first-thread",
+            content: {
+              kind: "thread",
+              projectId: "project-one",
+              threadId: "thread-one",
+            },
+          },
+          {
+            type: "pane",
+            paneId: "pane-compose",
+            content: { kind: "new-thread" },
+          },
+          {
+            type: "pane",
+            paneId: "pane-second-thread",
+            content: {
+              kind: "thread",
+              projectId: "project-two",
+              threadId: "thread-two",
+            },
+          },
+        ],
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <SidebarSectionRow
+          name="Build"
+          label="Work / Build"
+          depth={1}
+          activity={{
+            ...NO_COLLAPSED_CHILD_ACTIVITY,
+            pending: true,
+          }}
+          collapsedThreads={[
+            { id: "thread-one", projectId: "project-one" },
+            { id: "thread-two", projectId: "project-two" },
+          ]}
+          isCollapsed
+          onToggleCollapsed={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    const splitMaps = screen.getAllByRole("img", {
+      name: "Work / Build — contains a thread open in split",
+    });
+    const splitMap = splitMaps[0];
+    if (!splitMap) {
+      throw new Error("Expected a collapsed split mini-map");
+    }
+    const slots = splitMap.querySelectorAll("rect");
+
+    expect(slots).toHaveLength(3);
+    expect(slots[0]?.getAttribute("class")).toContain("fill-muted-foreground");
+    expect(slots[1]?.getAttribute("class")).toContain("fill-none");
+    expect(slots[2]?.getAttribute("class")).toContain("fill-primary");
+    expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
   });
 });

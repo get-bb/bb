@@ -9,6 +9,7 @@ import {
   listPanes,
   type PaneContent,
   type PaneRect,
+  type SplitLayout,
 } from "@/lib/split-layout";
 
 export interface MiniMapSlot {
@@ -31,6 +32,38 @@ const NO_INDICATOR: PaneContentSplitIndicator = {
   isOpenInSplit: false,
   miniMap: null,
 };
+
+export interface ThreadSplitIndicatorTarget {
+  id: string;
+  projectId: string;
+}
+
+function buildSplitIndicator(
+  layout: SplitLayout,
+  matchingPaneIds: ReadonlySet<string>,
+): PaneContentSplitIndicator {
+  if (matchingPaneIds.size === 0) {
+    return NO_INDICATOR;
+  }
+  const rects = computePaneRects(layout.root);
+  const miniMap: MiniMapSlot[] = listPanes(layout.root).flatMap((entry) => {
+    const rect = rects.get(entry.paneId);
+    return rect === undefined
+      ? []
+      : [
+          {
+            paneId: entry.paneId,
+            rect,
+            isMe: matchingPaneIds.has(entry.paneId),
+            isFocused: entry.paneId === layout.focusedPaneId,
+          },
+        ];
+  });
+  return {
+    isOpenInSplit: true,
+    miniMap,
+  };
+}
 
 /**
  * Split-membership state for any routable sidebar item. Reads the global split
@@ -57,23 +90,44 @@ export function usePaneContentSplitIndicator(
     if (pane === null) {
       return NO_INDICATOR;
     }
-    const rects = computePaneRects(layout.root);
-    const miniMap: MiniMapSlot[] = listPanes(layout.root).flatMap((entry) => {
-      const rect = rects.get(entry.paneId);
-      return rect === undefined
-        ? []
-        : [
-            {
-              paneId: entry.paneId,
-              rect,
-              isMe: entry.paneId === pane.paneId,
-              isFocused: entry.paneId === layout.focusedPaneId,
-            },
-          ];
-    });
-    return {
-      isOpenInSplit: true,
-      miniMap,
-    };
+    return buildSplitIndicator(layout, new Set([pane.paneId]));
   }, [content, enabled, isCompact, layout]);
+}
+
+/**
+ * Split-membership state for a collapsed sidebar area. Every pane occupied by
+ * one of the area's hidden threads is filled, so one rollup remains accurate
+ * when more than one descendant is open in the split layout.
+ */
+export function useThreadGroupSplitIndicator(
+  threads: readonly ThreadSplitIndicatorTarget[],
+  enabled: boolean,
+): PaneContentSplitIndicator {
+  const layout = useAtomValue(splitLayoutAtom);
+  const isCompact = useIsCompactViewport();
+
+  return useMemo<PaneContentSplitIndicator>(() => {
+    if (
+      !enabled ||
+      threads.length === 0 ||
+      layout === null ||
+      isCompact ||
+      countPanes(layout.root) < 2
+    ) {
+      return NO_INDICATOR;
+    }
+    const threadKeys = new Set(
+      threads.map((thread) => `${thread.projectId}\0${thread.id}`),
+    );
+    const matchingPaneIds = new Set<string>();
+    for (const pane of listPanes(layout.root)) {
+      if (
+        pane.content.kind === "thread" &&
+        threadKeys.has(`${pane.content.projectId}\0${pane.content.threadId}`)
+      ) {
+        matchingPaneIds.add(pane.paneId);
+      }
+    }
+    return buildSplitIndicator(layout, matchingPaneIds);
+  }, [enabled, isCompact, layout, threads]);
 }

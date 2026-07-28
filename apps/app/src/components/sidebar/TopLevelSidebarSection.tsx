@@ -26,6 +26,14 @@ import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
+import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import {
+  useThreadGroupSplitIndicator,
+  type ThreadSplitIndicatorTarget,
+} from "./paneContentSplitIndicator";
+import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+
+const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
 export interface TopLevelSidebarSectionCollapseControl {
   isCollapsed: boolean;
@@ -41,6 +49,7 @@ export interface TopLevelSidebarSectionProps {
   actionsOpen?: boolean;
   collapseControl?: TopLevelSidebarSectionCollapseControl;
   collapsedActivity?: CollapsedChildActivity;
+  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
@@ -61,12 +70,18 @@ export function TopLevelSidebarSection({
   actionsOpen = false,
   collapseControl,
   collapsedActivity,
+  collapsedThreads = EMPTY_SPLIT_INDICATOR_THREADS,
   dragBindings,
   sectionRef,
   sectionStyle,
   consumeClickSuppression,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
+  const threadSplitsEnabled = useThreadSplitsEnabled();
+  const collapsedSplitIndicator = useThreadGroupSplitIndicator(
+    collapsedThreads,
+    threadSplitsEnabled && collapseControl?.isCollapsed === true,
+  );
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
       if (!consumeClickSuppression?.()) {
@@ -163,7 +178,8 @@ export function TopLevelSidebarSection({
             </button>
           ) : null}
         </span>
-        {collapseControl?.isCollapsed && collapsedActivity ? (
+        {collapseControl?.isCollapsed &&
+        (collapsedSplitIndicator.miniMap !== null || collapsedActivity) ? (
           <span
             data-sidebar-collapsed-activity-edge=""
             data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
@@ -172,7 +188,15 @@ export function TopLevelSidebarSection({
               actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
             )}
           >
-            <CollapsedThreadStatusGlyph activity={collapsedActivity} />
+            {collapsedSplitIndicator.miniMap ? (
+              <SplitPaneMiniMap
+                slots={collapsedSplitIndicator.miniMap}
+                label={`${label} — contains a thread open in split`}
+                isWorking={collapsedActivity?.working}
+              />
+            ) : collapsedActivity ? (
+              <CollapsedThreadStatusGlyph activity={collapsedActivity} />
+            ) : null}
           </span>
         ) : null}
         {actions ? (
