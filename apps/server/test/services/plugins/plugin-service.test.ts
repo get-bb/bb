@@ -20,6 +20,7 @@ async function writePlugin(
     version?: string;
     engines?: string;
     serverSource: string;
+    bb?: Record<string, unknown>;
   },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
@@ -35,6 +36,7 @@ async function writePlugin(
         description: "Plugin service fixture.",
         branding: { icon: "Zap" },
         server: "./server.ts",
+        ...options.bb,
       },
     }),
   );
@@ -88,6 +90,82 @@ describe("plugin service", () => {
     expect(entry.id).toBe("greeter");
     expect(entry.status).toBe("running");
     expect(service.getApi("greeter")).toBeDefined();
+  });
+
+  it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
+    const rootDir = join(workDir, "bb-plugin-capabilities");
+    await mkdir(join(rootDir, "skills"), { recursive: true });
+    await writeFile(join(rootDir, "midnight.css"), ":root { --canvas: #000; }");
+    await writePlugin(workDir, {
+      name: "bb-plugin-capabilities",
+      bb: {
+        themes: [
+          {
+            id: "midnight",
+            name: "Midnight",
+            description: "A dark palette",
+            css: "./midnight.css",
+          },
+        ],
+      },
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.registerTool({
+            name: "capabilities_probe",
+            description: "Probe capabilities",
+            parameters: { type: "object" },
+            execute: async () => ({ content: "ok" }),
+          });
+          bb.ui.registerMentionProvider({
+            id: "issues",
+            label: "Issues",
+            triggers: ["#"],
+            async search() { return []; },
+            async resolve() { return { context: "" }; },
+          });
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+
+    const enabled = service.list().find((entry) => entry.id === "capabilities");
+    expect(enabled?.capabilities).toEqual([
+      {
+        kind: "skill",
+        id: "skills",
+        label: "skills",
+        detail: "Skills bundled with this plugin",
+      },
+      {
+        kind: "theme",
+        id: "midnight",
+        label: "Midnight",
+        detail: "A dark palette",
+      },
+      {
+        kind: "agent-tool",
+        id: "capabilities_probe",
+        label: "capabilities_probe",
+        detail: "Probe capabilities",
+      },
+      {
+        kind: "thread-integration",
+        id: "mention:issues",
+        label: "Issues",
+        detail: "Mentions with #",
+      },
+    ]);
+
+    await service.setEnabled("capabilities", false);
+
+    // A disabled plugin has no runtime, so only its manifest-declared
+    // capabilities survive — the detail page says the rest need enabling.
+    expect(
+      service
+        .list()
+        .find((entry) => entry.id === "capabilities")
+        ?.capabilities.map((capability) => capability.kind),
+    ).toEqual(["skill", "theme"]);
   });
 
   it("marks a throwing factory as error without affecting others", async () => {

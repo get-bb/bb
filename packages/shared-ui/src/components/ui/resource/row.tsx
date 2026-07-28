@@ -355,14 +355,30 @@ export function ResourceListState({
   message,
   onRetry,
   loadingRows = 4,
+  layout = "list",
 }: {
   state: "loading" | "empty" | "error";
   message: string;
   onRetry?: () => void;
   loadingRows?: number;
+  /**
+   * `detail` keeps a resource detail route's page width and centering while it
+   * is loading, missing, or failed, so the state reads as the same page rather
+   * than as a differently-shaped one.
+   */
+  layout?: "list" | "detail";
 }) {
+  const frame = (children: ReactNode) =>
+    layout === "detail" ? (
+      <div data-resource-detail-state className="mx-auto w-full max-w-3xl">
+        {children}
+      </div>
+    ) : (
+      children
+    );
+
   if (state === "loading") {
-    return (
+    return frame(
       <ResourceListPanel>
         <span role="status" className="sr-only">
           {message}
@@ -381,11 +397,11 @@ export function ResourceListState({
             </div>
           ))}
         </div>
-      </ResourceListPanel>
+      </ResourceListPanel>,
     );
   }
 
-  return (
+  return frame(
     <EmptyStatePanel
       role={state === "error" ? "alert" : "status"}
       className="py-6"
@@ -398,6 +414,6 @@ export function ResourceListState({
           </Button>
         ) : null}
       </div>
-    </EmptyStatePanel>
+    </EmptyStatePanel>,
   );
 }

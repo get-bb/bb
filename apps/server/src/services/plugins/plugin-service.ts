@@ -1,6 +1,6 @@
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { homedir } from "node:os";
 import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
@@ -25,6 +25,7 @@ import {
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
+import type { PluginCapabilitySummary } from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
   deleteAllPluginSettings,
@@ -90,6 +91,7 @@ import { createPluginUpdates } from "./plugin-updates.js";
 
 import { pluginUpdateCheckEntrySchema } from "./plugin-service-internal.js";
 import type {
+  LoadedPlugin,
   PluginAgentToolContribution,
   PluginApplyUpdateOutcome,
   PluginInstructionContribution,
@@ -1235,6 +1237,65 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     };
   }
 
+  /**
+   * The user-recognizable capabilities a plugin contributes, for the plugin
+   * detail "Includes" section. Manifest-declared skills and themes stay
+   * accurate while a plugin is disabled; agent tools and thread integrations
+   * only exist on a loaded plugin, so a disabled plugin reports none and the
+   * UI explains that they become visible once it is enabled.
+   */
+  function capabilitySummary(
+    manifest: PluginManifest | undefined,
+    exposedPlugin: LoadedPlugin | undefined,
+  ): PluginCapabilitySummary {
+    const capabilities: PluginCapabilitySummary = [];
+    if (manifest !== undefined) {
+      for (const rootPath of manifest.skillsRootPaths) {
+        if (!existsSync(rootPath)) continue;
+        const displayPath = relative(manifest.rootDir, rootPath) || ".";
+        capabilities.push({
+          kind: "skill",
+          id: displayPath,
+          label: displayPath,
+          detail: "Skills bundled with this plugin",
+        });
+      }
+      for (const theme of manifest.themes) {
+        capabilities.push({
+          kind: "theme",
+          id: theme.id,
+          label: theme.name,
+          detail: theme.description,
+        });
+      }
+    }
+    for (const tool of exposedPlugin?.handle.agentTools ?? []) {
+      capabilities.push({
+        kind: "agent-tool",
+        id: tool.name,
+        label: tool.name,
+        detail: tool.description,
+      });
+    }
+    for (const action of exposedPlugin?.handle.threadActions ?? []) {
+      capabilities.push({
+        kind: "thread-integration",
+        id: `thread-action:${action.id}`,
+        label: action.title,
+        detail: "Thread action",
+      });
+    }
+    for (const provider of exposedPlugin?.handle.mentionProviders ?? []) {
+      capabilities.push({
+        kind: "thread-integration",
+        id: `mention:${provider.id}`,
+        label: provider.label,
+        detail: `Mentions with ${provider.triggers.join(", ")}`,
+      });
+    }
+    return capabilities;
+  }
+
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
     return listInstalledPlugins(deps.db)
@@ -1311,6 +1372,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           cliCommand: cliRegistration
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
+          capabilities: capabilitySummary(
+            exposedPlugin?.manifest ?? identity?.manifest,
+            exposedPlugin,
+          ),
           hasSettings:
             exposedPlugin !== undefined &&
             Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,

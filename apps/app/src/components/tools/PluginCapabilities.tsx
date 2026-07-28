@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import type { PluginCapability } from "@bb/server-contract";
 import {
   ResourceDetailCollection,
   ResourceDetailListItem,
 } from "@bb/shared-ui/resource-list";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   Tooltip,
@@ -301,6 +303,16 @@ export function PluginIncludes({
     });
   }
 
+  const declared = (kind: PluginCapability["kind"]): PluginCapabilityItem[] =>
+    plugin.capabilities
+      .filter((capability) => capability.kind === kind)
+      .map((capability) => ({
+        key: `${capability.kind}:${capability.id}`,
+        label: capability.label,
+        detail: capability.detail ?? undefined,
+        mono: kind === "skill" || kind === "agent-tool",
+      }));
+
   const groups: Array<{
     icon: IconName;
     label: string;
@@ -322,6 +334,14 @@ export function PluginIncludes({
         : [],
     },
     { icon: "Settings", label: "Settings", items: settingsItems },
+    { icon: "Explore", label: "Skills", items: declared("skill") },
+    { icon: "Toolbox", label: "Agent tools", items: declared("agent-tool") },
+    {
+      icon: "MessageCirclePlus",
+      label: "Thread integrations",
+      items: declared("thread-integration"),
+    },
+    { icon: "Palette", label: "Themes", items: declared("theme") },
     {
       icon: "Workflow",
       label: "Services",
@@ -343,18 +363,46 @@ export function PluginIncludes({
       })),
     },
   ];
+  const populated = groups.filter(({ items }) => items.length > 0);
+
+  // Includes is a stable part of the plugin recipe, so it explains an empty
+  // result rather than disappearing. A disabled plugin genuinely cannot report
+  // its live capabilities, and saying so is more honest than showing nothing.
+  if (populated.length === 0) {
+    return (
+      <EmptyStatePanel className="py-6">
+        {plugin.enabled
+          ? "This plugin declares no user-facing capabilities."
+          : "Enable this plugin to see what it adds to bb."}
+      </EmptyStatePanel>
+    );
+  }
 
   return (
     <ResourceDetailCollection>
-      {groups.map(({ icon, label, items }) =>
-        items.length > 0 ? (
-          <PluginCapabilityGroup
-            key={label}
-            icon={icon}
-            label={label}
-            items={items}
-          />
-        ) : null,
+      {populated.map(({ icon, label, items }) => (
+        <PluginCapabilityGroup
+          key={label}
+          icon={icon}
+          label={label}
+          items={items}
+        />
+      ))}
+      {plugin.enabled ? null : (
+        <ResourceDetailListItem
+          leading={
+            <Icon
+              name="Info"
+              className="size-4 text-muted-foreground"
+              aria-hidden
+            />
+          }
+        >
+          <span className="block text-xs text-muted-foreground">
+            Commands, agent tools, and thread integrations are listed once this
+            plugin is enabled.
+          </span>
+        </ResourceDetailListItem>
       )}
     </ResourceDetailCollection>
   );

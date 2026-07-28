@@ -363,12 +363,21 @@ export function SkillsLibrary() {
         <ResourceListState
           state="error"
           message="Couldn't load skill."
+          layout="detail"
           onRetry={() => void skillsQuery.refetch()}
         />
       ) : routeSkillId !== undefined && isLoading ? (
-        <ResourceListState state="loading" message="Loading skill" />
+        <ResourceListState
+          state="loading"
+          message="Loading skill"
+          layout="detail"
+        />
       ) : routeSkillId !== undefined && selectedSkill === null ? (
-        <ResourceListState state="empty" message="Skill not found." />
+        <ResourceListState
+          state="empty"
+          message="Skill not found."
+          layout="detail"
+        />
       ) : selectedSkill ? (
         <SkillDetailPage
           projectId={PERSONAL_PROJECT_ID}
@@ -385,15 +394,21 @@ export function SkillsLibrary() {
               ? "This registry skill could not be loaded."
               : "Loading registry skill"
           }
+          layout="detail"
           onRetry={() => void registryEntryQuery.refetch()}
         />
       ) : selectedRegistrySkill && registryDetailQuery.isLoading ? (
-        <ResourceListState state="loading" message="Checking skill source" />
+        <ResourceListState
+          state="loading"
+          message="Checking skill source"
+          layout="detail"
+        />
       ) : selectedRegistrySkill &&
         (registryDetailQuery.isError || registryDetail === null) ? (
         <ResourceListState
           state="error"
           message="This registry skill is no longer available from its source."
+          layout="detail"
           onRetry={() => void registryDetailQuery.refetch()}
         />
       ) : selectedRegistrySkill && registryDetail ? (

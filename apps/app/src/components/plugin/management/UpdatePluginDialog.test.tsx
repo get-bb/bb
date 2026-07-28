@@ -35,6 +35,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     services: [],
     schedules: [],
     cliCommand: null,
+    capabilities: [],
     app: { hasApp: false, bundle: null },
   };
 }

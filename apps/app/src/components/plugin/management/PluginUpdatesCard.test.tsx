@@ -44,6 +44,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     services: [],
     schedules: [],
     cliCommand: null,
+    capabilities: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
   };

@@ -143,6 +143,31 @@ export const pluginAppStateSchema = z.object({
     .nullable(),
 });
 
+/**
+ * A user-recognizable thing a plugin contributes to bb, as shown in the plugin
+ * detail "Includes" section. These are product facts, not server internals:
+ * RPC methods, HTTP routes, event handlers, and databases are deliberately
+ * absent.
+ *
+ * `skill` and `theme` are manifest-declared, so they stay accurate while the
+ * plugin is disabled. `agent-tool` and `thread-integration` are only observable
+ * on a loaded plugin, so a disabled plugin reports none of them and the detail
+ * page says so rather than implying it has none.
+ */
+export const pluginCapabilitySchema = z.object({
+  kind: z.enum(["skill", "theme", "agent-tool", "thread-integration"]),
+  id: z.string(),
+  label: z.string(),
+  detail: z.string().nullable(),
+});
+export type PluginCapability = z.infer<typeof pluginCapabilitySchema>;
+
+/** Every capability a plugin contributes, used to render plugin Includes. */
+export const pluginCapabilitySummarySchema = z.array(pluginCapabilitySchema);
+export type PluginCapabilitySummary = z.infer<
+  typeof pluginCapabilitySummarySchema
+>;
+
 export const installedPluginSchema = z.object({
   id: z.string(),
   source: z.string(),
@@ -165,6 +190,7 @@ export const installedPluginSchema = z.object({
   services: z.array(pluginServiceEntrySchema),
   schedules: z.array(pluginScheduleEntrySchema),
   cliCommand: z.object({ name: z.string(), summary: z.string() }).nullable(),
+  capabilities: pluginCapabilitySummarySchema.default([]),
   hasSettings: z.boolean(),
   app: pluginAppStateSchema,
   logoUrl: z.string().nullable(),

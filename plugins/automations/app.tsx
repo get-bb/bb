@@ -1045,33 +1045,36 @@ function DetailView({
 
   if (error !== null || missing) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <ResourceListState
-          state="error"
-          message={
-            missing
-              ? "Automation not found."
-              : `Couldn't load automation: ${error}`
-          }
-          onRetry={refetch}
-        />
-      </div>
+      <ResourceListState
+        state="error"
+        message={
+          missing
+            ? "Automation not found."
+            : `Couldn't load automation: ${error}`
+        }
+        layout="detail"
+        onRetry={refetch}
+      />
     );
   }
 
   if (automation === null) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
+      <ResourceListState
+        state="loading"
+        message="Loading automation"
+        layout="detail"
+      />
     );
   }
 
   if (initialEditing) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <p className="text-sm text-muted-foreground">Opening composer…</p>
-      </div>
+      <ResourceListState
+        state="loading"
+        message="Opening composer"
+        layout="detail"
+      />
     );
   }
 

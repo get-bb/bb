@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
@@ -76,12 +75,22 @@ export function PluginDetail({
     getPluginFrontendDiagnostics,
   );
   if (isLoading) {
-    return <ResourceListState state="loading" message="Loading plugins" />;
+    return (
+      <ResourceListState
+        state="loading"
+        message="Loading plugins"
+        layout="detail"
+      />
+    );
   }
 
   if (plugin === null) {
     return (
-      <EmptyStatePanel className="py-6">Plugin not found.</EmptyStatePanel>
+      <ResourceListState
+        state="empty"
+        message="Plugin not found."
+        layout="detail"
+      />
     );
   }
 
@@ -91,12 +100,6 @@ export function PluginDetail({
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
-  const hasIncludes =
-    plugin.app.hasApp ||
-    plugin.cliCommand !== null ||
-    hasSettings ||
-    plugin.services.length > 0 ||
-    plugin.schedules.length > 0;
   const hasActivity =
     (plugin.enabled && runtimeStatus !== null) ||
     plugin.handlerStats.errorCount > 0 ||
@@ -194,12 +197,23 @@ export function PluginDetail({
             : {frontendFailure.message}
           </div>
         ) : null}
-        {plugin.description ? (
-          <ResourceDetailOverviewSection label="About">
-            <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
-              {plugin.description}
-            </p>
-          </ResourceDetailOverviewSection>
+        <ResourceDetailOverviewSection label="About">
+          <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+            {plugin.description ?? "This plugin does not describe itself."}
+          </p>
+        </ResourceDetailOverviewSection>
+        <ResourceDetailIncludesSection label="Includes">
+          <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
+        </ResourceDetailIncludesSection>
+        {hasSettings ? (
+          <ResourceDetailConfigurationSection label="Settings">
+            <PluginSettingsDetail plugin={plugin} />
+          </ResourceDetailConfigurationSection>
+        ) : null}
+        {hasActivity ? (
+          <ResourceActivitySection label="Activity">
+            <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
+          </ResourceActivitySection>
         ) : null}
         <ResourceDetailReleaseSection label="Release">
           <div className="space-y-3">
@@ -224,21 +238,6 @@ export function PluginDetail({
             )}
           </div>
         </ResourceDetailReleaseSection>
-        {hasSettings ? (
-          <ResourceDetailConfigurationSection label="Settings">
-            <PluginSettingsDetail plugin={plugin} />
-          </ResourceDetailConfigurationSection>
-        ) : null}
-        {hasIncludes ? (
-          <ResourceDetailIncludesSection label="Includes">
-            <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
-          </ResourceDetailIncludesSection>
-        ) : null}
-        {hasActivity ? (
-          <ResourceActivitySection label="Runtime activity">
-            <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
-          </ResourceActivitySection>
-        ) : null}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

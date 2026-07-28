@@ -37,6 +37,7 @@ function plugin(
     services: [],
     schedules: [],
     cliCommand: null,
+    capabilities: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
   };

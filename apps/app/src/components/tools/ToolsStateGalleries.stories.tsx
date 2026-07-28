@@ -10,7 +10,10 @@ import {
   ResourceInstallControl,
   ResourceInstalledControl,
   ResourceLifecycleStatus,
+  ResourceListState,
 } from "@bb/shared-ui/resource-list";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { Switch } from "@bb/shared-ui/switch";
 import { AutomationRunStatusIndicator } from "bb-plugin-automations/detail-view";
 import {
@@ -31,6 +34,8 @@ import {
   SKILL_SCOPE_LABELS,
   SKILL_SCOPE_OWNERSHIP,
 } from "@/components/tools/skill-taxonomy";
+import { PluginDetail } from "@/components/tools/PluginDetail";
+import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   formatAutomationTrigger,
   formatScheduleStatusLabel,
@@ -633,5 +638,205 @@ export function Automations() {
         ))}
       </StateSection>
     </Gallery>
+  );
+}
+
+const RECIPE_PLUGIN: PluginListItem = {
+  id: "github",
+  source: "npm:@bb-plugins/github",
+  rootDir: "/managed/plugins/github",
+  version: "1.4.0",
+  enabled: true,
+  status: "running",
+  statusDetail: null,
+  description: "Browse GitHub issues and pull requests without leaving bb.",
+  name: "GitHub",
+  icon: "Github",
+  compactIconUrl: null,
+  logoUrl: null,
+  logoDarkUrl: null,
+  hasSettings: false,
+  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+  services: [],
+  schedules: [],
+  cliCommand: null,
+  capabilities: [],
+  app: { hasApp: false, bundle: null },
+  provenance: "direct",
+  isOrphanedBuiltin: false,
+  catalogEntryId: null,
+  sourceDisplay: "npm · @bb-plugins/github",
+  updateState: {
+    outcome: null,
+    availableVersion: null,
+    blockedVersion: null,
+    blockedReasons: [],
+    lastCheckAt: null,
+    lastFailure: null,
+  },
+};
+
+const FULL_PLUGIN: PluginListItem = {
+  ...RECIPE_PLUGIN,
+  cliCommand: { name: "gh", summary: "Work with GitHub from the terminal" },
+  services: [{ name: "issue-sync", state: "running" }],
+  schedules: [
+    {
+      name: "digest",
+      cron: "0 9 * * *",
+      nextRunAt: NEXT_RUN_AT,
+      lastRunAt: null,
+      lastStatus: null,
+      lastError: null,
+    },
+  ],
+  capabilities: [
+    {
+      kind: "skill",
+      id: "skills",
+      label: "skills",
+      detail: "Skills bundled with this plugin",
+    },
+    {
+      kind: "theme",
+      id: "github.dark",
+      label: "GitHub Dark",
+      detail: "A dark palette matching github.com",
+    },
+    {
+      kind: "agent-tool",
+      id: "gh_search",
+      label: "gh_search",
+      detail: "Search issues and pull requests",
+    },
+    {
+      kind: "thread-integration",
+      id: "mention:pr",
+      label: "Pull requests",
+      detail: "Mentions with #",
+    },
+  ],
+};
+
+const DISABLED_PLUGIN: PluginListItem = {
+  ...RECIPE_PLUGIN,
+  enabled: false,
+  status: "disabled",
+  statusDetail: null,
+  // Only the manifest-declared capabilities survive a disabled plugin.
+  capabilities: FULL_PLUGIN.capabilities.filter(
+    (capability) => capability.kind === "skill" || capability.kind === "theme",
+  ),
+};
+
+function DetailStory({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <StoryCard className="m-0 border border-border bg-card p-5">
+        {children}
+      </StoryCard>
+    </section>
+  );
+}
+
+function PluginDetailStory({ plugin }: { plugin: PluginListItem | null }) {
+  return (
+    <PluginDetail
+      isLoading={false}
+      plugin={plugin}
+      pending={false}
+      openSourceDisabled
+      onToggle={noop}
+      onEdit={noop}
+      onOpenSource={noop}
+      onDelete={noop}
+    />
+  );
+}
+
+/**
+ * The plugin detail recipe rendered against the real component, so the section
+ * sequence, canonical labels, and Includes states can be reviewed by eye. The
+ * enforcement lives in `detail-page-recipes.test.tsx`.
+ */
+export function PluginDetailRecipe() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      }),
+  );
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <Gallery
+          title="Plugin detail recipe"
+          description="About → Includes → Settings? → Activity? → Release. About, Includes, and Release never disappear; Settings and Activity only appear in their fixed positions."
+        >
+          <DetailStory
+            title="Full plugin"
+            description="Command, skills, agent tools, thread integrations, themes, services, and schedules all resolve into Includes and Activity."
+          >
+            <PluginDetailStory plugin={FULL_PLUGIN} />
+          </DetailStory>
+
+          <DetailStory
+            title="Minimal plugin"
+            description="Nothing user-facing is declared, so Includes stays and explains itself instead of vanishing."
+          >
+            <PluginDetailStory plugin={RECIPE_PLUGIN} />
+          </DetailStory>
+
+          <DetailStory
+            title="Disabled plugin"
+            description="Manifest-declared skills and themes stay accurate; the live capabilities are honestly deferred until the plugin is enabled."
+          >
+            <PluginDetailStory plugin={DISABLED_PLUGIN} />
+          </DetailStory>
+
+          <DetailStory
+            title="Not found"
+            description="A missing plugin keeps the detail page width rather than collapsing to a bare list-shaped empty state."
+          >
+            <PluginDetailStory plugin={null} />
+          </DetailStory>
+
+          <DetailStory
+            title="Loading"
+            description="The same shared treatment and width used by skill and automation detail routes."
+          >
+            <ResourceListState
+              state="loading"
+              message="Loading plugins"
+              layout="detail"
+            />
+          </DetailStory>
+
+          <DetailStory
+            title="Error"
+            description="A failed detail route explains what failed and offers a specific retry."
+          >
+            <ResourceListState
+              state="error"
+              message="Couldn't load plugin."
+              layout="detail"
+              onRetry={noop}
+            />
+          </DetailStory>
+        </Gallery>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }

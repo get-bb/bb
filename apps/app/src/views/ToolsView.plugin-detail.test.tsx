@@ -40,6 +40,7 @@ const GITHUB_PLUGIN = {
   services: [],
   schedules: [],
   cliCommand: null,
+  capabilities: [],
   app: { hasApp: true, bundle: null },
   provenance: "catalog" as const,
   isOrphanedBuiltin: false,

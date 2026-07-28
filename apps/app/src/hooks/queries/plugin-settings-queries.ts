@@ -44,6 +44,7 @@ export interface PluginListItem {
   services: InstalledPlugin["services"];
   schedules: InstalledPlugin["schedules"];
   cliCommand: InstalledPlugin["cliCommand"];
+  capabilities: InstalledPlugin["capabilities"];
   app: InstalledPlugin["app"];
   provenance: PluginProvenance;
   source: string;
@@ -97,6 +98,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     services: plugin.services,
     schedules: plugin.schedules,
     cliCommand: plugin.cliCommand,
+    capabilities: plugin.capabilities,
     app: plugin.app,
     provenance: plugin.provenance,
     source: plugin.source,

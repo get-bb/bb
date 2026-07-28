@@ -150,6 +150,7 @@ function rowPlugin(
     services: [],
     schedules: [],
     cliCommand: null,
+    capabilities: [],
     app: { hasApp: false, bundle: null },
     provenance: "direct" as const,
     isOrphanedBuiltin: false,
