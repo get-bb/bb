@@ -216,6 +216,18 @@ const loadedSidebarNavigation = {
   ],
 } satisfies SidebarBootstrapResponse;
 
+const emptySidebarNavigation = {
+  ...loadedSidebarNavigation,
+  personalProject: {
+    ...loadedSidebarNavigation.personalProject,
+    threads: [],
+  },
+  projects: loadedSidebarNavigation.projects.map((project) => ({
+    ...project,
+    threads: [],
+  })),
+} satisfies SidebarBootstrapResponse;
+
 const machineStoryHosts = [
   makeHost(),
   makeHost({ id: HOST_IDS.remote, name: HOST_NAMES.remote }),
@@ -524,11 +536,40 @@ export function ByProjectOrganization() {
   );
 }
 
+export function ByProjectOrganizationEmpty() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow
+        label="No threads"
+        hint="projects and loose-thread empty states"
+      >
+        <OrganizationSidebar
+          mode="project"
+          navigation={emptySidebarNavigation}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function ManualOrganization() {
   return (
     <StoryCard labelWidth="120px">
       <StoryRow label="Manually" hint="threads not filed into a section">
         <OrganizationSidebar mode="chronological" />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ManualOrganizationEmpty() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow label="No threads" hint="no manual sections or loose threads">
+        <OrganizationSidebar
+          mode="chronological"
+          navigation={emptySidebarNavigation}
+        />
       </StoryRow>
     </StoryCard>
   );
@@ -542,6 +583,20 @@ export function ByMachineOrganization() {
           mode="machine"
           hosts={machineStoryHosts}
           navigation={machineSidebarNavigation}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function ByMachineOrganizationEmpty() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow label="No threads" hint="no machine groups">
+        <OrganizationSidebar
+          mode="machine"
+          hosts={machineStoryHosts}
+          navigation={emptySidebarNavigation}
         />
       </StoryRow>
     </StoryCard>
