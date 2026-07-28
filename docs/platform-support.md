@@ -8,11 +8,19 @@
 - Linux persistent host
 - Windows via Ubuntu on WSL2
 
-Supported npm package runtimes:
+Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
+`engines.node: ">=22.19.0"`.
+
+Tested npm package runtimes:
 
 - Node.js 22.19 or newer in the Node.js 22 release line
 - Node.js 24 LTS
 - Node.js 26 Current
+
+Newer release lines are not blocked. `install-machine.sh` gates on the 22.19
+floor only, so a release line we have not tested yet still installs rather than
+failing hard on the day it ships. The `bb-app` npm `engines` field lists the
+tested lines, which npm surfaces as a warning rather than an install failure.
 
 Windows support means the Linux stack runs entirely inside WSL2:
 

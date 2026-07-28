@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": "^22.19.0 || ^24.0.0 || ^26.0.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "scripts:prepare": "pnpm exec turbo run build --filter=@bb/scripts --output-logs=none --log-prefix=none --summarize=false",

@@ -21,3 +21,12 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 `bb-app` also exposes a Node scripting SDK:
 `import { BBSdk } from "bb-app"`. See
 [`packages/bb-app`](../packages/bb-app/README.md#scripting-with-the-sdk).
+
+## Pinned Dependencies
+
+Some dependencies are pinned to an exact version for reasons that are not
+visible from `package.json` alone.
+
+| Dependency                     | Where         | Why                                                                                                                                                                                                                                                 |
+| ------------------------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@opentelemetry/api` (`1.9.1`) | `apps/server` | Pi AI and Drizzle each pull in `@opentelemetry/api`. Without an exact direct pin, pnpm can resolve two copies and TypeScript sees two distinct type identities, which fails the server typecheck. Bump both consumers together, not this pin alone. |

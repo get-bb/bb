@@ -49,6 +49,16 @@ export const bundleTargets = [
     ),
     label: "pi bridge",
     outfile: resolve(packageRoot, "dist", "bb-pi-bridge.mjs"),
+    // The bridge ships as one file, so Pi's OAuth flows cannot be reached
+    // through its normal relative dynamic imports; `registerBunOAuthFlows()`
+    // pulls them in statically instead. A rename or removal upstream would
+    // otherwise surface only at login time inside the packaged bridge, so
+    // assert the flows really landed in the bundle. These are endpoint
+    // literals, which survive minification.
+    requiredLiterals: [
+      "https://claude.ai/oauth/authorize",
+      "https://auth.openai.com",
+    ],
   },
   {
     banner: NODE_ESM_REQUIRE_BANNER,

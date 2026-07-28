@@ -15,16 +15,29 @@ import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
 type InferenceCompleteDeps = LoggedWorkSessionDeps;
 
-const inferenceModels = builtinModels();
+type InferenceModels = ReturnType<typeof builtinModels>;
+
+// Built lazily: constructing the registry at module scope would turn any
+// failure inside it into a server import failure rather than a failure of the
+// one inference call that needed it.
+let inferenceModelsInstance: InferenceModels | undefined;
+
+function getInferenceModels(): InferenceModels {
+  inferenceModelsInstance ??= builtinModels();
+  return inferenceModelsInstance;
+}
 
 function getInferenceModel(
   deps: BaseInferenceDeps,
-): ReturnType<typeof inferenceModels.getModel> | null {
+): ReturnType<InferenceModels["getModel"]> | null {
   const modelInfo = parseProviderModelConfig({
     name: "BB_INFERENCE",
     value: deps.config.inferenceModel,
   });
-  const model = inferenceModels.getModel(modelInfo.provider, modelInfo.modelId);
+  const model = getInferenceModels().getModel(
+    modelInfo.provider,
+    modelInfo.modelId,
+  );
   if (!model) {
     deps.logger.warn(
       { provider: modelInfo.provider },
@@ -170,7 +183,7 @@ export async function inferenceComplete<T extends TSchema>(
 
   const timeoutMs = args.timeoutMs;
   const abortController = timeoutMs ? new AbortController() : null;
-  const completionPromise = inferenceModels.complete(
+  const completionPromise = getInferenceModels().complete(
     model,
     {
       messages: [

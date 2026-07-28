@@ -13,13 +13,18 @@ vi.mock("@earendil-works/pi-ai", () => ({
   getSupportedThinkingLevels,
 }));
 
-import { listPiBridgeModels } from "../model-list.js";
+import {
+  listPiBridgeModels,
+  resetPiModelNetworkRefreshForTests,
+} from "../model-list.js";
 
 const modelRuntime = { getAvailable, refresh } as unknown as ModelRuntime;
 
 describe("pi bridge model list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPiModelNetworkRefreshForTests();
+    delete process.env.PI_OFFLINE;
   });
 
   it("builds available models from the shared Pi model runtime", async () => {
@@ -96,5 +101,57 @@ describe("pi bridge model list", () => {
       { reasoningEffort: "max", description: "Maximum reasoning effort" },
     ]);
     expect(result.models[0]?.defaultReasoningEffort).toBe("high");
+  });
+
+  it("still returns the catalog when the network refresh times out", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    refresh.mockResolvedValueOnce({ aborted: true, errors: new Map() });
+    getAvailable.mockResolvedValue([
+      {
+        id: "claude-sonnet-5",
+        input: ["text"],
+        name: "Claude Sonnet 5",
+        provider: "anthropic",
+        reasoning: true,
+      },
+    ]);
+    getSupportedThinkingLevels.mockReturnValue(["off", "low", "medium"]);
+
+    const result = await listPiBridgeModels(modelRuntime);
+
+    expect(result.models).toHaveLength(1);
+    expect(stderr).toHaveBeenCalled();
+
+    // An aborted refresh must not pin the process to the stale catalog.
+    await listPiBridgeModels(modelRuntime);
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    stderr.mockRestore();
+  });
+
+  it("refreshes over the network at most once per process after it succeeds", async () => {
+    getAvailable.mockResolvedValue([]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    await Promise.all([
+      listPiBridgeModels(modelRuntime),
+      listPiBridgeModels(modelRuntime),
+    ]);
+    await listPiBridgeModels(modelRuntime);
+
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("does not reach the network when PI_OFFLINE is set", async () => {
+    process.env.PI_OFFLINE = "1";
+    getAvailable.mockResolvedValue([]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    await listPiBridgeModels(modelRuntime);
+
+    expect(refresh).not.toHaveBeenCalled();
+    expect(getAvailable).toHaveBeenCalledOnce();
   });
 });

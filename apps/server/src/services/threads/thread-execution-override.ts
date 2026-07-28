@@ -143,14 +143,15 @@ export function resolveThreadExecutionOverrideUpdate(
       nextReasoning = patch.reasoningLevel;
     }
   } else if (
-    modelChanged &&
     nextReasoning !== null &&
     supportedReasoning.length > 0 &&
     !supportedReasoning.includes(nextReasoning)
   ) {
-    // The model changed without an explicit reasoning level and the stored
-    // reasoning override is no longer supported by the new model → reconcile
-    // to the closest supported level rather than failing.
+    // The stored reasoning override is not supported by the effective model →
+    // reconcile to the closest supported level rather than failing. This covers
+    // a model switch and also a model whose catalog entry lost a level: Pi
+    // reports provider-verified thinking levels, so a model that advertised
+    // `medium` yesterday can advertise only `high`/`max` today.
     nextReasoning = reconcileReasoningLevel(nextReasoning, supportedReasoning);
   }
 
