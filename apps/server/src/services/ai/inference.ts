@@ -3,8 +3,9 @@ import {
   parseProviderModelConfig,
   type ProviderModelInfo,
 } from "@bb/config/inference-model";
-import { complete, getModel, validateToolCall } from "@mariozechner/pi-ai";
-import type { Static, TSchema, Tool, ToolCall } from "@mariozechner/pi-ai";
+import { validateToolCall } from "@earendil-works/pi-ai";
+import type { Static, TSchema, Tool, ToolCall } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
@@ -14,15 +15,29 @@ import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
 type InferenceCompleteDeps = LoggedWorkSessionDeps;
 
+type InferenceModels = ReturnType<typeof builtinModels>;
+
+// Built lazily: constructing the registry at module scope would turn any
+// failure inside it into a server import failure rather than a failure of the
+// one inference call that needed it.
+let inferenceModelsInstance: InferenceModels | undefined;
+
+function getInferenceModels(): InferenceModels {
+  inferenceModelsInstance ??= builtinModels();
+  return inferenceModelsInstance;
+}
+
 function getInferenceModel(
   deps: BaseInferenceDeps,
-): ReturnType<typeof getModel> | null {
+): ReturnType<InferenceModels["getModel"]> | null {
   const modelInfo = parseProviderModelConfig({
     name: "BB_INFERENCE",
     value: deps.config.inferenceModel,
   });
-  // @ts-expect-error — pi-ai overloads getModel per provider; our provider string is dynamic
-  const model = getModel(modelInfo.provider, modelInfo.modelId);
+  const model = getInferenceModels().getModel(
+    modelInfo.provider,
+    modelInfo.modelId,
+  );
   if (!model) {
     deps.logger.warn(
       { provider: modelInfo.provider },
@@ -168,7 +183,7 @@ export async function inferenceComplete<T extends TSchema>(
 
   const timeoutMs = args.timeoutMs;
   const abortController = timeoutMs ? new AbortController() : null;
-  const completionPromise = complete(
+  const completionPromise = getInferenceModels().complete(
     model,
     {
       messages: [

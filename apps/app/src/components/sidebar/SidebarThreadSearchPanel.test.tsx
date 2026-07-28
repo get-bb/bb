@@ -220,8 +220,8 @@ describe("SidebarThreadSearchPanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
 
@@ -468,9 +468,11 @@ describe("ProjectListActionButtons", () => {
       </Provider>,
     );
 
-    expect(
-      screen.getByRole("img", { name: "New thread — open in split" }),
-    ).not.toBeNull();
+    const splitMap = screen.getByRole("img", {
+      name: "New thread — open in split",
+    });
+    const label = screen.getByText("New thread");
+    expect(label.nextElementSibling).toBe(splitMap);
   });
 
   it("exposes the active search option on the combobox input", () => {

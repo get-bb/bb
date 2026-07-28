@@ -167,7 +167,7 @@ async function startThreadIfEnvironmentReady(
     return;
   }
 
-  const workspaceReadyEventSequence = ensureWorkspaceReadyEvent(deps, {
+  const workspaceReady = ensureWorkspaceReadyEvent(deps, {
     context: args.context,
     threadId: args.thread.id,
     environmentId: args.environment.id,
@@ -176,8 +176,8 @@ async function startThreadIfEnvironmentReady(
       branchName: args.environment.branchName,
     }),
   });
-  if (workspaceReadyEventSequence === null) {
-    throw new Error("Workspace ready event sequence was not recorded");
+  if (!workspaceReady.reached) {
+    throw new Error("Thread did not reach workspace-ready provisioning state");
   }
 
   if (

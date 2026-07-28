@@ -60,14 +60,12 @@ function mockThreadMetadataCompletion(metadata: MockThreadMetadata) {
   };
 }
 
-vi.mock("@mariozechner/pi-ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mariozechner/pi-ai")>();
-  return {
-    ...actual,
+vi.mock("@earendil-works/pi-ai/providers/all", () => ({
+  builtinModels: () => ({
     complete: piAiMocks.complete,
     getModel: piAiMocks.getModel,
-  };
-});
+  }),
+}));
 
 function mockThreadMetadata(metadata: MockThreadMetadata): void {
   piAiMocks.getModel.mockReturnValue({ provider: "test" });

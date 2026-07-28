@@ -1601,6 +1601,34 @@ describe("PromptBoxInternal compact layout", () => {
     ).toBe(true);
   });
 
+  it("keeps the editor focused through a pointer submit", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          compact: {
+            isCompact: true,
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(editor);
+
+    fireEvent.click(submit);
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it("keeps all Markdown and mention text in the navigable preview", async () => {
     const mentionToken =
       "@apps/app/src/components/promptbox/PromptBoxInternal.tsx";

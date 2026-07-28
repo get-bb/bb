@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -94,6 +94,6 @@
     "vitest": "^4.1.1"
   },
   "engines": {
-    "node": "^20.19.0 || ^22.12.0 || ^24.0.0 || ^26.0.0"
+    "node": "^22.19.0 || ^24.0.0 || ^26.0.0"
   }
 }

@@ -221,7 +221,7 @@ describe("MarkdownPreview thread mentions", () => {
   });
 
   it("leaves a labeled text directive on the authored directive rendering path", () => {
-    renderMarkdown(
+    const { container } = renderMarkdown(
       <MarkdownPreview
         content="@thread:thr_child[label]"
         threadMentions={{
@@ -233,13 +233,16 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    expect(screen.getByText("@thread")).toBeTruthy();
-    expect(screen.getByText("label")).toBeTruthy();
+    // The token is not a mention here, so it stays verbatim prose — one text
+    // node, no pill and no directive mount.
+    const paragraph = container.querySelector("p");
+    expect(paragraph?.textContent).toBe("@thread:thr_child[label]");
+    expect(paragraph?.querySelector("a")).toBeNull();
     expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 
   it("leaves an attributed text directive on the authored directive rendering path", () => {
-    renderMarkdown(
+    const { container } = renderMarkdown(
       <MarkdownPreview
         content="@thread:thr_child{#authored-directive}"
         threadMentions={{
@@ -251,7 +254,11 @@ describe("MarkdownPreview thread mentions", () => {
       />,
     );
 
-    expect(screen.getByText("@thread")).toBeTruthy();
+    const paragraph = container.querySelector("p");
+    expect(paragraph?.textContent).toBe(
+      "@thread:thr_child{#authored-directive}",
+    );
+    expect(paragraph?.querySelector("a")).toBeNull();
     expect(screen.queryByText("Rebuild comments")).toBeNull();
   });
 

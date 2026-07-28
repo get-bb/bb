@@ -181,7 +181,7 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
-  reasoningLevels: ["low", "medium", "high", "xhigh"],
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
 
 // ACP agents manage reasoning effort internally; "medium" is the single
@@ -267,8 +267,8 @@ const builtInAgentProviderById = new Map(
 );
 
 /**
- * Best default model per provider. Subset of pi-mono's `defaultModelPerProvider`:
- * https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/core/model-resolver.ts
+ * Best default model per provider. Subset of Pi's `defaultModelPerProvider`:
+ * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
  */
 export const PI_DEFAULT_MODEL_PER_PROVIDER: PiDefaultModelPerProvider = {
   anthropic: "claude-opus-4-8",

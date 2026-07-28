@@ -458,6 +458,21 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Treat the returned path and added/updated/unchanged counts as verification.
   Do not inspect the completed file with `cat`, `sed`, `env`, or similar tools.
 
+## Ask User Question
+
+- The builtin `ask-user-question` plugin gives providers that lack a native
+  one an `AskUserQuestion` tool — multiple-choice questions answered in a
+  composer form. It is disabled on fresh installations; enable it under
+  Tools → Plugins or with `bb plugin enable ask-user-question`.
+- It contributes no CLI command. Once enabled the tool appears in the agent's
+  own tool list, and only for providers without a native equivalent: Claude
+  Code threads keep using Claude's built-in `AskUserQuestion`, so the plugin
+  withholds its copy there.
+- Answering is UI-only. `bb thread interactions list <thread-id>` shows the
+  request as kind `plugin`, but `bb thread interactions answer` resolves
+  provider questions only, so a pending plugin question cannot be answered
+  from the CLI.
+
 ## Workflows
 
 - The builtin `workflows` plugin runs durable provider-independent JavaScript

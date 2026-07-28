@@ -1009,8 +1009,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  it("uses protocol version 64 for workflow turn-completion timing", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(64);
+  // Pi now accepts max reasoning from the server. Older daemons use the prior
+  // Pi runtime, so the bump ensures they update before receiving that value.
+  it("uses protocol version 66 for Pi max reasoning", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(66);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

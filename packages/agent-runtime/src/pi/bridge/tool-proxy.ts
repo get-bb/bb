@@ -1,5 +1,5 @@
-import { Type, type TSchema } from "@mariozechner/pi-ai";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Type, type TSchema } from "@earendil-works/pi-ai";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 export interface DynamicToolDefinition {
   name: string;

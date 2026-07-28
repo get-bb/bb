@@ -826,12 +826,14 @@ describe("bridge", () => {
     expect(askOptions.permissionMode).toBe("acceptEdits");
     expect(askOptions.sandbox).toEqual({
       enabled: true,
+      failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
     });
     expect(denyOptions.permissionMode).toBe("auto");
     expect(denyOptions.sandbox).toEqual({
       enabled: true,
+      failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
     });
@@ -881,6 +883,7 @@ describe("bridge", () => {
     ]);
     expect(options.sandbox).toEqual({
       enabled: true,
+      failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
       filesystem: {
@@ -1433,6 +1436,93 @@ describe("bridge", () => {
     }
   });
 
+  // Both directions number their outgoing requests with a counter from 1, so a
+  // daemon request id routinely matches one the bridge is still waiting on. The
+  // `method` field is what separates them; without that check the request was
+  // settled as a bogus response and dropped, and the daemon only found out when
+  // it timed out 30s later.
+  it("dispatches an inbound request whose id collides with a pending bb request", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-colliding-request-id";
+      await startBridgeThread({ bridge, threadId });
+      const { questionRequest, resultPromise } = await forwardAskUserQuestion({
+        bridge,
+        toolUseID: "tool-question-collision",
+      });
+      const collidingId = questionRequest.id;
+      if (collidingId === undefined) {
+        throw new Error("Expected a pending bridge request id");
+      }
+
+      let questionSettled = false;
+      void resultPromise.then(() => {
+        questionSettled = true;
+      });
+
+      bridge.sendRequest(collidingId, "turn/start", {
+        threadId,
+        providerThreadId: null,
+        input: [{ type: "text", text: "colliding turn", mentions: [] }],
+      });
+      await bridge.flushWork();
+
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "colliding turn",
+      );
+      expect(questionSettled).toBe(false);
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: collidingId,
+          result: { kind: "user_question", behavior: "deny" },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "deny",
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("answers a schema-invalid request with an error instead of dropping it", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+
+    try {
+      // Any params mismatch used to be dropped without a reply, so the caller
+      // learned nothing until its 30s timeout. The reply now names the field.
+      bridge.sendRequest(11, "turn/start", {
+        threadId: "thread-invalid-params",
+        providerThreadId: null,
+        input: [{ type: "text", text: "hi", mentions: [] }],
+        inputGroups: [[]],
+      });
+      const invalidParams = await bridge.waitForResponse(11);
+      expect(invalidParams.error?.code).toBe(-32602);
+      expect(invalidParams.error?.message).toContain("inputGroups");
+
+      bridge.sendRequest(12, "turn/teleport", { threadId: "thread-unknown" });
+      const unknownMethod = await bridge.waitForResponse(12);
+      expect(unknownMethod.error).toMatchObject({
+        code: -32601,
+        message: "Unknown method: turn/teleport",
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("denies invalid AskUserQuestion input before forwarding to bb", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -1608,15 +1698,15 @@ describe("bridge", () => {
         models: [
           {
             value: "default",
-            resolvedModel: "claude-opus-4-8[1m]",
+            resolvedModel: "claude-opus-5[1m]",
             displayName: "Default (recommended)",
-            description: "Opus 4.8 with 1M context",
+            description: "Opus 5 with 1M context",
           },
           {
             value: "opus[1m]",
-            resolvedModel: "claude-opus-4-8[1m]",
+            resolvedModel: "claude-opus-5[1m]",
             displayName: "Opus",
-            description: "Opus 4.8 with 1M context",
+            description: "Opus 5 with 1M context",
           },
           {
             value: "sonnet",
@@ -1632,18 +1722,19 @@ describe("bridge", () => {
     const { models, selectedOnlyModels } = await listClaudeCodeBridgeModels({
       PATH: binDir,
     });
-    expect(models).toEqual([
+    // The curated catalog is always offered, so a probe reporting only Opus and
+    // Sonnet still yields every curated row; the probe's default wins.
+    expect(models.map((model) => model.model)).toEqual([
+      "claude-fable-5",
+      "claude-opus-5[1m]",
+      "claude-opus-4-8[1m]",
+      "claude-opus-4-7[1m]",
+      "claude-sonnet-5",
+    ]);
+    expect(models.filter((model) => model.isDefault)).toEqual([
       expect.objectContaining({
-        id: "claude-opus-4-8[1m]",
-        model: "claude-opus-4-8[1m]",
-        displayName: "Opus 4.8 (1M)",
-        isDefault: true,
-      }),
-      expect.objectContaining({
-        id: "claude-sonnet-5",
-        model: "claude-sonnet-5",
-        displayName: "Sonnet 5",
-        isDefault: false,
+        model: "claude-opus-5[1m]",
+        displayName: "Opus 5 (1M)",
       }),
     ]);
     expect(selectedOnlyModels.map((model) => model.model)).toEqual([

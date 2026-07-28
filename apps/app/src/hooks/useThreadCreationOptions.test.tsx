@@ -87,6 +87,67 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
   };
 }
 
+function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
+  return {
+    providers: [
+      {
+        id: "claude-code",
+        displayName: "Claude Code",
+        logoUrl: null,
+        available: true,
+        composerActions: [],
+        capabilities: {
+          supportsArchive: true,
+          supportsRename: true,
+          supportsServiceTier: true,
+          supportsUserQuestion: true,
+          supportsFork: true,
+          supportedPermissionModes: ["accept-edits", "auto", "full"],
+        },
+      },
+    ],
+    models: [
+      {
+        id: "claude-opus-4-8[1m]",
+        model: "claude-opus-4-8[1m]",
+        displayName: "Opus 4.8 (1M)",
+        description: "",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "" },
+          { reasoningEffort: "high", description: "" },
+        ],
+        defaultReasoningEffort: "high",
+        isDefault: true,
+      },
+      {
+        id: "claude-sonnet-5",
+        model: "claude-sonnet-5",
+        displayName: "Sonnet 5",
+        description: "",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "" },
+          { reasoningEffort: "high", description: "" },
+        ],
+        defaultReasoningEffort: "medium",
+        isDefault: false,
+      },
+    ],
+    selectedOnlyModels: [],
+    modelLoadError: null,
+  };
+}
+
+function claudeThreadCreationArgs(resetKey: string, initialModel: string) {
+  return {
+    scope: "component-local" as const,
+    resetKey,
+    initialProviderId: "claude-code",
+    initialModel,
+    initialReasoningLevel: "high" as const,
+    initialPermissionMode: "full" as const,
+  };
+}
+
 function setProjectScopedValue(baseKey: string, value: string): void {
   window.localStorage.setItem(
     getProjectScopedStorageKey(baseKey, PROJECT_ID),
@@ -310,6 +371,115 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.modelLoadFailed).toBe(true);
       expect(result.current.selectedModel).toBe("still-valid-model");
       expect(result.current.executionInputSources.model).toBeUndefined();
+    });
+  });
+
+  it("preloads Claude models and defers recovery until the probe lands", async () => {
+    let resolveOptions: (
+      value: SystemExecutionOptionsResponse,
+    ) => void = () => {};
+    vi.mocked(sdk.system.executionOptions).mockReturnValueOnce(
+      new Promise<SystemExecutionOptionsResponse>((resolve) => {
+        resolveOptions = resolve;
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "thr_claude_preload",
+          initialProviderId: "claude-code",
+          initialModel: "claude-mythos-5",
+          initialReasoningLevel: "high",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    // The curated catalog renders before the host model probe returns, so the
+    // picker is usable immediately instead of empty for the probe's duration.
+    await waitFor(() => {
+      expect(result.current.modelOptions.map((option) => option.value)).toEqual(
+        [
+          "claude-fable-5",
+          "claude-opus-5[1m]",
+          "claude-opus-4-8[1m]",
+          "claude-opus-4-7[1m]",
+          "claude-sonnet-5",
+        ],
+      );
+    });
+    // A provisional catalog is never proof that the stored model was retired,
+    // so the selection must survive until the authoritative probe lands.
+    expect(result.current.selectedModel).toBe("claude-mythos-5");
+    expect(result.current.executionInputSources.model).toBeUndefined();
+
+    act(() => {
+      resolveOptions(claudeExecutionOptionsResponse());
+    });
+
+    // Once discovery succeeds, absence is definitive and recovery is explicit.
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("claude-opus-4-8[1m]");
+      expect(result.current.executionInputSources.model).toBe("explicit");
+    });
+  });
+
+  it("preloads the account's real model ids so a preload-window pick survives", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(
+      claudeExecutionOptionsResponse(),
+    );
+
+    // A first successful probe records this account's catalog.
+    const first = renderHook(
+      () =>
+        useThreadCreationOptions(
+          claudeThreadCreationArgs("thr_cached_first", "claude-opus-4-8[1m]"),
+        ),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() => {
+      expect(
+        first.result.current.modelOptions.map((option) => option.value),
+      ).toEqual(["claude-opus-4-8[1m]", "claude-sonnet-5"]);
+    });
+    first.unmount();
+
+    // A cold client (page reload) with the probe still in flight: the preloaded
+    // rows are the account's real ids, not generic aliases.
+    let resolveOptions: (
+      value: SystemExecutionOptionsResponse,
+    ) => void = () => {};
+    vi.mocked(sdk.system.executionOptions).mockReturnValueOnce(
+      new Promise<SystemExecutionOptionsResponse>((resolve) => {
+        resolveOptions = resolve;
+      }),
+    );
+    const second = renderHook(
+      () =>
+        useThreadCreationOptions(
+          claudeThreadCreationArgs("thr_cached_second", "claude-sonnet-5"),
+        ),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        second.result.current.modelOptions.map((option) => option.value),
+      ).toEqual(["claude-opus-4-8[1m]", "claude-sonnet-5"]);
+    });
+    expect(second.result.current.selectedModel).toBe("claude-sonnet-5");
+
+    act(() => {
+      resolveOptions(claudeExecutionOptionsResponse());
+    });
+
+    // The authoritative rows carry the same ids, so nothing snaps back to the
+    // catalog default.
+    await waitFor(() => {
+      expect(second.result.current.selectedModel).toBe("claude-sonnet-5");
+      expect(second.result.current.executionInputSources.model).toBeUndefined();
     });
   });
 

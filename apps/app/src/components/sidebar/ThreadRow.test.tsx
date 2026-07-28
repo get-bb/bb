@@ -3,7 +3,9 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
+import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
@@ -20,6 +22,9 @@ import {
   resetPluginThreadRowStatusesForTest,
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
@@ -165,12 +170,232 @@ function renderThreadRow({
   };
 }
 
+function renderSplitThreadRow({
+  hasComposerDraft = false,
+  options = DEFAULT_OPTIONS,
+  pluginStatus,
+  thread = createThread(),
+}: {
+  hasComposerDraft?: boolean;
+  options?: ThreadRowOptions;
+  pluginStatus?: PluginComposerThreadRowStatus;
+  thread?: ThreadListEntry;
+} = {}) {
+  if (pluginStatus) {
+    setPluginThreadRowStatus(thread.id, "split-status-test", pluginStatus);
+  }
+  const store = createStore();
+  store.set(splitLayoutAtom, {
+    focusedPaneId: "pane-thread",
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane-thread",
+          content: {
+            kind: "thread",
+            projectId: thread.projectId,
+            threadId: thread.id,
+          },
+        },
+        {
+          type: "pane",
+          paneId: "pane-compose",
+          content: { kind: "new-thread" },
+        },
+      ],
+    },
+  });
+
+  return render(
+    <Provider store={store}>
+      <ThreadRowTestHarness
+        hasComposerDraft={hasComposerDraft}
+        options={options}
+        thread={thread}
+      />
+    </Provider>,
+  );
+}
+
 afterEach(() => {
   cleanup();
   resetPluginThreadRowStatusesForTest();
+  // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
+  window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+  window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
 describe("ThreadRow", () => {
+  const splitWorkingCases: Array<{
+    label: string;
+    pluginStatus?: PluginComposerThreadRowStatus;
+    thread: ThreadListEntry;
+  }> = [
+    {
+      label: "runtime + pending input",
+      thread: createThread({
+        status: "active",
+        hasPendingInteraction: true,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    },
+    {
+      label: "workflow + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 1,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "background agent + unread error",
+      thread: createThread({
+        status: "error",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 1,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "background command + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 1,
+          activePlanModeCount: 0,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "plan mode + unread error",
+      thread: createThread({
+        status: "error",
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 1,
+          activeGoalCount: 0,
+        },
+      }),
+    },
+    {
+      label: "goal + pending input",
+      thread: createThread({
+        hasPendingInteraction: true,
+        activity: {
+          activeWorkflowCount: 0,
+          activeBackgroundAgentCount: 0,
+          activeBackgroundCommandCount: 0,
+          activePlanModeCount: 0,
+          activeGoalCount: 1,
+        },
+      }),
+    },
+    {
+      label: "plugin running + unread error",
+      pluginStatus: {
+        icon: "AiContentGenerator01",
+        label: "Plugin running",
+        tone: "running",
+      },
+      thread: createThread({ status: "error" }),
+    },
+  ];
+
+  it.each(splitWorkingCases)(
+    "shimmers the split map for $label",
+    ({ pluginStatus, thread }) => {
+      const { container } = renderSplitThreadRow({ pluginStatus, thread });
+
+      const splitMap = screen.getByRole("img", { name: /open in split/ });
+      expect(Array.from(splitMap.classList)).toContain("animate-shine-icon");
+      expect(
+        splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
+      ).not.toBeNull();
+      expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
+    },
+  );
+
+  it.each([
+    ["idle", createThread()],
+    ["unread error only", createThread({ status: "error" })],
+  ])("keeps the split map static for %s", (_label, thread) => {
+    renderSplitThreadRow({ thread });
+
+    const splitMap = screen.getByRole("img", { name: /open in split/ });
+    expect(Array.from(splitMap.classList)).not.toContain("animate-shine-icon");
+  });
+
+  it.each([
+    {
+      label: "pending input",
+      expectedStatus: "Thread needs user input",
+      thread: createThread({ hasPendingInteraction: true }),
+    },
+    {
+      label: "unread error",
+      expectedStatus: "Unread thread failed",
+      thread: createThread({ status: "error" }),
+    },
+    {
+      label: "plugin status",
+      expectedStatus: "Plugin improving draft",
+      pluginStatus: {
+        icon: "AiContentGenerator01" as const,
+        label: "Plugin improving draft",
+      },
+      thread: createThread(),
+    },
+    {
+      label: "collapsed child workflow",
+      expectedStatus: "Workflow running",
+      options: {
+        kind: "parent" as const,
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        childActivity: {
+          ...NO_COLLAPSED_CHILD_ACTIVITY,
+          workflow: true,
+        },
+        onToggleCollapsed: vi.fn(),
+      },
+      thread: createThread(),
+    },
+  ])(
+    "preserves the $label status in the split map accessible name",
+    ({ expectedStatus, options, pluginStatus, thread }) => {
+      renderSplitThreadRow({ options, pluginStatus, thread });
+
+      expect(
+        screen
+          .getByRole("img", { name: /open in split/ })
+          .getAttribute("aria-label"),
+      ).toBe(`Thread — open in split; ${expectedStatus}`);
+    },
+  );
+
   it("puts the draft icon in the trailing status slot", () => {
     const { container } = renderThreadRow({
       hasComposerDraft: true,
@@ -297,53 +522,32 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the active working spinner ahead of a draft", () => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      isActive: true,
-      thread: createThread({
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    });
+  it.each([true, false] as const)(
+    "keeps the working-draft pencil ahead of the runtime spinner when isActive=%s",
+    (isActive) => {
+      renderThreadRow({
+        hasComposerDraft: true,
+        isActive,
+        thread: createThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+        }),
+      });
 
-    const workingIcon = screen.getByLabelText("Thread working");
-    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
-    expect(Array.from(workingIcon.classList)).toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
-    expect(
-      screen.queryByLabelText("Thread working with unsubmitted draft"),
-    ).toBeNull();
-  });
-
-  it("keeps the runtime spinner ahead of a draft when the row is not selected", () => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      isActive: false,
-      thread: createThread({
-        status: "active",
-        runtime: {
-          displayStatus: "active",
-          hostReconnectGraceExpiresAt: null,
-        },
-      }),
-    });
-
-    const workingIcon = screen.getByLabelText("Thread working");
-    expect(workingIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(workingIcon.classList)).toContain("animate-spin");
-    expect(Array.from(workingIcon.classList)).toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
-    expect(
-      screen.queryByLabelText("Thread working with unsubmitted draft"),
-    ).toBeNull();
-  });
+      const draftIcon = screen.getByLabelText(
+        "Thread working with unsubmitted draft",
+      );
+      expect(draftIcon.getAttribute("data-icon")).toBe("Edit");
+      expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
+      expect(Array.from(draftIcon.classList)).toContain(
+        SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+      );
+      expect(screen.queryByLabelText("Thread working")).toBeNull();
+    },
+  );
 
   it.each([
     "activeWorkflowCount",
@@ -601,15 +805,27 @@ describe("ThreadRow", () => {
     ).toBe("Meta+3");
   });
 
-  it("shows runtime work before unread, pending, draft, and background work", () => {
+  it("shows the pending-input glyph while the runtime is still active", () => {
+    // A thread blocked on AskUserQuestion keeps an active runtime for as long as
+    // the question is open, so the spinner must not win this row.
     renderThreadRow({
-      hasComposerDraft: true,
+      thread: createThread({
+        hasPendingInteraction: true,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    });
+
+    expect(screen.getByLabelText("Thread needs user input")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+
+  it("shows runtime work before workflow and background work", () => {
+    renderThreadRow({
       shortcutKey: "3",
       thread: createThread({
-        status: "error",
-        hasPendingInteraction: true,
-        lastReadAt: 1_000,
-        latestAttentionAt: 2_000,
         activity: {
           activeWorkflowCount: 1,
           activeBackgroundAgentCount: 1,
@@ -660,8 +876,6 @@ describe("ThreadRow", () => {
     ["activeWorkflowCount", "Workflow running"],
     ["activeBackgroundAgentCount", "Background agent running"],
     ["activeBackgroundCommandCount", "Background command running"],
-    ["activePlanModeCount", "Plan mode active"],
-    ["activeGoalCount", "Goal active"],
   ] as const)(
     "shows runtime work before concurrent %s activity",
     (activityKey, secondaryLabel) => {
@@ -685,6 +899,37 @@ describe("ThreadRow", () => {
 
       expect(screen.getByLabelText("Thread working")).not.toBeNull();
       expect(screen.queryByLabelText(secondaryLabel)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["activePlanModeCount", "Plan mode active"],
+    ["activeGoalCount", "Goal active"],
+  ] as const)(
+    "shows concurrent %s activity before runtime work",
+    (activityKey, modeLabel) => {
+      // Plan and goal describe how the running turn behaves, and their glyphs
+      // shimmer, so they stay legible instead of collapsing into the spinner.
+      renderThreadRow({
+        thread: createThread({
+          status: "active",
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          activity: {
+            activeWorkflowCount: 0,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+            [activityKey]: 1,
+          },
+        }),
+      });
+
+      expect(screen.getByLabelText(modeLabel)).not.toBeNull();
+      expect(screen.queryByLabelText("Thread working")).toBeNull();
     },
   );
 

@@ -66,9 +66,30 @@ export type BridgeJsonRpcResponse =
   | z.infer<typeof jsonRpcSuccessResponseSchema>
   | z.infer<typeof jsonRpcErrorResponseSchema>;
 
+/**
+ * Requests and responses share one id space on the bidirectional bridge
+ * channel: both sides number their outgoing requests with a plain counter from
+ * 1. `method` is what tells them apart — a response never carries one. Without
+ * this check an inbound request whose id collides with an outstanding outgoing
+ * request decodes as a success response (the schemas are non-strict and
+ * `result: z.unknown()` also accepts a missing key), so the bridge settles the
+ * wrong promise and drops the request without replying, leaving the caller to
+ * time out 30s later with no diagnostic.
+ */
+function isJsonRpcRequest(input: unknown): boolean {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    "method" in input &&
+    input.method !== undefined
+  );
+}
+
 export function decodeBridgeJsonRpcResponse(
   input: unknown,
 ): BridgeJsonRpcResponse | null {
+  if (isJsonRpcRequest(input)) return null;
+
   const error = jsonRpcErrorResponseSchema.safeParse(input);
   if (error.success) return error.data;
 

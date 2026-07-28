@@ -215,6 +215,90 @@ describe("MarkdownPreview message directives", () => {
     expect(screen.getByText('::inline-vis{file="still-streaming')).toBeTruthy();
   });
 
+  it("renders incidental prose colons literally without dropping text", () => {
+    // Regression: `remark-directive` parses `13:30`, `a:b`, and `:D` as text
+    // directives. Before the fix these fell through to mdast-util-to-hast as
+    // empty block `<div>`s, which split the paragraph and deleted the colon
+    // text — e.g. "next run 13:30." rendered as "next run 13" + a stray line
+    // break + ". ...".
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    const sentence =
+      "Watchdog runs every 30 min UTC, next run 13:30. It checks a:b and :D too.";
+    const { container } = render(
+      <MarkdownPreview
+        content={sentence}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs).toHaveLength(1);
+    // Exact text preserved: no dropped `:30` / `:b` / `:D`.
+    expect(paragraphs[0]?.textContent).toBe(sentence);
+    // No block element was injected mid-paragraph to break the line.
+    expect(paragraphs[0]?.querySelector("div")).toBeNull();
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+  });
+
+  it("keeps clock times intact and leaves the prose as a single text node", () => {
+    // The originally reported symptom: "Meeting at 9:30 and 10:45 today."
+    // rendered as "Meeting at 9 and 10 today." — both `:30` and `:45` parsed as
+    // text directives and were dropped by the empty-`<div>` fallback.
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    const sentence = "Meeting at 9:30 and 10:45 today.";
+    const { container } = render(
+      <MarkdownPreview
+        content={sentence}
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    const paragraph = container.querySelector("p");
+    expect(paragraph?.textContent).toBe(sentence);
+    // Rewritten directives merge into their neighbours, so the paragraph is
+    // indistinguishable from prose that never parsed as a directive.
+    expect(paragraph?.childNodes).toHaveLength(1);
+    expect(paragraph?.childNodes[0]?.nodeType).toBe(Node.TEXT_NODE);
+  });
+
+  it("leaves container directives on the default rendering path", () => {
+    // `:::` at the start of a line is not incidental prose, so containers are
+    // not rewritten: their content still renders, and a registered leaf
+    // directive nested inside one still mounts.
+    const registry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+    ]);
+    render(
+      <MarkdownPreview
+        content={
+          ':::note\nhello **world**\n\n::inline-vis{file="demo.html"}\n:::'
+        }
+        messageDirectives={{
+          registry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("world").tagName).toBe("STRONG");
+    expect(screen.getByTestId("inline-vis").getAttribute("data-file")).toBe(
+      "demo.html",
+    );
+  });
+
   it("falls back to original directive text when the plugin component crashes", () => {
     const registry = buildMessageDirectiveRegistry([
       slot({ id: "inline-vis", pluginId: "demo", component: CrashVis }),

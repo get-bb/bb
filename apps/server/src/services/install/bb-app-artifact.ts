@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -27,13 +27,6 @@ interface BbAppPackageJson {
   name: string;
   version: string;
 }
-
-interface BbAppArtifactMetadata {
-  protocolVersion: number;
-  version: string;
-}
-
-const pendingBuilds = new Map<string, Promise<string>>();
 
 async function defaultCommandRunner(
   command: string,
@@ -110,14 +103,6 @@ function safeVersionFilePart(version: string): string {
   return version.replace(/[^a-zA-Z0-9._-]/gu, "_");
 }
 
-async function pathIsFile(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isFile();
-  } catch {
-    return false;
-  }
-}
-
 export function createBbAppArtifactService(
   options: CreateBbAppArtifactServiceOptions,
 ): BbAppArtifactService {
@@ -127,6 +112,7 @@ export function createBbAppArtifactService(
   const protocolVersion =
     options.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION;
   let resolvedPackagePromise: Promise<ResolvedBbAppPackage> | undefined;
+  let artifactPromise: Promise<string> | undefined;
 
   function getResolvedPackage(): Promise<ResolvedBbAppPackage> {
     resolvedPackagePromise ??= resolveBbAppPackage(serverEntryUrl);
@@ -140,35 +126,9 @@ export function createBbAppArtifactService(
       cacheDir,
       `bb-app-${safeVersionFilePart(packageJson.version)}-protocol-${protocolVersion}.tgz`,
     );
-    const metadataPath = `${tarballPath}.json`;
-    let cachedMetadata: BbAppArtifactMetadata | null = null;
-    try {
-      const parsed: unknown = JSON.parse(await readFile(metadataPath, "utf8"));
-      if (
-        parsed !== null &&
-        typeof parsed === "object" &&
-        "version" in parsed &&
-        parsed.version === packageJson.version &&
-        "protocolVersion" in parsed &&
-        parsed.protocolVersion === protocolVersion
-      ) {
-        cachedMetadata = {
-          version: parsed.version,
-          protocolVersion: parsed.protocolVersion,
-        };
-      }
-    } catch {
-      cachedMetadata = null;
-    }
-    if (cachedMetadata && (await pathIsFile(tarballPath))) {
-      return tarballPath;
-    }
-
     await mkdir(cacheDir, { recursive: true });
-    await Promise.all([
-      rm(tarballPath, { force: true }),
-      rm(metadataPath, { force: true }),
-    ]);
+    // Clean up the metadata sidecar older installs persisted; nothing reads it.
+    await rm(`${tarballPath}.json`, { force: true });
 
     if (resolved.layout === "repo") {
       const repoRoot = resolve(packageRoot, "../..");
@@ -188,32 +148,28 @@ export function createBbAppArtifactService(
     if (!packedName) {
       throw new Error("npm pack did not report a tarball name");
     }
+    // Publish by atomic rename rather than deleting first: a failed build then
+    // leaves the previously served artifact in place instead of stranding
+    // daemons with no installable package at all. npm pack writes
+    // `bb-app-<version>.tgz`, which can never collide with the
+    // `-protocol-<n>`-suffixed destination in the same directory.
     const packedPath = join(cacheDir, packedName);
     await rename(packedPath, tarballPath);
-    await writeFile(
-      metadataPath,
-      `${JSON.stringify({ version: packageJson.version, protocolVersion })}\n`,
-      "utf8",
-    );
     return tarballPath;
   }
 
   return {
-    async getTarballPath(): Promise<string> {
-      const version = (await getResolvedPackage()).packageJson.version;
-      const tarballPath = join(
-        cacheDir,
-        `bb-app-${safeVersionFilePart(version)}-protocol-${protocolVersion}.tgz`,
-      );
-      const existing = pendingBuilds.get(tarballPath);
-      if (existing) {
-        return existing;
-      }
-      const build = buildTarball().finally(() => {
-        pendingBuilds.delete(tarballPath);
+    getTarballPath(): Promise<string> {
+      // Build once per process from the package this process is running, so a
+      // restart into a different source build at the same version and protocol
+      // still serves the current bits. Memoizing the promise (assigned
+      // synchronously) collapses concurrent callers onto one build; clearing it
+      // on rejection keeps a transient build failure from being cached forever.
+      artifactPromise ??= buildTarball().catch((error: unknown) => {
+        artifactPromise = undefined;
+        throw error;
       });
-      pendingBuilds.set(tarballPath, build);
-      return build;
+      return artifactPromise;
     },
     async getVersion(): Promise<string> {
       return (await getResolvedPackage()).packageJson.version;

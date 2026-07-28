@@ -13,7 +13,6 @@ import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
-import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 
 /**
@@ -127,19 +126,15 @@ function PluginNavSidebarItem({
       }}
     >
       <PluginIcon pluginId={panel.pluginId} icon={panel.icon} />
-      <span className="min-w-0 flex-1 truncate text-left">{panel.title}</span>
-      {splitIndicator.miniMap ? (
-        <span className="flex shrink-0 items-center gap-0.5">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <span className="min-w-0 truncate">{panel.title}</span>
+        {splitIndicator.miniMap ? (
           <SplitPaneMiniMap
             slots={splitIndicator.miniMap}
             label={`${panel.title} — open in split`}
           />
-          <span
-            aria-hidden="true"
-            className={COARSE_POINTER_ROW_ACTION_SIZE_CLASS}
-          />
-        </span>
-      ) : null}
+        ) : null}
+      </span>
     </Button>
   );
 }

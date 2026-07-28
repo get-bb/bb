@@ -106,6 +106,7 @@ import {
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import {
+  SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
   useSidebarSortable,
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
@@ -2088,17 +2089,13 @@ export const ChronologicalSectionThreadSections = memo(
         <SectionThreadDndProvider value={renderedSectionDnd}>
           {orderedSections}
           {createPortal(
-            // The overlay only renders thread content. Its default drop side
-            // effect hides the active DOM node, so enabling it for a section
-            // drag would make that section flash invisible on mouse-up.
+            // The overlay only renders thread content, so a section drag has
+            // nothing to fly home and skips the drop animation entirely.
             <DragOverlay
               className="cursor-grabbing"
               dropAnimation={
                 sectionDnd.activeThread
-                  ? {
-                      duration: 180,
-                      easing: "cubic-bezier(0.2, 0, 0, 1)",
-                    }
+                  ? SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION
                   : null
               }
             >

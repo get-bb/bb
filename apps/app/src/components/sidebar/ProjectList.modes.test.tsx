@@ -296,7 +296,7 @@ describe("sidebar organization mode sections", () => {
     );
 
     expect(screen.queryByText("Machine activity")).toBeNull();
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
   });
 });

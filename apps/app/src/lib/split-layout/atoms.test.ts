@@ -9,6 +9,7 @@ import {
   splitLayoutAtom,
 } from "./atoms";
 import { countPanes, findPaneByThread, splitPane } from "./ops";
+import { serializeSplitLayout, SPLIT_LAYOUT_STORAGE_KEY } from "./persistence";
 import type { SplitLayout } from "./types";
 
 function singlePane(threadId: string): SplitLayout {
@@ -33,6 +34,82 @@ function twoPanes(): SplitLayout {
 
 afterEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
+});
+
+/** A write by another tab: same origin storage, then the cross-tab event. */
+function writeFromOtherTab(key: string, value: string): void {
+  const previous = window.localStorage.getItem(key);
+  window.localStorage.setItem(key, value);
+  window.dispatchEvent(
+    new StorageEvent("storage", {
+      key,
+      newValue: value,
+      oldValue: previous,
+      storageArea: window.localStorage,
+    }),
+  );
+}
+
+/**
+ * A fresh page load: atomWithStorage only re-reads storage when the atom is
+ * mounted, so subscribe first, exactly like a rendered component does.
+ */
+function hydrateLayoutOnLoad(): SplitLayout | null {
+  const store = createStore();
+  const unsubscribe = store.sub(splitLayoutAtom, () => {});
+  const layout = store.get(splitLayoutAtom);
+  unsubscribe();
+  return layout;
+}
+
+describe("tab-scoped workspace state", () => {
+  it("keeps this tab's panes when another tab opens a different thread", () => {
+    const store = createStore();
+    // Mounting is what would install a cross-tab subscription.
+    const unsubscribe = store.sub(splitLayoutAtom, () => {});
+    store.set(splitLayoutAtom, singlePane("thread-1"));
+
+    writeFromOtherTab(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout(singlePane("thread-2")),
+    );
+
+    expect(store.get(splitLayoutAtom)).toEqual(singlePane("thread-1"));
+    unsubscribe();
+  });
+
+  it("keeps this tab's maximized pane when another tab maximizes a different one", () => {
+    const store = createStore();
+    const unsubscribe = store.sub(maximizedPaneIdAtom, () => {});
+    store.set(splitLayoutAtom, twoPanes());
+    store.set(maximizedPaneIdAtom, "pane-1");
+
+    writeFromOtherTab(MAXIMIZED_PANE_STORAGE_KEY, "pane-2");
+
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+    unsubscribe();
+  });
+
+  it("seeds a new tab from the last arrangement, then reloads its own", () => {
+    // A tab that has never had a layout starts from the shared seed.
+    window.localStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout(twoPanes()),
+    );
+    expect(countPanes(hydrateLayoutOnLoad()!.root)).toBe(2);
+
+    // Once this tab owns a layout, its reload restores that one even though
+    // another tab wrote the shared key afterwards.
+    const store = createStore();
+    store.set(splitLayoutAtom, singlePane("thread-3"));
+    window.localStorage.setItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+      serializeSplitLayout(singlePane("thread-9")),
+    );
+
+    expect(hydrateLayoutOnLoad()).toEqual(singlePane("thread-3"));
+  });
 });
 
 describe("closePanesForThreadsAtom", () => {

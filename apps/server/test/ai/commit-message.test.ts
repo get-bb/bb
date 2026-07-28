@@ -40,14 +40,12 @@ const commitMessageArgs = {
   shortstat: "1 file changed, 1 insertion(+)\n",
 };
 
-vi.mock("@mariozechner/pi-ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mariozechner/pi-ai")>();
-  return {
-    ...actual,
+vi.mock("@earendil-works/pi-ai/providers/all", () => ({
+  builtinModels: () => ({
     complete: piAiMocks.complete,
     getModel: piAiMocks.getModel,
-  };
-});
+  }),
+}));
 
 async function createCommitMessageDeps(): Promise<TestCommitMessageDeps> {
   const harness = await createTestAppHarness({

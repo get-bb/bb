@@ -1,4 +1,11 @@
 export {
+  CLAUDE_CODE_ACTIVE_CATALOG,
+  CLAUDE_XHIGH_CAPABLE_REASONING_EFFORTS,
+  DEFAULT_CLAUDE_CODE_MODEL,
+  listClaudeCodeFallbackModels,
+} from "./claude-code-models.js";
+export type { ClaudeCodeCatalogEntry } from "./claude-code-models.js";
+export {
   agentProviderIdSchema,
   buildAcpProviderInfo,
   getAcpProviderServerCapabilities,

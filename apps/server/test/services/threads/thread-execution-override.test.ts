@@ -148,4 +148,31 @@ describe("resolveThreadExecutionOverrideUpdate", () => {
       reasoningLevelOverride: "max",
     });
   });
+
+  it("reconciles a stored level the unchanged model no longer advertises", () => {
+    // Pi reports provider-verified thinking levels, so a model that offered
+    // "medium" yesterday can offer only "high"/"max" today. Threads that
+    // already stored "medium" must not keep sending it.
+    const narrowedOpus = availableModelFixture({
+      model: "claude-opus-4-8",
+      reasoningLevels: ["high", "max"],
+      defaultReasoningLevel: "high",
+    });
+
+    expect(
+      resolveThreadExecutionOverrideUpdate({
+        existing: {
+          modelOverride: "claude-opus-4-8",
+          reasoningLevelOverride: "medium",
+        },
+        patch: {},
+        models: [narrowedOpus, HAIKU],
+        providerId: "claude-code",
+        fallbackModel: "claude-opus-4-8",
+      }),
+    ).toEqual({
+      modelOverride: "claude-opus-4-8",
+      reasoningLevelOverride: "high",
+    });
+  });
 });

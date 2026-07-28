@@ -2,7 +2,7 @@ import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import { InferenceTimeoutError, inferenceComplete } from "../ai/inference.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 

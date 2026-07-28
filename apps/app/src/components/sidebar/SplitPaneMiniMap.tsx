@@ -9,6 +9,7 @@ const OUTLINE_WIDTH = 1;
 interface SplitPaneMiniMapProps {
   slots: MiniMapSlot[];
   label: string;
+  isWorking?: boolean;
 }
 
 // Position a normalized [0,1] value onto the padded glyph canvas.
@@ -30,13 +31,20 @@ function outlineInset(isFilled: boolean): number {
  * Tiny outline of the current pane arrangement, with the sidebar item's slot
  * filled and the focused pane's slot in the accent token.
  */
-export function SplitPaneMiniMap({ slots, label }: SplitPaneMiniMapProps) {
+export function SplitPaneMiniMap({
+  slots,
+  label,
+  isWorking = false,
+}: SplitPaneMiniMapProps) {
   return (
     <svg
       width={GLYPH_SIZE}
       height={GLYPH_SIZE}
       viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`}
-      className="pointer-events-none ml-0.5 !size-3.5 shrink-0"
+      className={cn(
+        "pointer-events-none !size-3.5 shrink-0",
+        isWorking && "animate-shine-icon",
+      )}
       shapeRendering="crispEdges"
       role="img"
       aria-label={label}

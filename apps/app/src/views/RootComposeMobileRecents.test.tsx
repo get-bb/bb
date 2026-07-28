@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe("RootComposeMobileRecents", () => {
-  it("shows runtime activity before concurrent Plan and Goal activity", () => {
+  it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
       <MemoryRouter>
         <RootComposeMobileRecents
@@ -68,12 +68,38 @@ describe("RootComposeMobileRecents", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
   });
 
-  it("keeps runtime activity ahead of mobile working draft state", () => {
+  it("shows runtime activity before concurrent workflow activity", () => {
+    render(
+      <MemoryRouter>
+        <RootComposeMobileRecents
+          highlightedThreadId={null}
+          projectNamesById={new Map()}
+          showCreatingRow={false}
+          threads={[
+            makeThread({
+              activity: {
+                activeWorkflowCount: 1,
+                activeBackgroundAgentCount: 1,
+                activeBackgroundCommandCount: 1,
+                activePlanModeCount: 0,
+                activeGoalCount: 0,
+              },
+            }),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+  });
+
+  it("keeps the mobile working draft state ahead of runtime activity", () => {
     window.localStorage.setItem(
       "bb.promptbox.contents-proj_mobile-thr_mobile-3",
       JSON.stringify({ text: "Keep editing", attachments: [] }),
@@ -90,10 +116,10 @@ describe("RootComposeMobileRecents", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
     expect(
-      screen.queryByLabelText("Thread working with unsubmitted draft"),
-    ).toBeNull();
+      screen.getByLabelText("Thread working with unsubmitted draft"),
+    ).not.toBeNull();
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 

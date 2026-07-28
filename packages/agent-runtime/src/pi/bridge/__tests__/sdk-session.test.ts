@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentSessionEvent,
   ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 type MockAgentSessionEventListener = (event: AgentSessionEvent) => void;
 
@@ -61,6 +61,7 @@ const {
   mockDispose,
   mockPrompt,
   mockGetModel,
+  mockModelRuntime,
 } = vi.hoisted(() => {
   const mockSessionEventListeners: MockAgentSessionEventListener[] = [];
   const mockSubscribe = vi.fn<MockSubscribe>((listener) => {
@@ -113,10 +114,16 @@ const {
       },
     },
   }));
-  const mockGetModel = vi.fn((provider: string, modelId: string) => ({
+  const mockGetModel = vi.fn<
+    (
+      provider: string,
+      modelId: string,
+    ) => { id: string; provider: string } | undefined
+  >((provider, modelId) => ({
     id: modelId,
     provider,
   }));
+  const mockModelRuntime = { getModel: mockGetModel };
 
   return {
     mockGetActiveToolNames,
@@ -133,10 +140,11 @@ const {
     mockDispose,
     mockPrompt,
     mockGetModel,
+    mockModelRuntime,
   };
 });
 
-vi.mock("@mariozechner/pi-coding-agent", () => ({
+vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: mockCreateAgentSession,
   createBashToolDefinition: mockCreateBashToolDefinition,
   defineTool: mockDefineTool,
@@ -149,8 +157,8 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
   },
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
-  getModel: mockGetModel,
+vi.mock("../model-runtime.js", () => ({
+  getPiModelRuntime: vi.fn(async () => mockModelRuntime),
 }));
 
 import { PiSdkSession } from "../sdk-session.js";
@@ -177,10 +185,11 @@ function createQueueUpdateEvent(
   };
 }
 
-function createAgentEndEvent(): AgentSessionEvent {
+function createAgentEndEvent(willRetry = false): AgentSessionEvent {
   return {
     type: "agent_end",
     messages: [],
+    willRetry,
   };
 }
 
@@ -221,6 +230,10 @@ describe("PiSdkSession", () => {
     mockSessionEventListeners.length = 0;
     mockGetActiveToolNames.mockReturnValue([]);
     mockAbort.mockResolvedValue(undefined);
+    mockGetModel.mockImplementation((provider: string, modelId: string) => ({
+      id: modelId,
+      provider,
+    }));
   });
 
   it("opens a persistent session file when provided", async () => {
@@ -278,11 +291,13 @@ describe("PiSdkSession", () => {
           id: "gpt-5.5",
           provider: "openai-codex",
         },
+        modelRuntime: mockModelRuntime,
       }),
     );
   });
 
   it("rejects unresolved explicit models before opening a Pi session", async () => {
+    mockGetModel.mockReturnValueOnce(undefined);
     const session = new PiSdkSession(
       {
         cwd: "/tmp/project",
@@ -569,7 +584,7 @@ describe("PiSdkSession", () => {
     await session.start();
     await session.steer("retry steer");
 
-    emitSessionEvent(createAgentEndEvent());
+    emitSessionEvent(createAgentEndEvent(true));
     emitSessionEvent(createAutoRetryStartEvent());
     await flushDeferredSteerSettlement();
 
@@ -593,7 +608,7 @@ describe("PiSdkSession", () => {
     await session.start();
     await session.steer("retry failed steer");
 
-    emitSessionEvent(createAgentEndEvent());
+    emitSessionEvent(createAgentEndEvent(true));
     emitSessionEvent(createAutoRetryStartEvent());
     await flushDeferredSteerSettlement();
     emitSessionEvent(createAutoRetryEndEvent(false));
@@ -666,6 +681,18 @@ describe("PiSdkSession", () => {
     expect(mockPrompt).toHaveBeenCalledTimes(9);
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onDone).toHaveBeenCalledWith(authError);
+  });
+
+  it("stays processing across retryable agent-end events", async () => {
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+    await session.start();
+    await session.prompt("retry me");
+
+    emitSessionEvent(createAgentEndEvent(true));
+    expect(session.getIsProcessing()).toBe(true);
+
+    emitSessionEvent(createAgentEndEvent());
+    expect(session.getIsProcessing()).toBe(false);
   });
 
   it("waits for abort before disposing during graceful close", async () => {

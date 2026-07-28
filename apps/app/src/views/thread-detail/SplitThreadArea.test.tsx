@@ -450,6 +450,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("SplitThreadArea", () => {
@@ -1376,6 +1377,37 @@ describe("SplitThreadArea", () => {
     expect(
       toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+  });
+
+  it("ignores a layout written by another tab (issue #873)", async () => {
+    renderSplitArea({ path: threadPath("thr-a") });
+    expect(await screen.findByTestId("pane-thr-a")).toBeTruthy();
+
+    // Another tab selects thr-b: same-origin localStorage write plus the
+    // `storage` event the browser delivers to every other tab.
+    const otherTabLayout = serializeSplitLayout({
+      root: { type: "pane", paneId: "pane-1", content: threadContent("thr-b") },
+      focusedPaneId: "pane-1",
+    });
+    window.localStorage.setItem(SPLIT_LAYOUT_STORAGE_KEY, otherTabLayout);
+    fireEvent(
+      window,
+      new StorageEvent("storage", {
+        key: SPLIT_LAYOUT_STORAGE_KEY,
+        newValue: otherTabLayout,
+        storageArea: window.localStorage,
+      }),
+    );
+
+    // This tab keeps its own thread and URL; nothing bleeds across tabs.
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-a"),
+      );
+    });
+    expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(1);
+    expect(screen.getByTestId("pane-thr-a")).toBeTruthy();
+    expect(screen.queryByTestId("pane-thr-b")).toBeNull();
   });
 
   it("falls back to a single pane from the route when persisted state is malformed", async () => {

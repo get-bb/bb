@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.34.0
+
+This release refreshes the model catalogs behind Pi and Claude, gives every provider a way to ask you a multiple-choice question, and lets workflows run without holding up the composer.
+
+### Models
+
+- The Pi provider moves to Pi 0.82. Model resolution, authentication, and catalog refresh now share one runtime, so the picker reflects each model's real reasoning levels — including `max` — and newly published models appear without waiting for a bb release.
+- Opus 5 (1M) is available in the curated Claude Code model list.
+- bb's curated Claude models are always offered, and the picker preloads so it opens with the list already populated.
+- The Claude Code bridge no longer silently drops requests.
+- **Node.js 22.19 is now the minimum.** 22.19, 24, and 26 are the tested lines. Node 20 is no longer supported.
+
+### Asking and answering
+
+- New cross-provider Ask User Question plugin (builtin, off by default): agents on Codex, Pi, and Cursor can now ask you a real multiple-choice question with option previews instead of guessing or asking in prose. Claude threads keep using their native tool.
+- Threads show the pending-question glyph while their runtime is active, so it is clearer when an agent is waiting on you.
+
+### Workflows and plugins
+
+- Claude workflows run without blocking the composer, and every concurrently running workflow is shown there.
+- Hidden workflow completion notifications can be steered.
+- New experiment-gated Tools Hub brings Skills, Plugins, and Automations into one place with consistent layouts, detail provenance, and safe registry installs.
+- Plugins gained thread panel navigation, lifecycle-managed content scripts, compact plugin-owned icons, and banners that render above queued messages.
+
+### Fixes and polish
+
+- The split workspace layout is scoped to one tab, and split-view maps moved into sidebar status slots.
+- The mobile submit tap now lands ahead of keyboard dismissal.
+- The served bb-app artifact refreshes after a restart.
+- Sidebar rows no longer stay greyed out after a section drag.
+- Ordered lists keep their starting number when rendered.
+- Skills show as bolt icons in the composer typeahead, and the automations panel regained its page frame.
+- Docs YAML frontmatter is only treated as frontmatter when it parses as YAML, so a document opening with a thematic break keeps its first section.
+- The project machine picker gates on connected machines rather than every enrollment, so one long-offline machine no longer replaces the native folder picker.
+- Thread title generation prompt refined.
+
 ## 0.33.0
 
 This release brings updates into one quiet place, simplifies approval settings, and improves reliability across threads and connected machines.

@@ -309,6 +309,12 @@ export function useThreadCreationOptions(
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
     executionOptionsQuery.isError || modelLoadError !== null;
+  // Preloaded placeholder rows and the server's probe-failure fallback are both
+  // provisional catalogs. Only a successful probe proves a stored model is gone,
+  // so recovery is gated on the catalog being verified. Placeholder data is not
+  // a failure, so it deliberately stays out of `modelLoadFailed`.
+  const modelCatalogIsUnverified =
+    modelLoadError !== null || executionOptionsQuery.isPlaceholderData;
   const hasMultipleProviders = providers.length >= 2;
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
@@ -386,11 +392,12 @@ export function useThreadCreationOptions(
     rawSelectedModel,
   ]);
   const selectedModel = useMemo(() => {
-    // A provider discovery error is temporary: keep an existing explicit
-    // selection instead of treating a partial/custom catalog as proof that it
-    // disappeared. Once discovery succeeds, absence is definitive and the
-    // catalog default becomes a recovery selection.
-    if (modelLoadError !== null && rawSelectedModel) {
+    // An unverified catalog (discovery error, or preloaded placeholder rows) is
+    // temporary: keep an existing explicit selection instead of treating a
+    // partial/provisional catalog as proof that it disappeared. Once discovery
+    // succeeds, absence is definitive and the catalog default becomes a recovery
+    // selection.
+    if (modelCatalogIsUnverified && rawSelectedModel) {
       return rawSelectedModel;
     }
     if (availableModels.length === 0) {
@@ -403,9 +410,9 @@ export function useThreadCreationOptions(
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model
     );
-  }, [availableModels, modelLoadError, rawSelectedModel]);
+  }, [availableModels, modelCatalogIsUnverified, rawSelectedModel]);
   const isUnavailableModelRecovery =
-    modelLoadError === null &&
+    !modelCatalogIsUnverified &&
     rawSelectedModel.length > 0 &&
     selectedModel !== rawSelectedModel;
 

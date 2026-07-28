@@ -76,12 +76,19 @@ export function useLocalPathPicker({
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();
   const closeDialog = projectPathDialog.onClose;
 
+  // The target host is always passed explicitly: a default parameter would
+  // only cover an omitted argument, and the dialog passes an explicit null
+  // when no machine is selected — which would silently skip the fallback.
   const submitPath = useCallback(
-    (path: string, target: ProjectPathDialogTarget) => {
-      if (isPending || !hostId) return;
-      submit({ path, hostId, target, closeDialog });
+    (
+      path: string,
+      target: ProjectPathDialogTarget,
+      targetHostId: string | null,
+    ) => {
+      if (isPending || !targetHostId) return;
+      submit({ path, hostId: targetHostId, target, closeDialog });
     },
-    [closeDialog, hostId, isPending, submit],
+    [closeDialog, isPending, submit],
   );
 
   const openPicker = useCallback(
@@ -100,7 +107,7 @@ export function useLocalPathPicker({
             return;
           }
           if (!selectedPath) return;
-          submitPath(normalizeProjectPathInput(selectedPath), target);
+          submitPath(normalizeProjectPathInput(selectedPath), target, hostId);
         })();
         return;
       }
@@ -118,8 +125,8 @@ export function useLocalPathPicker({
   );
 
   const submitProjectPath = useCallback<ProjectPathDialogSubmitHandler>(
-    (target, path) => {
-      submitPath(path, target);
+    (target, path, selectedHostId) => {
+      submitPath(path, target, selectedHostId);
     },
     [submitPath],
   );

@@ -414,6 +414,12 @@ function sendError(id: string | number, code: number, message: string): void {
   send({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
+// stdout is the JSON-RPC channel; the runtime captures stderr into the
+// provider's diagnostics buffer.
+function logBridgeError(message: string): void {
+  process.stderr.write(`claude-code bridge: ${message}\n`);
+}
+
 function ignoreInputConsumption(promise: Promise<void>): void {
   void promise.catch(() => {});
 }
@@ -1586,12 +1592,29 @@ export function handleLine(line: string): void {
     return;
   }
 
-  const request = decodeClaudeCodeJsonRpcRequest(parsed);
-  if (!request) return;
-  void handleRequest(request).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(request.id, -32000, message);
-  });
+  const decoded = decodeClaudeCodeJsonRpcRequest(parsed);
+  switch (decoded.kind) {
+    case "not_a_request":
+      return;
+    case "unknown_method":
+      logBridgeError(`Unknown method: ${decoded.method}`);
+      sendError(decoded.id, -32601, `Unknown method: ${decoded.method}`);
+      return;
+    case "invalid_params": {
+      const message = `Invalid params for ${decoded.method}: ${decoded.issues}`;
+      logBridgeError(message);
+      sendError(decoded.id, -32602, message);
+      return;
+    }
+    case "request": {
+      const request = decoded.request;
+      void handleRequest(request).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        sendError(request.id, -32000, message);
+      });
+      return;
+    }
+  }
 }
 
 // Main entry point

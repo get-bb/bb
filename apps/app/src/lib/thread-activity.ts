@@ -109,6 +109,27 @@ export function getThreadListIndicatorLabel(
 }
 
 /**
+ * Whether a thread-list row has active work, independent of which status wins
+ * the single trailing indicator slot. Attention states such as unread errors
+ * and pending input can outrank background work visually without making that
+ * work stop; split membership uses this predicate to retain its shimmer.
+ */
+export function hasThreadListWorkingActivity(
+  state: ThreadListIndicatorState,
+  hasRunningPluginStatus = false,
+): boolean {
+  return (
+    state.isRuntimeActive ||
+    state.isWorkflowActive ||
+    state.isBackgroundAgentActive ||
+    state.isBackgroundCommandActive ||
+    state.isPlanModeActive ||
+    state.isGoalActive ||
+    hasRunningPluginStatus
+  );
+}
+
+/**
  * Resolves the one trailing indicator slot from independent, unsuppressed
  * thread state. Keep all precedence here so every thread-list surface makes
  * the same choice when activities overlap.
@@ -116,22 +137,21 @@ export function getThreadListIndicatorLabel(
 export function resolveThreadListIndicator(
   state: ThreadListIndicatorState,
 ): ThreadListIndicatorKind {
-  // Foreground runtime work is the primary row status. Secondary activity and
-  // attention signals become useful again once the runtime is idle.
-  if (state.isRuntimeActive) return "runtime";
+  // Attention states come first: the runtime stays active for the whole time a
+  // question or approval is open, so ranking "runtime" above them would hide the
+  // one state the user can act on behind a spinner that never resolves on its
+  // own. Plan and goal outrank the spinner too — they describe how the current
+  // turn is running, and their glyphs shimmer, so they already read as working.
+  // Only ambient work the row can't otherwise explain sits below the spinner.
   if (state.hasUnreadError) return "unread-error";
   if (state.hasPendingInteraction) return "waiting-for-input";
 
-  const hasActiveWork =
-    state.isWorkflowActive ||
-    state.isBackgroundAgentActive ||
-    state.isBackgroundCommandActive ||
-    state.isPlanModeActive ||
-    state.isGoalActive;
+  const hasActiveWork = hasThreadListWorkingActivity(state);
   if (state.hasUnsubmittedDraft && hasActiveWork) return "working-draft";
-  if (state.isWorkflowActive) return "workflow";
   if (state.isPlanModeActive) return "plan-mode";
   if (state.isGoalActive) return "goal";
+  if (state.isRuntimeActive) return "runtime";
+  if (state.isWorkflowActive) return "workflow";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
   if (state.hasUnsubmittedDraft) return "draft";

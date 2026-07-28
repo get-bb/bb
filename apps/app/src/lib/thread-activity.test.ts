@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getCollapsedChildActivity,
+  hasThreadListWorkingActivity,
   isBusyThread,
   isUnreadDoneThread,
   resolveThreadListIndicator,
@@ -59,29 +60,74 @@ const idleIndicatorState: ThreadListIndicatorState = {
 };
 
 describe("thread-activity", () => {
-  describe("resolveThreadListIndicator", () => {
+  describe("hasThreadListWorkingActivity", () => {
     it.each([
-      "hasPendingInteraction",
-      "hasUnsubmittedDraft",
-      "hasUnreadError",
-      "hasUnreadSuccess",
+      "isRuntimeActive",
       "isWorkflowActive",
       "isBackgroundAgentActive",
       "isBackgroundCommandActive",
       "isPlanModeActive",
       "isGoalActive",
     ] as const)(
-      "prefers runtime work over concurrent %s",
+      "keeps %s working despite higher-priority attention states",
       (flag) => {
         expect(
-          resolveThreadListIndicator({
+          hasThreadListWorkingActivity({
             ...idleIndicatorState,
-            isRuntimeActive: true,
+            hasPendingInteraction: true,
+            hasUnreadError: true,
             [flag]: true,
           }),
-        ).toBe("runtime");
+        ).toBe(true);
       },
     );
+
+    it("includes plugin work without treating attention-only states as work", () => {
+      const attentionOnly = {
+        ...idleIndicatorState,
+        hasPendingInteraction: true,
+        hasUnreadError: true,
+      };
+
+      expect(hasThreadListWorkingActivity(attentionOnly)).toBe(false);
+      expect(hasThreadListWorkingActivity(attentionOnly, true)).toBe(true);
+    });
+  });
+
+  describe("resolveThreadListIndicator", () => {
+    it.each([
+      ["hasPendingInteraction", "waiting-for-input"],
+      ["hasUnreadError", "unread-error"],
+      ["hasUnsubmittedDraft", "working-draft"],
+      ["isPlanModeActive", "plan-mode"],
+      ["isGoalActive", "goal"],
+    ] as const)("shows %s as %s over the runtime spinner", (flag, kind) => {
+      // The runtime stays active for as long as a question or approval is open,
+      // so the spinner must not mask it. Plan and goal describe the running turn
+      // and shimmer on their own, so they outrank it too.
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isRuntimeActive: true,
+          [flag]: true,
+        }),
+      ).toBe(kind);
+    });
+
+    it.each([
+      "hasUnreadSuccess",
+      "isWorkflowActive",
+      "isBackgroundAgentActive",
+      "isBackgroundCommandActive",
+    ] as const)("prefers runtime work over concurrent %s", (flag) => {
+      expect(
+        resolveThreadListIndicator({
+          ...idleIndicatorState,
+          isRuntimeActive: true,
+          [flag]: true,
+        }),
+      ).toBe("runtime");
+    });
 
     it.each([
       "isWorkflowActive",

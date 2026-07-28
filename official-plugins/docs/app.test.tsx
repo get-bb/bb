@@ -429,6 +429,94 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("hides and preserves YAML frontmatter when editing a document", async () => {
+    const frontmatter = [
+      "---\r\n",
+      "title: Wiki page\r\n",
+      "type: knowledge\r\n",
+      "---\r\n",
+    ].join("");
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/wiki-page.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "wiki-page.md",
+                title: "Wiki page",
+                preview: "Original body.",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({
+            content: `${frontmatter}\r\n# Wiki page\r\n\r\nOriginal body.`,
+            sha256: "sha",
+          }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "wiki-page.md" }),
+          saveNote,
+        },
+      },
+    );
+
+    const body = await slot.findByText("Original body.");
+    const editor = slot.container.querySelector(".tiptap");
+    expect(editor?.textContent).not.toContain("type: knowledge");
+    expect(editor?.querySelector("hr")).toBeNull();
+
+    body.textContent = "Edited body.";
+    fireEvent.input(body);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    // The blank line separating frontmatter from the body survives the first
+    // save: without it every real-world document picks up a spurious diff line.
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: expect.stringMatching(
+        /^---\r\ntitle: Wiki page\r\ntype: knowledge\r\n---\r\n\r\n# Wiki page\n\nEdited body\./,
+      ),
+    });
+  });
+
+  it("keeps a leading thematic break visible in the editor", async () => {
+    const content = "---\n\nSome intro text.\n\n---\n\nMore text.\n";
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/break.md" },
+      {
+        rpc: {
+          listNotes: () =>
+            listNotesResult([
+              {
+                path: "break.md",
+                title: "Break doc",
+                preview: "Some intro text. More text.",
+                modifiedAtMs: 1,
+              },
+            ]),
+          readNote: () => ({ content, sha256: "sha" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "break.md" }),
+          saveNote: () => ({ outcome: "written", sha256: "next-sha" }),
+        },
+      },
+    );
+
+    // The opening `---` is a thematic break, not frontmatter, so the section it
+    // introduces must stay editable rather than being hidden as metadata.
+    await waitFor(() => {
+      const editor = slot.container.querySelector(".tiptap");
+      expect(editor?.textContent).toContain("Some intro text.");
+      expect(editor?.textContent).toContain("More text.");
+    });
+  });
+
   it("renders nested folders, images, and sandboxed HTML directives", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,

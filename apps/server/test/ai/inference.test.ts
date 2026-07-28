@@ -1,4 +1,4 @@
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
   InferenceTimeoutError,

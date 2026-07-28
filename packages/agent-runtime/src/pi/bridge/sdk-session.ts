@@ -12,16 +12,18 @@ import {
   type BashSpawnHook,
   type ContextUsage,
   type CreateAgentSessionOptions,
+  type ModelRuntime,
   type PromptOptions,
   type SessionStats,
   type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { getModel } from "@mariozechner/pi-ai";
-import type { ImageContent } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import { getPiModelRuntime } from "./model-runtime.js";
 
 export interface PiSdkSessionOptions {
   cwd: string;
   model?: string;
+  modelRuntime?: ModelRuntime;
   thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
   additionalSkillPaths?: readonly string[];
   shellEnvOverrides?: ShellEnvOverrides;
@@ -134,7 +136,7 @@ function buildSessionCustomTools(
   return customTools;
 }
 
-function isTransientPiAuthStorageError(error: Error): boolean {
+function isTransientPiAuthError(error: Error): boolean {
   return error.message.startsWith("No API key found for ");
 }
 
@@ -162,7 +164,7 @@ async function waitForTransientAuthRetry(): Promise<void> {
 }
 
 /**
- * Wraps the Pi programmatic SDK (`@mariozechner/pi-coding-agent`) in a
+ * Wraps the Pi programmatic SDK (`@earendil-works/pi-coding-agent`) in a
  * session object that bridges between the BB JSON-RPC protocol and
  * the Pi agent's event-driven API.
  */
@@ -198,8 +200,11 @@ export class PiSdkSession {
   async start(): Promise<void> {
     assertExclusivePiPromptOverrides(this.options);
 
+    const modelRuntime =
+      this.options.modelRuntime ?? (await getPiModelRuntime());
     const sessionOptions: CreateAgentSessionOptions = {
       cwd: this.options.cwd,
+      modelRuntime,
       sessionManager: this.options.sessionFilePath
         ? SessionManager.open(
             this.options.sessionFilePath,
@@ -250,7 +255,10 @@ export class PiSdkSession {
       sessionOptions.resourceLoader = resourceLoader;
     }
 
-    const configuredModel = resolveConfiguredModel(this.options.model);
+    const configuredModel = resolveConfiguredModel(
+      modelRuntime,
+      this.options.model,
+    );
     if (configuredModel) {
       sessionOptions.model = configuredModel;
     }
@@ -371,7 +379,7 @@ export class PiSdkSession {
     if (event.type === "agent_start") {
       this.isProcessing = true;
     }
-    if (event.type === "agent_end") {
+    if (event.type === "agent_end" && !event.willRetry) {
       this.isProcessing = false;
       // NOTE: Do NOT call onDone() here. agent_end signals "turn complete,
       // ready for next input" — NOT session termination. The session stays
@@ -440,7 +448,9 @@ export class PiSdkSession {
 
   private observeTerminalSteerSettlement(event: AgentSessionEvent): void {
     if (event.type === "agent_end") {
-      this.scheduleTerminalSteerSettlement();
+      if (!event.willRetry) {
+        this.scheduleTerminalSteerSettlement();
+      }
       return;
     }
 
@@ -556,7 +566,7 @@ export class PiSdkSession {
       } catch (error) {
         if (
           !(error instanceof Error) ||
-          !isTransientPiAuthStorageError(error) ||
+          !isTransientPiAuthError(error) ||
           attempt >= PI_TRANSIENT_AUTH_MAX_RETRIES
         ) {
           throw error;
@@ -598,9 +608,7 @@ export class PiSdkSession {
       return { steerConsumptionPromise: steerConsumption?.promise ?? null };
     }
     await this.session.prompt(args.text, {
-      ...(args.images && args.images.length > 0
-        ? { images: args.images }
-        : {}),
+      ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
     });
     return { steerConsumptionPromise: null };
   }
@@ -611,44 +619,23 @@ export class PiSdkSession {
  * Pi Model object. Returns undefined if the model can't be resolved.
  */
 function resolveConfiguredModel(
+  modelRuntime: ModelRuntime,
   modelStr: string | undefined,
-): ReturnType<typeof getModel> | undefined {
+): ReturnType<ModelRuntime["getModel"]> | undefined {
   if (!modelStr) {
     return undefined;
   }
 
-  const model = resolveModel(modelStr);
+  const slashIdx = modelStr.indexOf("/");
+  if (slashIdx === -1) {
+    throw new Error(`Failed to resolve Pi model "${modelStr}"`);
+  }
+
+  const provider = modelStr.slice(0, slashIdx);
+  const modelId = modelStr.slice(slashIdx + 1);
+  const model = modelRuntime.getModel(provider, modelId);
   if (!model) {
     throw new Error(`Failed to resolve Pi model "${modelStr}"`);
   }
   return model;
-}
-
-function resolveModel(
-  modelStr: string,
-): ReturnType<typeof getModel> | undefined {
-  // Parse "provider/model-id" format
-  const slashIdx = modelStr.indexOf("/");
-  if (slashIdx === -1) return undefined;
-
-  const provider = modelStr.slice(0, slashIdx);
-  const modelId = modelStr.slice(slashIdx + 1);
-
-  try {
-    // getModel is generic over known providers; we try the common ones
-    switch (provider) {
-      case "anthropic":
-        return getModel("anthropic", modelId as never);
-      case "openai":
-        return getModel("openai", modelId as never);
-      case "openai-codex":
-        return getModel("openai-codex", modelId as never);
-      case "google":
-        return getModel("google", modelId as never);
-      default:
-        return undefined;
-    }
-  } catch {
-    return undefined;
-  }
 }

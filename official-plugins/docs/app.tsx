@@ -20,6 +20,7 @@ import {
   type PluginThreadPanelProps,
 } from "@bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
+import { parseMarkdownDocument } from "./markdown-document.js";
 import {
   Editor,
   Extension,
@@ -503,6 +504,13 @@ function TiptapEditor({
   useEffect(() => {
     ensureEditorStyles();
     if (!rootRef.current) return;
+    const markdownDocument = parseMarkdownDocument(initialValue);
+    // `---\n\n# Heading` is the canonical frontmatter layout, and the editor
+    // never sees the leading blank lines, so replay them on save instead of
+    // handing every touched document a spurious diff line.
+    const bodyLeadingBreaks = markdownDocument.frontmatter
+      ? (/^(?:\r?\n)*/.exec(markdownDocument.body)?.[0] ?? "")
+      : "";
     let editor: Editor;
     const upload = async (file: File) => {
       if (!file.type.startsWith("image/")) return false;
@@ -539,7 +547,7 @@ function TiptapEditor({
           linkify: true,
         }),
       ],
-      content: displayMarkdown(initialValue, previewBaseUrl, notePath),
+      content: displayMarkdown(markdownDocument.body, previewBaseUrl, notePath),
       autofocus: "end",
       editorProps: {
         handlePaste(_view, event) {
@@ -562,6 +570,8 @@ function TiptapEditor({
       },
     });
     const getMarkdown = () =>
+      markdownDocument.frontmatter +
+      bodyLeadingBreaks +
       storedMarkdown(
         editor.storage.markdown.getMarkdown(),
         previewBaseUrl,
@@ -1941,7 +1951,12 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
 
   if (!data || !activeVaultId)
     return (
-      <div className="p-6 text-sm text-muted-foreground">Loading vaults…</div>
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
+        role="status"
+      >
+        Loading vaults…
+      </div>
     );
 
   const selectedFolder = filePath ? dirname(filePath) : "";

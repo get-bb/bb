@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { createStore, Provider } from "jotai";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
@@ -27,6 +28,12 @@ import {
 } from "@/hooks/queries/query-keys";
 import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import {
+  removePluginSlotRegistrations,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
 export default {
   title: "Sidebar/Overview",
@@ -436,5 +443,83 @@ export function Overview() {
         <SearchSidebar />
       </StoryRow>
     </StoryCard>
+  );
+}
+
+export function SplitPageLabels() {
+  const [store] = useState(createStore);
+
+  useEffect(() => {
+    store.set(splitLayoutAtom, {
+      focusedPaneId: "pane-plugin",
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            type: "pane",
+            paneId: "pane-compose",
+            content: { kind: "new-thread" },
+          },
+          {
+            type: "pane",
+            paneId: "pane-plugin",
+            content: {
+              kind: "plugin-panel",
+              pluginId: "story-split-page",
+              panelPath: "notes",
+              subPath: "",
+            },
+          },
+        ],
+      },
+    });
+    setPluginSlotRegistrations("story-split-page", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "notes",
+          title: "Project notes",
+          icon: "FileText",
+          path: "notes",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [],
+      composerCustomizations: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    return () => {
+      store.set(splitLayoutAtom, null);
+      removePluginSlotRegistrations("story-split-page");
+    };
+  }, [store]);
+
+  return (
+    <Provider store={store}>
+      <StoryCard>
+        <StoryRow
+          label="non-thread pages"
+          hint="each pane mini-map sits directly beside its page label"
+        >
+          <div className="w-full max-w-[320px] rounded-md bg-sidebar py-2 text-sidebar-foreground">
+            <div className="px-2">
+              <ProjectListActionButtons
+                splitEnabled
+                newThreadSplit={{ openInSplit: noop }}
+                onNewChat={noop}
+              />
+            </div>
+            <PluginNavSidebarItems splitEnabled />
+          </div>
+        </StoryRow>
+      </StoryCard>
+    </Provider>
   );
 }

@@ -7,7 +7,10 @@
  * the Pi SDK and produces `ThreadEvent[]`.
  */
 
-import { AuthStorage, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import {
+  getBuiltinModels,
+  getBuiltinProviders,
+} from "@earendil-works/pi-ai/providers/all";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import { z } from "zod";
 import type {
@@ -188,16 +191,6 @@ interface PiContextWindowModel {
   provider: string;
 }
 
-const piContextWindowModelSchema = z
-  .object({
-    id: z.string(),
-    provider: z.string(),
-    contextWindow: z.number().optional(),
-  })
-  .passthrough();
-
-const piContextWindowModelsSchema = z.array(piContextWindowModelSchema);
-
 // Keep Pi's SDK-level turn_start/turn_end outside the translated event union
 // until replay proves they represent bb turn boundaries rather than internal
 // provider subturns.
@@ -215,6 +208,21 @@ const piEventTypeSchema = z
     ]),
   })
   .passthrough();
+
+// Pi events we deliberately drop rather than translate. Without this the
+// fallback treats them as unknown and emits a `provider/unhandled` event, which
+// renders as "Unhandled Pi event" in the transcript.
+//
+// `agent_settled` fires after every agent run completes (Pi 0.82's
+// AgentSession._emitAgentSettled). BB already derives turn completion from
+// `agent_end` plus its `willRetry` flag, so the settle signal carries nothing
+// extra for us.
+const PI_IGNORED_EVENT_TYPES = new Set(["agent_settled"]);
+
+const piIgnoredEventSchema = z
+  .object({ type: z.string() })
+  .passthrough()
+  .refine((event) => PI_IGNORED_EVENT_TYPES.has(event.type));
 
 const piMessageContentBlockSchema = z
   .object({
@@ -266,6 +274,7 @@ const piAgentEndEventSchema = z
   .object({
     type: z.literal("agent_end"),
     messages: z.array(piConversationMessageSchema),
+    willRetry: z.boolean().default(false),
   })
   .passthrough();
 
@@ -610,10 +619,6 @@ type PiModelContextWindowResolver = (
   lastAssistant: PiAssistantMessage | undefined,
 ) => number | null;
 
-function createPiModelRegistry(): ModelRegistry {
-  return ModelRegistry.create(AuthStorage.create());
-}
-
 function buildPiModelContextWindowLookup(
   models: readonly PiContextWindowModel[],
 ): PiModelContextWindowLookup {
@@ -633,19 +638,12 @@ function buildPiModelContextWindowLookup(
 }
 
 function createPiModelContextWindowResolver(): PiModelContextWindowResolver {
-  return (lastAssistant) => {
-    if (!toOptionalString(lastAssistant?.model)) {
-      return null;
-    }
-
-    // Resolve against a fresh registry so models.json overrides and custom
-    // model definitions are reflected without module-level cached state.
-    const models = piContextWindowModelsSchema.parse(
-      createPiModelRegistry().getAll(),
-    );
-    const modelContextWindowLookup = buildPiModelContextWindowLookup(models);
-    return resolvePiModelContextWindow(lastAssistant, modelContextWindowLookup);
-  };
+  const models = getBuiltinProviders().flatMap((provider) =>
+    getBuiltinModels(provider),
+  );
+  const modelContextWindowLookup = buildPiModelContextWindowLookup(models);
+  return (lastAssistant) =>
+    resolvePiModelContextWindow(lastAssistant, modelContextWindowLookup);
 }
 
 // ---------------------------------------------------------------------------
@@ -806,6 +804,13 @@ export function createPiProviderAdapter(
   ): ThreadEvent[] {
     const sdkEnvelope = sdkMessageEnvelopeSchema.safeParse(event);
     if (sdkEnvelope.success) {
+      // Checked here rather than in the recursive call because an empty
+      // translation is what triggers the unhandled fallback below.
+      if (
+        piIgnoredEventSchema.safeParse(sdkEnvelope.data.params.message).success
+      ) {
+        return [];
+      }
       const parentToolCallId =
         sdkEnvelope.data.params.parent_tool_use_id ?? context?.parentToolCallId;
       const translated = translatePiEvent(sdkEnvelope.data.params.message, {
@@ -962,6 +967,21 @@ export function createPiProviderAdapter(
           break;
         }
         const lastAssistant = findLastAssistantMessage(piEvent.data.messages);
+        if (piEvent.data.willRetry) {
+          return lastAssistant && isPiAssistantError(lastAssistant)
+            ? [
+                {
+                  type: "provider/error",
+                  threadId,
+                  providerThreadId: "",
+                  scope: turnScope(currentTurnId),
+                  message: "Provider error",
+                  detail: lastAssistant.errorMessage,
+                  willRetry: true,
+                },
+              ]
+            : [];
+        }
         if (lastAssistant && isPiAssistantError(lastAssistant)) {
           resetPiCommandOutputSnapshots(state);
           return translatePiErrorEnvelope({

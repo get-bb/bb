@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 
 type ControlledPiAgentSessionListener = (event: AgentSessionEvent) => void;
 
@@ -30,6 +30,8 @@ const {
   mockOpen,
   mockResourceLoaders,
   mockSettingsInMemory,
+  mockModelRuntime,
+  oauthRegistrationState,
 } = vi.hoisted(() => {
   const mockResourceLoaders: MockPiResourceLoader[] = [];
 
@@ -51,15 +53,27 @@ const {
     mockOpen: vi.fn((path: string) => ({ kind: "open", path })),
     mockResourceLoaders,
     mockSettingsInMemory: vi.fn(() => ({ kind: "settings" })),
+    mockModelRuntime: {
+      getAvailable: vi.fn(async () => []),
+      getModel: vi.fn(() => undefined),
+      refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+    },
+    oauthRegistrationState: { registered: false },
   };
 });
 
-vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
+vi.mock("@earendil-works/pi-ai/bun-oauth", () => ({
+  registerBunOAuthFlows: () => {
+    oauthRegistrationState.registered = true;
+  },
+}));
+
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   // Keep the real SessionManager.forkFrom so the fork test exercises genuine
   // session-file materialization on disk; only the agent-session and resume/open
   // entry points are mocked away from the real SDK runtime.
   const actual =
-    await importOriginal<typeof import("@mariozechner/pi-coding-agent")>();
+    await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
   return {
     createAgentSession: mockCreateAgentSession,
     DefaultResourceLoader: mockDefaultResourceLoader,
@@ -75,8 +89,8 @@ vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
   };
 });
 
-vi.mock("@mariozechner/pi-ai", () => ({
-  getModel: vi.fn(),
+vi.mock("../model-runtime.js", () => ({
+  getPiModelRuntime: vi.fn(async () => mockModelRuntime),
 }));
 
 import { handleLine } from "../bridge.js";
@@ -139,7 +153,9 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
   };
 }
 
-function createQueueUpdateEvent(steering: readonly string[]): AgentSessionEvent {
+function createQueueUpdateEvent(
+  steering: readonly string[],
+): AgentSessionEvent {
   return {
     type: "queue_update",
     steering,
@@ -151,10 +167,15 @@ function createAgentEndEvent(): AgentSessionEvent {
   return {
     type: "agent_end",
     messages: [],
+    willRetry: false,
   };
 }
 
 describe("pi bridge", () => {
+  it("registers static OAuth loaders for the standalone Pi bundle", () => {
+    expect(oauthRegistrationState.registered).toBe(true);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockResourceLoaders.length = 0;
@@ -258,7 +279,7 @@ describe("pi bridge", () => {
     }
   });
 
-  it("passes thread/start reasoningLevel through to Pi thinkingLevel", async () => {
+  it("passes thread/start max reasoningLevel through to Pi thinkingLevel", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     mockCreateAgentSession.mockImplementation(async () => ({
       session: createControlledPiAgentSession(),
@@ -268,13 +289,13 @@ describe("pi bridge", () => {
       bridge.sendRequest(3, "thread/start", {
         cwd: "/tmp/worktree",
         threadId: "thread-reasoning",
-        reasoningLevel: "high",
+        reasoningLevel: "max",
       });
       await bridge.waitForResponse(3);
 
       expect(mockCreateAgentSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          thinkingLevel: "high",
+          thinkingLevel: "max",
         }),
       );
     } finally {

@@ -889,14 +889,14 @@ export function ProjectListActionButtons({
             <Icon name="MessageSquarePlus" />
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="min-w-0 truncate text-left">New thread</span>
+              {newThreadSplitIndicator.miniMap ? (
+                <SplitPaneMiniMap
+                  slots={newThreadSplitIndicator.miniMap}
+                  label="New thread — open in split"
+                />
+              ) : null}
               <AppCommandShortcutHint shortcut={newThreadShortcut} />
             </span>
-            {newThreadSplitIndicator.miniMap ? (
-              <SplitPaneMiniMap
-                slots={newThreadSplitIndicator.miniMap}
-                label="New thread — open in split"
-              />
-            ) : null}
           </Button>
           {threadSearch ? (
             <span className="flex shrink-0 items-center gap-1">

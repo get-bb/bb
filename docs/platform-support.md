@@ -1,3 +1,5 @@
+<!-- Diátaxis: reference -->
+
 # Platform Support
 
 ## Supported host environments
@@ -6,12 +8,19 @@
 - Linux persistent host
 - Windows via Ubuntu on WSL2
 
-Supported npm package runtimes:
+Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
+`engines.node: ">=22.19.0"`.
 
-- Node.js 22 LTS
+Tested npm package runtimes:
+
+- Node.js 22.19 or newer in the Node.js 22 release line
 - Node.js 24 LTS
 - Node.js 26 Current
-- Node.js 20 is best-effort only because it is end-of-life upstream
+
+Newer release lines are not blocked. `install-machine.sh` gates on the 22.19
+floor only, so a release line we have not tested yet still installs rather than
+failing hard on the day it ships. The `bb-app` npm `engines` field lists the
+tested lines, which npm surfaces as a warning rather than an install failure.
 
 Windows support means the Linux stack runs entirely inside WSL2:
 
@@ -137,13 +146,12 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - Pull requests run the `bb-app` tarball smoke on Ubuntu and macOS with Node.js
   22, validating the packed npm artifact through `npx --package`.
 - Pushes to `main` and manually dispatched CI runs also run the `bb-app` tarball
-  smoke on Ubuntu and macOS with Node.js 24 and 26. Node.js 20 runs as a
-  best-effort Ubuntu compatibility signal only.
+  smoke on Ubuntu and macOS with Node.js 24 and 26.
 - Branch protection should require `Checks (ubuntu-latest, Node 22.x)`,
   `Package Smoke (ubuntu-latest, Node 22.x)`, and
-  `Package Smoke (macos-latest, Node 22.x)`. The Node.js 20, 24, and 26
-  compatibility smoke jobs do not run on pull requests and should not be
-  configured as required PR checks.
+  `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
+  smoke jobs do not run on pull requests and should not be configured as
+  required PR checks.
 - Native Windows CI is intentionally not required because Windows support uses
   the Linux runtime path inside WSL2 rather than a separate native Windows
   product path.
