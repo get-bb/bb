@@ -209,6 +209,21 @@ const piEventTypeSchema = z
   })
   .passthrough();
 
+// Pi events we deliberately drop rather than translate. Without this the
+// fallback treats them as unknown and emits a `provider/unhandled` event, which
+// renders as "Unhandled Pi event" in the transcript.
+//
+// `agent_settled` fires after every agent run completes (Pi 0.82's
+// AgentSession._emitAgentSettled). BB already derives turn completion from
+// `agent_end` plus its `willRetry` flag, so the settle signal carries nothing
+// extra for us.
+const PI_IGNORED_EVENT_TYPES = new Set(["agent_settled"]);
+
+const piIgnoredEventSchema = z
+  .object({ type: z.string() })
+  .passthrough()
+  .refine((event) => PI_IGNORED_EVENT_TYPES.has(event.type));
+
 const piMessageContentBlockSchema = z
   .object({
     type: z.string(),
@@ -789,6 +804,13 @@ export function createPiProviderAdapter(
   ): ThreadEvent[] {
     const sdkEnvelope = sdkMessageEnvelopeSchema.safeParse(event);
     if (sdkEnvelope.success) {
+      // Checked here rather than in the recursive call because an empty
+      // translation is what triggers the unhandled fallback below.
+      if (
+        piIgnoredEventSchema.safeParse(sdkEnvelope.data.params.message).success
+      ) {
+        return [];
+      }
       const parentToolCallId =
         sdkEnvelope.data.params.parent_tool_use_id ?? context?.parentToolCallId;
       const translated = translatePiEvent(sdkEnvelope.data.params.message, {

@@ -1131,6 +1131,26 @@ describe("pi provider adapter", () => {
     ]);
   });
 
+  it("translateEvent drops agent_settled instead of surfacing it in the transcript", () => {
+    // Pi 0.82 emits agent_settled after every agent run. Without an explicit
+    // ignore it falls through to provider/unhandled, which renders as
+    // "Unhandled Pi event" in the thread for the user on every single turn.
+    const adapter = createPiProviderAdapter();
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "pi-thread-1",
+        message: {
+          type: "agent_settled",
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   it("translateEvent scopes unknown sdk envelopes to the active turn", () => {
     const adapter = createPiProviderAdapter();
     const context = { threadId: "pi-thread-1" };
