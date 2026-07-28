@@ -429,7 +429,16 @@ export function AppSidebar({
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
-          <SidebarMenu className="flex-row items-center gap-1">
+          {/* The footer holds a variable number of plugin action buttons, so a
+           * narrowed sidebar plus several plugins can no longer fit the action
+           * row and the update chips on one line. `flex-wrap-reverse` plus the
+           * flexible spacer below handles both layouts without measuring:
+           * while everything fits, the spacer stretches and pushes the chips to
+           * the right of a single row; once it doesn't, the chips wrap onto
+           * their own line, which wrap-reverse renders above the actions, and
+           * they sit flush left because the spacer stays behind on the action
+           * line. */}
+          <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 asChild
@@ -473,6 +482,7 @@ export function AppSidebar({
                 <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <li aria-hidden="true" className="min-w-0 flex-1" />
             <SidebarUpdatesBadge onNavigate={closeOnMobile} />
           </SidebarMenu>
         </SidebarFooter>
