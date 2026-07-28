@@ -675,6 +675,32 @@ function hashStoredTreeFiles(files: readonly CollectedSkillFile[]): string {
   return hash.digest("hex");
 }
 
+/**
+ * Hash an installed skill directory with the same recipe used for skill trees,
+ * so the result is directly comparable to a server tree hash. Returns null when
+ * the directory is absent or is not a readable skill tree (a partially removed
+ * or hand-edited copy simply reads as "not the expected tree").
+ */
+export async function hashInstalledSkillDirectory(args: {
+  name: string;
+  skillDirectoryPath: string;
+}): Promise<string | null> {
+  try {
+    const tree = await collectSkillDirectory({
+      name: args.name,
+      sourceRootPath: args.skillDirectoryPath,
+      skillFilePath: path.join(args.skillDirectoryPath, SKILL_FILE_NAME),
+    });
+    return hashStoredTreeFiles(
+      [...tree.files].sort((left, right) =>
+        compareStringsByCodePoint(left.relativePath, right.relativePath),
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function touchStoredTree(treeRootPath: string): Promise<void> {
   await fs.writeFile(path.join(treeRootPath, STORE_LAST_USED_MARKER), "");
 }
@@ -790,7 +816,7 @@ async function writeFetchedTreeToStore(args: {
   return path.join(treeRootPath, STORE_CONTENT_DIR);
 }
 
-async function ensureStoredSkillTree(args: {
+export async function ensureStoredSkillTree(args: {
   dataDir: string;
   fetchSkillTree: FetchSkillTree;
   treeHash: string;

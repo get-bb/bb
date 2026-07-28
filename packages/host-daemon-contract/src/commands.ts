@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 66 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 68 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -813,6 +813,46 @@ const hostWriteSkillCommandSchema = z
   });
 
 /**
+ * Copy server-owned skill trees into the host's global agent skill roots
+ * (`~/.agents/skills` and `~/.claude/skills`) so agents running outside bb can
+ * load them. The server picks which skills to publish and supplies their tree
+ * hashes; the daemon pulls each tree and owns the home-relative destinations.
+ */
+const hostInstallGlobalSkillSchema = z
+  .object({
+    name: z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN),
+    treeHash: z.string().regex(/^[a-f0-9]{64}$/u),
+    entryPath: z.string().min(1),
+  })
+  .strict();
+export type HostInstallGlobalSkill = z.infer<
+  typeof hostInstallGlobalSkillSchema
+>;
+
+const hostInstallGlobalSkillsCommandSchema = z
+  .object({
+    type: z.literal("host.install_global_skills"),
+    skills: z.array(hostInstallGlobalSkillSchema).min(1).max(64),
+  })
+  .strict();
+
+/**
+ * Read what is currently installed in this host's global agent skill roots.
+ * The daemon returns the raw content hash of each installed copy (hashed like a
+ * skill tree, so it is comparable to a tree hash); the server decides whether
+ * that means installed, out of date, or missing.
+ */
+const hostGlobalSkillsStatusCommandSchema = z
+  .object({
+    type: z.literal("host.global_skills_status"),
+    names: z
+      .array(z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN))
+      .min(1)
+      .max(64),
+  })
+  .strict();
+
+/**
  * List a bounded page of git branches at an absolute host path. Path-only
  * sibling of `host.list_files`. Does not require an environment row, does not
  * provision anything, and does not create daemon-side workspace state.
@@ -1209,6 +1249,44 @@ const skillListResultSchema = z.object({
 const deleteSkillResultSchema = z.object({
   deletedPath: z.string(),
 });
+
+const installGlobalSkillsResultSchema = z
+  .object({
+    installations: z.array(
+      z
+        .object({
+          name: z.string(),
+          path: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type HostInstallGlobalSkillsResult = z.infer<
+  typeof installGlobalSkillsResultSchema
+>;
+
+const globalSkillsStatusResultSchema = z
+  .object({
+    /** One entry per (skill name, global skill root) pair on this host. */
+    entries: z.array(
+      z
+        .object({
+          name: z.string(),
+          path: z.string(),
+          /** Tree hash of the installed copy, or null when nothing is there. */
+          treeHash: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/u)
+            .nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type HostGlobalSkillsStatusResult = z.infer<
+  typeof globalSkillsStatusResultSchema
+>;
 
 const writeSkillResultSchema = z.discriminatedUnion("outcome", [
   z.object({
@@ -1711,6 +1789,28 @@ export const hostDaemonCommandRegistry = {
     resultSchema: writeSkillResultSchema,
     transport: "onlineRpc",
     retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Host-local FS write into the user's global agent skill roots. Replacing an
+  // installed copy is idempotent, but it is still a destructive overwrite, so
+  // it never silently retries.
+  "host.install_global_skills": defineHostDaemonCommandDescriptor({
+    type: "host.install_global_skills",
+    schema: hostInstallGlobalSkillsCommandSchema,
+    resultSchema: installGlobalSkillsResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  // Read-only inspection of the global skill roots; safe to retry.
+  "host.global_skills_status": defineHostDaemonCommandDescriptor({
+    type: "host.global_skills_status",
+    schema: hostGlobalSkillsStatusCommandSchema,
+    resultSchema: globalSkillsStatusResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

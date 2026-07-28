@@ -62,4 +62,16 @@ Skills (.bb/skills/):
   identity into bb user skills. Registry commands are server-wide and do not
   accept workspace selectors.
 
+  Use `bb skill install-cli-skills` to copy bb's built-in CLI skills into a
+  machine's global agent skill roots (`~/.agents/skills` and
+  `~/.claude/skills`) so agents running outside bb can drive it. It installs on
+  every connected machine unless you pass `--machine <id-or-name>`, which is
+  repeatable. Settings → Skills exposes the same action; it asks which machines
+  only when more than one is enrolled. Machines install independently, so the
+  command reports each machine's outcome and exits non-zero if any failed. The
+  install replaces a previously installed copy of the same skill and leaves
+  other skills alone. `bb skill cli-skills-status` reports whether each machine
+  is installed, out of date, missing, or unknown (disconnected or unreachable);
+  the settings row shows the same as a badge.
+
   Use the skill-creator skill to author and iterate on skills.

@@ -46,6 +46,11 @@ import {
   resolveThemeRootPath,
 } from "../services/system/custom-themes.js";
 import { schedulePrimaryHostCaffeinateReconciliation } from "../services/system/app-settings.js";
+import {
+  installGlobalCliSkills,
+  listInstallableMachineIds,
+  readGlobalCliSkillStatus,
+} from "../services/skills/global-skill-install.js";
 import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
 
@@ -218,6 +223,21 @@ export function registerSystemRoutes(
     }
     return context.json({ ok: true });
   });
+
+  get(routes.cliSkillsStatus, async (context, query) =>
+    context.json(
+      await readGlobalCliSkillStatus(deps, {
+        hostIds:
+          query.hostIds === undefined
+            ? listInstallableMachineIds(deps)
+            : query.hostIds.split(",").filter((hostId) => hostId.length > 0),
+      }),
+    ),
+  );
+
+  post(routes.installCliSkills, async (context, body) =>
+    context.json(await installGlobalCliSkills(deps, { hostIds: body.hostIds })),
+  );
 
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),

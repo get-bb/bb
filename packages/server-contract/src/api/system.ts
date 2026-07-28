@@ -197,6 +197,80 @@ export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 export const systemConfigReloadResponseSchema = z.object({
   ok: z.literal(true),
 });
+
+/**
+ * Whether a machine's copy of the built-in bb CLI skills matches what this
+ * server would install. "unknown" covers a disconnected machine or one that
+ * could not be asked.
+ */
+export const cliSkillMachineStatusSchema = z.enum([
+  "installed",
+  "outdated",
+  "missing",
+  "unknown",
+]);
+export type CliSkillMachineStatus = z.infer<typeof cliSkillMachineStatusSchema>;
+
+export const systemCliSkillsStatusQuerySchema = z.object({
+  /** Comma-separated machine ids; omit for every enrolled machine. */
+  hostIds: z.string().optional(),
+});
+export type SystemCliSkillsStatusQuery = z.infer<
+  typeof systemCliSkillsStatusQuerySchema
+>;
+
+export const systemCliSkillsStatusResponseSchema = z.object({
+  machines: z.array(
+    z.object({
+      hostId: z.string(),
+      hostName: z.string(),
+      status: cliSkillMachineStatusSchema,
+    }),
+  ),
+});
+export type SystemCliSkillsStatusResponse = z.infer<
+  typeof systemCliSkillsStatusResponseSchema
+>;
+
+/** The machines to copy the built-in bb CLI skills onto. */
+export const systemInstallCliSkillsRequestSchema = z.object({
+  hostIds: z.array(z.string().min(1)).min(1).max(64),
+});
+export type SystemInstallCliSkillsRequest = z.infer<
+  typeof systemInstallCliSkillsRequestSchema
+>;
+
+/**
+ * One entry per requested machine. A machine that is offline or otherwise
+ * refuses the install fails on its own without taking the others down, so the
+ * caller can report exactly which machines got the skills.
+ */
+export const systemInstallCliSkillsResponseSchema = z.object({
+  results: z.array(
+    z.discriminatedUnion("ok", [
+      z.object({
+        ok: z.literal(true),
+        hostId: z.string(),
+        hostName: z.string(),
+        installations: z.array(
+          z.object({
+            name: z.string(),
+            path: z.string(),
+          }),
+        ),
+      }),
+      z.object({
+        ok: z.literal(false),
+        hostId: z.string(),
+        hostName: z.string(),
+        errorMessage: z.string(),
+      }),
+    ]),
+  ),
+});
+export type SystemInstallCliSkillsResponse = z.infer<
+  typeof systemInstallCliSkillsResponseSchema
+>;
 export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;

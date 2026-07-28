@@ -98,6 +98,14 @@ message agents, or inspect projects, providers, and environments.
   the bounded file preview with `bb skill registry detail <registry-skill-id>`.
   Install with `bb skill install <registry-skill-id>`; never infer an install
   source from a display name.
+- `bb skill install-cli-skills` copies bb's built-in CLI skills into a machine's
+  global agent skill roots (`~/.agents/skills` and `~/.claude/skills`) so agents
+  outside bb can drive bb. It targets every connected machine unless you pass
+  the repeatable `--machine <id-or-name>`, and reports each machine's outcome.
+  Settings → Skills has the same action; it confirms first, and asks which
+  machines only when more than one is enrolled.
+- `bb skill cli-skills-status` reports per machine whether the installed copy is
+  `installed`, `outdated`, `missing`, or `unknown` (disconnected or unreachable).
 
 ## Spawning Threads
 
