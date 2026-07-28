@@ -104,6 +104,45 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     expect(calls.filter((call) => call.command === "npm")).toHaveLength(1);
   });
 
+  it("rebuilds the artifact after package contents change without a version or protocol change", async () => {
+    const test = await fixture(mode);
+    const calls: Array<{
+      command: string;
+      args: readonly string[];
+      cwd: string;
+    }> = [];
+    const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
+      calls.push({ command, args, cwd });
+      if (command === "pnpm") return "built";
+      return (await execFileAsync(command, [...args], { cwd })).stdout;
+    };
+    const options = {
+      dataDir: join(test.root, "data"),
+      commandRunner: runner,
+      serverEntryUrl: pathToFileURL(test.serverEntry).href,
+      protocolVersion: 51,
+    };
+
+    const first = await createBbAppArtifactService(options).getTarballPath();
+    expect(
+      (await execFileAsync("tar", ["-xOzf", first, "package/README.md"]))
+        .stdout,
+    ).toBe("fixture\n");
+
+    await writeFile(join(test.packageRoot, "README.md"), "updated\n");
+    const second = await createBbAppArtifactService(options).getTarballPath();
+
+    expect(second).toBe(first);
+    expect(
+      (await execFileAsync("tar", ["-xOzf", second, "package/README.md"]))
+        .stdout,
+    ).toBe("updated\n");
+    expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
+    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+      isRepoMode(mode) ? 2 : 0,
+    );
+  });
+
   it("builds a fresh artifact when the protocol changes at the same package version", async () => {
     const test = await fixture(mode);
     const calls: Array<{
