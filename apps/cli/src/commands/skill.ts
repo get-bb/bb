@@ -62,6 +62,35 @@ function addWorkspaceOptions(command: Command): Command {
     .option("--json", "Print machine-readable JSON output");
 }
 
+/**
+ * Enrichment fans out one request per item, and each one proxies to GitHub or
+ * skills.sh. `--per-page` goes up to 100, so both the concurrency and the
+ * number of items enriched are capped: unauthenticated GitHub allows 60
+ * requests/hour/IP, and an uncapped burst exhausts that in a single search.
+ */
+const REGISTRY_ENRICH_CONCURRENCY = 6;
+const REGISTRY_ENRICH_LIMIT = 48;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) {
+        const index = next++;
+        results[index] = await run(items[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 async function enrichRegistryStars(
   registry: SkillsRegistryArea,
   skills: readonly RegistrySkill[],
@@ -72,22 +101,56 @@ async function enrichRegistryStars(
         .filter((skill) => skill.stars === null)
         .map((skill) => [skill.source.toLowerCase(), skill.source]),
     ).entries(),
-  ];
+  ].slice(0, REGISTRY_ENRICH_LIMIT);
   const starsBySource = new Map(
-    await Promise.all(
-      sources.map(async ([sourceKey, source]) => {
+    await mapWithConcurrency(
+      sources,
+      REGISTRY_ENRICH_CONCURRENCY,
+      async ([sourceKey, source]) => {
         const stars = await registry
           .repositoryStars({ source })
           .then((result) => result.stars)
           .catch(() => null);
         return [sourceKey, stars] as const;
-      }),
+      },
     ),
   );
   return skills.map((skill) => {
     if (skill.stars !== null) return skill;
     const stars = starsBySource.get(skill.source.toLowerCase());
     return stars === null || stars === undefined ? skill : { ...skill, stars };
+  });
+}
+
+/**
+ * The registry list deliberately no longer resolves summaries server-side —
+ * that preflight was removed because it made browsing O(N) slow. The CLI has
+ * no per-card lazy loading to compensate with, so it resolves the missing
+ * summaries here instead, under the same caps as stars.
+ */
+async function enrichRegistrySummaries(
+  registry: SkillsRegistryArea,
+  skills: readonly RegistrySkill[],
+): Promise<RegistrySkill[]> {
+  const missing = skills
+    .filter((skill) => skill.summary === null)
+    .slice(0, REGISTRY_ENRICH_LIMIT);
+  if (missing.length === 0) return [...skills];
+  const summaryById = new Map(
+    await mapWithConcurrency(
+      missing,
+      REGISTRY_ENRICH_CONCURRENCY,
+      async (skill) => {
+        const entry = await registry
+          .get({ registrySkillId: skill.id })
+          .catch(() => null);
+        return [skill.id, entry?.summary ?? null] as const;
+      },
+    ),
+  );
+  return skills.map((skill) => {
+    const summary = summaryById.get(skill.id);
+    return summary == null ? skill : { ...skill, summary };
   });
 }
 
@@ -227,7 +290,10 @@ export function registerSkillCommands(
         });
         const enrichedResult = {
           ...result,
-          skills: await enrichRegistryStars(registry, result.skills),
+          skills: await enrichRegistrySummaries(
+            registry,
+            await enrichRegistryStars(registry, result.skills),
+          ),
         };
         if (outputJson(options, enrichedResult)) return;
         console.log(

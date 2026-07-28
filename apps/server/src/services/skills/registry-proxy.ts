@@ -25,6 +25,13 @@ import {
 const MAX_SEARCH_RESULTS = 200;
 const GITHUB_SKILL_PATH_CACHE_TTL_MS = 30 * 60 * 1000;
 const GITHUB_REPOSITORY_STARS_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+/**
+ * Failures are cached too, on a short TTL. Unauthenticated api.github.com
+ * allows 60 requests/hour/IP; without this, one exhausted budget makes every
+ * subsequent browse re-issue the whole burst, which keeps the budget
+ * exhausted. A short TTL still lets a transient failure recover quickly.
+ */
+const GITHUB_REPOSITORY_STARS_FAILURE_TTL_MS = 5 * 60 * 1000;
 const REGISTRY_ENTRY_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
@@ -45,7 +52,7 @@ const githubSkillPathCache = new Map<
 const githubSkillPathRequests = new Map<string, Promise<string[] | null>>();
 const githubRepositoryStarsCache = new Map<
   string,
-  { stars: number; expiresAt: number }
+  { stars: number | null; expiresAt: number }
 >();
 const githubRepositoryStarsRequests = new Map<string, Promise<number | null>>();
 
@@ -253,6 +260,18 @@ export async function fetchRegistryRepositoryStars(
   const inFlight = githubRepositoryStarsRequests.get(cacheKey);
   if (inFlight) return inFlight;
 
+  const cacheStars = (stars: number | null): number | null => {
+    githubRepositoryStarsCache.set(cacheKey, {
+      stars,
+      expiresAt:
+        Date.now() +
+        (stars === null
+          ? GITHUB_REPOSITORY_STARS_FAILURE_TTL_MS
+          : GITHUB_REPOSITORY_STARS_CACHE_TTL_MS),
+    });
+    return stars;
+  };
+
   const request = (async () => {
     try {
       const response = await registryFetch(
@@ -264,7 +283,7 @@ export async function fetchRegistryRepositoryStars(
           },
         },
       );
-      if (!response.ok) return null;
+      if (!response.ok) return cacheStars(null);
       const body: unknown = await response.json().catch(() => null);
       if (
         !isRecord(body) ||
@@ -272,15 +291,11 @@ export async function fetchRegistryRepositoryStars(
         !Number.isInteger(body.stargazers_count) ||
         body.stargazers_count < 0
       ) {
-        return null;
+        return cacheStars(null);
       }
-      githubRepositoryStarsCache.set(cacheKey, {
-        stars: body.stargazers_count,
-        expiresAt: Date.now() + GITHUB_REPOSITORY_STARS_CACHE_TTL_MS,
-      });
-      return body.stargazers_count;
+      return cacheStars(body.stargazers_count);
     } catch {
-      return null;
+      return cacheStars(null);
     } finally {
       githubRepositoryStarsRequests.delete(cacheKey);
     }
@@ -427,6 +442,12 @@ export async function listRegistrySkills(
 export async function resolveRegistrySkillById(
   id: string,
 ): Promise<RegistrySkill> {
+  // Parse before touching the caches. `parseRegistrySkillId` throws
+  // synchronously, so validating inside the promise below would run the
+  // `finally` cleanup before `registryEntryRequests.set` ever ran — leaving a
+  // rejected promise in the map forever, keyed by an unvalidated query param.
+  const { source, skillId } = parseRegistrySkillId(id);
+
   const cached = registryEntryCache.get(id);
   if (cached && cached.expiresAt > Date.now()) return cached.entry;
 
@@ -435,7 +456,6 @@ export async function resolveRegistrySkillById(
 
   const request = (async () => {
     try {
-      const { source, skillId } = parseRegistrySkillId(id);
       const response = await registryFetch(registrySkillUrl(id));
       if (!response.ok) {
         throw new ApiError(

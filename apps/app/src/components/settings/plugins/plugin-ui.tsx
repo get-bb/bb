@@ -117,55 +117,6 @@ export function formatAbsoluteDate(epochMs: number): string {
     year: "numeric",
   });
 }
-
-export interface DetailsDisclosureProps {
-  summary: string;
-  children: ReactNode;
-  /** Pre-expand when the details are the story (failure, skipped release). */
-  defaultExpanded?: boolean;
-  className?: string;
-}
-
-/**
- * The Layer 3 evidence disclosure: collapsed when the verdict line is the
- * whole story, pre-expanded when a check failed or something surprising
- * happened.
- */
-export function DetailsDisclosure({
-  summary,
-  children,
-  defaultExpanded = false,
-  className,
-}: DetailsDisclosureProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-lg border border-border-seam text-xs",
-        className,
-      )}
-    >
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-2 bg-muted/40 px-3 py-2 text-left text-muted-foreground hover:text-foreground"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <span className="min-w-0 truncate">{summary}</span>
-        <Icon
-          name="ChevronDown"
-          className={cn("size-3.5 shrink-0", expanded && "rotate-180")}
-        />
-      </button>
-      {expanded ? (
-        <div className="border-t border-border-seam px-3 py-2.5">
-          {children}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** Key/value grid used in dialogs and the source-details disclosure. */
 export function KeyValueGrid({
   entries,
@@ -188,43 +139,5 @@ export function KeyValueGrid({
         </div>
       ))}
     </dl>
-  );
-}
-
-/** The full-trust reminder — a quiet inline note, not a loud callout. */
-export function FullTrustWarning() {
-  return (
-    <p
-      className="flex items-start gap-1.5 text-2xs leading-snug text-subtle-foreground"
-      data-testid="full-trust-warning"
-    >
-      <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
-      <span>
-        Plugins run as full-trust code with access to all local bb data. Only
-        install sources you trust.
-      </span>
-    </p>
-  );
-}
-
-/** The rollback promise — always visible in update dialogs (locked rule). */
-export function RollbackNote({
-  fromVersion,
-  toVersion,
-}: {
-  fromVersion: string;
-  toVersion: string;
-}) {
-  return (
-    <div
-      className="flex gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground"
-      data-testid="rollback-note"
-    >
-      <Icon name="RotateCcw" className="mt-0.5 size-3.5 shrink-0" />
-      <span>
-        Your plugin data is snapshotted first — if {toVersion} fails to start,
-        bb restores {fromVersion} and its data automatically.
-      </span>
-    </div>
   );
 }

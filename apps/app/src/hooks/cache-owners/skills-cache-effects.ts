@@ -1,4 +1,3 @@
-import type { SkillListResponse, SkillSummary } from "@bb/server-contract";
 import type { QueryClientArg } from "../cache-effect-types";
 import {
   projectSkillsQueryKey,
@@ -32,23 +31,6 @@ export function invalidateSkillContentMutationQueries({
 
 interface ProjectSkillsInvalidationArg extends QueryClientArg {
   projectId: string;
-}
-
-/** Make a completed registry install available immediately, then reconcile from disk. */
-export function upsertProjectSkillMutationQuery({
-  projectId,
-  queryClient,
-  skill,
-}: ProjectSkillsInvalidationArg & { skill: SkillSummary }): void {
-  queryClient.setQueryData<SkillListResponse>(
-    projectSkillsQueryKey(projectId),
-    (current) => ({
-      skills: [
-        ...(current?.skills ?? []).filter(({ id }) => id !== skill.id),
-        skill,
-      ],
-    }),
-  );
 }
 
 /** Invalidate the project skills list after a skill is deleted. */

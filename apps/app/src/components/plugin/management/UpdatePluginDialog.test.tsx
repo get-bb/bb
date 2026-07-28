@@ -60,6 +60,7 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
         open
+        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },
@@ -86,6 +87,7 @@ describe("UpdatePluginDialog", () => {
           blockedReasons: ["needs bb >= 0.15 — you have 0.14.1"],
         })}
         open
+        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },
@@ -102,7 +104,7 @@ describe("UpdatePluginDialog", () => {
   });
 
   it.each([
-    ["Update failed", undefined],
+    ["Update failed", "Update failed"],
     ["Needs attention", "Needs attention"],
   ])(
     "renders a rolled-back outcome pointing at %s",
@@ -155,6 +157,7 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
         open
+        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },

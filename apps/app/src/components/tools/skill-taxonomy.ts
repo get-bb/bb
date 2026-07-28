@@ -4,13 +4,6 @@ import type {
   SkillSummary,
 } from "@bb/server-contract";
 
-export type SkillScopeOwnership =
-  | "built-in"
-  | "user"
-  | "project"
-  | "imported"
-  | "bundled";
-
 export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   "bb-builtin": "Built-in",
   "bb-user": "bb · user",
@@ -20,17 +13,6 @@ export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   "codex-user": "Codex · user",
   "codex-project": "Codex · project",
   plugin: "Plugin",
-};
-
-export const SKILL_SCOPE_OWNERSHIP: Record<SkillScope, SkillScopeOwnership> = {
-  "bb-builtin": "built-in",
-  "bb-user": "user",
-  "bb-project": "project",
-  "claude-user": "imported",
-  "claude-project": "imported",
-  "codex-user": "imported",
-  "codex-project": "imported",
-  plugin: "bundled",
 };
 
 export function isKnownSkillScope(

@@ -94,7 +94,13 @@ describe("plugin service", () => {
 
   it("summarizes user-facing capabilities and drops the live ones when disabled", async () => {
     const rootDir = join(workDir, "bb-plugin-capabilities");
-    await mkdir(join(rootDir, "skills"), { recursive: true });
+    // Two real skills plus a stray directory without a SKILL.md, so the
+    // summary is proven to name the skills rather than their containing folder.
+    await mkdir(join(rootDir, "skills", "review"), { recursive: true });
+    await mkdir(join(rootDir, "skills", "triage"), { recursive: true });
+    await mkdir(join(rootDir, "skills", "not-a-skill"), { recursive: true });
+    await writeFile(join(rootDir, "skills", "review", "SKILL.md"), "# review");
+    await writeFile(join(rootDir, "skills", "triage", "SKILL.md"), "# triage");
     await writeFile(join(rootDir, "midnight.css"), ":root { --canvas: #000; }");
     await writePlugin(workDir, {
       name: "bb-plugin-capabilities",
@@ -132,9 +138,15 @@ describe("plugin service", () => {
     expect(enabled?.capabilities).toEqual([
       {
         kind: "skill",
-        id: "skills",
-        label: "skills",
-        detail: "Skills bundled with this plugin",
+        id: "review",
+        label: "review",
+        detail: "Skill this plugin adds to your agents",
+      },
+      {
+        kind: "skill",
+        id: "triage",
+        label: "triage",
+        detail: "Skill this plugin adds to your agents",
       },
       {
         kind: "theme",
@@ -165,7 +177,7 @@ describe("plugin service", () => {
         .list()
         .find((entry) => entry.id === "capabilities")
         ?.capabilities.map((capability) => capability.kind),
-    ).toEqual(["skill", "theme"]);
+    ).toEqual(["skill", "skill", "theme"]);
   });
 
   it("marks a throwing factory as error without affecting others", async () => {

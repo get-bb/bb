@@ -9,7 +9,7 @@
  * required section fails here rather than silently drifting.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AutomationResponse } from "bb-plugin-automations/rpc-types";
@@ -134,9 +134,9 @@ describe("Plugin detail recipe", () => {
       capabilities: [
         {
           kind: "skill",
-          id: "skills",
-          label: "skills",
-          detail: "Skills bundled with this plugin",
+          id: "review",
+          label: "review",
+          detail: "Skill this plugin adds to your agents",
         },
         {
           kind: "theme",
@@ -159,17 +159,20 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    for (const heading of [
-      "Command",
-      "Skills",
-      "Agent tools",
-      "Thread integrations",
-      "Themes",
-    ]) {
-      expect(screen.getByText(heading)).toBeTruthy();
+    // Bind each item to its own heading. Asserting that both strings merely
+    // exist somewhere on the page passes even when two kinds are wired to each
+    // other's groups, which is exactly the mis-wiring this guards against.
+    for (const [heading, item] of [
+      ["Command", "bb gh"],
+      ["Skills", "review"],
+      ["Agent tools", "gh_search"],
+      ["Thread integrations", "Pull requests"],
+      ["Themes", "GitHub Dark"],
+    ] as const) {
+      const group = screen.getByText(heading).closest("div");
+      expect(group, `no group rendered for ${heading}`).not.toBeNull();
+      expect(within(group as HTMLElement).getByText(item)).toBeTruthy();
     }
-    expect(screen.getByText("GitHub Dark")).toBeTruthy();
-    expect(screen.getByText("Pull requests")).toBeTruthy();
   });
 
   it("keeps browser-registered app surfaces in Includes", () => {
@@ -224,7 +227,17 @@ describe("Plugin detail recipe", () => {
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
     expect(
       screen.getByText(
-        "Commands, agent tools, and thread integrations are listed once this plugin is enabled.",
+        "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says an enabled plugin is not running rather than claiming it declares nothing", () => {
+    renderPlugin({ ...PLUGIN, enabled: true, status: "error" });
+
+    expect(
+      screen.getByText(
+        "This plugin isn't running yet, so what it adds can't be listed.",
       ),
     ).toBeTruthy();
   });

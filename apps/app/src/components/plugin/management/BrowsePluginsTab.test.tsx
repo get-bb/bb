@@ -101,8 +101,14 @@ describe("BrowsePluginsTab", () => {
     );
 
     expect(await screen.findByText("BB Official plugins")).toBeTruthy();
-    expect(await screen.findByText("Memory")).toBeTruthy();
-    expect(document.querySelector('[data-icon="Brain"]')).not.toBeNull();
+    const memoryCard = (await screen.findByText("Memory")).closest("div");
+    expect(memoryCard).not.toBeNull();
+    // Scoped to the card on purpose: INCOMPATIBLE_ENTRY spreads MEMORY_ENTRY
+    // and inherits its Brain icon, so a document-wide lookup passes even when
+    // the Memory card renders no leading icon at all.
+    expect(
+      (memoryCard as HTMLElement).querySelector('[data-icon="Brain"]'),
+    ).not.toBeNull();
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();

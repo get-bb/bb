@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
 import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
@@ -47,6 +47,12 @@ export interface PluginManifest {
    * empty array opts out. Missing directories resolve to no skills.
    */
   skillsRootPaths: string[];
+  /**
+   * Names of the skills found under `skillsRootPaths`, resolved once here so
+   * the frequently-called plugin list never does filesystem work. A skill is a
+   * directory containing SKILL.md, and its directory name is its name.
+   */
+  skillNames: string[];
   rootDir: string;
 }
 
@@ -64,6 +70,29 @@ function resolveEntry(rootDir: string, entry: string, label: string): string {
     );
   }
   return resolved;
+}
+
+/** Skill directory names under the given roots, sorted and de-duplicated. */
+async function readSkillNames(rootPaths: string[]): Promise<string[]> {
+  const names = new Set<string>();
+  for (const rootPath of rootPaths) {
+    let entries;
+    try {
+      entries = await readdir(rootPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      try {
+        await stat(join(rootPath, entry.name, "SKILL.md"));
+      } catch {
+        continue;
+      }
+      names.add(entry.name);
+    }
+  }
+  return [...names].sort();
 }
 
 /**
@@ -221,6 +250,7 @@ export async function readPluginManifest(
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
     themes,
     skillsRootPaths,
+    skillNames: await readSkillNames(skillsRootPaths),
     rootDir,
   };
 }

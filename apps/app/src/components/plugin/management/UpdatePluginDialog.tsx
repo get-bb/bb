@@ -29,7 +29,13 @@ export interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  failureStateLabel?: string;
+  /**
+   * Copy naming the row state a failed update lands in. Required because the
+   * two surfaces disagree — the Tools Hub row says "Update failed", the legacy
+   * Settings row says "Needs attention" — and a default would let a call site
+   * silently point the user at copy that surface never shows.
+   */
+  failureStateLabel: string;
 }
 
 /**
@@ -43,7 +49,7 @@ export function UpdatePluginDialog({
   plugin,
   open,
   onOpenChange,
-  failureStateLabel = "Update failed",
+  failureStateLabel,
 }: UpdatePluginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

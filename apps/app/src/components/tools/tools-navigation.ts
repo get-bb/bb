@@ -168,6 +168,19 @@ export function resolveToolsBreadcrumbs(
     ];
   }
 
+  // Browse is matched before detail on purpose. A single-param detail pattern
+  // such as /tools/plugins/:pluginId also matches /tools/plugins/browse, so
+  // testing detail first resolves the reserved "browse" segment as a resource
+  // id and yields "Plugins / Installed / browse".
+  for (const [section, browseRoute] of BROWSE_ROUTES) {
+    if (
+      pathname === browseRoute ||
+      (pathname === TOOLS_SECTIONS[section].to && view === "browse")
+    ) {
+      return [sectionCrumb(section), { label: "Browse" }];
+    }
+  }
+
   for (const detail of DETAIL_ROUTES) {
     const match = matchPath(detail.pattern, pathname);
     if (!match) continue;
@@ -180,15 +193,6 @@ export function resolveToolsBreadcrumbs(
           routeResourceLabel(match.params[detail.param], detail.fallback),
       },
     ];
-  }
-
-  for (const [section, browseRoute] of BROWSE_ROUTES) {
-    if (
-      pathname === browseRoute ||
-      (pathname === TOOLS_SECTIONS[section].to && view === "browse")
-    ) {
-      return [sectionCrumb(section), { label: "Browse" }];
-    }
   }
 
   for (const section of TOOLS_NAV_ITEMS) {

@@ -365,15 +365,26 @@ export function PluginIncludes({
   ];
   const populated = groups.filter(({ items }) => items.length > 0);
 
+  // Commands, settings, agent tools, thread integrations and app surfaces are
+  // only observable on a *running* plugin — not merely an enabled one. A
+  // plugin that is enabled but failed to load, or is still loading, reports
+  // none of them, so keying this off `enabled` would tell the user it declares
+  // nothing when the truth is that we cannot see yet.
+  const live = plugin.status === "running";
+  const liveCapabilitiesNote = plugin.enabled
+    ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
+    : "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.";
+
   // Includes is a stable part of the plugin recipe, so it explains an empty
-  // result rather than disappearing. A disabled plugin genuinely cannot report
-  // its live capabilities, and saying so is more honest than showing nothing.
+  // result rather than disappearing.
   if (populated.length === 0) {
     return (
       <EmptyStatePanel className="py-6">
-        {plugin.enabled
+        {live
           ? "This plugin declares no user-facing capabilities."
-          : "Enable this plugin to see what it adds to bb."}
+          : plugin.enabled
+            ? "This plugin isn't running yet, so what it adds can't be listed."
+            : "Enable this plugin to see what it adds to bb."}
       </EmptyStatePanel>
     );
   }
@@ -388,7 +399,7 @@ export function PluginIncludes({
           items={items}
         />
       ))}
-      {plugin.enabled ? null : (
+      {live ? null : (
         <ResourceDetailListItem
           leading={
             <Icon
@@ -399,8 +410,7 @@ export function PluginIncludes({
           }
         >
           <span className="block text-xs text-muted-foreground">
-            Commands, agent tools, and thread integrations are listed once this
-            plugin is enabled.
+            {liveCapabilitiesNote}
           </span>
         </ResourceDetailListItem>
       )}

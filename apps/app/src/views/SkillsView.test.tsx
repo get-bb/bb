@@ -823,23 +823,16 @@ describe("SkillDetailDialogView", () => {
 });
 
 describe("SkillDetailView registry states", () => {
-  it("omits social proof, links before saving, and confirms removal", () => {
-    const onInstall = vi.fn();
-    const onUninstall = vi.fn();
-    const view = renderDom(
+  it("links to the source and omits social proof", () => {
+    // Fork is the sole registry acquisition action and lives on
+    // RegistrySkillDetailView, so this page renders no acquisition control at
+    // all — only the external source link and the skill body.
+    renderDom(
       <SkillDetailView
         leading={<span>Skill</span>}
         title="find-skills"
         path="skills.sh/vercel-labs/skills/find-skills"
         pathHref="https://www.skills.sh/vercel-labs/skills/find-skills"
-        headerControl={{
-          kind: "install",
-          skillName: "find-skills",
-          installed: false,
-          pending: false,
-          onInstall,
-          onUninstall,
-        }}
         files={["SKILL.md"]}
         selectedPath="SKILL.md"
         onSelectFile={() => {}}
@@ -861,42 +854,6 @@ describe("SkillDetailView registry states", () => {
         .getByRole("heading", { name: "Find skills" })
         .closest(".overflow-auto"),
     ).toBeNull();
-    const saveButton = screen.getByRole("button", {
-      name: /Save find-skills/,
-    });
-    fireEvent.click(saveButton);
-    expect(onInstall).toHaveBeenCalledOnce();
-
-    view.rerender(
-      <SkillDetailView
-        leading={<span>Skill</span>}
-        title="find-skills"
-        path="~/.bb/skills/find-skills/SKILL.md"
-        headerControl={{
-          kind: "install",
-          skillName: "find-skills",
-          installed: true,
-          pending: false,
-          onInstall,
-          onUninstall,
-        }}
-        files={["SKILL.md"]}
-        selectedPath="SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{ kind: "ready", content: "# Find skills" }}
-      />,
-    );
-
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.queryByText("Registry social proof")).toBeNull();
-    const removeButton = screen.getByRole("button", {
-      name: "Remove saved find-skills from bb",
-    });
-    fireEvent.click(removeButton);
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(onUninstall).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Remove skill" }));
-    expect(onUninstall).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
   });
 });

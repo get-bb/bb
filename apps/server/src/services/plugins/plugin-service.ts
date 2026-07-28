@@ -1,6 +1,6 @@
-import { existsSync, watch } from "node:fs";
+import { watch } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
@@ -1250,14 +1250,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   ): PluginCapabilitySummary {
     const capabilities: PluginCapabilitySummary = [];
     if (manifest !== undefined) {
-      for (const rootPath of manifest.skillsRootPaths) {
-        if (!existsSync(rootPath)) continue;
-        const displayPath = relative(manifest.rootDir, rootPath) || ".";
+      for (const skillName of manifest.skillNames) {
         capabilities.push({
           kind: "skill",
-          id: displayPath,
-          label: displayPath,
-          detail: "Skills bundled with this plugin",
+          id: skillName,
+          label: skillName,
+          detail: "Skill this plugin adds to your agents",
         });
       }
       for (const theme of manifest.themes) {

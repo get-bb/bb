@@ -640,11 +640,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  const toolsBreadcrumbs = resolveToolsBreadcrumbs(
-    location.pathname,
-    location.search,
-    resourceRouteLabel,
-  );
+  // Gated with the rest of the Tools surface: ROOT_ROUTE_ALIASES maps /skills
+  // and /automations into Tools crumbs, so a gate-off user following an old
+  // link would otherwise see Tools chrome for the whole config fetch before
+  // ToolsExperimentGate redirects them away.
+  const toolsBreadcrumbs = toolsHubEnabled
+    ? resolveToolsBreadcrumbs(
+        location.pathname,
+        location.search,
+        resourceRouteLabel,
+      )
+    : null;
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",

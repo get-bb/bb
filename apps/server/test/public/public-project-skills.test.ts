@@ -12,7 +12,6 @@ import {
   skillContentResponseSchema,
   skillFilesResponseSchema,
   skillListResponseSchema,
-  type SkillSummary,
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeRegistrySkillProvenance } from "../../src/services/skills/registry-skill-provenance.js";
@@ -624,21 +623,8 @@ describe("public project skills route", () => {
 
   it("imports a registry package into server-owned bb user storage", async () => {
     await withTestHarness(async (harness) => {
-      const skill: SkillSummary = {
-        id: `skill_${"a".repeat(64)}`,
-        name: "find-skills",
-        description: "Find skills.",
-        provider: null,
-        scope: "bb-user",
-        pluginId: null,
-        filePath: "/data/skills/find-skills/SKILL.md",
-        manageable: true,
-        registrySkillId: "github.com/vercel-labs/skills/find-skills",
-      };
-      installServerRegistrySkillMock.mockResolvedValueOnce({
-        filePath: skill.filePath,
-        skill,
-      });
+      const filePath = "/data/skills/find-skills/SKILL.md";
+      installServerRegistrySkillMock.mockResolvedValueOnce({ filePath });
       vi.stubGlobal(
         "fetch",
         vi.fn(
@@ -665,11 +651,10 @@ describe("public project skills route", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await readJson(response)).toEqual({
-        ok: true,
-        filePath: skill.filePath,
-        skill,
-      });
+      // Asserts the shape registrySkillInstallResponseSchema actually accepts;
+      // mocking a richer resolve value and asserting it back only proves the
+      // route spreads its mock.
+      expect(await readJson(response)).toEqual({ ok: true, filePath });
       expect(installServerRegistrySkillMock).toHaveBeenCalledWith({
         dataDir: harness.deps.config.dataDir,
         packageRef: "vercel-labs/skills",

@@ -80,6 +80,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
         </Button>
       </div>
       <UpdatePluginDialog
+        failureStateLabel="Update failed"
         plugin={plugin}
         open={updateOpen}
         onOpenChange={setUpdateOpen}
@@ -146,6 +147,7 @@ export function PluginReleaseFacts({
       </ResourceDetailFacts>
       {blockedVersion !== null ? (
         <UpdatePluginDialog
+          failureStateLabel="Update failed"
           plugin={plugin}
           open={blockedOpen}
           onOpenChange={setBlockedOpen}

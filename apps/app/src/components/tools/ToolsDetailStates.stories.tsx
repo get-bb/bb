@@ -213,16 +213,15 @@ export function SkillStates() {
       </State>
 
       <State
-        name="Registry skill"
-        note="A skills.sh entry the user has not saved. Same page, plus an acquisition control."
+        name="Provider-owned, read-only"
+        note="Ownership is passive: a skill bb cannot write shows its origin as a status, with no edit or acquisition control."
       >
         <Skill
+          provider="claude-code"
           headerControl={{
-            kind: "install",
-            skillName: "writing-voice",
-            installed: false,
-            pending: false,
-            onInstall: noop,
+            kind: "status",
+            label: "Imported",
+            tooltip: "Discovered in Claude Code",
           }}
         />
       </State>

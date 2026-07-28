@@ -8,8 +8,6 @@ import {
   ResourceDetailPage,
   ResourceDetailPanel,
   ResourceDetailStack,
-  ResourceInstallControl,
-  ResourceInstalledControl,
   ResourceLifecycleStatus,
 } from "@bb/shared-ui/resource-list";
 import {
@@ -19,28 +17,15 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
-import {
-  ConfirmDeleteDialog,
-  ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
 
-export type SkillDetailHeaderControl =
-  | {
-      kind: "install";
-      skillName: string;
-      installed: boolean;
-      pending: boolean;
-      onInstall: () => void;
-      onUninstall?: () => void;
-    }
-  | {
-      kind: "status";
-      label: string;
-      tooltip: string;
-      accessibleLabel?: string;
-      appearance?: "default" | "recessed";
-    };
+export type SkillDetailHeaderControl = {
+  kind: "status";
+  label: string;
+  tooltip: string;
+  accessibleLabel?: string;
+  appearance?: "default" | "recessed";
+};
 
 export type SkillDetailContentState =
   | { kind: "loading" }
@@ -63,123 +48,6 @@ export interface SkillDetailViewProps {
   contentActions?: ReactNode;
   editor?: ReactNode;
   footer?: ReactNode;
-}
-
-export function SkillInstallControl({
-  skillName,
-  installed,
-  pending,
-  onInstall,
-  presentation = "label",
-  className,
-}: {
-  skillName: string;
-  installed: boolean;
-  pending: boolean;
-  onInstall: () => void;
-  presentation?: "label" | "icon";
-  className?: string;
-}) {
-  if (installed) {
-    return (
-      <ResourceInstalledControl
-        accessibleLabel={`Saved ${skillName} to bb`}
-        label="Saved"
-        presentation={presentation}
-        tooltip={`${skillName} is saved`}
-        className={className}
-      />
-    );
-  }
-
-  const label = pending ? "Saving" : "Save";
-  return (
-    <ResourceInstallControl
-      accessibleLabel={`${label} ${skillName} to bb`}
-      label="Save"
-      pendingLabel="Saving"
-      pending={pending}
-      presentation={presentation}
-      tooltip={`${label} ${skillName}`}
-      className={className}
-      onAction={onInstall}
-    />
-  );
-}
-
-export function SkillBrowseInstallControl({
-  skillName,
-  installed,
-  pending,
-  onInstall,
-  onUninstall,
-  presentation = "label",
-  className,
-}: {
-  skillName: string;
-  installed: boolean;
-  pending: boolean;
-  onInstall: () => void;
-  onUninstall?: () => void;
-  presentation?: "label" | "icon";
-  className?: string;
-}) {
-  const [confirmingUninstall, setConfirmingUninstall] = useState(false);
-
-  if (!installed) {
-    return (
-      <SkillInstallControl
-        skillName={skillName}
-        installed={false}
-        pending={pending}
-        onInstall={onInstall}
-        presentation={presentation}
-        className={className}
-      />
-    );
-  }
-
-  return (
-    <>
-      <ResourceInstalledControl
-        accessibleLabel={
-          onUninstall
-            ? `Remove saved ${skillName} from bb`
-            : `Saved ${skillName} to bb`
-        }
-        label="Saved"
-        actionLabel="Remove"
-        pendingLabel="Removing"
-        pending={pending}
-        presentation={presentation}
-        tooltip={
-          onUninstall ? `Remove saved ${skillName}` : `${skillName} is saved`
-        }
-        className={className}
-        onAction={onUninstall ? () => setConfirmingUninstall(true) : undefined}
-      />
-      {onUninstall ? (
-        <ConfirmDeleteDialog
-          open={confirmingUninstall}
-          onOpenChange={(open) => {
-            if (!pending) setConfirmingUninstall(open);
-          }}
-        >
-          <ConfirmDeleteDialogContent
-            title="Remove saved skill?"
-            description={`Remove "${skillName}" from your bb skills?`}
-            confirmLabel="Remove skill"
-            pending={pending}
-            onConfirm={() => {
-              onUninstall();
-              setConfirmingUninstall(false);
-            }}
-            onCancel={() => setConfirmingUninstall(false)}
-          />
-        </ConfirmDeleteDialog>
-      ) : null}
-    </>
-  );
 }
 
 function SkillStatusControl({
@@ -315,24 +183,7 @@ export function SkillDetailView({
   const directoryPath = getSkillDirectoryPath(path);
   const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const lifecycleControl =
-    headerControl?.kind === "install" ? (
-      headerControl.onUninstall ? (
-        <SkillBrowseInstallControl
-          skillName={headerControl.skillName}
-          installed={headerControl.installed}
-          pending={headerControl.pending}
-          onInstall={headerControl.onInstall}
-          onUninstall={headerControl.onUninstall}
-        />
-      ) : (
-        <SkillInstallControl
-          skillName={headerControl.skillName}
-          installed={headerControl.installed}
-          pending={headerControl.pending}
-          onInstall={headerControl.onInstall}
-        />
-      )
-    ) : headerControl?.kind === "status" ? (
+    headerControl?.kind === "status" ? (
       <SkillStatusControl
         label={headerControl.label}
         tooltip={headerControl.tooltip}
