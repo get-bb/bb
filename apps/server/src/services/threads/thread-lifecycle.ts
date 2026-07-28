@@ -94,6 +94,7 @@ import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
+import { hasProvisioningTimelineRow } from "./thread-provisioning-context.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 
 type ReadyThreadTurnDispatchKind = "thread.start" | "turn.submit";
@@ -478,6 +479,11 @@ function appendProvisioningInterruptedEventInTransaction(
   }
   const environmentId = context.state.environmentId ?? thread.environmentId;
   if (environmentId === null) {
+    return;
+  }
+  // Nothing was provisioned, so there is no row to cancel; appending one would
+  // introduce a provisioning row at the moment the thread stops.
+  if (!hasProvisioningTimelineRow(context)) {
     return;
   }
 
@@ -1065,7 +1071,13 @@ function dispatchThreadStartFromRequest(
       }
 
       let completedProvisionSequence: number | null = null;
-      if (activeProvisionContext !== null) {
+      // Only close a provisioning row that exists: a start that attached to an
+      // already-ready environment provisioned nothing and emitted no row, and a
+      // lone `completed` event would render as "Provisioned thread".
+      if (
+        activeProvisionContext !== null &&
+        hasProvisioningTimelineRow(activeProvisionContext)
+      ) {
         completedProvisionSequence = appendThreadProvisioningEventInTransaction(
           tx,
           {

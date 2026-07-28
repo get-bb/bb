@@ -109,6 +109,17 @@ interface EnsureWorkspaceReadyEventArgs {
   threadId: string;
 }
 
+/**
+ * `reached: false` ⇒ the thread is no longer provisionable into this
+ * environment, so it did not land in `workspace-ready`.
+ *
+ * `appendedSequence: null` ⇒ workspace-ready was reached without appending a
+ * `system/thread-provisioning` row, because nothing was provisioned.
+ */
+export type EnsureWorkspaceReadyEventResult =
+  | { reached: true; appendedSequence: number | null }
+  | { reached: false };
+
 interface ThreadProvisionTransactionDeps {
   db: DbTransaction;
   hub: DbNotifier;
@@ -299,7 +310,7 @@ export function saveThreadProvisionContext(
 export function ensureWorkspaceReadyEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: EnsureWorkspaceReadyEventArgs,
-): number | null {
+): EnsureWorkspaceReadyEventResult {
   return deps.db.transaction(
     (tx) =>
       ensureWorkspaceReadyEventInTransaction({ db: tx, hub: deps.hub }, args),
@@ -310,7 +321,7 @@ export function ensureWorkspaceReadyEvent(
 function ensureWorkspaceReadyEventRecord(
   db: DbTransaction,
   args: EnsureWorkspaceReadyEventArgs,
-): number | null {
+): EnsureWorkspaceReadyEventResult {
   const thread = getThread(db, args.threadId);
   const context =
     args.context ?? getActiveThreadProvisionContext(args.threadId);
@@ -322,40 +333,51 @@ function ensureWorkspaceReadyEventRecord(
     (context.state.environmentId !== null &&
       context.state.environmentId !== args.environmentId)
   ) {
-    return null;
+    return { reached: false };
   }
   if (context.state.stage === "workspace-ready") {
-    return context.state.workspaceReadyEventSequence;
+    return {
+      reached: true,
+      appendedSequence: context.state.workspaceReadyEventSequence,
+    };
   }
   if (!isAttachableContext(context)) {
-    return null;
+    return { reached: false };
   }
   const provisionableContext = provisionableContextForWorkspaceReady(context, {
     attachedEnvironmentId: args.environmentId,
   });
 
-  const appendedSequence = appendThreadProvisioningEventInTransaction(db, {
-    threadId: args.threadId,
-    environmentId: args.environmentId,
-    provisioningId: context.state.provisioningId,
-    status: "active",
-    entries: args.entries,
-  });
+  // Nothing was provisioned when the thread attached straight to an
+  // already-ready environment: no provisioning was started, so the transcript
+  // would only restate the workspace path and branch. Reach workspace-ready
+  // without a timeline row rather than showing "Provisioned thread" for work
+  // that never happened.
+  const appendedSequence =
+    provisionableContext.state.provisionEventSequence === null
+      ? null
+      : appendThreadProvisioningEventInTransaction(db, {
+          threadId: args.threadId,
+          environmentId: args.environmentId,
+          provisioningId: context.state.provisioningId,
+          status: "active",
+          entries: args.entries,
+        });
   saveThreadProvisionContext({
     threadId: args.threadId,
     context: createWorkspaceReadyContext(provisionableContext, {
       workspaceReadyEventSequence: appendedSequence,
     }),
   });
-  return appendedSequence;
+  return { reached: true, appendedSequence };
 }
 
 export function ensureWorkspaceReadyEventInTransaction(
   deps: ThreadProvisionTransactionDeps,
   args: EnsureWorkspaceReadyEventArgs,
-): number | null {
+): EnsureWorkspaceReadyEventResult {
   const result = ensureWorkspaceReadyEventRecord(deps.db, args);
-  if (result !== null) {
+  if (result.reached && result.appendedSequence !== null) {
     deps.hub.notifyThread(args.threadId, ["events-appended"], {
       eventTypes: ["system/thread-provisioning"],
     });

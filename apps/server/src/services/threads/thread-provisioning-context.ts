@@ -169,7 +169,10 @@ export type ThreadProvisionWorkspaceReadyContext = ThreadProvisionContext & {
   state: ThreadProvisioningState & {
     environmentId: string;
     stage: "workspace-ready";
-    workspaceReadyEventSequence: number;
+    // null ⇒ reaching workspace-ready appended no `system/thread-provisioning`
+    // row because nothing was provisioned (the thread attached to an
+    // already-ready environment). See `hasProvisioningTimelineRow`.
+    workspaceReadyEventSequence: number | null;
   };
 };
 
@@ -228,7 +231,7 @@ export interface CreateReprovisioningContextArgs {
 }
 
 export interface CreateWorkspaceReadyContextArgs {
-  workspaceReadyEventSequence: number;
+  workspaceReadyEventSequence: number | null;
 }
 
 export interface ResolvePreparedEnvironmentMetadataArgs {
@@ -307,7 +310,25 @@ export function isWorkspaceReadyContext(
 ): context is ThreadProvisionWorkspaceReadyContext {
   return (
     context.state.stage === "workspace-ready" &&
-    context.state.environmentId !== null &&
+    context.state.environmentId !== null
+  );
+}
+
+/**
+ * True when this provisioning run has already appended at least one
+ * `system/thread-provisioning` row to the thread timeline.
+ *
+ * A start that attaches to an already-ready environment provisions nothing and
+ * emits no row. Terminal rows (`completed`, `cancelled`) must be suppressed for
+ * those runs too — the client keys every provisioning event into a single
+ * operation row, so a lone terminal event would surface as "Provisioned thread"
+ * for a start that never provisioned anything.
+ */
+export function hasProvisioningTimelineRow(
+  context: ThreadProvisionContext,
+): boolean {
+  return (
+    context.state.provisionEventSequence !== null ||
     context.state.workspaceReadyEventSequence !== null
   );
 }

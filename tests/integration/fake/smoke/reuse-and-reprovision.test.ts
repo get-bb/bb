@@ -21,6 +21,24 @@ import {
   TURN_TIMEOUT_MS,
 } from "./shared.js";
 
+/**
+ * Provisioning event statuses the timeline would render for a thread. The
+ * synthetic `thread-start:` bookkeeping event is dropped by the client, so it
+ * is excluded here too.
+ */
+async function visibleProvisioningStatuses(
+  api: Parameters<typeof getThreadEvents>[0],
+  threadId: string,
+): Promise<string[]> {
+  const events = await getThreadEvents(api, threadId);
+  return events.flatMap((event) =>
+    event.type === "system/thread-provisioning" &&
+    !event.data.provisioningId.startsWith("thread-start:")
+      ? [event.data.status]
+      : [],
+  );
+}
+
 describe.sequential("fake provider smoke reuse integration", () => {
   it("moves a thread to error and records failure events when environment provisioning fails", () =>
     withHarness(async (harness) => {
@@ -136,6 +154,17 @@ describe.sequential("fake provider smoke reuse integration", () => {
       );
       expect(reusedEnvironment.id).toBe(environment.id);
       expect(output).toContain("reuse environment");
+
+      // The reuse start provisions nothing, so it must not emit a provisioning
+      // row — otherwise the timeline shows "Provisioned thread" for a start
+      // that only attached to a ready environment. The first thread did
+      // provision, so it keeps its row.
+      expect(await visibleProvisioningStatuses(harness.api,thread.id)).not.toEqual(
+        [],
+      );
+      expect(
+        await visibleProvisioningStatuses(harness.api,reusedThread.thread.id),
+      ).toEqual([]);
     }));
 
   // Decision B*: un-archiving a thread whose managed environment was destroyed
