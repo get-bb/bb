@@ -306,6 +306,7 @@ const THREAD_CHAT_PROP_FIELDS = [
   "variant",
   "layout",
   "focusRequest",
+  "permissionPolicy",
   "className",
   "leadingContent",
   "messageActions",

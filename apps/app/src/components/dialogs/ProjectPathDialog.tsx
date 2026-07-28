@@ -1,5 +1,12 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import {
   deriveProjectNameFromPath,
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
@@ -247,50 +254,68 @@ export function ProjectPathDialogContent({
       </DialogHeader>
       <form className="space-y-4" onSubmit={handleSubmit}>
         {showMachinePicker ? (
-          <div
-            role="radiogroup"
-            aria-label="Machine"
-            className="grid max-h-36 gap-1 overflow-y-auto rounded-md border p-1"
-          >
-            {machineOptions?.map((host) => {
-              const connected = host.status === "connected";
-              const selected = host.id === selectedHostId;
-              return (
-                <label
-                  key={host.id}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none ring-ring focus-within:ring-2",
-                    selected
-                      ? "bg-state-active text-foreground"
-                      : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-                    pending || !connected
-                      ? "cursor-not-allowed opacity-50"
-                      : "cursor-pointer",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name={`project-machine-${inputId}`}
-                    aria-label={host.name}
-                    checked={selected}
-                    disabled={pending || !connected}
-                    className="sr-only"
-                    onChange={() => {
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={pending}>
+              <Button
+                type="button"
+                variant="outline"
+                aria-label="Machine"
+                disabled={pending}
+                className="w-full justify-between font-normal"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {selectedHost ? (
+                    <MachineStatusDot connected={selectedHostConnected} />
+                  ) : null}
+                  <span className="min-w-0 truncate">
+                    {selectedHost?.name ?? "Select a machine"}
+                  </span>
+                </span>
+                <Icon
+                  name="ChevronDown"
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              mobileTitle="Machine"
+              className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+            >
+              {machineOptions?.map((host) => {
+                const connected = host.status === "connected";
+                return (
+                  <DropdownMenuItem
+                    key={host.id}
+                    disabled={!connected}
+                    className="flex items-center gap-2"
+                    onSelect={() => {
+                      if (!connected) return;
                       setSelectedHostId(host.id);
                       setBrowserDirectory(null);
                     }}
-                  />
-                  <MachineStatusDot connected={connected} />
-                  <span className="min-w-0 flex-1 truncate">{host.name}</span>
-                  {!connected ? (
-                    <span className="text-xs text-subtle-foreground">
-                      Offline
-                    </span>
-                  ) : null}
-                </label>
-              );
-            })}
-          </div>
+                  >
+                    <MachineStatusDot connected={connected} />
+                    <span className="min-w-0 flex-1 truncate">{host.name}</span>
+                    {!connected ? (
+                      <span className="shrink-0 text-xs text-subtle-foreground">
+                        Offline
+                      </span>
+                    ) : null}
+                    <Icon
+                      name="Check"
+                      className={cn(
+                        "size-4 shrink-0",
+                        host.id === selectedHostId
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
         {selectedHostId ? (
           <RemotePathBrowser

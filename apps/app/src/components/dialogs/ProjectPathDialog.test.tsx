@@ -69,16 +69,17 @@ describe("ProjectPathDialog machine selection", () => {
       />,
     );
 
-    expect(
-      (screen.getByRole("radio", { name: "atum" }) as HTMLInputElement).checked,
-    ).toBe(true);
+    const trigger = screen.getByRole("button", { name: "Machine" });
+    expect(trigger.textContent).toContain("atum");
+
+    fireEvent.pointerDown(trigger, { button: 0 });
     expect(
       screen
-        .getByRole("radio", { name: "Offline Mac" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+        .getByRole("menuitem", { name: /Offline Mac/u })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Kunst" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Kunst/u }));
     fireEvent.click(
       screen.getByRole("button", { name: "Choose folder on host_kunst" }),
     );
@@ -105,7 +106,7 @@ describe("ProjectPathDialog machine selection", () => {
       />,
     );
 
-    expect(screen.queryByRole("radiogroup", { name: "Machine" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Choose folder on host_atum" }),
     );

@@ -306,7 +306,10 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-4o-mini-transcribe");
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
-    expect(serverConfig.featureFlags).toEqual({ placeholder: false });
+    expect(serverConfig.featureFlags).toEqual({
+      placeholder: false,
+      timelineWindowEventBudget: 1_500,
+    });
   });
 
   it("parses the placeholder feature flag from env", () => {
@@ -317,6 +320,26 @@ describe("consumer-specific config", () => {
     });
 
     expect(serverConfig.featureFlags.placeholder).toBe(true);
+  });
+
+  it("parses the timeline window event budget from env", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_FF_TIMELINE_WINDOW_EVENT_BUDGET: "4000",
+      }),
+    });
+
+    expect(serverConfig.featureFlags.timelineWindowEventBudget).toBe(4000);
+  });
+
+  it("rejects a non-positive timeline window event budget", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_FF_TIMELINE_WINDOW_EVENT_BUDGET: "0",
+        }),
+      }),
+    ).toThrow(/positive integer/);
   });
 
   it("rejects invalid feature flag booleans in server config", () => {

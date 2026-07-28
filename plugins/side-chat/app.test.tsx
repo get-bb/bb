@@ -206,6 +206,9 @@ describe("SideChatPanel", () => {
     expect(chat.getAttribute("data-thread-id")).toBe("thr_fork");
     expect(chat.getAttribute("data-variant")).toBe("compact");
     expect(chat.getAttribute("data-layout")).toBe("contained");
+    // The side chat sets its own permission mode rather than mirroring the
+    // thread it forked from.
+    expect(chat.getAttribute("data-permission-policy")).toBe("editable");
     expect(chat.getAttribute("data-message-actions")).toBe("send-to-main");
 
     const leading = slot.getByTestId("bb-thread-chat-leading-content");

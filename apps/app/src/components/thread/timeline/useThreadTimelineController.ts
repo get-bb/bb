@@ -7,6 +7,7 @@ import type {
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
+import { isOptimisticTimelineRowId } from "@/lib/optimistic-timeline-row";
 import { BbHttpError, sdk } from "@/lib/sdk";
 
 export type ThreadTimelineRowFilter = (row: TimelineRow) => boolean;
@@ -235,8 +236,21 @@ export function prependOlderTimelineRows({
 
 export function mergeLatestTimelineRows({
   latestRows,
-  loadedRows,
+  loadedRows: retainedRows,
 }: MergeLatestTimelineRowsArgs): MergeLatestTimelineRowsResult {
+  // Optimistic rows are carried by `latestRows` (they are written into the
+  // timeline cache) and disappear from it once the server's real row lands.
+  // Retaining a copy here would survive that swap: an id minted client-side
+  // never overlaps a server id, so the no-overlap branch below would append
+  // the server row *after* the stale optimistic one and the message would
+  // render twice. This is only observable when nothing else overlaps — a
+  // thread whose first message is being sent, e.g. a fresh side chat.
+  const loadedRows = retainedRows.some((row) =>
+    isOptimisticTimelineRowId(row.id),
+  )
+    ? retainedRows.filter((row) => !isOptimisticTimelineRowId(row.id))
+    : retainedRows;
+
   const identityPreservedLatestRows = preserveTimelineRowIdentity({
     nextRows: latestRows,
     previousRows: loadedRows,

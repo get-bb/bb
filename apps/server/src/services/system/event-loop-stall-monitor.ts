@@ -3,7 +3,7 @@ import { roundDurationMs } from "../lib/duration.js";
 import type { ServerLogger } from "../../types.js";
 
 export interface EventLoopStallMonitorOptions {
-  logger: Pick<ServerLogger, "debug">;
+  logger: Pick<ServerLogger, "info">;
 }
 
 export interface EventLoopStallMonitor {
@@ -30,7 +30,14 @@ export function startEventLoopStallMonitor(
   const interval = setInterval(() => {
     const maxDelayMs = nanosecondsToMilliseconds(histogram.max);
     if (maxDelayMs >= DEFAULT_EVENT_LOOP_STALL_LOG_THRESHOLD_MS) {
-      options.logger.debug(
+      // `info`, not `debug`: the packaged app runs at `info`, so a `debug` line
+      // here is unreachable in production — which is exactly where a stalled
+      // loop matters. A stall this long blocks the daemon-facing
+      // `/internal/session/events` POST that the agent awaits before every
+      // dynamic tool call and interactive request, so it delays real agent
+      // work, not just UI refreshes. Threshold-gated, so a healthy server
+      // stays silent.
+      options.logger.info(
         {
           intervalMs: DEFAULT_EVENT_LOOP_STALL_MONITOR_INTERVAL_MS,
           maxDelayMs: roundDurationMs(maxDelayMs),

@@ -107,9 +107,17 @@ function requireTimelineSegmentCursorIndex(
   );
 }
 
+/**
+ * `hasOlderRows` is normally inferred by over-reading one segment past the page
+ * and noticing it was dropped. An event-budgeted window cannot afford that
+ * sentinel segment — it is unbounded work purely to answer a boolean — so the
+ * caller that already knows the answer from the anchor list passes it here.
+ * `null` keeps the sentinel inference.
+ */
 export function paginateTimelineRows(
   rows: readonly TimelineRow[],
   page: ThreadTimelinePageRequest,
+  knownHasOlderSegments: boolean | null = null,
 ): PaginatedTimelineRowsResult {
   const segments = buildTimelineLogicalSegments(rows);
   const candidateSegments =
@@ -120,7 +128,9 @@ export function paginateTimelineRows(
           requireTimelineSegmentCursorIndex(segments, page.beforeCursor),
         );
   const selectedSegments = candidateSegments.slice(-page.segmentLimit);
-  const hasOlderRows = candidateSegments.length > selectedSegments.length;
+  const hasOlderRows =
+    knownHasOlderSegments ??
+    candidateSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {

@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type {
+  ThreadTimelineResponse,
+  TimelineUserConversationRow,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@/lib/optimistic-timeline-row";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { useThreadTimelineController } from "./useThreadTimelineController";
+import {
+  mergeLatestTimelineRows,
+  useThreadTimelineController,
+} from "./useThreadTimelineController";
 
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/sdk")>();
@@ -49,6 +56,75 @@ function makeTimelineResponse(): ThreadTimelineResponse {
     },
   };
 }
+
+function makeUserRow(
+  id: string,
+  sourceSeq: number,
+): TimelineUserConversationRow {
+  return {
+    id,
+    kind: "conversation",
+    role: "user",
+    threadId: "thread-1",
+    turnId: null,
+    sourceSeqStart: sourceSeq,
+    sourceSeqEnd: sourceSeq,
+    startedAt: 1,
+    createdAt: 1,
+    text: "hello",
+    mentions: [],
+    attachments: null,
+    initiator: "user",
+    senderThreadId: null,
+    systemMessageKind: "unlabeled",
+    systemMessageSubject: null,
+    turnRequest: { kind: "message", status: "accepted" },
+  };
+}
+
+describe("mergeLatestTimelineRows", () => {
+  it("replaces a retained optimistic row with the server row it stands in for", () => {
+    // The state right after the first send in an empty thread (a fresh side
+    // chat): the only retained row is the optimistic one, so nothing overlaps
+    // the server's response. Appending would render the message twice.
+    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
+    const serverRow = makeUserRow("thread-1:user-seed:5", 5);
+
+    const merged = mergeLatestTimelineRows({
+      latestRows: [serverRow],
+      loadedRows: [optimistic],
+    });
+
+    expect(merged.rows.map((row) => row.id)).toEqual([serverRow.id]);
+  });
+
+  it("still appends genuinely disjoint server rows to retained ones", () => {
+    // Same no-overlap shape, but the retained row is a real server row from an
+    // older page — dropping it would lose history.
+    const older = makeUserRow("thread-1:user-seed:1", 1);
+    const newer = makeUserRow("thread-1:user-seed:5", 5);
+
+    const merged = mergeLatestTimelineRows({
+      latestRows: [newer],
+      loadedRows: [older],
+    });
+
+    expect(merged.rows.map((row) => row.id)).toEqual([older.id, newer.id]);
+  });
+
+  it("keeps a pending optimistic row that the latest snapshot still carries", () => {
+    // Before the server row lands, the optimistic row arrives via `latestRows`
+    // (it is written into the timeline cache), so it must survive the merge.
+    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
+
+    const merged = mergeLatestTimelineRows({
+      latestRows: [optimistic],
+      loadedRows: [optimistic],
+    });
+
+    expect(merged.rows.map((row) => row.id)).toEqual([optimistic.id]);
+  });
+});
 
 describe("useThreadTimelineController", () => {
   it("keeps an initial timeline refetch in loading state instead of showing the previous error", async () => {

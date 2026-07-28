@@ -20,6 +20,7 @@ import type {
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api-types";
+import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@/lib/optimistic-timeline-row";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
@@ -579,7 +580,7 @@ function buildOptimisticUserMessageRow({
   threadId,
   threadStatus,
 }: BuildOptimisticUserMessageRowParams): TimelineRow {
-  const id = `optimistic-user-${nanoid()}`;
+  const id = `${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}${nanoid()}`;
   const text = input
     .filter(
       (entry): entry is Extract<typeof entry, { type: "text" }> =>

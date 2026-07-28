@@ -148,6 +148,28 @@ describe("PluginThreadChat", () => {
     );
   });
 
+  it("hands the permission picker to the user only when asked", async () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <ThreadChat threadId="thr_demo" permissionPolicy="editable" />
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+    );
+    // Opting in is what widens the composer: the default stays pinned to the
+    // thread's resolved mode (asserted above), so a plugin can never hand out
+    // a live Full Access picker by accident.
+    expect(mocks.embeddedChatProps.at(-1)!.composer).toEqual(
+      expect.objectContaining({ permissionPolicy: "editable" }),
+    );
+  });
+
   it("maps variant timeline to a composer-less transcript", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const ThreadChat = pluginSdkAppImplementation.experimental_ThreadChat;

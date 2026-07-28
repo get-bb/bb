@@ -18,6 +18,7 @@ import type {
 } from "@bb/server-contract";
 import {
   findTimelineSegmentAnchorSequenceAfter,
+  findTimelineWindowBudgetFloorSequence,
   getEnvironment,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
@@ -27,8 +28,10 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
+  listTodoSnapshotEventRowsForThread,
   listStoredToolCallRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
@@ -36,6 +39,7 @@ import {
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
+import { roundDurationMs } from "../lib/duration.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
   paginateTimelineRows,
@@ -99,6 +103,11 @@ interface ResolveTurnSummaryDetailsSourceRangeArgs {
 }
 
 interface BuildThreadTimelineOptions {
+  /**
+   * Max events a page's window may span, on top of the segment (user-message)
+   * limit. Operator-tunable via the `timelineWindowEventBudget` feature flag.
+   */
+  eventBudget: number;
   includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
   /** Thread high-water event sequence this window reflects (echoed to clients). */
@@ -121,6 +130,7 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
 }
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
+
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 export type ThreadTimelineBuildProfileStage =
@@ -150,12 +160,20 @@ export interface ThreadTimelineBuildProfile {
   eventRowCount: number;
   pageKind: ThreadTimelinePageKind;
   projectedRowCount: number;
-  responseJsonBytes: number;
+  /**
+   * Null unless `measureResponseBytes` was requested. Measuring it means
+   * serializing the whole response a second time, which on a large thread is
+   * megabytes of `JSON.stringify` — the exact cost this profile exists to
+   * diagnose. The slow-build log path leaves it off and relies on the cheap
+   * counters instead.
+   */
+  responseJsonBytes: number | null;
   responseRowCount: number;
   returnedSegmentCount: number;
   segmentLimit: number;
   selectionStrategy: ThreadTimelineEventSelectionStrategy;
   stageTimings: ThreadTimelineBuildProfileStageTiming[];
+  totalDurationMs: number;
 }
 
 interface BuildThreadTimelineInternalResult {
@@ -171,7 +189,7 @@ interface ThreadTimelineBuildProfileAccumulator {
   eventDataBytes: number;
   eventRowCount: number;
   projectedRowCount: number;
-  responseJsonBytes: number;
+  responseJsonBytes: number | null;
   responseRowCount: number;
   returnedSegmentCount: number;
   selectionStrategy: ThreadTimelineEventSelectionStrategy;
@@ -180,11 +198,15 @@ interface ThreadTimelineBuildProfileAccumulator {
 
 interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions {
   includeProfile: boolean;
+  /** See {@link ThreadTimelineBuildProfile.responseJsonBytes}. */
+  measureResponseBytes: boolean;
 }
 
 interface TimelineEventRowSelection {
   acceptedClientRequestContextRows: StoredEventRow[];
   contextOnlyToolCallIds: Set<string>;
+  /** See {@link paginateTimelineRows}. */
+  knownHasOlderSegments: boolean | null;
   paginationPage: ThreadTimelinePageRequest;
   responsePageKind: ThreadTimelinePageKind;
   rows: StoredEventRow[];
@@ -589,6 +611,7 @@ function selectFullTimelineEventRows(
   return {
     acceptedClientRequestContextRows: [],
     contextOnlyToolCallIds: new Set(),
+    knownHasOlderSegments: null,
     paginationPage: page,
     responsePageKind: page.kind,
     rows: listRecentStoredEventRows(db, {
@@ -697,15 +720,74 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
   return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
+/**
+ * Merges the rows that establish head-state banners into the latest window.
+ *
+ * The timeline response carries tail state (`pendingTodos`, `goal`) that
+ * describes the head of the thread but is extracted by scanning whatever events
+ * the window happens to contain. That is fine when the window reaches the start
+ * of the thread, which is what an unbudgeted window does on the threads where
+ * this matters — but an event-budgeted window can begin *after* the turn that
+ * set the goal or wrote the todos, silently dropping the banner mid-session.
+ *
+ * Background tasks (and therefore the workflow banner, since local workflows
+ * are stored as background-task items) already avoid this via
+ * `ensureLatestTimelineOpenBackgroundTaskStateRows`. `modelFallback` is
+ * self-limiting: it resets on every `client/turn/requested`, and the newest
+ * anchor is always inside the window. `contextWindowUsage` has its own
+ * thread-scoped query. These two were the remaining gaps.
+ */
+function ensureLatestTimelineHeadStateRows(
+  db: DbConnection,
+  args: TimelineWindowRowsArgs,
+): StoredEventRow[] {
+  const headStateRows = [
+    ...listLatestGoalEventRowsByThreadIds(db, { threadIds: [args.threadId] }),
+    ...listTodoSnapshotEventRowsForThread(db, { threadId: args.threadId }),
+  ];
+  if (headStateRows.length === 0) {
+    return [...args.rows];
+  }
+
+  return mergeStoredEventRowsById([...args.rows, ...headStateRows]);
+}
+
 interface ResolveTimelineSegmentWindowArgs {
+  /** Max events the window may span. */
+  eventBudget: number;
   page: ThreadTimelinePageRequest;
   threadId: string;
 }
 
 interface ResolvedTimelineSegmentWindow {
   beforeSequence: number | undefined;
+  /** Segments this page will actually return; ≤ `page.segmentLimit`. */
+  effectiveSegmentLimit: number;
   hasAnchors: boolean;
+  /** See {@link paginateTimelineRows}; null when the sentinel infers it. */
+  knownHasOlderSegments: boolean | null;
   sequenceStart: number;
+}
+
+/**
+ * Number of leading (newest) anchors whose segments fit inside the event
+ * budget, clamped to at least one: a single turn larger than the whole budget
+ * still has to render, and returning zero segments would present an empty
+ * thread rather than a slow one.
+ */
+function countAffordableAnchors(
+  anchors: readonly { sequence: number }[],
+  budgetFloorSequence: number | undefined,
+  segmentLimit: number,
+): number {
+  const maxSegments = Math.min(segmentLimit, anchors.length);
+  if (budgetFloorSequence === undefined) {
+    return maxSegments;
+  }
+  const affordable = anchors.filter(
+    (anchor) => anchor.sequence >= budgetFloorSequence,
+  ).length;
+  return Math.max(1, Math.min(maxSegments, affordable));
 }
 
 /**
@@ -714,15 +796,23 @@ interface ResolvedTimelineSegmentWindow {
  * anchor in the thread. `hasAnchors` is false only when the thread has no
  * qualifying anchors at all; a stale cursor (anchors exist but the cursor's
  * anchor is gone) throws, matching the previous behavior.
+ *
+ * Segment count alone is a weak bound on work: anchors are user messages, and
+ * an agentic turn can be thousands of events, so "the last 20 turns" routinely
+ * means "the entire thread". When `eventBudget` is set the window is
+ * additionally clamped to that many events, and the page returns however many
+ * whole segments fit.
  */
 function resolveTimelineSegmentWindow(
   db: DbConnection,
   args: ResolveTimelineSegmentWindowArgs,
 ): ResolvedTimelineSegmentWindow {
-  const { page, threadId } = args;
+  const { eventBudget, page, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
+    effectiveSegmentLimit: page.segmentLimit,
     hasAnchors: false,
+    knownHasOlderSegments: null,
     sequenceStart: 0,
   };
 
@@ -751,15 +841,26 @@ function resolveTimelineSegmentWindow(
       limit: page.segmentLimit + 1,
       threadId,
     });
-    return {
-      beforeSequence: findTimelineSegmentAnchorSequenceAfter(db, {
-        sequence: cursor.anchorSeq,
+    const beforeSequence = findTimelineSegmentAnchorSequenceAfter(db, {
+      sequence: cursor.anchorSeq,
+      threadId,
+    });
+    const affordable = countAffordableAnchors(
+      precedingAnchors,
+      findTimelineWindowBudgetFloorSequence(db, {
+        beforeSequence: cursor.anchorSeq,
+        eventBudget,
+        excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
         threadId,
       }),
+      page.segmentLimit,
+    );
+    return {
+      beforeSequence,
+      effectiveSegmentLimit: affordable,
       hasAnchors: true,
-      // The (segmentLimit + 1)-th anchor before the cursor is the window's
-      // lower bound; fewer than that means the window reaches the thread start.
-      sequenceStart: precedingAnchors[page.segmentLimit]?.sequence ?? 0,
+      knownHasOlderSegments: precedingAnchors.length > affordable,
+      sequenceStart: precedingAnchors[affordable - 1]?.sequence ?? 0,
     };
   }
 
@@ -770,10 +871,23 @@ function resolveTimelineSegmentWindow(
   if (newestAnchors.length === 0) {
     return noAnchors;
   }
+  const affordable = countAffordableAnchors(
+    newestAnchors,
+    findTimelineWindowBudgetFloorSequence(db, {
+      eventBudget,
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      threadId,
+    }),
+    page.segmentLimit,
+  );
   return {
     beforeSequence: undefined,
+    effectiveSegmentLimit: affordable,
     hasAnchors: true,
-    sequenceStart: newestAnchors[page.segmentLimit]?.sequence ?? 0,
+    // Budgeted windows read exactly the segments they return, so "is there
+    // more" comes from the anchor list rather than an over-read segment.
+    knownHasOlderSegments: newestAnchors.length > affordable,
+    sequenceStart: newestAnchors[affordable - 1]?.sequence ?? 0,
   };
 }
 
@@ -781,8 +895,10 @@ function selectStandardTimelineEventRows(
   db: DbConnection,
   thread: Thread,
   page: ThreadTimelinePageRequest,
+  eventBudget: number,
 ): TimelineEventRowSelection {
   const window = resolveTimelineSegmentWindow(db, {
+    eventBudget,
     page,
     threadId: thread.id,
   });
@@ -808,9 +924,12 @@ function selectStandardTimelineEventRows(
     });
   const selectedRows =
     page.kind === "latest"
-      ? ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
+      ? ensureLatestTimelineHeadStateRows(db, {
           threadId: thread.id,
-          rows: selectedRowsWithInWindowTaskState,
+          rows: ensureLatestTimelineOpenBackgroundTaskStateRows(db, {
+            threadId: thread.id,
+            rows: selectedRowsWithInWindowTaskState,
+          }),
         })
       : selectedRowsWithInWindowTaskState;
   const selectedRowsWithContext =
@@ -837,12 +956,13 @@ function selectStandardTimelineEventRows(
     acceptedClientRequestContextRows: selectedRowsWithContext.contextRows,
     contextOnlyToolCallIds:
       selectedRowsWithParentedContext.contextOnlyToolCallIds,
+    knownHasOlderSegments: window.knownHasOlderSegments,
     paginationPage:
       page.kind === "older"
-        ? page
+        ? { ...page, segmentLimit: window.effectiveSegmentLimit }
         : {
             kind: "latest",
-            segmentLimit: page.segmentLimit,
+            segmentLimit: window.effectiveSegmentLimit,
           },
     responsePageKind: page.kind,
     rows: selectedRowsWithParentedTurnStarts,
@@ -856,9 +976,14 @@ function selectStandardTimelineEventRows(
 function selectTimelineEventRows(
   db: DbConnection,
   thread: Thread,
-  options: BuildThreadTimelineOptions,
+  options: BuildThreadTimelineInternalOptions,
 ): TimelineEventRowSelection {
-  return selectStandardTimelineEventRows(db, thread, options.page);
+  return selectStandardTimelineEventRows(
+    db,
+    thread,
+    options.page,
+    options.eventBudget,
+  );
 }
 
 function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
@@ -878,7 +1003,7 @@ function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfi
     eventDataBytes: 0,
     eventRowCount: 0,
     projectedRowCount: 0,
-    responseJsonBytes: 0,
+    responseJsonBytes: null,
     responseRowCount: 0,
     returnedSegmentCount: 0,
     selectionStrategy: "full",
@@ -906,14 +1031,16 @@ function measureThreadTimelineStage<TResult>(
 
 function completeThreadTimelineBuildProfile(
   accumulator: ThreadTimelineBuildProfileAccumulator,
-  options: BuildThreadTimelineOptions,
+  options: BuildThreadTimelineInternalOptions,
   response: ThreadTimelineResponse,
 ): ThreadTimelineBuildProfile {
-  accumulator.responseJsonBytes = measureThreadTimelineStage(
-    accumulator,
-    "response-serialization",
-    () => Buffer.byteLength(JSON.stringify(response), "utf8"),
-  );
+  if (options.measureResponseBytes) {
+    accumulator.responseJsonBytes = measureThreadTimelineStage(
+      accumulator,
+      "response-serialization",
+      () => Buffer.byteLength(JSON.stringify(response), "utf8"),
+    );
+  }
   return {
     compactedEventCount: accumulator.compactedEventCount,
     contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
@@ -929,6 +1056,12 @@ function completeThreadTimelineBuildProfile(
     segmentLimit: options.page.segmentLimit,
     selectionStrategy: accumulator.selectionStrategy,
     stageTimings: accumulator.stageTimings,
+    totalDurationMs: roundDurationMs(
+      accumulator.stageTimings.reduce(
+        (total, timing) => total + timing.durationMs,
+        0,
+      ),
+    ),
   };
 }
 
@@ -1038,7 +1171,12 @@ function buildThreadTimelineInternal(
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
-    () => paginateTimelineRows(timeline.rows, eventSelection.paginationPage),
+    () =>
+      paginateTimelineRows(
+        timeline.rows,
+        eventSelection.paginationPage,
+        eventSelection.knownHasOlderSegments,
+      ),
   );
   if (profile) {
     profile.responseRowCount = paginatedTimeline.rows.length;
@@ -1069,7 +1207,12 @@ function buildThreadTimelineInternal(
         : undefined,
     timelinePage: {
       kind: eventSelection.responsePageKind,
-      segmentLimit: paginatedTimeline.segmentLimit,
+      // Echo what the client asked for, not the budget-reduced limit actually
+      // applied. `segmentLimit` is the request's page size; reporting a
+      // shrunken value would make an unchanged request look like it changed
+      // and invites clients to re-request with the reduced number.
+      // `returnedSegmentCount` already reports what came back.
+      segmentLimit: options.page.segmentLimit,
       returnedSegmentCount: paginatedTimeline.returnedSegmentCount,
       hasOlderRows: paginatedTimeline.hasOlderRows,
       olderCursor: paginatedTimeline.olderCursor,
@@ -1092,7 +1235,29 @@ export function buildThreadTimeline(
   return buildThreadTimelineInternal(db, thread, {
     ...options,
     includeProfile: false,
+    measureResponseBytes: false,
   }).response;
+}
+
+/**
+ * Slower than {@link buildThreadTimeline} only by the cost of ~9
+ * `performance.now()` pairs, so callers on the request path can always profile
+ * and decide afterwards whether the result is worth logging.
+ */
+export function buildThreadTimelineWithProfile(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildThreadTimelineOptions,
+): { profile: ThreadTimelineBuildProfile; response: ThreadTimelineResponse } {
+  const result = buildThreadTimelineInternal(db, thread, {
+    ...options,
+    includeProfile: true,
+    measureResponseBytes: false,
+  });
+  if (result.profile === null) {
+    throw new Error("Profiled timeline build returned no profile");
+  }
+  return { profile: result.profile, response: result.response };
 }
 
 export interface BuildThreadConversationOutlineOptions {

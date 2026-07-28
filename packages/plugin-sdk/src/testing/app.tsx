@@ -215,6 +215,7 @@ function TestThreadChat({
   variant = "full",
   layout = "contained",
   focusRequest,
+  permissionPolicy = "inherit",
   className,
   leadingContent,
   messageActions,
@@ -226,6 +227,7 @@ function TestThreadChat({
       data-variant={variant}
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
+      data-permission-policy={permissionPolicy}
       data-message-actions={(messageActions ?? [])
         .map((action) => action.id)
         .join(" ")}
