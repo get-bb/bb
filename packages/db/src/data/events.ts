@@ -2048,6 +2048,48 @@ export interface TimelineTurnBoundaryLookupArgs {
 }
 
 /**
+ * Whether an event at or above `sequence` belongs under a tool call whose own
+ * item began below it.
+ *
+ * Delegation children project into their parent row rather than independent
+ * top-level rows. Splitting that aggregate across two timeline pages is not
+ * currently representable: whichever copy of the parent row the client keeps
+ * would hide the other page's children. This metadata-only existence check
+ * lets the timeline decline such an in-turn cut before parent closure rereads
+ * every descendant payload past the window and silently defeats the budget.
+ */
+export function hasParentedEventCrossingSequence(
+  db: DbConnection,
+  args: TimelineTurnBoundaryLookupArgs,
+): boolean {
+  const parentToolCallId = sql<string | null>`COALESCE(
+    NULLIF(json_extract(${events.data}, '$.item.parentToolCallId'), ''),
+    NULLIF(json_extract(${events.data}, '$.parentToolCallId'), '')
+  )`;
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequence),
+        sql`${parentToolCallId} IS NOT NULL`,
+        sql`EXISTS (
+          SELECT 1
+          FROM events AS parent_event
+          WHERE parent_event.thread_id = ${events.threadId}
+            AND parent_event.item_id = ${parentToolCallId}
+            AND parent_event.item_kind = 'toolCall'
+            AND parent_event.sequence < ${args.sequence}
+        )`,
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+/**
  * The id of the single unfinished turn that owns every turn-scoped event from
  * `sequence` onward, or null when there is no such turn.
  *

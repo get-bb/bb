@@ -19,6 +19,7 @@ import {
   findTimelineWindowBudgetFloorSequence,
   getEnvironment,
   findUnfinishedTurnCoveringSequence,
+  hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
   listRecentStoredEventRows,
@@ -908,6 +909,14 @@ function countAffordableAnchors(
  * that compacts twice on opposite sides of the cut therefore emits the banner
  * from both pages instead of once. The client keys rows by id and renders one,
  * so the effect is which of the two compactions it is dated from.
+ *
+ * Delegation children are another aggregate, but one that cannot tolerate the
+ * same duplicate-id merge: each page would hold a different `childRows` subset
+ * under the same parent row and the client would discard one. Parent closure
+ * also follows every descendant without sequence bounds, so pretending to cut
+ * there would silently restore the unbounded read. A cut crossed by a parented
+ * event therefore keeps the whole turn, just like a finished turn, until
+ * nested delegation rows have their own pagination contract.
  */
 function resolveTimelineWindowBounds(
   db: DbConnection,
@@ -922,13 +931,21 @@ function resolveTimelineWindowBounds(
     budgetFloorSequence,
     segmentLimit,
   );
+  const unfinishedTurnId =
+    affordable === 0 && budgetFloorSequence !== undefined
+      ? findUnfinishedTurnCoveringSequence(db, {
+          sequence: budgetFloorSequence,
+          threadId,
+        })
+      : null;
   if (
     affordable === 0 &&
     budgetFloorSequence !== undefined &&
-    findUnfinishedTurnCoveringSequence(db, {
+    unfinishedTurnId !== null &&
+    !hasParentedEventCrossingSequence(db, {
       sequence: budgetFloorSequence,
       threadId,
-    }) !== null
+    })
   ) {
     return {
       affordableAnchorCount: 0,

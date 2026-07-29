@@ -40,6 +40,7 @@ import {
   listStoredEventRowsInRange,
   listStoredThreadProvisioningRowsByProvisioningId,
   findUnfinishedTurnCoveringSequence,
+  hasParentedEventCrossingSequence,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
@@ -4040,5 +4041,114 @@ describe("findUnfinishedTurnCoveringSequence", () => {
         threadId: thread.id,
       }),
     ).toBeNull();
+  });
+});
+
+describe("hasParentedEventCrossingSequence", () => {
+  it("finds a child event whose tool-call parent began below the cut", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "turn-open" }),
+        itemId: "parent-call",
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "parent-call",
+            tool: "Agent",
+            arguments: {},
+            result: "",
+            status: "completed",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "child-turn" }),
+        itemId: "child-message",
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            parentToolCallId: "parent-call",
+            text: "child output",
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      hasParentedEventCrossingSequence(db, {
+        sequence: 2,
+        threadId: thread.id,
+      }),
+    ).toBe(true);
+    expect(
+      hasParentedEventCrossingSequence(db, {
+        sequence: 4,
+        threadId: thread.id,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores ordinary events and parents on the same side of the cut", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "turn-open" }),
+        itemId: "parent-call",
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: "parent-call",
+            tool: "Agent",
+            arguments: {},
+            result: "",
+            status: "completed",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "child-turn" }),
+        itemId: "child-message",
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            parentToolCallId: "parent-call",
+            text: "child output",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "ordinary row" }),
+      },
+    ]);
+
+    expect(
+      hasParentedEventCrossingSequence(db, {
+        sequence: 2,
+        threadId: thread.id,
+      }),
+    ).toBe(false);
   });
 });

@@ -314,6 +314,7 @@ export {
   findTimelineSegmentAnchorSequenceAfter,
   findTimelineWindowBudgetFloorSequence,
   findUnfinishedTurnCoveringSequence,
+  hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,

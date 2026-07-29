@@ -82,6 +82,11 @@ interface SeedOptions {
    * it there too when `"completed"`. Its rows sit far below any in-turn cut.
    */
   backgroundTask?: "open" | "completed";
+  /**
+   * Put the last turn's command items under one delegation tool call. Its
+   * projected row aggregates every child, so it cannot be split losslessly.
+   */
+  delegateLastTurn?: boolean;
   /** Emit `turn/completed` for the last turn. */
   completeLastTurn: boolean;
   /**
@@ -175,6 +180,44 @@ function seedTurns(
       }
     }
 
+    const parentToolCallId =
+      isLastTurn && options.delegateLastTurn ? `${turnId}-delegate` : null;
+    if (parentToolCallId !== null) {
+      push({
+        type: "item/started",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: parentToolCallId,
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: parentToolCallId,
+            tool: "Agent",
+            arguments: { prompt: "Do the long task." },
+            status: "pending",
+          },
+        }),
+      });
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: parentToolCallId,
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: parentToolCallId,
+            tool: "Agent",
+            arguments: { prompt: "Do the long task." },
+            result: "",
+            status: "completed",
+          },
+        }),
+      });
+    }
+
     const longRunning = new Set(
       isLastTurn ? (options.longRunningItemIndexes ?? []) : [],
     );
@@ -193,6 +236,7 @@ function seedTurns(
             id: itemId,
             command: `echo ${item}`,
             cwd: "/tmp/test",
+            ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "pending",
             approvalStatus: null,
           },
@@ -232,6 +276,7 @@ function seedTurns(
             id: itemId,
             command: `echo ${item}`,
             cwd: "/tmp/test",
+            ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "completed",
             approvalStatus: null,
             exitCode: 0,
@@ -254,6 +299,7 @@ function seedTurns(
             id: itemId,
             command: `echo ${item}`,
             cwd: "/tmp/test",
+            ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "completed",
             approvalStatus: null,
             exitCode: 0,
@@ -389,6 +435,27 @@ describe("in-turn timeline windows", () => {
     expect(budgeted.response.rows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.rows,
     );
+  });
+
+  it("keeps a parented aggregate whole instead of bypassing the budget during closure", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      delegateLastTurn: true,
+      itemsPerTurn: [300],
+    });
+
+    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
+    const budgeted = buildPage(db, thread, 100, null);
+
+    // Delegation child rows live inside one parent row. Splitting that row
+    // would either lose one page's children or make parent closure reread the
+    // whole descendant tail after the cut, defeating the claimed bound. Until
+    // nested rows have their own cursor, this aggregate takes the same explicit
+    // whole-turn fallback as a finished turn.
+    expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
+    expect(budgeted.response.rows).toEqual(unbudgeted.response.rows);
   });
 
   it("gives an item straddling the cut to exactly one page, completed", () => {
