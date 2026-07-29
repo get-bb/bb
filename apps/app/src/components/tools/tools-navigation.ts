@@ -46,7 +46,7 @@ export const TOOLS_OWNED_COLLECTION_LABEL = {
   plugins: "Installed",
 } as const satisfies Record<ToolsSectionId, string>;
 
-export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.skills, TOOLS_SECTIONS.plugins];
+export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills];
 
 export interface ToolsBreadcrumbSegment {
   label: string;

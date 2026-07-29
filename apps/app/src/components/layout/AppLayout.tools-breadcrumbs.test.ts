@@ -14,13 +14,13 @@ describe("resolveToolsBreadcrumbs", () => {
         to,
       })),
     ).toEqual([
-      { id: "skills", label: "Skills", icon: "Zap", to: "/tools/skills" },
       {
         id: "plugins",
         label: "Plugins",
         icon: "ElectricPlugs",
         to: "/tools/plugins",
       },
+      { id: "skills", label: "Skills", icon: "Zap", to: "/tools/skills" },
     ]);
   });
 
