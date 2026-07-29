@@ -53,6 +53,9 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
     for (const pluginId of [
       "github",
       "github-app-surfaces",
+      "github-update-available",
+      "github-update-failed",
+      "github-compatibility-blocked",
       "enterprise-issue-tracker-synchronization",
     ]) {
       client.setQueryData(pluginSourceQueryKey(pluginId), {
@@ -430,6 +433,61 @@ const AWKWARD_PLUGIN: PluginListItem = {
   ],
 };
 
+/**
+ * Release is not always two quiet facts. An offered update, a rolled-back
+ * update, and an update held back by compatibility each add a surface around
+ * those facts. They are built on the minimal plugin so the state under review
+ * is Release itself, and each carries its own id so the seeded source query
+ * covers it without a backend request.
+ */
+const UPDATE_AVAILABLE_PLUGIN: PluginListItem = {
+  ...PLUGIN,
+  id: "github-update-available",
+  updateState: {
+    ...EMPTY_PLUGIN_UPDATE_STATE,
+    availableVersion: "1.5.0",
+    lastCheckAt: new Date(2026, 6, 20).getTime(),
+  },
+};
+
+const UPDATE_FAILED_PLUGIN: PluginListItem = {
+  ...PLUGIN,
+  id: "github-update-failed",
+  updateState: {
+    ...EMPTY_PLUGIN_UPDATE_STATE,
+    lastFailure: {
+      version: "1.5.0",
+      at: new Date(2026, 6, 22).getTime(),
+      detail: "The plugin failed to load after the update.",
+    },
+  },
+};
+
+/**
+ * A bundled plugin has no update channel of its own, so Release states the
+ * policy instead of an install date. That is the longest release value the
+ * section carries, and it needs no source request at all.
+ */
+const BUNDLED_PLUGIN: PluginListItem = {
+  ...PLUGIN,
+  id: "github-bundled",
+  source: "builtin:github",
+  rootDir: "/managed/plugins/github",
+  provenance: "builtin",
+  sourceDisplay: "Ships with bb",
+  capabilities: STATIC_CAPABILITIES,
+};
+
+const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
+  ...PLUGIN,
+  id: "github-compatibility-blocked",
+  updateState: {
+    ...EMPTY_PLUGIN_UPDATE_STATE,
+    blockedVersion: "2.0.0",
+    blockedReasons: ["Requires bb 0.20 or newer, and this bb is 0.18."],
+  },
+};
+
 function Plugin({
   plugin,
   isLoading = false,
@@ -553,6 +611,34 @@ export function PluginDetailStates() {
           note="Long unbroken names, a wordy description, and every capability group at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
         >
           <Plugin plugin={AWKWARD_PLUGIN} />
+        </State>
+
+        <State
+          name="Bundled"
+          note="Ships with bb, so Release names the update policy instead of an install date and the header shows passive provenance rather than an uninstall control."
+        >
+          <Plugin plugin={BUNDLED_PLUGIN} />
+        </State>
+
+        <State
+          name="Update available"
+          note="An offered update sits above the release facts, so the action is visible without the quiet common case growing a table."
+        >
+          <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
+        </State>
+
+        <State
+          name="Update failed"
+          note="A rolled-back update explains what happened and what version is running now."
+        >
+          <Plugin plugin={UPDATE_FAILED_PLUGIN} />
+        </State>
+
+        <State
+          name="Compatibility blocked"
+          note="A newer release exists but cannot be installed. This is an exception, so it keeps a tone, an icon, and its own details action instead of reading as another fact."
+        >
+          <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
 
         <State name="Route loading" note="Before the plugin list resolves.">

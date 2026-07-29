@@ -21,6 +21,15 @@ function withTooltip(control: ReactNode, tooltip: ReactNode | undefined) {
   );
 }
 
+/**
+ * Short scalar facts about a resource — version, install date, and the like.
+ *
+ * These read as a quiet metadata run rather than a table. The facts a detail
+ * page actually carries are one to three short values, and a bordered grid with
+ * filled label cells outweighs that content; the section heading already
+ * supplies the hierarchy. A fact that needs its own tone or action is not a
+ * peer of these — render it beside the list, not inside it.
+ */
 export function ResourceDetailFacts({
   children,
   className,
@@ -29,12 +38,7 @@ export function ResourceDetailFacts({
   className?: string;
 }) {
   return (
-    <dl
-      className={cn(
-        "divide-y divide-border overflow-hidden rounded-md border border-border bg-background",
-        className,
-      )}
-    >
+    <dl className={cn("flex min-w-0 flex-wrap gap-x-10 gap-y-3", className)}>
       {children}
     </dl>
   );
@@ -44,35 +48,23 @@ export function ResourceDetailFact({
   label,
   children,
   mono = false,
-  action,
-  details,
 }: {
   label: ReactNode;
   children: ReactNode;
   mono?: boolean;
-  action?: ReactNode;
-  details?: ReactNode;
 }) {
   return (
-    <div className="grid min-w-0 sm:grid-cols-[9rem_minmax(0,1fr)]">
-      <dt className="bg-surface-recessed/55 px-3 py-2.5 text-xs font-medium text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="min-w-0 px-3 py-2.5">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={cn(
-              "min-w-0 flex-1 break-words text-sm text-foreground",
-              mono && "font-mono text-xs",
-            )}
-          >
-            {children}
-          </div>
-          {action ? (
-            <div className="-my-1 flex shrink-0 items-center">{action}</div>
-          ) : null}
-        </div>
-        {details ? <div className="mt-2">{details}</div> : null}
+    <div className="min-w-0">
+      {/* Leading stays snug rather than none: a value long enough to wrap on a
+          narrow page would otherwise collide with its own second line. */}
+      <dt className="text-xs leading-snug text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "mt-1 min-w-0 break-words text-sm leading-snug text-foreground",
+          mono && "font-mono text-xs",
+        )}
+      >
+        {children}
       </dd>
     </div>
   );

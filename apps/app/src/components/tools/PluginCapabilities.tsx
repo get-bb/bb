@@ -232,45 +232,51 @@ function PluginCapabilityGroup({
   description: string;
   items: readonly PluginCapabilityItem[];
 }) {
+  // The category is a label on the card's axis, not a peer of the things it
+  // contains. Giving it a fixed rail instead of a full-width header band keeps
+  // the card as short as its contents and turns the width to the right of the
+  // category — previously dead space on every card — into the item column.
   return (
     <section
       data-plugin-capability-group
-      className="overflow-hidden rounded-md border border-border bg-background"
+      className="overflow-hidden rounded-md border border-border bg-background sm:grid sm:grid-cols-[13rem_minmax(0,1fr)]"
     >
-      <div className="flex items-start gap-3 px-4 py-3.5">
+      <div className="flex items-start gap-2.5 px-3.5 py-3 sm:border-r sm:border-border/60">
         <Icon
           name={icon}
-          className="mt-0.5 size-4 text-muted-foreground"
+          className="mt-px size-4 shrink-0 text-muted-foreground"
           aria-hidden
         />
         <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">{label}</h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+          <h3 className="text-sm font-medium leading-snug text-foreground">
+            {label}
+          </h3>
+          <p className="mt-0.5 text-2xs leading-snug text-subtle-foreground">
             {description}
           </p>
         </div>
       </div>
-      <ul className="divide-y divide-border border-t border-border">
+      {/* Centred so a single short item reads as one composed line with the
+          category rather than text pinned above empty space. */}
+      <ul className="min-w-0 divide-y divide-border/60 border-t border-border sm:flex sm:flex-col sm:justify-center sm:border-t-0">
         {items.map((item) => (
           <li
             key={item.key}
-            className="grid min-w-0 gap-1 px-4 py-3 sm:grid-cols-[minmax(11rem,0.75fr)_minmax(0,1.5fr)] sm:items-baseline sm:gap-6"
+            className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 px-3.5 py-3"
           >
             <span
               className={cn(
-                "block break-words text-sm leading-snug text-foreground",
+                "min-w-0 break-words text-sm leading-snug text-foreground",
                 item.mono && "break-all font-mono",
               )}
             >
               {item.label}
             </span>
             {item.detail ? (
-              <span className="block min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
+              <span className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
                 {item.detail}
               </span>
-            ) : (
-              <span aria-hidden />
-            )}
+            ) : null}
           </li>
         ))}
       </ul>
@@ -351,13 +357,13 @@ export function PluginIncludes({
     {
       icon: "AppWindow",
       label: "App surfaces",
-      description: "Pages and controls you can use directly in bb.",
+      description: "Pages and controls inside bb.",
       items: appItems,
     },
     {
       icon: "Terminal",
       label: "Command",
-      description: "A bb command people and agents can run.",
+      description: "A command you or agents run.",
       items: plugin.cliCommand
         ? [
             {
@@ -372,31 +378,31 @@ export function PluginIncludes({
     {
       icon: "Settings",
       label: "Settings",
-      description: "Controls that change how this plugin behaves.",
+      description: "Controls how this plugin behaves.",
       items: settingsItems,
     },
     {
       icon: "Explore",
       label: "Skills",
-      description: "Reusable instructions this plugin gives your agents.",
+      description: "Instructions for your agents.",
       items: declared("skill"),
     },
     {
       icon: "Toolbox",
       label: "Agent tools",
-      description: "Plugin actions agents can call while working.",
+      description: "Actions agents can call.",
       items: declared("agent-tool"),
     },
     {
       icon: "MessageCirclePlus",
       label: "Thread integrations",
-      description: "Actions and references available inside threads.",
+      description: "Actions and references in threads.",
       items: declared("thread-integration"),
     },
     {
       icon: "Palette",
       label: "Themes",
-      description: "Appearance options this plugin adds to bb.",
+      description: "Appearance options for bb.",
       items: declared("theme"),
     },
   ];

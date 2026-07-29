@@ -213,7 +213,6 @@ export function PluginDetail({
             {hasUpdateManagement ? (
               <PluginReleaseFacts
                 plugin={plugin}
-                embedded
                 releaseVersion={plugin.version}
               />
             ) : (

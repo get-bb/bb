@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
   ResourceDetailFact,
@@ -91,13 +92,10 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
 export function PluginReleaseFacts({
   plugin,
-  embedded = false,
   releaseVersion,
 }: {
   plugin: PluginListItem;
-  /** Removes the nested background when this content lives in a detail row. */
-  embedded?: boolean;
-  /** Includes current release identity in the same fact table. */
+  /** Includes current release identity alongside the other release facts. */
   releaseVersion?: string;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -112,8 +110,8 @@ export function PluginReleaseFacts({
       : null;
 
   return (
-    <div>
-      <ResourceDetailFacts className={embedded ? undefined : "bg-card"}>
+    <div className="space-y-3">
+      <ResourceDetailFacts>
         {releaseVersion ? (
           <ResourceDetailFact label="Current version" mono>
             {releaseVersion}
@@ -124,27 +122,33 @@ export function PluginReleaseFacts({
             {formatAbsoluteDate(source.installedAt)}
           </ResourceDetailFact>
         ) : null}
-        {blockedVersion !== null ? (
-          <ResourceDetailFact
-            label="Compatibility"
-            action={
-              <ResourceActionButton
-                label="View compatibility details"
-                icon="Info"
-                onClick={() => setBlockedOpen(true)}
-              />
-            }
-          >
-            <span className="block">
+      </ResourceDetailFacts>
+      {/* Compatibility is not a peer fact: it is a blocked update that the user
+          may need to act on, so it keeps a tone, an icon, and its own action
+          instead of hiding in a fact row. */}
+      {blockedVersion !== null ? (
+        <div className="flex min-w-0 items-start gap-2.5 rounded-md border border-warning/30 bg-warning/5 px-3 py-2.5">
+          <Icon
+            name="AlertTriangle"
+            className="mt-0.5 size-4 shrink-0 text-warning"
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-foreground">
               {blockedVersion} isn&apos;t compatible with this bb
-            </span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {plugin.updateState.blockedReasons[0] ??
                 `Staying on ${plugin.version}.`}
-            </span>
-          </ResourceDetailFact>
-        ) : null}
-      </ResourceDetailFacts>
+            </p>
+          </div>
+          <ResourceActionButton
+            label="View compatibility details"
+            icon="Info"
+            onClick={() => setBlockedOpen(true)}
+          />
+        </div>
+      ) : null}
       {blockedVersion !== null ? (
         <UpdatePluginDialog
           failureStateLabel="Update failed"
