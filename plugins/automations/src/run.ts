@@ -18,9 +18,15 @@ import type { AutomationExecution } from "./rpc-types.js";
 
 export type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
-  get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-  send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
-  spawn(args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0]): Promise<unknown>;
+  get(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+  ): Promise<unknown>;
+  send(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+  ): Promise<unknown>;
+  spawn(
+    args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
+  ): Promise<unknown>;
 };
 type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
@@ -151,9 +157,7 @@ function settleDispatchFailure(
   } else {
     args.onFailure(error);
   }
-  bb.log.error(
-    `Failed to dispatch automation ${args.automation.id}: ${message}`,
-  );
+  bb.log.error(`Failed to dispatch schedule ${args.automation.id}: ${message}`);
 }
 
 async function reuseTargetThreadForRun(
@@ -232,7 +236,7 @@ function closeRunForUnusableTargetThread(
     now,
   });
   bb.log.error(
-    `Automation ${args.automation.id} target thread ${args.targetThreadId} is unavailable: ${args.detail}`,
+    `Schedule ${args.automation.id} target thread ${args.targetThreadId} is unavailable: ${args.detail}`,
   );
 }
 
@@ -254,7 +258,7 @@ export async function executeScriptRun(
       closeAutomationRun(db, {
         runId: args.run.id,
         status: "failed",
-        error: "Script automation is missing a stored script file",
+        error: "Script schedule is missing a stored script file",
         now: Date.now(),
       });
       return;
@@ -285,7 +289,7 @@ export async function executeScriptRun(
   } catch (error) {
     args.onFailure(error);
     bb.log.error(
-      `Failed to run script for automation ${args.automation.id}: ${errorMessage(error)}`,
+      `Failed to run script for schedule ${args.automation.id}: ${errorMessage(error)}`,
     );
   } finally {
     publishAutomationChange(bb, args.automation.projectId, [

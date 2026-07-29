@@ -12,7 +12,7 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
-  /** On the Tools hub, legacy tool routes, or the Automations plugin panel. */
+  /** On the Plugins & Skills hub or a legacy tool route. */
   isToolsView: boolean;
   /** On the Skills surface. */
   isSkillsView: boolean;
@@ -40,9 +40,6 @@ export function useRouteState(): RouteState {
   const projectlessArchivedMatch = useMatch("/archived");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
-  const automationsPluginPanelMatch = useMatch(
-    "/plugins/automations/automations/*",
-  );
   const isToolsPath =
     location.pathname === "/tools" || location.pathname.startsWith("/tools/");
   const isRootView = location.pathname === "/";
@@ -74,8 +71,7 @@ export function useRouteState(): RouteState {
     isToolsView:
       isToolsPath ||
       location.pathname === "/skills" ||
-      location.pathname === "/automations" ||
-      Boolean(automationsPluginPanelMatch),
+      location.pathname === "/automations",
     isSkillsView:
       location.pathname === "/tools/skills" || location.pathname === "/skills",
     isRootView,

@@ -12,15 +12,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
-  getAutomationDetailRoutePath,
-  getAutomationEditRoutePath,
-  getAutomationsRoutePath,
+  SCHEDULES_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
+  getScheduleDetailRoutePath,
+  getScheduleEditRoutePath,
+  getSchedulesRoutePath,
   getSkillDetailRoutePath,
 } from "./route-paths";
 import { useRouteStateHistoryNavigation } from "./app-route-history";
@@ -36,9 +35,6 @@ const TOOL_ROUTE_SEQUENCE = [
   "/tools/skills/registry/moss-skills%2Fmoss-notes",
   "/tools/plugins",
   "/tools/plugins/github",
-  "/tools/automations",
-  "/tools/automations/proj_standard/auto_standard",
-  "/tools/automations/proj_standard/auto_standard/edit",
 ] as const;
 
 function HistoryHarness() {
@@ -92,7 +88,7 @@ function PluginNavigationHarness() {
   const location = useLocation();
   const navigate = useNavigate();
   const pluginNavigate = useBbNavigate();
-  const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
+  const detailPath = getScheduleDetailRoutePath(AUTOMATION_ROUTE);
   const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
   const detailSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}`;
 
@@ -105,7 +101,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
           })
         }
@@ -115,7 +111,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
           })
         }
@@ -126,7 +122,7 @@ function PluginNavigationHarness() {
         type="button"
         onClick={() =>
           pluginNavigate.toCompose({
-            initialPrompt: "Edit this automation",
+            initialPrompt: "Edit this schedule",
           })
         }
       >
@@ -135,7 +131,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
             subPath: detailSubPath,
             replace: true,
           })
@@ -150,21 +146,17 @@ function PluginNavigationHarness() {
   );
 }
 
-function RemountablePluginNavigationHarness({
-  toolsHubEnabled = true,
-}: {
-  toolsHubEnabled?: boolean;
-}) {
+function RemountablePluginNavigationHarness() {
   const [mountKey, setMountKey] = useState(0);
   return (
-    <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
+    <>
       <button type="button" onClick={() => setMountKey((value) => value + 1)}>
         Remount plugin
       </button>
       <PluginContext.Provider value={AUTOMATIONS_PLUGIN_ID}>
         <PluginNavigationHarness key={mountKey} />
       </PluginContext.Provider>
-    </ToolsHubExperimentProvider>
+    </>
   );
 }
 
@@ -204,12 +196,6 @@ describe("useRouteStateHistoryNavigation", () => {
     expect(screen.getByTestId("can-go-back").textContent).toBe("true");
     expect(screen.getByTestId("can-go-forward").textContent).toBe("false");
 
-    await clickAndExpectPath(
-      "Back",
-      "/tools/automations/proj_standard/auto_standard",
-    );
-    await clickAndExpectPath("Back", "/tools/automations");
-    await clickAndExpectPath("Back", "/tools/plugins/github");
     await clickAndExpectPath("Back", "/tools/plugins");
     await clickAndExpectPath(
       "Back",
@@ -232,15 +218,6 @@ describe("useRouteStateHistoryNavigation", () => {
     );
     await clickAndExpectPath("Forward", "/tools/plugins");
     await clickAndExpectPath("Forward", "/tools/plugins/github");
-    await clickAndExpectPath("Forward", "/tools/automations");
-    await clickAndExpectPath(
-      "Forward",
-      "/tools/automations/proj_standard/auto_standard",
-    );
-    await clickAndExpectPath(
-      "Forward",
-      "/tools/automations/proj_standard/auto_standard/edit",
-    );
   });
 
   it("updates the actual sidebar arrow buttons after Tools route clicks", async () => {
@@ -264,33 +241,33 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go forward", false);
   });
 
-  it("redirects remounted automation edit routes without duplicate history entries", async () => {
+  it("redirects remounted schedule edit routes without duplicate history entries", async () => {
     render(
-      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
+      <MemoryRouter initialEntries={[getSchedulesRoutePath()]}>
         <RemountablePluginNavigationHarness />
       </MemoryRouter>,
     );
 
-    const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
-    const editPath = getAutomationEditRoutePath(AUTOMATION_ROUTE);
+    const detailPath = getScheduleDetailRoutePath(AUTOMATION_ROUTE);
+    const editPath = getScheduleEditRoutePath(AUTOMATION_ROUTE);
 
     await clickAndExpectPath("Open detail", detailPath);
     await clickAndExpectPath("Edit from detail", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
     await clickAndExpectPath("Native back", detailPath);
-    await clickAndExpectPath("Native back", getAutomationsRoutePath());
+    await clickAndExpectPath("Native back", getSchedulesRoutePath());
 
     await clickAndExpectPath("Open direct edit", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
-    await clickAndExpectPath("Native back", getAutomationsRoutePath());
+    await clickAndExpectPath("Native back", getSchedulesRoutePath());
   });
 
-  it("keeps the Automations plugin panel route when Tools Hub is disabled", async () => {
+  it("keeps Schedules on its plugin panel route", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <RemountablePluginNavigationHarness toolsHubEnabled={false} />
+        <RemountablePluginNavigationHarness />
       </MemoryRouter>,
     );
 
@@ -299,7 +276,7 @@ describe("useRouteStateHistoryNavigation", () => {
       "Open direct edit",
       getPluginPanelRoutePath({
         pluginId: AUTOMATIONS_PLUGIN_ID,
-        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+        path: SCHEDULES_PLUGIN_PANEL_PATH,
         subPath: editSubPath,
       }),
     );

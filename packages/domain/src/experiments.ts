@@ -15,8 +15,9 @@ export const experimentsSchema = z.object({
    */
   claudeCodeMockCliTraffic: z.boolean(),
   /**
-   * Tools Hub: exposes the unified Skills, Plugins, and Automations management
-   * UI. This is a presentation gate only; it does not load or unload tools.
+   * Extensions: exposes skills and plugin management. Automations remain a
+   * plugin-owned page in the Plugins sidebar section. This is a presentation
+   * gate only; it does not load or unload extensions.
    */
   toolsHub: z.boolean(),
   /**

@@ -5,13 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  matchPath,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";
@@ -25,10 +19,8 @@ import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   PluginDetail,
   pluginIsLocalSource,
@@ -42,14 +34,6 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
-import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   getPluginsRoutePath,
@@ -61,12 +45,6 @@ import {
 } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
-
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const HIGHLIGHTER_OPTIONS = {};
 
 export { PluginDetail };
 
@@ -148,76 +126,7 @@ function ToolsSectionBody({
       </ToolsScrollPage>
     );
   }
-  if (activeSection === "plugins") {
-    return <PluginsToolView pluginId={pluginId} />;
-  }
-  return <AutomationsToolView />;
-}
-
-function AutomationsToolView() {
-  const location = useLocation();
-  const { projectId, automationId } = useParams<{
-    projectId?: string;
-    automationId?: string;
-  }>();
-  const { navPanels } = usePluginSlots();
-  const panel =
-    navPanels.find(
-      (candidate) =>
-        candidate.pluginId === AUTOMATIONS_PLUGIN_ID &&
-        candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
-    ) ?? null;
-  const subPath =
-    projectId && automationId
-      ? `${projectId}/${automationId}${
-          matchPath(
-            { path: TOOLS_AUTOMATION_EDIT_ROUTE_PATH, end: true },
-            location.pathname,
-          ) !== null
-            ? "/edit"
-            : ""
-        }`
-      : new URLSearchParams(location.search).get("view") === "browse"
-        ? "browse"
-        : "";
-  if (panel === null) {
-    return (
-      <ToolsScrollPage maxWidthClassName="max-w-3xl">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          Automations are still loading, or the automations plugin is not
-          available.
-        </EmptyStatePanel>
-      </ToolsScrollPage>
-    );
-  }
-
-  const slotMount = (
-    <PluginSlotMount
-      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-      pluginId={panel.pluginId}
-      slotKind="navPanel"
-      slotId={panel.id}
-    >
-      <panel.component subPath={subPath} />
-    </PluginSlotMount>
-  );
-  const mount =
-    typeof Worker === "undefined" ? (
-      slotMount
-    ) : (
-      <WorkerPoolContextProvider
-        poolOptions={WORKER_POOL_OPTIONS}
-        highlighterOptions={HIGHLIGHTER_OPTIONS}
-      >
-        {slotMount}
-      </WorkerPoolContextProvider>
-    );
-
-  // No `ToolsScrollPage` here: the automations panel is a plugin nav panel, and
-  // nav panels own their page padding, max width, and scrolling so they render
-  // the same on this route and on the /plugins panel route. Wrapping it again
-  // would double the page padding.
-  return <div className="relative h-full overflow-hidden">{mount}</div>;
+  return <PluginsToolView pluginId={pluginId} />;
 }
 
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {

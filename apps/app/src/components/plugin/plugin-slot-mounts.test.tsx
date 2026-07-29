@@ -22,8 +22,8 @@ import {
 } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  SCHEDULES_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginPanelView } from "@/views/PluginPanelView";
@@ -1240,16 +1240,16 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     return <div>board panel body</div>;
   }
 
-  function registerAutomationsPanel() {
+  function registerSchedulesPanel() {
     setPluginSlotRegistrations(
       AUTOMATIONS_PLUGIN_ID,
       registrationSet({
         navPanels: [
           {
-            id: AUTOMATIONS_PLUGIN_PANEL_PATH,
-            title: "Automations",
+            id: SCHEDULES_PLUGIN_PANEL_PATH,
+            title: "Schedules",
             icon: "Calendar",
-            path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+            path: SCHEDULES_PLUGIN_PANEL_PATH,
             component: Board,
           },
         ],
@@ -1257,31 +1257,22 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it("preserves the Automations plugin panel while Tools Hub is disabled", () => {
-    registerAutomationsPanel();
+  it.each([true, false])(
+    "keeps Schedules beside threads when Plugins & Skills enabled is %s",
+    (enabled) => {
+      registerSchedulesPanel();
 
-    render(
-      <MemoryRouter>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
+      render(
+        <ToolsHubExperimentProvider enabled={enabled}>
+          <MemoryRouter>
+            <PluginNavSidebarItems />
+          </MemoryRouter>
+        </ToolsHubExperimentProvider>,
+      );
 
-    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
-  });
-
-  it("replaces the Automations plugin panel while Tools Hub is enabled", () => {
-    registerAutomationsPanel();
-
-    render(
-      <ToolsHubExperimentProvider enabled>
-        <MemoryRouter>
-          <PluginNavSidebarItems />
-        </MemoryRouter>
-      </ToolsHubExperimentProvider>,
-    );
-
-    expect(screen.queryByRole("button", { name: "Automations" })).toBeNull();
-  });
+      expect(screen.getByRole("button", { name: "Schedules" })).toBeDefined();
+    },
+  );
 
   it("renders a sidebar entry that routes to the plugin panel", () => {
     setPluginSlotRegistrations(

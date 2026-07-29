@@ -1,14 +1,9 @@
 import type { IconName } from "@bb/shared-ui/icon";
 import { matchPath } from "react-router-dom";
 import {
-  getAutomationsRoutePath,
-  getAutomationDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillsRoutePath,
   getSkillsRoutePath,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
-  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
@@ -17,7 +12,7 @@ import {
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 
-export type ToolsSectionId = "skills" | "plugins" | "automations";
+export type ToolsSectionId = "skills" | "plugins";
 
 export interface ToolsSectionDefinition {
   id: ToolsSectionId;
@@ -39,30 +34,19 @@ export const TOOLS_SECTIONS = {
     icon: "ElectricPlugs",
     to: getPluginsRoutePath(),
   },
-  automations: {
-    id: "automations",
-    label: "Automations",
-    icon: "TimeSchedule",
-    to: getAutomationsRoutePath(),
-  },
 } satisfies Record<ToolsSectionId, ToolsSectionDefinition>;
 
 /**
  * What each section calls the collection the user already owns. Skills call it
- * the Library; plugins and automations call it Installed. Breadcrumbs and the
- * collection tab both read this, so renaming happens in one place.
+ * the Library; plugins call it Installed. Breadcrumbs and the collection tab
+ * both read this, so renaming happens in one place.
  */
 export const TOOLS_OWNED_COLLECTION_LABEL = {
   skills: "Library",
   plugins: "Installed",
-  automations: "Installed",
 } as const satisfies Record<ToolsSectionId, string>;
 
-export const TOOLS_NAV_ITEMS = [
-  TOOLS_SECTIONS.skills,
-  TOOLS_SECTIONS.plugins,
-  TOOLS_SECTIONS.automations,
-] as const;
+export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.skills, TOOLS_SECTIONS.plugins];
 
 export interface ToolsBreadcrumbSegment {
   label: string;
@@ -75,9 +59,6 @@ function belongsToRoute(pathname: string, route: string): boolean {
 
 export function resolveToolsSection(pathname: string): ToolsSectionId {
   if (belongsToRoute(pathname, TOOLS_SECTIONS.plugins.to)) return "plugins";
-  if (belongsToRoute(pathname, TOOLS_SECTIONS.automations.to)) {
-    return "automations";
-  }
   return "skills";
 }
 
@@ -141,25 +122,16 @@ const DETAIL_ROUTES = [
     param: "pluginId",
     fallback: "Plugin",
   },
-  {
-    pattern: TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-    section: "automations",
-    collection: collectionCrumb("automations"),
-    param: "automationId",
-    fallback: "Automation",
-  },
 ] as const;
 
 const BROWSE_ROUTES = [
   ["skills", TOOLS_REGISTRY_SKILLS_ROUTE_PATH],
   ["plugins", TOOLS_PLUGIN_BROWSE_ROUTE_PATH],
-  ["automations", TOOLS_AUTOMATION_BROWSE_ROUTE_PATH],
 ] as const;
 
 const ROOT_ROUTE_ALIASES: Record<ToolsSectionId, readonly string[]> = {
   skills: ["/tools", "/skills"],
   plugins: [],
-  automations: ["/automations"],
 };
 
 export function resolveToolsBreadcrumbs(
@@ -168,27 +140,6 @@ export function resolveToolsBreadcrumbs(
   resourceLabel?: string | null,
 ): ToolsBreadcrumbSegment[] | null {
   const view = new URLSearchParams(search).get("view");
-  const automationEdit = matchPath(TOOLS_AUTOMATION_EDIT_ROUTE_PATH, pathname);
-  if (automationEdit) {
-    const automationLabel = routeResourceLabel(
-      automationEdit.params.automationId,
-      "Automation",
-    );
-    const automationDetailPath =
-      automationEdit.params.projectId && automationEdit.params.automationId
-        ? getAutomationDetailRoutePath({
-            projectId: automationEdit.params.projectId,
-            automationId: automationEdit.params.automationId,
-          })
-        : TOOLS_SECTIONS.automations.to;
-    return [
-      sectionCrumb("automations"),
-      collectionCrumb("automations"),
-      { label: automationLabel, to: automationDetailPath },
-      { label: "Edit" },
-    ];
-  }
-
   // Browse is matched before detail on purpose. A single-param detail pattern
   // such as /tools/plugins/:pluginId also matches /tools/plugins/browse, so
   // testing detail first resolves the reserved "browse" segment as a resource

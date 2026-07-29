@@ -2,35 +2,26 @@ import { describe, expect, it, vi } from "vitest";
 import {
   callPluginRpc,
   fetchPluginSdkSettings,
-  getAutomationPluginPanelRoutePath,
-  isAutomationEditRoutePath,
+  isScheduleEditRoutePath,
 } from "./plugin-sdk-hooks";
 
-describe("getAutomationPluginPanelRoutePath", () => {
-  it.each([
-    ["", "/tools/automations"],
-    ["browse", "/tools/automations?view=browse"],
-    ["proj_1/auto_1", "/tools/automations/proj_1/auto_1"],
-    ["proj_1/auto_1/edit", "/tools/automations/proj_1/auto_1/edit"],
-    ["unsupported/path/shape/extra", "/tools/automations"],
-  ])("maps %j to the canonical Tools route", (subPath, expected) => {
-    expect(getAutomationPluginPanelRoutePath(subPath)).toBe(expected);
-  });
-});
-
-describe("isAutomationEditRoutePath", () => {
-  it("recognizes only canonical automation edit routes", () => {
+describe("isScheduleEditRoutePath", () => {
+  it("recognizes only canonical schedule edit routes", () => {
     expect(
-      isAutomationEditRoutePath(
-        "/tools/automations/proj_standard/auto_standard/edit",
+      isScheduleEditRoutePath(
+        "/plugins/automations/schedules/proj_standard/auto_standard/edit",
       ),
     ).toBe(true);
     expect(
-      isAutomationEditRoutePath(
-        "/tools/automations/proj_standard/auto_standard",
+      isScheduleEditRoutePath(
+        "/plugins/automations/schedules/proj_standard/auto_standard",
       ),
     ).toBe(false);
-    expect(isAutomationEditRoutePath("/plugins/automations/edit")).toBe(false);
+    expect(
+      isScheduleEditRoutePath(
+        "/tools/automations/proj_standard/auto_standard/edit",
+      ),
+    ).toBe(false);
   });
 });
 

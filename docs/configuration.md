@@ -430,9 +430,10 @@ ports).
 
 Experimental surfaces are off by default and can be changed in Settings →
 Experiments or with `bb settings experiment <key> <true|false>`. The `toolsHub`
-experiment exposes the unified Skills, Plugins, and Automations management UI.
-It is a UI-only gate: installed skills, automation execution, plugin runtimes,
-CLI commands, and backend APIs keep working while the Tools Hub is off.
+experiment exposes Extensions for managing skills and plugins, while
+Automations stays in the Plugins section beside threads. It is a UI-only gate:
+installed skills, automation execution, plugin runtimes, CLI commands, and
+backend APIs keep working while the experiment is off.
 
 ## Thread Timeline Window
 

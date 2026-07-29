@@ -21,12 +21,6 @@ describe("resolveToolsBreadcrumbs", () => {
         icon: "ElectricPlugs",
         to: "/tools/plugins",
       },
-      {
-        id: "automations",
-        label: "Automations",
-        icon: "TimeSchedule",
-        to: "/tools/automations",
-      },
     ]);
   });
 
@@ -43,12 +37,6 @@ describe("resolveToolsBreadcrumbs", () => {
       { label: "Plugins", to: "/tools/plugins" },
       { label: "Installed" },
     ]);
-    expect(
-      resolveToolsBreadcrumbs("/tools/automations", "?view=browse"),
-    ).toEqual([
-      { label: "Automations", to: "/tools/automations" },
-      { label: "Browse" },
-    ]);
   });
 
   it("resolves literal browse paths as Browse, not as a resource named browse", () => {
@@ -61,10 +49,6 @@ describe("resolveToolsBreadcrumbs", () => {
     ]);
     expect(resolveToolsBreadcrumbs("/tools/skills/registry")).toEqual([
       { label: "Skills", to: "/tools/skills" },
-      { label: "Browse" },
-    ]);
-    expect(resolveToolsBreadcrumbs("/tools/automations/browse")).toEqual([
-      { label: "Automations", to: "/tools/automations" },
       { label: "Browse" },
     ]);
   });
@@ -103,15 +87,9 @@ describe("resolveToolsBreadcrumbs", () => {
       { label: "UI Patterns" },
     ]);
     expect(
-      resolveToolsBreadcrumbs("/tools/automations/personal/weekly-review/edit"),
-    ).toEqual([
-      { label: "Automations", to: "/tools/automations" },
-      { label: "Installed", to: "/tools/automations" },
-      {
-        label: "weekly-review",
-        to: "/tools/automations/personal/weekly-review",
-      },
-      { label: "Edit" },
-    ]);
+      resolveToolsBreadcrumbs(
+        "/plugins/automations/schedules/personal/weekly-review",
+      ),
+    ).toBeNull();
   });
 });

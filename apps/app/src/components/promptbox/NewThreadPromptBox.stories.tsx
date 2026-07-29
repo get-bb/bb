@@ -309,7 +309,7 @@ function ModelLoadFailedRow() {
 
 function UnsupportedCodexCliRow() {
   const { value, mentionRanges, onChange } = useControlledValue(
-    "Create an automation that checks the release until CI passes.",
+    "Create a schedule that checks the release until CI passes.",
   );
   return (
     <PromptStage>

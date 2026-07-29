@@ -115,7 +115,7 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("expands automation command pills before mapping draft text to prompt input", () => {
+  it("expands schedule command pills before mapping draft text to prompt input", () => {
     const input = promptDraftToInput({
       text: "/automation keep checking CI",
       mentions: [
@@ -131,13 +131,13 @@ describe("prompt draft helpers", () => {
     expect(input).toEqual([
       {
         type: "text",
-        text: "Create a new bb automation to keep checking CI",
+        text: "Create a new bb schedule to keep checking CI",
         mentions: [],
       },
     ]);
   });
 
-  it("keeps mention ranges correct after expanding an automation command pill", () => {
+  it("keeps mention ranges correct after expanding a schedule command pill", () => {
     const threadResource: PromptMentionResource = {
       kind: "thread",
       threadId: "thr_child",
@@ -170,11 +170,11 @@ describe("prompt draft helpers", () => {
     expect(input).toEqual([
       {
         type: "text",
-        text: "Create a new bb automation to inspect @thread",
+        text: "Create a new bb schedule to inspect @thread",
         mentions: [
           {
-            start: "Create a new bb automation to inspect ".length,
-            end: "Create a new bb automation to inspect @thread".length,
+            start: "Create a new bb schedule to inspect ".length,
+            end: "Create a new bb schedule to inspect @thread".length,
             resource: threadResource,
           },
         ],

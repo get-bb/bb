@@ -22,20 +22,28 @@ export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
 export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
 export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/tools/plugins/browse";
 export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
-export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
-export const TOOLS_AUTOMATION_BROWSE_ROUTE_PATH = "/tools/automations/browse";
-export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
+export const LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
+export const LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH =
+  "/tools/automations/browse";
+export const LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
-export const TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
+export const LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId/edit";
 export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
-export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
-export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
-export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
+export const SCHEDULES_PLUGIN_PANEL_PATH = "schedules";
+export const LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH =
+  "/plugins/automations/automations/*";
+export const SCHEDULES_ROUTE_PATH = "/plugins/automations/schedules";
+export const SCHEDULES_BROWSE_ROUTE_PATH =
+  "/plugins/automations/schedules/browse";
+export const SCHEDULE_DETAIL_ROUTE_PATH =
+  "/plugins/automations/schedules/:projectId/:automationId";
+export const SCHEDULE_EDIT_ROUTE_PATH =
+  "/plugins/automations/schedules/:projectId/:automationId/edit";
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
@@ -158,28 +166,28 @@ export function getPluginDetailRoutePath({
   return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
 }
 
-export function getAutomationsRoutePath(): string {
-  return AUTOMATIONS_ROUTE_PATH;
+export function getSchedulesRoutePath(): string {
+  return SCHEDULES_ROUTE_PATH;
 }
 
-export interface AutomationDetailRoutePathArgs {
+export interface ScheduleDetailRoutePathArgs {
   projectId: string;
   automationId: string;
 }
 
-export function getAutomationDetailRoutePath({
+export function getScheduleDetailRoutePath({
   projectId,
   automationId,
-}: AutomationDetailRoutePathArgs): string {
-  return `${TOOLS_AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
+}: ScheduleDetailRoutePathArgs): string {
+  return `${SCHEDULES_ROUTE_PATH}/${encodeURIComponent(
     projectId,
   )}/${encodeURIComponent(automationId)}`;
 }
 
-export function getAutomationEditRoutePath(
-  args: AutomationDetailRoutePathArgs,
+export function getScheduleEditRoutePath(
+  args: ScheduleDetailRoutePathArgs,
 ): string {
-  return `${getAutomationDetailRoutePath(args)}/edit`;
+  return `${getScheduleDetailRoutePath(args)}/edit`;
 }
 
 export function getProjectSettingsRoutePath(projectId: string): string {
@@ -234,13 +242,18 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATIONS_ROUTE_PATH,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
-  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH,
+  SCHEDULES_ROUTE_PATH,
+  SCHEDULES_BROWSE_ROUTE_PATH,
+  SCHEDULE_DETAIL_ROUTE_PATH,
+  SCHEDULE_EDIT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

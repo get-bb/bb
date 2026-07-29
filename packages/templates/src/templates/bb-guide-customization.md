@@ -64,9 +64,10 @@ follow-up; when disabled, those actions are reversed.
   bb settings version [--force]
   bb settings reload
 
-The `toolsHub` experiment exposes the unified Skills, Plugins, and Automations
-management UI. It does not enable or disable installed skills, automation
-execution, plugin runtimes, CLI commands, or backend APIs.
+The `toolsHub` experiment exposes Extensions for managing skills and plugins.
+Automations stays in the Plugins section beside threads. It does not enable or
+disable installed skills, automation execution, plugin runtimes, CLI commands,
+or backend APIs.
 
 Thread timeline windows are bounded by event count as well as user-message
 count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread

@@ -1,7 +1,7 @@
 export const CREATE_SKILL_PROMPT = "Create a new bb skill that ";
 import type { PromptMentionResource } from "@bb/domain";
 
-export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
+export const CREATE_AUTOMATION_PROMPT = "Create a new bb schedule to ";
 export const SUBMITTED_AUTOMATION_PROMPT_PREFIX =
   CREATE_AUTOMATION_PROMPT.trimEnd();
 

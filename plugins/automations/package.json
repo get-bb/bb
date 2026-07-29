@@ -12,7 +12,7 @@
     "bb": ">=0.0"
   },
   "bb": {
-    "name": "Automations",
+    "name": "Schedules",
     "description": "Schedule recurring and one-shot agent or script work.",
     "branding": {
       "icon": "Clock"

@@ -1,11 +1,12 @@
 ---
 kind: instruction
-title: bb Guide Automations
+title: bb Guide Schedules
 summary: Command reference for scheduled agent and script work.
-intent: Help agents create, edit, inspect, and run automations through the CLI.
+intent: Help agents create, edit, inspect, and run schedules through the CLI.
 ---
-Automations schedule recurring or one-shot work. Agent automations run a prompt
-in a thread; script automations run stored code without model usage.
+Schedules run recurring or one-time work. Agent schedules run a prompt in a
+thread; script schedules run stored code without model usage. The CLI keeps the
+`bb automation` command name for compatibility.
 
   bb automation list --project <id>
   bb automation show <automationId> --project <id>

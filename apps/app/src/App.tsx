@@ -1,5 +1,11 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
@@ -10,12 +16,15 @@ import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
-  AUTOMATION_DETAIL_ROUTE_PATH,
-  AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
+  LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
@@ -26,8 +35,6 @@ import {
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
@@ -35,7 +42,9 @@ import {
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
-  getAutomationDetailRoutePath,
+  getScheduleDetailRoutePath,
+  getScheduleEditRoutePath,
+  getSchedulesRoutePath,
   getSettingsRoutePath,
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
@@ -61,18 +70,53 @@ const ProjectSettingsView = lazy(() =>
 );
 const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
 
-function LegacyAutomationDetailRedirect() {
+export function LegacyAutomationDetailRedirect() {
+  const location = useLocation();
   const { projectId, automationId } = useParams<{
     projectId?: string;
     automationId?: string;
   }>();
 
   if (!projectId || !automationId) {
-    return <Navigate to={AUTOMATIONS_ROUTE_PATH} replace />;
+    return <Navigate to={getSchedulesRoutePath()} replace />;
   }
   return (
     <Navigate
-      to={getAutomationDetailRoutePath({ projectId, automationId })}
+      to={
+        location.pathname.endsWith("/edit")
+          ? getScheduleEditRoutePath({ projectId, automationId })
+          : getScheduleDetailRoutePath({ projectId, automationId })
+      }
+      replace
+    />
+  );
+}
+
+export function LegacyAutomationCollectionRedirect() {
+  const location = useLocation();
+  const browse =
+    location.pathname.endsWith("/browse") ||
+    new URLSearchParams(location.search).get("view") === "browse";
+  return (
+    <Navigate
+      to={
+        browse ? `${getSchedulesRoutePath()}/browse` : getSchedulesRoutePath()
+      }
+      replace
+    />
+  );
+}
+
+export function LegacyAutomationPluginPanelRedirect() {
+  const { "*": subPath } = useParams<{ "*": string }>();
+  const normalized = subPath?.replace(/^\/+/u, "") ?? "";
+  return (
+    <Navigate
+      to={
+        normalized.length > 0
+          ? `${getSchedulesRoutePath()}/${normalized}`
+          : getSchedulesRoutePath()
+      }
       replace
     />
   );
@@ -130,6 +174,34 @@ function AppRoutes() {
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
             element={<Navigate to={getSettingsRoutePath("archived")} replace />}
           />
+          <Route
+            path={LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}
+            element={<LegacyAutomationCollectionRedirect />}
+          />
+          <Route
+            path={LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
+            element={<LegacyAutomationCollectionRedirect />}
+          />
+          <Route
+            path={LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH}
+            element={<LegacyAutomationDetailRedirect />}
+          />
+          <Route
+            path={LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
+            element={<LegacyAutomationDetailRedirect />}
+          />
+          <Route
+            path={LEGACY_AUTOMATIONS_ROUTE_PATH}
+            element={<LegacyAutomationCollectionRedirect />}
+          />
+          <Route
+            path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
+            element={<LegacyAutomationDetailRedirect />}
+          />
+          <Route
+            path={LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH}
+            element={<LegacyAutomationPluginPanelRedirect />}
+          />
           <Route element={<ToolsExperimentGate />}>
             <Route
               path={TOOLS_ROUTE_PATH}
@@ -166,35 +238,9 @@ function AppRoutes() {
               path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
               element={<ToolsView />}
             />
-            <Route path={AUTOMATIONS_ROUTE_PATH} element={<ToolsView />} />
-            <Route
-              path={TOOLS_AUTOMATION_BROWSE_ROUTE_PATH}
-              element={
-                <Navigate
-                  to={`${AUTOMATIONS_ROUTE_PATH}?view=browse`}
-                  replace
-                />
-              }
-            />
-            <Route
-              path={AUTOMATION_DETAIL_ROUTE_PATH}
-              element={<ToolsView />}
-            />
-            <Route
-              path={TOOLS_AUTOMATION_EDIT_ROUTE_PATH}
-              element={<ToolsView />}
-            />
             <Route
               path={LEGACY_SKILLS_ROUTE_PATH}
               element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
-            />
-            <Route
-              path={LEGACY_AUTOMATIONS_ROUTE_PATH}
-              element={<Navigate to={AUTOMATIONS_ROUTE_PATH} replace />}
-            />
-            <Route
-              path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
-              element={<LegacyAutomationDetailRedirect />}
             />
           </Route>
           <Route path="*" element={<SplitWorkspaceRoute />} />

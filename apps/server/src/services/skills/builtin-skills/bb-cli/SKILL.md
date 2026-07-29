@@ -61,8 +61,8 @@ message agents, or inspect projects, providers, and environments.
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
   specific connected machine instead of the primary machine.
-- The default-off `toolsHub` experiment exposes the unified Skills, Plugins,
-  and Automations management UI. Change it with
+- The default-off `toolsHub` experiment exposes the Plugins & Skills
+  management UI. Schedules stay beside threads. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools.
 - Thread timeline windows are capped by event count as well as by user-message

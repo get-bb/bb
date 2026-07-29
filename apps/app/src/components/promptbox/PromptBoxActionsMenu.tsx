@@ -62,7 +62,7 @@ const PROMPT_ACTION_PRESENTATION = {
     icon: "Target",
   },
   automation: {
-    label: "Automation",
+    label: "Schedule",
     icon: "Repeat",
   },
 } as const satisfies Record<

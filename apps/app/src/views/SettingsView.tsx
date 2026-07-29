@@ -954,7 +954,7 @@ export function ExperimentsSettingsSection({
 
         <SettingsWithControl
           label={TOOLS_HUB_EXPERIMENT_LABEL}
-          description="Enable the unified Skills, Plugins, and Automations management hub. This changes the management UI only; installed tools and plugin runtimes keep working while it is off."
+          description="Enable the Plugins & Skills management hub. Schedules stay beside threads, and installed skills and plugin runtimes keep working while it is off."
         >
           <Switch
             checked={toolsHubEnabled}
