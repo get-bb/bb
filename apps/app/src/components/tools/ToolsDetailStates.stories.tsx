@@ -627,7 +627,7 @@ function Automation({
   );
 }
 
-export function AutomationStates() {
+export function ScheduleStates() {
   return (
     <Story
       title="Schedule detail states"
