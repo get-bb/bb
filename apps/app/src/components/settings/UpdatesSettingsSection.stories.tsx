@@ -167,6 +167,7 @@ export function WebAppUpdateAvailable() {
               upgradeCommand: "npx bb-app@latest",
             }}
             desktopInfo={null}
+            isDesktop={false}
             onRelaunchDesktop={null}
             onRetryDesktop={null}
           />
@@ -193,6 +194,7 @@ export function DesktopUpdateReady() {
               updateDownloaded: true,
               version: "0.0.32",
             }}
+            isDesktop
             onRelaunchDesktop={noop}
             onRetryDesktop={noop}
           />
@@ -219,6 +221,7 @@ export function DesktopDownloading() {
               updateDownloaded: false,
               version: "0.0.32",
             }}
+            isDesktop
             onRelaunchDesktop={noop}
             onRetryDesktop={noop}
           />

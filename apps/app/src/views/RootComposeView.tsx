@@ -35,10 +35,10 @@ import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
-  providerCliJobKey,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
+import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
@@ -1489,17 +1489,8 @@ export function RootComposeView() {
     hostId: composeHostId,
     enabled: composeHostId !== null,
   });
-  const refetchProviderCliStatus = providerCliStatus.refetch;
-  const {
-    installLogDialog: providerCliInstallLogDialog,
-    queuedJobKeys,
-    runningJobKey,
-    startInstall,
-  } = useProviderCliInstallRunner({
-    onStatusUpdated: () => {
-      void refetchProviderCliStatus();
-    },
-  });
+  const { queuedJobKeys, runningJobKey, startInstall } =
+    useProviderCliInstallRunner();
   const codexCliStatus = providerCliStatus.data?.codex ?? null;
   const isCodexCliVersionBlocked =
     selectedProviderId === "codex" &&
@@ -3659,7 +3650,6 @@ export function RootComposeView() {
         onClose={handleCloseWindowRequest}
         onToggle={handleToggleSecondaryPanel}
       />
-      {providerCliInstallLogDialog}
       {machineSetupDialog}
       {rootPanelToggle}
       <PluginComposerHostProvider value={pluginComposerHost}>

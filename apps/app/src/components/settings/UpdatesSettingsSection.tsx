@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
@@ -7,11 +7,16 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   hasProviderCliAction,
-  providerCliJobKey,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
+import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
+import {
+  getAppUpdateCheckSnapshot,
+  startAppUpdateCheck,
+  subscribeAppUpdateCheck,
+} from "@/components/settings/app-update-check-store";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   SettingsBadge,
@@ -148,6 +153,7 @@ function ActionCell({ children }: { children?: ReactNode }) {
 export interface BbAppUpdateRowsProps {
   systemVersion: SystemVersionResponse | undefined;
   desktopInfo: BbDesktopInfo | null;
+  isDesktop: boolean;
   onRelaunchDesktop: (() => void) | null;
   onRetryDesktop: (() => void) | null;
 }
@@ -160,9 +166,23 @@ export interface BbAppUpdateRowsProps {
 export function BbAppUpdateRows({
   systemVersion,
   desktopInfo,
+  isDesktop,
   onRelaunchDesktop,
   onRetryDesktop,
 }: BbAppUpdateRowsProps) {
+  if (isDesktop && desktopInfo === null) {
+    return (
+      <UpdatesRow>
+        <NameCell>
+          <span className="truncate font-medium">bb desktop</span>
+        </NameCell>
+        <span />
+        <StateCell tone="subtle">Checking…</StateCell>
+        <ActionCell />
+      </UpdatesRow>
+    );
+  }
+
   if (desktopInfo !== null) {
     const pendingVersion =
       desktopInfo.pendingVersion ?? desktopInfo.latestVersion;
@@ -429,15 +449,14 @@ export function MachineUpdatesRows({
 export function UpdatesSettingsSection() {
   const queryClient = useQueryClient();
   const inventory = useUpdateInventory();
-  const { desktopApi, desktopInfo } = useDesktopUpdateInfo();
+  const { desktopApi, desktopInfo, isDesktop } = useDesktopUpdateInfo();
   const retryHostUpdate = useRetryHostUpdate();
-  const [isChecking, setIsChecking] = useState(false);
-  const { installLogDialog, queuedJobKeys, runningJobKey, startInstall } =
-    useProviderCliInstallRunner({
-      onStatusUpdated: (hostId) => {
-        void invalidateHostProviderCliStatus({ queryClient, hostId });
-      },
-    });
+  const isChecking = useSyncExternalStore(
+    subscribeAppUpdateCheck,
+    getAppUpdateCheckSnapshot,
+  );
+  const { queuedJobKeys, runningJobKey, startInstall } =
+    useProviderCliInstallRunner();
 
   const actionableIssues: {
     hostId: string;
@@ -448,12 +467,14 @@ export function UpdatesSettingsSection() {
       .map((issue) => ({ hostId: machine.host.id, issue })),
   );
 
-  async function handleCheckForUpdates(): Promise<void> {
-    if (isChecking) {
-      return;
-    }
-    setIsChecking(true);
-    try {
+  // Snapshot the hosts at click time: the check runs in a module-level store
+  // so it survives navigating away, and must not read React state afterwards.
+  const connectedHostIds = inventory.machines
+    .filter((machine) => machine.host.status === "connected")
+    .map((machine) => machine.host.id);
+
+  function handleCheckForUpdates(): void {
+    startAppUpdateCheck(async () => {
       if (desktopApi !== null) {
         await desktopApi.checkForUpdates();
       } else {
@@ -461,22 +482,11 @@ export function UpdatesSettingsSection() {
         hydrateSystemVersionCache({ queryClient, version });
       }
       await Promise.all(
-        inventory.machines
-          .filter((machine) => machine.host.status === "connected")
-          .map((machine) =>
-            invalidateHostProviderCliStatus({
-              queryClient,
-              hostId: machine.host.id,
-            }),
-          ),
+        connectedHostIds.map((hostId) =>
+          invalidateHostProviderCliStatus({ queryClient, hostId }),
+        ),
       );
-    } catch (error: unknown) {
-      appToast.error("Update check failed", {
-        description: updateCheckErrorDescription(error),
-      });
-    } finally {
-      setIsChecking(false);
-    }
+    });
   }
 
   return (
@@ -496,9 +506,7 @@ export function UpdatesSettingsSection() {
             <RowButton
               aria-busy={isChecking}
               disabled={isChecking}
-              onClick={() => {
-                void handleCheckForUpdates();
-              }}
+              onClick={handleCheckForUpdates}
             >
               <Icon
                 name={isChecking ? "Spinner" : "RotateCcw"}
@@ -513,6 +521,7 @@ export function UpdatesSettingsSection() {
           <BbAppUpdateRows
             systemVersion={inventory.systemVersion}
             desktopInfo={desktopInfo}
+            isDesktop={isDesktop}
             onRelaunchDesktop={
               desktopApi === null
                 ? null
@@ -591,7 +600,6 @@ export function UpdatesSettingsSection() {
           </UpdatesRowList>
         )}
       </SettingsSection>
-      {installLogDialog}
     </>
   );
 }

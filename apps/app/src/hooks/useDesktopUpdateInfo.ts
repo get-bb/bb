@@ -5,6 +5,14 @@ import { getBbDesktopInfo } from "@/lib/bb-desktop";
 export interface DesktopUpdateInfo {
   desktopApi: BbDesktopApi | null;
   desktopInfo: BbDesktopInfo | null;
+  /**
+   * Whether this is the desktop shell at all. Known on the first render,
+   * unlike `desktopInfo`, which only arrives once the shell answers. Callers
+   * deciding whether bb updates itself must gate on this — gating on
+   * `desktopInfo` would treat the desktop as a web install until then and
+   * surface the npm upgrade path that the desktop never uses.
+   */
+  isDesktop: boolean;
 }
 
 /**
@@ -13,7 +21,9 @@ export interface DesktopUpdateInfo {
  * its info object into React state.
  */
 export function useDesktopUpdateInfo(): DesktopUpdateInfo {
-  const [desktopApi, setDesktopApi] = useState<BbDesktopApi | null>(null);
+  // The preload script installs `window.bbDesktop` before this bundle runs, so
+  // the bridge is readable on the first render; only its info is asynchronous.
+  const [desktopApi] = useState<BbDesktopApi | null>(() => getBbDesktopInfo());
   const [desktopInfo, setDesktopInfo] = useState<BbDesktopInfo | null>(null);
 
   useEffect(() => {
@@ -21,7 +31,6 @@ export function useDesktopUpdateInfo(): DesktopUpdateInfo {
     if (api === null) {
       return;
     }
-    setDesktopApi(api);
 
     let mounted = true;
     void api
@@ -42,5 +51,5 @@ export function useDesktopUpdateInfo(): DesktopUpdateInfo {
     };
   }, []);
 
-  return { desktopApi, desktopInfo };
+  return { desktopApi, desktopInfo, isDesktop: desktopApi !== null };
 }

@@ -40,6 +40,7 @@ import {
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 
@@ -228,6 +229,10 @@ export function App() {
             />
             <Route path="*" element={<AppRoutes />} />
           </Routes>
+          {/* Outside <Routes>: a provider CLI install outlives the page that
+              started it, so its failure toast can be clicked from any route —
+              including auth callback, which renders no app shell. */}
+          <ProviderCliInstallLogDialogHost />
         </RouteNavigationProvider>
       </AppCommandProvider>
     </QuickCreateProjectProvider>

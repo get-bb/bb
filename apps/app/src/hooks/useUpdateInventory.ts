@@ -65,7 +65,7 @@ export function useUpdateInventory(
   const systemVersionQuery = useSystemVersion({ enabled });
   const systemConfigQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
-  const { desktopInfo } = useDesktopUpdateInfo();
+  const { desktopInfo, isDesktop } = useDesktopUpdateInfo();
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const connectedHosts = useMemo(
@@ -117,8 +117,11 @@ export function useUpdateInventory(
   });
 
   const systemVersion = systemVersionQuery.data;
+  // Gate on `isDesktop`, not on `desktopInfo`: the desktop shell answers
+  // `getInfo()` a render or two after mount, and treating that gap as "web"
+  // flashes an npm-upgrade prompt the desktop build never uses.
   const appUpdateAvailable =
-    desktopInfo === null &&
+    !isDesktop &&
     systemVersion !== undefined &&
     !systemVersion.isDevelopment &&
     systemVersion.updateAvailable;

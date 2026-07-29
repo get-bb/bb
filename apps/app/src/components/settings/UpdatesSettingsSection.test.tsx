@@ -16,6 +16,7 @@ import type {
   ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useProviderCliInstallRunner } from "@/components/provider-cli/provider-cli-install";
+import { resetAppUpdateCheckStoreForTests } from "@/components/settings/app-update-check-store";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -66,7 +67,6 @@ vi.mock("@/components/provider-cli/provider-cli-install", async (original) => {
   return {
     ...actual,
     useProviderCliInstallRunner: vi.fn(() => ({
-      installLogDialog: null,
       queuedJobKeys: new Set<string>(),
       runningJobKey: null,
       startInstall: startInstallMock,
@@ -205,6 +205,7 @@ const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
 afterEach(() => {
   cleanup();
+  resetAppUpdateCheckStoreForTests();
   vi.clearAllMocks();
 });
 
@@ -213,6 +214,7 @@ describe("UpdatesSettingsSection", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
+      isDesktop: false,
     });
     const availableVersion = {
       currentVersion: "0.0.5",
@@ -257,6 +259,7 @@ describe("UpdatesSettingsSection", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
       desktopInfo,
+      isDesktop: true,
     });
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
@@ -290,6 +293,7 @@ describe("UpdatesSettingsSection", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: {} as BbDesktopApi,
       desktopInfo,
+      isDesktop: true,
     });
     useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
 
@@ -314,6 +318,7 @@ describe("UpdatesSettingsSection", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
       desktopInfo,
+      isDesktop: true,
     });
     useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
 
@@ -329,6 +334,7 @@ describe("UpdatesSettingsSection", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
+      isDesktop: false,
     });
     const laptop = makeHost({ id: "host_1", name: "laptop" });
     const homelab = makeHost({ id: "host_2", name: "homelab" });

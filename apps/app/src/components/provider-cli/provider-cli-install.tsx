@@ -1,21 +1,17 @@
-import { useCallback, useRef, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type {
   ProviderCliInstallAction,
-  ProviderCliInstallActionKind,
-  ProviderCliInstallEvent,
   ProviderCliKey,
   ProviderCliStatus,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { ProviderCliInstallLogDialog } from "@/components/dialogs/ProviderCliInstallLogDialog";
-import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
-import { appToast } from "@/components/ui/app-toast";
-import { sdk } from "@/lib/sdk";
-
-type ProviderCliInstallCompletedEvent = Extract<
-  ProviderCliInstallEvent,
-  { type: "completed" }
->;
+import {
+  closeProviderCliInstallLog,
+  getProviderCliInstallSnapshot,
+  startProviderCliInstall,
+  subscribeProviderCliInstalls,
+} from "@/components/provider-cli/provider-cli-install-store";
 
 export interface ProviderCliStatusEntry {
   provider: ProviderCliKey;
@@ -34,53 +30,6 @@ export interface ProviderCliIssue {
 export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
-
-type ProviderCliTitlePhase = "failure" | "log";
-type ProviderCliTitleTemplate = (displayName: string) => string;
-
-interface GetProviderCliTitleParams {
-  issue: ProviderCliActionableIssue;
-  phase: ProviderCliTitlePhase;
-}
-
-interface UseProviderCliInstallRunnerArgs {
-  onStatusUpdated?: (hostId: string) => void;
-}
-
-interface ShowProviderCliInstallFailureToastParams {
-  issue: ProviderCliActionableIssue;
-  log: string;
-  message: string;
-  onViewLog: (state: ProviderCliInstallLogDialogState) => void;
-  toastId: string;
-}
-
-export interface ProviderCliInstallJob {
-  hostId: string;
-  issue: ProviderCliActionableIssue;
-}
-
-/** Stable identity for a (machine, provider) install slot. */
-export function providerCliJobKey(
-  hostId: string,
-  provider: ProviderCliKey,
-): string {
-  return `${hostId}:${provider}`;
-}
-
-const PROVIDER_CLI_TITLE_TEMPLATES = {
-  failure: {
-    install: (displayName) => `${displayName} install failed`,
-    update: (displayName) => `${displayName} update failed`,
-  },
-  log: {
-    install: (displayName) => `${displayName} install log`,
-    update: (displayName) => `${displayName} update log`,
-  },
-} satisfies Record<
-  ProviderCliTitlePhase,
-  Record<ProviderCliInstallActionKind, ProviderCliTitleTemplate>
->;
 
 const PROVIDER_CLI_MANAGED_PROVIDERS = [
   "codex",
@@ -172,218 +121,40 @@ export function hasProviderCliAction(
   return issue.action !== null;
 }
 
-function exitDescription(event: ProviderCliInstallCompletedEvent): string {
-  if (event.exitCode !== null) {
-    return `Command exited with code ${event.exitCode}`;
-  }
-  return `Command exited after signal ${event.signal ?? "unknown"}`;
-}
-
-function getProviderCliFailureToastId(job: ProviderCliInstallJob): string {
-  return `provider-cli-install-failure:${providerCliJobKey(job.hostId, job.issue.provider)}`;
-}
-
-function getProviderCliTitle({
-  issue,
-  phase,
-}: GetProviderCliTitleParams): string {
-  return PROVIDER_CLI_TITLE_TEMPLATES[phase][issue.action.kind](
-    issue.status.displayName,
-  );
-}
-
-function showProviderCliInstallFailureToast({
-  issue,
-  log,
-  message,
-  onViewLog,
-  toastId,
-}: ShowProviderCliInstallFailureToastParams): void {
-  const logDialogState: ProviderCliInstallLogDialogState = {
-    displayName: issue.status.displayName,
-    log,
-    message,
-    title: getProviderCliTitle({ issue, phase: "log" }),
-  };
-
-  appToast.error(getProviderCliTitle({ issue, phase: "failure" }), {
-    id: toastId,
-    description: message,
-    action: {
-      label: "View log",
-      onClick: () => onViewLog(logDialogState),
-    },
-  });
-}
-
-export function useProviderCliInstallRunner({
-  onStatusUpdated,
-}: UseProviderCliInstallRunnerArgs) {
-  const queuedInstallsRef = useRef<ProviderCliInstallJob[]>([]);
-  const processNextInstallRef = useRef<() => void>(() => {});
-  const runningJobKeyRef = useRef<string | null>(null);
-  const [queuedJobKeys, setQueuedJobKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
-  const [logDialogState, setLogDialogState] =
-    useState<ProviderCliInstallLogDialogState | null>(null);
-
-  const handleCloseProviderCliInstallLog = useCallback(() => {
-    setLogDialogState(null);
-  }, []);
-
-  const updateQueuedJob = useCallback((jobKey: string, queued: boolean) => {
-    setQueuedJobKeys((previous) => {
-      if (queued === previous.has(jobKey)) {
-        return previous;
-      }
-      const next = new Set(previous);
-      if (queued) {
-        next.add(jobKey);
-      } else {
-        next.delete(jobKey);
-      }
-      return next;
-    });
-  }, []);
-
-  const runInstall = useCallback(
-    (job: ProviderCliInstallJob) => {
-      const { hostId: installHostId, issue } = job;
-      const { action } = issue;
-      const provider = issue.provider;
-      const jobKey = providerCliJobKey(installHostId, provider);
-
-      runningJobKeyRef.current = jobKey;
-      setRunningJobKey(jobKey);
-      const failureToastId = getProviderCliFailureToastId(job);
-      let installLogChunks = [`$ ${action.command}\n`];
-      let completedEvent: ProviderCliInstallCompletedEvent | null = null;
-      let errorMessage: string | null = null;
-
-      void sdk.hosts
-        .installProviderCli({
-          hostId: installHostId,
-          provider,
-          actionKind: action.kind,
-        })
-        .then((events) => {
-          for (const event of events) {
-            if (event.provider !== provider) {
-              continue;
-            }
-            switch (event.type) {
-              case "started":
-                installLogChunks = [`$ ${event.command}\n`];
-                break;
-              case "output":
-                if (event.text.length > 0) {
-                  installLogChunks.push(event.text);
-                }
-                break;
-              case "completed":
-                completedEvent = event;
-                break;
-              case "error":
-                errorMessage = event.message;
-                installLogChunks.push(`\n${event.message}\n`);
-                break;
-            }
-          }
-
-          if (completedEvent?.success) {
-            onStatusUpdated?.(installHostId);
-            return;
-          }
-
-          const failureMessage =
-            errorMessage ??
-            (completedEvent
-              ? exitDescription(completedEvent)
-              : "Command finished without reporting success.");
-          showProviderCliInstallFailureToast({
-            issue,
-            log: installLogChunks.join(""),
-            message: failureMessage,
-            onViewLog: setLogDialogState,
-            toastId: failureToastId,
-          });
-        })
-        .catch((error) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          installLogChunks.push(`\n${message}\n`);
-          showProviderCliInstallFailureToast({
-            issue,
-            log: installLogChunks.join(""),
-            message,
-            onViewLog: setLogDialogState,
-            toastId: failureToastId,
-          });
-        })
-        .finally(() => {
-          if (runningJobKeyRef.current === jobKey) {
-            runningJobKeyRef.current = null;
-            setRunningJobKey(null);
-          }
-          processNextInstallRef.current();
-        });
-    },
-    [onStatusUpdated],
-  );
-
-  const processNextInstall = useCallback(() => {
-    if (runningJobKeyRef.current !== null) {
-      return;
-    }
-    const nextJob = queuedInstallsRef.current.shift();
-    if (nextJob === undefined) {
-      return;
-    }
-    updateQueuedJob(
-      providerCliJobKey(nextJob.hostId, nextJob.issue.provider),
-      false,
-    );
-    runInstall(nextJob);
-  }, [runInstall, updateQueuedJob]);
-
-  processNextInstallRef.current = processNextInstall;
-
-  const startInstall = useCallback(
-    (job: ProviderCliInstallJob) => {
-      const jobKey = providerCliJobKey(job.hostId, job.issue.provider);
-      if (runningJobKeyRef.current === jobKey) {
-        return;
-      }
-      if (
-        queuedInstallsRef.current.some(
-          (queued) =>
-            providerCliJobKey(queued.hostId, queued.issue.provider) === jobKey,
-        )
-      ) {
-        return;
-      }
-      if (runningJobKeyRef.current !== null) {
-        queuedInstallsRef.current.push(job);
-        updateQueuedJob(jobKey, true);
-        return;
-      }
-
-      runInstall(job);
-    },
-    [runInstall, updateQueuedJob],
+/**
+ * Mirror the module-level install store into React. The store — not this hook —
+ * owns the running job and its queue, so an install started from Settings →
+ * Updates keeps running and keeps draining its queue after the user navigates
+ * away and this hook unmounts.
+ */
+export function useProviderCliInstallRunner() {
+  const snapshot = useSyncExternalStore(
+    subscribeProviderCliInstalls,
+    getProviderCliInstallSnapshot,
   );
 
   return {
-    installLogDialog: (
-      <ProviderCliInstallLogDialog
-        state={logDialogState}
-        onClose={handleCloseProviderCliInstallLog}
-      />
-    ),
-    queuedJobKeys,
-    runningJobKey,
-    startInstall,
+    queuedJobKeys: snapshot.queuedJobKeys,
+    runningJobKey: snapshot.runningJobKey,
+    startInstall: startProviderCliInstall,
   };
+}
+
+/**
+ * Renders the install failure log for whichever install failed, wherever the
+ * user happens to be. Mounted once by the app shell because the failing install
+ * may well have outlived the page that started it.
+ */
+export function ProviderCliInstallLogDialogHost() {
+  const snapshot = useSyncExternalStore(
+    subscribeProviderCliInstalls,
+    getProviderCliInstallSnapshot,
+  );
+
+  return (
+    <ProviderCliInstallLogDialog
+      state={snapshot.logDialogState}
+      onClose={closeProviderCliInstallLog}
+    />
+  );
 }

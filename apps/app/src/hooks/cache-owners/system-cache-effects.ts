@@ -36,6 +36,7 @@ import {
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
+import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
   invalidateQueryKeys,
   refetchFailedActiveQueryKeys,
@@ -68,6 +69,10 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
     queryClient,
     queryKeys: getServerReconnectInvalidationQueryKeys(),
   });
+  // A reconnect is how the app learns the server restarted, which is exactly
+  // what a bb self-update does — so re-check the version rather than keep
+  // advertising the update the user just applied.
+  invalidateSystemVersion({ queryClient });
   // The per-file diff patch cache is observer-less: invalidation only marks it
   // stale and never refetches or evicts, so a reconnect must remove it. The
   // diff TOC refetch (invalidated above) then drives the panel to re-request

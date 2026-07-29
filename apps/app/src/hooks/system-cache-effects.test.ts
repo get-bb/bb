@@ -9,6 +9,7 @@ import {
   sidebarNavigationQueryKey,
   systemProvidersQueryKey,
   systemExecutionOptionsQueryKey,
+  systemVersionQueryKey,
   terminalsQueryKey,
   threadConversationOutlineQueryKey,
   threadDefaultExecutionOptionsQueryKey,
@@ -187,6 +188,27 @@ describe("system cache effects", () => {
     expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
       true,
     );
+  });
+
+  // A bb self-update restarts the server, which is what the reconnect signals.
+  // Without this the app would keep advertising the update it just applied
+  // until the tab reloads: the version answer is cached for an hour and never
+  // refetched on focus.
+  it("re-checks the app version after reconnect", () => {
+    const queryClient = createCacheEffectQueryClient();
+    const versionKey = systemVersionQueryKey();
+    queryClient.setQueryData(versionKey, {
+      currentVersion: "0.0.5",
+      latestVersion: "0.0.6",
+      source: "npm",
+      updateAvailable: true,
+      isDevelopment: false,
+      upgradeCommand: "npx bb-app@latest",
+    });
+
+    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+
+    expect(queryClient.getQueryState(versionKey)?.isInvalidated).toBe(true);
   });
 
   it("refetches active thread bundle queries together after reconnect", async () => {
