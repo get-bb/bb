@@ -61,6 +61,7 @@ export const PLUGIN_THEME_CSS = `@theme inline {
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
+  --color-surface-attention: var(--surface-attention);
   --color-surface-selected: var(--surface-selected);
   --color-surface-selected-border: var(--surface-selected-border);
   --color-sidebar: var(--sidebar);
