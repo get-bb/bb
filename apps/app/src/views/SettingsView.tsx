@@ -49,6 +49,7 @@ import { UpdatesSettingsSection } from "@/components/settings/UpdatesSettingsSec
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -1167,6 +1168,7 @@ export function SettingsView() {
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
         />
+        <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <DebugSettingsSection
           enabled={generalSettings.showUnhandledProviderEvents}

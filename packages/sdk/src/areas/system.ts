@@ -10,6 +10,9 @@ import type {
   SystemConfigResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemCliSkillsStatusResponse,
+  SystemInstallCliSkillsRequest,
+  SystemInstallCliSkillsResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -49,6 +52,14 @@ export type SystemAttentionResult = SystemAttentionResponse;
 export type SystemConfigResult = SystemConfigResponse;
 export type SystemExecutionOptionsResult = SystemExecutionOptionsResponse;
 export type SystemReloadConfigResult = SystemConfigReloadResponse;
+export type SystemInstallCliSkillsArgs = SystemInstallCliSkillsRequest;
+export interface SystemCliSkillsStatusArgs {
+  /** Omit for every enrolled machine. */
+  hostIds?: readonly string[];
+  signal?: AbortSignal;
+}
+export type SystemCliSkillsStatusResult = SystemCliSkillsStatusResponse;
+export type SystemInstallCliSkillsResult = SystemInstallCliSkillsResponse;
 export type SystemVoiceTranscriptionResult = SystemVoiceTranscriptionResponse;
 export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
@@ -62,6 +73,18 @@ export interface SystemArea {
   executionOptions(
     args?: SystemExecutionOptionsArgs,
   ): Promise<SystemExecutionOptionsResult>;
+  /**
+   * Copy bb's built-in CLI skills into each named machine's global agent skill
+   * roots (`~/.agents/skills` and `~/.claude/skills`). Machines install
+   * independently; the result reports each machine's outcome.
+   */
+  /** Per-machine install state of bb's built-in CLI skills. */
+  cliSkillsStatus(
+    args?: SystemCliSkillsStatusArgs,
+  ): Promise<SystemCliSkillsStatusResult>;
+  installCliSkills(
+    args: SystemInstallCliSkillsArgs,
+  ): Promise<SystemInstallCliSkillsResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
   transcribeVoice(
     args: SystemVoiceTranscriptionArgs,
@@ -114,6 +137,24 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
           },
           ...signalRequestArgs(input.signal),
         ),
+      );
+    },
+    async cliSkillsStatus(input = {}) {
+      return transport.readJson(
+        transport.api.v1.system["cli-skills"].$get(
+          {
+            query:
+              input.hostIds === undefined
+                ? {}
+                : { hostIds: input.hostIds.join(",") },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async installCliSkills(input) {
+      return transport.readJson(
+        transport.api.v1.system["cli-skills"].install.$post({ json: input }),
       );
     },
     async reloadConfig() {

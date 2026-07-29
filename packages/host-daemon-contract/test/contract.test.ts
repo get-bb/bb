@@ -250,6 +250,20 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     filePath: "/home/user/.bb/skills/review/SKILL.md",
     sha256: "b".repeat(64),
   },
+  "host.global_skills_status": {
+    entries: [
+      {
+        name: "bb-cli",
+        path: "/home/user/.agents/skills/bb-cli",
+        treeHash: "c".repeat(64),
+      },
+    ],
+  },
+  "host.install_global_skills": {
+    installations: [
+      { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
+    ],
+  },
   "host.caffeinate": {
     enabled: true,
     supported: true,
@@ -1009,10 +1023,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Pi now accepts max reasoning from the server. Older daemons use the prior
-  // Pi runtime, so the bump ensures they update before receiving that value.
-  it("uses protocol version 66 for Pi max reasoning", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(66);
+  // `host.install_global_skills` (67) and `host.global_skills_status` (68) are
+  // new commands an older daemon would reject, so each bump forces it to update
+  // before the server can send them.
+  it("uses protocol version 68 for global skill install and status", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(68);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

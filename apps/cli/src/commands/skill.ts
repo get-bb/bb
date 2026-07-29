@@ -5,6 +5,7 @@ import type { RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { resolveMachineId } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
 import {
@@ -27,6 +28,10 @@ interface SkillUpdateOptions extends SkillWorkspaceOptions {
   revision: string;
 }
 
+interface SkillInstallCliSkillsOptions extends JsonOutputOptions {
+  machine: string[];
+}
+
 interface SkillSearchOptions extends JsonOutputOptions {
   page?: string;
   perPage?: string;
@@ -41,6 +46,10 @@ function projectId(
 
 function environmentId(options: SkillWorkspaceOptions): string | null {
   return options.environment ?? null;
+}
+
+function collectMachineTarget(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }
 
 function parseNonnegativeInteger(value: string | undefined, fallback: number) {
@@ -365,6 +374,90 @@ export function registerSkillCommands(
         });
         if (outputJson(options, result)) return;
         console.log(`Installed ${result.filePath}`);
+      }),
+    );
+
+  skill
+    .command("cli-skills-status")
+    .description(
+      "Show whether each machine has bb's built-in CLI skills installed",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine to report on (repeatable, defaults to every machine)",
+      collectMachineTarget,
+      [],
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (options: SkillInstallCliSkillsOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hosts = options.machine.length > 0 ? await sdk.hosts.list() : [];
+        const hostIds =
+          options.machine.length > 0
+            ? options.machine.map((target) => resolveMachineId(hosts, target))
+            : undefined;
+        const result = await sdk.system.cliSkillsStatus(
+          hostIds === undefined ? {} : { hostIds },
+        );
+        if (outputJson(options, result)) return;
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["MACHINE", "STATUS"],
+              colWidths: [32, 16],
+              trimTrailingWhitespace: true,
+            },
+            result.machines.map((machine) => [
+              machine.hostName,
+              machine.status,
+            ]),
+          ),
+        );
+      }),
+    );
+
+  skill
+    .command("install-cli-skills")
+    .description(
+      "Install bb's built-in CLI skills into ~/.agents/skills and ~/.claude/skills on a machine",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine to install onto (repeatable, defaults to every connected machine)",
+      collectMachineTarget,
+      [],
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (options: SkillInstallCliSkillsOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const hosts = await sdk.hosts.list();
+        const hostIds =
+          options.machine.length > 0
+            ? options.machine.map((target) => resolveMachineId(hosts, target))
+            : hosts
+                .filter((host) => host.status === "connected")
+                .map((host) => host.id);
+        if (hostIds.length === 0) {
+          throw new Error("No connected machine to install the skills onto.");
+        }
+        const result = await sdk.system.installCliSkills({ hostIds });
+        if (outputJson(options, result)) return;
+        for (const entry of result.results) {
+          if (!entry.ok) {
+            console.error(`${entry.hostName}: ${entry.errorMessage}`);
+            continue;
+          }
+          for (const installation of entry.installations) {
+            console.log(
+              `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
+            );
+          }
+        }
+        if (result.results.some((entry) => !entry.ok)) {
+          throw new Error("The install failed on at least one machine.");
+        }
       }),
     );
 }

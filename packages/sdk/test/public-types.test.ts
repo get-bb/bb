@@ -326,8 +326,10 @@ type ExpectedStatusKey = "get";
 
 type ExpectedSystemKey =
   | "attention"
+  | "cliSkillsStatus"
   | "config"
   | "executionOptions"
+  | "installCliSkills"
   | "reloadConfig"
   | "transcribeVoice"
   | "updateExperiments"

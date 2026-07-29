@@ -5,6 +5,7 @@ import {
 } from "@bb/agent-providers";
 import { toRecord } from "@bb/core-ui";
 import type {
+  SystemCliSkillsStatusResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemVersionResponse,
@@ -20,6 +21,7 @@ import {
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
+  systemCliSkillsQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
@@ -155,6 +157,20 @@ export function useSystemConfig(options?: QueryOptions) {
     queryFn: ({ signal }) => sdk.system.config({ signal }),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Per-machine install state of bb's built-in CLI skills. Each read asks every
+ * enrolled machine's daemon, so it is fetched on demand (the settings section)
+ * rather than kept fresh in the background.
+ */
+export function useCliSkillsStatus(options?: QueryOptions) {
+  return useQuery<SystemCliSkillsStatusResponse>({
+    queryKey: systemCliSkillsQueryKey(),
+    queryFn: ({ signal }) => sdk.system.cliSkillsStatus({ signal }),
+    enabled: options?.enabled ?? true,
+    staleTime: 30_000,
   });
 }
 
