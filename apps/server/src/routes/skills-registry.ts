@@ -20,12 +20,14 @@ import { installServerRegistrySkill } from "../services/skills/registry-skill-in
 import type { AppDeps } from "../types.js";
 
 export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
-  app.get("/skills-registry", async (context) => {
-    const query = context.req.query("q") ?? "";
-    const page = parsePageParameter(context.req.query("page"));
-    const perPage = parsePerPageParameter(context.req.query("perPage"));
+  /**
+   * skills.sh is a third-party dependency: a timeout or a shape change there
+   * is an upstream outage, not a bug in this server. Map it to 503 so clients
+   * can retry, and log it once rather than surfacing an opaque 500.
+   */
+  async function proxyUpstream<T>(run: () => Promise<T>): Promise<T> {
     try {
-      return context.json(await listRegistrySkills(query, page, perPage));
+      return await run();
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) throw error;
       deps.logger.warn(
@@ -40,6 +42,15 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "skills.sh is unavailable",
       );
     }
+  }
+
+  app.get("/skills-registry", async (context) => {
+    const query = context.req.query("q") ?? "";
+    const page = parsePageParameter(context.req.query("page"));
+    const perPage = parsePerPageParameter(context.req.query("perPage"));
+    return context.json(
+      await proxyUpstream(() => listRegistrySkills(query, page, perPage)),
+    );
   });
 
   app.get("/skills-registry/entry", async (context) => {
@@ -51,7 +62,9 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Expected a registry skill ID",
       );
     }
-    return context.json(await resolveRegistrySkillById(id));
+    return context.json(
+      await proxyUpstream(() => resolveRegistrySkillById(id)),
+    );
   });
 
   app.get("/skills-registry/repository-stars", async (context) => {

@@ -16,6 +16,17 @@ export const REGISTRY_SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 export const REGISTRY_SOURCE_PATTERN = /^(?!-)\S+$/u;
 
+/**
+ * `.` and `..` survive encodeURIComponent, and `new URL` then normalizes them
+ * away — so an unguarded `..` segment walks up the authenticated skills.sh API
+ * path. Reject them wherever a source becomes part of a URL or an argv.
+ */
+export function hasUnsafePathSegment(value: string): boolean {
+  return value
+    .split("/")
+    .some((segment) => segment === "." || segment === "..");
+}
+
 export interface SkillsApiSkill {
   id: string;
   slug: string;
@@ -186,7 +197,12 @@ export function parsePublicDetailSkill(
     /<script type="application\/ld\+json">(?<json>[\s\S]*?)<\/script>/gu,
   );
   for (const match of scripts) {
-    const body: unknown = JSON.parse(match.groups?.json ?? "null");
+    let body: unknown;
+    try {
+      body = JSON.parse(match.groups?.json ?? "null");
+    } catch {
+      continue;
+    }
     if (
       !isRecord(body) ||
       body["@type"] !== "SoftwareApplication" ||
@@ -300,6 +316,7 @@ export function parseRegistrySkillId(id: string): {
     separatorIndex < 1 ||
     source.length > 2_048 ||
     !REGISTRY_SOURCE_PATTERN.test(source) ||
+    hasUnsafePathSegment(source) ||
     !REGISTRY_SKILL_NAME_PATTERN.test(skillId)
   ) {
     throw new ApiError(
@@ -313,8 +330,22 @@ export function parseRegistrySkillId(id: string): {
 
 export function packageRefForSource(source: string): string {
   const githubPrefix = "github.com/";
-  if (source.startsWith(githubPrefix)) return source.slice(githubPrefix.length);
-  return source.includes(".") ? `https://${source}` : source;
+  const ref = source.startsWith(githubPrefix)
+    ? source.slice(githubPrefix.length)
+    : source.includes(".")
+      ? `https://${source}`
+      : source;
+  // The leading-dash guard runs on the whole source, but stripping the
+  // github.com/ prefix can expose one: "github.com/-x/y" yields "-x/y", which
+  // the skills CLI would read as a flag rather than a package ref.
+  if (ref.startsWith("-") || hasUnsafePathSegment(ref)) {
+    throw new ApiError(
+      400,
+      "invalid_registry_source",
+      "Invalid registry source",
+    );
+  }
+  return ref;
 }
 
 export function parsePageParameter(value: string | undefined): number {

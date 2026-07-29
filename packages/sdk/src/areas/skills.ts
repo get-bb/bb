@@ -44,22 +44,31 @@ export interface SkillDeleteArgs extends SkillWorkspaceArgs {
   skillId: string;
 }
 
-export interface RegistrySkillsSearchArgs {
+/**
+ * Registry calls proxy out to skills.sh and GitHub, and the browse grid fans
+ * out one per card. Callers pass their query's AbortSignal so abandoning a
+ * page cancels its requests instead of leaving them in flight.
+ */
+export interface AbortableArgs {
+  signal?: AbortSignal;
+}
+
+export interface RegistrySkillsSearchArgs extends AbortableArgs {
   query?: string;
   page?: number;
   perPage?: number;
 }
 
-export interface RegistrySkillIdArgs {
+export interface RegistrySkillIdArgs extends AbortableArgs {
   registrySkillId: string;
 }
 
-export interface RegistrySkillSourceArgs {
+export interface RegistrySkillSourceArgs extends AbortableArgs {
   source: string;
   skillId: string;
 }
 
-export interface RegistryRepositoryArgs {
+export interface RegistryRepositoryArgs extends AbortableArgs {
   source: string;
 }
 
@@ -112,6 +121,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry/detail?${query.toString()}`,
         registrySkillDetailSchema,
+        { signal: input.signal },
       );
     },
     async get(input) {
@@ -119,6 +129,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry/entry?${query.toString()}`,
         registrySkillSchema,
+        { signal: input.signal },
       );
     },
     async install(input) {
@@ -138,6 +149,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry/repository-stars?${query.toString()}`,
         registryRepositoryStarsSchema,
+        { signal: input.signal },
       );
     },
     async search(input = {}) {
@@ -149,6 +161,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
       return requestParsed(
         `/api/v1/skills-registry?${query.toString()}`,
         registrySkillsPageSchema,
+        { signal: input.signal },
       );
     },
   };

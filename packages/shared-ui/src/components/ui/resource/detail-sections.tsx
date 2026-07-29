@@ -43,9 +43,13 @@ export function ResourceDetailSection({
  */
 
 function section(kind: ResourceDetailSectionKind) {
-  return function ResourceKindSection(props: ResourceDetailSectionProps) {
+  function ResourceKindSection(props: ResourceDetailSectionProps) {
     return <ResourceDetailSection {...props} kind={kind} />;
-  };
+  }
+  // Without this every semantic section reports as "ResourceKindSection" in
+  // DevTools, component stacks, and error-boundary output.
+  ResourceKindSection.displayName = `Resource${kind[0]!.toUpperCase()}${kind.slice(1)}Section`;
+  return ResourceKindSection;
 }
 
 export const ResourceDetailOverviewSection = section("overview");

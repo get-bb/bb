@@ -19,6 +19,7 @@ import {
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { TOOLS_OWNED_COLLECTION_LABEL } from "@/components/tools/tools-navigation";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -308,7 +309,11 @@ export function SkillsOverview({
       id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
       modes={[
-        { id: "library", label: "Library", count: skills.length },
+        {
+          id: "library",
+          label: TOOLS_OWNED_COLLECTION_LABEL.skills,
+          count: skills.length,
+        },
         { id: "browse", label: "Browse" },
       ]}
       activeMode={activeMode}

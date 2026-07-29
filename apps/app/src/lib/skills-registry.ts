@@ -27,34 +27,40 @@ export async function fetchRegistrySkills(args: {
   query: string;
   page: number;
   perPage?: number;
+  signal?: AbortSignal;
 }): Promise<RegistrySkillsPage> {
   return sdk.skills.registry.search({
     query: args.query,
     page: args.page,
     perPage: args.perPage ?? REGISTRY_PAGE_SIZE,
+    signal: args.signal,
   });
 }
 
 export async function fetchRegistrySkillDetail(args: {
   source: string;
   skillId: string;
+  signal?: AbortSignal;
 }): Promise<RegistrySkillDetail> {
   return sdk.skills.registry.detail({
     source: args.source,
     skillId: args.skillId,
+    signal: args.signal,
   });
 }
 
 export async function fetchRegistrySkillEntry(
   id: string,
+  signal?: AbortSignal,
 ): Promise<RegistrySkill> {
-  return sdk.skills.registry.get({ registrySkillId: id });
+  return sdk.skills.registry.get({ registrySkillId: id, signal });
 }
 
 export async function fetchRegistryRepositoryStars(
   source: string,
+  signal?: AbortSignal,
 ): Promise<number> {
-  return (await sdk.skills.registry.repositoryStars({ source })).stars;
+  return (await sdk.skills.registry.repositoryStars({ source, signal })).stars;
 }
 
 export async function installRegistrySkill(args: { skill: RegistrySkill }) {

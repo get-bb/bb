@@ -14,6 +14,7 @@ import {
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 export type ToolsSectionId = "skills" | "plugins" | "automations";
@@ -45,6 +46,17 @@ export const TOOLS_SECTIONS = {
     to: getAutomationsRoutePath(),
   },
 } satisfies Record<ToolsSectionId, ToolsSectionDefinition>;
+
+/**
+ * What each section calls the collection the user already owns. Skills call it
+ * the Library; plugins and automations call it Installed. Breadcrumbs and the
+ * collection tab both read this, so renaming happens in one place.
+ */
+export const TOOLS_OWNED_COLLECTION_LABEL = {
+  skills: "Library",
+  plugins: "Installed",
+  automations: "Installed",
+} as const satisfies Record<ToolsSectionId, string>;
 
 export const TOOLS_NAV_ITEMS = [
   TOOLS_SECTIONS.skills,
@@ -88,7 +100,7 @@ function sectionCrumb(id: ToolsSectionId): ToolsBreadcrumbSegment {
 
 function collectionCrumb(
   id: ToolsSectionId,
-  label: "Browse" | "Installed" | "Library",
+  label: string = TOOLS_OWNED_COLLECTION_LABEL[id],
   to = TOOLS_SECTIONS[id].to,
 ): ToolsBreadcrumbSegment {
   return { label, to };
@@ -109,21 +121,30 @@ const DETAIL_ROUTES = [
   {
     pattern: TOOLS_SKILL_DETAIL_ROUTE_PATH,
     section: "skills",
-    collection: collectionCrumb("skills", "Library"),
+    collection: collectionCrumb("skills"),
+    param: "skillId",
+    fallback: "Skill",
+  },
+  {
+    // The pre-Library route still resolves so a deep link keeps its header and
+    // document title for the redirect window instead of flashing an empty one.
+    pattern: LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
+    section: "skills",
+    collection: collectionCrumb("skills"),
     param: "skillId",
     fallback: "Skill",
   },
   {
     pattern: TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
     section: "plugins",
-    collection: collectionCrumb("plugins", "Installed"),
+    collection: collectionCrumb("plugins"),
     param: "pluginId",
     fallback: "Plugin",
   },
   {
     pattern: TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
     section: "automations",
-    collection: collectionCrumb("automations", "Installed"),
+    collection: collectionCrumb("automations"),
     param: "automationId",
     fallback: "Automation",
   },
@@ -162,7 +183,7 @@ export function resolveToolsBreadcrumbs(
         : TOOLS_SECTIONS.automations.to;
     return [
       sectionCrumb("automations"),
-      collectionCrumb("automations", "Installed"),
+      collectionCrumb("automations"),
       { label: automationLabel, to: automationDetailPath },
       { label: "Edit" },
     ];
@@ -202,7 +223,7 @@ export function resolveToolsBreadcrumbs(
     ) {
       return [
         sectionCrumb(section.id),
-        { label: section.id === "skills" ? "Library" : "Installed" },
+        { label: TOOLS_OWNED_COLLECTION_LABEL[section.id] },
       ];
     }
   }

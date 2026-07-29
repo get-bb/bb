@@ -251,6 +251,37 @@ describe("Plugin detail recipe", () => {
   });
 });
 
+describe("Detail page header slots", () => {
+  it("renders actions, lifecycle control, and overflow menu together", () => {
+    // These used to be mutually exclusive — passing `actions` suppressed the
+    // other two, which silently dropped the registry skill page's overflow
+    // menu. All three now compose; this fails if the suppression returns.
+    const { container } = render(
+      <SkillDetailView
+        title="writing-voice"
+        path="/skills/writing-voice/SKILL.md"
+        files={["/skills/writing-voice/SKILL.md"]}
+        selectedPath="/skills/writing-voice/SKILL.md"
+        onSelectFile={() => {}}
+        contentState={{ kind: "ready", content: "# writing-voice" }}
+        headerActions={<button type="button">Fork</button>}
+        headerControl={{
+          kind: "status",
+          label: "Imported",
+          tooltip: "Discovered in Claude Code",
+        }}
+        overflowMenu={<button type="button">More</button>}
+      />,
+    );
+
+    const header = container.querySelector("h1")?.closest("div")?.parentElement;
+    expect(header).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Fork" })).toBeTruthy();
+    expect(screen.getByText("Imported")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
+  });
+});
+
 describe("Plugin detail route states", () => {
   it("keeps the detail page width while loading and when the plugin is missing", () => {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
