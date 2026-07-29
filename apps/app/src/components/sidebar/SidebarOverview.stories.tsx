@@ -1,5 +1,9 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -413,12 +417,24 @@ function OrganizationSidebar({
     next.set(sidebarOrganizationModeAtom, mode);
     return next;
   });
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+          },
+        },
+      }),
+  );
 
   return (
     <Provider store={store}>
-      <SidebarFrame>
-        <LoadedSidebar hosts={hosts} navigation={navigation} />
-      </SidebarFrame>
+      <QueryClientProvider client={queryClient}>
+        <SidebarFrame>
+          <LoadedSidebar hosts={hosts} navigation={navigation} />
+        </SidebarFrame>
+      </QueryClientProvider>
     </Provider>
   );
 }
@@ -526,73 +542,39 @@ export function Overview() {
   );
 }
 
-export function ByProjectOrganization() {
+export function OrganizationModes() {
   return (
-    <StoryCard labelWidth="120px">
-      <StoryRow label="By project" hint="loose projectless threads">
-        <OrganizationSidebar mode="project" />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function ByProjectOrganizationEmpty() {
-  return (
-    <StoryCard labelWidth="120px">
-      <StoryRow
-        label="No threads"
-        hint="projects and loose-thread empty states"
-      >
+    <StoryCard
+      labelWidth="120px"
+      columns={["Populated", "No threads"]}
+      className="min-w-max items-start"
+    >
+      <StoryRow label="By project">
+        <OrganizationSidebar
+          mode="project"
+          navigation={loadedSidebarNavigation}
+        />
         <OrganizationSidebar
           mode="project"
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function ManualOrganization() {
-  return (
-    <StoryCard labelWidth="120px">
-      <StoryRow label="Manually" hint="threads not filed into a section">
-        <OrganizationSidebar mode="chronological" />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function ManualOrganizationEmpty() {
-  return (
-    <StoryCard labelWidth="120px">
-      <StoryRow label="No threads" hint="no manual sections or loose threads">
+      <StoryRow label="Manually">
+        <OrganizationSidebar
+          mode="chronological"
+          navigation={loadedSidebarNavigation}
+        />
         <OrganizationSidebar
           mode="chronological"
           navigation={emptySidebarNavigation}
         />
       </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function ByMachineOrganization() {
-  return (
-    <StoryCard labelWidth="120px">
-      <StoryRow label="By machine" hint="threads grouped by execution machine">
+      <StoryRow label="By machine">
         <OrganizationSidebar
           mode="machine"
           hosts={machineStoryHosts}
           navigation={machineSidebarNavigation}
         />
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-export function ByMachineOrganizationEmpty() {
-  return (
-    <StoryCard labelWidth="120px">
-      <StoryRow label="No threads" hint="no machine groups">
         <OrganizationSidebar
           mode="machine"
           hosts={machineStoryHosts}
