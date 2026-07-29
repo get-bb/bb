@@ -568,7 +568,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           type="button"
           aria-label={`Open workflow ${run.name} in side panel`}
           onClick={() =>
-            navigate.experimental_openThreadPanel({
+            navigate.openThreadPanel({
               actionId: WORKFLOW_PANEL_ACTION_ID,
               title: run.name,
               params: { runId: run.id },
@@ -785,7 +785,7 @@ function WorkflowPreviewLoaded({
           size="sm"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            navigate.experimental_openThreadPanel({
+            navigate.openThreadPanel({
               actionId: WORKFLOW_PANEL_ACTION_ID,
               title: run.name,
               params: { runId: run.id },

@@ -19,7 +19,7 @@ function NavigationProbe() {
         type="button"
         onClick={() =>
           setAccepted(
-            navigate.experimental_openThreadPanel({
+            navigate.openThreadPanel({
               actionId: "details",
               title: "Run details",
               params: { runId: "run_1" },

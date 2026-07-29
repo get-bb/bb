@@ -22,7 +22,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
-  experimental_ThreadChat: ThreadChat,
+  ThreadChat,
   useComposer,
   useComposerView,
   useRealtime,
@@ -210,7 +210,7 @@ const app = await loadPluginApp(
       path: "chat",
       component: ThreadChatPage,
     });
-    builder.slots.experimental_messageAction({
+    builder.slots.messageAction({
       id: "summarize",
       title: "Summarize",
       icon: "Zap",
@@ -241,7 +241,7 @@ describe("loadPluginApp", () => {
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
         for (const id of ["first", "second"] as const) {
-          builder.experimental_contentScripts.register({
+          builder.contentScripts.register({
             id,
             async mount({ pluginId, generation, signal }) {
               await Promise.resolve();
@@ -289,7 +289,7 @@ describe("loadPluginApp", () => {
     const events: string[] = [];
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
-        builder.experimental_contentScripts.register({
+        builder.contentScripts.register({
           id: "first",
           mount({ signal }) {
             signal.addEventListener("abort", () => events.push("first:abort"), {
@@ -301,7 +301,7 @@ describe("loadPluginApp", () => {
             };
           },
         });
-        builder.experimental_contentScripts.register({
+        builder.contentScripts.register({
           id: "broken",
           async mount() {
             events.push("broken:mount");
@@ -327,7 +327,7 @@ describe("loadPluginApp", () => {
     const cleanup = vi.fn();
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
-        builder.experimental_contentScripts.register({
+        builder.contentScripts.register({
           id: "window-instance",
           mount({ signal }) {
             signals.push(signal);
@@ -355,17 +355,17 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.experimental_contentScripts.register({
+          builder.contentScripts.register({
             id: "bad id",
             mount: () => {},
           });
         }),
       ),
-    ).rejects.toThrow('experimental_contentScripts.register: "id" must match');
+    ).rejects.toThrow('contentScripts.register: "id" must match');
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.experimental_contentScripts.register({
+          builder.contentScripts.register({
             id: "missing",
             mount: undefined as never,
           });
@@ -536,7 +536,7 @@ describe("loadPluginApp", () => {
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.experimental_messageAction({
+          builder.slots.messageAction({
             id: "no-run",
             title: "No run",
             // @ts-expect-error deliberately invalid: run is required
@@ -544,25 +544,23 @@ describe("loadPluginApp", () => {
           });
         }),
       ),
-    ).rejects.toThrow(
-      'slots.experimental_messageAction: "run" must be a function',
-    );
+    ).rejects.toThrow('slots.messageAction: "run" must be a function');
     await expect(
       loadPluginApp(
         definePluginApp((builder) => {
-          builder.slots.experimental_messageAction({
+          builder.slots.messageAction({
             id: "dup",
             title: "One",
             run: () => {},
           });
-          builder.slots.experimental_messageAction({
+          builder.slots.messageAction({
             id: "dup",
             title: "Two",
             run: () => {},
           });
         }),
       ),
-    ).rejects.toThrow('slots.experimental_messageAction: duplicate id "dup"');
+    ).rejects.toThrow('slots.messageAction: duplicate id "dup"');
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", () => {

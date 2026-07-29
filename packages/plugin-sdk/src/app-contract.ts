@@ -206,7 +206,7 @@ export interface PluginThreadPanelActionRegistration {
    * right for document-like content. "flush" gives the component the full
    * tab area (no padding, definite height, no host scrolling) — right for
    * app-like content that manages its own layout, such as
-   * `experimental_ThreadChat`.
+   * `ThreadChat`.
    */
   layout?: "padded" | "flush";
   /**
@@ -319,7 +319,7 @@ export interface PluginMessageActionContext {
   /**
    * Open one of this plugin's `threadPanelAction` components in the current
    * thread's side panel — the registration-callback equivalent of
-   * `useBbNavigate().experimental_openThreadPanel`. Returns true when the host
+   * `useBbNavigate().openThreadPanel`. Returns true when the host
    * accepted (the action id exists and the surface has a panel); false
    * otherwise.
    */
@@ -361,9 +361,7 @@ export interface PluginAppSlots {
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
-  experimental_messageAction(
-    registration: PluginMessageActionRegistration,
-  ): void;
+  messageAction(registration: PluginMessageActionRegistration): void;
 }
 
 export interface PluginAppComposer {
@@ -402,7 +400,7 @@ export interface PluginContentScriptRegistration {
     | Promise<void | PluginContentScriptDisposer>;
 }
 
-/** Experimental lifecycle surface for trusted frontend content scripts. */
+/** Lifecycle surface for trusted frontend content scripts. */
 export interface PluginAppContentScripts {
   register(registration: PluginContentScriptRegistration): void;
 }
@@ -410,7 +408,7 @@ export interface PluginAppContentScripts {
 export interface PluginAppBuilder {
   slots: PluginAppSlots;
   composer: PluginAppComposer;
-  experimental_contentScripts: PluginAppContentScripts;
+  contentScripts: PluginAppContentScripts;
 }
 
 export type PluginAppSetup = (app: PluginAppBuilder) => void;
@@ -751,7 +749,7 @@ export interface BbNavigate {
    * thread surface. Returns false when the surface has no thread side panel or
    * the action is unavailable.
    */
-  experimental_openThreadPanel(options: {
+  openThreadPanel(options: {
     actionId: string;
     title?: string;
     params?: JsonValue;
@@ -797,11 +795,11 @@ export interface PluginSdkApp {
    * with `Markdown`, the only components the SDK ships — everything else
    * stays vendored per §5.5.
    */
-  experimental_ThreadChat: ComponentType<ThreadChatProps>;
+  ThreadChat: ComponentType<ThreadChatProps>;
   /**
    * The host-owned chat-message markdown renderer (see
    * {@link MarkdownProps}).
    */
-  experimental_Markdown: ComponentType<MarkdownProps>;
+  Markdown: ComponentType<MarkdownProps>;
   useComposerView(): ComposerView;
 }

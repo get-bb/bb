@@ -68,7 +68,7 @@ export interface PluginAppBundleSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin branding assets from `bb.branding.experimental_icon` and
+// Plugin branding assets from path-shaped `bb.branding.icon` values and
 // `bb.branding.logo`. Served with the same hash-busting scheme as bundle
 // assets and refreshed on every load like the bundle snapshot.
 // ---------------------------------------------------------------------------

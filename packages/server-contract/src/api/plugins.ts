@@ -182,8 +182,8 @@ export const installedPluginSchema = z.object({
   description: z.string().nullable(),
   name: z.string().nullable(),
   icon: z.string().nullable(),
-  /** Hashed URL for a compact SVG declared via branding.experimental_icon. */
-  experimental_iconUrl: z.string().nullable().default(null),
+  /** Hashed URL when branding.icon declares a plugin-owned compact SVG. */
+  iconUrl: z.string().nullable(),
   status: pluginRuntimeStatusSchema,
   statusDetail: z.string().nullable(),
   handlerStats: pluginHandlerStatsSchema,

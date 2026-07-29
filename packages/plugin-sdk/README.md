@@ -17,7 +17,7 @@ host-rendered `ComposerPlusMenuItem` rows, and `ComposerRichTextSpec` rules.
 Mounted components use `useComposer()` for writes, effects, and input locking,
 and `useComposerView()` for the reactive scope, layout, draft, and run state.
 Any mounted plugin component can use
-`useBbNavigate().experimental_openThreadPanel(...)` to request one of the
+`useBbNavigate().openThreadPanel(...)` to request one of the
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
@@ -29,7 +29,7 @@ controls to actions or the plus menu and larger content to banners.
 
 ## Trusted frontend content scripts
 
-Use `app.experimental_contentScripts.register({ id, mount })` for ordinary
+Use `app.contentScripts.register({ id, mount })` for ordinary
 bundled TypeScript/JavaScript that enhances the bb app shell without rendering
 a React slot. The host supplies `{ pluginId, generation, signal }`, awaits
 mount setup, and owns abort plus exact-once reverse-order disposal across hash

@@ -238,7 +238,7 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
 
   const { task } = state;
   const openInSidePanel = () => {
-    const opened = navigate.experimental_openThreadPanel({
+    const opened = navigate.openThreadPanel({
       actionId: "task",
       title: task.key,
       params: { taskKey: task.key },

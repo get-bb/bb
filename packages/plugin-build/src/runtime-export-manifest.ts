@@ -9,9 +9,9 @@
 
 export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
   "@bb/plugin-sdk/app": [
+    "Markdown",
+    "ThreadChat",
     "definePluginApp",
-    "experimental_Markdown",
-    "experimental_ThreadChat",
     "useBbContext",
     "useBbNavigate",
     "useComposer",

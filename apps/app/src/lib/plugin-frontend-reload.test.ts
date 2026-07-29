@@ -206,7 +206,7 @@ describe("reconcilePluginFrontends", () => {
     deps.importModule.mockImplementation(async (url: string) => {
       const version = url.includes("h=v2") ? "v2" : "v1";
       return contentScriptModule((app) => {
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "enhance",
           mount({ pluginId, generation, signal }) {
             events.push(`${version}:mount:${pluginId}:${generation}`);
@@ -256,7 +256,7 @@ describe("reconcilePluginFrontends", () => {
     let oldSignal: AbortSignal | undefined;
     deps.importModule.mockResolvedValueOnce(
       contentScriptModule((app) => {
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "old",
           mount({ signal }) {
             oldSignal = signal;
@@ -274,7 +274,7 @@ describe("reconcilePluginFrontends", () => {
     deps.importModule.mockResolvedValueOnce(
       contentScriptModule((app) => {
         for (const id of ["first", "second"] as const) {
-          app.experimental_contentScripts.register({
+          app.contentScripts.register({
             id,
             mount() {
               events.push(`${id}:mount`);
@@ -284,14 +284,14 @@ describe("reconcilePluginFrontends", () => {
             },
           });
         }
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "broken",
           mount() {
             events.push("broken:mount");
             throw new Error("candidate exploded");
           },
         });
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "never",
           mount() {
             events.push("never:mount");
@@ -330,7 +330,7 @@ describe("reconcilePluginFrontends", () => {
     const cleanup = vi.fn();
     deps.importModule.mockResolvedValueOnce(
       contentScriptModule((app) => {
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "old",
           mount: () => cleanup,
         });
@@ -361,13 +361,13 @@ describe("reconcilePluginFrontends", () => {
     deps.importModule.mockImplementation(async (url: string) =>
       url.includes("/stuck/")
         ? contentScriptModule((app) => {
-            app.experimental_contentScripts.register({
+            app.contentScripts.register({
               id: "never-settles",
               mount: () => new Promise<void>(() => {}),
             });
           })
         : contentScriptModule((app) => {
-            app.experimental_contentScripts.register({
+            app.contentScripts.register({
               id: "fine",
               mount: () => {},
             });
@@ -397,7 +397,7 @@ describe("reconcilePluginFrontends", () => {
     const events: string[] = [];
     deps.importModule.mockResolvedValue(
       contentScriptModule((app) => {
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "async-work",
           async mount({ signal }) {
             events.push("mount");
@@ -429,7 +429,7 @@ describe("reconcilePluginFrontends", () => {
     const signals: AbortSignal[] = [];
     const cleanup = vi.fn();
     const module = contentScriptModule((app) => {
-      app.experimental_contentScripts.register({
+      app.contentScripts.register({
         id: "per-window",
         mount({ signal }) {
           signals.push(signal);
@@ -467,7 +467,7 @@ describe("reconcilePluginFrontends", () => {
     let resolveMount: ((dispose: () => void) => void) | undefined;
     deps.importModule.mockResolvedValue(
       contentScriptModule((app) => {
-        app.experimental_contentScripts.register({
+        app.contentScripts.register({
           id: "pending",
           mount: () =>
             new Promise<() => void>((resolve) => {

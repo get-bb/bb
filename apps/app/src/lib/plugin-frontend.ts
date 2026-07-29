@@ -284,7 +284,7 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
       status?: unknown;
       logoUrl?: unknown;
       logoDarkUrl?: unknown;
-      experimental_iconUrl?: unknown;
+      iconUrl?: unknown;
       app?: { bundle?: unknown };
     } | null;
     if (typeof typed?.id !== "string") continue;
@@ -292,9 +292,7 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
     const logoDarkUrl =
       typeof typed.logoDarkUrl === "string" ? typed.logoDarkUrl : null;
     const compactIconUrl =
-      typeof typed.experimental_iconUrl === "string"
-        ? typed.experimental_iconUrl
-        : null;
+      typeof typed.iconUrl === "string" ? typed.iconUrl : null;
     const icon = typeof typed.icon === "string" ? typed.icon : null;
     const displayName = typeof typed.name === "string" ? typed.name : null;
     logoUrls.set(typed.id, {

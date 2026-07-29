@@ -80,29 +80,23 @@ describe("plugin manifest", () => {
     },
   );
 
-  it("requires branding with an icon, experimental icon, or light logo", async () => {
-    for (const branding of [
-      undefined,
-      null,
-      {},
-      { icon: "   " },
-      { experimental_icon: "   " },
-    ]) {
+  it("requires branding with an icon or light logo", async () => {
+    for (const branding of [undefined, null, {}, { icon: "   " }]) {
       await writeManifest(undefined, { ...validBb, branding });
       await expect(readPluginManifest(rootDir)).rejects.toThrow(/bb\.branding/);
     }
   });
 
-  it("resolves branding.experimental_icon as a plugin-owned compact SVG", async () => {
+  it("resolves a path-shaped branding.icon as a plugin-owned compact SVG", async () => {
     await mkdir(join(rootDir, "assets"));
     await writeFile(join(rootDir, "assets", "icon.svg"), "<svg/>");
     await writeManifest(undefined, {
       ...validBb,
-      branding: { experimental_icon: "./assets/icon.svg" },
+      branding: { icon: "./assets/icon.svg" },
     });
 
     const manifest = await readPluginManifest(rootDir);
-    expect(manifest.branding.icon).toBeUndefined();
+    expect(manifest.branding.icon).toBe("./assets/icon.svg");
     expect(manifest.branding.compactIconPath).toBe(
       join(rootDir, "assets", "icon.svg"),
     );
@@ -115,37 +109,19 @@ describe("plugin manifest", () => {
     expect(manifest.branding.compactIconPath).toBeUndefined();
   });
 
-  it("requires path-shaped icons to use branding.experimental_icon", async () => {
+  it("requires path-shaped branding.icon to be a readable SVG", async () => {
     await writeManifest(undefined, {
       ...validBb,
-      branding: { icon: "./icon.svg" },
-    });
-    await expect(readPluginManifest(rootDir)).rejects.toThrow(
-      /branding\.experimental_icon/,
-    );
-  });
-
-  it("requires branding.experimental_icon to be a readable relative SVG", async () => {
-    await writeManifest(undefined, {
-      ...validBb,
-      branding: { experimental_icon: "assets/icon.svg" },
-    });
-    await expect(readPluginManifest(rootDir)).rejects.toThrow(
-      /experimental_icon.*beginning with "\.\/"/,
-    );
-
-    await writeManifest(undefined, {
-      ...validBb,
-      branding: { experimental_icon: "./missing.svg" },
+      branding: { icon: "./missing.svg" },
     });
     await expect(readPluginManifest(rootDir)).rejects.toThrow(/missing file/);
 
     await writeManifest(undefined, {
       ...validBb,
-      branding: { experimental_icon: "./icon.png" },
+      branding: { icon: "./icon.png" },
     });
     await expect(readPluginManifest(rootDir)).rejects.toThrow(
-      /branding\.experimental_icon.*\.svg/,
+      /branding\.icon.*\.svg/,
     );
   });
 
@@ -159,12 +135,12 @@ describe("plugin manifest", () => {
     ],
     ["a foreign namespace", '<x:svg xmlns:x="urn:not-svg"/>', /<svg> root/],
   ])(
-    "rejects branding.experimental_icon with %s",
+    "rejects a path-shaped branding.icon with %s",
     async (_case, icon, error) => {
       await writeFile(join(rootDir, "icon.svg"), icon);
       await writeManifest(undefined, {
         ...validBb,
-        branding: { experimental_icon: "./icon.svg" },
+        branding: { icon: "./icon.svg" },
       });
 
       await expect(readPluginManifest(rootDir)).rejects.toThrow(error);

@@ -104,8 +104,8 @@ export type NavigateCall =
       options?: { initialPrompt?: string; focusPrompt?: boolean };
     }
   | {
-      method: "experimental_openThreadPanel";
-      options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0];
+      method: "openThreadPanel";
+      options: Parameters<BbNavigate["openThreadPanel"]>[0];
     };
 
 export interface ComposerLog {
@@ -335,8 +335,8 @@ const testPluginSdkApp = {
       [composer, version],
     );
   },
-  experimental_ThreadChat: TestThreadChat,
-  experimental_Markdown: TestMarkdown,
+  ThreadChat: TestThreadChat,
+  Markdown: TestMarkdown,
   useComposerView(): ComposerView {
     const composer = useSlotEnv("useComposerView").composer;
     const version = useSyncExternalStore(
@@ -582,8 +582,8 @@ function collectRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
-      experimental_messageAction(registration) {
-        const kind = "slots.experimental_messageAction";
+      messageAction(registration) {
+        const kind = "slots.messageAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.messageAction, id);
         if (typeof registration.run !== "function") {
@@ -611,9 +611,9 @@ function collectRegistrations(
         }
       },
     },
-    experimental_contentScripts: {
+    contentScripts: {
       register(registration) {
-        const kind = "experimental_contentScripts.register";
+        const kind = "contentScripts.register";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.contentScript, id);
         if (typeof registration.mount !== "function") {
@@ -767,9 +767,9 @@ export interface RenderSlotOptions<
     scope?: PluginComposerScope;
     attachmentCount?: number;
   };
-  /** Host acceptance for `useBbNavigate().experimental_openThreadPanel`. */
+  /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
-    options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0],
+    options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
 }
 
@@ -935,9 +935,9 @@ export function renderSlot<
         ...(composeOptions !== undefined ? { options: composeOptions } : {}),
       });
     },
-    experimental_openThreadPanel(panelOptions) {
+    openThreadPanel(panelOptions) {
       navigateCalls.push({
-        method: "experimental_openThreadPanel",
+        method: "openThreadPanel",
         options: panelOptions,
       });
       return options.openThreadPanel?.(panelOptions) ?? false;

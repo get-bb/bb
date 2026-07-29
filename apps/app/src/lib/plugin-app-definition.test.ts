@@ -73,7 +73,7 @@ describe("collectPluginAppRegistrations", () => {
         id: "inline-vis",
         component: Component,
       });
-      app.slots.experimental_messageAction({
+      app.slots.messageAction({
         id: "summarize",
         title: "Summarize",
         icon: "Zap",
@@ -84,7 +84,7 @@ describe("collectPluginAppRegistrations", () => {
         scopes: ["thread", "new-thread"],
         actions: [{ id: "improve", component: Component }],
       });
-      app.experimental_contentScripts.register({
+      app.contentScripts.register({
         id: "editor-enhancement",
         mount,
       });
@@ -296,7 +296,7 @@ describe("collectPluginAppRegistrations", () => {
       "content script without a mount function",
       () =>
         definePluginApp((app) => {
-          app.experimental_contentScripts.register({
+          app.contentScripts.register({
             id: "missing-mount",
             mount: undefined as never,
           });
@@ -307,11 +307,11 @@ describe("collectPluginAppRegistrations", () => {
       "duplicate content script id",
       () =>
         definePluginApp((app) => {
-          app.experimental_contentScripts.register({
+          app.contentScripts.register({
             id: "dup",
             mount: () => {},
           });
-          app.experimental_contentScripts.register({
+          app.contentScripts.register({
             id: "dup",
             mount: () => {},
           });
@@ -355,7 +355,7 @@ describe("collectPluginAppRegistrations", () => {
       "message action without a run function",
       () =>
         definePluginApp((app) => {
-          app.slots.experimental_messageAction({
+          app.slots.messageAction({
             id: "no-run",
             title: "No run",
             run: undefined as never,
@@ -367,12 +367,12 @@ describe("collectPluginAppRegistrations", () => {
       "duplicate message action id",
       () =>
         definePluginApp((app) => {
-          app.slots.experimental_messageAction({
+          app.slots.messageAction({
             id: "a",
             title: "A",
             run: () => {},
           });
-          app.slots.experimental_messageAction({
+          app.slots.messageAction({
             id: "a",
             title: "B",
             run: () => {},

@@ -79,7 +79,7 @@ function ThreadPanelVis(_props: PluginMessageDirectiveProps) {
     <button
       type="button"
       onClick={() =>
-        navigate.experimental_openThreadPanel({
+        navigate.openThreadPanel({
           actionId: "document",
           title: "Plan",
           params: { path: "plan.md" },

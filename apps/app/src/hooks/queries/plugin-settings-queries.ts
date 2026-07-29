@@ -90,7 +90,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,
-    compactIconUrl: plugin.experimental_iconUrl,
+    compactIconUrl: plugin.iconUrl,
     logoUrl: plugin.logoUrl,
     logoDarkUrl: plugin.logoDarkUrl,
     hasSettings: plugin.hasSettings,

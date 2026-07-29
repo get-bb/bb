@@ -300,7 +300,7 @@ export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const toolsHubEnabled = useToolsHubExperiment();
   const location = useLocation();
-  const openThreadPanel = usePluginThreadPanelOpenHandler();
+  const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
   const toThread = useCallback(
     (threadId: string) => {
@@ -362,11 +362,9 @@ export function useBbNavigate(): BbNavigate {
     },
     [location.pathname, navigate, pluginId],
   );
-  const experimental_openThreadPanel = useCallback<
-    BbNavigate["experimental_openThreadPanel"]
-  >(
-    (options) => openThreadPanel?.({ ...options, pluginId }) ?? false,
-    [openThreadPanel, pluginId],
+  const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
+    (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
+    [openThreadPanelHandler, pluginId],
   );
   return useMemo(
     () => ({
@@ -374,15 +372,9 @@ export function useBbNavigate(): BbNavigate {
       toProject,
       toPluginPanel,
       toCompose,
-      experimental_openThreadPanel,
+      openThreadPanel,
     }),
-    [
-      toThread,
-      toProject,
-      toPluginPanel,
-      toCompose,
-      experimental_openThreadPanel,
-    ],
+    [toThread, toProject, toPluginPanel, toCompose, openThreadPanel],
   );
 }
 

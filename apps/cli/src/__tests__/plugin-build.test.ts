@@ -298,19 +298,19 @@ describe("buildPluginApp", () => {
     );
   });
 
-  it("validates branding.experimental_icon before building", async () => {
+  it("validates a path-shaped branding.icon before building", async () => {
     await writeFixture();
     const packageJson = JSON.parse(FIXTURE_PACKAGE_JSON) as {
-      bb: { branding: { icon: string; experimental_icon?: string } };
+      bb: { branding: { icon: string } };
     };
-    packageJson.bb.branding.experimental_icon = "./assets/icon.svg";
+    packageJson.bb.branding.icon = "./assets/icon.svg";
     await writeFile(
       join(root, "package.json"),
       JSON.stringify(packageJson, null, 2),
     );
 
     await expect(buildPluginApp(root, TEST_BB_VERSION)).rejects.toThrow(
-      /bb\.branding\.experimental_icon points at a missing file/,
+      /bb\.branding\.icon points at a missing file/,
     );
 
     await mkdir(join(root, "assets"));

@@ -11,9 +11,7 @@ import type { JsonValue as AppJsonValue } from "../app.js";
 type OpenPanelOptions = NonNullable<
   Parameters<PluginThreadPanelActionContext["openPanel"]>[0]
 >;
-type NavigatePanelOptions = Parameters<
-  BbNavigate["experimental_openThreadPanel"]
->[0];
+type NavigatePanelOptions = Parameters<BbNavigate["openThreadPanel"]>[0];
 
 describe("plugin SDK JsonValue contract", () => {
   it("types parameter writes as JsonValue and persisted reads as JsonValue or null", () => {

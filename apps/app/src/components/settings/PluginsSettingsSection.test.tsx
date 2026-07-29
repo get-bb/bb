@@ -213,7 +213,7 @@ function serverPlugin(
     description: null,
     name: null,
     icon: null,
-    experimental_iconUrl: null,
+    iconUrl: null,
     status: "running",
     statusDetail: null,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },

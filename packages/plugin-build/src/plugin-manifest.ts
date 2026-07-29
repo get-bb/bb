@@ -1,6 +1,10 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { pluginPackageJsonSchema, type PluginPackageJson } from "@bb/domain";
+import {
+  isPluginOwnedIconPath,
+  pluginPackageJsonSchema,
+  type PluginPackageJson,
+} from "@bb/domain";
 import { assertValidPluginCompactIconSvg } from "./svg-asset.js";
 
 function resolveManifestPath(
@@ -34,11 +38,13 @@ export async function validatePluginBuildManifest(
     );
   }
   const logo = parsed.data.bb.branding.logo;
+  const compactIcon =
+    parsed.data.bb.branding.icon !== undefined &&
+    isPluginOwnedIconPath(parsed.data.bb.branding.icon)
+      ? parsed.data.bb.branding.icon
+      : undefined;
   for (const [label, entry] of [
-    [
-      "bb.branding.experimental_icon",
-      parsed.data.bb.branding.experimental_icon,
-    ],
+    ["bb.branding.icon", compactIcon],
     ["bb.branding.logo.light", logo?.light],
     ["bb.branding.logo.dark", logo?.dark],
   ] as const) {
@@ -67,7 +73,7 @@ export async function validatePluginBuildManifest(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
     }
-    if (label === "bb.branding.experimental_icon") {
+    if (label === "bb.branding.icon") {
       assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
   }

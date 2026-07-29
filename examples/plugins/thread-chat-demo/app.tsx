@@ -10,11 +10,7 @@
 //   text-selection menu): "Open in demo panel" opens this plugin's own
 //   thread panel anchored on the clicked message via `openPanel`.
 import { useState } from "react";
-import {
-  definePluginApp,
-  experimental_ThreadChat as ThreadChat,
-  useBbContext,
-} from "@bb/plugin-sdk/app";
+import { definePluginApp, ThreadChat, useBbContext } from "@bb/plugin-sdk/app";
 
 function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
   const { threadId: routeThreadId } = useBbContext();
@@ -106,7 +102,7 @@ export default definePluginApp((app) => {
     icon: "MessageSquarePlus",
     component: MessageAnchoredPanel,
   });
-  app.slots.experimental_messageAction({
+  app.slots.messageAction({
     id: "open-in-demo-panel",
     title: "Open in demo panel",
     icon: "MessageSquarePlus",

@@ -131,7 +131,7 @@ describe("plugin app runtime shim", () => {
       /must not contain a doctype declaration/,
     ],
   ])(
-    "rejects %s in branding.experimental_icon before building",
+    "rejects %s in a path-shaped branding.icon before building",
     async (_case, icon, expectedError) => {
       const dir = await mkdtemp(join(tmpdir(), "bb-plugin-icon-"));
       tempDirs.push(dir);
@@ -143,7 +143,7 @@ describe("plugin app runtime shim", () => {
           bb: {
             name: "Icon fixture",
             description: "Verifies compact icon validation.",
-            branding: { experimental_icon: "./icon.svg" },
+            branding: { icon: "./icon.svg" },
             server: "./server.ts",
             app: "./app.ts",
           },

@@ -1338,7 +1338,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             exposedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
             null,
-          experimental_iconUrl:
+          iconUrl:
             (exposedPlugin !== undefined
               ? brandingAssets.get(row.id)?.compactIcon?.url
               : identity?.brandingAssets.compactIcon?.url) ?? null,

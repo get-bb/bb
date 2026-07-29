@@ -1,7 +1,11 @@
 import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
-import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
+import {
+  derivePluginId,
+  isPluginOwnedIconPath,
+  pluginPackageJsonSchema,
+} from "@bb/domain";
 import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
 
 export interface PluginManifest {
@@ -16,9 +20,9 @@ export interface PluginManifest {
   description: string;
   /** Explicit plugin branding, resolved to absolute asset paths. */
   branding: {
-    /** Stable host icon-name hint. */
+    /** Declared icon name or plugin-relative compact SVG path. */
     icon?: string;
-    /** Plugin-owned compact SVG declared through branding.experimental_icon. */
+    /** Resolved plugin-owned compact SVG declared through branding.icon. */
     compactIconPath?: string;
     logo?: {
       lightPath: string;
@@ -174,14 +178,11 @@ export async function readPluginManifest(
               }),
         };
   const brandingCompactIconPath =
-    bb.branding.experimental_icon !== undefined
-      ? resolveBrandingAsset(
-          bb.branding.experimental_icon,
-          "bb.branding.experimental_icon",
-        )
+    bb.branding.icon !== undefined && isPluginOwnedIconPath(bb.branding.icon)
+      ? resolveBrandingAsset(bb.branding.icon, "bb.branding.icon")
       : undefined;
   for (const [label, assetPath] of [
-    ["bb.branding.experimental_icon", brandingCompactIconPath],
+    ["bb.branding.icon", brandingCompactIconPath],
     ["bb.branding.logo.light", brandingLogo?.lightPath],
     ["bb.branding.logo.dark", brandingLogo?.darkPath],
   ] as const) {
@@ -204,7 +205,7 @@ export async function readPluginManifest(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
     }
-    if (label === "bb.branding.experimental_icon") {
+    if (label === "bb.branding.icon") {
       assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
   }

@@ -156,7 +156,7 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
-  experimental_messageAction: PluginMessageActionContext;
+  messageAction: PluginMessageActionContext;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -166,7 +166,7 @@ void _assertAllSlotsListed;
 const APP_BUILDER_FIELDS = [
   "slots",
   "composer",
-  "experimental_contentScripts",
+  "contentScripts",
 ] as const satisfies readonly (keyof PluginAppBuilder)[];
 
 type MissingAppBuilderField = Exclude<
@@ -221,7 +221,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "message",
     "openWorkspaceFile",
   ],
-  experimental_messageAction: [
+  messageAction: [
     "threadId",
     "message",
     "selectedText",
@@ -471,7 +471,6 @@ describe("bb-plugin-authoring skill", () => {
     expect(skill).toContain("no root logo auto-detection");
     expect(skill).toContain("currentColor");
     expect(skill).toContain("branding.icon");
-    expect(skill).toContain("branding.experimental_icon");
     expect(skill).toContain("./assets/icon.svg");
     expect(skill).toContain("CSS mask");
     expect(skill).toContain("canonical BB icon name");

@@ -28,7 +28,6 @@ async function writeLogoPluginFixture(
     logoDark?: string;
     pluginName?: string;
     brandingIcon?: string | null;
-    experimentalBrandingIcon?: string;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -41,13 +40,9 @@ async function writeLogoPluginFixture(
         name: options.pluginName ?? "Logo fixture",
         description: "Plugin branding fixture.",
         branding: {
-          ...(options.brandingIcon === null ||
-          options.experimentalBrandingIcon !== undefined
+          ...(options.brandingIcon === null
             ? {}
             : { icon: options.brandingIcon ?? "Zap" }),
-          ...(options.experimentalBrandingIcon === undefined
-            ? {}
-            : { experimental_icon: options.experimentalBrandingIcon }),
           ...(options.logoLight === undefined && options.logoDark === undefined
             ? {}
             : {
@@ -86,24 +81,22 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     await harness.cleanup();
   });
 
-  it("serves branding.experimental_icon as a hashed compact SVG asset", async () => {
+  it("serves a path-shaped branding.icon as a hashed compact SVG asset", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-mark");
     await writeLogoPluginFixture(rootDir, {
       name: "bb-plugin-mark",
-      experimentalBrandingIcon: "./assets/icon.svg",
+      brandingIcon: "./assets/icon.svg",
       files: { "assets/icon.svg": SVG_LOGO },
     });
 
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
-    expect(entry.icon).toBeNull();
-    expect(entry.experimental_iconUrl).toMatch(
+    expect(entry.icon).toBe("./assets/icon.svg");
+    expect(entry.iconUrl).toMatch(
       /^\/api\/v1\/plugins\/mark\/assets\/icon\?h=[0-9a-f]{16}$/,
     );
 
-    const icon = await harness.app.request(
-      `${BASE}${entry.experimental_iconUrl}`,
-    );
+    const icon = await harness.app.request(`${BASE}${entry.iconUrl}`);
     expect(icon.status).toBe(200);
     expect(icon.headers.get("content-type")).toBe("image/svg+xml");
     expect(icon.headers.get("cache-control")).toBe(
@@ -112,9 +105,9 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expect(await icon.text()).toBe(SVG_LOGO);
 
     const disabled = await harness.pluginService.setEnabled("mark", false);
-    expect(disabled?.experimental_iconUrl).toBe(entry.experimental_iconUrl);
+    expect(disabled?.iconUrl).toBe(entry.iconUrl);
     const disabledIcon = await harness.app.request(
-      `${BASE}${disabled?.experimental_iconUrl}`,
+      `${BASE}${disabled?.iconUrl}`,
     );
     expect(disabledIcon.status).toBe(200);
   });
@@ -278,7 +271,7 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.name).toBe("Identity Demo");
     expect(entry.icon).toBe("Brain");
-    expect(entry.experimental_iconUrl).toBeNull();
+    expect(entry.iconUrl).toBeNull();
 
     const disabled = await harness.pluginService.setEnabled("ident", false);
     expect(disabled?.enabled).toBe(false);

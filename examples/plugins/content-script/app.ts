@@ -5,7 +5,7 @@ const EDITABLE_SELECTOR = 'input, textarea, [contenteditable="true"]';
 const ACTIVE_CLASS = "content-script-example-active";
 
 export default definePluginApp((app) => {
-  app.experimental_contentScripts.register({
+  app.contentScripts.register({
     id: "editable-focus-ring",
     mount({ signal }) {
       const marked = new Set<HTMLElement>();

@@ -89,7 +89,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
-    experimental_messageAction: new Set<string>(),
+    messageAction: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -240,10 +240,10 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
-      experimental_messageAction(registration) {
-        const kind = "slots.experimental_messageAction";
+      messageAction(registration) {
+        const kind = "slots.messageAction";
         const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.experimental_messageAction, id);
+        requireUniqueId(kind, seenIds.messageAction, id);
         if (typeof registration.run !== "function") {
           throw new Error(`${kind}: "run" must be a function`);
         }
@@ -271,9 +271,9 @@ export function collectPluginAppRegistrations(
         }
       },
     },
-    experimental_contentScripts: {
+    contentScripts: {
       register(registration) {
-        const kind = "experimental_contentScripts.register";
+        const kind = "contentScripts.register";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.contentScript, id);
         if (typeof registration.mount !== "function") {

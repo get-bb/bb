@@ -61,29 +61,27 @@ The manifest is `package.json`:
 - `bb.name` and `bb.description` (required) — non-empty human-facing plugin
   identity. The top-level package `name` remains the package identity and
   source of the plugin id.
-- `bb.branding` (required) — normally declare `bb.branding.icon` as the
-  plugin's canonical BB icon name, such as `Zap`. For an experimental
-  plugin-owned compact glyph, set `bb.branding.experimental_icon` to a
-  plugin-relative SVG path such as `./assets/icon.svg`. BB validates and
-  hash-serves the SVG, then renders it as a CSS mask so its shape inherits the
-  surrounding text color; SVG colors are ignored. BB reuses this icon on roomy
-  surfaces when no logo override is declared. Add `logo.light` only for
+- `bb.branding` (required) — declare `bb.branding.icon` as either the plugin's
+  canonical BB icon name, such as `Zap`, or a plugin-relative compact SVG path
+  such as `./assets/icon.svg`. BB validates and hash-serves path-shaped SVGs,
+  then renders them as CSS masks so their shape inherits the surrounding text
+  color; SVG colors are ignored. BB reuses this icon on roomy surfaces when no
+  logo override is declared. Add `logo.light` only for
   intentionally different rich/full-size identity artwork; optional
   `logo.dark` is preferred in dark mode. Logo paths are explicit
   plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty strings,
   missing/escaping files, unsupported extensions, and a dark logo without a
   light logo fail the manifest. There is no root logo auto-detection. Logo-only
-  manifests remain supported for compatibility, so at least a named icon,
-  experimental icon, or light logo is required. BB uses a declared logo where
-  space permits, such as roomy Settings rows and cards.
+  manifests remain supported for compatibility, so at least an icon or light
+  logo is required. BB uses a declared logo where space permits, such as roomy
+  Settings rows and cards.
   Compact sidebar, menu, action, mention, and panel-title surfaces prefer the
   plugin-owned icon asset, then a named manifest icon, then a contribution's
   local `icon` hint, then Zap. Branding changes are picked up on
   `bb plugin reload`. Named inline icons use `currentColor`; compact SVG assets
   should contain only the intended transparent glyph shape. Do not duplicate
-  the same artwork across `icon`, `experimental_icon`, and `logo`; reserve
-  logos for intentionally different branded artwork and provide a dark variant
-  when needed.
+  the same artwork across `icon` and `logo`; reserve logos for intentionally
+  different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
   (currently `0.4.1`; the scaffold writes `"^0.4.1"`). Absent means a legacy
@@ -727,7 +725,7 @@ import { Button } from "@/components/ui/button"; // vendored source YOU own
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default definePluginApp((app) => {
-  app.experimental_contentScripts.register({
+  app.contentScripts.register({
     id: "editor-enhancement",
     mount({ pluginId, generation, signal }) {
       const onKeyDown = (event: KeyboardEvent) => {
@@ -806,7 +804,7 @@ export default definePluginApp((app) => {
 
 ### Trusted frontend content scripts
 
-`app.experimental_contentScripts.register({ id, mount })` runs ordinary
+`app.contentScripts.register({ id, mount })` runs ordinary
 bundled JavaScript/TypeScript in the bb app shell without a React slot. It is
 full-trust, same-origin page code — **not a security sandbox**. It can access
 the app DOM and any authenticated client state available to ordinary page
@@ -900,7 +898,7 @@ Slot props contracts (versioned, additive-only):
   in the panel's scroll container with standard padding — right for
   document-like content; `"flush"` gives it the full tab area (no padding,
   definite height, no host scrolling) — right for app-like content that
-  owns its layout, such as `experimental_ThreadChat`.
+  owns its layout, such as `ThreadChat`.
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger
   content to `banners`, and legacy `{ projectId, threadId }` prop reads to
@@ -951,7 +949,7 @@ openWorkspaceFile }` — register a leaf
   surface has no workspace viewer, and it returns whether the host accepted
   the path. To open one of the same plugin's registered `threadPanelAction`
   components, call
-  `useBbNavigate().experimental_openThreadPanel({ actionId, title?, params? })`.
+  `useBbNavigate().openThreadPanel({ actionId, title?, params? })`.
   `params` is typed as `JsonValue`; use normal plugin navigation as the
   fallback when it returns false.
   **Host behavior / fallbacks:** only assistant and
@@ -966,7 +964,7 @@ openWorkspaceFile }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
-- `experimental_messageAction` → an action on chat messages: an icon button in the
+- `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, run }`. Activating it calls
@@ -978,13 +976,13 @@ openWorkspaceFile }` — register a leaf
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
   registered `threadPanelAction` components in the current thread's side
   panel — same semantics and boolean return as
-  `useBbNavigate().experimental_openThreadPanel`. Errors from `run` (sync or
+  `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
 
 Host components:
 
-- `experimental_ThreadChat` — bb's complete chat surface for an existing thread, rendered
+- `ThreadChat` — bb's complete chat surface for an existing thread, rendered
   wherever plugin React runs (nav panels, thread-panel tabs, homepage and
   settings sections). This is the deliberate exception to the
   no-host-components rule: a stable product capability, not a UI kit. Props:
@@ -1013,7 +1011,7 @@ className?, leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
-- `experimental_Markdown` — bb's chat-message markdown renderer (same typography,
+- `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews
   message content (e.g. a reply header) so it reads like the rest of the
@@ -1035,9 +1033,9 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-experimental_openThreadPanel({ actionId, title?, params? }) }`.
+openThreadPanel({ actionId, title?, params? }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it. The experimental panel
+  composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
   in the current thread surface and returns whether the host accepted it; it
   returns false on surfaces without a thread side panel.
@@ -1268,7 +1266,7 @@ const slot = renderSlot(
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
-await slot.behavior.experimental_setComposerScope(
+await slot.behavior.setComposerScope(
   { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
   "queued draft",
 );

@@ -59,7 +59,7 @@ export interface MarkdownMessageDirectives {
 }
 
 export type MarkdownMessageDirectiveOpenThreadPanel = (
-  options: Parameters<BbNavigate["experimental_openThreadPanel"]>[0] & {
+  options: Parameters<BbNavigate["openThreadPanel"]>[0] & {
     pluginId: string;
   },
 ) => boolean;

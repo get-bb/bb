@@ -255,7 +255,7 @@ interface PluginThreadPanelActionRegistration {
      * right for document-like content. "flush" gives the component the full
      * tab area (no padding, definite height, no host scrolling) — right for
      * app-like content that manages its own layout, such as
-     * `experimental_ThreadChat`.
+     * `ThreadChat`.
      */
     layout?: "padded" | "flush";
     /**
@@ -360,7 +360,7 @@ interface PluginMessageActionContext {
     /**
      * Open one of this plugin's `threadPanelAction` components in the current
      * thread's side panel — the registration-callback equivalent of
-     * `useBbNavigate().experimental_openThreadPanel`. Returns true when the host
+     * `useBbNavigate().openThreadPanel`. Returns true when the host
      * accepted (the action id exists and the surface has a panel); false
      * otherwise.
      */
@@ -394,7 +394,7 @@ interface PluginAppSlots {
     sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
-    experimental_messageAction(registration: PluginMessageActionRegistration): void;
+    messageAction(registration: PluginMessageActionRegistration): void;
 }
 interface PluginAppComposer {
     customize(registration: ComposerCustomization): void;
@@ -423,14 +423,14 @@ interface PluginContentScriptRegistration {
      */
     mount(context: PluginContentScriptContext): void | PluginContentScriptDisposer | Promise<void | PluginContentScriptDisposer>;
 }
-/** Experimental lifecycle surface for trusted frontend content scripts. */
+/** Lifecycle surface for trusted frontend content scripts. */
 interface PluginAppContentScripts {
     register(registration: PluginContentScriptRegistration): void;
 }
 interface PluginAppBuilder {
     slots: PluginAppSlots;
     composer: PluginAppComposer;
-    experimental_contentScripts: PluginAppContentScripts;
+    contentScripts: PluginAppContentScripts;
 }
 type PluginAppSetup = (app: PluginAppBuilder) => void;
 /**
@@ -750,7 +750,7 @@ interface BbNavigate {
      * thread surface. Returns false when the surface has no thread side panel or
      * the action is unavailable.
      */
-    experimental_openThreadPanel(options: {
+    openThreadPanel(options: {
         actionId: string;
         title?: string;
         params?: JsonValue;
@@ -781,18 +781,18 @@ interface PluginSdkApp {
      * with `Markdown`, the only components the SDK ships — everything else
      * stays vendored per §5.5.
      */
-    experimental_ThreadChat: ComponentType<ThreadChatProps>;
+    ThreadChat: ComponentType<ThreadChatProps>;
     /**
      * The host-owned chat-message markdown renderer (see
      * {@link MarkdownProps}).
      */
-    experimental_Markdown: ComponentType<MarkdownProps>;
+    Markdown: ComponentType<MarkdownProps>;
     useComposerView(): ComposerView;
 }
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
-declare const experimental_ThreadChat: react.ComponentType<ThreadChatProps>;
-declare const experimental_Markdown: react.ComponentType<MarkdownProps>;
+declare const ThreadChat: react.ComponentType<ThreadChatProps>;
+declare const Markdown: react.ComponentType<MarkdownProps>;
 declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useRealtimeConnectionState: () => PluginRealtimeConnectionState;
@@ -802,5 +802,5 @@ declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 declare const useComposerView: () => ComposerView;
 
-export { definePluginApp, experimental_Markdown, experimental_ThreadChat, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export { Markdown, ThreadChat, definePluginApp, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
 export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

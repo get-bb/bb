@@ -703,7 +703,7 @@ function DocsDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
       subPath: `${document.vaultId}/${document.path}`,
     });
   const openPreview = () => {
-    const opened = navigate.experimental_openThreadPanel({
+    const opened = navigate.openThreadPanel({
       actionId: "document",
       title: document.title,
       params: {
