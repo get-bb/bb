@@ -241,9 +241,10 @@ export function SkillsLibrary() {
         ? describedSkill
         : { ...describedSkill, stars: value };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- query data is
-    // compared by the serialized keys above; the arrays themselves are new
-    // objects on every render.
+    // useQueries returns a new array on every render, so depending on it would
+    // defeat this memo entirely. The serialized data keys below change exactly
+    // when any query's data changes, which is the dependency that matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     registryQuery.data?.skills,
     registryDescriptionSkills,
