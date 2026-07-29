@@ -562,6 +562,22 @@ export function BottomAnchoredScrollBody({
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
 
+    if (
+      pendingPrependAnchorRef.current !== null &&
+      hasRecentUserScrollIntent()
+    ) {
+      // Native scroll anchoring can temporarily move a user-scrolled viewport
+      // to the current maximum while prepended rows mount. That is not a user
+      // request to resume following the bottom. Keep sticky-bottom disabled
+      // until the captured prepend anchor is applied; otherwise the
+      // ResizeObserver races the layout effect and yanks the viewport down.
+      userDetachedFromBottomRef.current = true;
+      shouldStickToBottomRef.current = false;
+      setIsAtBottom(false);
+      cancelQueuedRestore();
+      return;
+    }
+
     if (isScrolledNearBottom(scrollArea)) {
       userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;

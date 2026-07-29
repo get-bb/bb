@@ -95,7 +95,17 @@ function requireHTMLElement(element: Element | null) {
 interface RenderArgs {
   threadId: string;
   rowIds: string[];
+  showCapturePrependAnchorControl?: boolean;
   showScrollToBottomControl?: boolean;
+}
+
+function CapturePrependAnchorControl() {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (
+    <button type="button" onClick={() => bottomAnchor?.captureScrollAnchor()}>
+      Capture prepend anchor
+    </button>
+  );
 }
 
 function ScrollToBottomControl() {
@@ -110,6 +120,7 @@ function ScrollToBottomControl() {
 function renderTimeline({
   threadId,
   rowIds,
+  showCapturePrependAnchorControl = false,
   showScrollToBottomControl = false,
 }: RenderArgs) {
   const view = render(
@@ -119,6 +130,9 @@ function renderTimeline({
       scrollAreaClassName={SCROLL_AREA_CLASS}
       scrollAnchorThreadId={threadId}
     >
+      {showCapturePrependAnchorControl ? (
+        <CapturePrependAnchorControl />
+      ) : null}
       {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
       {rowIds.map((rowId) => (
         <div key={rowId} data-timeline-row-id={rowId}>
@@ -226,6 +240,45 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       offsetWithinRow: 20,
       atBottom: false,
     });
+  });
+
+  it("does not treat a native-anchor jump during prepend as bottom intent", () => {
+    const { getByRole, scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showCapturePrependAnchorControl: true,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 150,
+    });
+
+    fireEvent.wheel(scrollArea, { deltaY: -100 });
+    fireEvent.scroll(scrollArea);
+    fireEvent.click(
+      getByRole("button", { name: "Capture prepend anchor" }),
+    );
+
+    // Chromium's native scroll anchoring can move the scrollport to its
+    // temporary maximum before the explicit prepend compensation runs.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+
+    // More of the prepended content settles. Sticky-bottom must still be off,
+    // or this resize moves scrollTop from 300 to the new maximum (400).
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: scrollArea.scrollTop,
+    });
+    getLatestResizeObserver().trigger();
+
+    expect(scrollArea.scrollTop).toBe(300);
   });
 
   it("restores near the saved row when returning to a thread", () => {

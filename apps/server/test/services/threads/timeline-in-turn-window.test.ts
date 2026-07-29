@@ -724,4 +724,89 @@ describe("in-turn windows and items that only stream", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0]).toContain('"status":"completed"');
   });
+
+  it("keeps an unfinished assistant message whole as its deltas cross the cut", () => {
+    const { db, thread } = setup();
+    const itemId = "assistant-1";
+    const turnId = "turn-1";
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      itemsPerTurn: [100],
+    });
+    const events: EventInput[] = [
+      {
+        threadId: thread.id,
+        sequence: 204,
+        type: "item/started",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: { type: "agentMessage", id: itemId, text: "" },
+          providerThreadId,
+        }),
+      },
+    ];
+    const chunks = Array.from({ length: 200 }, (_, index) => `[${index}]\n`);
+    chunks.forEach((delta, index) => {
+      events.push({
+        threadId: thread.id,
+        sequence: index + 205,
+        type: "item/agentMessage/delta",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          delta,
+          itemId,
+          providerThreadId,
+        }),
+      });
+    });
+    insertEvents(db, noopNotifier, events);
+
+    const budgeted = buildPage(db, thread, 100, null);
+    const assistant = budgeted.response.rows.find(
+      (row) => row.kind === "conversation" && row.role === "assistant",
+    );
+
+    expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
+    expect(assistant?.text).toBe(chunks.join(""));
+    const laterChunks = Array.from(
+      { length: 25 },
+      (_, index) => `[later-${index}]\n`,
+    );
+    insertEvents(
+      db,
+      noopNotifier,
+      laterChunks.map((delta, index) => ({
+        threadId: thread.id,
+        sequence: index + 405,
+        type: "item/agentMessage/delta",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          delta,
+          itemId,
+          providerThreadId,
+        }),
+      })),
+    );
+
+    const refreshed = buildPage(db, thread, 100, null);
+    const refreshedAssistant = refreshed.response.rows.find(
+      (row) => row.kind === "conversation" && row.role === "assistant",
+    );
+    expect(refreshedAssistant?.text).toBe(
+      [...chunks, ...laterChunks].join(""),
+    );
+    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
+    expect(walkAllPages(db, thread, 100).rows).toEqual(
+      unbudgeted.response.rows.map((row) => JSON.stringify(row)),
+    );
+  });
 });

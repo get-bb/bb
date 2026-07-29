@@ -29,6 +29,22 @@ export interface AutoLoadOlderRows {
   loadOlderRows: () => void;
 }
 
+function isSentinelWithinPrefetchRange({
+  scrollElement,
+  sentinel,
+}: {
+  scrollElement: HTMLElement;
+  sentinel: HTMLElement;
+}): boolean {
+  const scrollRect = scrollElement.getBoundingClientRect();
+  const sentinelRect = sentinel.getBoundingClientRect();
+  return (
+    sentinelRect.bottom >=
+      scrollRect.top - AUTO_LOAD_OLDER_ROWS_PREFETCH_MARGIN_PX &&
+    sentinelRect.top <= scrollRect.bottom
+  );
+}
+
 export function useAutoLoadOlderRows({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
@@ -117,12 +133,27 @@ export function useAutoLoadOlderRows({
     ) {
       return;
     }
+    const sentinel = sentinelNodeRef.current;
+    const scrollElement = bottomAnchor?.getScrollElement();
+    if (!sentinel || !scrollElement) {
+      return;
+    }
+    // The observer state can be stale during a prepend. Chromium may move the
+    // scroll position to preserve its native anchor before IntersectionObserver
+    // reports that the sentinel left the prefetch range. Starting another page
+    // from that stale `true` captures the transient scroll position and
+    // overwrites the anchor for the page that just landed.
+    if (!isSentinelWithinPrefetchRange({ scrollElement, sentinel })) {
+      isIntersectingRef.current = false;
+      return;
+    }
     // Re-checked whenever a load settles, not only on an intersection change:
     // a page that did not fill the viewport leaves the sentinel visible, and
     // IntersectionObserver reports changes rather than steady state, so it
     // would not fire again on its own.
     startLoad();
   }, [
+    bottomAnchor,
     intersectionTick,
     isAutoLoadEnabled,
     isLoadingOlderTimelineRows,

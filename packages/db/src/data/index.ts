@@ -324,6 +324,7 @@ export {
   listStoredEventRowsInRange,
   isTimelineCursorSequencePresent,
   listItemEventSpansByItemIds,
+  listStoredBufferedTextDeltaRowsByItemIds,
   listStoredItemLifecycleRowsByItemIds,
   listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,

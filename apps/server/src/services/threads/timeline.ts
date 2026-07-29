@@ -29,6 +29,7 @@ import {
   listStoredEventRowsInRange,
   isTimelineCursorSequencePresent,
   listItemEventSpansByItemIds,
+  listStoredBufferedTextDeltaRowsByItemIds,
   listStoredItemLifecycleRowsByItemIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestGoalEventRowsByThreadIds,
@@ -741,20 +742,51 @@ function ensureInTurnWindowWholeItemRows(
     return rows;
   }
 
+  const completedItemIds = new Set<string>();
+  for (const row of rows) {
+    if (row.type === "item/completed" && row.itemId !== null) {
+      completedItemIds.add(row.itemId);
+    }
+  }
+  const bufferedTextItemIds = new Set<string>();
+  for (const row of rows) {
+    if (
+      row.itemId !== null &&
+      itemIdsStartingBeforeWindow.has(row.itemId) &&
+      !completedItemIds.has(row.itemId) &&
+      (row.itemKind === "agentMessage" ||
+        row.itemKind === "plan" ||
+        row.itemKind === "reasoning")
+    ) {
+      bufferedTextItemIds.add(row.itemId);
+    }
+  }
+
   // This window owns these items, so it needs the lifecycle rows that fell
   // below the cut — without them a finished command renders "pending" and
   // carries neither its command line nor its start time. Only the two lifecycle
-  // types are fetched: the rest of what an item emitted below the cut is the
-  // older page's content, and pulling all of it back would restore exactly the
-  // unbounded read this window exists to avoid.
+  // types are fetched for ordinary items: the rest of what an item emitted
+  // below the cut is the older page's content, and pulling all of it back would
+  // restore exactly the unbounded read this window exists to avoid.
+  //
+  // Unfinished buffered text is the exception. Its deltas are the only current
+  // snapshot of the message, so dropping the prefix would make text disappear
+  // as the event-budget floor advances. Carry that one item's prefix into the
+  // owning page until item/completed supplies the canonical final text.
   const backfillRows = listStoredItemLifecycleRowsByItemIds(db, {
     itemIds: [...itemIdsStartingBeforeWindow],
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
   }).filter((row) => row.sequence < args.sequenceStart);
-  return backfillRows.length === 0
+  const bufferedTextRows = listStoredBufferedTextDeltaRowsByItemIds(db, {
+    beforeSequence: args.sequenceStart,
+    itemIds: [...bufferedTextItemIds],
+    threadId: args.threadId,
+  });
+  const prefixRows = [...backfillRows, ...bufferedTextRows];
+  return prefixRows.length === 0
     ? rows
-    : mergeStoredEventRowsById([...backfillRows, ...rows]);
+    : mergeStoredEventRowsById([...prefixRows, ...rows]);
 }
 
 /**

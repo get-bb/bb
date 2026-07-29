@@ -1285,6 +1285,51 @@ export function listStoredItemLifecycleRowsByItemIds(
     .all();
 }
 
+export interface ListStoredBufferedTextDeltaRowsByItemIdsArgs {
+  beforeSequence: number;
+  itemIds: readonly string[];
+  threadId: string;
+}
+
+/**
+ * Every text delta for the given assistant, plan, or reasoning items.
+ *
+ * Unlike command output, buffered assistant text has no independent snapshot
+ * while its item is still running. A timeline window that starts inside such
+ * an item must carry its earlier deltas forward or every refresh would render
+ * only the moving suffix that remains inside the event budget.
+ */
+export function listStoredBufferedTextDeltaRowsByItemIds(
+  db: DbConnection,
+  args: ListStoredBufferedTextDeltaRowsByItemIdsArgs,
+): StoredEventRow[] {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.itemId, itemIds),
+        lt(events.sequence, args.beforeSequence),
+        inArray(events.type, [
+          "item/agentMessage/delta",
+          "item/plan/delta",
+          "item/reasoning/summaryTextDelta",
+          "item/reasoning/textDelta",
+        ]),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export function listStoredClientTurnRequestIdsInRange(
   db: DbConnection,
   args: ListStoredClientTurnRequestIdsInRangeArgs,

@@ -43,15 +43,34 @@ function emitIntersection(isIntersecting: boolean): void {
   });
 }
 
-function createBottomAnchor(): BottomAnchorContextValue {
+function createBottomAnchor(
+  scrollElement = document.createElement("div"),
+): BottomAnchorContextValue {
   return {
-    getScrollElement: () => null,
+    getScrollElement: () => scrollElement,
     isAtBottom: false,
     scrollToBottom: vi.fn(),
     scrollElementIntoView: vi.fn(),
     scrollElementIntoViewClampedToMaxScroll: vi.fn(),
     captureScrollAnchor: vi.fn(),
   };
+}
+
+function mockElementRect(
+  element: HTMLElement,
+  { bottom, top }: { bottom: number; top: number },
+): void {
+  vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+    bottom,
+    height: bottom - top,
+    left: 0,
+    right: 100,
+    top,
+    width: 100,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  });
 }
 
 function renderAutoLoad(args: {
@@ -76,10 +95,11 @@ function renderAutoLoad(args: {
     { initialProps: { isLoading: false }, wrapper },
   );
   // Mounting the sentinel is what starts observing.
+  const sentinel = document.createElement("div");
   act(() => {
-    result.result.current.sentinelRef(document.createElement("div"));
+    result.result.current.sentinelRef(sentinel);
   });
-  return result;
+  return { ...result, sentinel };
 }
 
 beforeEach(() => {
@@ -145,6 +165,35 @@ describe("useAutoLoadOlderRows", () => {
       rerender({ isLoading: false });
     });
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not recapture from stale intersection state after a prepend moves the sentinel away", async () => {
+    const scrollElement = document.createElement("div");
+    mockElementRect(scrollElement, { top: 0, bottom: 500 });
+    const anchor = createBottomAnchor(scrollElement);
+    const onLoadOlderRows = vi.fn(() => Promise.resolve());
+    const { rerender, sentinel } = renderAutoLoad({
+      anchor,
+      onLoadOlderRows,
+    });
+    mockElementRect(sentinel, { top: 100, bottom: 120 });
+
+    emitIntersection(true);
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rerender({ isLoading: true });
+    });
+    // The prepend moves the sentinel above the prefetch margin before the
+    // observer delivers its corresponding `false` entry.
+    mockElementRect(sentinel, { top: -800, bottom: -780 });
+    await act(async () => {
+      rerender({ isLoading: false });
+    });
+
+    expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
+    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
   });
 
   it("stops auto-loading after a failure instead of retrying in a loop", async () => {
