@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
 import {
@@ -12,6 +12,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
+  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
@@ -24,12 +25,27 @@ export default {
 
 const noop = () => {};
 
+function registrationSet(
+  navPanels: PluginRegistrationSet["navPanels"],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels,
+    threadPanelActions: [],
+    composerCustomizations: [],
+    pendingInteractions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
+
 function StoryAutomationsRegistration() {
   useEffect(() => {
-    setPluginSlotRegistrations(AUTOMATIONS_PLUGIN_ID, {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
+    setPluginSlotRegistrations(
+      AUTOMATIONS_PLUGIN_ID,
+      registrationSet([
         {
           id: AUTOMATIONS_PLUGIN_PANEL_PATH,
           title: "Automations",
@@ -37,24 +53,52 @@ function StoryAutomationsRegistration() {
           path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },
-      ],
-      threadPanelActions: [],
-      composerCustomizations: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-    });
+      ]),
+    );
     return () => removePluginSlotRegistrations(AUTOMATIONS_PLUGIN_ID);
   }, []);
   return null;
 }
 
-export function AppSidebar() {
+function StoryMultiplePluginPageRegistration() {
+  useEffect(() => {
+    setPluginSlotRegistrations(
+      "docs",
+      registrationSet([
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "Explore",
+          path: "docs",
+          component: () => null,
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "tasks",
+      registrationSet([
+        {
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo",
+          path: "tasks",
+          component: () => null,
+        },
+      ]),
+    );
+    return () => {
+      removePluginSlotRegistrations("docs");
+      removePluginSlotRegistrations("tasks");
+    };
+  }, []);
+  return null;
+}
+
+function AppSidebarPreview({ children }: { children: ReactNode }) {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
-        <StoryAutomationsRegistration />
+        {children}
         <main className="m-6 max-w-[320px]">
           <p className="mb-3 text-sm text-muted-foreground">
             Plugin pages share a collapsible section beside thread navigation.
@@ -75,6 +119,23 @@ export function AppSidebar() {
         </main>
       </ThreadActionsProvider>
     </ProjectActionsProvider>
+  );
+}
+
+export function AppSidebar() {
+  return (
+    <AppSidebarPreview>
+      <StoryAutomationsRegistration />
+    </AppSidebarPreview>
+  );
+}
+
+export function AppSidebarMultiplePluginPages() {
+  return (
+    <AppSidebarPreview>
+      <StoryAutomationsRegistration />
+      <StoryMultiplePluginPageRegistration />
+    </AppSidebarPreview>
   );
 }
 
