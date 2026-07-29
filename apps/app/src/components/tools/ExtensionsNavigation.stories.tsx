@@ -63,12 +63,24 @@ function StoryAutomationsRegistration() {
 function StoryMultiplePluginPageRegistration() {
   useEffect(() => {
     setPluginSlotRegistrations(
+      "github",
+      registrationSet([
+        {
+          id: "github",
+          title: "GitHub",
+          icon: "Github",
+          path: "github",
+          component: () => null,
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
       "docs",
       registrationSet([
         {
           id: "docs",
           title: "Docs",
-          icon: "Explore",
+          icon: "FileText",
           path: "docs",
           component: () => null,
         },
@@ -87,6 +99,7 @@ function StoryMultiplePluginPageRegistration() {
       ]),
     );
     return () => {
+      removePluginSlotRegistrations("github");
       removePluginSlotRegistrations("docs");
       removePluginSlotRegistrations("tasks");
     };
