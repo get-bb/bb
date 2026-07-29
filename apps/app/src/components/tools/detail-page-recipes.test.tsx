@@ -169,7 +169,9 @@ describe("Plugin detail recipe", () => {
       ["Thread integrations", "Pull requests"],
       ["Themes", "GitHub Dark"],
     ] as const) {
-      const group = screen.getByText(heading).closest("div");
+      const group = screen
+        .getByText(heading)
+        .closest("[data-plugin-capability-group]");
       expect(group, `no group rendered for ${heading}`).not.toBeNull();
       expect(within(group as HTMLElement).getByText(item)).toBeTruthy();
     }

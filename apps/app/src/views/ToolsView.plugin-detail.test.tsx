@@ -340,9 +340,9 @@ describe("PluginDetail capability inventory", () => {
     const groups = includes?.querySelectorAll("[data-plugin-capability-group]");
     expect(groups?.length).toBe(3);
     for (const group of groups ?? []) {
-      const row = group.closest(".items-start");
-      expect(row?.classList).toContain("px-4");
-      expect(row?.classList).toContain("py-4");
+      expect(group.classList).toContain("overflow-hidden");
+      expect(group.classList).toContain("rounded-md");
+      expect(group.classList).toContain("border");
     }
   });
 });

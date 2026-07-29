@@ -233,25 +233,29 @@ function PluginCapabilityGroup({
   items: readonly PluginCapabilityItem[];
 }) {
   return (
-    <ResourceDetailListItem
-      className="h-full items-start rounded-md border border-border bg-background px-4 py-4"
-      leading={
+    <section
+      data-plugin-capability-group
+      className="overflow-hidden rounded-md border border-border bg-background"
+    >
+      <div className="flex items-start gap-3 px-4 py-3.5">
         <Icon
           name={icon}
           className="mt-0.5 size-4 text-muted-foreground"
           aria-hidden
         />
-      }
-    >
-      <span data-plugin-capability-group className="block font-medium">
-        {label}
-      </span>
-      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-        {description}
-      </span>
-      <ul className="mt-2.5 space-y-2.5">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-foreground">{label}</h3>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      </div>
+      <ul className="divide-y divide-border border-t border-border">
         {items.map((item) => (
-          <li key={item.key} className="min-w-0">
+          <li
+            key={item.key}
+            className="grid min-w-0 gap-1 px-4 py-3 sm:grid-cols-[minmax(11rem,0.75fr)_minmax(0,1.5fr)] sm:items-baseline sm:gap-6"
+          >
             <span
               className={cn(
                 "block break-words text-sm leading-snug text-foreground",
@@ -261,14 +265,16 @@ function PluginCapabilityGroup({
               {item.label}
             </span>
             {item.detail ? (
-              <span className="mt-0.5 block min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
+              <span className="block min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
                 {item.detail}
               </span>
-            ) : null}
+            ) : (
+              <span aria-hidden />
+            )}
           </li>
         ))}
       </ul>
-    </ResourceDetailListItem>
+    </section>
   );
 }
 
@@ -430,7 +436,7 @@ export function PluginIncludes({
       <p className="text-sm leading-relaxed text-muted-foreground">
         What this plugin adds to bb and where you can use it.
       </p>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="space-y-3">
         {populated.map(({ icon, label, description, items }) => (
           <PluginCapabilityGroup
             key={label}

@@ -1,6 +1,13 @@
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SkillProvider } from "@bb/server-contract";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
+import { pluginSourceQueryKey } from "@/hooks/queries/plugin-catalog-queries";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -30,6 +37,40 @@ export default {
 };
 
 const noop = () => {};
+
+function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          refetchOnMount: false,
+          refetchOnReconnect: false,
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
+    for (const pluginId of [
+      "github",
+      "github-app-surfaces",
+      "enterprise-issue-tracker-synchronization",
+    ]) {
+      client.setQueryData(pluginSourceQueryKey(pluginId), {
+        requested: `npm:@bb-plugins/${pluginId}`,
+        resolved: "1.4.0",
+        integrity: null,
+        registry: "npm",
+        engines: { bb: null, bbPluginSdk: null },
+        installedAt: new Date(2026, 6, 8).getTime(),
+        history: [],
+      });
+    }
+    return client;
+  });
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 function Story({
   title,
@@ -448,89 +489,99 @@ function PluginWithAppSurfaces() {
 
 export function PluginDetailStates() {
   return (
-    <Story
-      title="Plugin detail states"
-      description="A plugin page starts with About and Release, then explains what it adds. Settings and runtime Activity follow only when they apply. About, Release, and Includes never disappear."
-    >
-      <State
-        name="Full"
-        note="Includes explains the user-facing capabilities. Activity separately explains background services, scheduled jobs, and their live status."
+    <PluginStoryQueryBoundary>
+      <Story
+        title="Plugin detail states"
+        description="A plugin page starts with About and Release, then explains what it adds. Settings and runtime Activity follow only when they apply. About, Release, and Includes never disappear."
       >
-        <Plugin plugin={FULL_PLUGIN} />
-      </State>
+        <State
+          name="Full"
+          note="Includes explains the user-facing capabilities. Activity separately explains background services, scheduled jobs, and their live status."
+        >
+          <Plugin plugin={FULL_PLUGIN} />
+        </State>
 
-      <State
-        name="Minimal"
-        note="Nothing user-facing is declared, so Includes says so rather than vanishing."
-      >
-        <Plugin plugin={PLUGIN} />
-      </State>
+        <State
+          name="Minimal"
+          note="Nothing user-facing is declared, so Includes says so rather than vanishing."
+        >
+          <Plugin plugin={PLUGIN} />
+        </State>
 
-      <State
-        name="Disabled"
-        note="Manifest-declared skills and themes stay accurate; the live capabilities are deferred honestly."
-      >
-        <Plugin
-          plugin={{
-            ...PLUGIN,
-            enabled: false,
-            status: "disabled",
-            capabilities: STATIC_CAPABILITIES,
-          }}
-        />
-      </State>
+        <State
+          name="Disabled"
+          note="Manifest-declared skills and themes stay accurate; the live capabilities are deferred honestly."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              enabled: false,
+              status: "disabled",
+              capabilities: STATIC_CAPABILITIES,
+            }}
+          />
+        </State>
 
-      <State
-        name="Unhealthy"
-        note="Abnormal runtime health belongs in Activity with a recovery next step, not in a badge on the title."
-      >
-        <Plugin
-          plugin={{
-            ...FULL_PLUGIN,
-            status: "degraded",
-            statusDetail: "Reconnecting to the GitHub API",
-            handlerStats: { count: 12, totalMs: 340, maxMs: 90, errorCount: 3 },
-          }}
-        />
-      </State>
+        <State
+          name="Unhealthy"
+          note="Abnormal runtime health belongs in Activity with a recovery next step, not in a badge on the title."
+        >
+          <Plugin
+            plugin={{
+              ...FULL_PLUGIN,
+              status: "degraded",
+              statusDetail: "Reconnecting to the GitHub API",
+              handlerStats: {
+                count: 12,
+                totalMs: 340,
+                maxMs: 90,
+                errorCount: 3,
+              },
+            }}
+          />
+        </State>
 
-      <State
-        name="App surfaces"
-        note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Includes; the manifest alone cannot name them."
-      >
-        <PluginWithAppSurfaces />
-      </State>
+        <State
+          name="App surfaces"
+          note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Includes; the manifest alone cannot name them."
+        >
+          <PluginWithAppSurfaces />
+        </State>
 
-      <State
-        name="Awkward content"
-        note="Long unbroken names, a wordy description, and every capability group at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
-      >
-        <Plugin plugin={AWKWARD_PLUGIN} />
-      </State>
+        <State
+          name="Awkward content"
+          note="Long unbroken names, a wordy description, and every capability group at once. Real plugins are messier than fixtures; this is where wrapping and truncation break."
+        >
+          <Plugin plugin={AWKWARD_PLUGIN} />
+        </State>
 
-      <State name="Route loading" note="Before the plugin list resolves.">
-        <Plugin plugin={null} isLoading />
-      </State>
+        <State name="Route loading" note="Before the plugin list resolves.">
+          <Plugin plugin={null} isLoading />
+        </State>
 
-      <State name="Route not found" note="No plugin with this id is installed.">
-        <ResourceListState
-          state="empty"
-          message="Plugin not found."
-          layout="detail"
-        />
-      </State>
+        <State
+          name="Route not found"
+          note="No plugin with this id is installed."
+        >
+          <ResourceListState
+            state="empty"
+            message="Plugin not found."
+            layout="detail"
+          />
+        </State>
 
-      <State
-        name="Route failed"
-        note="The list request failed; retry is the only useful action."
-      >
-        <ResourceListState
-          state="error"
-          message="Couldn't load plugin."
-          layout="detail"
-          onRetry={noop}
-        />
-      </State>
-    </Story>
+        <State
+          name="Route failed"
+          note="The list request failed; retry is the only useful action."
+        >
+          <ResourceListState
+            state="error"
+            message="Couldn't load plugin."
+            layout="detail"
+            onRetry={noop}
+          />
+        </State>
+      </Story>
+    </PluginStoryQueryBoundary>
   );
 }
