@@ -175,7 +175,7 @@ export function SkillsLibrary() {
       source,
     }));
   }, [registryQuery.data?.skills]);
-  const registryRepositoryStarQueries = useQueries({
+  const registryRepositoryStars = useQueries({
     queries: registryRepositorySources.map(({ repositoryKey, source }) => ({
       queryKey: ["skills-registry-repository-stars", repositoryKey],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
@@ -185,9 +185,22 @@ export function SkillsLibrary() {
       retry: false,
       // staleTime only protects successes: an errored query has no
       // dataUpdatedAt, so it is permanently stale and the app-wide
-      // refetch-on-focus default re-fires every failed lookup on every focus.
+      // refetch-on-focus default re-fires every failed lookup on every focus,
+      // against a 60-request/hour GitHub budget. This also stops successful
+      // results refreshing on focus, which is fine — star counts and
+      // descriptions move slowly and still refresh on remount.
       refetchOnWindowFocus: false,
     })),
+    // `combine` results are structurally shared, so this Map is referentially
+    // stable across renders. That lets the enrichment memo below list honest
+    // dependencies instead of hashing query data by hand.
+    combine: (results) =>
+      new Map(
+        registryRepositorySources.flatMap(({ repositoryKey }, index) => {
+          const value = results[index]?.data;
+          return value === undefined ? [] : ([[repositoryKey, value]] as const);
+        }),
+      ),
   });
   const registryDescriptionSkills = useMemo(
     () =>
@@ -196,7 +209,7 @@ export function SkillsLibrary() {
       ),
     [registryQuery.data?.skills],
   );
-  const registryDescriptionQueries = useQueries({
+  const registryDescriptions = useQueries({
     queries: registryDescriptionSkills.map((skill) => ({
       queryKey: ["skills-registry-entry", skill.id],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
@@ -206,52 +219,32 @@ export function SkillsLibrary() {
       retry: false,
       refetchOnWindowFocus: false,
     })),
+    combine: (results) =>
+      new Map(
+        registryDescriptionSkills.flatMap((skill, index) => {
+          const entry = results[index]?.data;
+          return entry === undefined ? [] : ([[skill.id, entry]] as const);
+        }),
+      ),
   });
-  // Enrichment allocates a new object per skill, so recomputing it on every
-  // render gives `registrySkills` a fresh identity each time — which defeats
-  // every memo downstream of it and re-scans the page on each keystroke.
-  const registryDescriptionData = registryDescriptionQueries
-    .map((query) => query.data)
-    .join("\u0000");
-  const registryStarData = registryRepositoryStarQueries
-    .map((query) => query.data)
-    .join("\u0000");
-  const registrySkills = useMemo(() => {
-    const descriptions = new Map(
-      registryDescriptionSkills.flatMap((skill, index) => {
-        const entry = registryDescriptionQueries[index]?.data;
-        return entry === undefined ? [] : ([[skill.id, entry]] as const);
+  const registrySkills = useMemo(
+    () =>
+      (registryQuery.data?.skills ?? []).map((skill) => {
+        const entry = registryDescriptions.get(skill.id);
+        const describedSkill =
+          entry === undefined
+            ? skill
+            : { ...skill, topic: entry.topic, summary: entry.summary };
+        if (describedSkill.stars !== null) return describedSkill;
+        const stars = registryRepositoryStars.get(
+          registryRepositoryKey(describedSkill.source),
+        );
+        return stars === undefined
+          ? describedSkill
+          : { ...describedSkill, stars };
       }),
-    );
-    const stars = new Map(
-      registryRepositorySources.flatMap(({ repositoryKey }, index) => {
-        const value = registryRepositoryStarQueries[index]?.data;
-        return value === undefined ? [] : ([[repositoryKey, value]] as const);
-      }),
-    );
-    return (registryQuery.data?.skills ?? []).map((skill) => {
-      const entry = descriptions.get(skill.id);
-      const describedSkill =
-        entry === undefined
-          ? skill
-          : { ...skill, topic: entry.topic, summary: entry.summary };
-      if (describedSkill.stars !== null) return describedSkill;
-      const value = stars.get(registryRepositoryKey(describedSkill.source));
-      return value === undefined
-        ? describedSkill
-        : { ...describedSkill, stars: value };
-    });
-    // useQueries returns a new array on every render, so depending on it would
-    // defeat this memo entirely. The serialized data keys below change exactly
-    // when any query's data changes, which is the dependency that matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    registryQuery.data?.skills,
-    registryDescriptionSkills,
-    registryRepositorySources,
-    registryDescriptionData,
-    registryStarData,
-  ]);
+    [registryQuery.data?.skills, registryDescriptions, registryRepositoryStars],
+  );
   const selectedSkill = useMemo(() => {
     if (routeSkillId === undefined) return null;
     return skills.find((skill) => skill.id === routeSkillId) ?? null;

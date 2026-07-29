@@ -51,6 +51,24 @@ describe("resolveToolsBreadcrumbs", () => {
     ]);
   });
 
+  it("resolves literal browse paths as Browse, not as a resource named browse", () => {
+    // /tools/plugins/:pluginId also matches /tools/plugins/browse, so if the
+    // detail patterns are tested first this reads "Plugins / Installed /
+    // browse" and the document title becomes "browse · Plugins".
+    expect(resolveToolsBreadcrumbs("/tools/plugins/browse")).toEqual([
+      { label: "Plugins", to: "/tools/plugins" },
+      { label: "Browse" },
+    ]);
+    expect(resolveToolsBreadcrumbs("/tools/skills/registry")).toEqual([
+      { label: "Skills", to: "/tools/skills" },
+      { label: "Browse" },
+    ]);
+    expect(resolveToolsBreadcrumbs("/tools/automations/browse")).toEqual([
+      { label: "Automations", to: "/tools/automations" },
+      { label: "Browse" },
+    ]);
+  });
+
   it("makes every detail ancestor clickable and keeps the resource passive", () => {
     expect(
       resolveToolsBreadcrumbs(

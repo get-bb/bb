@@ -699,6 +699,81 @@ describe("public project skills route", () => {
     });
   });
 
+  it("rejects a parent-directory segment before any upstream request", async () => {
+    await withTestHarness(async (harness) => {
+      installServerRegistrySkillMock.mockClear();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            registrySkillId: "github.com/../find-skills",
+          }),
+        },
+      );
+
+      // encodeURIComponent leaves ".." intact and `new URL` then normalizes it,
+      // which would walk an authenticated request to another path on skills.sh.
+      expect(response.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects a dash exposed by stripping the github.com prefix", async () => {
+    await withTestHarness(async (harness) => {
+      installServerRegistrySkillMock.mockClear();
+      // This id passes the leading-dash guard on the whole source; the dash is
+      // only exposed once "github.com/" is stripped to derive the package ref,
+      // which is handed to the skills CLI as a bare argv element.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              registryHtml({
+                source: "github.com/-x",
+                skillId: "find-skills",
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/install",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            registrySkillId: "github.com/-x/find-skills",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(installServerRegistrySkillMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects a parent-directory segment on the detail route", async () => {
+    await withTestHarness(async (harness) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await harness.app.request(
+        "/api/v1/skills-registry/detail?source=github.com%2F..&skillId=x",
+      );
+
+      expect(response.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("maps scope, de-dupes shared bb skills, and sorts the listing", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

@@ -9,6 +9,7 @@ import {
   parsePerPageParameter,
   REGISTRY_SKILL_NAME_PATTERN,
   REGISTRY_SOURCE_PATTERN,
+  hasUnsafePathSegment,
 } from "../services/skills/registry-parse.js";
 import {
   fetchRegistryRepositoryStars,
@@ -101,6 +102,7 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
       source.length === 0 ||
       source.length > 2_048 ||
       !REGISTRY_SOURCE_PATTERN.test(source) ||
+      hasUnsafePathSegment(source) ||
       skillId === undefined ||
       !REGISTRY_SKILL_NAME_PATTERN.test(skillId)
     ) {
@@ -110,7 +112,9 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
         "Expected a valid source and skillId",
       );
     }
-    const detail = await fetchRegistrySkillDetail(source, skillId);
+    const detail = await proxyUpstream(() =>
+      fetchRegistrySkillDetail(source, skillId),
+    );
     if (!hasLoadableSkillContent(detail)) {
       throw new ApiError(
         404,

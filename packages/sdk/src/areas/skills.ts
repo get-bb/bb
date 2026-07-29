@@ -72,7 +72,13 @@ export interface RegistryRepositoryArgs extends AbortableArgs {
   source: string;
 }
 
-export type RegistrySkillInstallArgs = RegistrySkillIdArgs;
+/**
+ * Install is a mutation and deliberately takes no signal: its body is parsed
+ * with a strict schema, so an extra key would throw at runtime.
+ */
+export interface RegistrySkillInstallArgs {
+  registrySkillId: string;
+}
 
 export interface SkillsRegistryArea {
   detail(args: RegistrySkillSourceArgs): Promise<RegistrySkillDetail>;

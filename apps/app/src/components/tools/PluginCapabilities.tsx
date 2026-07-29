@@ -370,7 +370,12 @@ export function PluginIncludes({
   // plugin that is enabled but failed to load, or is still loading, reports
   // none of them, so keying this off `enabled` would tell the user it declares
   // nothing when the truth is that we cannot see yet.
-  const live = plugin.status === "running";
+  // "needs-configuration" is set on a *loaded* plugin, so its tools, slots and
+  // settings are registered and its capabilities do render — it just cannot do
+  // useful work yet. Treating it as not-running would caption a populated list
+  // with "this plugin isn't running".
+  const live =
+    plugin.status === "running" || plugin.status === "needs-configuration";
   const liveCapabilitiesNote = plugin.enabled
     ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
     : "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.";

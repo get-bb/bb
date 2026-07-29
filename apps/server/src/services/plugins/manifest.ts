@@ -1,4 +1,4 @@
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import semver from "semver";
 import { derivePluginId, pluginPackageJsonSchema } from "@bb/domain";
@@ -85,7 +85,11 @@ async function readSkillNames(rootPaths: string[]): Promise<string[]> {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       try {
-        await stat(join(rootPath, entry.name, "SKILL.md"));
+        // lstat, not stat: a symlinked SKILL.md is rejected by the skill
+        // loader, so counting it here would advertise a skill the agent never
+        // loads.
+        const skillFile = await lstat(join(rootPath, entry.name, "SKILL.md"));
+        if (!skillFile.isFile()) continue;
       } catch {
         continue;
       }

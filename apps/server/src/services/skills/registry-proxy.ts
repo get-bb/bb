@@ -16,6 +16,7 @@ import {
   parsePublicSkillMarkdown,
   parseRegistryDetailFiles,
   parseRegistrySkillId,
+  hasUnsafePathSegment,
   REGISTRY_DETAIL_FILE_SIZE_LIMIT,
   registrySkillUrl,
   SKILLS_BASE_URL,
@@ -100,6 +101,16 @@ async function fetchAuthenticatedRegistryDetail(
 ): Promise<RegistrySkillDetail | null> {
   const token = process.env.VERCEL_OIDC_TOKEN;
   if (!token) return null;
+  // Guarded here rather than only at the route: this builds an authenticated
+  // URL, and `encodeURIComponent` leaves `..` intact for `new URL` to then
+  // normalize away — which would walk the bearer token to another path.
+  if (hasUnsafePathSegment(source) || hasUnsafePathSegment(skillId)) {
+    throw new ApiError(
+      400,
+      "invalid_registry_source",
+      "Invalid registry source",
+    );
+  }
   const id = `${source}/${skillId}`;
   const url = new URL(
     `/api/v1/skills/${id
@@ -442,10 +453,6 @@ export async function listRegistrySkills(
 export async function resolveRegistrySkillById(
   id: string,
 ): Promise<RegistrySkill> {
-  // Parse before touching the caches. `parseRegistrySkillId` throws
-  // synchronously, so validating inside the promise below would run the
-  // `finally` cleanup before `registryEntryRequests.set` ever ran — leaving a
-  // rejected promise in the map forever, keyed by an unvalidated query param.
   const { source, skillId } = parseRegistrySkillId(id);
 
   const cached = registryEntryCache.get(id);
@@ -455,37 +462,39 @@ export async function resolveRegistrySkillById(
   if (inFlight) return inFlight;
 
   const request = (async () => {
-    try {
-      const response = await registryFetch(registrySkillUrl(id));
-      if (!response.ok) {
-        throw new ApiError(
-          404,
-          "registry_skill_not_found",
-          "Registry skill not found",
-        );
-      }
-      const entry = parsePublicDetailSkill(
-        await response.text(),
-        id,
-        source,
-        skillId,
+    const response = await registryFetch(registrySkillUrl(id));
+    if (!response.ok) {
+      throw new ApiError(
+        404,
+        "registry_skill_not_found",
+        "Registry skill not found",
       );
-      if (!entry) {
-        throw new ApiError(
-          404,
-          "registry_skill_not_found",
-          "Registry skill not found",
-        );
-      }
-      registryEntryCache.set(id, {
-        entry,
-        expiresAt: Date.now() + REGISTRY_ENTRY_CACHE_TTL_MS,
-      });
-      return entry;
-    } finally {
-      registryEntryRequests.delete(id);
     }
+    const entry = parsePublicDetailSkill(
+      await response.text(),
+      id,
+      source,
+      skillId,
+    );
+    if (!entry) {
+      throw new ApiError(
+        404,
+        "registry_skill_not_found",
+        "Registry skill not found",
+      );
+    }
+    registryEntryCache.set(id, {
+      entry,
+      expiresAt: Date.now() + REGISTRY_ENTRY_CACHE_TTL_MS,
+    });
+    return entry;
   })();
+  // Register the cleanup *after* the map write rather than in a `finally`
+  // inside the promise. Anything that throws synchronously before the first
+  // await — `encodeURIComponent` on a lone surrogate, say — would otherwise run
+  // the cleanup before the entry existed, stranding a rejected promise in the
+  // map forever under a raw query param. Ordering can no longer matter.
   registryEntryRequests.set(id, request);
+  void request.finally(() => registryEntryRequests.delete(id)).catch(() => {});
   return request;
 }
