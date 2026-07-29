@@ -56,6 +56,7 @@ const AUTOMATIONS_PLUGIN = {
   description: "Schedule recurring and one-shot agent or script work.",
   name: "Automations",
   icon: "Clock",
+  iconUrl: null,
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
