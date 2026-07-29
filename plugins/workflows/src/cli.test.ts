@@ -16,12 +16,33 @@ const DOCUMENTATION_EXTENSIONS = new Set([
   ".tsx",
 ]);
 const IGNORED_DOCUMENTATION_DIRECTORIES = new Set([
-  ".git",
-  ".turbo",
   "coverage",
   "dist",
   "node_modules",
 ]);
+
+/**
+ * This walks the whole checkout while the `packages` CI shard runs every other
+ * package's tests concurrently, so it has to ignore paths those tests own.
+ * Dot-directories cover VCS internals, tool caches, and the scratch trees
+ * siblings create inside their own package roots — the plugin registry's
+ * `.vendor-fixture-*` and agent-runtime's `.bb-codex-outside-*`. None are
+ * project documentation, and descending into them both races their cleanup and
+ * can report a generated copy of a file instead of its real source.
+ */
+function isScannableDirectory(name: string): boolean {
+  return !name.startsWith(".") && !IGNORED_DOCUMENTATION_DIRECTORIES.has(name);
+}
+
+/** Paths a concurrent test deletes mid-walk are not project documentation. */
+function readIfPresent(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
+  }
+}
 
 function documentationFiles(root: string): string[] {
   const files: string[] = [];
@@ -32,7 +53,7 @@ function documentationFiles(root: string): string[] {
       if (entry.isSymbolicLink()) continue;
       const path = resolve(directory, entry.name);
       if (entry.isDirectory()) {
-        if (!IGNORED_DOCUMENTATION_DIRECTORIES.has(entry.name)) {
+        if (isScannableDirectory(entry.name)) {
           pending.push(path);
         }
       } else if (
@@ -194,7 +215,7 @@ describe("workflows CLI argument validation", () => {
     const root = resolve(process.cwd(), "../..");
     const removedCommand = ["bb workflows", "catalog"].join(" ");
     const matches = documentationFiles(root)
-      .filter((path) => readFileSync(path, "utf8").includes(removedCommand))
+      .filter((path) => readIfPresent(path).includes(removedCommand))
       .map((path) => relative(root, path))
       .sort();
     expect(matches).toEqual([]);

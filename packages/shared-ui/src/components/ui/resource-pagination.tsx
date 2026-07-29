@@ -131,6 +131,8 @@ export function useResourceViewportPageSize(
  * Client-side pagination for the bounded arrays returned by resource APIs.
  * The selected page resets with the projection and clamps when live data
  * shrinks, while retaining the current page across ordinary data refreshes.
+ * A changing page size rescales the selection to keep the same rows in view
+ * rather than resetting it.
  */
 export function useResourcePagination<Item>(
   items: readonly Item[],
@@ -142,35 +144,30 @@ export function useResourcePagination<Item>(
   );
   const resetKey = options.resetKey ?? "";
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
-  const [pageState, setPageState] = useState({
-    resetKey,
-    page: 0,
-    pageSize,
-  });
-  const requestedPage =
-    pageState.resetKey !== resetKey
-      ? 0
-      : pageState.pageSize === pageSize
-        ? pageState.page
-        : Math.floor((pageState.page * pageState.pageSize) / pageSize);
-  const page = Math.min(requestedPage, pageCount - 1);
+  // Anchors the selected page to the page size it was selected under. Only an
+  // explicit setPage or a new projection writes it; the rendered page is derived
+  // from it. Mirroring the derived page back from an effect used to drop clicks:
+  // a viewport measurement that changed pageSize left a queued write-back
+  // holding the pre-click page, which then overwrote the interaction.
+  const [anchor, setAnchor] = useState({ resetKey, page: 0, pageSize });
 
-  useEffect(() => {
-    setPageState((current) => {
-      if (
-        current.resetKey === resetKey &&
-        current.page === page &&
-        current.pageSize === pageSize
-      ) {
-        return current;
-      }
-      return { resetKey, page, pageSize };
-    });
-  }, [page, pageSize, resetKey]);
+  // A new projection starts at its first page. This adjusts state during render
+  // rather than from an effect so the reset cannot land after an interaction.
+  if (anchor.resetKey !== resetKey) {
+    setAnchor({ resetKey, page: 0, pageSize });
+  }
+
+  const requestedPage =
+    anchor.resetKey !== resetKey
+      ? 0
+      : anchor.pageSize === pageSize
+        ? anchor.page
+        : Math.floor((anchor.page * anchor.pageSize) / pageSize);
+  const page = Math.min(requestedPage, pageCount - 1);
 
   const setPage = useCallback(
     (nextPage: number) => {
-      setPageState({
+      setAnchor({
         resetKey,
         page: Math.max(0, Math.min(Math.floor(nextPage), pageCount - 1)),
         pageSize,
