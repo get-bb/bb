@@ -322,6 +322,7 @@ export function ProjectPathDialogContent({
             key={selectedHostId}
             hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}
+            allowCreateFolder={target.kind === "create"}
             onDirectoryChange={setBrowserDirectory}
             disabled={pending || !selectedHostConnected}
           />

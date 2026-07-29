@@ -308,6 +308,7 @@ export function ProjectMachineSetupDialogContent({
         {option === "folder" ? (
           <RemotePathBrowser
             hostId={target.hostId}
+            allowCreateFolder={false}
             onDirectoryChange={(directory) => {
               setFolderPath(directory);
               setValidationMessage(null);

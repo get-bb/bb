@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { normalizeProjectPathInput } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
+import { invalidateHostDirectoryListing } from "@/hooks/cache-owners/host-directory-cache-owner";
 import { useHostDirectory } from "@/hooks/queries/host-queries";
+import { sdk } from "@/lib/sdk";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -42,10 +45,31 @@ export function toBreadcrumb(directory: string): Crumb[] {
   return crumbs;
 }
 
+/**
+ * Appends a child name to a host directory using that host's separator, which
+ * is inferred from the path string the same way {@link toBreadcrumb} does.
+ */
+export function joinHostPath(directory: string, name: string): string {
+  if (/^[A-Za-z]:/.test(directory)) {
+    return `${directory.replace(/[\\/]+$/, "")}\\${name}`;
+  }
+  return `${directory.replace(/\/+$/, "")}/${name}`;
+}
+
+/** Rejects names that would silently create somewhere other than here. */
+export function getFolderNameValidationMessage(name: string): string | null {
+  if (!name) return "Enter a folder name.";
+  if (name === "." || name === "..") return "Enter a folder name.";
+  if (/[\\/]/.test(name)) return "Folder names can't contain slashes.";
+  return null;
+}
+
 interface RemotePathBrowserProps {
   hostId: string;
   /** Directory to open at; null starts at the host's home directory. */
   initialPath?: string | null;
+  /** Whether this picker may create and select a new child directory. */
+  allowCreateFolder: boolean;
   /**
    * Reports the resolved directory currently shown (the folder that would be
    * picked). Null while the first listing loads or a manual path fails to read.
@@ -57,6 +81,7 @@ interface RemotePathBrowserProps {
 export function RemotePathBrowser({
   hostId,
   initialPath = null,
+  allowCreateFolder,
   onDirectoryChange,
   disabled = false,
 }: RemotePathBrowserProps) {
@@ -64,7 +89,12 @@ export function RemotePathBrowser({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderError, setNewFolderError] = useState<string | null>(null);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
+  const queryClient = useQueryClient();
   const { data, isError, error, isPlaceholderData } = useHostDirectory(
     hostId,
     currentPath,
@@ -72,6 +102,81 @@ export function RemotePathBrowser({
 
   const directory = data?.directory ?? null;
   const crumbs = directory ? toBreadcrumb(directory) : [];
+
+  const startCreatingFolder = () => {
+    if (
+      !allowCreateFolder ||
+      disabled ||
+      createFolder.isPending ||
+      !directory ||
+      isError ||
+      isPlaceholderData
+    ) {
+      return;
+    }
+    setNewFolderName("");
+    setNewFolderError(null);
+    setIsCreatingFolder(true);
+  };
+
+  const cancelCreatingFolder = () => {
+    setIsCreatingFolder(false);
+    setNewFolderError(null);
+  };
+
+  // A pending name belongs to the folder it was started in, so leaving that
+  // folder (including after a successful create) abandons it.
+  const navigateTo = (path: string) => {
+    cancelCreatingFolder();
+    setCurrentPath(path);
+  };
+
+  const createFolder = useMutation({
+    mutationFn: async ({ parent, name }: { parent: string; name: string }) => {
+      const path = joinHostPath(parent, name);
+      await sdk.files.mkdir({ hostId, path });
+      return path;
+    },
+    onSuccess: async (path, { parent }) => {
+      setNewFolderName("");
+      // The new folder becomes the picked directory; refresh the parent so it
+      // is listed too when the user navigates back up.
+      navigateTo(path);
+      await invalidateHostDirectoryListing({
+        queryClient,
+        hostId,
+        directory: parent,
+      });
+    },
+    onError: (mutationError) => {
+      setNewFolderError(
+        getMutationErrorMessage({
+          error: mutationError,
+          fallbackMessage: "Couldn't create that folder.",
+        }),
+      );
+    },
+  });
+
+  const commitNewFolder = () => {
+    if (
+      disabled ||
+      createFolder.isPending ||
+      !directory ||
+      isError ||
+      isPlaceholderData
+    ) {
+      return;
+    }
+    const name = newFolderName.trim();
+    const message = getFolderNameValidationMessage(name);
+    if (message) {
+      setNewFolderError(message);
+      return;
+    }
+    setNewFolderError(null);
+    createFolder.mutate({ parent: directory, name });
+  };
 
   // Keep the dialog's pick target in sync with the resolved directory.
   useEffect(() => {
@@ -82,7 +187,13 @@ export function RemotePathBrowser({
     if (isEditing && !isPointerCoarse) editInputRef.current?.focus();
   }, [isEditing, isPointerCoarse]);
 
+  useEffect(() => {
+    if (isCreatingFolder && !isPointerCoarse)
+      newFolderInputRef.current?.focus();
+  }, [isCreatingFolder, isPointerCoarse]);
+
   const openEditor = () => {
+    cancelCreatingFolder();
     setEditValue(directory ?? "");
     setIsEditing(true);
   };
@@ -90,8 +201,16 @@ export function RemotePathBrowser({
   const commitEditor = () => {
     const normalized = normalizeProjectPathInput(editValue);
     setIsEditing(false);
-    if (normalized) setCurrentPath(normalized);
+    if (normalized) navigateTo(normalized);
   };
+
+  const interactionDisabled = disabled || createFolder.isPending;
+  const canCreateFolderHere =
+    allowCreateFolder &&
+    !interactionDisabled &&
+    directory !== null &&
+    !isError &&
+    !isPlaceholderData;
 
   let body: ReactNode;
   if (isError) {
@@ -136,9 +255,9 @@ export function RemotePathBrowser({
             <li key={entry.path}>
               <button
                 type="button"
-                disabled={disabled}
+                disabled={interactionDisabled}
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-muted disabled:pointer-events-none"
-                onClick={() => setCurrentPath(entry.path)}
+                onClick={() => navigateTo(entry.path)}
               >
                 <Icon
                   name="Folder"
@@ -200,9 +319,9 @@ export function RemotePathBrowser({
               size="icon"
               className="size-7 shrink-0"
               aria-label="Go to parent folder"
-              disabled={disabled || !data?.parent}
+              disabled={interactionDisabled || !data?.parent}
               onClick={() => {
-                if (data?.parent) setCurrentPath(data.parent);
+                if (data?.parent) navigateTo(data.parent);
               }}
             >
               <Icon name="ArrowUp" />
@@ -218,26 +337,39 @@ export function RemotePathBrowser({
                   ) : null}
                   <button
                     type="button"
-                    disabled={disabled}
+                    disabled={interactionDisabled}
                     className={cn(
                       "rounded px-1 py-0.5 hover:bg-muted hover:text-foreground",
                       index === crumbs.length - 1 &&
                         "font-medium text-foreground",
                     )}
-                    onClick={() => setCurrentPath(crumb.path)}
+                    onClick={() => navigateTo(crumb.path)}
                   >
                     {crumb.label}
                   </button>
                 </span>
               ))}
             </div>
+            {allowCreateFolder ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                aria-label="New folder"
+                disabled={!canCreateFolderHere}
+                onClick={startCreatingFolder}
+              >
+                <Icon name="FolderPlus" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="size-7 shrink-0"
               aria-label="Edit path"
-              disabled={disabled}
+              disabled={interactionDisabled}
               onClick={openEditor}
             >
               <Icon name="Edit" />
@@ -252,6 +384,75 @@ export function RemotePathBrowser({
           isPlaceholderData && "opacity-60",
         )}
       >
+        {isCreatingFolder ? (
+          <div
+            role="group"
+            aria-label="Create new folder"
+            className="mb-1 flex flex-col gap-1"
+          >
+            {/* Mirrors an entry row's px-2 + size-4 icon + gap-2 so the name
+                being typed lines up with the folder names below it. */}
+            <div className="flex items-center gap-2 px-2">
+              <Icon
+                name="Folder"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
+              <Input
+                ref={newFolderInputRef}
+                aria-label="New folder name"
+                className="-ml-1 h-7 min-w-0 flex-1 px-1 text-sm"
+                value={newFolderName}
+                disabled={interactionDisabled}
+                placeholder="Folder name"
+                onChange={(event) => {
+                  setNewFolderName(event.target.value);
+                  setNewFolderError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitNewFolder();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelCreatingFolder();
+                  }
+                }}
+              />
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label="Create folder"
+                  disabled={interactionDisabled}
+                  onClick={commitNewFolder}
+                >
+                  <Icon
+                    name={createFolder.isPending ? "Spinner" : "Check"}
+                    className={cn(createFolder.isPending && "animate-spin")}
+                  />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  aria-label="Cancel new folder"
+                  disabled={interactionDisabled}
+                  onClick={cancelCreatingFolder}
+                >
+                  <Icon name="X" />
+                </Button>
+              </div>
+            </div>
+            {newFolderError ? (
+              <p role="alert" className="px-2 text-xs text-destructive">
+                {newFolderError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {body}
       </div>
     </div>
