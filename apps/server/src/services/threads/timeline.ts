@@ -18,7 +18,7 @@ import type {
 import {
   findTimelineWindowBudgetFloorSequence,
   getEnvironment,
-  hasCompletedTurnAtOrAfterSequence,
+  findUnfinishedTurnCoveringSequence,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
   listRecentStoredEventRows,
@@ -26,6 +26,8 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
   listStoredEventRowsInRange,
+  isTimelineCursorSequencePresent,
+  listItemEventSpansByItemIds,
   listStoredItemLifecycleRowsByItemIds,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestGoalEventRowsByThreadIds,
@@ -472,6 +474,33 @@ function ensureTimelineWindowParentedRows(
   };
 }
 
+/**
+ * Lowest sequence any of these requests was made at.
+ *
+ * The accepted row for a request always follows the request itself, so this is
+ * the only floor that is guaranteed not to skip one. Searching from the newest
+ * row in the window instead looks safe and is not: the window carries rows
+ * backfilled from *past* its own upper bound — the latest state of an in-window
+ * background task, a tool call's children — and a floor taken from those can
+ * sit above an accepted row the window is missing.
+ */
+function minSequenceOfClientRequests(
+  rows: readonly StoredEventRow[],
+  clientRequestIds: ReadonlySet<ClientTurnRequestId>,
+): number {
+  let minSequence = Number.POSITIVE_INFINITY;
+  for (const row of rows) {
+    if (row.type !== "client/turn/requested") {
+      continue;
+    }
+    const requestId = tryReadClientTurnRequestedRequestId(row);
+    if (requestId !== null && clientRequestIds.has(requestId)) {
+      minSequence = Math.min(minSequence, row.sequence);
+    }
+  }
+  return Number.isFinite(minSequence) ? minSequence : 0;
+}
+
 function selectAcceptedClientRequestContextRows(
   db: DbConnection,
   args: SelectAcceptedClientRequestContextRowsArgs,
@@ -484,7 +513,10 @@ function selectAcceptedClientRequestContextRows(
   }
 
   return listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
-    afterSequence: maxStoredEventSequence(args.rows),
+    afterSequence: minSequenceOfClientRequests(
+      args.rows,
+      new Set(clientRequestIds),
+    ),
     clientRequestIds,
     threadId: args.threadId,
   });
@@ -664,68 +696,64 @@ function ensureInTurnWindowWholeItemRows(
   db: DbConnection,
   args: InTurnWindowItemRowsArgs,
 ): StoredEventRow[] {
-  // Only an item missing one half of its lifecycle inside the window can have
-  // been cut, and there are at most a handful of those — usually none. The
-  // lookup is by item id, which no index covers, so narrowing the candidates is
-  // what keeps this off the cost of a window that cut nothing.
-  const startedItemIds = new Set<string>();
-  const completedItemIds = new Set<string>();
+  const windowItemIds = new Set<string>();
   for (const row of args.rows) {
     if (
-      row.itemId === null ||
-      row.itemKind === "backgroundTask" ||
-      row.sequence < args.sequenceStart
+      row.itemId !== null &&
+      row.itemKind !== "backgroundTask" &&
+      row.sequence >= args.sequenceStart
     ) {
-      continue;
-    }
-    if (row.type === "item/started") {
-      startedItemIds.add(row.itemId);
-    } else if (row.type === "item/completed") {
-      completedItemIds.add(row.itemId);
+      windowItemIds.add(row.itemId);
     }
   }
-  const cutItemIds = [
-    ...new Set([
-      ...[...startedItemIds].filter((id) => !completedItemIds.has(id)),
-      ...[...completedItemIds].filter((id) => !startedItemIds.has(id)),
-    ]),
-  ];
-  if (cutItemIds.length === 0) {
+  if (windowItemIds.size === 0) {
     return [...args.rows];
   }
 
-  const lifecycleRows = listStoredItemLifecycleRowsByItemIds(db, {
-    itemIds: cutItemIds,
-    maxInlineOutputChars: args.maxInlineOutputChars,
+  // Spans, not lifecycle rows. An item emits between its start and its end —
+  // output deltas, reasoning text, tool progress — and an unfinished item has
+  // no end at all, so "does this item reach past the cut" cannot be answered
+  // from `item/started` and `item/completed`.
+  const spans = listItemEventSpansByItemIds(db, {
+    itemIds: [...windowItemIds],
     threadId: args.threadId,
   });
   const itemIdsOwnedByNewerWindow = new Set<string>();
-  const backfillRows: StoredEventRow[] = [];
-  for (const row of lifecycleRows) {
-    if (row.itemId === null) {
-      continue;
-    }
+  const itemIdsStartingBeforeWindow = new Set<string>();
+  for (const span of spans) {
     if (
       args.beforeSequence !== undefined &&
-      row.sequence >= args.beforeSequence
+      span.maxSequence >= args.beforeSequence
     ) {
-      itemIdsOwnedByNewerWindow.add(row.itemId);
+      itemIdsOwnedByNewerWindow.add(span.itemId);
       continue;
     }
-    if (row.sequence < args.sequenceStart) {
-      backfillRows.push(row);
+    if (span.minSequence < args.sequenceStart) {
+      itemIdsStartingBeforeWindow.add(span.itemId);
     }
   }
 
   const rows = args.rows.filter(
     (row) => row.itemId === null || !itemIdsOwnedByNewerWindow.has(row.itemId),
   );
-  const keptBackfillRows = backfillRows.filter(
-    (row) => row.itemId !== null && !itemIdsOwnedByNewerWindow.has(row.itemId),
-  );
-  return keptBackfillRows.length === 0
+  if (itemIdsStartingBeforeWindow.size === 0) {
+    return rows;
+  }
+
+  // This window owns these items, so it needs the lifecycle rows that fell
+  // below the cut — without them a finished command renders "pending" and
+  // carries neither its command line nor its start time. Only the two lifecycle
+  // types are fetched: the rest of what an item emitted below the cut is the
+  // older page's content, and pulling all of it back would restore exactly the
+  // unbounded read this window exists to avoid.
+  const backfillRows = listStoredItemLifecycleRowsByItemIds(db, {
+    itemIds: [...itemIdsStartingBeforeWindow],
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    threadId: args.threadId,
+  }).filter((row) => row.sequence < args.sequenceStart);
+  return backfillRows.length === 0
     ? rows
-    : mergeStoredEventRowsById([...keptBackfillRows, ...rows]);
+    : mergeStoredEventRowsById([...backfillRows, ...rows]);
 }
 
 /**
@@ -897,10 +925,10 @@ function resolveTimelineWindowBounds(
   if (
     affordable === 0 &&
     budgetFloorSequence !== undefined &&
-    !hasCompletedTurnAtOrAfterSequence(db, {
+    findUnfinishedTurnCoveringSequence(db, {
       sequence: budgetFloorSequence,
       threadId,
-    })
+    }) !== null
   ) {
     return {
       affordableAnchorCount: 0,
@@ -965,12 +993,40 @@ function resolveTimelineSegmentWindow(
         if (anyAnchor.length === 0) {
           return noAnchors;
         }
-        throw new ApiError(
-          400,
-          "invalid_request",
-          "Timeline pagination cursor is no longer available",
-        );
+        // A cursor whose sequence still exists is one this server issued from a
+        // page it built; only the *anchor* predicate no longer agrees that the
+        // row there starts a segment. That disagreement is possible because the
+        // predicate is SQL and the projection is not — a steer accepted into a
+        // turn other than the one it named is a user message to the projection
+        // and not an anchor here — and refusing the cursor over it strands
+        // every older page behind it. The window is defined by the sequence, so
+        // honour it. A cursor naming no event at all is genuinely stale.
+        if (
+          !isTimelineCursorSequencePresent(db, {
+            sequence: cursor.anchorSeq,
+            threadId,
+          })
+        ) {
+          throw new ApiError(
+            400,
+            "invalid_request",
+            "Timeline pagination cursor is no longer available",
+          );
+        }
       }
+    } else if (
+      !isTimelineCursorSequencePresent(db, {
+        sequence: inTurnCursorSequence,
+        threadId,
+      })
+    ) {
+      // An in-turn cursor names no stored row, so this is the only check that it
+      // came from a page rather than from a client picking a number.
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Timeline pagination cursor is no longer available",
+      );
     }
     const precedingAnchors = listTimelineSegmentAnchorsDescending(db, {
       beforeSequence: cursor.anchorSeq,

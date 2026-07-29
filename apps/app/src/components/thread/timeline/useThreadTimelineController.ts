@@ -299,6 +299,49 @@ export function mergeLatestTimelineRows({
   };
 }
 
+/**
+ * Whether a fresh latest window can be spliced onto what is already loaded.
+ *
+ * Splicing assumes the loaded rows are a prefix of the same history: older
+ * first, the latest window continuing from somewhere inside them. Two shapes
+ * break that assumption, and both became reachable once a window could be cut
+ * inside a running turn rather than on a user message:
+ *
+ * - The latest window reaches back *past* the oldest loaded row. A turn watched
+ *   mid-flight is windowed from the budget floor; the moment it finishes it
+ *   collapses into one summary row spanning the whole turn, so the next latest
+ *   response starts at that turn's user message — before everything held.
+ *   Splicing renders the user's prompt after the work it produced.
+ * - The latest window starts after the newest loaded row with nothing in
+ *   common. Everything between is history neither response contains, and
+ *   `olderCursor` still points below the loaded rows, so scrolling never
+ *   reaches it.
+ *
+ * Neither can be repaired by merging, so the loaded rows are dropped and the
+ * fresh response becomes the timeline. The cost is a scrolled-back reader
+ * losing their loaded pages; the alternative is showing them a reordered or
+ * silently incomplete thread.
+ */
+function isLatestTimelineWindowContiguous({
+  latestRows,
+  loadedRows,
+}: MergeLatestTimelineRowsArgs): boolean {
+  const oldestLoaded = loadedRows[0];
+  const newestLoaded = loadedRows.at(-1);
+  const oldestLatest = latestRows[0];
+  if (!oldestLoaded || !newestLoaded || !oldestLatest) {
+    return true;
+  }
+  if (oldestLatest.sourceSeqStart < oldestLoaded.sourceSeqStart) {
+    return false;
+  }
+  const loadedRowIds = new Set(loadedRows.map((row) => row.id));
+  if (latestRows.some((row) => loadedRowIds.has(row.id))) {
+    return true;
+  }
+  return oldestLatest.sourceSeqStart <= newestLoaded.sourceSeqEnd + 1;
+}
+
 export function mergeLoadedTimelineWithLatest({
   current,
   latestTimeline,
@@ -306,7 +349,11 @@ export function mergeLoadedTimelineWithLatest({
 }: MergeLoadedTimelineWithLatestArgs): LoadedTimelineState {
   if (
     current.surfaceKey !== surfaceKey ||
-    (current.rows.length === 0 && current.olderCursor === null)
+    (current.rows.length === 0 && current.olderCursor === null) ||
+    !isLatestTimelineWindowContiguous({
+      latestRows: latestTimeline.rows,
+      loadedRows: current.rows,
+    })
   ) {
     return buildLoadedTimelineState({
       latestRows: latestTimeline.rows,

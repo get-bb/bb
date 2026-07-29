@@ -45,6 +45,14 @@ function truncationMarkerSql(originalLength: SQL, max: number): SQL {
  * un-truncated `timeline/turn-summary-details` route. Rows whose entire payload
  * already fits are returned as stored, so the JSON functions are skipped for
  * the overwhelming majority of events.
+ *
+ * Two limits of SQLite's string functions are deliberate here, not oversights.
+ * `length`/`substr` count Unicode code points where JavaScript counts UTF-16
+ * code units, so an output of astral characters comes back at up to twice the
+ * cap; the row-level pass recognises the marker and leaves such a value alone
+ * rather than cutting it twice. And `length` stops at an embedded NUL, so an
+ * output containing one is judged short and passes through untouched — a missed
+ * saving, never a wrong value, and the row-level pass still bounds it.
  */
 export function truncatedEventDataColumn(
   maxInlineOutputChars: number,

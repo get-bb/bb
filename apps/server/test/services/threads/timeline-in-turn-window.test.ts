@@ -89,6 +89,12 @@ interface SeedOptions {
    * end of the turn, so the item spans a large sequence range.
    */
   longRunningItemIndexes?: readonly number[];
+  /**
+   * Emit an output delta for each long-running item after every other item, so
+   * the item's presence in a mid-turn window is deltas rather than lifecycle
+   * rows.
+   */
+  streamLongRunningOutput?: boolean;
   itemsPerTurn: readonly number[];
 }
 
@@ -195,6 +201,24 @@ function seedTurns(
       if (longRunning.has(item)) {
         deferred.push(item);
         continue;
+      }
+      for (const streaming of deferred) {
+        if (!options.streamLongRunningOutput) {
+          break;
+        }
+        push({
+          type: "item/commandExecution/outputDelta",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId: `${turnId}-item-${streaming}`,
+          itemKind: "commandExecution",
+          data: JSON.stringify({
+            threadId: thread.id,
+            providerThreadId,
+            itemId: `${turnId}-item-${streaming}`,
+            delta: `tick ${item}\n`,
+          }),
+        });
       }
       push({
         type: "item/completed",
@@ -605,5 +629,32 @@ describe("background tasks across an in-turn window", () => {
     expect(buildPage(db, thread, 100, null).response.activeWorkflows).toEqual(
       [],
     );
+  });
+});
+
+describe("in-turn windows and items that only stream", () => {
+  it("gives an item to one page when its in-window presence is output deltas", () => {
+    const { db, thread } = setup();
+    // Item 0 starts at the top of the turn, streams output all the way through,
+    // and only completes at the very end. Every mid-turn window therefore holds
+    // its deltas and neither of its lifecycle rows — so ownership decided from
+    // `item/started`/`item/completed` alone never sees it, and both pages
+    // project a row under its id.
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      itemsPerTurn: [300],
+      longRunningItemIndexes: [0],
+      streamLongRunningOutput: true,
+    });
+
+    const streamingRowId = `${thread.id}:command:turn-1-item-0`;
+    const budgeted = walkAllPages(db, thread, 100);
+    const matches = budgeted.rows.filter((row) =>
+      row.includes(`"id":${JSON.stringify(streamingRowId)}`),
+    );
+
+    expect(budgeted.pages).toBeGreaterThan(1);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toContain('"status":"completed"');
   });
 });

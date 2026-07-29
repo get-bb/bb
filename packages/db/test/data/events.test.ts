@@ -39,7 +39,7 @@ import {
   listStoredEventRows,
   listStoredEventRowsInRange,
   listStoredThreadProvisioningRowsByProvisioningId,
-  hasCompletedTurnAtOrAfterSequence,
+  findUnfinishedTurnCoveringSequence,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
@@ -3910,15 +3910,89 @@ describe("timeline read-boundary output truncation", () => {
   });
 });
 
-describe("hasCompletedTurnAtOrAfterSequence", () => {
-  it("reports whether a turn finished at or after a sequence", () => {
+describe("findUnfinishedTurnCoveringSequence", () => {
+  it("names the unfinished turn a mid-turn cut would land in", () => {
     const { db, thread } = setup();
     insertEvents(db, noopNotifier, [
       {
         threadId: thread.id,
         sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-open" }),
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "item/completed",
+        ...createTurnEventFields({ turnId: "turn-open" }),
+        data: JSON.stringify({
+          providerThreadId: "provider-root",
+          item: {
+            type: "agentMessage",
+            id: "m1",
+            text: "still going",
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      findUnfinishedTurnCoveringSequence(db, {
+        sequence: 2,
+        threadId: thread.id,
+      }),
+    ).toBe("turn-open");
+  });
+
+  it("refuses a cut that a finished turn would be split by", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-done" }),
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 9,
         type: "turn/completed",
-        ...createTurnEventFields({ turnId: "turn-1" }),
+        ...createTurnEventFields({ turnId: "turn-done" }),
+        data: JSON.stringify({
+          status: "completed",
+          providerThreadId: "provider-root",
+        }),
+      },
+    ]);
+
+    expect(
+      findUnfinishedTurnCoveringSequence(db, {
+        sequence: 2,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
+  });
+
+  it("refuses a cut that lands outside any turn", () => {
+    const { db, thread } = setup();
+    // A turn finishes, then thread-scoped background-task traffic continues past
+    // it. Asking only "did any turn finish after here" would answer "no" for a
+    // floor in this region and invent an in-turn cut where there is no turn.
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-done" }),
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/completed",
+        ...createTurnEventFields({ turnId: "turn-done" }),
         data: JSON.stringify({
           status: "completed",
           providerThreadId: "provider-root",
@@ -3926,19 +4000,45 @@ describe("hasCompletedTurnAtOrAfterSequence", () => {
       },
       {
         threadId: thread.id,
-        sequence: 5,
+        sequence: 3,
         type: "system/error",
         ...threadEventFields,
-        data: JSON.stringify({ message: "still running" }),
+        data: JSON.stringify({ message: "after the turn" }),
       },
     ]);
 
     expect(
-      hasCompletedTurnAtOrAfterSequence(db, { sequence: 1, threadId: thread.id }),
-    ).toBe(true);
-    // Everything from sequence 2 on belongs to a turn that has not finished.
+      findUnfinishedTurnCoveringSequence(db, {
+        sequence: 3,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
+  });
+
+  it("refuses a cut spanning more than one turn", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-a" }),
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-b" }),
+        data: JSON.stringify({}),
+      },
+    ]);
+
     expect(
-      hasCompletedTurnAtOrAfterSequence(db, { sequence: 2, threadId: thread.id }),
-    ).toBe(false);
+      findUnfinishedTurnCoveringSequence(db, {
+        sequence: 1,
+        threadId: thread.id,
+      }),
+    ).toBeNull();
   });
 });

@@ -1175,6 +1175,74 @@ export function listStoredToolCallRowsByItemIds(
     .all();
 }
 
+/** Whether the thread still has an event at exactly this sequence. */
+export function isTimelineCursorSequencePresent(
+  db: DbConnection,
+  args: TimelineSegmentAnchorLookupArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.sequence, args.sequence),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+export interface ItemEventSpanRow {
+  itemId: string;
+  maxSequence: number;
+  minSequence: number;
+}
+
+export interface ListItemEventSpansByItemIdsArgs {
+  itemIds: readonly string[];
+  threadId: string;
+}
+
+/**
+ * The first and last sequence at which each item produced *any* event.
+ *
+ * Deciding which page owns an item cannot be done from its `item/started` and
+ * `item/completed` alone. An item goes on emitting between them — output
+ * deltas, reasoning text, tool progress — and an item that has started but not
+ * finished has no completion to find. Reading only lifecycle rows makes a
+ * window believe an item ends where it does not, and two pages then render the
+ * same row id from different halves of it.
+ *
+ * Metadata only: no `data` column, so the cost is index reads rather than
+ * payload.
+ */
+export function listItemEventSpansByItemIds(
+  db: DbConnection,
+  args: ListItemEventSpansByItemIdsArgs,
+): ItemEventSpanRow[] {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select({
+      itemId: sql<string>`${events.itemId}`,
+      maxSequence: sql<number>`MAX(${events.sequence})`,
+      minSequence: sql<number>`MIN(${events.sequence})`,
+    })
+    .from(events)
+    .where(
+      and(eq(events.threadId, args.threadId), inArray(events.itemId, itemIds)),
+    )
+    .groupBy(events.itemId)
+    .all();
+}
+
 export interface ListStoredItemLifecycleRowsByItemIdsArgs {
   itemIds: readonly string[];
   /** See {@link InlineOutputCharLimit}. */
@@ -1546,6 +1614,12 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
   // thread with 2,640 task rows spent 154 ms here on every latest-page build.
   // (threadId, sequence) is unique, so the per-item MAX(sequence) set selects
   // exactly one row per item.
+  // The per-item MAX is taken over background-task rows only, where the
+  // correlated form it replaced grouped by item id alone. The two agree while an
+  // item id names one kind of item for the life of a thread, which is what every
+  // provider adapter produces but not something the schema enforces. If an id
+  // were ever reused across kinds, this would report an open task the old form
+  // suppressed — visible as a stale banner, not as lost or corrupted rows.
   const latestSequences = db
     .select({ sequence: max(latest.sequence) })
     .from(latest)
@@ -1974,35 +2048,60 @@ export interface TimelineTurnBoundaryLookupArgs {
 }
 
 /**
- * Whether any turn has finished at or after `sequence`.
+ * The id of the single unfinished turn that owns every turn-scoped event from
+ * `sequence` onward, or null when there is no such turn.
  *
  * A timeline window is normally cut on user messages, so it never lands inside
- * a turn. The one exception is a turn so long it exceeds the whole event
- * budget on its own, where the window has to start mid-turn — and that is only
- * safe while the turn is still running, because a finished turn projects into a
- * single summary row that two pages cannot each own. `false` here means the
- * events after `sequence` all belong to a turn that has not finished.
+ * a turn. The one exception is a turn so long it exceeds the whole event budget
+ * on its own, where the window has to start mid-turn — and that is only safe
+ * while the turn is still running, because a finished turn projects into a
+ * single summary row that two pages cannot each own.
  *
- * An interrupted or abandoned turn also has no `turn/completed`, which is the
- * intended answer: it never collapses into a summary row either.
+ * Both halves of the question matter, and asking only "did any turn finish
+ * after here" answers neither. That form says nothing about *which* turn the
+ * cut lands in: a turn can finish and be followed by more than a budget's worth
+ * of thread-scoped background-task traffic, leaving the floor in a region that
+ * belongs to no turn at all, and a nested turn completing elsewhere can veto a
+ * cut that was perfectly safe.
+ *
+ * An interrupted or abandoned turn has no `turn/completed` and is reported as
+ * unfinished, which is the intended answer: it never collapses into a summary
+ * row either.
  */
-export function hasCompletedTurnAtOrAfterSequence(
+export function findUnfinishedTurnCoveringSequence(
   db: DbConnection,
   args: TimelineTurnBoundaryLookupArgs,
-): boolean {
-  const row = db
+): string | null {
+  const turnRows = db
+    .selectDistinct({ turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.sequence),
+        isNotNull(events.turnId),
+      ),
+    )
+    .limit(2)
+    .all();
+  const turnId = turnRows[0]?.turnId;
+  if (turnRows.length !== 1 || !turnId) {
+    return null;
+  }
+
+  const completed = db
     .select({ sequence: events.sequence })
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/completed"),
-        gte(events.sequence, args.sequence),
+        eq(events.turnId, turnId),
       ),
     )
     .limit(1)
     .get();
-  return row !== undefined;
+  return completed === undefined ? turnId : null;
 }
 
 /**

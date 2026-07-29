@@ -225,7 +225,7 @@ describe("timeline page row merging", () => {
     expect(merge.rows[1]).toBe(updatedTail);
   });
 
-  it("keeps loaded rows and the oldest cursor when latest advances without overlap", () => {
+  it("rebuilds when latest advances past the loaded rows with a gap between", () => {
     const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
     const latestCursor = timelineCursor({ id: "latest-page", sequence: 40 });
     const current = makeLoadedTimelineState(
@@ -243,8 +243,72 @@ describe("timeline page row merging", () => {
       surfaceKey: "thread-1:default",
     });
 
+    // Sequences 2..49 are in neither response. Keeping both and appending would
+    // render them adjacent and leave `olderCursor` below the loaded rows, so the
+    // hidden stretch could never be scrolled to. The fresh window replaces the
+    // stale one instead, and its cursor pages back through the gap.
+    expect(next.rows.map((row) => row.id)).toEqual(["latest"]);
+    expect(next.olderCursor).toEqual(latestCursor);
+  });
+
+  it("keeps loaded rows when the latest window abuts them without overlapping", () => {
+    const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
+    const current = makeLoadedTimelineState(
+      [userRow({ id: "oldest", sequence: 1 })],
+      oldestCursor,
+    );
+    const latestTimeline = makeTimelineResponse(
+      [userRow({ id: "latest", sequence: 2 })],
+      timelineCursor({ id: "latest-page", sequence: 2 }),
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
     expect(next.rows.map((row) => row.id)).toEqual(["oldest", "latest"]);
     expect(next.olderCursor).toEqual(oldestCursor);
+  });
+
+  it("rebuilds when a finished turn reaches back past the loaded in-turn rows", () => {
+    // Watching a long turn mid-flight loads rows cut at the budget floor, with
+    // no user message above them. When the turn finishes it collapses into one
+    // summary row spanning the whole turn, so the next latest response starts at
+    // the turn's user message — before everything held. Splicing the two would
+    // put the prompt after the work it produced.
+    const inTurnCursor = timelineCursor({
+      id: "thread-1:in-turn:500",
+      sequence: 500,
+    });
+    const liveTail = commandRow({ id: "live-tail", sequence: 520 });
+    const current = makeLoadedTimelineState(
+      [commandRow({ id: "live-work", sequence: 500 }), liveTail],
+      inTurnCursor,
+    );
+    const finishedCursor = timelineCursor({ id: "older-turn", sequence: 1 });
+    const latestTimeline = makeTimelineResponse(
+      [
+        userRow({ id: "turn-prompt", sequence: 10 }),
+        turnSummaryRow({ id: "turn-summary", sequence: 11 }),
+        liveTail,
+      ],
+      finishedCursor,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual([
+      "turn-prompt",
+      "turn-summary",
+      "live-tail",
+    ]);
+    expect(next.olderCursor).toEqual(finishedCursor);
   });
 
   it("recovers from a stale cursor with a fresh latest cursor without dropping loaded rows", () => {
