@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   ActiveThinking,
   ThreadChildOrigin,
@@ -17,10 +11,10 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
+import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
@@ -212,7 +206,8 @@ export function ThreadTimelineSurface({
     <ConversationTimeline className="flex-1">
       {leadingContent}
       {showLoadOlderRows ? (
-        <LoadOlderMessagesButton
+        <LoadOlderMessages
+          hasOlderTimelineRows={hasOlderTimelineRows}
           isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
           onLoadOlderRows={onLoadOlderRows}
         />
@@ -277,33 +272,49 @@ export function ThreadTimelineSurface({
   );
 }
 
-function LoadOlderMessagesButton({
+function LoadOlderMessages({
+  hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   onLoadOlderRows,
 }: {
+  hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   onLoadOlderRows: () => Promise<void> | void;
 }) {
-  const bottomAnchor = useBottomAnchoredScroll();
-  const handleClick = useCallback(() => {
-    bottomAnchor?.captureScrollAnchor();
-    void onLoadOlderRows();
-  }, [bottomAnchor, onLoadOlderRows]);
+  const { sentinelRef, isAutoLoadEnabled, loadOlderRows } =
+    useAutoLoadOlderRows({
+      hasOlderTimelineRows,
+      isLoadingOlderTimelineRows,
+      onLoadOlderRows,
+    });
 
   return (
-    <div className="flex justify-center pt-2 mb-3">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={handleClick}
-        disabled={isLoadingOlderTimelineRows}
-      >
-        <Icon name="ChevronUp" aria-hidden="true" />
-        {isLoadingOlderTimelineRows
-          ? "Loading older messages..."
-          : "Load older messages"}
-      </Button>
+    <div ref={sentinelRef} className="flex justify-center pt-2 mb-3">
+      {isAutoLoadEnabled ? (
+        // Scrolling here loads the next page, so the affordance is progress
+        // rather than a control. Reserved height whether or not a fetch is in
+        // flight, so arriving at the top does not shift the rows below.
+        <span
+          className="text-muted-foreground text-xs"
+          aria-live="polite"
+          role="status"
+        >
+          {isLoadingOlderTimelineRows ? "Loading older messages…" : " "}
+        </span>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={loadOlderRows}
+          disabled={isLoadingOlderTimelineRows}
+        >
+          <Icon name="ChevronUp" aria-hidden="true" />
+          {isLoadingOlderTimelineRows
+            ? "Loading older messages..."
+            : "Load older messages"}
+        </Button>
+      )}
     </div>
   );
 }

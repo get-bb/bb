@@ -61,6 +61,13 @@ message agents, or inspect projects, providers, and environments.
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools; the separate `plugins` experiment controls user plugin runtime loading.
+- Thread timeline windows are capped by event count as well as by user-message
+  count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
+  with few user messages but many events would otherwise reproject its whole
+  history on every timeline request, blocking the server event loop and
+  delaying the daemon endpoints the agent awaits between tool calls. Older
+  turns load automatically as you scroll toward the top; nothing becomes
+  unreachable.
 
 ## Agent Instructions
 
@@ -91,6 +98,14 @@ message agents, or inspect projects, providers, and environments.
   the bounded file preview with `bb skill registry detail <registry-skill-id>`.
   Install with `bb skill install <registry-skill-id>`; never infer an install
   source from a display name.
+- `bb skill install-cli-skills` copies bb's built-in CLI skills into a machine's
+  global agent skill roots (`~/.agents/skills` and `~/.claude/skills`) so agents
+  outside bb can drive bb. It targets every connected machine unless you pass
+  the repeatable `--machine <id-or-name>`, and reports each machine's outcome.
+  Settings → Skills has the same action; it confirms first, and asks which
+  machines only when more than one is enrolled.
+- `bb skill cli-skills-status` reports per machine whether the installed copy is
+  `installed`, `outdated`, `missing`, or `unknown` (disconnected or unreachable).
 
 ## Spawning Threads
 

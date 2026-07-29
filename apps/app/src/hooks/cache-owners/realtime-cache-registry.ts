@@ -130,6 +130,30 @@ const trailingActiveRefetchUnsubscribers = new WeakMap<
   Map<string, () => void>
 >();
 
+/**
+ * The trailing refetch is self-clocking: it fires as soon as the in-flight
+ * fetch settles and any event arrived meanwhile. During a streaming turn events
+ * always arrive, so with no floor the client requests a rebuild the instant the
+ * previous one lands — a 100% duty cycle on a server-side projection that is
+ * synchronous and blocks the server's event loop for everyone.
+ *
+ * Waiting out the observed build cost caps that duty cycle near 50%, which
+ * leaves the loop time to serve the daemon endpoints the agent awaits between
+ * tool calls. Fast threads are unaffected: their builds land in single-digit
+ * milliseconds, so the floor collapses to the minimum.
+ */
+const TRAILING_REFETCH_MIN_INTERVAL_MS = 50;
+const TRAILING_REFETCH_MAX_INTERVAL_MS = 1_000;
+
+export function resolveTrailingRefetchDelayMs(
+  observedFetchDurationMs: number,
+): number {
+  return Math.min(
+    TRAILING_REFETCH_MAX_INTERVAL_MS,
+    Math.max(TRAILING_REFETCH_MIN_INTERVAL_MS, observedFetchDurationMs),
+  );
+}
+
 function timelineInvalidationKey(queryKey: QueryKey): string {
   return JSON.stringify(queryKey);
 }
@@ -158,6 +182,12 @@ function scheduleTrailingActiveRefetch({
     return;
   }
 
+  // Measured within this cycle only: from now (a fetch is already in flight —
+  // that is why we were scheduled) until it settles. Deliberately NOT measured
+  // across cycles, which would fold the previous delay into the next duration
+  // and grow the interval geometrically.
+  const waitingSince = Date.now();
+
   const unsubscribe = queryClient.getQueryCache().subscribe(() => {
     if (hasActiveFetchingQueries(queryClient, queryKey)) {
       return;
@@ -165,11 +195,20 @@ function scheduleTrailingActiveRefetch({
 
     unsubscribe();
     unsubscribers.delete(scheduleKey);
-    void queryClient
-      .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
-      .catch(() => {
-        // Individual query state already captures the refetch error.
-      });
+    const delayMs = resolveTrailingRefetchDelayMs(Date.now() - waitingSince);
+    const timer = setTimeout(() => {
+      unsubscribers.delete(scheduleKey);
+      void queryClient
+        .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+        .catch(() => {
+          // Individual query state already captures the refetch error.
+        });
+    }, delayMs);
+    // Replace the (already-called) unsubscriber with a timer canceller so
+    // disposal cannot refetch into a torn-down client.
+    unsubscribers.set(scheduleKey, () => {
+      clearTimeout(timer);
+    });
   });
   unsubscribers.set(scheduleKey, unsubscribe);
 }

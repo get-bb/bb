@@ -1341,6 +1341,50 @@ export interface ListLatestOpenBackgroundTaskStateRowsForThreadArgs {
   threadId: string;
 }
 
+export interface ListTodoSnapshotEventRowsForThreadArgs {
+  threadId: string;
+}
+
+/**
+ * Tool-call rows that can carry the pending-todo snapshot, oldest first.
+ *
+ * The snapshot is not a single row: `TodoWrite` carries a complete list, but
+ * the Claude task tools carry deltas that only resolve by replaying every task
+ * row in order. So this returns all of them rather than just the newest.
+ *
+ * Needed because the todo banner is extracted from whatever events the timeline
+ * window happens to contain. An event-budgeted window can start after the turn
+ * that wrote the todos, which silently drops the banner mid-session — the same
+ * failure mode `listLatestOpenBackgroundTaskStateRowsForThread` already
+ * prevents for background tasks. Bounded in practice (tens of rows per thread,
+ * not thousands) and served by the thread/type/item-kind index.
+ */
+export function listTodoSnapshotEventRowsForThread(
+  db: DbConnection,
+  args: ListTodoSnapshotEventRowsForThreadArgs,
+): StoredEventRow[] {
+  const itemTypes = [
+    "item/started",
+    "item/completed",
+  ] satisfies ThreadEventType[];
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.type, itemTypes),
+        eq(events.itemKind, "toolCall"),
+        sql`json_extract(${events.data}, '$.item.tool') IN (
+          'TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet'
+        )`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
 export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
   threadIds: readonly string[];
 }
@@ -1783,6 +1827,49 @@ export interface ListTimelineSegmentAnchorsDescendingArgs {
   /** Restrict to anchors strictly before this sequence (exclusive). */
   beforeSequence?: number;
   limit: number;
+}
+
+export interface FindTimelineWindowBudgetFloorSequenceArgs {
+  /** Timeline-irrelevant types, excluded so the budget counts real work. */
+  excludedTypes: readonly ThreadEventType[];
+  /** Max events the window may span. */
+  eventBudget: number;
+  threadId: string;
+  /** Count backwards from strictly before this sequence, when paginating. */
+  beforeSequence?: number;
+}
+
+/**
+ * Sequence of the `eventBudget`-th newest timeline-relevant event, or
+ * `undefined` when the thread has fewer than that many events (so no budget
+ * constraint applies).
+ *
+ * Used to bound a timeline window by *work* rather than by user-message count.
+ * Costs one indexed descending scan of `eventBudget` entries — deliberately
+ * cheaper than counting events per candidate anchor, which would re-scan the
+ * same range once per anchor.
+ */
+export function findTimelineWindowBudgetFloorSequence(
+  db: DbConnection,
+  args: FindTimelineWindowBudgetFloorSequenceArgs,
+): number | undefined {
+  const conditions: SQL[] = [eq(events.threadId, args.threadId)];
+  if (args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+  if (args.beforeSequence !== undefined) {
+    conditions.push(lt(events.sequence, args.beforeSequence));
+  }
+
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .offset(args.eventBudget)
+    .get();
+  return row?.sequence;
 }
 
 /**

@@ -103,9 +103,8 @@ const SCROLL_INTENT_KEYS = new Set([
   " ",
 ]);
 
-const BottomAnchorContext = createContext<BottomAnchorContextValue | null>(
-  null,
-);
+export const BottomAnchorContext =
+  createContext<BottomAnchorContextValue | null>(null);
 
 export function useBottomAnchoredScroll(): BottomAnchorContextValue | null {
   return useContext(BottomAnchorContext);

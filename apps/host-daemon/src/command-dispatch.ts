@@ -24,6 +24,10 @@ import {
   type CaffeinateManager,
 } from "./command-handlers/caffeinate.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
+import {
+  installGlobalSkills,
+  readGlobalSkillsStatus,
+} from "./command-handlers/install-global-skills.js";
 import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   deleteHostSkill,
@@ -418,6 +422,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_skills": listHostSkills,
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
+  "host.install_global_skills": installGlobalSkills,
+  "host.global_skills_status": async (command) =>
+    readGlobalSkillsStatus(command, {}),
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,

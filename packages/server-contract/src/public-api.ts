@@ -138,6 +138,10 @@ import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
+  SystemCliSkillsStatusQuery,
+  SystemCliSkillsStatusResponse,
+  SystemInstallCliSkillsRequest,
+  SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
@@ -281,6 +285,8 @@ import {
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
+  systemCliSkillsStatusQuerySchema,
+  systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
@@ -1309,6 +1315,22 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest(),
       response: jsonResponse<SystemConfigReloadResponse>(),
+    }),
+    cliSkillsStatus: defineRoute({
+      path: "/system/cli-skills",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemCliSkillsStatusQuery>(
+        systemCliSkillsStatusQuerySchema,
+      ),
+      response: jsonResponse<SystemCliSkillsStatusResponse>(),
+    }),
+    installCliSkills: defineRoute({
+      path: "/system/cli-skills/install",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemInstallCliSkillsRequest>(
+        systemInstallCliSkillsRequestSchema,
+      ),
+      response: jsonResponse<SystemInstallCliSkillsResponse>(),
     }),
     executionOptions: defineRoute({
       path: "/system/execution-options",

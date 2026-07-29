@@ -1030,7 +1030,11 @@ describe("createRealtimeCacheEffects", () => {
         olderCursor: null,
       },
     });
+    // The trailing refetch is paced by how long the fetch it followed took, so
+    // it no longer fires in the same tick the fetch settles.
     await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
 
     expect(timelineQueryFn).toHaveBeenCalledTimes(2);
     expect(signals[0]?.aborted).toBe(false);
