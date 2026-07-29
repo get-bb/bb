@@ -160,6 +160,7 @@ function walkAllPages(
       eventBudget,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 0,
       page: cursor
         ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
@@ -217,6 +218,7 @@ describe("timeline event budget", () => {
       eventBudget: LARGE_BUDGET,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     });
@@ -226,6 +228,7 @@ describe("timeline event budget", () => {
       eventBudget: 100,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     });
@@ -246,6 +249,7 @@ describe("timeline event budget", () => {
       eventBudget: 50,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 0,
       page: { kind: "latest", segmentLimit: 20 },
     });
@@ -267,6 +271,7 @@ describe("timeline event budget", () => {
     const options = {
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 0,
       page,
     };

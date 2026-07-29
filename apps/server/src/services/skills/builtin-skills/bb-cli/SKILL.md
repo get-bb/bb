@@ -65,9 +65,11 @@ message agents, or inspect projects, providers, and environments.
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole
   history on every timeline request, blocking the server event loop and
-  delaying the daemon endpoints the agent awaits between tool calls. Older
-  turns load automatically as you scroll toward the top; nothing becomes
-  unreachable.
+  delaying the daemon endpoints the agent awaits between tool calls. A turn
+  still running is cut at the budget as well, so a very long turn costs the
+  budget per update rather than growing without limit; a finished turn is
+  rendered whole. Older activity loads automatically as you scroll toward the
+  top; nothing becomes unreachable.
 
 ## Agent Instructions
 

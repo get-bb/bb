@@ -210,7 +210,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("uses the type and item-kind index for open background-task state", () => {
+  it("resolves open background-task state without per-row subqueries", () => {
     const { db, logger, thread } = setup();
 
     listLatestOpenBackgroundTaskStateRowsForThread(db, {
@@ -223,20 +223,30 @@ describe("slow query index plans", () => {
         fields.operation === "all" &&
         fields.sql.includes("completed_background_task_state"),
     });
+    const params = [
+      thread.id,
+      thread.id,
+      "backgroundTask",
+      "item/started",
+      "item/backgroundTask/progress",
+      thread.id,
+      "item/backgroundTask/completed",
+    ];
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog,
       indexName: "events_thread_type_item_kind_sequence_idx",
-      params: [
-        thread.id,
-        "backgroundTask",
-        "item/started",
-        "item/backgroundTask/progress",
-        "item/backgroundTask/completed",
-        "item/started",
-        "item/backgroundTask/progress",
-      ],
+      params,
     });
+
+    // This query runs on every latest-page timeline build. Written with
+    // correlated subqueries it re-scanned the thread once per candidate task
+    // row — 154 ms on a real 9,012-event thread with 2,640 task rows — so the
+    // plan must resolve both "newest lifecycle row" and "already completed" as
+    // set membership, evaluated once.
+    expect(
+      queryPlanDetails({ db, params, sql: debugLog.fields.sql }),
+    ).not.toMatch(/CORRELATED/);
 
     db.$client.close();
   });

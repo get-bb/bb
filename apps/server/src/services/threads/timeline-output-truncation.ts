@@ -11,15 +11,30 @@ import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
  * true outliers are touched. Conversation/message text is never truncated.
  * Rows are rebuilt only when something actually changes, so unchanged rows keep
  * their identity (cheap, and stable for delta diffing).
+ *
+ * The same cap is applied earlier, inside SQLite, to the three item paths that
+ * dominate event bytes (`truncatedEventDataColumn`), so those values arrive
+ * already shortened and this pass leaves them alone. What remains for this pass
+ * is everything the read boundary cannot reach: diffs and stdout/stderr nested
+ * inside a file-change's `changes` array, delegation child rows, and any row
+ * assembled from more than one event.
  */
 export const DEFAULT_MAX_INLINE_OUTPUT_CHARS = 32_000;
+
+/**
+ * The read-boundary truncation produces this same suffix from SQL, so the
+ * locale is pinned rather than left to the server's default: a reader must not
+ * be able to tell which layer shortened a value.
+ */
+function truncationSuffix(dropped: number): string {
+  return `\n…[${dropped.toLocaleString("en-US")} more characters truncated — open the turn to view the full output]`;
+}
 
 function truncateString(value: string, max: number): string {
   if (value.length <= max) {
     return value;
   }
-  const dropped = value.length - max;
-  return `${value.slice(0, max)}\n…[${dropped.toLocaleString()} more characters truncated — open the turn to view the full output]`;
+  return `${value.slice(0, max)}${truncationSuffix(value.length - max)}`;
 }
 
 function truncateRow(row: TimelineRow, max: number): TimelineRow {

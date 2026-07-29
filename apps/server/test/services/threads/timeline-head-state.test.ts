@@ -200,6 +200,7 @@ function seedThreadWithEarlyHeadState(
 const baseOptions = {
   includeProviderUnhandledOperations: false,
   includeNestedRows: true,
+  maxInlineOutputChars: null,
   maxSeq: 0,
   page: { kind: "latest", segmentLimit: 20 } as const,
 };

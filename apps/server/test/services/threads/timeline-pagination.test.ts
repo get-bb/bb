@@ -56,9 +56,11 @@ describe("paginateTimelineRows", () => {
       }),
     ];
 
-    const page = paginateTimelineRows(rows, {
-      kind: "latest",
-      segmentLimit: 2,
+    const page = paginateTimelineRows({
+      inTurnWindowStart: null,
+      knownHasOlderSegments: null,
+      page: { kind: "latest", segmentLimit: 2 },
+      rows,
     });
 
     expect(page.rows.map((row) => row.id)).toEqual([

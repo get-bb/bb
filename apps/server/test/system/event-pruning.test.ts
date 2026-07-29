@@ -252,7 +252,8 @@ describe("thread event pruning", () => {
       const timeline = buildThreadTimeline(harness.db, thread, {
         eventBudget: 1_000_000,
         includeProviderUnhandledOperations: true,
-        maxSeq: 0,
+        maxInlineOutputChars: null,
+      maxSeq: 0,
         page: {
           kind: "latest",
           segmentLimit: Number.MAX_SAFE_INTEGER,

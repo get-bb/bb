@@ -45,6 +45,7 @@ import { alias, unionAll } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
 import { environments, events, threads } from "../schema.js";
 import { createEventId } from "../ids.js";
+import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
   upsertThreadSearchSegments,
@@ -705,6 +706,26 @@ export type StoredEventRow = Pick<
   keyof typeof storedEventRowFields
 >;
 
+/**
+ * Character cap for the inline outputs a timeline read may return, or `null` to
+ * return every payload as stored. See {@link truncatedEventDataColumn}: the cap
+ * exists so a window never pays to read output it is going to shorten anyway.
+ * `null` is the deliberate choice of the turn-details route, whose whole purpose
+ * is to serve the full text.
+ */
+export type InlineOutputCharLimit = number | null;
+
+function storedEventRowFieldsWithInlineOutputLimit(
+  maxInlineOutputChars: InlineOutputCharLimit,
+) {
+  return maxInlineOutputChars === null
+    ? storedEventRowFields
+    : {
+        ...storedEventRowFields,
+        data: truncatedEventDataColumn(maxInlineOutputChars),
+      };
+}
+
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
   limit?: number;
@@ -725,6 +746,8 @@ export interface ListStoredEventRowsInRangeArgs {
 
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
   excludedTypes?: readonly ThreadEventType[];
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
   parentToolCallIds: readonly string[];
   threadId: string;
 }
@@ -753,6 +776,8 @@ export interface ListStoredClientTurnRequestRowsByKeysArgs {
 
 export interface ListStoredToolCallRowsByItemIdsArgs {
   itemIds: readonly string[];
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
   threadId: string;
 }
 
@@ -809,6 +834,8 @@ export interface ListStoredTurnStartedKeysArgs {
 
 export interface ListRecentStoredEventRowsArgs {
   excludedTypes?: readonly ThreadEventType[];
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
   threadId: string;
 }
 
@@ -819,6 +846,8 @@ export interface ListStoredConversationOutlineEventRowsArgs {
 export interface ListStoredTimelineWindowEventRowsArgs {
   beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
   sequenceStart: number;
   threadId: string;
 }
@@ -1113,7 +1142,7 @@ export function listStoredEventRowsByParentToolCallIds(
   }
 
   return db
-    .select(storedEventRowFields)
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
     .where(and(...conditions))
     .orderBy(events.sequence)
@@ -1132,13 +1161,55 @@ export function listStoredToolCallRowsByItemIds(
   }
 
   return db
-    .select(storedEventRowFields)
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
         inArray(events.itemId, itemIds),
         eq(events.itemKind, "toolCall"),
+        inArray(events.type, ["item/started", "item/completed"]),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export interface ListStoredItemLifecycleRowsByItemIdsArgs {
+  itemIds: readonly string[];
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
+  threadId: string;
+}
+
+/**
+ * Every `item/started` and `item/completed` row for the given items, wherever
+ * they sit in the thread.
+ *
+ * A window cut inside a turn can land between an item's start and its
+ * completion — an `npm run dev` observed spanning 2,744 sequences is the shape
+ * of it. The two halves then project into two different rows carrying the same
+ * row id, one of them stuck "pending". This is how a window works out which
+ * items it cut, so it can take whole items or none.
+ */
+export function listStoredItemLifecycleRowsByItemIds(
+  db: DbConnection,
+  args: ListStoredItemLifecycleRowsByItemIdsArgs,
+): StoredEventRow[] {
+  const itemIds = [...new Set(args.itemIds)].filter(
+    (itemId) => itemId.length > 0,
+  );
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.itemId, itemIds),
         inArray(events.type, ["item/started", "item/completed"]),
       ),
     )
@@ -1368,7 +1439,7 @@ export function listTodoSnapshotEventRowsForThread(
     "item/completed",
   ] satisfies ThreadEventType[];
 
-  return db
+  const rows = db
     .select(storedEventRowFields)
     .from(events)
     .where(
@@ -1381,8 +1452,13 @@ export function listTodoSnapshotEventRowsForThread(
         )`,
       ),
     )
-    .orderBy(events.sequence)
     .all();
+
+  // Ordering in SQL makes SQLite prefer the thread/sequence index and read every
+  // event in the thread to satisfy the sort; the type/item-kind index visits
+  // only tool-call rows. Todo snapshots are a small slice of those, so ordering
+  // after selection is cheaper than widening the scan.
+  return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
 export interface ListActiveBackgroundTaskCountsByThreadIdsArgs {
@@ -1461,6 +1537,39 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const completed = alias(events, "completed_background_task_state");
+  const latest = alias(events, "latest_open_background_task_state");
+
+  // Both "is this the item's newest lifecycle row" and "has this item completed"
+  // are resolved as set membership, not as per-row correlated subqueries. As
+  // correlated subqueries they re-scanned the thread once per candidate row,
+  // which is quadratic in a thread with many background tasks: a real 9,012-event
+  // thread with 2,640 task rows spent 154 ms here on every latest-page build.
+  // (threadId, sequence) is unique, so the per-item MAX(sequence) set selects
+  // exactly one row per item.
+  const latestSequences = db
+    .select({ sequence: max(latest.sequence) })
+    .from(latest)
+    .where(
+      and(
+        eq(latest.threadId, args.threadId),
+        eq(latest.itemKind, "backgroundTask"),
+        inArray(latest.type, [startedType, progressType]),
+        isNotNull(latest.itemId),
+      ),
+    )
+    .groupBy(latest.itemId);
+  const completedItemIds = db
+    .select({ itemId: completed.itemId })
+    .from(completed)
+    .where(
+      and(
+        eq(completed.threadId, args.threadId),
+        eq(completed.type, completedType),
+        // NOT IN over a set containing NULL matches nothing, so the null item
+        // ids that cannot identify a task are excluded from the set itself.
+        isNotNull(completed.itemId),
+      ),
+    );
 
   const rows = db
     .select(storedEventRowFields)
@@ -1468,29 +1577,9 @@ export function listLatestOpenBackgroundTaskStateRowsForThread(
     .where(
       and(
         eq(events.threadId, args.threadId),
-        eq(events.itemKind, "backgroundTask"),
-        inArray(events.type, [startedType, progressType]),
-        isNotNull(events.itemId),
+        inArray(events.sequence, latestSequences),
         sql`json_extract(${events.data}, '$.item.status') = 'pending'`,
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(completed)
-            .where(
-              and(
-                eq(completed.threadId, events.threadId),
-                eq(completed.itemId, events.itemId),
-                eq(completed.type, completedType),
-              ),
-            ),
-        ),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.item_id = ${events.itemId}
-            AND latest.type IN (${startedType}, ${progressType})
-        )`,
+        notInArray(events.itemId, completedItemIds),
       ),
     )
     .all();
@@ -1700,7 +1789,7 @@ export function listRecentStoredEventRows(
       : eq(events.threadId, args.threadId);
 
   return db
-    .select(storedEventRowFields)
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
     .where(condition)
     .orderBy(events.sequence)
@@ -1801,11 +1890,17 @@ function timelineSegmentAnchorConditions(threadId: string): SQL | undefined {
   return and(
     eq(events.threadId, threadId),
     eq(events.type, "client/turn/requested"),
+    // Must agree with `resolveTurnRequestKind` in the projection: a request is
+    // a segment anchor exactly when it starts a turn rather than steering one.
+    // `steer` with no expected turn is a request the user sent with nothing
+    // running, so it starts a turn like `auto` does — and when this predicate
+    // disagreed with the projection, the page emitted an older cursor the next
+    // request rejected as stale, stranding everything before it.
     sql`(
       COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
         IN ('thread-start', 'new-turn')
       OR (
-        json_extract(${events.data}, '$.target.kind') = 'auto'
+        json_extract(${events.data}, '$.target.kind') IN ('auto', 'steer')
         AND json_extract(${events.data}, '$.target.expectedTurnId') IS NULL
       )
     )`,
@@ -1870,6 +1965,44 @@ export function findTimelineWindowBudgetFloorSequence(
     .offset(args.eventBudget)
     .get();
   return row?.sequence;
+}
+
+export interface TimelineTurnBoundaryLookupArgs {
+  /** Look only at events at or after this sequence. */
+  sequence: number;
+  threadId: string;
+}
+
+/**
+ * Whether any turn has finished at or after `sequence`.
+ *
+ * A timeline window is normally cut on user messages, so it never lands inside
+ * a turn. The one exception is a turn so long it exceeds the whole event
+ * budget on its own, where the window has to start mid-turn — and that is only
+ * safe while the turn is still running, because a finished turn projects into a
+ * single summary row that two pages cannot each own. `false` here means the
+ * events after `sequence` all belong to a turn that has not finished.
+ *
+ * An interrupted or abandoned turn also has no `turn/completed`, which is the
+ * intended answer: it never collapses into a summary row either.
+ */
+export function hasCompletedTurnAtOrAfterSequence(
+  db: DbConnection,
+  args: TimelineTurnBoundaryLookupArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        gte(events.sequence, args.sequence),
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
 }
 
 /**
@@ -1954,7 +2087,7 @@ export function listStoredTimelineWindowEventRows(
   }
 
   return db
-    .select(storedEventRowFields)
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
     .where(and(...conditions))
     .orderBy(events.sequence)

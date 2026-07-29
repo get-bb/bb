@@ -59,7 +59,10 @@ import {
   createThreadTimelineCache,
 } from "../../services/threads/timeline-cache.js";
 import { createTimelineLatestRowsCache } from "../../services/threads/timeline-latest-rows-cache.js";
-import { truncateTimelineResponseOutputs } from "../../services/threads/timeline-output-truncation.js";
+import {
+  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+  truncateTimelineResponseOutputs,
+} from "../../services/threads/timeline-output-truncation.js";
 import { computeTimelineRowDelta } from "@bb/server-contract";
 import {
   findThreadEvent,
@@ -406,6 +409,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             eventBudget,
             includeProviderUnhandledOperations,
             includeNestedRows,
+            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
             maxSeq,
             page,
             providerDisplayName,
@@ -413,7 +417,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           },
         );
         slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        return truncateTimelineResponseOutputs(response);
+        return truncateTimelineResponseOutputs(
+          response,
+          DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+        );
       },
     );
 

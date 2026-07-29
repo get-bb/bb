@@ -322,6 +322,7 @@ describe("thread timeline parented pagination", () => {
       eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 51,
       page: { kind: "latest", segmentLimit: 1 },
     });
@@ -338,6 +339,7 @@ describe("thread timeline parented pagination", () => {
       eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
       includeNestedRows: true,
+      maxInlineOutputChars: null,
       maxSeq: 51,
       page: {
         kind: "older",
