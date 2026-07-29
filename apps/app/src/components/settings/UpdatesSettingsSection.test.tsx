@@ -6,11 +6,13 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Host } from "@bb/domain";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type {
   ProviderCliIssue,
   ProviderCliActionableIssue,
@@ -49,10 +51,12 @@ vi.mock("@/hooks/useDesktopUpdateInfo", () => ({
   useDesktopUpdateInfo: vi.fn(),
 }));
 
+const retryHostUpdateMutateMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/hooks/mutations/host-mutations", () => ({
   useRetryHostUpdate: () => ({
     isPending: false,
-    mutate: vi.fn(),
+    mutate: retryHostUpdateMutateMock,
     variables: undefined,
   }),
 }));
@@ -124,6 +128,10 @@ function makeUpdateIssue(args: {
 function makeMachine(args: {
   host: Host;
   issues?: ProviderCliIssue[];
+  isPrimary?: boolean;
+  statusPending?: boolean;
+  statusError?: boolean;
+  canRetryDaemonUpdate?: boolean;
 }): UpdateInventoryMachine {
   const issues = args.issues ?? [];
   const upToDate = (provider: "codex" | "claudeCode") => {
@@ -150,7 +158,7 @@ function makeMachine(args: {
   };
   return {
     host: args.host,
-    isPrimary: false,
+    isPrimary: args.isPrimary ?? false,
     providerStatus:
       args.host.status === "connected"
         ? {
@@ -159,10 +167,10 @@ function makeMachine(args: {
             cursor: cursorStatus,
           }
         : null,
-    statusPending: false,
-    statusError: false,
+    statusPending: args.statusPending ?? false,
+    statusError: args.statusError ?? false,
     issues,
-    canRetryDaemonUpdate: false,
+    canRetryDaemonUpdate: args.canRetryDaemonUpdate ?? false,
   };
 }
 
@@ -183,6 +191,7 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
     machines: [],
     actionableCount: 0,
     hasAttention: false,
+    lastCheckedAt: null,
     ...overrides,
   };
 }
@@ -203,6 +212,14 @@ const useUpdateInventoryMock = vi.mocked(useUpdateInventory);
 const useDesktopUpdateInfoMock = vi.mocked(useDesktopUpdateInfo);
 const useProviderCliInstallRunnerMock = vi.mocked(useProviderCliInstallRunner);
 
+beforeEach(() => {
+  useProviderCliInstallRunnerMock.mockReturnValue({
+    queuedJobKeys: new Set<string>(),
+    runningJobKey: null,
+    startInstall: startInstallMock,
+  });
+});
+
 afterEach(() => {
   cleanup();
   resetAppUpdateCheckStoreForTests();
@@ -210,6 +227,139 @@ afterEach(() => {
 });
 
 describe("UpdatesSettingsSection", () => {
+  it("keeps a recently checked healthy fleet quiet and accessible", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        lastCheckedAt: Date.now() - 2 * 60 * 1000,
+        machines: [
+          makeMachine({
+            host: makeHost({ id: "host_1", name: "workstation" }),
+            isPrimary: true,
+          }),
+          makeMachine({
+            host: makeHost({ id: "host_2", name: "studio-mac" }),
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("Checked 2m ago")).toBeDefined();
+    expect(screen.getByText("2 machines, all in sync")).toBeDefined();
+    expect(screen.queryByText("Up to date")).toBeNull();
+    expect(screen.queryByText(/^In sync$/)).toBeNull();
+    expect(
+      screen.getByRole("group", { name: /workstation, Connected/ }),
+    ).toBeDefined();
+  });
+
+  it("does not call an offline fleet all in sync", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host: makeHost({
+              id: "host_1",
+              name: "homelab",
+              status: "disconnected",
+            }),
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("1 machine was not checked")).toBeDefined();
+    expect(screen.queryByText(/all in sync/)).toBeNull();
+    expect(
+      within(screen.getByRole("group", { name: /homelab, Offline/ })).getByText(
+        "Offline — connect to check for updates",
+      ),
+    ).toBeDefined();
+  });
+
+  it("explains and retries a stranded daemon update", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({
+      id: "host_1",
+      name: "homelab",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+    });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [
+          makeMachine({
+            host,
+            canRetryDaemonUpdate: true,
+          }),
+        ],
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("1 machine can't connect")).toBeDefined();
+    expect(
+      screen.getByText("Can't connect — its bb agent is out of date"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
+      ),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry update" }));
+    expect(retryHostUpdateMutateMock).toHaveBeenCalledWith(
+      host.id,
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("removes running and queued provider jobs from Update all", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const codexIssue = makeUpdateIssue({ provider: "codex" });
+    const claudeIssue = makeUpdateIssue({ provider: "claudeCode" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, issues: [codexIssue, claudeIssue] })],
+      }),
+    );
+    useProviderCliInstallRunnerMock.mockReturnValue({
+      queuedJobKeys: new Set(["host_1:claudeCode"]),
+      runningJobKey: "host_1:codex",
+      startInstall: startInstallMock,
+    });
+
+    renderSection();
+
+    expect(screen.queryByRole("button", { name: /Update all/ })).toBeNull();
+    expect(screen.getByText("2 updates in progress")).toBeDefined();
+    expect(screen.getByText("Running…")).toBeDefined();
+    expect(screen.getByText("Queued")).toBeDefined();
+  });
+
   it("forces the web update check and shows the upgrade command inline", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,

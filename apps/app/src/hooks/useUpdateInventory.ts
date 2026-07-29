@@ -45,6 +45,13 @@ export interface UpdateInventory {
   /** Count of things a user can act on right now. */
   actionableCount: number;
   hasAttention: boolean;
+  /**
+   * Epoch ms when the oldest source in the current inventory was last checked.
+   * Null until the app and every connected machine have returned a result.
+   * Using the oldest source prevents one fresh response from making stale
+   * machine data look current.
+   */
+  lastCheckedAt: number | null;
 }
 
 interface UseUpdateInventoryOptions {
@@ -135,6 +142,22 @@ export function useUpdateInventory(
     (appUpdateAvailable ? 1 : 0) +
     (desktopUpdateReady ? 1 : 0);
 
+  const desktopLastCheckedAt =
+    desktopInfo?.lastCheckedAt === null ||
+    desktopInfo?.lastCheckedAt === undefined
+      ? 0
+      : Date.parse(desktopInfo.lastCheckedAt);
+  const checkTimestamps = [
+    isDesktop ? desktopLastCheckedAt : systemVersionQuery.dataUpdatedAt,
+    ...providerStatusQueries.map((query) => query.dataUpdatedAt),
+  ];
+  const hasCompleteCheck =
+    checkTimestamps.length > 0 &&
+    checkTimestamps.every(
+      (timestamp) => Number.isFinite(timestamp) && timestamp > 0,
+    );
+  const lastCheckedAt = hasCompleteCheck ? Math.min(...checkTimestamps) : null;
+
   return {
     isLoading: systemVersionQuery.isPending || hostsQuery.isPending,
     systemVersion,
@@ -144,5 +167,6 @@ export function useUpdateInventory(
     machines,
     actionableCount,
     hasAttention: actionableCount > 0,
+    lastCheckedAt,
   };
 }

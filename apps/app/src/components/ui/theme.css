@@ -60,6 +60,7 @@
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
+  --color-surface-attention: var(--surface-attention);
   --color-surface-selected: var(--surface-selected);
   --color-surface-selected-border: var(--surface-selected-border);
   --color-sidebar: var(--sidebar);
@@ -421,6 +422,10 @@
     var(--destructive) 25%,
     transparent
   );
+  /* Attention twin of the destructive pair: the row tint for "an update is
+   * waiting for you", a tier below destructive's "this is broken". Translucent
+   * so it composites over card and page alike. */
+  --surface-attention: color-mix(in oklab, var(--attention) 14%, transparent);
   --surface-selected: color-mix(in oklab, var(--primary) 16%, transparent);
   --surface-selected-border: color-mix(
     in oklab,
@@ -656,6 +661,7 @@
     var(--destructive) 30%,
     transparent
   );
+  --surface-attention: color-mix(in oklab, var(--attention) 12%, transparent);
   --surface-selected: color-mix(in oklab, var(--primary) 12%, transparent);
   --surface-selected-border: color-mix(
     in oklab,

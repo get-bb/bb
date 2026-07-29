@@ -20,10 +20,7 @@ const css = readFileSync(
 function modeBlock(scheme: "light" | "dark", source = css): string {
   const at = source.indexOf(`color-scheme: ${scheme};`);
   if (at === -1) throw new Error(`no ${scheme} block in theme.css`);
-  return source.slice(
-    source.lastIndexOf("{", at) + 1,
-    source.indexOf("}", at),
-  );
+  return source.slice(source.lastIndexOf("{", at) + 1, source.indexOf("}", at));
 }
 
 /**
@@ -249,6 +246,22 @@ describe("theme.css Cadence text tokens", () => {
       expect(contrastRatio(timelineAccent, canvas)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(destructiveText, canvas)).toBeGreaterThanOrEqual(
         4.5,
+      );
+    });
+  }
+});
+
+describe("theme.css semantic update surfaces", () => {
+  it("registers the attention surface utility with Tailwind", () => {
+    expect(css).toMatch(
+      /--color-surface-attention:\s*var\(--surface-attention\);/,
+    );
+  });
+
+  for (const mode of MODES) {
+    it(`derives the ${mode} attention surface from the semantic color in a hue-safe space`, () => {
+      expect(variableValue(modeBlock(mode), "surface-attention")).toMatch(
+        /^color-mix\(in oklab, var\(--attention\) [\d.]+%, transparent\)$/,
       );
     });
   }

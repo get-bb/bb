@@ -1,14 +1,15 @@
 import type { ReactNode } from "react";
 import type { Host } from "@bb/domain";
+import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
-import { SettingsSection } from "@/components/ui/settings-section";
 import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
 import {
   BbAppUpdateRows,
   MachineUpdatesRows,
   UpdatesRowList,
+  UpdatesSection,
 } from "./UpdatesSettingsSection";
 
 export default {
@@ -137,7 +138,7 @@ function machineOf(args: {
 
 function MachineSection({ machine }: { machine: UpdateInventoryMachine }) {
   return (
-    <SettingsSection title="Machines">
+    <UpdatesSection title="Machines">
       <UpdatesRowList>
         <MachineUpdatesRows
           machine={machine}
@@ -148,14 +149,126 @@ function MachineSection({ machine }: { machine: UpdateInventoryMachine }) {
           onRetryDaemonUpdate={noop}
         />
       </UpdatesRowList>
-    </SettingsSection>
+    </UpdatesSection>
   );
 }
 
-export function WebAppUpdateAvailable() {
+function StoryActionButton({ children }: { children: ReactNode }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-6 px-2 text-xs"
+    >
+      {children}
+    </Button>
+  );
+}
+
+export function HealthyFleet() {
+  const statuses = {
+    codex: providerStatus("codex", {
+      currentVersion: "0.146.0",
+      latestVersion: "0.146.0",
+    }),
+    claudeCode: providerStatus("claudeCode", {
+      currentVersion: "2.1.0",
+      latestVersion: "2.1.0",
+    }),
+  };
   return (
     <Stage>
-      <SettingsSection title="bb">
+      <UpdatesSection
+        title="bb"
+        footnote="Connected machines follow the server version automatically."
+        action={
+          <>
+            <span className="text-xs text-subtle-foreground">
+              Checked 2m ago
+            </span>
+            <StoryActionButton>What's new</StoryActionButton>
+          </>
+        }
+      >
+        <UpdatesRowList>
+          <BbAppUpdateRows
+            systemVersion={{
+              currentVersion: "0.0.33",
+              latestVersion: "0.0.33",
+              source: "npm",
+              updateAvailable: false,
+              isDevelopment: false,
+              upgradeCommand: "npx bb-app@latest",
+            }}
+            desktopInfo={null}
+            isDesktop={false}
+            onRelaunchDesktop={null}
+            onRetryDesktop={null}
+          />
+        </UpdatesRowList>
+      </UpdatesSection>
+      <UpdatesSection
+        title="Machines"
+        action={
+          <span className="text-xs text-subtle-foreground">
+            2 machines, all in sync
+          </span>
+        }
+      >
+        <UpdatesRowList>
+          <MachineUpdatesRows
+            machine={machineOf({
+              host: makeHost({ id: "host-primary", name: "workstation" }),
+              statuses,
+            })}
+            runningJobKey={null}
+            queuedJobKeys={NO_JOBS}
+            retryUpdatePending={false}
+            onStartInstall={noop}
+            onRetryDaemonUpdate={noop}
+          />
+          <MachineUpdatesRows
+            machine={machineOf({
+              host: makeHost({ id: "host-remote", name: "studio-mac" }),
+              statuses,
+            })}
+            runningJobKey={null}
+            queuedJobKeys={NO_JOBS}
+            retryUpdatePending={false}
+            onStartInstall={noop}
+            onRetryDaemonUpdate={noop}
+          />
+        </UpdatesRowList>
+      </UpdatesSection>
+    </Stage>
+  );
+}
+
+export function MixedFleet() {
+  const codex = providerStatus("codex", {
+    currentVersion: "0.145.0",
+    latestVersion: "0.146.0",
+    needsUpdate: true,
+  });
+  const claude = providerStatus("claudeCode", {
+    currentVersion: "2.1.0",
+    latestVersion: "2.1.0",
+  });
+  return (
+    <Stage>
+      <UpdatesSection
+        title="bb"
+        footnote="Connected machines follow the server version automatically."
+        action={
+          <>
+            <span className="text-xs text-subtle-foreground">
+              Checked just now
+            </span>
+            <StoryActionButton>What's new</StoryActionButton>
+          </>
+        }
+      >
         <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={{
@@ -172,7 +285,80 @@ export function WebAppUpdateAvailable() {
             onRetryDesktop={null}
           />
         </UpdatesRowList>
-      </SettingsSection>
+      </UpdatesSection>
+      <UpdatesSection
+        title="Machines"
+        action={
+          <>
+            <span className="text-xs text-subtle-foreground">
+              1 machine can't connect
+            </span>
+            <StoryActionButton>Update all (1)</StoryActionButton>
+          </>
+        }
+      >
+        <UpdatesRowList>
+          <MachineUpdatesRows
+            machine={machineOf({
+              host: makeHost({ id: "host-primary", name: "workstation" }),
+              statuses: { codex, claudeCode: claude },
+              issues: [
+                issueFor("codex", {
+                  currentVersion: "0.145.0",
+                  latestVersion: "0.146.0",
+                  needsUpdate: true,
+                }),
+              ],
+            })}
+            runningJobKey={null}
+            queuedJobKeys={NO_JOBS}
+            retryUpdatePending={false}
+            onStartInstall={noop}
+            onRetryDaemonUpdate={noop}
+          />
+          <MachineUpdatesRows
+            machine={machineOf({
+              host: makeHost({
+                id: "host-remote",
+                name: "homelab",
+                status: "disconnected",
+                lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+              }),
+              canRetryDaemonUpdate: true,
+            })}
+            runningJobKey={null}
+            queuedJobKeys={NO_JOBS}
+            retryUpdatePending={false}
+            onStartInstall={noop}
+            onRetryDaemonUpdate={noop}
+          />
+        </UpdatesRowList>
+      </UpdatesSection>
+    </Stage>
+  );
+}
+
+export function WebAppUpdateAvailable() {
+  return (
+    <Stage>
+      <UpdatesSection title="bb">
+        <UpdatesRowList>
+          <BbAppUpdateRows
+            systemVersion={{
+              currentVersion: "0.0.32",
+              latestVersion: "0.0.33",
+              source: "npm",
+              updateAvailable: true,
+              isDevelopment: false,
+              upgradeCommand: "npx bb-app@latest",
+            }}
+            desktopInfo={null}
+            isDesktop={false}
+            onRelaunchDesktop={null}
+            onRetryDesktop={null}
+          />
+        </UpdatesRowList>
+      </UpdatesSection>
     </Stage>
   );
 }
@@ -180,7 +366,7 @@ export function WebAppUpdateAvailable() {
 export function DesktopUpdateReady() {
   return (
     <Stage>
-      <SettingsSection title="bb">
+      <UpdatesSection title="bb">
         <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={undefined}
@@ -199,7 +385,7 @@ export function DesktopUpdateReady() {
             onRetryDesktop={noop}
           />
         </UpdatesRowList>
-      </SettingsSection>
+      </UpdatesSection>
     </Stage>
   );
 }
@@ -207,7 +393,7 @@ export function DesktopUpdateReady() {
 export function DesktopDownloading() {
   return (
     <Stage>
-      <SettingsSection title="bb">
+      <UpdatesSection title="bb">
         <UpdatesRowList>
           <BbAppUpdateRows
             systemVersion={undefined}
@@ -226,7 +412,7 @@ export function DesktopDownloading() {
             onRetryDesktop={noop}
           />
         </UpdatesRowList>
-      </SettingsSection>
+      </UpdatesSection>
     </Stage>
   );
 }
@@ -279,7 +465,7 @@ export function MachineRunningAndQueued() {
   });
   return (
     <Stage>
-      <SettingsSection title="Machines">
+      <UpdatesSection title="Machines">
         <UpdatesRowList>
           <MachineUpdatesRows
             machine={machine}
@@ -290,7 +476,7 @@ export function MachineRunningAndQueued() {
             onRetryDaemonUpdate={noop}
           />
         </UpdatesRowList>
-      </SettingsSection>
+      </UpdatesSection>
     </Stage>
   );
 }
