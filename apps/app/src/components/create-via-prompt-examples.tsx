@@ -27,7 +27,7 @@ interface KindConfig {
 
 // The description completes the prompt prefix, so each card both teaches and
 // seeds the composer. Skills are standard Agent Skills whose bb edge is being
-// cross-provider; schedules run scripts and can escalate to threads.
+// cross-provider; automations run scripts and can escalate to threads.
 const CONFIG: Record<CreateViaPromptKind, KindConfig> = {
   skill: {
     prefix: CREATE_SKILL_PROMPT,
@@ -190,7 +190,7 @@ export function CreateViaPromptExamples({
 
 export interface CreateWithTemplatesButtonProps {
   kind: CreateViaPromptKind;
-  /** Main-button text, e.g. "New schedule" or "New bb skill". */
+  /** Main-button text, e.g. "New automation" or "New bb skill". */
   label: string;
   menuActions?: readonly ResourceCreateMenuAction[];
   /** Blank when called with no argument; seeded when given an example prompt. */

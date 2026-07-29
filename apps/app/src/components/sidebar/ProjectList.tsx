@@ -170,6 +170,7 @@ interface ProjectListActionButtonsProps {
     openInSplit(): void;
   };
   onNewChat?: () => void;
+  onOpenTools?: () => void;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -804,6 +805,7 @@ export function ProjectListActionButtons({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
+  onOpenTools,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -921,6 +923,18 @@ export function ProjectListActionButtons({
           ) : null}
         </div>
       )}
+      {onOpenTools ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={PROJECT_LIST_ACTION_BUTTON_CLASS}
+          onClick={onOpenTools}
+        >
+          <Icon name="Toolbox" />
+          <span className="min-w-0 flex-1 truncate text-left">Extensions</span>
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -88,7 +88,7 @@ describe("resolveToolsBreadcrumbs", () => {
     ]);
     expect(
       resolveToolsBreadcrumbs(
-        "/plugins/automations/schedules/personal/weekly-review",
+        "/plugins/automations/automations/personal/weekly-review",
       ),
     ).toBeNull();
   });

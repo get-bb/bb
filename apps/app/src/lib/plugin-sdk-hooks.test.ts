@@ -2,23 +2,23 @@ import { describe, expect, it, vi } from "vitest";
 import {
   callPluginRpc,
   fetchPluginSdkSettings,
-  isScheduleEditRoutePath,
+  isAutomationEditRoutePath,
 } from "./plugin-sdk-hooks";
 
-describe("isScheduleEditRoutePath", () => {
-  it("recognizes only canonical schedule edit routes", () => {
+describe("isAutomationEditRoutePath", () => {
+  it("recognizes only canonical automation edit routes", () => {
     expect(
-      isScheduleEditRoutePath(
-        "/plugins/automations/schedules/proj_standard/auto_standard/edit",
+      isAutomationEditRoutePath(
+        "/plugins/automations/automations/proj_standard/auto_standard/edit",
       ),
     ).toBe(true);
     expect(
-      isScheduleEditRoutePath(
-        "/plugins/automations/schedules/proj_standard/auto_standard",
+      isAutomationEditRoutePath(
+        "/plugins/automations/automations/proj_standard/auto_standard",
       ),
     ).toBe(false);
     expect(
-      isScheduleEditRoutePath(
+      isAutomationEditRoutePath(
         "/tools/automations/proj_standard/auto_standard/edit",
       ),
     ).toBe(false);

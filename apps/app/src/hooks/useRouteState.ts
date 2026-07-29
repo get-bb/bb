@@ -12,7 +12,7 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
-  /** On the Plugins & Skills hub or a legacy tool route. */
+  /** On Extensions or a legacy tool route. */
   isToolsView: boolean;
   /** On the Skills surface. */
   isSkillsView: boolean;

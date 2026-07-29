@@ -33,5 +33,5 @@ export function buildAutomationEditThreadPrompt({
   projectId: string;
   automationId: string;
 }): string {
-  return `Edit the bb schedule ${quoteResourceName(name)} (ID ${automationId}) in project ${projectId}. I want to `;
+  return `Edit the bb automation ${quoteResourceName(name)} (ID ${automationId}) in project ${projectId}. I want to `;
 }

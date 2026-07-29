@@ -86,7 +86,7 @@ function requireProjectAutomation(
   args: { projectId: string; automationId: string },
 ): AutomationRow {
   const automation = getAutomationForProject(db, args);
-  if (!automation) throw new Error("Schedule not found");
+  if (!automation) throw new Error("Automation not found");
   return automation;
 }
 
@@ -125,7 +125,7 @@ function assertNotRecursiveCreation(
 ): void {
   if (createdByThreadId === undefined) return;
   if (isAutomationSpawnedThread(db, createdByThreadId)) {
-    throw new Error("Schedule-spawned threads cannot create schedules");
+    throw new Error("Automation-spawned threads cannot create automations");
   }
 }
 
@@ -250,7 +250,9 @@ function applyAgentExecutionUpdate(
   update: AgentExecutionUpdate,
 ): Extract<AutomationExecution, { mode: "agent" }> {
   if (execution.mode !== "agent") {
-    throw new Error("Agent execution options can only update agent schedules");
+    throw new Error(
+      "Agent execution options can only update agent automations",
+    );
   }
 
   const next = {
@@ -475,7 +477,7 @@ export function createAutomationService(args: {
         if (input.agent.permissionMode !== undefined) {
           if (currentExecution.mode !== "agent") {
             throw new Error(
-              "Agent execution options can only update agent schedules",
+              "Agent execution options can only update agent automations",
             );
           }
           await resolvePermissionMode(
@@ -512,7 +514,7 @@ export function createAutomationService(args: {
           automationId: current.id,
           scriptFile: stagedScriptFile,
         });
-        throw new Error("Schedule not found");
+        throw new Error("Automation not found");
       }
       if (patch.execution !== undefined) {
         await cleanupSupersededScript({
@@ -549,7 +551,7 @@ export function createAutomationService(args: {
         enabled: false,
         nextRunAt: null,
       });
-      if (!updated) throw new Error("Schedule not found");
+      if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
       return toAutomationResponse(updated);
     },
@@ -566,7 +568,7 @@ export function createAutomationService(args: {
         nextRunAt: computeNextRunAt(trigger, now),
         lastError: null,
       });
-      if (!updated) throw new Error("Schedule not found");
+      if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
       return toAutomationResponse(updated);
     },

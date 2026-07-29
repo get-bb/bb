@@ -34,16 +34,14 @@ export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
 export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
-export const SCHEDULES_PLUGIN_PANEL_PATH = "schedules";
-export const LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH =
-  "/plugins/automations/automations/*";
-export const SCHEDULES_ROUTE_PATH = "/plugins/automations/schedules";
-export const SCHEDULES_BROWSE_ROUTE_PATH =
-  "/plugins/automations/schedules/browse";
-export const SCHEDULE_DETAIL_ROUTE_PATH =
-  "/plugins/automations/schedules/:projectId/:automationId";
-export const SCHEDULE_EDIT_ROUTE_PATH =
-  "/plugins/automations/schedules/:projectId/:automationId/edit";
+export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
+export const AUTOMATIONS_ROUTE_PATH = "/plugins/automations/automations";
+export const AUTOMATIONS_BROWSE_ROUTE_PATH =
+  "/plugins/automations/automations/browse";
+export const AUTOMATION_DETAIL_ROUTE_PATH =
+  "/plugins/automations/automations/:projectId/:automationId";
+export const AUTOMATION_EDIT_ROUTE_PATH =
+  "/plugins/automations/automations/:projectId/:automationId/edit";
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
@@ -166,28 +164,28 @@ export function getPluginDetailRoutePath({
   return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
 }
 
-export function getSchedulesRoutePath(): string {
-  return SCHEDULES_ROUTE_PATH;
+export function getAutomationsRoutePath(): string {
+  return AUTOMATIONS_ROUTE_PATH;
 }
 
-export interface ScheduleDetailRoutePathArgs {
+export interface AutomationDetailRoutePathArgs {
   projectId: string;
   automationId: string;
 }
 
-export function getScheduleDetailRoutePath({
+export function getAutomationDetailRoutePath({
   projectId,
   automationId,
-}: ScheduleDetailRoutePathArgs): string {
-  return `${SCHEDULES_ROUTE_PATH}/${encodeURIComponent(
+}: AutomationDetailRoutePathArgs): string {
+  return `${AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
     projectId,
   )}/${encodeURIComponent(automationId)}`;
 }
 
-export function getScheduleEditRoutePath(
-  args: ScheduleDetailRoutePathArgs,
+export function getAutomationEditRoutePath(
+  args: AutomationDetailRoutePathArgs,
 ): string {
-  return `${getScheduleDetailRoutePath(args)}/edit`;
+  return `${getAutomationDetailRoutePath(args)}/edit`;
 }
 
 export function getProjectSettingsRoutePath(projectId: string): string {
@@ -249,11 +247,10 @@ const baseRoutePatterns: readonly string[] = [
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
-  LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH,
-  SCHEDULES_ROUTE_PATH,
-  SCHEDULES_BROWSE_ROUTE_PATH,
-  SCHEDULE_DETAIL_ROUTE_PATH,
-  SCHEDULE_EDIT_ROUTE_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTOMATIONS_BROWSE_ROUTE_PATH,
+  AUTOMATION_DETAIL_ROUTE_PATH,
+  AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

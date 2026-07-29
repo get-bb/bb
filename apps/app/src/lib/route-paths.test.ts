@@ -4,9 +4,9 @@ import {
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillDetailRoutePath,
-  getScheduleDetailRoutePath,
-  getScheduleEditRoutePath,
-  getSchedulesRoutePath,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
@@ -14,7 +14,6 @@ import {
   isRoutePath,
   isProjectlessProjectId,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
-  LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
   resolveRouteHref,
@@ -61,7 +60,7 @@ describe("route path helpers", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
   });
 
-  it("builds and recognizes the Plugins & Skills routes", () => {
+  it("builds and recognizes the Extensions routes", () => {
     expect(getToolsRoutePath()).toBe("/tools");
     expect(getSkillsRoutePath()).toBe("/tools/skills");
     expect(
@@ -92,26 +91,26 @@ describe("route path helpers", () => {
     }
   });
 
-  it("builds canonical Schedules plugin routes", () => {
-    expect(getSchedulesRoutePath()).toBe("/plugins/automations/schedules");
+  it("builds canonical Automations plugin routes", () => {
+    expect(getAutomationsRoutePath()).toBe("/plugins/automations/automations");
     expect(
-      getScheduleDetailRoutePath({
+      getAutomationDetailRoutePath({
         projectId: "proj_standard",
         automationId: "auto_standard",
       }),
-    ).toBe("/plugins/automations/schedules/proj_standard/auto_standard");
+    ).toBe("/plugins/automations/automations/proj_standard/auto_standard");
     expect(
-      getScheduleEditRoutePath({
+      getAutomationEditRoutePath({
         projectId: "proj_standard",
         automationId: "auto_standard",
       }),
-    ).toBe("/plugins/automations/schedules/proj_standard/auto_standard/edit");
+    ).toBe("/plugins/automations/automations/proj_standard/auto_standard/edit");
 
     for (const path of [
-      "/plugins/automations/schedules",
-      "/plugins/automations/schedules/browse",
-      "/plugins/automations/schedules/proj_standard/auto_standard",
-      "/plugins/automations/schedules/proj_standard/auto_standard/edit",
+      "/plugins/automations/automations",
+      "/plugins/automations/automations/browse",
+      "/plugins/automations/automations/proj_standard/auto_standard",
+      "/plugins/automations/automations/proj_standard/auto_standard/edit",
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }
@@ -122,9 +121,6 @@ describe("route path helpers", () => {
     expect(LEGACY_AUTOMATIONS_ROUTE_PATH).toBe("/automations");
     expect(LEGACY_AUTOMATION_DETAIL_ROUTE_PATH).toBe(
       "/automations/:projectId/:automationId",
-    );
-    expect(LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH).toBe(
-      "/plugins/automations/automations/*",
     );
     expect(isRoutePath({ path: "/skills" })).toBe(true);
     expect(isRoutePath({ path: "/automations" })).toBe(true);

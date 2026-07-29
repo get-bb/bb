@@ -921,7 +921,7 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const TOOLS_HUB_EXPERIMENT_LABEL = "Tools Hub";
+const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
 const SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL = "Side chat plugin";
 
 export function ExperimentsSettingsSection({
@@ -953,14 +953,14 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={TOOLS_HUB_EXPERIMENT_LABEL}
-          description="Enable the Plugins & Skills management hub. Schedules stay beside threads, and installed skills and plugin runtimes keep working while it is off."
+          label={EXTENSIONS_EXPERIMENT_LABEL}
+          description="Enable Extensions for managing skills and plugins. Automations stay in the Plugins section beside threads, and installed skills and plugin runtimes keep working while it is off."
         >
           <Switch
             checked={toolsHubEnabled}
             disabled={disabled}
             onCheckedChange={onToolsHubEnabledChange}
-            aria-label={TOOLS_HUB_EXPERIMENT_LABEL}
+            aria-label={EXTENSIONS_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 

@@ -32,11 +32,7 @@ import {
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
-import {
-  AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
-  getPluginPanelRoutePath,
-} from "@/lib/route-paths";
+import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
@@ -44,7 +40,6 @@ import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSpli
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
 import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
-import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
@@ -114,45 +109,23 @@ type SidebarNavRow =
  * preferences live in `pluginNavSidebarAtoms`.
  */
 export function PluginNavSidebarItems({
-  toolsRoutePath,
   ...props
 }: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
-  /** Omit to drop the built-in Tools row, e.g. when its experiment is off. */
-  toolsRoutePath?: string;
 }) {
   const { navPanels } = usePluginSlots();
-  const toolsHubEnabled = useToolsHubExperiment();
-  const rows = useMemo<SidebarNavRow[]>(() => {
-    const pluginRows = navPanels
-      .filter(
-        (panel) =>
-          !toolsHubEnabled ||
-          !(
-            panel.pluginId === AUTOMATIONS_PLUGIN_ID &&
-            panel.path === AUTOMATIONS_PLUGIN_PANEL_PATH
-          ),
-      )
-      .map<SidebarNavRow>((panel) => ({
+  const rows = useMemo<SidebarNavRow[]>(
+    () =>
+      navPanels.map((panel) => ({
         kind: "plugin",
         pluginId: panel.pluginId,
         id: panel.id,
         title: panel.title,
         panel,
-      }));
-    if (toolsRoutePath === undefined) return pluginRows;
-    return [
-      {
-        kind: "tools",
-        pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
-        id: "tools",
-        title: "Tools",
-        routePath: toolsRoutePath,
-      },
-      ...pluginRows,
-    ];
-  }, [navPanels, toolsHubEnabled, toolsRoutePath]);
+      })),
+    [navPanels],
+  );
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
   if (rows.length === 0) return null;

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
 import {
   ProjectListActionButtons,
   PROJECT_LIST_ACTION_BUTTON_CLASS,
@@ -15,26 +15,26 @@ import {
 } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  SCHEDULES_PLUGIN_PANEL_PATH,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
 
 export default {
-  title: "Tools/Navigation",
+  title: "Extensions/Navigation",
 };
 
 const noop = () => {};
 
-function StorySchedulesRegistration() {
+function StoryAutomationsRegistration() {
   useEffect(() => {
     setPluginSlotRegistrations(AUTOMATIONS_PLUGIN_ID, {
       homepageSections: [],
       settingsSections: [],
       navPanels: [
         {
-          id: SCHEDULES_PLUGIN_PANEL_PATH,
-          title: "Schedules",
+          id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+          title: "Automations",
           icon: "TimeSchedule",
-          path: SCHEDULES_PLUGIN_PANEL_PATH,
+          path: AUTOMATIONS_PLUGIN_PANEL_PATH,
           component: () => null,
         },
       ],
@@ -54,20 +54,17 @@ export function AppSidebar() {
   return (
     <ProjectActionsProvider>
       <ThreadActionsProvider>
-        <StorySchedulesRegistration />
+        <StoryAutomationsRegistration />
         <main className="m-6 max-w-[320px]">
           <p className="mb-3 text-sm text-muted-foreground">
-            Schedules is a top-level destination beside thread navigation.
-            Plugins &amp; Skills opens the separate tools section.
+            Plugin pages share a collapsible section beside thread navigation.
+            Extensions opens their separate management surface.
           </p>
           <div className="overflow-hidden rounded-md border border-sidebar-border bg-sidebar py-2 text-sidebar-foreground shadow-sm">
             <div className="px-2">
-              <ProjectListActionButtons
-                onNewChat={noop}
-                onOpenTools={noop}
-              />
+              <ProjectListActionButtons onNewChat={noop} onOpenTools={noop} />
             </div>
-            <PluginNavSidebarItems />
+            <PluginNavSidebarSection />
             <div className="border-t border-sidebar-border/70 px-2 pt-2">
               <div className={PROJECT_LIST_ACTION_BUTTON_CLASS}>
                 <Icon name="MessageSquare" className="size-4" />
@@ -81,7 +78,7 @@ export function AppSidebar() {
   );
 }
 
-export function PluginsAndSkillsSidebar() {
+export function ExtensionsSidebar() {
   return (
     <SidebarProvider>
       <main className="flex h-[420px] w-full bg-background">
@@ -92,7 +89,8 @@ export function PluginsAndSkillsSidebar() {
           showTopReserve={false}
         />
         <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-          Select Skills or Plugins. Schedules lives in the app sidebar instead.
+          Select Skills or Plugins. Automations lives in the app sidebar&apos;s
+          Plugins section instead.
         </div>
       </main>
     </SidebarProvider>

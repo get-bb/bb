@@ -31,7 +31,7 @@ export function ToolsSidebar({
       showTopReserve={showTopReserve}
       testIdPrefix="tools"
     >
-      <SectionSidebarLabel>Plugins &amp; Skills</SectionSidebarLabel>
+      <SectionSidebarLabel>Extensions</SectionSidebarLabel>
       <div className="mt-1 space-y-0.5">
         {TOOLS_NAV_ITEMS.map((item) => (
           <SectionSidebarRow

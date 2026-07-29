@@ -307,7 +307,7 @@ async function buildExecution(
       args.flags.has("env-json"))
   ) {
     throw new Error(
-      "Agent schedules do not accept --interpreter, --timeout, or --env-json.",
+      "Agent automations do not accept --interpreter, --timeout, or --env-json.",
     );
   }
   if (!hasAgent && !hasScript) {
@@ -320,7 +320,7 @@ async function buildExecution(
     const model = flag(args, "model");
     if (!provider || !model) {
       throw new Error(
-        "Agent schedules require --provider and --model alongside --prompt.",
+        "Agent automations require --provider and --model alongside --prompt.",
       );
     }
     validateAgentTargetOptions(args);
@@ -349,7 +349,7 @@ async function buildExecution(
     args.flags.has("new-environment") ||
     args.flags.has("base-branch")
   ) {
-    throw new Error("Script schedules do not accept agent execution flags.");
+    throw new Error("Script automations do not accept agent execution flags.");
   }
   if (script !== undefined && scriptFile !== undefined) {
     throw new Error("Provide exactly one of --script or --script-file.");
@@ -427,7 +427,7 @@ async function buildUpdateRequest(
 ): Promise<UpdateAutomationInput> {
   const projectId = requireFlag(args, "project");
   const automationId = args.positionals[0];
-  if (!automationId) throw new Error("Missing schedule ID.");
+  if (!automationId) throw new Error("Missing automationId.");
   const request: UpdateAutomationInput = { projectId, automationId };
   const name = flag(args, "name");
   if (name !== undefined) request.name = name;
@@ -530,7 +530,7 @@ function printRunTable(runs: AutomationRunResponse[]): string {
 }
 
 function helpText(): string {
-  return `Schedule commands
+  return `Automation commands
 
 bb automation list --project <id>
 bb automation create --project <id> --name <name> (--cron <expr> --timezone <tz> | --at <datetime> | --in <duration>) (--prompt <text> --provider <id> --model <model> | --script <inline> | --script-file <path>)
@@ -551,54 +551,54 @@ export function registerAutomationCli(args: {
   const { bb, service } = args;
   bb.cli.register({
     name: "automation",
-    summary: "Inspect and manage schedules for agent or script runs",
+    summary: "Inspect and manage automations (scheduled agent/script runs)",
     commands: [
       {
         name: "list",
-        summary: "List schedules for a project",
+        summary: "List automations for a project",
         usage: "bb automation list --project <id> [--json]",
       },
       {
         name: "create",
-        summary: "Create a schedule",
+        summary: "Create an automation",
         usage:
           "bb automation create --project <id> --name <name> [schedule flags] [mode flags]",
       },
       {
         name: "show",
-        summary: "Show schedule details",
+        summary: "Show automation details",
         usage: "bb automation show <automationId> --project <id> [--json]",
       },
       {
         name: "update",
-        summary: "Update schedule configuration",
+        summary: "Update automation configuration",
         usage: "bb automation update <automationId> --project <id> [flags]",
       },
       {
         name: "pause",
-        summary: "Pause a schedule",
+        summary: "Pause an automation",
         usage: "bb automation pause <automationId> --project <id> [--json]",
       },
       {
         name: "resume",
-        summary: "Resume a schedule",
+        summary: "Resume an automation",
         usage: "bb automation resume <automationId> --project <id> [--json]",
       },
       {
         name: "run",
-        summary: "Run a schedule now",
+        summary: "Run an automation now",
         usage:
           "bb automation run <automationId> --project <id> [--idempotency-key <key>] [--json]",
       },
       {
         name: "runs",
-        summary: "List schedule runs",
+        summary: "List automation runs",
         usage:
           "bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>] [--json]",
       },
       {
         name: "delete",
-        summary: "Delete a schedule",
+        summary: "Delete an automation",
         usage:
           "bb automation delete <automationId> --project <id> --yes [--json]",
       },
@@ -620,7 +620,7 @@ export function registerAutomationCli(args: {
             stdout:
               json ??
               (result.length === 0
-                ? "No schedules found\n"
+                ? "No automations found\n"
                 : printAutomationTable(result)),
           };
         }
@@ -642,12 +642,12 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Schedule created: ${created.id}\n${printAutomation(created)}`,
+              `Automation created: ${created.id}\n${printAutomation(created)}`,
           };
         }
         if (command === "show") {
           const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing schedule ID.");
+          if (!automationId) throw new Error("Missing automationId.");
           const found = await service.get({
             projectId: requireFlag(parsed, "project"),
             automationId,
@@ -664,12 +664,12 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Schedule ${updated.id} updated\n${printAutomation(updated)}`,
+              `Automation ${updated.id} updated\n${printAutomation(updated)}`,
           };
         }
         if (command === "pause" || command === "resume") {
           const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing schedule ID.");
+          if (!automationId) throw new Error("Missing automationId.");
           const input = {
             projectId: requireFlag(parsed, "project"),
             automationId,
@@ -681,12 +681,12 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Schedule ${updated.id} ${command === "pause" ? "paused" : "resumed"}\n`,
+              `Automation ${updated.id} ${command === "pause" ? "paused" : "resumed"}\n`,
           };
         }
         if (command === "run") {
           const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing schedule ID.");
+          if (!automationId) throw new Error("Missing automationId.");
           const result = await service.run({
             projectId: requireFlag(parsed, "project"),
             automationId,
@@ -705,7 +705,7 @@ export function registerAutomationCli(args: {
         }
         if (command === "runs") {
           const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing schedule ID.");
+          if (!automationId) throw new Error("Missing automationId.");
           const limitText = flag(parsed, "limit");
           const limit =
             limitText === undefined
@@ -743,7 +743,7 @@ export function registerAutomationCli(args: {
         }
         if (command === "delete") {
           const automationId = parsed.positionals[0];
-          if (!automationId) throw new Error("Missing schedule ID.");
+          if (!automationId) throw new Error("Missing automationId.");
           if (!boolFlag(parsed, "yes")) {
             throw new Error(
               "Deletion requires --yes when run through the plugin CLI.",
@@ -757,11 +757,11 @@ export function registerAutomationCli(args: {
           const json = optionalJson(parsed, value);
           return {
             exitCode: 0,
-            stdout: json ?? `Schedule ${automationId} deleted\n`,
+            stdout: json ?? `Automation ${automationId} deleted\n`,
           };
         }
         throw new Error(
-          `Unknown schedule command '${command}'.\n\n${helpText()}`,
+          `Unknown automation command '${command}'.\n\n${helpText()}`,
         );
       } catch (error) {
         return {

@@ -17,7 +17,6 @@ import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
-  LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -42,9 +41,9 @@ import {
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
-  getScheduleDetailRoutePath,
-  getScheduleEditRoutePath,
-  getSchedulesRoutePath,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
   getSettingsRoutePath,
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
@@ -78,14 +77,14 @@ export function LegacyAutomationDetailRedirect() {
   }>();
 
   if (!projectId || !automationId) {
-    return <Navigate to={getSchedulesRoutePath()} replace />;
+    return <Navigate to={getAutomationsRoutePath()} replace />;
   }
   return (
     <Navigate
       to={
         location.pathname.endsWith("/edit")
-          ? getScheduleEditRoutePath({ projectId, automationId })
-          : getScheduleDetailRoutePath({ projectId, automationId })
+          ? getAutomationEditRoutePath({ projectId, automationId })
+          : getAutomationDetailRoutePath({ projectId, automationId })
       }
       replace
     />
@@ -100,22 +99,9 @@ export function LegacyAutomationCollectionRedirect() {
   return (
     <Navigate
       to={
-        browse ? `${getSchedulesRoutePath()}/browse` : getSchedulesRoutePath()
-      }
-      replace
-    />
-  );
-}
-
-export function LegacyAutomationPluginPanelRedirect() {
-  const { "*": subPath } = useParams<{ "*": string }>();
-  const normalized = subPath?.replace(/^\/+/u, "") ?? "";
-  return (
-    <Navigate
-      to={
-        normalized.length > 0
-          ? `${getSchedulesRoutePath()}/${normalized}`
-          : getSchedulesRoutePath()
+        browse
+          ? `${getAutomationsRoutePath()}/browse`
+          : getAutomationsRoutePath()
       }
       replace
     />
@@ -197,10 +183,6 @@ function AppRoutes() {
           <Route
             path={LEGACY_AUTOMATION_DETAIL_ROUTE_PATH}
             element={<LegacyAutomationDetailRedirect />}
-          />
-          <Route
-            path={LEGACY_AUTOMATIONS_PLUGIN_PANEL_ROUTE_PATH}
-            element={<LegacyAutomationPluginPanelRedirect />}
           />
           <Route element={<ToolsExperimentGate />}>
             <Route

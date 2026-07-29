@@ -41,14 +41,14 @@ describe("ToolsSidebar", () => {
     expect(
       screen.getByRole("link", { name: "Skills" }).getAttribute("aria-current"),
     ).toBeNull();
-    expect(screen.queryByRole("link", { name: "Schedules" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Automations" })).toBeNull();
   });
 
   it("contains only Plugins and Skills and navigates back to the app", () => {
     renderToolsSidebar("/tools/skills");
 
-    expect(screen.getByText("Plugins & Skills")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Schedules" })).toBeNull();
+    expect(screen.getByText("Extensions")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Automations" })).toBeNull();
 
     fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
     expect(screen.getByLabelText("Current path").textContent).toBe(

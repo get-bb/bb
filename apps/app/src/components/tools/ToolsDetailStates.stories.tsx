@@ -228,7 +228,7 @@ export function SkillStates() {
 
       <State
         name="Route loading"
-        note="Before the skill itself resolves. Shares one treatment with plugins and schedules."
+        note="Before the skill itself resolves. Shares one treatment with plugins and automations."
       >
         <ResourceListState
           state="loading"
@@ -528,7 +528,7 @@ export function PluginStates() {
   );
 }
 
-// --- Schedules --------------------------------------------------------------
+// --- Automations ------------------------------------------------------------
 
 const AUTOMATION: AutomationResponse = {
   id: "auto_1",
@@ -627,21 +627,21 @@ function Automation({
   );
 }
 
-export function ScheduleStates() {
+export function AutomationStates() {
   return (
     <Story
-      title="Schedule detail states"
-      description="A schedule page is Definition then Run history. Run history owns its own loading, empty, failed, and populated states without moving."
+      title="Automation detail states"
+      description="An automation page is Definition then Run history. Run history owns its own loading, empty, failed, and populated states without moving."
     >
       <State
-        name="Agent schedule"
+        name="Agent automation"
         note="A recurring prompt, with every persisted run status in its history."
       >
         <Automation runs={RUNS} />
       </State>
 
       <State
-        name="Script schedule"
+        name="Script automation"
         note="A one-time script. Same two sections, different definition content."
       >
         <Automation automation={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
@@ -670,7 +670,7 @@ export function ScheduleStates() {
 
       <State
         name="Paused"
-        note="A disabled schedule keeps its full definition and history."
+        note="A disabled automation keeps its full definition and history."
       >
         <Automation
           automation={{ ...AUTOMATION, enabled: false }}
@@ -678,21 +678,21 @@ export function ScheduleStates() {
         />
       </State>
 
-      <State name="Route loading" note="Before the schedule resolves.">
+      <State name="Route loading" note="Before the automation resolves.">
         <ResourceListState
           state="loading"
-          message="Loading schedule"
+          message="Loading automation"
           layout="detail"
         />
       </State>
 
       <State
         name="Route not found"
-        note="The schedule was deleted or the id is wrong."
+        note="The automation was deleted or the id is wrong."
       >
         <ResourceListState
           state="error"
-          message="Schedule not found."
+          message="Automation not found."
           layout="detail"
           onRetry={noop}
         />

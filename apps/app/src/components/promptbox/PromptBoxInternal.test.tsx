@@ -2026,11 +2026,11 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("inserts schedule mode as an automation command pill", async () => {
+  it("inserts automation mode as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
-    await selectPromptAction("Schedule");
+    await selectPromptAction("Automation");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
     expect(latestChange(changes)?.mentions).toEqual([
@@ -2115,7 +2115,7 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("pastes prompt action command tokens as goal, plan, and schedule pills", async () => {
+  it("pastes prompt action command tokens as goal, plan, and automation pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
     const text =
       "/plan inspect first\n/goal finish the change\n/automation keep checking";
@@ -2181,7 +2181,7 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
-  it("replaces a just-selected goal action with a schedule at the cursor", async () => {
+  it("replaces a just-selected goal action with automation at the cursor", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
     await focusPromptEnd(promptBoxRef);
@@ -2189,7 +2189,7 @@ describe("PromptBoxInternal prompt actions", () => {
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));
     await waitForPromptFocus();
 
-    await selectPromptAction("Schedule");
+    await selectPromptAction("Automation");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/automation "));
     expect(latestChange(changes)?.mentions).toEqual([
@@ -2209,7 +2209,7 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
-  it("selects the automation compatibility command as a command pill", async () => {
+  it("selects automation from slash typeahead as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("/auto", {
       commandSuggestions: [
         {

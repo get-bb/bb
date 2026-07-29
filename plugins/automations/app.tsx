@@ -1,9 +1,9 @@
 // bb-plugin-automations — the frontend bundle.
 //
-// A single "Schedules" nav panel. The panel root lists every user-created
-// schedule across projects (rpc
+// A single navPanel "Automations" that replaces the kernel's Automations
+// views. The panel root lists every automation across projects (rpc
 // automations.overview); the detail subPath (/:projectId/:automationId)
-// shows one schedule's full config plus its cursor-paginated run history.
+// shows one automation's full config plus its cursor-paginated run history.
 // Realtime "automations" signals refetch in place. Creation and editing start
 // from chat with enough resource context for the agent to do the work.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -72,41 +72,41 @@ import {
   oneShotLifecycleAllowsToggle,
 } from "@/lib/format-schedule";
 
-const PANEL_PATH = "schedules";
+const PANEL_PATH = "automations";
 const PERSONAL_PROJECT_ID = "proj_personal";
 
 // Prefill text for the "Create via chat" entry point — an agent turns this
-// into a real schedule. Inlined here so the plugin bundle stays
+// into a real automation. Inlined here so the plugin bundle stays
 // self-contained.
-const CREATE_SCHEDULE_PROMPT = "Create a new bb schedule to ";
-const SCHEDULE_CREATE_TEMPLATES = [
+const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
+const AUTOMATION_CREATE_TEMPLATES = [
   {
     label: "CI failure triage",
     icon: "AlertCircle",
     description:
       "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
-    prompt: `${CREATE_SCHEDULE_PROMPT}runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures.`,
+    prompt: `${CREATE_AUTOMATION_PROMPT}runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures.`,
   },
   {
     label: "Dependency drift",
     icon: "ElectricPlugs",
     description:
       "checks weekly for stale dependencies and opens an update thread when risk is low",
-    prompt: `${CREATE_SCHEDULE_PROMPT}checks weekly for stale dependencies and opens an update thread when risk is low.`,
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks weekly for stale dependencies and opens an update thread when risk is low.`,
   },
   {
     label: "Release readiness",
     icon: "Target",
     description:
       "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
-    prompt: `${CREATE_SCHEDULE_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
   },
   {
     label: "Stale worktrees",
     icon: "FolderGit",
     description:
       "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
-    prompt: `${CREATE_SCHEDULE_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
   },
 ] as const;
 
@@ -126,7 +126,7 @@ function errorText(error: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-routing: the panel owns /plugins/automations/schedules/*. The root
+// Sub-routing: the panel owns /plugins/automations/automations/*. The root
 // ("") is the overview; "<projectId>/<automationId>" is the detail view.
 // ---------------------------------------------------------------------------
 
@@ -556,7 +556,7 @@ function DeleteAutomationDialog({
         {open ? (
           <>
             <DialogHeader>
-              <DialogTitle>Delete schedule?</DialogTitle>
+              <DialogTitle>Delete automation?</DialogTitle>
               <DialogDescription>
                 &ldquo;{name}&rdquo; and its run history will be permanently
                 removed.
@@ -659,8 +659,8 @@ function OverviewRow({
           disabledReason={
             lifecycleLocked
               ? oneShotLifecycle === "expired"
-                ? "This one-time schedule expired. Open it and choose another run time."
-                : "This one-time schedule has completed. Open it and choose another run time."
+                ? "This one-time automation expired. Open it and edit the schedule to run it again."
+                : "This one-time automation has completed. Open it and edit the schedule to run it again."
               : undefined
           }
           label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
@@ -706,7 +706,7 @@ function OverviewView({
       try {
         await mutations[method](route);
       } catch (rpcError: unknown) {
-        toast.error(`Failed to ${method} schedule: ${errorText(rpcError)}`);
+        toast.error(`Failed to ${method} automation: ${errorText(rpcError)}`);
       }
     },
     [mutations],
@@ -716,7 +716,7 @@ function OverviewView({
     (prompt?: string) => {
       navigate.toCompose({
         focusPrompt: true,
-        initialPrompt: prompt ?? CREATE_SCHEDULE_PROMPT,
+        initialPrompt: prompt ?? CREATE_AUTOMATION_PROMPT,
       });
     },
     [navigate],
@@ -820,24 +820,26 @@ function OverviewView({
     body = (
       <ResourceListState
         state="error"
-        message="Couldn't load schedules."
+        message="Couldn't load automations."
         onRetry={refetch}
       />
     );
   } else if (entries === null) {
-    body = <ResourceListState state="loading" message="Loading schedules" />;
+    body = <ResourceListState state="loading" message="Loading automations" />;
   } else if (entries.length === 0) {
-    body = <ResourceListState state="empty" message="No schedules yet." />;
+    body = (
+      <ResourceListState state="empty" message="No automations installed." />
+    );
   } else if (visibleEntries.length === 0) {
     body = (
       <ResourceListState
         state="empty"
         message={
           normalizedQuery === ""
-            ? "No schedules match these filters."
+            ? "No automations match these filters."
             : projectFilters.length > 0 || statusFilters.length > 0
-              ? `No schedules match "${query}" with these filters.`
-              : `No schedules match "${query}"`
+              ? `No automations match "${query}" with these filters.`
+              : `No automations match "${query}"`
         }
       />
     );
@@ -858,12 +860,12 @@ function OverviewView({
 
   return (
     <ResourceCollectionPage
-      id="schedules-collection"
-      description="Run recurring or one-time agent and script work across projects and folders."
+      id="automations-collection"
+      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
       modes={[
         {
           id: "installed",
-          label: "Schedules",
+          label: "Installed",
           count: entries?.length ?? undefined,
         },
         { id: "browse", label: "Browse" },
@@ -872,8 +874,8 @@ function OverviewView({
       onModeChange={onModeChange}
       actions={
         <ResourceCreateButton
-          label="New schedule"
-          templates={SCHEDULE_CREATE_TEMPLATES}
+          label="New automation"
+          templates={AUTOMATION_CREATE_TEMPLATES}
           onCreate={createViaChat}
         />
       }
@@ -881,7 +883,7 @@ function OverviewView({
       {activeMode === "browse" ? (
         <ResourceCollectionViewport contentClassName="space-y-3">
           <ResourceBrowseGrid>
-            {SCHEDULE_CREATE_TEMPLATES.map((template) => (
+            {AUTOMATION_CREATE_TEMPLATES.map((template) => (
               <ResourceTemplateBrowseCard
                 key={template.label}
                 title={template.label}
@@ -893,12 +895,12 @@ function OverviewView({
         </ResourceCollectionViewport>
       ) : (
         <ResourceCollectionViewport
-          scrollId="schedules-results"
+          scrollId="automations-installed-results"
           viewportRef={setInstalledViewport}
           toolbar={
             <ResourceToolbar
               searchValue={query}
-              searchPlaceholder="Search schedules"
+              searchPlaceholder="Search automations"
               onSearchChange={setQuery}
               controls={
                 <>
@@ -932,7 +934,7 @@ function OverviewView({
                         label: "Project",
                         disabled: projectBucketCount <= 1,
                       },
-                      { id: "alpha", label: "Schedule name" },
+                      { id: "alpha", label: "Automation name" },
                     ]}
                     onChange={handleSortChange}
                   />
@@ -948,7 +950,7 @@ function OverviewView({
                 total={installedPagination.total}
                 visibleCount={installedPagination.visibleCount}
                 onPageChange={installedPagination.setPage}
-                scrollTargetId="schedules-results"
+                scrollTargetId="automations-installed-results"
               />
             ) : undefined
           }
@@ -1011,7 +1013,9 @@ function DetailView({
             if (method === "run") toast.success("Run started");
           },
           (rpcError: unknown) =>
-            toast.error(`Failed to ${method} schedule: ${errorText(rpcError)}`),
+            toast.error(
+              `Failed to ${method} automation: ${errorText(rpcError)}`,
+            ),
         )
         .finally(() => setActionPending(false));
     },
@@ -1029,12 +1033,12 @@ function DetailView({
       .delete(route)
       .then(
         () => {
-          toast.success("Schedule deleted");
+          toast.success("Automation deleted");
           setDeleteOpen(false);
           onBack();
         },
         (rpcError: unknown) =>
-          toast.error(`Failed to delete schedule: ${errorText(rpcError)}`),
+          toast.error(`Failed to delete automation: ${errorText(rpcError)}`),
       )
       .finally(() => setDeleting(false));
   }, [mutations, route, onBack]);
@@ -1044,7 +1048,9 @@ function DetailView({
       <ResourceListState
         state="error"
         message={
-          missing ? "Schedule not found." : `Couldn't load schedule: ${error}`
+          missing
+            ? "Automation not found."
+            : `Couldn't load automation: ${error}`
         }
         layout="detail"
         onRetry={refetch}
@@ -1056,7 +1062,7 @@ function DetailView({
     return (
       <ResourceListState
         state="loading"
-        message="Loading schedule"
+        message="Loading automation"
         layout="detail"
       />
     );
@@ -1123,7 +1129,7 @@ function DetailView({
  * toolbar and pagination stay put while its own viewport scrolls; the detail
  * route scrolls this frame instead.
  */
-function SchedulesPageFrame({
+function AutomationsPageFrame({
   fill,
   children,
 }: {
@@ -1144,7 +1150,7 @@ function SchedulesPageFrame({
   );
 }
 
-function SchedulesPanel({ subPath }: PluginNavPanelProps) {
+function AutomationsPanel({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const parsedRoute = useMemo(() => parseSubPath(subPath), [subPath]);
   const collectionMode: AutomationCollectionMode =
@@ -1172,32 +1178,32 @@ function SchedulesPanel({ subPath }: PluginNavPanelProps) {
   );
   if (parsedRoute !== null) {
     return (
-      <SchedulesPageFrame fill={false}>
+      <AutomationsPageFrame fill={false}>
         <DetailView
           route={parsedRoute.route}
           initialEditing={parsedRoute.editing}
           onBack={backToList}
         />
-      </SchedulesPageFrame>
+      </AutomationsPageFrame>
     );
   }
   return (
-    <SchedulesPageFrame fill>
+    <AutomationsPageFrame fill>
       <OverviewView
         onOpenDetail={openDetail}
         activeMode={collectionMode}
         onModeChange={changeCollectionMode}
       />
-    </SchedulesPageFrame>
+    </AutomationsPageFrame>
   );
 }
 
 export default definePluginApp((app) => {
   app.slots.navPanel({
-    id: "schedules",
-    title: "Schedules",
+    id: "automations",
+    title: "Automations",
     icon: "TimeSchedule",
     path: PANEL_PATH,
-    component: SchedulesPanel,
+    component: AutomationsPanel,
   });
 });

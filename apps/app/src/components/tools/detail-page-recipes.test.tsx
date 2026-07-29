@@ -385,7 +385,7 @@ const AUTOMATION: AutomationResponse = {
   updatedAt: 1_700_000_000_000,
 };
 
-describe("Schedule detail recipe", () => {
+describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Run history, including with no runs yet", () => {
     const { container } = render(
       <MemoryRouter>

@@ -395,21 +395,21 @@ describe("PluginsOverview", () => {
       "plugin-row-local-alpha",
       "plugin-row-local-zulu",
     ]);
-    const builtInPills = screen.getAllByText("Built-in");
-    expect(builtInPills).toHaveLength(2);
-    expect(builtInPills[0]?.parentElement?.className).toContain("rounded-md");
-    expect(builtInPills[0]?.parentElement?.className).toContain(
+    const officialPills = screen.getAllByText("BB Official");
+    expect(officialPills).toHaveLength(2);
+    expect(officialPills[0]?.parentElement?.className).toContain("rounded-md");
+    expect(officialPills[0]?.parentElement?.className).toContain(
       "bg-surface-recessed/45",
     );
-    expect(builtInPills[0]?.parentElement?.className).toContain(
+    expect(officialPills[0]?.parentElement?.className).toContain(
       "text-subtle-foreground",
     );
-    expect(builtInPills[0]?.parentElement?.className).toContain("font-medium");
-    expect(builtInPills[0]?.parentElement?.className).toContain("px-1.5");
-    expect(builtInPills[0]?.parentElement?.className).toContain("py-0");
+    expect(officialPills[0]?.parentElement?.className).toContain("font-medium");
+    expect(officialPills[0]?.parentElement?.className).toContain("px-2");
+    expect(officialPills[0]?.parentElement?.className).toContain("py-1");
   });
 
-  it("uses the same passive provenance tag for built-in and BB Official plugins", async () => {
+  it("consolidates built-in and catalog plugins under BB Official", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -431,8 +431,10 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    const builtIn = (await screen.findByText("Built-in")).parentElement;
-    const official = screen.getByText("BB Official").parentElement;
-    expect(official?.className).toBe(builtIn?.className);
+    const official = await screen.findAllByText("BB Official");
+    expect(official).toHaveLength(2);
+    expect(official[0]?.parentElement?.className).toBe(
+      official[1]?.parentElement?.className,
+    );
   });
 });

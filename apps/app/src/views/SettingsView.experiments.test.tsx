@@ -35,10 +35,10 @@ describe("ExperimentsSettingsSection", () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
-  it("reports Tools Hub changes", () => {
+  it("reports Extensions changes", () => {
     const onChange = vi.fn();
     renderSection({ onToolsHubEnabledChange: onChange });
-    const toggle = screen.getByLabelText("Tools Hub");
+    const toggle = screen.getByLabelText("Extensions");
     expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);
     expect(onChange).toHaveBeenCalledWith(true);

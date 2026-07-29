@@ -319,8 +319,8 @@ export function AutomationDetailView({
   const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
   const lifecycleDisabledReason = lifecycleLocked
     ? oneShotLifecycle === "expired"
-      ? "This one-time schedule expired. Edit it to choose another run time."
-      : "This one-time schedule has completed. Edit it to choose another run time."
+      ? "This one-time automation expired. Edit it to schedule another run."
+      : "This one-time automation has completed. Edit it to schedule another run."
     : undefined;
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
@@ -359,12 +359,12 @@ export function AutomationDetailView({
           disabledReason={lifecycleDisabledReason}
           label={
             oneShotLifecycle === "expired"
-              ? "Expired schedule; edit to reschedule"
+              ? "Expired automation; edit to reschedule"
               : lifecycleLocked
-                ? `${automationScheduleLabel(automation)} schedule`
+                ? `${automationScheduleLabel(automation)} automation`
                 : automation.enabled
-                  ? "Pause schedule"
-                  : "Resume schedule"
+                  ? "Pause automation"
+                  : "Resume automation"
           }
           onCheckedChange={onToggle}
         />

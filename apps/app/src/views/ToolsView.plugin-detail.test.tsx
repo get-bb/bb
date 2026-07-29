@@ -178,7 +178,7 @@ describe("PluginDetail official catalog lifecycle", () => {
             plugin={{
               ...GITHUB_PLUGIN,
               id: "automations",
-              name: "Schedules",
+              name: "Automations",
               source: "builtin:automations",
               provenance: "builtin",
               catalogEntryId: null,
@@ -194,7 +194,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    const builtIn = screen.getByLabelText("Schedules: Built-in");
+    const builtIn = screen.getByLabelText("Automations: Built-in");
     expect(builtIn.className).toContain("bg-transparent");
     expect(builtIn.className).toContain("border-border/70");
     expect(
@@ -205,11 +205,11 @@ describe("PluginDetail official catalog lifecycle", () => {
       "Ships with bb",
     );
     expect(
-      screen.getByRole("switch", { name: "Disable Schedules" }),
+      screen.getByRole("switch", { name: "Disable Automations" }),
     ).toBeTruthy();
 
     expect(
-      screen.queryByRole("button", { name: "Schedules actions" }),
+      screen.queryByRole("button", { name: "Automations actions" }),
     ).toBeNull();
   });
 });

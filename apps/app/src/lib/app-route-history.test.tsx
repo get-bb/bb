@@ -15,11 +15,11 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  SCHEDULES_PLUGIN_PANEL_PATH,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
-  getScheduleDetailRoutePath,
-  getScheduleEditRoutePath,
-  getSchedulesRoutePath,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
   getSkillDetailRoutePath,
 } from "./route-paths";
 import { useRouteStateHistoryNavigation } from "./app-route-history";
@@ -88,7 +88,7 @@ function PluginNavigationHarness() {
   const location = useLocation();
   const navigate = useNavigate();
   const pluginNavigate = useBbNavigate();
-  const detailPath = getScheduleDetailRoutePath(AUTOMATION_ROUTE);
+  const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
   const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
   const detailSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}`;
 
@@ -101,7 +101,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
           })
         }
@@ -111,7 +111,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: editSubPath,
           })
         }
@@ -122,7 +122,7 @@ function PluginNavigationHarness() {
         type="button"
         onClick={() =>
           pluginNavigate.toCompose({
-            initialPrompt: "Edit this schedule",
+            initialPrompt: "Edit this automation",
           })
         }
       >
@@ -131,7 +131,7 @@ function PluginNavigationHarness() {
       <button
         type="button"
         onClick={() =>
-          pluginNavigate.toPluginPanel(SCHEDULES_PLUGIN_PANEL_PATH, {
+          pluginNavigate.toPluginPanel(AUTOMATIONS_PLUGIN_PANEL_PATH, {
             subPath: detailSubPath,
             replace: true,
           })
@@ -241,30 +241,30 @@ describe("useRouteStateHistoryNavigation", () => {
     await expectSidebarButtonState("Go forward", false);
   });
 
-  it("redirects remounted schedule edit routes without duplicate history entries", async () => {
+  it("redirects remounted automation edit routes without duplicate history entries", async () => {
     render(
-      <MemoryRouter initialEntries={[getSchedulesRoutePath()]}>
+      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
         <RemountablePluginNavigationHarness />
       </MemoryRouter>,
     );
 
-    const detailPath = getScheduleDetailRoutePath(AUTOMATION_ROUTE);
-    const editPath = getScheduleEditRoutePath(AUTOMATION_ROUTE);
+    const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
+    const editPath = getAutomationEditRoutePath(AUTOMATION_ROUTE);
 
     await clickAndExpectPath("Open detail", detailPath);
     await clickAndExpectPath("Edit from detail", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
     await clickAndExpectPath("Native back", detailPath);
-    await clickAndExpectPath("Native back", getSchedulesRoutePath());
+    await clickAndExpectPath("Native back", getAutomationsRoutePath());
 
     await clickAndExpectPath("Open direct edit", editPath);
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
-    await clickAndExpectPath("Native back", getSchedulesRoutePath());
+    await clickAndExpectPath("Native back", getAutomationsRoutePath());
   });
 
-  it("keeps Schedules on its plugin panel route", async () => {
+  it("keeps Automations on its plugin panel route", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <RemountablePluginNavigationHarness />
@@ -276,7 +276,7 @@ describe("useRouteStateHistoryNavigation", () => {
       "Open direct edit",
       getPluginPanelRoutePath({
         pluginId: AUTOMATIONS_PLUGIN_ID,
-        path: SCHEDULES_PLUGIN_PANEL_PATH,
+        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
         subPath: editSubPath,
       }),
     );
