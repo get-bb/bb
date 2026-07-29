@@ -1,4 +1,11 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   QueryClient,
   QueryClientProvider,
@@ -43,6 +50,7 @@ import {
 } from "@/lib/plugin-slots";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -412,11 +420,8 @@ function OrganizationSidebar({
   mode: SidebarOrganizationMode;
   navigation?: SidebarBootstrapResponse;
 }) {
-  const [store] = useState(() => {
-    const next = createStore();
-    next.set(sidebarOrganizationModeAtom, mode);
-    return next;
-  });
+  const [store] = useState(() => createStore());
+  const [isModeSeeded, setIsModeSeeded] = useState(false);
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -428,11 +433,58 @@ function OrganizationSidebar({
       }),
   );
 
+  useLayoutEffect(() => {
+    setIsModeSeeded(false);
+
+    let localStorage: Storage | null = null;
+    let persistedMode: string | null = null;
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage = window.localStorage;
+        persistedMode = localStorage.getItem(
+          SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+        );
+      } catch {
+        localStorage = null;
+      }
+    }
+
+    const unsubscribe = store.sub(sidebarOrganizationModeAtom, noop);
+
+    try {
+      store.set(sidebarOrganizationModeAtom, mode);
+    } finally {
+      if (localStorage) {
+        try {
+          if (persistedMode === null) {
+            localStorage.removeItem(SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY);
+          } else {
+            localStorage.setItem(
+              SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+              persistedMode,
+            );
+          }
+        } catch {
+          // The story can still use its isolated store if persistence is blocked.
+        }
+      }
+    }
+
+    setIsModeSeeded(true);
+
+    return unsubscribe;
+  }, [mode, store]);
+
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <SidebarFrame>
-          <LoadedSidebar hosts={hosts} navigation={navigation} />
+          {isModeSeeded ? (
+            <LoadedSidebar hosts={hosts} navigation={navigation} />
+          ) : (
+            <LoadingSidebar />
+          )}
         </SidebarFrame>
       </QueryClientProvider>
     </Provider>

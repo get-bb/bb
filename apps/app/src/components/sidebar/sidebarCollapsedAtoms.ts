@@ -15,7 +15,8 @@ const LEGACY_SIDEBAR_FOLDER_SECTION_ORDER_STORAGE_KEY =
   "bb.sidebar.folderSectionOrder";
 const SIDEBAR_MACHINE_SECTION_ORDER_STORAGE_KEY =
   "bb.sidebar.machineSectionOrder";
-const ORGANIZATION_MODE_STORAGE_KEY = "bb.sidebar.organizationMode";
+export const SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY =
+  "bb.sidebar.organizationMode";
 const CHRONOLOGICAL_SORT_STORAGE_KEY = "bb.sidebar.chronologicalSort";
 const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
   "bb.sidebar.collapsedThreadSections";
@@ -160,7 +161,7 @@ export const sidebarMachineSectionOrderAtom = atomWithStorage<string[]>(
 
 export const sidebarOrganizationModeAtom =
   atomWithStorage<SidebarOrganizationMode>(
-    ORGANIZATION_MODE_STORAGE_KEY,
+    SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
     "project",
     createJsonLocalStorage<SidebarOrganizationMode>(),
     { getOnInit: true },
