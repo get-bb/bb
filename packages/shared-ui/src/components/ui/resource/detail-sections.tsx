@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "../../../lib/utils";
 
 export type ResourceDetailSectionKind =
   | "overview"
@@ -78,6 +79,7 @@ export function ResourceDetailPage({
   actions,
   metadata,
   description,
+  maxWidthClassName = "max-w-3xl",
   children,
 }: {
   title: ReactNode;
@@ -90,10 +92,12 @@ export function ResourceDetailPage({
   actions?: ReactNode;
   metadata?: ReactNode;
   description?: ReactNode;
+  /** Width of the centered detail column. */
+  maxWidthClassName?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className={cn("mx-auto w-full space-y-6", maxWidthClassName)}>
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

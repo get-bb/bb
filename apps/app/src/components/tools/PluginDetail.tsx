@@ -80,6 +80,7 @@ export function PluginDetail({
         state="loading"
         message="Loading plugins"
         layout="detail"
+        maxWidthClassName="max-w-5xl"
       />
     );
   }
@@ -90,6 +91,7 @@ export function PluginDetail({
         state="empty"
         message="Plugin not found."
         layout="detail"
+        maxWidthClassName="max-w-5xl"
       />
     );
   }
@@ -112,6 +114,7 @@ export function PluginDetail({
   const pluginName = plugin.name ?? plugin.id;
   return (
     <ResourceDetailPage
+      maxWidthClassName="max-w-5xl"
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
       metadata={
@@ -202,19 +205,6 @@ export function PluginDetail({
             {plugin.description ?? "This plugin does not describe itself."}
           </p>
         </ResourceDetailOverviewSection>
-        <ResourceDetailIncludesSection label="Includes">
-          <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
-        </ResourceDetailIncludesSection>
-        {hasSettings ? (
-          <ResourceDetailConfigurationSection label="Settings">
-            <PluginSettingsDetail plugin={plugin} />
-          </ResourceDetailConfigurationSection>
-        ) : null}
-        {hasActivity ? (
-          <ResourceActivitySection label="Activity">
-            <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
-          </ResourceActivitySection>
-        ) : null}
         <ResourceDetailReleaseSection label="Release">
           <div className="space-y-3">
             {hasUpdateManagement ? (
@@ -238,6 +228,19 @@ export function PluginDetail({
             )}
           </div>
         </ResourceDetailReleaseSection>
+        <ResourceDetailIncludesSection label="Includes">
+          <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
+        </ResourceDetailIncludesSection>
+        {hasSettings ? (
+          <ResourceDetailConfigurationSection label="Settings">
+            <PluginSettingsDetail plugin={plugin} />
+          </ResourceDetailConfigurationSection>
+        ) : null}
+        {hasActivity ? (
+          <ResourceActivitySection label="Activity">
+            <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
+          </ResourceActivitySection>
+        ) : null}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

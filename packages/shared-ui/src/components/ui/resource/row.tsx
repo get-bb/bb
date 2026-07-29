@@ -356,6 +356,7 @@ export function ResourceListState({
   onRetry,
   loadingRows = 4,
   layout = "list",
+  maxWidthClassName = "max-w-3xl",
 }: {
   state: "loading" | "empty" | "error";
   message: string;
@@ -367,10 +368,15 @@ export function ResourceListState({
    * than as a differently-shaped one.
    */
   layout?: "list" | "detail";
+  /** Width of the centered detail frame when `layout` is `detail`. */
+  maxWidthClassName?: string;
 }) {
   const frame = (children: ReactNode) =>
     layout === "detail" ? (
-      <div data-resource-detail-state className="mx-auto w-full max-w-3xl">
+      <div
+        data-resource-detail-state
+        className={cn("mx-auto w-full", maxWidthClassName)}
+      >
         {children}
       </div>
     ) : (

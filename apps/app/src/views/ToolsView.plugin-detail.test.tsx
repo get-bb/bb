@@ -312,26 +312,37 @@ describe("PluginDetail capability inventory", () => {
     expect(includes).not.toBeNull();
     const inventory = within(includes as HTMLElement);
     expect(inventory.getByText("Run monitor")).toBeTruthy();
-    expect(inventory.getByText("Navigation panel")).toBeTruthy();
+    expect(inventory.getByText("Adds a page to the app sidebar.")).toBeTruthy();
     expect(inventory.getByText("enhance-prompt")).toBeTruthy();
-    expect(inventory.getByText("Composer action")).toBeTruthy();
+    expect(
+      inventory.getByText("Adds an action beside the thread composer."),
+    ).toBeTruthy();
     expect(inventory.getByText("Advanced preferences")).toBeTruthy();
     expect(inventory.getByText("Custom settings section")).toBeTruthy();
     expect(inventory.getByText("API token")).toBeTruthy();
     expect(inventory.getByText("apiToken")).toBeTruthy();
     expect(inventory.getByText("bb capability")).toBeTruthy();
-    expect(inventory.getByText("watch")).toBeTruthy();
-    expect(inventory.getByText("sync")).toBeTruthy();
-    expect(inventory.getByText("daily-cleanup")).toBeTruthy();
-    expect(inventory.getByText("0 9 * * *")).toBeTruthy();
+    expect(inventory.queryByText("watch")).toBeNull();
+    expect(inventory.queryByText("daily-cleanup")).toBeNull();
     expect(includes?.textContent).not.toContain("2 background services");
 
+    const activity = container.querySelector(
+      '[data-resource-detail-section="activity"]',
+    );
+    expect(activity).not.toBeNull();
+    const runtime = within(activity as HTMLElement);
+    expect(runtime.getByText("Background services")).toBeTruthy();
+    expect(runtime.getByText("watch")).toBeTruthy();
+    expect(runtime.getByText("sync")).toBeTruthy();
+    expect(runtime.getByText("Scheduled jobs")).toBeTruthy();
+    expect(runtime.getByText("daily-cleanup")).toBeTruthy();
+
     const groups = includes?.querySelectorAll("[data-plugin-capability-group]");
-    expect(groups?.length).toBe(5);
+    expect(groups?.length).toBe(3);
     for (const group of groups ?? []) {
       const row = group.closest(".items-start");
-      expect(row?.classList).toContain("px-3");
-      expect(row?.classList).toContain("py-3");
+      expect(row?.classList).toContain("px-4");
+      expect(row?.classList).toContain("py-4");
     }
   });
 });

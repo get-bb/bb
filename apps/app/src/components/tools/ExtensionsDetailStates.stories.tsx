@@ -1,11 +1,6 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import type { SkillProvider } from "@bb/server-contract";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
-import { AutomationDetailView } from "bb-plugin-automations/detail-view";
-import type {
-  AutomationResponse,
-  AutomationRunResponse,
-} from "bb-plugin-automations/rpc-types";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -352,6 +347,12 @@ const FULL_PLUGIN: PluginListItem = {
   ],
 };
 
+const APP_SURFACE_PLUGIN = {
+  ...PLUGIN,
+  id: "github-app-surfaces",
+  app: { hasApp: true, bundle: null },
+} satisfies PluginListItem;
+
 /**
  * The shapes fixtures usually flatter away: an id long enough to have no break
  * opportunity, prose that outgrows one line, and every capability group
@@ -388,10 +389,16 @@ const AWKWARD_PLUGIN: PluginListItem = {
   ],
 };
 
-function Plugin({ plugin }: { plugin: PluginListItem | null }) {
+function Plugin({
+  plugin,
+  isLoading = false,
+}: {
+  plugin: PluginListItem | null;
+  isLoading?: boolean;
+}) {
   return (
     <PluginDetail
-      isLoading={false}
+      isLoading={isLoading}
       plugin={plugin}
       pending={false}
       openSourceDisabled
@@ -410,7 +417,7 @@ function Plugin({ plugin }: { plugin: PluginListItem | null }) {
  */
 function PluginWithAppSurfaces() {
   useEffect(() => {
-    setPluginSlotRegistrations(PLUGIN.id, {
+    setPluginSlotRegistrations(APP_SURFACE_PLUGIN.id, {
       homepageSections: [],
       settingsSections: [],
       navPanels: [
@@ -434,20 +441,20 @@ function PluginWithAppSurfaces() {
       fileOpeners: [],
       messageDirectives: [],
     });
-    return () => removePluginSlotRegistrations(PLUGIN.id);
+    return () => removePluginSlotRegistrations(APP_SURFACE_PLUGIN.id);
   }, []);
-  return <Plugin plugin={{ ...PLUGIN, app: { hasApp: true, bundle: null } }} />;
+  return <Plugin plugin={APP_SURFACE_PLUGIN} />;
 }
 
 export function PluginDetailStates() {
   return (
     <Story
       title="Plugin detail states"
-      description="A plugin page is About, Includes, then Release, with Settings and Activity in fixed positions between them when they apply. About, Includes, and Release never disappear."
+      description="A plugin page starts with About and Release, then explains what it adds. Settings and runtime Activity follow only when they apply. About, Release, and Includes never disappear."
     >
       <State
         name="Full"
-        note="Everything declared: a command, skills, themes, agent tools, thread integrations, services, and schedules."
+        note="Includes explains the user-facing capabilities. Activity separately explains background services, scheduled jobs, and their live status."
       >
         <Plugin plugin={FULL_PLUGIN} />
       </State>
@@ -502,7 +509,7 @@ export function PluginDetailStates() {
       </State>
 
       <State name="Route loading" note="Before the plugin list resolves.">
-        <Plugin plugin={null} />
+        <Plugin plugin={null} isLoading />
       </State>
 
       <State name="Route not found" note="No plugin with this id is installed.">
@@ -520,179 +527,6 @@ export function PluginDetailStates() {
         <ResourceListState
           state="error"
           message="Couldn't load plugin."
-          layout="detail"
-          onRetry={noop}
-        />
-      </State>
-    </Story>
-  );
-}
-
-// --- Automations ------------------------------------------------------------
-
-const AUTOMATION: AutomationResponse = {
-  id: "auto_1",
-  projectId: "proj_1",
-  name: "Nightly digest",
-  enabled: true,
-  trigger: { triggerType: "schedule", cron: "0 9 * * 1-5", timezone: "UTC" },
-  execution: {
-    mode: "agent",
-    prompt: "Summarize yesterday's commits and open pull requests.",
-    providerId: "claude",
-    model: "claude-opus-5",
-    permissionMode: "auto",
-    environment: { type: "host", workspace: { type: "personal" } },
-  },
-  origin: "human",
-  createdByThreadId: null,
-  nextRunAt: NEXT_RUN_AT,
-  lastRunAt: null,
-  runCount: 0,
-  lastRunStatus: null,
-  lastRunThreadId: null,
-  lastError: null,
-  createdAt: new Date(2027, 0, 1).getTime(),
-  updatedAt: new Date(2027, 0, 1).getTime(),
-};
-
-const SCRIPT_AUTOMATION: AutomationResponse = {
-  ...AUTOMATION,
-  id: "auto_2",
-  name: "Prune caches",
-  trigger: { triggerType: "once", runAt: NEXT_RUN_AT },
-  execution: {
-    mode: "script",
-    script: "rm -rf ./node_modules/.cache",
-    interpreter: "bash",
-    timeoutMs: 60_000,
-  },
-};
-
-// One fixture per persisted run status, so all four are reviewed together.
-const RUNS: AutomationRunResponse[] = (
-  [
-    ["succeeded", null],
-    ["failed", "Exit code 1: provider timed out"],
-    ["running", null],
-    ["skipped", null],
-  ] as const
-).map(([status, error], index) => ({
-  id: `run_${index}`,
-  automationId: AUTOMATION.id,
-  runMode: "agent",
-  threadId: `thr_${index}`,
-  status,
-  trigger: index === 0 ? "manual" : "schedule",
-  skipReason: status === "skipped" ? "Previous run still in progress" : null,
-  error,
-  output: null,
-  exitCode: null,
-  scheduledFor: NEXT_RUN_AT,
-  startedAt: NEXT_RUN_AT,
-  finishedAt: status === "running" ? null : NEXT_RUN_AT + 42_000,
-}));
-
-function Automation({
-  automation = AUTOMATION,
-  runs = [],
-  loading = false,
-  error = null,
-}: {
-  automation?: AutomationResponse;
-  runs?: readonly AutomationRunResponse[];
-  loading?: boolean;
-  error?: string | null;
-}) {
-  return (
-    <AutomationDetailView
-      automation={automation}
-      projectLabel="Local"
-      runsState={{
-        runs,
-        nextCursor: null,
-        loading,
-        loadingMore: false,
-        error,
-        loadMore: noop,
-        retry: noop,
-      }}
-      actionPending={false}
-      onToggle={noop}
-      onEdit={noop}
-      onRunNow={noop}
-      onDelete={noop}
-      onOpenThread={noop}
-    />
-  );
-}
-
-export function AutomationDetailStates() {
-  return (
-    <Story
-      title="Automation detail states"
-      description="An automation page is Definition then Run history. Run history owns its own loading, empty, failed, and populated states without moving."
-    >
-      <State
-        name="Agent automation"
-        note="A recurring prompt, with every persisted run status in its history."
-      >
-        <Automation runs={RUNS} />
-      </State>
-
-      <State
-        name="Script automation"
-        note="A one-time script. Same two sections, different definition content."
-      >
-        <Automation automation={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
-      </State>
-
-      <State
-        name="No runs yet"
-        note="Run history stays in place and explains itself rather than collapsing."
-      >
-        <Automation />
-      </State>
-
-      <State
-        name="Run history loading"
-        note="The definition is already usable while history is still arriving."
-      >
-        <Automation loading />
-      </State>
-
-      <State
-        name="Run history failed"
-        note="Only the section that failed shows an error; the definition above it is unaffected."
-      >
-        <Automation error="Request timed out" />
-      </State>
-
-      <State
-        name="Paused"
-        note="A disabled automation keeps its full definition and history."
-      >
-        <Automation
-          automation={{ ...AUTOMATION, enabled: false }}
-          runs={RUNS.slice(0, 2)}
-        />
-      </State>
-
-      <State name="Route loading" note="Before the automation resolves.">
-        <ResourceListState
-          state="loading"
-          message="Loading automation"
-          layout="detail"
-        />
-      </State>
-
-      <State
-        name="Route not found"
-        note="The automation was deleted or the id is wrong."
-      >
-        <ResourceListState
-          state="error"
-          message="Automation not found."
           layout="detail"
           onRetry={noop}
         />

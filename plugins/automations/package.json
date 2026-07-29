@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./detail-view": "./detail-view.tsx",
+    "./overview-view": "./overview-view.tsx",
     "./rpc-types": "./src/rpc-types.ts"
   },
   "engines": {

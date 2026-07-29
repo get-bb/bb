@@ -58,6 +58,7 @@ import {
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+  pluginNavSidebarCollapsedAtom,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -496,14 +497,19 @@ function StoryPluginPageRegistrations() {
 }
 
 function LoadedSidebarWithPluginPages() {
+  const [store] = useState(() => {
+    const storyStore = createStore();
+    storyStore.set(pluginNavSidebarCollapsedAtom, false);
+    return storyStore;
+  });
   return (
-    <>
+    <Provider store={store}>
       <StoryPluginPageRegistrations />
       <SidebarFrame>
         <PluginNavSidebarSection />
         <LoadedSidebar />
       </SidebarFrame>
-    </>
+    </Provider>
   );
 }
 
@@ -696,23 +702,28 @@ export function Overview() {
           <LoadedSidebar />
         </SidebarFrame>
       </StoryRow>
-      <StoryRow
-        label="plugin pages"
-        hint="all shipped plugin navigation above the real thread list"
-      >
-        <LoadedSidebarWithPluginPages />
-      </StoryRow>
-      <StoryRow
-        label="extensions"
-        hint="the focused Skills and Plugins management sidebar"
-      >
-        <ExtensionsSidebarFrame />
-      </StoryRow>
       <StoryRow label="search">
         <SearchSidebar />
       </StoryRow>
     </StoryCard>
   );
+}
+
+export function PluginPages() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow
+        label="expanded"
+        hint="all shipped plugin navigation above the real thread list"
+      >
+        <LoadedSidebarWithPluginPages />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function Extensions() {
+  return <ExtensionsSidebarFrame />;
 }
 
 export function OrganizationModes() {

@@ -1,0 +1,544 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type {
+  AutomationResponse,
+  AutomationsOverviewResponse,
+} from "./src/rpc-types.js";
+import {
+  AutomationLifecycleControl,
+  automationIconName,
+  automationScheduleLabel,
+} from "./detail-view.js";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  ResourcePagination,
+  useResourcePagination,
+  useResourceViewportPageSize,
+} from "@bb/shared-ui/resource-pagination";
+import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  ResourceBrowseGrid,
+  ResourceCollectionPage,
+  ResourceCollectionViewport,
+  ResourceCreateButton,
+  ResourceListPanel,
+  ResourceListState,
+  ResourceMeta,
+  ResourceMultiSelectMenu,
+  ResourceRow,
+  ResourceRowDetailChevron,
+  ResourceSortMenu,
+  ResourceTemplateBrowseCard,
+  ResourceToolbar,
+} from "@bb/shared-ui/resource-list";
+import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  type AutomationStatusFilter,
+  formatAutomationTrigger,
+  formatOverviewScheduleMetadata,
+  getOneShotLifecycle,
+  matchesAutomationStatusFilters,
+  oneShotLifecycleAllowsToggle,
+} from "./lib/format-schedule.js";
+
+const PERSONAL_PROJECT_ID = "proj_personal";
+
+export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
+export const AUTOMATION_CREATE_TEMPLATES = [
+  {
+    label: "CI failure triage",
+    icon: "AlertCircle",
+    description:
+      "runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures",
+    prompt: `${CREATE_AUTOMATION_PROMPT}runs every weekday morning, checks failed main-branch CI, and opens fixer threads only for new failures.`,
+  },
+  {
+    label: "Dependency drift",
+    icon: "ElectricPlugs",
+    description:
+      "checks weekly for stale dependencies and opens an update thread when risk is low",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks weekly for stale dependencies and opens an update thread when risk is low.`,
+  },
+  {
+    label: "Release readiness",
+    icon: "Target",
+    description:
+      "checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks the release branch hourly, summarizes blocking checks, and alerts only when the status changes.`,
+  },
+  {
+    label: "Stale worktrees",
+    icon: "FolderGit",
+    description:
+      "checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window",
+    prompt: `${CREATE_AUTOMATION_PROMPT}checks daily for stale worktrees and opens cleanup threads only after they exceed the team's retention window.`,
+  },
+] as const;
+
+type OverviewEntry = AutomationsOverviewResponse["automations"][number];
+type AutomationProjectFilter = `project:${string}`;
+type AutomationSortMode = "project" | "alpha";
+type AutomationSortDirection = "asc" | "desc";
+export type AutomationCollectionMode = "installed" | "browse";
+
+export interface AutomationDetailRoute {
+  projectId: string;
+  automationId: string;
+}
+
+function routeOf(automation: AutomationResponse): AutomationDetailRoute {
+  return { projectId: automation.projectId, automationId: automation.id };
+}
+
+function AutomationRowLeading({
+  automation,
+}: {
+  automation: AutomationResponse;
+}) {
+  if (automation.lastRunStatus === "failed") {
+    return (
+      <Icon
+        name="CircleX"
+        className={cn(
+          "text-destructive",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
+        aria-label="Failed"
+      />
+    );
+  }
+  if (automation.lastRunStatus === "running") {
+    return (
+      <Icon
+        name="Loading"
+        className={cn(
+          "animate-spin text-muted-foreground/50",
+          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+        )}
+        aria-label="Running"
+      />
+    );
+  }
+  return (
+    <Icon
+      name={automationIconName(automation)}
+      className={cn(
+        "text-muted-foreground",
+        COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+      )}
+      aria-hidden
+    />
+  );
+}
+
+function automationProjectLabel(
+  project: OverviewEntry["project"] | null | undefined,
+): string {
+  if (project == null) return "Workspace";
+  return project.id === PERSONAL_PROJECT_ID ? "Local" : project.name;
+}
+
+function AutomationOverviewMetaItem({
+  children,
+  icon,
+  title,
+}: {
+  children: ReactNode;
+  icon?: "Clock" | "Folder" | "Laptop";
+  title?: string;
+}) {
+  return (
+    <span
+      className="inline-flex h-4 min-w-0 items-center gap-1.5 whitespace-nowrap leading-4"
+      title={title}
+    >
+      {icon ? (
+        <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />
+      ) : null}
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
+
+function automationProjectFilterId(
+  entry: OverviewEntry,
+): AutomationProjectFilter {
+  const projectId = entry.project?.id ?? entry.automation.projectId;
+  return `project:${projectId}`;
+}
+
+function applyAutomationSortDirection(
+  result: number,
+  direction: AutomationSortDirection,
+): number {
+  return direction === "asc" ? result : -result;
+}
+
+function OverviewRow({
+  entry,
+  onNavigate,
+  onEnabledChange,
+}: {
+  entry: OverviewEntry;
+  onNavigate: (route: AutomationDetailRoute) => void;
+  onEnabledChange: (
+    enabled: boolean,
+    route: AutomationDetailRoute,
+  ) => Promise<void>;
+}) {
+  const { automation } = entry;
+  const [togglePending, setTogglePending] = useState(false);
+  const route = routeOf(automation);
+  const oneShotLifecycle = getOneShotLifecycle({
+    enabled: automation.enabled,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
+  });
+  const lifecycleLocked = !oneShotLifecycleAllowsToggle(oneShotLifecycle);
+  const triggerLabel = formatAutomationTrigger(automation.trigger);
+  const scheduleMetadata = formatOverviewScheduleMetadata({
+    enabled: automation.enabled,
+    nextRunAt: automation.nextRunAt,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
+  });
+  const projectLabel = automationProjectLabel(entry.project);
+
+  return (
+    <ResourceRow
+      leading={<AutomationRowLeading automation={automation} />}
+      title={automation.name}
+      description={
+        <ResourceMeta
+          items={[
+            <AutomationOverviewMetaItem
+              icon={projectLabel === "Local" ? "Laptop" : "Folder"}
+              title={projectLabel}
+            >
+              {projectLabel}
+            </AutomationOverviewMetaItem>,
+            <AutomationOverviewMetaItem icon="Clock">
+              {triggerLabel}
+            </AutomationOverviewMetaItem>,
+            scheduleMetadata ? (
+              <AutomationOverviewMetaItem>
+                {scheduleMetadata.emphasis ? (
+                  <span className="font-medium text-foreground">
+                    {scheduleMetadata.emphasis}
+                  </span>
+                ) : null}
+                {scheduleMetadata.emphasis ? " " : null}
+                {scheduleMetadata.text}
+              </AutomationOverviewMetaItem>
+            ) : null,
+          ]}
+        />
+      }
+      muted={lifecycleLocked}
+      onOpen={() => onNavigate(route)}
+      persistentActions={
+        <AutomationLifecycleControl
+          checked={automation.enabled && !lifecycleLocked}
+          disabled={lifecycleLocked || togglePending}
+          disabledReason={
+            lifecycleLocked
+              ? oneShotLifecycle === "expired"
+                ? "This one-time automation expired. Open it and edit the schedule to run it again."
+                : "This one-time automation has completed. Open it and edit the schedule to run it again."
+              : undefined
+          }
+          label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}
+          onCheckedChange={(enabled) => {
+            setTogglePending(true);
+            void onEnabledChange(enabled, route).finally(() =>
+              setTogglePending(false),
+            );
+          }}
+        />
+      }
+      trailingVisual={<ResourceRowDetailChevron />}
+    />
+  );
+}
+
+export function AutomationOverviewView({
+  entries,
+  error,
+  onRetry,
+  onOpenDetail,
+  onEnabledChange,
+  onCreateViaChat,
+  activeMode,
+  onModeChange,
+}: {
+  entries: OverviewEntry[] | null;
+  error: string | null;
+  onRetry: () => void;
+  onOpenDetail: (route: AutomationDetailRoute) => void;
+  onEnabledChange: (
+    enabled: boolean,
+    route: AutomationDetailRoute,
+  ) => Promise<void>;
+  onCreateViaChat: (prompt?: string) => void;
+  activeMode: AutomationCollectionMode;
+  onModeChange: (mode: AutomationCollectionMode) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [projectFilters, setProjectFilters] = useState<
+    AutomationProjectFilter[]
+  >([]);
+  const [statusFilters, setStatusFilters] = useState<AutomationStatusFilter[]>(
+    [],
+  );
+  const [sortMode, setSortMode] = useState<AutomationSortMode>("alpha");
+  const [sortDirection, setSortDirection] =
+    useState<AutomationSortDirection>("asc");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const projectCounts = useMemo(() => {
+    const counts = new Map<AutomationProjectFilter, number>();
+    for (const entry of entries ?? []) {
+      const project = automationProjectFilterId(entry);
+      counts.set(project, (counts.get(project) ?? 0) + 1);
+    }
+    return counts;
+  }, [entries]);
+  const projectBucketCount = projectCounts.size;
+  const projectOptions = useMemo(() => {
+    const options = new Map<AutomationProjectFilter, string>();
+    for (const entry of entries ?? []) {
+      options.set(
+        automationProjectFilterId(entry),
+        automationProjectLabel(entry.project),
+      );
+    }
+    return [...options].map(([id, label]) => ({ id, label }));
+  }, [entries]);
+  useEffect(() => {
+    setProjectFilters((current) =>
+      current.filter((project) => projectCounts.has(project)),
+    );
+  }, [projectCounts]);
+  useEffect(() => {
+    if (sortMode === "project" && projectBucketCount <= 1) {
+      setSortMode("alpha");
+      setSortDirection("asc");
+    }
+  }, [projectBucketCount, sortMode]);
+  const filteredEntries = useMemo(() => {
+    if (entries === null) return [];
+    return entries.filter((entry) => {
+      const { automation, project } = entry;
+      if (
+        projectFilters.length > 0 &&
+        !projectFilters.includes(automationProjectFilterId(entry))
+      ) {
+        return false;
+      }
+      if (!matchesAutomationStatusFilters(automation, statusFilters)) {
+        return false;
+      }
+      if (normalizedQuery.length === 0) return true;
+      return [
+        automation.name,
+        project.name,
+        automationScheduleLabel(automation),
+        formatAutomationTrigger(automation.trigger),
+      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
+    });
+  }, [entries, normalizedQuery, projectFilters, statusFilters]);
+  const visibleEntries = useMemo(() => {
+    return [...filteredEntries].sort((left, right) => {
+      const base =
+        sortMode === "project"
+          ? automationProjectLabel(left.project).localeCompare(
+              automationProjectLabel(right.project),
+            ) || left.automation.name.localeCompare(right.automation.name)
+          : left.automation.name.localeCompare(right.automation.name);
+      return applyAutomationSortDirection(base, sortDirection);
+    });
+  }, [filteredEntries, sortDirection, sortMode]);
+  const [installedViewport, setInstalledViewport] =
+    useState<HTMLDivElement | null>(null);
+  const installedPageSize = useResourceViewportPageSize(installedViewport);
+  const installedPagination = useResourcePagination(visibleEntries, {
+    pageSize: installedPageSize,
+    resetKey: [
+      normalizedQuery,
+      projectFilters.join(","),
+      statusFilters.join(","),
+      sortMode,
+      sortDirection,
+    ].join("\u0000"),
+  });
+  const hasInstalledPagination =
+    error === null &&
+    entries !== null &&
+    installedPagination.total > installedPagination.pageSize;
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      if (nextSort !== "project" && nextSort !== "alpha") return;
+      if (nextSort === "project" && projectBucketCount <= 1) return;
+      if (nextSort === sortMode) {
+        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+        return;
+      }
+      setSortMode(nextSort);
+      setSortDirection("asc");
+    },
+    [projectBucketCount, sortMode],
+  );
+
+  let body: ReactNode;
+  if (error !== null) {
+    body = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load automations."
+        onRetry={onRetry}
+      />
+    );
+  } else if (entries === null) {
+    body = <ResourceListState state="loading" message="Loading automations" />;
+  } else if (entries.length === 0) {
+    body = (
+      <ResourceListState state="empty" message="No automations installed." />
+    );
+  } else if (visibleEntries.length === 0) {
+    body = (
+      <ResourceListState
+        state="empty"
+        message={
+          normalizedQuery === ""
+            ? "No automations match these filters."
+            : projectFilters.length > 0 || statusFilters.length > 0
+              ? `No automations match "${query}" with these filters.`
+              : `No automations match "${query}"`
+        }
+      />
+    );
+  } else {
+    body = (
+      <ResourceListPanel>
+        {installedPagination.items.map((entry) => (
+          <OverviewRow
+            key={entry.automation.id}
+            entry={entry}
+            onNavigate={onOpenDetail}
+            onEnabledChange={onEnabledChange}
+          />
+        ))}
+      </ResourceListPanel>
+    );
+  }
+
+  return (
+    <ResourceCollectionPage
+      id="automations-collection"
+      description="Manage scheduled bb work across projects and folders. Automations run recurring or one-time tasks without manual prompting."
+      modes={[
+        {
+          id: "installed",
+          label: "Installed",
+          count: entries?.length ?? undefined,
+        },
+        { id: "browse", label: "Browse" },
+      ]}
+      activeMode={activeMode}
+      onModeChange={onModeChange}
+      actions={
+        <ResourceCreateButton
+          label="New automation"
+          templates={AUTOMATION_CREATE_TEMPLATES}
+          onCreate={onCreateViaChat}
+        />
+      }
+    >
+      {activeMode === "browse" ? (
+        <ResourceCollectionViewport contentClassName="space-y-3">
+          <ResourceBrowseGrid>
+            {AUTOMATION_CREATE_TEMPLATES.map((template) => (
+              <ResourceTemplateBrowseCard
+                key={template.label}
+                title={template.label}
+                description={template.description}
+                onUse={() => onCreateViaChat(template.prompt)}
+              />
+            ))}
+          </ResourceBrowseGrid>
+        </ResourceCollectionViewport>
+      ) : (
+        <ResourceCollectionViewport
+          scrollId="automations-installed-results"
+          viewportRef={setInstalledViewport}
+          toolbar={
+            <ResourceToolbar
+              searchValue={query}
+              searchPlaceholder="Search automations"
+              onSearchChange={setQuery}
+              controls={
+                <>
+                  <ResourceMultiSelectMenu
+                    label="Projects"
+                    icon="Layers"
+                    selectedValues={projectFilters}
+                    options={projectOptions}
+                    onChange={(values) =>
+                      setProjectFilters(values as AutomationProjectFilter[])
+                    }
+                  />
+                  <ResourceMultiSelectMenu
+                    label="Status"
+                    icon="SlidersHorizontal"
+                    selectedValues={statusFilters}
+                    options={[
+                      { id: "active", label: "Active" },
+                      { id: "paused", label: "Paused" },
+                    ]}
+                    onChange={(values) =>
+                      setStatusFilters(values as AutomationStatusFilter[])
+                    }
+                  />
+                  <ResourceSortMenu
+                    value={sortMode}
+                    direction={sortDirection}
+                    options={[
+                      {
+                        id: "project",
+                        label: "Project",
+                        disabled: projectBucketCount <= 1,
+                      },
+                      { id: "alpha", label: "Automation name" },
+                    ]}
+                    onChange={handleSortChange}
+                  />
+                </>
+              }
+            />
+          }
+          footer={
+            hasInstalledPagination ? (
+              <ResourcePagination
+                page={installedPagination.page}
+                pageSize={installedPagination.pageSize}
+                total={installedPagination.total}
+                visibleCount={installedPagination.visibleCount}
+                onPageChange={installedPagination.setPage}
+                scrollTargetId="automations-installed-results"
+              />
+            ) : undefined
+          }
+        >
+          {body}
+        </ResourceCollectionViewport>
+      )}
+    </ResourceCollectionPage>
+  );
+}

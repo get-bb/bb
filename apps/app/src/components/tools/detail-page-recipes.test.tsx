@@ -90,17 +90,17 @@ function renderPlugin(plugin: PluginListItem) {
 }
 
 describe("Plugin detail recipe", () => {
-  it("keeps About, Includes, and Release in their fixed order for a minimal plugin", () => {
+  it("keeps Release directly below About, followed by Includes", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["includes", "Includes"],
       ["release", "Release"],
+      ["includes", "Includes"],
     ]);
   });
 
-  it("places Settings and Activity between Includes and Release when they apply", () => {
+  it("places Settings and Activity after Includes when they apply", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       hasSettings: true,
@@ -109,10 +109,10 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["release", "Release"],
       ["includes", "Includes"],
       ["configuration", "Settings"],
       ["activity", "Activity"],
-      ["release", "Release"],
     ]);
   });
 
@@ -301,7 +301,7 @@ describe("Plugin detail route states", () => {
     );
     expect(
       container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-3xl");
+    ).toContain("max-w-5xl");
 
     rerender(
       <QueryClientWrapper>
@@ -319,7 +319,7 @@ describe("Plugin detail route states", () => {
     );
     expect(
       container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-3xl");
+    ).toContain("max-w-5xl");
     expect(screen.getByText("Plugin not found.")).toBeTruthy();
   });
 });

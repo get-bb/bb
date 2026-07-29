@@ -6,12 +6,6 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -64,24 +58,17 @@ function PluginActivityState({
 }) {
   const icon = pluginActivityIcon(state);
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={`${resourceLabel}: ${icon.label}`}
-            className="inline-flex"
-          >
-            <Icon
-              name={icon.name}
-              className={cn("size-4", icon.className)}
-              aria-hidden
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="left">{icon.label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <span
+      role="img"
+      aria-label={`${resourceLabel}: ${icon.label}`}
+      className="inline-flex"
+    >
+      <Icon
+        name={icon.name}
+        className={cn("size-4", icon.className)}
+        aria-hidden
+      />
+    </span>
   );
 }
 
@@ -105,13 +92,23 @@ function namedSurface(
   prefix: string,
   id: string,
   title: string | undefined,
-  kind: string,
+  description: string,
 ): PluginCapabilityItem {
   const label = title?.trim() || id;
   return {
     key: `${prefix}:${id}`,
     label,
-    detail: capabilityDetail(kind, label === id ? undefined : id),
+    detail:
+      label === id ? (
+        description
+      ) : (
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <span>{description}</span>
+          <span className="break-all font-mono text-subtle-foreground">
+            {id}
+          </span>
+        </span>
+      ),
     mono: label === id,
   };
 }
@@ -120,11 +117,11 @@ function namedSlotItems(
   pluginId: string,
   slots: readonly { pluginId: string; id: string; title?: string }[],
   prefix: string,
-  kind: string,
+  description: string,
 ): PluginCapabilityItem[] {
   return slots
     .filter((slot) => slot.pluginId === pluginId)
-    .map((slot) => namedSurface(prefix, slot.id, slot.title, kind));
+    .map((slot) => namedSurface(prefix, slot.id, slot.title, description));
 }
 
 function pluginAppSurfaceItems(
@@ -132,16 +129,32 @@ function pluginAppSurfaceItems(
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
   const namedSlots = [
-    [slots.navPanels, "nav", "Navigation panel"],
-    [slots.homepageSections, "homepage", "Homepage section"],
-    [slots.threadPanelActions, "thread-panel", "Thread panel action"],
-    [slots.pendingInteractions, "input", "Input renderer"],
-    [slots.sidebarFooterActions, "sidebar", "Sidebar action"],
-    [slots.messageActions, "message-action", "Message action"],
+    [slots.navPanels, "nav", "Adds a page to the app sidebar."],
+    [slots.homepageSections, "homepage", "Adds content to the Home page."],
+    [
+      slots.threadPanelActions,
+      "thread-panel",
+      "Adds an action that opens a panel beside a thread.",
+    ],
+    [
+      slots.pendingInteractions,
+      "input",
+      "Renders a custom interaction inside a thread.",
+    ],
+    [
+      slots.sidebarFooterActions,
+      "sidebar",
+      "Adds an action to the app sidebar.",
+    ],
+    [
+      slots.messageActions,
+      "message-action",
+      "Adds an action to messages in threads.",
+    ],
   ] as const;
   return [
-    ...namedSlots.flatMap(([items, prefix, kind]) =>
-      namedSlotItems(pluginId, items, prefix, kind),
+    ...namedSlots.flatMap(([items, prefix, description]) =>
+      namedSlotItems(pluginId, items, prefix, description),
     ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
@@ -151,7 +164,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:action`,
             action.id,
             undefined,
-            "Composer action",
+            "Adds an action beside the thread composer.",
           ),
         ),
         ...(slot.banners ?? []).map((banner) =>
@@ -159,7 +172,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:banner`,
             banner.id,
             undefined,
-            "Composer banner",
+            "Shows information above the thread composer.",
           ),
         ),
         ...(slot.plusMenu ?? []).map((item) =>
@@ -167,7 +180,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:plus-menu`,
             item.id,
             item.label,
-            "Composer plus-menu item",
+            "Adds an item to the composer’s add menu.",
           ),
         ),
         ...(slot.richText?.effects ?? []).map((effect) =>
@@ -175,17 +188,22 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:rich-text`,
             effect.id,
             undefined,
-            "Composer text effect",
+            "Adds rich-text behavior while composing a message.",
           ),
         ),
       ]),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
-        ...namedSurface("file", slot.id, slot.title, "File opener"),
+        ...namedSurface(
+          "file",
+          slot.id,
+          slot.title,
+          "Opens supported files in a plugin-provided viewer.",
+        ),
         detail: (
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>File opener</span>
+            <span>Opens these files in a plugin-provided viewer:</span>
             <span className="font-mono">
               {slot.extensions.map((extension) => `.${extension}`).join(", ")}
             </span>
@@ -197,7 +215,7 @@ function pluginAppSurfaceItems(
       .map((slot) => ({
         key: `directive:${slot.id}`,
         label: `::${slot.id}`,
-        detail: "Message renderer",
+        detail: "Renders plugin-provided content inside thread messages.",
         mono: true,
       })),
   ];
@@ -206,15 +224,17 @@ function pluginAppSurfaceItems(
 function PluginCapabilityGroup({
   icon,
   label,
+  description,
   items,
 }: {
   icon: IconName;
   label: string;
+  description: string;
   items: readonly PluginCapabilityItem[];
 }) {
   return (
     <ResourceDetailListItem
-      className="items-start px-3 py-3"
+      className="h-full items-start rounded-md border border-border bg-background px-4 py-4"
       leading={
         <Icon
           name={icon}
@@ -225,6 +245,9 @@ function PluginCapabilityGroup({
     >
       <span data-plugin-capability-group className="block font-medium">
         {label}
+      </span>
+      <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+        {description}
       </span>
       <ul className="mt-2.5 space-y-2.5">
         {items.map((item) => (
@@ -316,12 +339,19 @@ export function PluginIncludes({
   const groups: Array<{
     icon: IconName;
     label: string;
+    description: string;
     items: PluginCapabilityItem[];
   }> = [
-    { icon: "AppWindow", label: "App surfaces", items: appItems },
+    {
+      icon: "AppWindow",
+      label: "App surfaces",
+      description: "Pages and controls you can use directly in bb.",
+      items: appItems,
+    },
     {
       icon: "Terminal",
       label: "Command",
+      description: "A bb command people and agents can run.",
       items: plugin.cliCommand
         ? [
             {
@@ -333,34 +363,35 @@ export function PluginIncludes({
           ]
         : [],
     },
-    { icon: "Settings", label: "Settings", items: settingsItems },
-    { icon: "Explore", label: "Skills", items: declared("skill") },
-    { icon: "Toolbox", label: "Agent tools", items: declared("agent-tool") },
+    {
+      icon: "Settings",
+      label: "Settings",
+      description: "Controls that change how this plugin behaves.",
+      items: settingsItems,
+    },
+    {
+      icon: "Explore",
+      label: "Skills",
+      description: "Reusable instructions this plugin gives your agents.",
+      items: declared("skill"),
+    },
+    {
+      icon: "Toolbox",
+      label: "Agent tools",
+      description: "Plugin actions agents can call while working.",
+      items: declared("agent-tool"),
+    },
     {
       icon: "MessageCirclePlus",
       label: "Thread integrations",
+      description: "Actions and references available inside threads.",
       items: declared("thread-integration"),
     },
-    { icon: "Palette", label: "Themes", items: declared("theme") },
     {
-      icon: "Workflow",
-      label: "Services",
-      items: plugin.services.map((service) => ({
-        key: service.name,
-        label: service.name,
-        detail: "Background service",
-        mono: true,
-      })),
-    },
-    {
-      icon: "TimeSchedule",
-      label: "Schedules",
-      items: plugin.schedules.map((schedule) => ({
-        key: schedule.name,
-        label: schedule.name,
-        detail: capabilityDetail("Cron", schedule.cron),
-        mono: true,
-      })),
+      icon: "Palette",
+      label: "Themes",
+      description: "Appearance options this plugin adds to bb.",
+      items: declared("theme"),
     },
   ];
   const populated = groups.filter(({ items }) => items.length > 0);
@@ -395,17 +426,24 @@ export function PluginIncludes({
   }
 
   return (
-    <ResourceDetailCollection>
-      {populated.map(({ icon, label, items }) => (
-        <PluginCapabilityGroup
-          key={label}
-          icon={icon}
-          label={label}
-          items={items}
-        />
-      ))}
+    <div className="space-y-3">
+      <p className="text-sm leading-relaxed text-muted-foreground">
+        What this plugin adds to bb and where you can use it.
+      </p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {populated.map(({ icon, label, description, items }) => (
+          <PluginCapabilityGroup
+            key={label}
+            icon={icon}
+            label={label}
+            description={description}
+            items={items}
+          />
+        ))}
+      </div>
       {live ? null : (
         <ResourceDetailListItem
+          className="rounded-md border border-border bg-background px-3 py-3"
           leading={
             <Icon
               name="Info"
@@ -419,7 +457,29 @@ export function PluginIncludes({
           </span>
         </ResourceDetailListItem>
       )}
-    </ResourceDetailCollection>
+    </div>
+  );
+}
+
+function PluginActivityGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <ResourceDetailCollection>{children}</ResourceDetailCollection>
+    </div>
   );
 }
 
@@ -441,90 +501,132 @@ export function PluginActivity({
     return null;
   }
   return (
-    <ResourceDetailCollection>
+    <div className="space-y-5">
+      <p className="text-sm leading-relaxed text-muted-foreground">
+        Live health for background work this plugin runs. Statuses here help
+        explain whether the plugin is working or needs attention.
+      </p>
       {showOverallState && runtimeStatus !== null ? (
-        <ResourceDetailListItem
-          leading={
-            <Icon
-              name={
-                runtimeStatus.tone === "error" ? "CircleX" : "AlertTriangle"
-              }
-              className={cn(
-                "size-4",
-                runtimeStatus.tone === "error"
-                  ? "text-destructive"
-                  : "text-warning",
-              )}
-              aria-hidden
-            />
-          }
+        <PluginActivityGroup
+          title="Plugin health"
+          description="The plugin’s overall connection and runtime state."
         >
-          <span className="block">{runtimeStatus.label}</span>
-          {plugin.statusDetail ? (
-            <span className="block text-xs text-muted-foreground">
-              {plugin.statusDetail}
+          <ResourceDetailListItem
+            leading={
+              <Icon
+                name={
+                  runtimeStatus.tone === "error" ? "CircleX" : "AlertTriangle"
+                }
+                className={cn(
+                  "size-4",
+                  runtimeStatus.tone === "error"
+                    ? "text-destructive"
+                    : "text-warning",
+                )}
+                aria-hidden
+              />
+            }
+          >
+            <span className="block">{runtimeStatus.label}</span>
+            {plugin.statusDetail ? (
+              <span className="block text-xs text-muted-foreground">
+                {plugin.statusDetail}
+              </span>
+            ) : null}
+            <span className="mt-1 block text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Next:</span>{" "}
+              {runtimeStatus.recovery}
             </span>
-          ) : null}
-          <span className="mt-1 block text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Next:</span>{" "}
-            {runtimeStatus.recovery}
-          </span>
-        </ResourceDetailListItem>
+          </ResourceDetailListItem>
+        </PluginActivityGroup>
       ) : null}
-      {plugin.services.map((service) => (
-        <ResourceDetailListItem
-          key={service.name}
-          leading={<Icon name="Workflow" className="size-4" aria-hidden />}
-          trailing={
-            <PluginActivityState
-              state={service.state}
-              resourceLabel={service.name}
-            />
-          }
+      {plugin.services.length > 0 ? (
+        <PluginActivityGroup
+          title="Background services"
+          description="Long-running processes the plugin keeps active while it is enabled."
         >
-          <span className="block">{service.name}</span>
-          <span className="block text-xs text-muted-foreground">
-            Background service
-          </span>
-        </ResourceDetailListItem>
-      ))}
-      {plugin.schedules.map((schedule) => (
-        <ResourceDetailListItem
-          key={schedule.name}
-          leading={<Icon name="TimeSchedule" className="size-4" aria-hidden />}
-          trailing={
-            <PluginActivityState
-              state={schedule.lastStatus}
-              resourceLabel={schedule.name}
-            />
-          }
+          {plugin.services.map((service) => {
+            const state = pluginActivityIcon(service.state);
+            return (
+              <ResourceDetailListItem
+                key={service.name}
+                leading={
+                  <PluginActivityState
+                    state={service.state}
+                    resourceLabel={service.name}
+                  />
+                }
+              >
+                <span className="block">{service.name}</span>
+                <span className={cn("block text-xs", state.className)}>
+                  {state.label}
+                </span>
+              </ResourceDetailListItem>
+            );
+          })}
+        </PluginActivityGroup>
+      ) : null}
+      {plugin.schedules.length > 0 ? (
+        <PluginActivityGroup
+          title="Scheduled jobs"
+          description="Maintenance work the plugin runs automatically on its own schedule."
         >
-          <span className="block">{schedule.name}</span>
-          {schedule.lastError ? (
-            <span className="block text-xs text-destructive">
-              {schedule.lastError}
-            </span>
-          ) : (
-            <span className="block text-xs text-muted-foreground">
-              Next {formatAbsoluteDate(schedule.nextRunAt)}
-            </span>
-          )}
-        </ResourceDetailListItem>
-      ))}
+          {plugin.schedules.map((schedule) => {
+            const state = pluginActivityIcon(schedule.lastStatus);
+            return (
+              <ResourceDetailListItem
+                key={schedule.name}
+                leading={
+                  <PluginActivityState
+                    state={schedule.lastStatus}
+                    resourceLabel={schedule.name}
+                  />
+                }
+              >
+                <span className="block">{schedule.name}</span>
+                <span className={cn("block text-xs", state.className)}>
+                  {state.label}
+                </span>
+                {schedule.lastError ? (
+                  <span className="block text-xs text-destructive">
+                    {schedule.lastError}
+                  </span>
+                ) : (
+                  <span className="block text-xs text-muted-foreground">
+                    Next {formatAbsoluteDate(schedule.nextRunAt)}
+                  </span>
+                )}
+              </ResourceDetailListItem>
+            );
+          })}
+        </PluginActivityGroup>
+      ) : null}
       {hasHandlerErrors ? (
-        <ResourceDetailListItem
-          leading={
-            <Icon
-              name="AlertCircle"
-              className="size-4 text-destructive"
-              aria-hidden
-            />
-          }
+        <PluginActivityGroup
+          title="Handler errors"
+          description="Failures from plugin actions or events since this plugin started."
         >
-          {plugin.handlerStats.errorCount} handler{" "}
-          {plugin.handlerStats.errorCount === 1 ? "error" : "errors"}
-        </ResourceDetailListItem>
+          <ResourceDetailListItem
+            leading={
+              <Icon
+                name="AlertCircle"
+                className="size-4 text-destructive"
+                aria-hidden
+              />
+            }
+          >
+            <span className="block">
+              {plugin.handlerStats.errorCount} failed{" "}
+              {plugin.handlerStats.errorCount === 1
+                ? "handler call"
+                : "handler calls"}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Reload the plugin to clear this count after resolving the cause.
+            </span>
+          </ResourceDetailListItem>
+        </PluginActivityGroup>
       ) : null}
-    </ResourceDetailCollection>
+    </div>
   );
 }
