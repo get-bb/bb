@@ -179,6 +179,7 @@ function createFollowUpPromptBoxProps(
       compactPromptPlaceholder: "Ask a follow-up",
       promptPlaceholder: "Ask for a follow-up",
       canModifierSubmit: true,
+      steerActiveThreadOnEnter: false,
       submitMode,
       threadRuntimeDisplayStatus:
         submitMode.kind === "queue" ? "active" : "idle",
@@ -496,6 +497,28 @@ describe("FollowUpPromptBox", () => {
     fireEvent.click(screen.getByText("Submit"));
 
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+    expect(mocks.scrollToBottom).not.toHaveBeenCalled();
+  });
+
+  it("swaps Enter and modifier submit while steer-on-Enter is enabled", () => {
+    const props = createFollowUpPromptBoxProps({
+      kind: "queue",
+      onStop: vi.fn(),
+    });
+    if (!props.composer) {
+      throw new Error("Expected follow-up composer props");
+    }
+    props.composer.steerActiveThreadOnEnter = true;
+    render(<FollowUpPromptBox {...props} />);
+
+    fireEvent.click(screen.getByText("Submit"));
+    expect(props.composer.onModifierSubmit).toHaveBeenCalledOnce();
+    expect(props.composer.onSubmit).not.toHaveBeenCalled();
+    expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
+
+    mocks.scrollToBottom.mockClear();
+    fireEvent.click(screen.getByText("Modifier submit"));
+    expect(props.composer.onSubmit).toHaveBeenCalledOnce();
     expect(mocks.scrollToBottom).not.toHaveBeenCalled();
   });
 

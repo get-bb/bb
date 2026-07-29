@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `steer_active_thread_on_enter` integer DEFAULT false NOT NULL;

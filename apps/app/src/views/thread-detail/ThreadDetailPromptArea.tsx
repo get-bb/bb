@@ -179,6 +179,7 @@ interface ThreadDetailPromptAreaProps {
   /** Pull request summary for the active thread branch. Null when there is no PR. */
   pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
+  steerActiveThreadOnEnter: boolean;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
    * draft via "Add to chat", so the composer can focus its caret at the end —
@@ -222,6 +223,7 @@ export function ThreadDetailPromptArea({
   childThreadsSection,
   pullRequest,
   sendMessage,
+  steerActiveThreadOnEnter,
   composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -897,6 +899,7 @@ export function ThreadDetailPromptArea({
       compactPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
+      steerActiveThreadOnEnter,
       submitMode,
       threadRuntimeDisplayStatus: runtimeDisplayStatus,
     }),
@@ -912,6 +915,7 @@ export function ThreadDetailPromptArea({
       promptDraft.setDraft,
       promptDraft.setTextAndMentions,
       runtimeDisplayStatus,
+      steerActiveThreadOnEnter,
       submitMode,
       thread.id,
     ],
@@ -937,6 +941,7 @@ export function ThreadDetailPromptArea({
             canModifierSubmit:
               activeComposerDraftInput.length > 0 &&
               !isUpdateQueuedMessagePending,
+            steerActiveThreadOnEnter: false,
             submitMode: { kind: "ready" },
             threadRuntimeDisplayStatus: runtimeDisplayStatus,
           }

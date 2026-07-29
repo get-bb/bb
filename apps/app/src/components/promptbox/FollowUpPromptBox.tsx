@@ -59,11 +59,13 @@ import {
 type PromptBoxWithScrollAnchorProps = ComponentProps<
   typeof PromptBoxInternal
 > & {
+  scrollToBottomOnModifierSubmit?: boolean;
   scrollToBottomOnSubmit?: boolean;
 };
 
 function PromptBoxWithScrollAnchor({
   onSubmit,
+  scrollToBottomOnModifierSubmit = true,
   scrollToBottomOnSubmit = true,
   submission,
   ...promptBoxProps
@@ -80,7 +82,9 @@ function PromptBoxWithScrollAnchor({
       ? undefined
       : () => {
           submission.onModifierSubmit?.();
-          bottomAnchor?.scrollToBottom();
+          if (scrollToBottomOnModifierSubmit) {
+            bottomAnchor?.scrollToBottom();
+          }
         };
   const anchoredSubmission =
     submission === undefined
@@ -155,6 +159,11 @@ export interface FollowUpComposerProps {
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
+  /**
+   * While the runtime is active, use Enter for steer and the modifier shortcut
+   * for queue. False preserves the default Enter-to-queue behavior.
+   */
+  steerActiveThreadOnEnter: boolean;
   submitMode: FollowUpSubmitMode;
   /** Used by the scroll-to-bottom button to know whether the runtime is actively streaming. */
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -465,8 +474,15 @@ function FollowUpPromptBoxWithComposer({
       document.removeEventListener("focusin", handleDocumentInteraction, true);
     };
   }, [cancelPendingFocusExpansion, setInteractionExpanded]);
-  const onModifierSubmit = composer.canModifierSubmit
+  const steerOnPrimarySubmit =
+    submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
+  const onPrimarySubmit = steerOnPrimarySubmit
     ? composer.onModifierSubmit
+    : composer.onSubmit;
+  const onModifierSubmit = composer.canModifierSubmit
+    ? steerOnPrimarySubmit
+      ? composer.onSubmit
+      : composer.onModifierSubmit
     : undefined;
   const executionControlsDisabled = executionReadOnly ?? readOnly ?? false;
   const footerStart = useMemo(
@@ -579,10 +595,13 @@ function FollowUpPromptBoxWithComposer({
         value={composer.message}
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
-        onSubmit={composer.onSubmit}
+        onSubmit={onPrimarySubmit}
         textEffects={textEffects}
         onComposerLayoutChange={setComposerLayout}
-        scrollToBottomOnSubmit={submitMode.kind !== "queue"}
+        scrollToBottomOnSubmit={
+          submitMode.kind !== "queue" || steerOnPrimarySubmit
+        }
+        scrollToBottomOnModifierSubmit={!steerOnPrimarySubmit}
         history={composer.history}
         focusEndKey={focusEndKey}
         placeholder={composer.promptPlaceholder}
@@ -592,10 +611,15 @@ function FollowUpPromptBoxWithComposer({
         submission={{
           onStop: onStopRuntime,
           isSubmitting: composer.isFollowUpSubmitting || isStopping,
-          disabled: !canSubmit || composer.isFollowUpSubmitting,
+          disabled:
+            !canSubmit ||
+            composer.isFollowUpSubmitting ||
+            (steerOnPrimarySubmit && !composer.canModifierSubmit),
           onModifierSubmit,
           title: canQueueFollowUp
-            ? "Queue follow-up (Enter)"
+            ? steerOnPrimarySubmit
+              ? "Steer current run (Enter)"
+              : "Queue follow-up (Enter)"
             : isStopping
               ? "Stopping run..."
               : isLoadingExecutionOptions

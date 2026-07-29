@@ -283,6 +283,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   }
   dropSideChatPluginExperimentColumn(db);
   dropToolsHubExperimentColumn(db);
+  dropSteerActiveThreadOnEnterColumn(db);
   // Thread visibility was added after the legacy checkpoints these tests
   // replay, so remove it before applying the forward migration chain again.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
@@ -408,6 +409,23 @@ function dropToolsHubExperimentColumn(db: DbConnection): void {
   if (columns.some((column) => column.name === "tools_hub")) {
     db.$client
       .prepare("ALTER TABLE system_experiments DROP COLUMN tools_hub")
+      .run();
+  }
+}
+
+// Migration 0081 adds the active-thread Enter behavior preference. Rewind
+// scenarios that clear its migration row must drop the column before replay.
+function dropSteerActiveThreadOnEnterColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(app_settings)")
+    .all();
+  if (
+    columns.some((column) => column.name === "steer_active_thread_on_enter")
+  ) {
+    db.$client
+      .prepare(
+        "ALTER TABLE app_settings DROP COLUMN steer_active_thread_on_enter",
+      )
       .run();
   }
 }
@@ -1237,6 +1255,7 @@ describe("migrate", () => {
         .run(permissionModesMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      dropSteerActiveThreadOnEnterColumn(db);
 
       migrate(db);
 
@@ -1629,6 +1648,7 @@ describe("migrate", () => {
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      dropSteerActiveThreadOnEnterColumn(db);
 
       expect(
         db.$client
@@ -1718,6 +1738,7 @@ describe("migrate", () => {
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      dropSteerActiveThreadOnEnterColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

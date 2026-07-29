@@ -53,6 +53,10 @@ Settings → General includes `showUnhandledProviderEvents`, which defaults to
 false in packaged builds. Turn it on to show raw provider events bb does not yet
 understand; development builds always show these diagnostic rows.
 
+Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
+false. When enabled, Enter steers a running thread and Command+Enter queues a
+follow-up; when disabled, those actions are reversed.
+
   bb settings show
   bb settings general <key> <true|false>
   bb settings experiment <key> <value>

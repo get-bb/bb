@@ -176,6 +176,16 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
   }),
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: {
+        steerActiveThreadOnEnter: false,
+      },
+    },
+  }),
+}));
+
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCreateThreadQueuedMessage: () => ({
     mutateAsync: mocks.createQueuedMessageMutateAsync,

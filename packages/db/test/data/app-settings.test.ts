@@ -30,6 +30,7 @@ describe("app settings data", () => {
       ...defaultAppSettings,
       caffeinate: true,
       showKeyboardHints: false,
+      steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,
     });
     setAppKeybindingOverrides(db, overrides);
@@ -38,6 +39,7 @@ describe("app settings data", () => {
       ...defaultAppSettings,
       caffeinate: true,
       showKeyboardHints: false,
+      steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,
     });
     expect(getAppKeybindingOverrides(db)).toEqual(overrides);

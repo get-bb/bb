@@ -110,6 +110,12 @@ to show them regardless of the toggle. Set the persisted preference from an
 agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
+The "Steer running threads on Enter" toggle in Settings → General changes the
+active-thread composer shortcuts. It defaults to off: Enter queues and
+Command+Enter steers. When enabled, Enter steers and Command+Enter queues. Set
+it with
+`bb settings general steerActiveThreadOnEnter <true|false>`.
+
 ## Keyboard Shortcuts
 
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the

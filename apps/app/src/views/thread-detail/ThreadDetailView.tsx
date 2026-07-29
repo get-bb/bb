@@ -22,6 +22,7 @@ import {
 } from "@/components/thread/timeline";
 import { serializePluginPanelParams } from "@/lib/plugin-json-value";
 import {
+  defaultAppSettings,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
@@ -2448,6 +2449,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       }
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
+      steerActiveThreadOnEnter={
+        systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
+        defaultAppSettings.steerActiveThreadOnEnter
+      }
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}

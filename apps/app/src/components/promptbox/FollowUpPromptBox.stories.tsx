@@ -709,6 +709,7 @@ function Row({
                   compactPromptPlaceholder: resolvedCompactPlaceholder,
                   promptPlaceholder: resolvedPlaceholder,
                   canModifierSubmit: true,
+                  steerActiveThreadOnEnter: false,
                   submitMode: { kind: "ready" },
                   threadRuntimeDisplayStatus,
                 }}
@@ -800,6 +801,7 @@ function Row({
                 compactPromptPlaceholder: resolvedCompactPlaceholder,
                 promptPlaceholder: resolvedPlaceholder,
                 canModifierSubmit: submitMode.kind === "queue",
+                steerActiveThreadOnEnter: false,
                 submitMode,
                 threadRuntimeDisplayStatus,
               }

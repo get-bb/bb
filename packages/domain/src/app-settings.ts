@@ -13,6 +13,11 @@ export const appSettingsSchema = z
     caffeinate: z.boolean(),
     /** Show shortcut hints after holding Command or Control. */
     showKeyboardHints: z.boolean(),
+    /**
+     * While a thread is running, make Enter steer the active turn and use
+     * Command+Enter to queue a follow-up.
+     */
+    steerActiveThreadOnEnter: z.boolean(),
     /** Show raw provider events that bb does not yet understand. */
     showUnhandledProviderEvents: z.boolean(),
     /** Enable Codex's native memory recall and generation for bb threads. */
@@ -32,6 +37,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   caffeinate: false,
   showKeyboardHints: true,
+  steerActiveThreadOnEnter: false,
   showUnhandledProviderEvents: false,
   codexMemoryEnabled: true,
   claudeCodeMemoryEnabled: true,

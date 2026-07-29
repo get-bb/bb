@@ -41,3 +41,10 @@ every window and client sees the same value.
   but does not yet understand. These diagnostic payloads can be noisy.
 - Development builds always show unhandled provider events regardless of the
   saved preference.
+
+## Active-thread Enter behavior
+
+- `steerActiveThreadOnEnter` defaults to false. Set it with
+  `bb settings general steerActiveThreadOnEnter <true|false>`.
+- When disabled, Enter queues a follow-up and Command+Enter steers the
+  active turn. When enabled, those actions are reversed.

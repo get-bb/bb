@@ -46,6 +46,7 @@ describe("general settings", () => {
           ...defaultAppSettings,
           caffeinate: true,
           showKeyboardHints: false,
+          steerActiveThreadOnEnter: true,
           codexMemoryEnabled: false,
         }),
       });
@@ -54,12 +55,14 @@ describe("general settings", () => {
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
 
@@ -71,6 +74,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
       expect(parsedConfig.primaryHostId).toBe(host.id);

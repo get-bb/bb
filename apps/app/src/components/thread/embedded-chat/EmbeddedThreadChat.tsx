@@ -7,12 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  PermissionMode,
-  PromptInput,
-  ReasoningLevel,
-  ServiceTier,
-  ThreadRuntimeDisplayStatus,
+import {
+  defaultAppSettings,
+  type PermissionMode,
+  type PromptInput,
+  type ReasoningLevel,
+  type ServiceTier,
+  type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import type {
@@ -53,6 +54,7 @@ import {
   useThreadQueuedMessages,
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useCreateThreadQueuedMessage,
   useSendThreadMessage,
@@ -302,6 +304,10 @@ function EmbeddedThreadChatWithComposer({
   composer,
 }: EmbeddedThreadChatComposerModeProps) {
   const labels = { ...DEFAULT_LABELS, ...labelOverrides };
+  const systemConfigQuery = useSystemConfig();
+  const steerActiveThreadOnEnter =
+    systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
+    defaultAppSettings.steerActiveThreadOnEnter;
   const surfaceKey = threadId ?? surfaceFallbackKey ?? "embedded-thread-chat";
   const markThreadRead = useMarkThreadRead();
   const stopThread = useStopThread();
@@ -959,6 +965,7 @@ function EmbeddedThreadChatWithComposer({
       compactPromptPlaceholder: compactComposerPlaceholder,
       promptPlaceholder: composerPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
+      steerActiveThreadOnEnter,
       submitMode,
       threadRuntimeDisplayStatus: displayStatus,
     }),
@@ -973,6 +980,7 @@ function EmbeddedThreadChatWithComposer({
       isTurnSubmitting,
       promptDraft.setDraft,
       promptDraft.setTextAndMentions,
+      steerActiveThreadOnEnter,
       submitMode,
     ],
   );
@@ -996,6 +1004,7 @@ function EmbeddedThreadChatWithComposer({
             canModifierSubmit:
               activeComposerDraftInput.length > 0 &&
               !isUpdateQueuedMessagePending,
+            steerActiveThreadOnEnter: false,
             submitMode: { kind: "ready" },
             threadRuntimeDisplayStatus: displayStatus,
           }

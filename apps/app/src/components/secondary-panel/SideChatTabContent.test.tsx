@@ -257,6 +257,16 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   },
 }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: {
+        steerActiveThreadOnEnter: false,
+      },
+    },
+  }),
+}));
+
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
   ThreadEnvironmentSummary: () => <div />,
 }));

@@ -134,6 +134,12 @@ export interface CaffeinateSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface SteerActiveThreadOnEnterSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
@@ -175,9 +181,12 @@ export interface GeneralSettingsSectionProps {
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
+  onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
+  steerActiveThreadOnEnter: boolean;
+  steerActiveThreadOnEnterDisabled: boolean;
 }
 
 export type DebugSettingsSectionProps =
@@ -478,6 +487,8 @@ const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
+const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
+  "Steer running threads on Enter";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -509,6 +520,26 @@ export function CaffeinateSettingsControl({
         disabled={disabled}
         onCheckedChange={onEnabledChange}
         aria-label={CAFFEINATE_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function SteerActiveThreadOnEnterSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: SteerActiveThreadOnEnterSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+      description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -747,9 +778,12 @@ export function GeneralSettingsSection({
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
+  onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
+  steerActiveThreadOnEnter,
+  steerActiveThreadOnEnterDisabled,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
@@ -764,6 +798,12 @@ export function GeneralSettingsSection({
         <RichTextEditingSettingsControl
           enabled={richTextEditing}
           onEnabledChange={onRichTextEditingChange}
+        />
+
+        <SteerActiveThreadOnEnterSettingsControl
+          disabled={steerActiveThreadOnEnterDisabled}
+          enabled={steerActiveThreadOnEnter}
+          onEnabledChange={onSteerActiveThreadOnEnterChange}
         />
 
         {caffeinateAvailable ? (
@@ -1157,6 +1197,11 @@ export function SettingsView() {
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
+          steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
+          steerActiveThreadOnEnterDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
           onCaffeinateChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
@@ -1167,6 +1212,12 @@ export function SettingsView() {
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
+          onSteerActiveThreadOnEnterChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              steerActiveThreadOnEnter: enabled,
+            })
+          }
         />
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />

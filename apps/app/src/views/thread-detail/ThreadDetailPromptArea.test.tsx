@@ -665,6 +665,7 @@ function buildPromptAreaElement({
         isPending: false,
         mutateAsync: vi.fn(),
       }}
+      steerActiveThreadOnEnter={false}
       thread={thread}
       workspaceChangedFilesSection={null}
       workspaceStatusPending={false}
