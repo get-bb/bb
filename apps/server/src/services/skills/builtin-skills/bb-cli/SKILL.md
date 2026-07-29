@@ -382,6 +382,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - When implementation is ready for review, run `bb tasks update <key-or-id>
 --status in_review`; if blocked, leave the status accurate and explain the
   blocker in a comment.
+- Change task hierarchy with `bb tasks update <key-or-id> --parent
+<parent-key-or-id>` or promote a subtask with `--no-parent`. The flags are
+  mutually exclusive, and both task keys and IDs are accepted.
 - Add `--json` when command output will drive follow-up work. Run `bb tasks
 --help` for project, folder, task, label, attachment, preset, delegation,
   attached-thread, and demo-data commands.

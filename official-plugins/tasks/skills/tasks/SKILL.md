@@ -103,6 +103,11 @@ not already exist. Dispatch requires an existing preset.
    bb tasks update ABC-12 --status in_review
    ```
 
+   Change task hierarchy with `bb tasks update ABC-12 --parent ABC-10`, using
+   either a task key or ID for the parent. Promote a subtask to the top level
+   with `bb tasks update ABC-12 --no-parent`; the two parent flags cannot be
+   combined.
+
    If the work cannot proceed, leave the status accurate and comment with the
    specific blocker, what you tried, and what would unblock it. Do not mark a
    blocked task complete.

@@ -268,6 +268,197 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("assigns and promotes task parents by key or ID with stable JSON output", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Hierarchy",
+        "--prefix",
+        "HIER",
+      ]),
+    );
+    const parent = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "HIER",
+          "--title",
+          "Parent",
+          "--json",
+        ]),
+      ),
+    ).task;
+    const child = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "HIER",
+          "--title",
+          "Child",
+          "--json",
+        ]),
+      ),
+    ).task;
+
+    const assignedByKey = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "update",
+          child.key,
+          "--parent",
+          parent.key.toLowerCase(),
+          "--json",
+        ]),
+      ),
+    );
+    expect(assignedByKey).toEqual({
+      task: expect.objectContaining({
+        id: child.id,
+        parentTaskId: parent.id,
+      }),
+    });
+
+    const promoted = JSON.parse(
+      stdout(
+        await harness.runCli(["update", child.id, "--no-parent", "--json"]),
+      ),
+    );
+    expect(promoted).toEqual({
+      task: expect.objectContaining({
+        id: child.id,
+        parentTaskId: null,
+      }),
+    });
+
+    const assignedById = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "update",
+          child.key,
+          "--parent",
+          parent.id,
+          "--json",
+        ]),
+      ),
+    );
+    expect(assignedById).toEqual({
+      task: expect.objectContaining({
+        id: child.id,
+        parentTaskId: parent.id,
+      }),
+    });
+
+    await harness.dispose();
+  });
+
+  it("rejects conflicting or invalid parent updates without mutation", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+
+    for (const project of [
+      { name: "Relationships", prefix: "REL" },
+      { name: "Other project", prefix: "OTH" },
+    ]) {
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          project.name,
+          "--prefix",
+          project.prefix,
+        ]),
+      );
+    }
+    const taskInputs: Array<{
+      project: string;
+      title: string;
+      parent?: string;
+    }> = [
+      { project: "REL", title: "Root" },
+      { project: "REL", title: "Nested child", parent: "REL-1" },
+      { project: "REL", title: "Movable root" },
+      { project: "REL", title: "Movable child", parent: "REL-3" },
+      { project: "OTH", title: "Other root" },
+    ];
+    for (const taskInput of taskInputs) {
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          taskInput.project,
+          "--title",
+          taskInput.title,
+          ...(taskInput.parent ? ["--parent", taskInput.parent] : []),
+        ]),
+      );
+    }
+
+    await expect(
+      harness.runCli(["update", "REL-3", "--parent", "REL-1", "--no-parent"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "--parent and --no-parent cannot be combined",
+    });
+    await expect(harness.runCli(["update", "REL-3"])).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "no task changes were provided",
+    });
+    await expect(
+      harness.runCli(["update", "REL-3", "--parent", "REL-3"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "A task cannot be its own parent",
+    });
+    await expect(
+      harness.runCli(["update", "REL-3", "--parent", "OTH-1"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "A sub-task must belong to the same project as its parent",
+    });
+    await expect(
+      harness.runCli(["update", "REL-3", "--parent", "REL-2"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "Tasks support at most one level of sub-tasks",
+    });
+    await expect(
+      harness.runCli(["update", "REL-3", "--parent", "REL-1"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "A task with sub-tasks cannot itself become a sub-task",
+    });
+
+    const unchanged = JSON.parse(
+      stdout(await harness.runCli(["show", "REL-3", "--json"])),
+    );
+    expect(unchanged.task).toMatchObject({
+      key: "REL-3",
+      parentTaskId: null,
+    });
+    expect(unchanged.subtasks).toEqual([
+      expect.objectContaining({
+        key: "REL-4",
+        parentTaskId: unchanged.task.id,
+      }),
+    ]);
+
+    await harness.dispose();
+  });
+
   it("sorts list output by priority or due date and rejects unknown sorts", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     await plugin(bb);

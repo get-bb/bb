@@ -93,7 +93,7 @@ const CREATE_HELP =
 const LIST_HELP = `Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--limit <1-${TASKS_PAGE_MAX_LIMIT}>] [--cursor <opaque>] [--json]`;
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
-  "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
+  "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--parent <key-or-id> | --no-parent] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
 const COMMENT_HELP =
   "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--machine <id-or-name>] [--notify] [--json]";
 const LABEL_HELP = `Usage:
@@ -1209,16 +1209,28 @@ async function runUpdate(
       "description",
       "description-file",
       "due",
+      "parent",
       "add-label",
       "remove-label",
       "machine",
     ],
-    ["no-due"],
+    ["no-due", "no-parent"],
   );
   const [address] = requirePositionals(args, 1, UPDATE_HELP);
   const task = await resolveTask(domain, address!);
   const dueDate = option(args, "due");
   validateSingleFlagChoice(dueDate, args.flags.has("no-due"), "due", "no-due");
+  const parentAddress = option(args, "parent");
+  validateSingleFlagChoice(
+    parentAddress,
+    args.flags.has("no-parent"),
+    "parent",
+    "no-parent",
+  );
+  const parent =
+    parentAddress === undefined
+      ? undefined
+      : await resolveTask(domain, parentAddress);
   if (
     option(args, "machine") !== undefined &&
     option(args, "description-file") === undefined
@@ -1255,6 +1267,8 @@ async function runUpdate(
     description === undefined &&
     dueDate === undefined &&
     !args.flags.has("no-due") &&
+    parentAddress === undefined &&
+    !args.flags.has("no-parent") &&
     !labelsChanged
   ) {
     throw new CliError("no task changes were provided");
@@ -1268,6 +1282,10 @@ async function runUpdate(
         title: option(args, "title"),
         description,
         dueDate: args.flags.has("no-due") ? null : dueDate,
+        parentTaskId:
+          parentAddress === undefined && !args.flags.has("no-parent")
+            ? undefined
+            : (parent?.id ?? null),
         labelIds: labelsChanged ? [...nextLabels] : undefined,
         authorName: taskAuthor(ctx),
       }),

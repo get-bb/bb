@@ -107,13 +107,16 @@ and the `bb tasks` command. Common agent operations are:
   bb tasks attachment get <attachment-id> --out <path> [--json]
   bb tasks attach <key-or-id> [--json]
   bb tasks update <key-or-id> --status in_review [--json]
+  bb tasks update <key-or-id> (--parent <parent-key-or-id> | --no-parent) [--json]
 
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
 Delegated threads are attached automatically; use `bb tasks attach` only when
-work started outside Tasks. File paths in tasks commands resolve on the
-invoking machine (the thread's machine inside an agent thread, otherwise the
-server's); pass `--machine <id-or-name>` to target another enrolled machine.
+work started outside Tasks. Task update resolves both task keys and IDs for
+`--parent`; use `--no-parent` to promote a subtask to the top level. File paths
+in tasks commands resolve on the invoking machine (the thread's machine inside
+an agent thread, otherwise the server's); pass `--machine <id-or-name>` to
+target another enrolled machine.
 Task lists default to 100 rows. JSON pages include `nextCursor`; human pages
 print the exact continuation option when more rows exist. Cursors are bound to
 the filters, sort, and task-list revision. Any add, removal, reorder, update,
