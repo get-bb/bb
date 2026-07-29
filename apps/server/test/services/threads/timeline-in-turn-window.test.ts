@@ -14,6 +14,7 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { TimelinePaginationCursor } from "@bb/server-contract";
 import {
@@ -57,7 +58,30 @@ function setup(): { db: DbConnection; thread: Thread } {
 
 type EventInput = Parameters<typeof insertEvents>[2][number];
 
+const BACKGROUND_TASK_ITEM_ID = "task:wf-1";
+
+function backgroundTaskData(status: "pending" | "completed"): string {
+  return JSON.stringify({
+    providerThreadId,
+    item: {
+      type: "backgroundTask",
+      id: BACKGROUND_TASK_ITEM_ID,
+      taskType: LOCAL_WORKFLOW_TASK_TYPE,
+      description: "long workflow",
+      status,
+      taskStatus: status === "pending" ? "running" : "completed",
+      skipTranscript: false,
+      workflowName: "long-workflow",
+    },
+  });
+}
+
 interface SeedOptions {
+  /**
+   * Start a workflow background task at the top of the last turn, and complete
+   * it there too when `"completed"`. Its rows sit far below any in-turn cut.
+   */
+  backgroundTask?: "open" | "completed";
   /** Emit `turn/completed` for the last turn. */
   completeLastTurn: boolean;
   /**
@@ -123,6 +147,27 @@ function seedTurns(
       itemKind: null,
       data: JSON.stringify({ clientRequestId }),
     });
+
+    if (isLastTurn && options.backgroundTask !== undefined) {
+      push({
+        type: "item/started",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: BACKGROUND_TASK_ITEM_ID,
+        itemKind: "backgroundTask",
+        data: backgroundTaskData("pending"),
+      });
+      if (options.backgroundTask === "completed") {
+        push({
+          type: "item/backgroundTask/completed",
+          scope: threadScope(),
+          providerThreadId,
+          itemId: BACKGROUND_TASK_ITEM_ID,
+          itemKind: "backgroundTask",
+          data: backgroundTaskData("completed"),
+        });
+      }
+    }
 
     const longRunning = new Set(
       isLastTurn ? (options.longRunningItemIndexes ?? []) : [],
@@ -520,6 +565,45 @@ describe("timeline inline output reads", () => {
     expect(uncappedRow.output).toBe(output);
     expect(cappedRow.output).toBe(
       `${"x".repeat(32_000)}\n…[18,000 more characters truncated — open the turn to view the full output]`,
+    );
+  });
+});
+
+describe("background tasks across an in-turn window", () => {
+  it("keeps the running-workflow banner when the window starts after the task began", () => {
+    const { db, thread } = setup();
+    // The workflow starts at the top of a turn that then runs long enough to
+    // push the window past it. The banner is thread-scoped state, so it has to
+    // survive a window that no longer contains the task's own rows.
+    seedTurns(db, thread, {
+      backgroundTask: "open",
+      completeLastTurn: false,
+      itemsPerTurn: [300],
+    });
+
+    const budgeted = buildPage(db, thread, 100, null);
+    expect(budgeted.response.timelinePage.olderCursor?.anchorId).toMatch(
+      /:in-turn:/,
+    );
+    // The task's own rows are far below the cut...
+    expect(budgeted.profile.eventRowCount).toBeLessThanOrEqual(120);
+    // ...and the banner is still there, unchanged.
+    expect(budgeted.response.activeWorkflows).toHaveLength(1);
+    expect(budgeted.response.activeWorkflows).toEqual(
+      buildPage(db, thread, LARGE_BUDGET, null).response.activeWorkflows,
+    );
+  });
+
+  it("drops the banner once the task completes, whatever the window", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      backgroundTask: "completed",
+      completeLastTurn: false,
+      itemsPerTurn: [300],
+    });
+
+    expect(buildPage(db, thread, 100, null).response.activeWorkflows).toEqual(
+      [],
     );
   });
 });
