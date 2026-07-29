@@ -22,7 +22,7 @@ import { SkillDetailView } from "@/components/tools/SkillDetailView";
  * Every state each tool type's detail page can be in, rendered as the real
  * page. One story per tool type: scroll it and you have reviewed that type.
  *
- * These are the whole Tools story surface, deliberately. Anything a running
+ * These are the whole Extensions detail story surface, deliberately. Anything a running
  * server would show you is better seen in the running app, and anything that
  * must not regress belongs in a test — `detail-page-recipes.test.tsx` pins
  * section order and labels, `SkillsView.test.tsx` and `ToolsSidebar.test.tsx`
@@ -31,7 +31,7 @@ import { SkillDetailView } from "@/components/tools/SkillDetailView";
  * and disabled — plus content ugly enough to break a layout.
  */
 export default {
-  title: "Tools/Detail states",
+  title: "Extensions",
 };
 
 const noop = () => {};
@@ -163,7 +163,7 @@ function Skill({
   );
 }
 
-export function SkillStates() {
+export function SkillDetailStates() {
   return (
     <Story
       title="Skill detail states"
@@ -439,7 +439,7 @@ function PluginWithAppSurfaces() {
   return <Plugin plugin={{ ...PLUGIN, app: { hasApp: true, bundle: null } }} />;
 }
 
-export function PluginStates() {
+export function PluginDetailStates() {
   return (
     <Story
       title="Plugin detail states"
@@ -627,7 +627,7 @@ function Automation({
   );
 }
 
-export function AutomationStates() {
+export function AutomationDetailStates() {
   return (
     <Story
       title="Automation detail states"

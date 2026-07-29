@@ -44,10 +44,17 @@ import {
 import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
+import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
+  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
@@ -414,6 +421,105 @@ function LoadedSidebar({
   );
 }
 
+function registrationSet(
+  navPanels: PluginRegistrationSet["navPanels"],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels,
+    threadPanelActions: [],
+    composerCustomizations: [],
+    pendingInteractions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
+
+function StoryPluginPageRegistrations() {
+  useEffect(() => {
+    const pluginPages = [
+      {
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        panel: {
+          id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+          title: "Automations",
+          icon: "TimeSchedule" as const,
+          path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "github",
+        panel: {
+          id: "github",
+          title: "GitHub",
+          icon: "Github" as const,
+          path: "github",
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "docs",
+        panel: {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText" as const,
+          path: "docs",
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "tasks",
+        panel: {
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo" as const,
+          path: "tasks",
+          component: () => null,
+        },
+      },
+    ];
+
+    for (const { pluginId, panel } of pluginPages) {
+      setPluginSlotRegistrations(pluginId, registrationSet([panel]));
+    }
+
+    return () => {
+      for (const { pluginId } of pluginPages) {
+        removePluginSlotRegistrations(pluginId);
+      }
+    };
+  }, []);
+  return null;
+}
+
+function LoadedSidebarWithPluginPages() {
+  return (
+    <>
+      <StoryPluginPageRegistrations />
+      <SidebarFrame>
+        <PluginNavSidebarSection />
+        <LoadedSidebar />
+      </SidebarFrame>
+    </>
+  );
+}
+
+function ExtensionsSidebarFrame() {
+  return (
+    <SidebarProvider className="h-[680px] min-h-0 w-full max-w-[320px] overflow-hidden rounded-md border border-sidebar-border shadow-sm">
+      <ToolsSidebar
+        appRoutePath="/"
+        isResizing={false}
+        onResizeMouseDown={noop}
+        showTopReserve={false}
+      />
+    </SidebarProvider>
+  );
+}
+
 function OrganizationSidebar({
   hosts,
   mode,
@@ -589,6 +695,18 @@ export function Overview() {
         <SidebarFrame>
           <LoadedSidebar />
         </SidebarFrame>
+      </StoryRow>
+      <StoryRow
+        label="plugin pages"
+        hint="all shipped plugin navigation above the real thread list"
+      >
+        <LoadedSidebarWithPluginPages />
+      </StoryRow>
+      <StoryRow
+        label="extensions"
+        hint="the focused Skills and Plugins management sidebar"
+      >
+        <ExtensionsSidebarFrame />
       </StoryRow>
       <StoryRow label="search">
         <SearchSidebar />
