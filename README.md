@@ -41,6 +41,11 @@ Linux users should run bb with `npx` instead. On Windows, run bb inside
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not supported.
 
+Early adopters can install
+**[bb Nightly](https://github.com/ymichael/bb/releases/tag/desktop-nightly)**
+alongside the stable desktop app. It has a separate application identity,
+yellow icon, and auto-update feed.
+
 ### Or run it anywhere with npx
 
 ```bash
@@ -48,6 +53,12 @@ npx bb-app@latest
 ```
 
 Then open `http://localhost:38886`.
+
+To run the newest automated build instead:
+
+```bash
+npx bb-app@nightly
+```
 
 bb uses the provider CLI you already have authenticated.
 

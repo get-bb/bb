@@ -4,11 +4,24 @@ import { access, readFile, readdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createDesktopReleaseConfig,
+  resolveDesktopReleaseChannel,
+} from "./desktop-release-channel.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopPackageRoot = resolve(scriptDirectory, "..");
 const releaseDir = join(desktopPackageRoot, "release");
-const appBinaryRelativePath = join("bb.app", "Contents", "MacOS", "bb");
+const releaseConfig = createDesktopReleaseConfig(
+  resolveDesktopReleaseChannel(process.env),
+);
+const appBundleName = `${releaseConfig.applicationName}.app`;
+const appBinaryRelativePath = join(
+  appBundleName,
+  "Contents",
+  "MacOS",
+  releaseConfig.applicationName,
+);
 const startupTimeoutMs = 20_000;
 const exitTimeoutMs = 5_000;
 const postReadySettleMs = 300;
@@ -127,7 +140,7 @@ async function resolvePackagedAppBinary() {
     }
   }
 
-  throw new Error(`No packaged bb.app found under ${releaseDir}`);
+  throw new Error(`No packaged ${appBundleName} found under ${releaseDir}`);
 }
 
 async function startSmokeServer({ dataDir, expectedDesktopVersion }) {

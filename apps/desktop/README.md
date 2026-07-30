@@ -105,6 +105,45 @@ release; use `scripts/bump-version.mjs` so both files move together.
 The desktop release tag uses the locked version: `desktop-v<version>` for
 immutable releases and `desktop-latest` for the moving pointer.
 
+## Nightly channel
+
+The scheduled `publish-bb-app.yml` workflow runs from `main` every day at
+3:00 AM Pacific (`America/Los_Angeles`, including daylight-saving changes). It
+derives a unique version such as `0.34.1-nightly.<run-id>.<attempt>` without
+committing that version, publishes `bb-app` with the npm `nightly` dist-tag,
+and builds the desktop app from that same lockstep version.
+
+To publish or dry-run the channel manually from `main`, dispatch the same
+workflow with `npm_tag=nightly`. A non-dry run publishes both npm and desktop;
+a dry run validates only the npm package path.
+
+The nightly desktop is a separate installation:
+
+- product name: `bb Nightly`
+- bundle identifier: `dev.bb.desktop.nightly`
+- app/update release: `desktop-nightly`
+- update metadata: `nightly-mac.yml`
+- icon: `assets/icon-nightly.icns` and `assets/icon-nightly.png`
+
+Download it from
+[`desktop-nightly`](https://github.com/ymichael/bb/releases/tag/desktop-nightly)
+or run the CLI build with:
+
+```bash
+npx bb-app@nightly
+```
+
+Stable and nightly desktop bundles can coexist. Electron-owned preferences,
+window state, and process supervision use separate application data
+directories; the embedded bb runtime still uses the normal `~/.bb` data and
+default server port unless the corresponding environment variables are
+overridden.
+
+Nightly builds set `BB_DESKTOP_RELEASE_CHANNEL=nightly` at build time. The value
+is baked into the Electron main/preload bundles and selects the nightly product
+identity, yellow icon, and update URLs. Omit the variable (or set it to
+`latest`) for stable and local builds.
+
 ## macOS signing + notarization
 
 The desktop package is ready for Developer ID signing and Apple notarization.
@@ -140,6 +179,11 @@ JSON feed can show "update available" even when CI has published metadata only,
 while the Electron updater only flips the toast to "ready to install" after a
 signed update has actually downloaded. Local dev builds skip Electron auto-update
 unless `BB_DESKTOP_AUTO_UPDATE=1` is set.
+
+`bb Nightly` follows the equivalent isolated `desktop-nightly` release and
+`nightly-mac.yml`; it never reads or moves the stable feed. The scheduled
+workflow requires the complete signing/notarization secret set before
+publishing nightly desktop assets.
 
 To verify a downloaded or unpacked build:
 

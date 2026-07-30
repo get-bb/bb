@@ -3,6 +3,9 @@
 name: Publish bb-app
 
 on:
+  schedule:
+    - cron: "0 3 * * *"
+      timezone: "America/Los_Angeles"
   workflow_dispatch:
     inputs:
       npm_tag:
@@ -13,6 +16,7 @@ on:
         options:
           - alpha
           - beta
+          - nightly
           - latest
       allow_prerelease_latest:
         description: Allow publishing a prerelease version with the latest tag.
@@ -25,15 +29,20 @@ on:
         type: boolean
         default: true
 
-run-name: Publish bb-app (${{ inputs.npm_tag }}${{ inputs.dry_run && ', dry run' || '' }})
+run-name: ${{ github.event_name == 'schedule' && 'Publish bb-app + desktop nightly' || format('Publish bb-app ({0}{1})', inputs.npm_tag, inputs.dry_run && ', dry run' || '') }}
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: publish-bb-app-${{ github.ref }}
+  group: publish-bb-app-${{ (github.event_name == 'schedule' || inputs.npm_tag == 'nightly') && 'nightly' || github.ref }}
   cancel-in-progress: false
+
+env:
+  RELEASE_ALLOW_PRERELEASE_LATEST: ${{ github.event_name == 'schedule' && 'false' || inputs.allow_prerelease_latest }}
+  RELEASE_DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+  RELEASE_NPM_TAG: ${{ github.event_name == 'schedule' && 'nightly' || inputs.npm_tag }}
 
 jobs:
   publish:
@@ -80,11 +89,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare nightly version
+        if: ${{ github.event_name == 'schedule' || inputs.npm_tag == 'nightly' }}
+        run: |
+          nightly_version="$(node scripts/prepare-nightly-version.mjs)"
+          echo "Prepared bb-app and desktop version ${nightly_version}."
+
       - name: Validate release inputs
         id: release
         env:
-          ALLOW_PRERELEASE_LATEST: ${{ inputs.allow_prerelease_latest }}
-          NPM_TAG: ${{ inputs.npm_tag }}
+          ALLOW_PRERELEASE_LATEST: ${{ env.RELEASE_ALLOW_PRERELEASE_LATEST }}
+          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
         run: |
           node <<'NODE'
           const { execFileSync } = require("node:child_process");
@@ -105,6 +120,7 @@ jobs:
           const isPrerelease = version.includes("-");
           const isAlpha = /-alpha\.\d+$/u.test(version);
           const isBeta = /-beta\.\d+$/u.test(version);
+          const isNightly = /-nightly\.\d+\.\d+$/u.test(version);
           const versionsRaw = execFileSync(
             "npm",
             ["view", "bb-app", "versions", "--json"],
@@ -123,6 +139,11 @@ jobs:
           }
           if (npmTag === "beta" && !isBeta) {
             fail(`npm_tag=beta requires a beta prerelease, got ${version}.`);
+          }
+          if (npmTag === "nightly" && !isNightly) {
+            fail(
+              `npm_tag=nightly requires a generated nightly prerelease, got ${version}.`,
+            );
           }
           if (npmTag === "latest" && isPrerelease && !allowPrereleaseLatest) {
             fail(
@@ -149,23 +170,23 @@ jobs:
         run: npm pack --dry-run
 
       - name: npm publish dry run
-        if: ${{ inputs.dry_run }}
+        if: ${{ env.RELEASE_DRY_RUN == 'true' }}
         working-directory: packages/bb-app
         env:
-          NPM_TAG: ${{ inputs.npm_tag }}
+          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
         run: npm publish --dry-run --tag "$NPM_TAG"
 
       - name: Publish to npm
-        if: ${{ !inputs.dry_run }}
+        if: ${{ env.RELEASE_DRY_RUN != 'true' }}
         working-directory: packages/bb-app
         env:
-          NPM_TAG: ${{ inputs.npm_tag }}
+          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
         run: npm publish --tag "$NPM_TAG"
 
       - name: Verify npm release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ env.RELEASE_DRY_RUN != 'true' }}
         env:
-          NPM_TAG: ${{ inputs.npm_tag }}
+          NPM_TAG: ${{ env.RELEASE_NPM_TAG }}
         run: |
           for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
             package_version="$(npm view "bb-app@$PACKAGE_VERSION" version --json 2>/tmp/bb-app-version.err || true)"
@@ -192,7 +213,174 @@ jobs:
             echo "## bb-app release"
             echo
             echo "- version: \`$PACKAGE_VERSION\`"
-            echo "- npm tag: \`${{ inputs.npm_tag }}\`"
-            echo "- dry run: \`${{ inputs.dry_run }}\`"
+            echo "- npm tag: \`$RELEASE_NPM_TAG\`"
+            echo "- dry run: \`$RELEASE_DRY_RUN\`"
             echo "- commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  nightly-desktop:
+    name: Publish bb Nightly desktop
+    if: ${{ github.event_name == 'schedule' || (inputs.npm_tag == 'nightly' && inputs.dry_run == false) }}
+    needs: publish
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      BB_DESKTOP_RELEASE_CHANNEL: nightly
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Verify arm64 runner
+        run: test "$(uname -m)" = "arm64"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Prepare nightly version
+        id: nightly_version
+        run: |
+          nightly_version="$(node scripts/prepare-nightly-version.mjs)"
+          echo "version=${nightly_version}" >> "$GITHUB_OUTPUT"
+          echo "Prepared bb-app and desktop version ${nightly_version}."
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Build desktop
+        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Test desktop and launcher
+        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+
+      - name: Require macOS signing and notarization secrets
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          required_secret_names=(
+            "MACOS_CERTIFICATE_P12"
+            "MACOS_CERTIFICATE_PASSWORD"
+            "APPLE_ID"
+            "APPLE_APP_PASSWORD"
+            "APPLE_TEAM_ID"
+          )
+          missing_secret_names=()
+
+          for secret_name in "${required_secret_names[@]}"; do
+            if [[ -z "${!secret_name:-}" ]]; then
+              missing_secret_names+=("$secret_name")
+            fi
+          done
+
+          if [[ "${#missing_secret_names[@]}" -gt 0 ]]; then
+            echo "::error::Nightly desktop auto-updates require signed and notarized artifacts. Missing: ${missing_secret_names[*]}."
+            exit 1
+          fi
+
+      - name: Package signed arm64 nightly desktop artifacts
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          CSC_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Smoke test packaged nightly desktop app
+        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Generate nightly desktop version feed
+        run: pnpm --dir apps/desktop run desktop:version-feed
+
+      - name: Upload nightly desktop workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bb-nightly-desktop-macos-arm64-${{ steps.nightly_version.outputs.version }}
+          retention-days: 14
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/nightly-mac.yml
+            apps/desktop/release/desktop-version.json
+          if-no-files-found: error
+
+      - name: Publish moving nightly desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.nightly_version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          nightly_tag="desktop-nightly"
+          release_dir="apps/desktop/release"
+          release_assets=(
+            "$release_dir/desktop-version.json"
+            "$release_dir/nightly-mac.yml"
+            "$release_dir"/*.dmg
+            "$release_dir"/*.zip
+            "$release_dir"/*.blockmap
+          )
+
+          git tag -f "$nightly_tag" "$GITHUB_SHA"
+          git push --force origin "refs/tags/${nightly_tag}"
+
+          if gh release view "$nightly_tag" >/dev/null 2>&1; then
+            gh release edit "$nightly_tag" \
+              --target "$GITHUB_SHA" \
+              --title "bb Nightly" \
+              --notes "Latest automated bb Nightly build from main. Nightly builds may be unstable." \
+              --prerelease \
+              --latest=false
+
+            gh release view "$nightly_tag" --json assets --jq '.assets[].name' | while IFS= read -r asset_name; do
+              if [[ -n "$asset_name" ]]; then
+                gh release delete-asset "$nightly_tag" "$asset_name" --yes
+              fi
+            done
+
+            gh release upload "$nightly_tag" "${release_assets[@]}"
+          else
+            gh release create "$nightly_tag" "${release_assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "bb Nightly" \
+              --notes "Latest automated bb Nightly build from main. Nightly builds may be unstable." \
+              --prerelease \
+              --latest=false
+          fi
+
+      - name: Summarize nightly desktop release
+        env:
+          VERSION: ${{ steps.nightly_version.outputs.version }}
+        run: |
+          {
+            echo "## bb Nightly desktop"
+            echo
+            echo "- version: \`$VERSION\`"
+            echo "- app identity: \`dev.bb.desktop.nightly\`"
+            echo "- release: https://github.com/ymichael/bb/releases/tag/desktop-nightly"
+            echo "- update feed: https://github.com/ymichael/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- retention for workflow artifacts: 14 days"
           } >> "$GITHUB_STEP_SUMMARY"

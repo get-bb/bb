@@ -13,6 +13,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { bumpVersion } from "../../../scripts/bump-version.mjs";
+import {
+  deriveNightlyVersion,
+  prepareNightlyVersion,
+} from "../../../scripts/prepare-nightly-version.mjs";
 
 const scriptPath = fileURLToPath(
   new URL("../../../scripts/bump-version.mjs", import.meta.url),
@@ -168,6 +172,47 @@ describe("bump-version", () => {
     ).not.toContainEqual(expect.stringMatching(/^\.tmp-/u));
     expect(readdirSync(join(repoRoot, "apps", "desktop"))).not.toContainEqual(
       expect.stringMatching(/^\.tmp-/u),
+    );
+  });
+});
+
+describe("prepare-nightly-version", () => {
+  it("derives a unique next-patch prerelease from the workflow run", () => {
+    expect(deriveNightlyVersion("1.2.3", "123456", "2")).toBe(
+      "1.2.4-nightly.123456.2",
+    );
+    expect(deriveNightlyVersion("1.2.3-beta.4", "123456", "2")).toBe(
+      "1.2.4-nightly.123456.2",
+    );
+  });
+
+  it("rejects workflow identifiers that are not semver-safe integers", () => {
+    expect(() => deriveNightlyVersion("1.2.3", "run-1", "1")).toThrow(
+      "GITHUB_RUN_ID must be a positive integer",
+    );
+    expect(() => deriveNightlyVersion("1.2.3", "1", "0")).toThrow(
+      "GITHUB_RUN_ATTEMPT must be a positive integer",
+    );
+  });
+
+  it("updates bb-app and desktop to the same nightly version", async () => {
+    const repoRoot = createTestRepo({
+      bbAppVersion: "1.2.3",
+      desktopVersion: "1.2.3",
+    });
+
+    await expect(
+      prepareNightlyVersion({
+        repoRoot,
+        runAttempt: "1",
+        runId: "987654",
+      }),
+    ).resolves.toBe("1.2.4-nightly.987654.1");
+    expect(readVersion(repoRoot, "packages/bb-app/package.json")).toBe(
+      "1.2.4-nightly.987654.1",
+    );
+    expect(readVersion(repoRoot, "apps/desktop/package.json")).toBe(
+      "1.2.4-nightly.987654.1",
     );
   });
 });

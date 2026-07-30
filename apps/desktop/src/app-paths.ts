@@ -17,6 +17,7 @@ export interface ResolveDesktopAssetPathArgs {
 }
 
 export interface ResolveDesktopIconPathArgs {
+  packagedIconFileName: string;
   paths: DesktopPathContext;
 }
 
@@ -53,7 +54,9 @@ export function resolveDesktopIconPath(
   args: ResolveDesktopIconPathArgs,
 ): string {
   return resolveDesktopAssetPath({
-    fileName: args.paths.isPackaged ? "icon.png" : "icon-dev.png",
+    fileName: args.paths.isPackaged
+      ? args.packagedIconFileName
+      : "icon-dev.png",
     paths: args.paths,
   });
 }

@@ -153,6 +153,9 @@
       "dependsOn": [
         "bb-app#build"
       ],
+      "env": [
+        "BB_DESKTOP_RELEASE_CHANNEL"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/desktop/**",

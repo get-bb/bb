@@ -2,6 +2,11 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createDesktopReleaseConfig,
+  createDesktopUpdateReleaseBaseUrl,
+  resolveDesktopReleaseChannel,
+} from "./desktop-release-channel.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopPackageRoot = resolve(scriptDirectory, "..");
@@ -155,9 +160,12 @@ function createSigningPlan(env) {
 
 export function resolveElectronBuilderConfig(baseConfig, env) {
   const signingPlan = createSigningPlan(env);
+  const releaseChannel = resolveDesktopReleaseChannel(env);
+  const releaseConfig = createDesktopReleaseConfig(releaseChannel);
   const config = cloneJson(baseConfig);
   const mac = {
     ...config.mac,
+    icon: releaseConfig.macIconPath,
     notarize: signingPlan.notarizationEnabled,
   };
 
@@ -171,9 +179,20 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
   }
 
   config.mac = mac;
+  config.appId = releaseConfig.appId;
+  config.artifactName = releaseConfig.artifactName;
+  config.productName = releaseConfig.applicationName;
+  config.publish = [
+    {
+      channel: releaseChannel,
+      provider: "generic",
+      url: createDesktopUpdateReleaseBaseUrl(releaseConfig.releaseTag),
+    },
+  ];
 
   return {
     config,
+    releaseChannel,
     signingPlan,
   };
 }

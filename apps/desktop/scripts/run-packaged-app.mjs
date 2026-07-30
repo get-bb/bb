@@ -2,10 +2,23 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import {
+  createDesktopReleaseConfig,
+  resolveDesktopReleaseChannel,
+} from "./desktop-release-channel.mjs";
 
 const packageRoot = process.cwd();
 const releaseDir = join(packageRoot, "release");
-const appBinaryRelativePath = join("bb.app", "Contents", "MacOS", "bb");
+const releaseConfig = createDesktopReleaseConfig(
+  resolveDesktopReleaseChannel(process.env),
+);
+const appBundleName = `${releaseConfig.applicationName}.app`;
+const appBinaryRelativePath = join(
+  appBundleName,
+  "Contents",
+  "MacOS",
+  releaseConfig.applicationName,
+);
 
 function createElectronAppEnv(env) {
   const childEnv = {
@@ -24,7 +37,7 @@ async function resolvePackagedAppBinary() {
     }
     return join(releaseDir, entry.name, appBinaryRelativePath);
   }
-  throw new Error(`No packaged bb.app found under ${releaseDir}`);
+  throw new Error(`No packaged ${appBundleName} found under ${releaseDir}`);
 }
 
 const child = spawn(await resolvePackagedAppBinary(), [], {

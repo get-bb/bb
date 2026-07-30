@@ -6,10 +6,20 @@ import {
   bbDesktopVersionFeedSchema,
   type BbDesktopVersionFeed,
 } from "@bb/desktop-contract";
+import {
+  createDesktopReleaseConfig,
+  resolveDesktopReleaseChannel,
+} from "./desktop-release-channel.mjs";
 
 const packageRoot = process.cwd();
 const packageJsonPath = resolve(packageRoot, "package.json");
-const latestMacPath = resolve(packageRoot, "release", "latest-mac.yml");
+const releaseChannel = resolveDesktopReleaseChannel(process.env);
+const releaseConfig = createDesktopReleaseConfig(releaseChannel);
+const updateMetadataPath = resolve(
+  packageRoot,
+  "release",
+  releaseConfig.updateMetadataFileName,
+);
 const desktopVersionFeedPath = resolve(
   packageRoot,
   "release",
@@ -41,27 +51,27 @@ function parseJson(text: string): unknown {
 const packageJson = packageJsonSchema.parse(
   parseJson(await readFile(packageJsonPath, "utf8")),
 );
-const latestMac = latestMacSchema.parse(
-  parseYaml(await readFile(latestMacPath, "utf8")),
+const updateMetadata = latestMacSchema.parse(
+  parseYaml(await readFile(updateMetadataPath, "utf8")),
 );
 
-if (latestMac.version !== packageJson.version) {
+if (updateMetadata.version !== packageJson.version) {
   throw new Error(
-    `latest-mac.yml version ${latestMac.version} did not match apps/desktop/package.json version ${packageJson.version}`,
+    `${releaseConfig.updateMetadataFileName} version ${updateMetadata.version} did not match apps/desktop/package.json version ${packageJson.version}`,
   );
 }
 
 const desktopVersionFeed: BbDesktopVersionFeed = {
-  channel: "latest",
-  files: latestMac.files,
+  channel: releaseChannel,
+  files: updateMetadata.files,
   minimumSystemVersion: null,
-  path: latestMac.path,
+  path: updateMetadata.path,
   platform: "macos",
-  releaseDate: latestMac.releaseDate,
-  releaseName: `bb desktop ${packageJson.version}`,
+  releaseDate: updateMetadata.releaseDate,
+  releaseName: `${releaseConfig.applicationName} desktop ${packageJson.version}`,
   releaseNotes: null,
   schemaVersion: 1,
-  sha512: latestMac.sha512,
+  sha512: updateMetadata.sha512,
   stagingPercentage: null,
   version: packageJson.version,
 };

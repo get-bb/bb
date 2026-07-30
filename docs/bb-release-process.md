@@ -15,6 +15,27 @@ npm does not publish the desktop app. Because the versions are locked together,
 a normal release must run both. Do not consider a release complete until the
 desktop app is published at the same version (see "Publish The Desktop App").
 
+The automated nightly channel is the exception to the manual stable flow. The
+scheduled path in `publish-bb-app.yml` derives a unique next-patch prerelease,
+publishes it under npm's `nightly` dist-tag, then builds and publishes the
+separately installable `bb Nightly` app at `desktop-nightly`. It does not commit
+the generated version or move either stable `latest` pointer. If the
+`npm-release` GitHub environment requires approval, scheduled runs will wait
+for that approval; remove the reviewer gate only if fully unattended nightly
+publishing is intended.
+
+The same channel can be exercised manually:
+
+```bash
+gh workflow run publish-bb-app.yml \
+  --ref main \
+  -f npm_tag=nightly \
+  -f allow_prerelease_latest=false \
+  -f dry_run=true
+```
+
+Set `dry_run=false` to publish both npm and the signed desktop nightly.
+
 ## Release Policy
 
 - Publish only from `main`.

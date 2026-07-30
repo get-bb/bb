@@ -13,7 +13,10 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { DESKTOP_AUTO_UPDATE_FEED_CONFIG } from "../src/desktop-update-provider.js";
+import {
+  createDesktopReleaseInfo,
+  DESKTOP_AUTO_UPDATE_FEED_CONFIG,
+} from "../src/desktop-update-provider.js";
 
 const desktopPackageRoot = process.cwd();
 
@@ -23,6 +26,7 @@ const macConfigSchema = z
     entitlementsInherit: z.string().min(1),
     gatekeeperAssess: z.literal(false),
     hardenedRuntime: z.literal(true),
+    icon: z.string().min(1),
     identity: z.string().nullable().optional(),
     notarize: z.boolean(),
   })
@@ -53,10 +57,13 @@ const electronBuilderConfigSchema = z
     files: z.array(electronBuilderFilePatternSchema),
     mac: macConfigSchema,
     npmRebuild: z.literal(false),
+    appId: z.string().min(1),
+    artifactName: z.string().min(1),
+    productName: z.string().min(1),
     publish: z.tuple([
       z
         .object({
-          channel: z.literal("latest"),
+          channel: z.enum(["latest", "nightly"]),
           provider: z.literal("generic"),
           url: z.string().min(1),
         })
@@ -378,6 +385,40 @@ describe("electron-builder signing config", () => {
     const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
 
     expect(config.publish[0]).toMatchObject(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
+  });
+
+  it("creates a separate nightly app identity and update feed", async () => {
+    const { config } = await readResolvedConfig({
+      BB_DESKTOP_RELEASE_CHANNEL: "nightly",
+    });
+    const nightlyRelease = createDesktopReleaseInfo("nightly");
+
+    expect(config.appId).toBe("dev.bb.desktop.nightly");
+    expect(config.productName).toBe("bb Nightly");
+    expect(config.artifactName).toBe("bb-nightly-${version}-${arch}.${ext}");
+    expect(config.mac.icon).toBe("assets/icon-nightly.icns");
+    await expect(
+      access(resolve(desktopPackageRoot, config.mac.icon)),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(resolve(desktopPackageRoot, "assets/icon-nightly.png")),
+    ).resolves.toBeUndefined();
+    expect(config.publish[0]).toEqual({
+      channel: "nightly",
+      provider: "generic",
+      url: nightlyRelease.updateReleaseBaseUrl,
+    });
+  });
+
+  it("rejects unknown desktop release channels", async () => {
+    const result = await runConfigScript({
+      BB_DESKTOP_RELEASE_CHANNEL: "canary",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "BB_DESKTOP_RELEASE_CHANNEL must be latest or nightly",
+    );
   });
 
   it("signs local builds via keychain auto-discovery when signing secrets are absent", async () => {

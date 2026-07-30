@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveDesktopBridgePath,
+  resolveDesktopIconPath,
   type DesktopPathContext,
 } from "../src/app-paths.js";
 
@@ -27,5 +28,37 @@ describe("desktop app paths", () => {
     expect(resolveDesktopBridgePath({ paths })).toBe(
       "/Applications/bb.app/Contents/Resources/app-arm64.asar.unpacked/dist/bb-app-bridge.mjs",
     );
+  });
+
+  it("uses the release-specific icon inside packaged apps", () => {
+    const paths: DesktopPathContext = {
+      appPath: "/Applications/bb Nightly.app/Contents/Resources/app.asar",
+      isPackaged: true,
+      resourcesPath: "/Applications/bb Nightly.app/Contents/Resources",
+    };
+
+    expect(
+      resolveDesktopIconPath({
+        packagedIconFileName: "icon-nightly.png",
+        paths,
+      }),
+    ).toBe(
+      "/Applications/bb Nightly.app/Contents/Resources/app.asar/assets/icon-nightly.png",
+    );
+  });
+
+  it("keeps the development icon independent of the release channel", () => {
+    const paths: DesktopPathContext = {
+      appPath: "/checkout/apps/desktop",
+      isPackaged: false,
+      resourcesPath: "/checkout/apps/desktop",
+    };
+
+    expect(
+      resolveDesktopIconPath({
+        packagedIconFileName: "icon-nightly.png",
+        paths,
+      }),
+    ).toBe("/checkout/apps/desktop/assets/icon-dev.png");
   });
 });

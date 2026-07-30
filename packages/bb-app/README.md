@@ -61,6 +61,15 @@ npx bb-app@latest
 
 Then open: `http://localhost:38886`
 
+To opt into the automated nightly channel:
+
+```bash
+npx bb-app@nightly
+```
+
+Nightly versions are built from `main` and may be unstable. The `nightly`
+dist-tag moves independently of the stable `latest` tag.
+
 `npx bb-app@latest` downloads the published `bb-app` package, starts the server and
 local host daemon, and serves the web app. It stores bb-managed state under
 `~/.bb/` by default. If either managed child process exits unexpectedly, the

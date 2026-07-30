@@ -75,6 +75,31 @@ describe("desktop version feed schema", () => {
     ).toBe(true);
   });
 
+  it("accepts the isolated nightly desktop channel", () => {
+    expect(
+      bbDesktopVersionFeedSchema.safeParse({
+        channel: "nightly",
+        files: [
+          {
+            sha512: "BASE64_SHA512_FROM_ELECTRON_BUILDER",
+            size: 123456789,
+            url: "bb-nightly-0.0.2-nightly.1.1-arm64.zip",
+          },
+        ],
+        minimumSystemVersion: null,
+        path: "bb-nightly-0.0.2-nightly.1.1-arm64.zip",
+        platform: "macos",
+        releaseDate: checkedAt,
+        releaseName: "bb Nightly desktop 0.0.2-nightly.1.1",
+        releaseNotes: null,
+        schemaVersion: 1,
+        sha512: "BASE64_SHA512_FROM_ELECTRON_BUILDER",
+        stagingPercentage: null,
+        version: "0.0.2-nightly.1.1",
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects malformed version feed payloads", () => {
     expect(
       bbDesktopVersionFeedSchema.safeParse({

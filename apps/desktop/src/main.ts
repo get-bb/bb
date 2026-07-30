@@ -89,6 +89,7 @@ import {
   DESKTOP_UPDATE_FEED_URL,
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
+import { DESKTOP_RELEASE_INFO } from "./desktop-update-provider.js";
 import {
   createDesktopAutoUpdateService,
   createElectronAutoUpdaterAdapter,
@@ -1579,7 +1580,7 @@ async function runDesktopApp(): Promise<void> {
     platform: process.platform,
   });
 
-  app.setName(app.isPackaged ? "bb" : "bb-dev");
+  app.setName(app.isPackaged ? DESKTOP_RELEASE_INFO.applicationName : "bb-dev");
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -1644,7 +1645,10 @@ async function runDesktopApp(): Promise<void> {
   });
 
   const paths = createDesktopPathContext();
-  const iconPath = resolveDesktopIconPath({ paths });
+  const iconPath = resolveDesktopIconPath({
+    packagedIconFileName: DESKTOP_RELEASE_INFO.iconFileName,
+    paths,
+  });
   const bridgePath = resolveDesktopBridgePath({ paths });
   const resolvedLogViewerPreloadPath = join(
     paths.appPath,
