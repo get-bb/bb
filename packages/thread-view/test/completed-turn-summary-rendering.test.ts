@@ -312,6 +312,69 @@ describe("completed turn summary rendering", () => {
     ).toEqual([["work:command"], ["work:command"]]);
   });
 
+  it("keeps the last assistant message visible before an accepted in-turn steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events: TimelineFixtureEvent[] = [
+      event.turnStarted(),
+      event.commandCompleted({
+        itemId: "tool-before-steer",
+        command: "pnpm test",
+      }),
+      event.assistantDelta({
+        itemId: "assistant-before-steer",
+        delta: "The existing server is still running.",
+      }),
+    ];
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Show me the icon",
+    });
+    events.push(
+      steerRequest,
+      event.inputAccepted({
+        clientRequestId: steerRequest.data.requestId,
+      }),
+      event.assistantCompleted({
+        itemId: "assistant-before-steer",
+        text: "The existing server is still running.",
+      }),
+      event.commandCompleted({
+        itemId: "tool-after-steer",
+        command: "open icon-nightly.png",
+      }),
+      event.assistantCompleted({
+        itemId: "assistant-final",
+        text: "Here is the nightly icon.",
+      }),
+      event.turnCompleted(),
+    );
+
+    const timeline = renderCompletedTimeline({ events });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "turn:2-2",
+      "conversation:assistant",
+      "conversation:user",
+      "turn:7-7",
+      "conversation:assistant",
+    ]);
+    expect(
+      timeline.rows
+        .filter(
+          (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+            row.kind === "conversation",
+        )
+        .map((row) => row.text),
+    ).toEqual([
+      "The existing server is still running.",
+      "Show me the icon",
+      "Here is the nightly icon.",
+    ]);
+    expect(
+      turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
+    ).toEqual([["work:command"], ["work:command"]]);
+  });
+
   it("splits completed turn summaries at external human new-turn boundaries", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const initialRequest = event.clientTurnRequested({
@@ -330,6 +393,11 @@ describe("completed turn summary rendering", () => {
         itemId: "before-user",
         turnId: "long-turn",
       }),
+      event.assistantDelta({
+        delta: "The first check passed.",
+        itemId: "assistant-before-user",
+        turnId: "long-turn",
+      }),
     ];
     const followUpRequest = event.clientTurnRequested({
       target: { kind: "new-turn" },
@@ -337,6 +405,11 @@ describe("completed turn summary rendering", () => {
     });
     events.push(
       followUpRequest,
+      event.assistantCompleted({
+        itemId: "assistant-before-user",
+        text: "The first check passed.",
+        turnId: "long-turn",
+      }),
       event.commandCompleted({
         command: "pnpm typecheck",
         itemId: "after-user",
@@ -355,8 +428,9 @@ describe("completed turn summary rendering", () => {
     expect(rowSignatures(timeline.rows)).toEqual([
       "conversation:user",
       "turn:4-4",
+      "conversation:assistant",
       "conversation:user",
-      "turn:6-6",
+      "turn:8-8",
       "conversation:assistant",
     ]);
     expect(

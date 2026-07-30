@@ -123,24 +123,31 @@ describe("groupCompletedTurnMessages", () => {
     ]);
   });
 
-  it("segments summary groups around ungroupable user messages", () => {
+  it("preserves the last assistant message before an ungroupable user message", () => {
+    const assistantBefore = assistantMessage({
+      id: "assistant-before",
+      seq: 1,
+    });
+    const assistantAfter = assistantMessage({
+      id: "assistant-after",
+      seq: 3,
+    });
     const turn = completedTurn(
       [
-        assistantMessage({ id: "assistant-before", seq: 1 }),
+        assistantBefore,
         userMessage({ id: "user", seq: 2 }),
-        assistantMessage({ id: "assistant-after", seq: 3 }),
+        assistantAfter,
       ],
-      undefined,
+      assistantAfter,
     );
     const groups = groupCompletedTurnMessages(turn);
 
     expect(groups.summaryItems).toMatchObject([
       {
-        kind: "summary",
-        startedAt: 1,
-        completedAt: null,
-        segmentIndex: 0,
-        summaryCount: 1,
+        kind: "ungrouped-message",
+        message: {
+          id: "assistant-before",
+        },
       },
       {
         kind: "ungrouped-message",
@@ -148,17 +155,10 @@ describe("groupCompletedTurnMessages", () => {
           id: "user",
         },
       },
-      {
-        kind: "summary",
-        startedAt: 3,
-        completedAt: null,
-        segmentIndex: 1,
-        summaryCount: 1,
-      },
     ]);
-    expect(summarySourceMessageIds(groups)).toEqual([
-      ["assistant-before"],
-      ["assistant-after"],
+    expect(summarySourceMessageIds(groups)).toEqual([]);
+    expect(groups.terminalMessages.map((message) => message.id)).toEqual([
+      "assistant-after",
     ]);
   });
 

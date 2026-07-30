@@ -4,7 +4,10 @@ import type {
 } from "./event-projection-types.js";
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 import { getMessageStartedAt } from "./format-helpers.js";
-import { isTimelineUngroupableMessage } from "./timeline-message-helpers.js";
+import {
+  findLastTerminalTimelineMessage,
+  isTimelineUngroupableMessage,
+} from "./timeline-message-helpers.js";
 
 export interface CompletedTurnSummaryGroup {
   kind: "summary";
@@ -145,12 +148,13 @@ function groupCompletedTurnSummaryMessages(
   let segmentIndex = 0;
   let externalBoundaryIndex = 0;
 
-  function flushGroupedMessages(): void {
-    if (groupedMessages.length === 0) {
+  function appendSummaryGroup(
+    sourceMessages: EventProjectionMessage[],
+  ): void {
+    if (sourceMessages.length === 0) {
       return;
     }
 
-    const sourceMessages = groupedMessages;
     const bounds = getSummaryMessageBounds(sourceMessages);
     items.push({
       kind: "summary",
@@ -161,7 +165,33 @@ function groupCompletedTurnSummaryMessages(
       summaryCount: getProjectionSummaryCount(sourceMessages, undefined),
     });
     segmentIndex += 1;
+  }
+
+  function flushGroupedMessages(preserveLastTerminalMessage = false): void {
+    if (groupedMessages.length === 0) {
+      return;
+    }
+
+    // Human follow-ups split one provider turn into multiple visible exchange
+    // segments. Keep each segment's last assistant/error message beside the
+    // user row instead of burying it inside that segment's collapsed summary.
+    const sourceMessages = groupedMessages;
     groupedMessages = [];
+    const terminalMessage = preserveLastTerminalMessage
+      ? findLastTerminalTimelineMessage(sourceMessages)
+      : undefined;
+    if (!terminalMessage) {
+      appendSummaryGroup(sourceMessages);
+      return;
+    }
+
+    appendSummaryGroup(
+      sourceMessages.filter((message) => message.id !== terminalMessage.id),
+    );
+    items.push({
+      kind: "ungrouped-message",
+      message: terminalMessage,
+    });
   }
 
   function flushExternalBoundariesBefore(message: EventProjectionMessage): void {
@@ -170,7 +200,7 @@ function groupCompletedTurnSummaryMessages(
       (externalBoundarySeqs[externalBoundaryIndex] ?? 0) <
         message.sourceSeqStart
     ) {
-      flushGroupedMessages();
+      flushGroupedMessages(true);
       externalBoundaryIndex += 1;
     }
   }
@@ -178,7 +208,9 @@ function groupCompletedTurnSummaryMessages(
   for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
     if (isTimelineUngroupableMessage(message)) {
-      flushGroupedMessages();
+      flushGroupedMessages(
+        message.kind === "user" && message.initiator === "user",
+      );
       items.push({
         kind: "ungrouped-message",
         message,
@@ -188,6 +220,10 @@ function groupCompletedTurnSummaryMessages(
     groupedMessages.push(message);
   }
 
+  while (externalBoundaryIndex < externalBoundarySeqs.length) {
+    flushGroupedMessages(true);
+    externalBoundaryIndex += 1;
+  }
   flushGroupedMessages();
   return applySingleSummaryTurnBounds(turn, items);
 }
