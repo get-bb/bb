@@ -19,6 +19,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalActivity,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -71,6 +72,7 @@ export type {
   PluginAgentConfigurationContext,
   PluginAgentToolContentPart,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalActivity,
   PluginAgentToolRegistrationBase,
   PluginAgentToolResult,
   PluginAgents,
@@ -220,6 +222,8 @@ export interface PluginRpcHandler {
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
+  /** Native timeline labels, null when the standard BB title should render. */
+  experimentalActivity: PluginAgentToolExperimentalActivity | null;
   /** Instructions snippet for the thread-instructions assembly; null when
    * the registration carried none (description-only). */
   instructions: string | null;
@@ -984,6 +988,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
+      experimental_activity?: PluginAgentToolExperimentalActivity;
       parameters: unknown;
       execute(
         params: never,
@@ -1021,6 +1026,21 @@ export function createPluginApi(options: {
         throw new Error(
           `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
         );
+      }
+      const experimentalActivity = tool.experimental_activity;
+      if (experimentalActivity !== undefined) {
+        if (
+          typeof experimentalActivity !== "object" ||
+          experimentalActivity === null ||
+          typeof experimentalActivity.running !== "string" ||
+          typeof experimentalActivity.completed !== "string" ||
+          experimentalActivity.running.trim().length === 0 ||
+          experimentalActivity.completed.trim().length === 0
+        ) {
+          throw new Error(
+            `tool "${name}" experimental_activity must provide non-empty running and completed strings`,
+          );
+        }
       }
       if (typeof tool.execute !== "function") {
         throw new Error(
@@ -1085,6 +1105,13 @@ export function createPluginApi(options: {
       const record: PluginAgentToolRecord = {
         name,
         description: tool.description,
+        experimentalActivity:
+          experimentalActivity === undefined
+            ? null
+            : {
+                running: experimentalActivity.running,
+                completed: experimentalActivity.completed,
+              },
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions

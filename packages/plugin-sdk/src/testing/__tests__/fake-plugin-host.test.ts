@@ -603,12 +603,20 @@ describe("agent tools", () => {
     bb.agents.registerTool({
       name: "lookup_doc",
       description: "Look up a doc",
+      experimental_activity: {
+        running: "Looking up a doc",
+        completed: "Looked up a doc",
+      },
       parameters: z.object({ query: z.string().min(1) }),
       execute: ({ query }, ctx) => `${query} for ${ctx.threadId}`,
     });
     expect(harness.registrations.agentTools[0]?.inputSchema).toMatchObject({
       type: "object",
       properties: { query: { type: "string" } },
+    });
+    expect(harness.registrations.agentTools[0]?.experimentalActivity).toEqual({
+      running: "Looking up a doc",
+      completed: "Looked up a doc",
     });
     await expect(
       harness.callAgentTool("lookup_doc", { query: "hi" }),

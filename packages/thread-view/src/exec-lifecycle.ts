@@ -110,6 +110,7 @@ export interface ToolCallExecutionUpdate extends ExecutionUpdateBase {
   kind: "tool-call";
   toolName?: string;
   toolArgs?: JsonObject | null;
+  activity?: { running: string; completed: string };
   parsedIntents?: EventProjectionToolParsedIntent[];
   approvalStatus?: EventProjectionApprovalLifecycleStatus | null;
 }
@@ -369,6 +370,7 @@ export function parseToolCallLifecycleEvent(
       : "tool-call";
     const delegationMetadata = getDelegationMetadata(fullToolName, parsedArgs);
     const toolArgs = parseToolArgs(parsedArgs);
+    const activity = decoded.item.activity;
 
     const baseCall = {
       callId,
@@ -396,6 +398,7 @@ export function parseToolCallLifecycleEvent(
         ...baseCall,
         kind: executionKind,
         toolArgs,
+        ...(activity ? { activity } : {}),
         parsedIntents,
         ...delegationMetadata,
       },

@@ -32,6 +32,8 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
+import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 
 async function postEventBatch(args: {
   events: HostDaemonEventEnvelope[];
@@ -79,6 +81,98 @@ async function flushDeferredChildThreadNotifications(): Promise<void> {
 }
 
 describe("internal event and tool-call routes", () => {
+  it("snapshots native plugin activity labels into tool-call events", async () => {
+    await withTestHarness(async (harness) => {
+      const activity = {
+        running: "Reading project overview",
+        completed: "Read project overview",
+      };
+      const record = {
+        name: "repository_context",
+        experimentalActivity: activity,
+      } as PluginAgentToolRecord;
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: (name) =>
+          name === record.name ? { pluginId: "fixture", record } : undefined,
+        invokeAgentTool: async () => ({
+          success: false,
+          contentItems: [{ type: "inputText", text: "unused" }],
+        }),
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+      });
+
+      try {
+        const { session } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: session.hostId,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: session.hostId,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "active",
+        });
+
+        const response = await postEventBatch({
+          harness,
+          sessionId: session.id,
+          events: [
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-1",
+                scope: turnScope("turn-1"),
+              },
+            },
+            ...(["item/started", "item/completed"] as const).map((type) => ({
+              threadId: thread.id,
+              event: {
+                type,
+                threadId: thread.id,
+                providerThreadId: "provider-1",
+                scope: turnScope("turn-1"),
+                item: {
+                  type: "toolCall" as const,
+                  id: "tool-1",
+                  tool: record.name,
+                  status:
+                    type === "item/started"
+                      ? ("pending" as const)
+                      : ("completed" as const),
+                },
+              },
+            })),
+          ],
+        });
+
+        expect(response.status).toBe(200);
+        const storedToolEvents = harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all()
+          .filter(
+            (event) =>
+              event.type === "item/started" || event.type === "item/completed",
+          );
+        expect(storedToolEvents).toHaveLength(2);
+        expect(
+          storedToolEvents.map((event) => JSON.parse(event.data).item.activity),
+        ).toEqual([activity, activity]);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
   it("appends event batches and returns accepted event indexes", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);

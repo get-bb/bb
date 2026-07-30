@@ -351,6 +351,17 @@ export interface PluginAgentToolContext {
   signal: AbortSignal;
 }
 
+/**
+ * Native timeline labels for a plugin tool. This is experimental: BB may
+ * refine its presentation contract before the field is stabilized.
+ */
+export interface PluginAgentToolExperimentalActivity {
+  /** Label shown while the tool call is pending. */
+  running: string;
+  /** Label shown after the tool call completes successfully. */
+  completed: string;
+}
+
 export interface PluginAgentToolRegistrationBase {
   /** Tool name shown to the model: [a-zA-Z0-9_-]+, unique across plugins,
    * and not a built-in dynamic tool (see RESERVED_AGENT_TOOL_NAMES in the
@@ -363,6 +374,13 @@ export interface PluginAgentToolRegistrationBase {
    * update_environment_directory guidance). Limited to 4096 characters.
    */
   instructions?: string;
+  /**
+   * Optional native timeline labels. When omitted, BB shows the standard
+   * tool name and arguments (for example, `Ran tool search_docs …`). Labels
+   * apply only while the call is pending and after successful completion;
+   * approval, error, and interruption states keep BB's standard rendering.
+   */
+  experimental_activity?: PluginAgentToolExperimentalActivity;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */

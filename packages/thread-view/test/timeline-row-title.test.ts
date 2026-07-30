@@ -498,6 +498,45 @@ describe("buildTimelineRowTitle", () => {
     ]);
   });
 
+  it("uses native plugin activity labels while preserving the generic fallback", () => {
+    const completed = buildTimelineRowTitle(
+      {
+        ...toolRow(),
+        activity: {
+          running: "Reading project overview",
+          completed: "Read project overview",
+        },
+      },
+      DEFAULT_OPTIONS,
+    );
+    const pending = buildTimelineRowTitle(
+      {
+        ...toolRow(),
+        status: "pending",
+        completedAt: null,
+        activity: {
+          running: "Reading project overview",
+          completed: "Read project overview",
+        },
+      },
+      DEFAULT_OPTIONS,
+    );
+
+    expect(completed.plain).toBe("Read project overview (2s)");
+    expect(pending.plain).toBe("Reading project overview");
+    expect(
+      buildTimelineRowTitle(
+        {
+          ...toolRow(),
+          activityIntents: [],
+          toolName: "repository_context",
+          toolArgs: null,
+        },
+        DEFAULT_OPTIONS,
+      ).plain,
+    ).toBe("Ran tool repository_context (2s)");
+  });
+
   it("can render completed work leaves with muted summary title treatment", () => {
     const title = buildTimelineRowTitle(commandRow(), {
       summaryStyle: "background",

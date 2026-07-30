@@ -274,6 +274,8 @@ export const timelineToolWorkRowSchema = timelineWorkRowBaseSchema.extend({
   callId: z.string(),
   toolName: z.string(),
   toolArgs: z.record(z.string(), jsonValueSchema).nullable(),
+  /** Optional plugin-supplied labels for the native pending/completed title. */
+  activity: z.object({ running: z.string(), completed: z.string() }).optional(),
   output: z.string(),
   completedAt: z.number().nullable(),
   approvalStatus: timelineApprovalStatusSchema,

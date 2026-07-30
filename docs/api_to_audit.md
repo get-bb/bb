@@ -22,6 +22,27 @@ Before stabilization, audit:
 - validation, accessibility labels, reduced motion, and cleanup on plugin
   reload/disable/removal.
 
+## `bb.agents.registerTool({ experimental_activity })`
+
+**What it does.** Lets a native plugin tool supply one short label while it is
+pending and one after successful completion. BB snapshots the labels into the
+tool-call event and renders them in its own timeline; a tool without the field
+keeps the ordinary `Running tool …` / `Ran tool …` title. Approval, error, and
+interruption states deliberately keep their standard titles so the raw tool
+identity and failure state remain clear.
+
+**Audit before stabilizing.**
+
+1. **Presentation scope.** Confirm two static labels cover enough real tool
+   types, or introduce a deliberately bounded parameter interpolation API
+   without letting plugin strings become arbitrary timeline markup.
+2. **Lifecycle semantics.** Revisit whether failed or interrupted calls need
+   a third explicit label, rather than reusing the generic fallback.
+3. **Persistence and source identity.** Labels are snapshotted by the server
+   only for non-MCP native plugin tools. Confirm that distinction stays sound
+   as provider adapters and dynamic-tool provenance evolve.
+
+
 ## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

@@ -423,15 +423,28 @@ function displayStatus({
 // ---------------------------------------------------------------------------
 
 function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
-  const explorationTitle = mapSingleExplorationIntentTitle(row);
-  if (explorationTitle !== null) {
-    return explorationTitle;
-  }
   const status = displayStatus({
     approvalStatus: row.approvalStatus,
     status: row.status,
   });
   const isCommand = row.workKind === "command";
+  const activity = !isCommand ? row.activity : undefined;
+  if (activity && (status === "pending" || status === "completed")) {
+    return makeTitle({
+      segments: [
+        segment(status === "pending" ? activity.running : activity.completed, {
+          shimmer: status === "pending",
+        }),
+      ],
+      decorations: filterNull([
+        durationDecoration(row.startedAt, row.completedAt),
+      ]),
+    });
+  }
+  const explorationTitle = mapSingleExplorationIntentTitle(row);
+  if (explorationTitle !== null) {
+    return explorationTitle;
+  }
   const content = isCommand
     ? row.command
     : formatToolCallCommand(row.toolName, row.toolArgs);

@@ -47,6 +47,7 @@ import {
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
+import { findPluginAgentTool } from "../services/plugins/plugin-agent-contributions.js";
 import {
   getInactiveSessionLogFields,
   requireAuthenticatedDaemonSession,
@@ -272,6 +273,39 @@ function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
     type,
     ...deriveStoredEventItemFields(envelope.event),
     data: JSON.stringify(data),
+  };
+}
+
+/**
+ * Plugin activity labels are server-owned presentation metadata: providers do
+ * not know about them, and old daemon clients therefore need no protocol
+ * change. Persist the snapshot on both lifecycle events so historical rows
+ * remain readable if a plugin later reloads or disappears.
+ */
+function withPluginToolActivity(
+  envelope: HostDaemonEventEnvelope,
+): HostDaemonEventEnvelope {
+  const event = envelope.event;
+  if (
+    (event.type !== "item/started" && event.type !== "item/completed") ||
+    event.item.type !== "toolCall" ||
+    event.item.server !== undefined
+  ) {
+    return envelope;
+  }
+  const activity = findPluginAgentTool(event.item.tool)?.record
+    .experimentalActivity;
+  if (activity === null || activity === undefined) return envelope;
+
+  return {
+    ...envelope,
+    event: {
+      ...event,
+      item: {
+        ...event.item,
+        activity,
+      },
+    },
   };
 }
 
@@ -869,13 +903,17 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           "Rejected daemon events for threads outside the session host",
         );
       }
-      const eventInputs = entries.map((entry) => {
+      const labelledEntries = entries.map((entry) => ({
+        ...entry,
+        envelope: withPluginToolActivity(entry.envelope),
+      }));
+      const eventInputs = labelledEntries.map((entry) => {
         return toStoredEvent({
           envelope: entry.envelope,
           environmentId: entry.environmentId,
         });
       });
-      const postableEvents = entries.map((entry) => entry.envelope);
+      const postableEvents = labelledEntries.map((entry) => entry.envelope);
       let appendResult: AppendDaemonEventsResult;
       try {
         appendResult = deps.db.transaction(

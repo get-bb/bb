@@ -269,6 +269,45 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("keeps experimental activity labels with a registered native tool", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-readable-tool",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("readable-tool")!;
+
+    api.agents.registerTool({
+      name: "repository_context",
+      description: "Read project context",
+      experimental_activity: {
+        running: "Reading project overview",
+        completed: "Read project overview",
+      },
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+
+    expect(service.findAgentTool("repository_context")?.record).toMatchObject({
+      experimentalActivity: {
+        running: "Reading project overview",
+        completed: "Read project overview",
+      },
+    });
+
+    expect(() =>
+      (api.agents.registerTool as (tool: unknown) => void)({
+        name: "invalid_activity",
+        description: "Invalid activity fixture",
+        experimental_activity: { running: "", completed: "Done" },
+        parameters: { type: "object" },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "invalid_activity" experimental_activity must provide non-empty running and completed strings',
+    );
+  });
+
   it("cross-plugin name collision drops the later registration with a status detail", async () => {
     const first = await writePlugin(workDir, {
       name: "bb-plugin-collide-a",

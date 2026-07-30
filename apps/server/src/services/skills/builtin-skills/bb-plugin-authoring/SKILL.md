@@ -580,6 +580,13 @@ bb.agents.registerTool({
   name: "docs_search", // [a-zA-Z0-9_-]+, unique ACROSS plugins
   description: "Search the bundled docs.",
   instructions: "Prefer docs_search over guessing conventions.", // optional, appended to thread instructions
+  // Optional experimental native timeline labels. Without these, BB shows
+  // its normal tool name and arguments. Errors/interruptions keep that
+  // standard rendering so the failing tool remains identifiable.
+  experimental_activity: {
+    running: "Searching bundled docs",
+    completed: "Searched bundled docs",
+  },
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
     return excerpts.join("\n"); // or { content: [{ type: "text", text }], isError? }
@@ -611,6 +618,11 @@ become a tool error, not a plugin crash) or a plain JSON-schema object
 session start, not mid-session. Name collisions: within one factory execution
 duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
+
+`experimental_activity` is optional and supplies static, concise labels for
+the native timeline's pending and successfully completed states. BB snapshots
+the labels into each plugin tool-call event; it is not a frontend bundle hook.
+Omit it to retain BB's standard `Running tool …` / `Ran tool …` wording.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this
@@ -1079,7 +1091,7 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
     onSubmit={async (request) => {
       await rpc.call("createThread", { request, sectionId });
     }}
-  />
+  />;
   ```
 
   ```ts

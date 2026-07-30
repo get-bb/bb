@@ -11,6 +11,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
+  PluginAgentToolExperimentalActivity,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -270,6 +271,7 @@ export interface FakeCliRecord {
 export interface FakeAgentToolRecord {
   name: string;
   description: string;
+  experimentalActivity: PluginAgentToolExperimentalActivity | null;
   instructions: string | null;
   /** JSON-schema object the host would send providers. */
   inputSchema: unknown;
@@ -1474,6 +1476,7 @@ function createFakePluginHostInternal(
       name: string;
       description: string;
       instructions?: string;
+      experimental_activity?: PluginAgentToolExperimentalActivity;
       parameters: unknown;
       execute(
         params: never,
@@ -1510,6 +1513,20 @@ function createFakePluginHostInternal(
       ) {
         throw new Error(
           `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
+        );
+      }
+      const experimentalActivity = tool.experimental_activity;
+      if (
+        experimentalActivity !== undefined &&
+        (typeof experimentalActivity !== "object" ||
+          experimentalActivity === null ||
+          typeof experimentalActivity.running !== "string" ||
+          typeof experimentalActivity.completed !== "string" ||
+          experimentalActivity.running.trim().length === 0 ||
+          experimentalActivity.completed.trim().length === 0)
+      ) {
+        throw new Error(
+          `tool "${name}" experimental_activity must provide non-empty running and completed strings`,
         );
       }
       if (typeof tool.execute !== "function") {
@@ -1556,6 +1573,13 @@ function createFakePluginHostInternal(
       const record: FakeAgentToolRecord = {
         name,
         description: tool.description,
+        experimentalActivity:
+          experimentalActivity === undefined
+            ? null
+            : {
+                running: experimentalActivity.running,
+                completed: experimentalActivity.completed,
+              },
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions

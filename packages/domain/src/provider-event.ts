@@ -311,6 +311,10 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     server: z.string().optional(),
     tool: z.string(),
     arguments: z.record(z.string(), z.unknown()).optional(),
+    /** Server-enriched labels for a native plugin tool's timeline row. */
+    activity: z
+      .object({ running: z.string(), completed: z.string() })
+      .optional(),
     status: threadEventItemStatusSchema,
     result: z.unknown().optional(),
     error: z.string().optional(),
