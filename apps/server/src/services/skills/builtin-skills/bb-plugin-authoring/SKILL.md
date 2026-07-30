@@ -1068,7 +1068,8 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
-  does not fit in a ~420px column.
+  does not fit in a ~420px column. Full reference:
+  `examples/plugins/cascade`.
 
 Hooks:
 
@@ -1387,6 +1388,11 @@ Remaining reference examples in `examples/plugins/`:
   docs mention provider, boolean setting, bundled `skills/` directory.
 - `small-ux-pack` — dependency-free host-rendered UI: two thread actions
   (confirm + toast, and the automatic error-toast path).
+- `cascade` — the big host-component example: a scrollable-tiling strip where
+  every column is a `ThreadChat` and the draft column is
+  `experimental_NewThreadComposer`, plus a thin index backend (kv layout
+  state, background service + realtime), pure row projection, and a
+  bare-letter keymap that coexists with a dozen live composers.
 
 ## Gotchas
 
