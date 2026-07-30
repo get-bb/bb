@@ -13,8 +13,10 @@ import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
   threadHostFilePreviewQueryKey,
   threadQueuedMessagesQueryKey,
+  threadTimelineQueryKey,
 } from "./query-keys";
 import {
+  didThreadDetailBootstrapRefreshAfterMount,
   useArchivedThreads,
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
@@ -141,6 +143,95 @@ describe("useThreadDetailBootstrap", () => {
     await waitFor(() => {
       expect(result.result.current.isSuccess).toBe(true);
     });
+  });
+
+  it("uses the cached timeline sequence and merges a prefetched delta", async () => {
+    const previousTimeline = {
+      rows: [
+        {
+          id: "row-1",
+          kind: "system",
+          threadId: "thread-1",
+          turnId: null,
+          sourceSeqStart: 7,
+          sourceSeqEnd: 7,
+          startedAt: 1,
+          createdAt: 1,
+          systemKind: "debug",
+          title: "Existing row",
+          detail: null,
+          status: null,
+        },
+      ],
+      activePromptMode: null,
+      activeThinking: null,
+      activeWorkflows: [],
+      activeBackgroundCommands: [],
+      pendingTodos: null,
+      goal: null,
+      modelFallback: null,
+      timelinePage: {
+        kind: "latest",
+        segmentLimit: 100,
+        returnedSegmentCount: 1,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+      maxSeq: 7,
+    } satisfies ThreadTimelineResponse;
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
+      ...previousTimeline,
+      rows: [],
+      maxSeq: 8,
+      delta: { upsertRows: [] },
+    });
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      previousTimeline,
+      { updatedAt: 1 },
+    );
+
+    renderHook(
+      () =>
+        useThreadDetailBootstrap("thread-1", {
+          timelinePrefetch: true,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledWith({
+        afterSequence: "7",
+        signal: expect.any(AbortSignal),
+        threadId: "thread-1",
+      });
+    });
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<ThreadTimelineResponse>(
+          threadTimelineQueryKey("thread-1"),
+        ),
+      ).toEqual({
+        ...previousTimeline,
+        maxSeq: 8,
+      });
+    });
+  });
+
+  it("only suppresses a thread refetch for a bootstrap fetched after mount", () => {
+    expect(
+      didThreadDetailBootstrapRefreshAfterMount({
+        isFetchedAfterMount: false,
+        isSuccess: true,
+      }),
+    ).toBe(false);
+    expect(
+      didThreadDetailBootstrapRefreshAfterMount({
+        isFetchedAfterMount: true,
+        isSuccess: true,
+      }),
+    ).toBe(true);
   });
 });
 

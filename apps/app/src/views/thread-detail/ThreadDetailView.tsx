@@ -54,6 +54,7 @@ import {
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
+  didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   useProjectThreadSubset,
   useThread,
@@ -530,7 +531,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     enabled: hasThreadDetailBootstrapSettled,
     // A successful bootstrap just populated this exact query with a fresh
     // thread response; refetching it immediately adds redundant tunnel work.
-    refetchOnMount: threadDetailBootstrapQuery.isSuccess ? false : "always",
+    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(
+      threadDetailBootstrapQuery,
+    )
+      ? false
+      : "always",
   });
   // Treat placeholder data (a full thread row primed from the sidebar list
   // cache) as resolved so switching to an uncached thread renders the shell
@@ -725,15 +730,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [browserTabs],
   );
   const isThreadRoot = isRootThread(thread);
-  const [hasRequestedParentThreads, setHasRequestedParentThreads] =
-    useState(false);
-  useEffect(() => {
-    setHasRequestedParentThreads(false);
-  }, [thread?.id]);
+  const [
+    parentThreadsRequestedForThreadId,
+    setParentThreadsRequestedForThreadId,
+  ] = useState<string | null>(null);
   const shouldLoadParentThreads =
     threadQueryState.status === "ready" &&
     isThreadRoot &&
-    hasRequestedParentThreads;
+    parentThreadsRequestedForThreadId === thread?.id;
   const parentThreadSubsetQuery = useProjectThreadSubset({
     enabled: shouldLoadParentThreads,
     filters: PARENT_THREAD_SELECTOR_FILTERS,
@@ -757,11 +761,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         : EMPTY_PARENT_THREADS,
     [parentThreadSubsetQuery.data, shouldLoadParentThreads],
   );
-  const handleParentSelectorOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      setHasRequestedParentThreads(true);
-    }
-  }, []);
+  const handleParentSelectorOpenChange = useCallback(
+    (open: boolean) => {
+      if (open && thread?.id) {
+        setParentThreadsRequestedForThreadId(thread.id);
+      }
+    },
+    [thread?.id],
+  );
+  const handleRetryParentThreads = parentThreadSubsetQuery.retry;
   const {
     activePromptMode,
     activeThinking,
@@ -2585,6 +2593,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             canAssignToParent,
             canTakeOverThread,
             isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
+            isParentThreadsError: parentThreadSubsetQuery.isError,
             environment: environment ?? null,
             environmentDisplayHost: environmentDisplayHostContext,
             workspaceStatus,
@@ -2601,6 +2610,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             storage: metadataStorage,
             onAssignParent: handleAssignParent,
             onParentSelectorOpenChange: handleParentSelectorOpenChange,
+            onRetryParentThreads: handleRetryParentThreads,
             onMergeBaseBranchChange: handleMergeBaseBranchChange,
             onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
             onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,

@@ -86,6 +86,7 @@ export const baseProps: ThreadMetadataContentProps = {
   canAssignToParent: true,
   canTakeOverThread: false,
   isLoadingParentThreads: false,
+  isParentThreadsError: false,
   environment: makeEnvironment(),
   environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
@@ -97,6 +98,7 @@ export const baseProps: ThreadMetadataContentProps = {
   updateThreadPending: false,
   onAssignParent: noop,
   onParentSelectorOpenChange: noop,
+  onRetryParentThreads: noop,
   onMergeBaseBranchChange: noop,
   onChangedFileClick: noop,
 };

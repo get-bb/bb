@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import type { PendingInteraction, ThreadWithRuntime } from "@bb/domain";
 import type {
@@ -96,6 +96,13 @@ interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   timelinePrefetch?: boolean;
 }
 
+export function didThreadDetailBootstrapRefreshAfterMount(query: {
+  isFetchedAfterMount: boolean;
+  isSuccess: boolean;
+}): boolean {
+  return query.isSuccess && query.isFetchedAfterMount;
+}
+
 type ThreadTimelineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
@@ -131,6 +138,7 @@ export interface UseProjectThreadSubsetResult {
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
+  retry: () => void;
 }
 
 export interface UseThreadMentionCandidatesResult {
@@ -411,6 +419,17 @@ export function useProjectThreadSubset({
         : undefined,
     [activeProjectThreadsQuery.data, hasParent, parentThreadId],
   );
+  const refetchActiveProjectThreads = activeProjectThreadsQuery.refetch;
+  const refetchTargetedThreads = targetedThreadsQuery.refetch;
+  const retry = useCallback(() => {
+    void (hasActiveProjectThreadList
+      ? refetchActiveProjectThreads()
+      : refetchTargetedThreads());
+  }, [
+    hasActiveProjectThreadList,
+    refetchActiveProjectThreads,
+    refetchTargetedThreads,
+  ]);
 
   return {
     data: derivedThreads ?? targetedThreadsQuery.data,
@@ -423,6 +442,7 @@ export function useProjectThreadSubset({
     isLoading: hasActiveProjectThreadList
       ? activeProjectThreadsQuery.isLoading
       : targetedThreadsQuery.isLoading,
+    retry,
   };
 }
 
@@ -556,7 +576,8 @@ export function useThreadDetailBootstrap(
         void queryClient.prefetchQuery({
           queryKey: threadTimelineQueryKey(threadId),
           queryFn: ({ signal: timelineSignal }) =>
-            sdk.threads.timeline({
+            fetchThreadTimeline({
+              queryClient,
               signal: timelineSignal,
               threadId,
             }),
@@ -767,6 +788,34 @@ async function mergeThreadTimelineDelta(
   return fetchFull();
 }
 
+interface FetchThreadTimelineArgs {
+  queryClient: QueryClient;
+  signal: AbortSignal;
+  threadId: string;
+}
+
+async function fetchThreadTimeline({
+  queryClient,
+  signal,
+  threadId,
+}: FetchThreadTimelineArgs): Promise<ThreadTimelineResponse> {
+  // Ask for a delta against the window we already hold. The server only
+  // honors it when it can still reconstruct exactly what we have; otherwise
+  // it returns the full window.
+  const queryKey = threadTimelineQueryKey(threadId);
+  const previous = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
+  const response = await sdk.threads.timeline({
+    threadId,
+    signal,
+    ...(previous?.maxSeq !== undefined
+      ? { afterSequence: String(previous.maxSeq) }
+      : {}),
+  });
+  return mergeThreadTimelineDelta(previous, response, () =>
+    sdk.threads.timeline({ threadId, signal }),
+  );
+}
+
 export function useThreadTimeline(
   id: string,
   options?: ThreadTimelineQueryOptions,
@@ -779,22 +828,11 @@ export function useThreadTimeline(
     queryKey: threadTimelineQueryKey(id),
     queryFn: async ({ signal }) => {
       const threadId = requireThreadId(id, "useThreadTimeline");
-      // Ask for a delta against the window we already hold. The server only
-      // honors it when it can still reconstruct exactly what we have; otherwise
-      // it returns the full window.
-      const previous = queryClient.getQueryData<ThreadTimelineResponse>(
-        threadTimelineQueryKey(id),
-      );
-      const response = await sdk.threads.timeline({
-        threadId,
+      return fetchThreadTimeline({
+        queryClient,
         signal,
-        ...(previous?.maxSeq !== undefined
-          ? { afterSequence: String(previous.maxSeq) }
-          : {}),
+        threadId,
       });
-      return mergeThreadTimelineDelta(previous, response, () =>
-        sdk.threads.timeline({ threadId, signal }),
-      );
     },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,

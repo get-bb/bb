@@ -94,9 +94,11 @@ export interface ParentSelectorRowProps {
   canAssignToParent: boolean;
   canTakeOverThread: boolean;
   isLoadingParentThreads: boolean;
+  isParentThreadsError: boolean;
   updateThreadPending: boolean;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
+  onRetryParentThreads: () => void;
   /** Force the assignment dropdown open on first render. Used by stories. */
   defaultOpen?: boolean;
 }
@@ -109,9 +111,11 @@ export function ParentSelectorRow({
   canAssignToParent,
   canTakeOverThread,
   isLoadingParentThreads,
+  isParentThreadsError,
   updateThreadPending,
   onAssignParent,
   onParentSelectorOpenChange,
+  onRetryParentThreads,
   defaultOpen,
 }: ParentSelectorRowProps) {
   const parentThreadId = thread.parentThreadId ?? undefined;
@@ -204,28 +208,35 @@ export function ParentSelectorRow({
             <DropdownMenuLabel>Assign parent thread</DropdownMenuLabel>
             {isLoadingParentThreads ? (
               <DropdownMenuItem disabled>Loading threads…</DropdownMenuItem>
-            ) : null}
-            {parentSelectorOptions.map((option) => (
-              <DropdownMenuItem
-                key={option.value}
-                onSelect={() => {
-                  onAssignParent(option.value === "none" ? null : option.value);
-                }}
-                className="flex items-center justify-between gap-3"
-              >
-                <span className="truncate" title={option.label}>
-                  {option.label}
-                </span>
-                <Icon
-                  name="Check"
-                  className={
-                    parentSelectorValue === option.value
-                      ? cn("opacity-100", COARSE_POINTER_ICON_SIZE_CLASS)
-                      : cn("opacity-0", COARSE_POINTER_ICON_SIZE_CLASS)
-                  }
-                />
+            ) : isParentThreadsError ? (
+              <DropdownMenuItem onSelect={onRetryParentThreads}>
+                Retry loading threads
               </DropdownMenuItem>
-            ))}
+            ) : (
+              parentSelectorOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() => {
+                    onAssignParent(
+                      option.value === "none" ? null : option.value,
+                    );
+                  }}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <span className="truncate" title={option.label}>
+                    {option.label}
+                  </span>
+                  <Icon
+                    name="Check"
+                    className={
+                      parentSelectorValue === option.value
+                        ? cn("opacity-100", COARSE_POINTER_ICON_SIZE_CLASS)
+                        : cn("opacity-0", COARSE_POINTER_ICON_SIZE_CLASS)
+                    }
+                  />
+                </DropdownMenuItem>
+              ))
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -881,6 +892,7 @@ export interface ThreadMetadataContentProps {
   canAssignToParent: boolean;
   canTakeOverThread: boolean;
   isLoadingParentThreads: boolean;
+  isParentThreadsError: boolean;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -896,6 +908,7 @@ export interface ThreadMetadataContentProps {
   storage?: ThreadStorageRowProps;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
+  onRetryParentThreads: () => void;
   onMergeBaseBranchChange: (branch: string) => void;
   onMergeBasePickerOpenChange?: (open: boolean) => void;
   onMergeBaseBranchSearchQueryChange?: (query: string) => void;
@@ -993,6 +1006,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     canAssignToParent,
     canTakeOverThread,
     isLoadingParentThreads,
+    isParentThreadsError,
     environment,
     environmentDisplayHost,
     workspaceStatus,
@@ -1008,6 +1022,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     storage,
     onAssignParent,
     onParentSelectorOpenChange,
+    onRetryParentThreads,
     onMergeBaseBranchChange,
     onMergeBasePickerOpenChange,
     onMergeBaseBranchSearchQueryChange,
@@ -1025,9 +1040,11 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         canAssignToParent={canAssignToParent}
         canTakeOverThread={canTakeOverThread}
         isLoadingParentThreads={isLoadingParentThreads}
+        isParentThreadsError={isParentThreadsError}
         updateThreadPending={updateThreadPending}
         onAssignParent={onAssignParent}
         onParentSelectorOpenChange={onParentSelectorOpenChange}
+        onRetryParentThreads={onRetryParentThreads}
       />
       <ForksRow thread={thread} projectId={projectId} />
       <EnvironmentRow
