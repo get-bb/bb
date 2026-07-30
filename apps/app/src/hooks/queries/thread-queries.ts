@@ -799,9 +799,10 @@ export function useThreadTimeline(
  * Full conversation outline (every user/agent message) for a thread's
  * table-of-contents minimap. Unlike {@link useThreadTimeline}, this is not
  * paginated — it always reflects the whole thread — so the minimap can show
- * messages that have not yet been scrolled/paged into the loaded window. It is
- * invalidated by the same realtime `events-appended` signal as the timeline
- * window, so it stays in sync as new messages arrive.
+ * messages that have not yet been scrolled/paged into the loaded window. It
+ * refreshes on mount and at stable conversation boundaries; while a turn is
+ * streaming, the table of contents overlays live timeline rows on this cached
+ * history instead of reprojecting the full thread for every event.
  */
 export function useThreadConversationOutline(
   id: string,

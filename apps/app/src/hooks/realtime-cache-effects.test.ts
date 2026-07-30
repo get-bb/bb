@@ -22,6 +22,7 @@ import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  threadConversationOutlineQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
@@ -975,6 +976,79 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(turnDetailsKey)?.isInvalidated).not.toBe(
       true,
     );
+
+    effects.dispose();
+  });
+
+  it("does not invalidate the full outline for high-volume streaming events", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    queryClient.setQueryData(outlineKey, { items: [], maxSeq: 1 });
+    queryClient.setQueryData(timelineKey, {
+      rows: [],
+      timelinePage: {
+        kind: "latest",
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+    });
+    const invalidateQueriesSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const outlineInvalidationCount = () =>
+      invalidateQueriesSpy.mock.calls.filter(
+        ([filters]) =>
+          filters?.queryKey?.[0] === outlineKey[0] &&
+          filters.queryKey?.[1] === outlineKey[1],
+      ).length;
+
+    for (let index = 0; index < 20; index += 1) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { eventTypes: ["item/reasoning/textDelta"] },
+        changes: ["events-appended"],
+      });
+      vi.advanceTimersByTime(50);
+    }
+
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).not.toBe(true);
+    expect(outlineInvalidationCount()).toBe(0);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["turn/completed"] },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).toBe(true);
+    expect(outlineInvalidationCount()).toBe(1);
+
+    effects.dispose();
+  });
+
+  it("keeps outline invalidation conservative without event metadata", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    queryClient.setQueryData(outlineKey, { items: [], maxSeq: 1 });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
   });
