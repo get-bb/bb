@@ -33,6 +33,56 @@ function postJson(path: string, body: unknown): [string, RequestInit] {
 }
 
 describe("host file routes", () => {
+  it("rejects hostile-origin and text/plain privileged mutations before host RPC", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      seedPrimaryHost(harness.deps, host.id);
+      const commands: HostDaemonOnlineRpcRequestMessage["command"][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          commands.push(request.command);
+          return { ok: true, result: { ok: true } };
+        },
+      });
+
+      const mutations = [
+        ["/api/v1/files/write", { path: "/notes/a.md", content: "attacker" }],
+        ["/api/v1/files/mkdir", { path: "/notes/private" }],
+        [
+          "/api/v1/files/move",
+          {
+            sourcePath: "/notes/a.md",
+            destinationPath: "/notes/b.md",
+          },
+        ],
+        ["/api/v1/files/remove", { path: "/notes/b.md" }],
+      ] as const;
+
+      for (const [route, payload] of mutations) {
+        const hostile = await harness.app.request(route, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://evil.example",
+          },
+          body: JSON.stringify(payload),
+        });
+        expect(hostile.status, route).toBe(403);
+
+        const simpleRequest = await harness.app.request(route, {
+          method: "POST",
+          headers: { "content-type": "text/plain" },
+          body: JSON.stringify(payload),
+        });
+        expect(simpleRequest.status, route).toBe(415);
+      }
+
+      expect(commands).toEqual([]);
+    });
+  });
+
   it("creates opaque path-shaped preview leases and serves sandboxed HTML", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

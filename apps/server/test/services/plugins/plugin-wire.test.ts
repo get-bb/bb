@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -122,7 +122,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   let rootDir: string;
 
   beforeEach(async () => {
-    harness = await createTestAppHarness();
+    harness = await createTestAppHarness({ devAppPort: 5173 });
     rootDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-wire",
       serverSource: WIRE_SOURCE,
@@ -157,7 +157,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(appOrigin.status).toBe(200);
   });
 
-  it("local auth rejects foreign origins but tolerates LAN/Tailscale serving", async () => {
+  it("local auth rejects foreign origins but tolerates host-bound LAN/Tailscale serving", async () => {
     const foreignOrigin = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
       { headers: { origin: EVIL_ORIGIN } },
@@ -168,23 +168,46 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
       error: expect.stringContaining("not a local BB app origin"),
     });
 
-    // Tailscale/LAN serving (regression): the app reaches the server through
-    // the dev proxy, so the browser origin is a non-loopback host on a known
-    // BB app port while the request URL origin differs. Must be allowed.
-    const tailscaleOrigin = await harness.app.request(
+    // Merely copying a known BB port is insufficient when the hostile origin
+    // hostname is unrelated to the request hostname.
+    const copiedPort = await harness.app.request(
       `${BASE}/api/v1/plugins/wire/http/hello`,
-      { headers: { origin: "http://100.64.158.8:3334" } },
+      { headers: { origin: "http://evil.example:3334" } },
     );
-    expect(tailscaleOrigin.status).toBe(200);
+    expect(copiedPort.status).toBe(403);
 
-    // A foreign origin on a random port stays rejected even with a
-    // rebinding-shaped request URL; a same-origin non-loopback URL passes
-    // (no Host allowlist — LAN serving is legitimate).
+    // Direct LAN/Tailscale serving binds the app origin to the request host.
     const sameOriginLan = await harness.app.request(
       "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
       { headers: { origin: "http://100.64.158.8:3334" } },
     );
     expect(sameOriginLan.status).toBe(200);
+
+    const sameOriginReverseProxy = await harness.app.request(
+      "https://bb.lan.test/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "https://bb.lan.test" } },
+    );
+    expect(sameOriginReverseProxy.status).toBe(200);
+
+    // Direct development WebSockets use the dev origin hostname with the
+    // backend port, while Vite's HTTP proxy preserves the browser-facing host
+    // in X-Forwarded-Host.
+    const directDev = await harness.app.request(
+      "http://100.64.158.8:3334/api/v1/plugins/wire/http/hello",
+      { headers: { origin: "http://100.64.158.8:5173" } },
+    );
+    expect(directDev.status).toBe(200);
+
+    const proxiedDev = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/hello`,
+      {
+        headers: {
+          origin: "http://100.64.158.8:5173",
+          "x-forwarded-host": "100.64.158.8:5173",
+        },
+      },
+    );
+    expect(proxiedDev.status).toBe(200);
   });
 
   it("local auth requires application/json on non-GET requests", async () => {
@@ -204,6 +227,53 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     );
     expect(json.status).toBe(200);
     expect(await json.json()).toEqual({ echoed: { a: 1 } });
+  });
+
+  it("guards plugin install while preserving missing-Origin JSON clients", async () => {
+    const install = vi
+      .spyOn(harness.pluginService, "install")
+      .mockRejectedValue(new Error("install sentinel"));
+    const body = JSON.stringify({ source: "npm:attacker-plugin@1.0.0" });
+
+    const hostile = await harness.app.request(
+      `${BASE}/api/v1/plugins/install`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: EVIL_ORIGIN,
+        },
+        body,
+      },
+    );
+    expect(hostile.status).toBe(403);
+    expect(install).not.toHaveBeenCalled();
+
+    const simpleRequest = await harness.app.request(
+      `${BASE}/api/v1/plugins/install`,
+      {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body,
+      },
+    );
+    expect(simpleRequest.status).toBe(415);
+    expect(install).not.toHaveBeenCalled();
+
+    const nodeClient = await harness.app.request(
+      `${BASE}/api/v1/plugins/install`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      },
+    );
+    expect(nodeClient.status).toBe(422);
+    expect(await nodeClient.json()).toEqual({
+      ok: false,
+      error: "install sentinel",
+    });
+    expect(install).toHaveBeenCalledOnce();
   });
 
   it("token auth: 401 without the token, works with header or query, rotate invalidates", async () => {

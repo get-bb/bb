@@ -71,6 +71,7 @@ import {
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
+import { browserRequestProblem } from "./browser-request-guard.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -469,17 +470,37 @@ export function createApp(
 
   app.get(
     "/ws",
-    upgradeWebSocket(() => ({
-      onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
-      onMessage: (event, socket) =>
-        onClientSocketMessage(deps, socket, event.data),
-      onClose: (_event, socket) => onClientSocketClose(deps, socket),
-    })),
+    upgradeWebSocket((context) => {
+      const problem = browserRequestProblem(context, deps);
+      if (problem !== null) {
+        throw new ApiError(
+          problem.status,
+          "forbidden_origin",
+          problem.error,
+          false,
+        );
+      }
+      return {
+        onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
+        onMessage: (event, socket) =>
+          onClientSocketMessage(deps, socket, event.data),
+        onClose: (_event, socket) => onClientSocketClose(deps, socket),
+      };
+    }),
   );
 
   app.get(
     "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
+      const problem = browserRequestProblem(context, deps);
+      if (problem !== null) {
+        throw new ApiError(
+          problem.status,
+          "forbidden_origin",
+          problem.error,
+          false,
+        );
+      }
       const terminalId = context.req.param("terminalId");
       return {
         onOpen: (_event, socket) =>

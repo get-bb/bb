@@ -9,6 +9,7 @@ import {
 } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
+import { browserRequestProblem } from "../browser-request-guard.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
 import {
   callHostOnlineRpc,
@@ -168,6 +169,35 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     assertUsableHostId(deps, { hostId: resolved });
     return resolved;
   };
+
+  const requirePrivilegedJsonMutation = (
+    context: Parameters<typeof browserRequestProblem>[0],
+  ): void => {
+    const problem = browserRequestProblem(context, deps, {
+      requireJsonForMutation: true,
+    });
+    if (problem === null) {
+      return;
+    }
+    throw new ApiError(
+      problem.status,
+      problem.status === 403 ? "forbidden_origin" : "unsupported_media_type",
+      problem.error,
+      false,
+    );
+  };
+
+  for (const route of [
+    fileRoutes.write,
+    fileRoutes.mkdir,
+    fileRoutes.move,
+    fileRoutes.remove,
+  ]) {
+    app.use(route.path, async (context, next) => {
+      requirePrivilegedJsonMutation(context);
+      await next();
+    });
+  }
 
   post(fileRoutes.read, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);

@@ -21,11 +21,13 @@ export default defineConfig({
       "/api": {
         target: viteDevConfig.serverHttpOrigin,
         changeOrigin: true,
+        xfwd: true,
       },
       "/ws": {
         target: viteDevConfig.serverHttpOrigin,
         changeOrigin: true,
         ws: true,
+        xfwd: true,
       },
     },
   },

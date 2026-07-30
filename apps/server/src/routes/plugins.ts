@@ -1,11 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Context, Hono } from "hono";
-import {
-  buildLocalAppOrigins,
-  type BuildLocalAppOriginsArgs,
-} from "@bb/config/local-app-origins";
 import type { ServerRuntimeConfig } from "../types.js";
+import {
+  browserRequestProblem,
+  type BrowserRequestProblem,
+} from "../browser-request-guard.js";
 import type {
   PluginService,
   PluginWireLookup,
@@ -26,45 +26,7 @@ export interface PluginRoutesDeps {
   db: import("@bb/db").DbConnection;
 }
 
-interface WireAuthProblem {
-  status: 401 | 403 | 415;
-  error: string;
-}
-
-/** Same allowlist the CORS middleware enforces (server.ts), per request. */
-function allowedAppOrigins(deps: PluginRoutesDeps): Set<string> {
-  const args: BuildLocalAppOriginsArgs = {
-    serverPort: deps.config.serverPort,
-  };
-  if (deps.config.appUrl !== undefined) args.appUrl = deps.config.appUrl;
-  if (deps.config.devAppPort !== undefined) {
-    args.devAppPort = deps.config.devAppPort;
-  }
-  return new Set(buildLocalAppOrigins(args));
-}
-
-/**
- * Ports BB legitimately serves the app on (server, dev app, appUrl).
- * Deliberately EXPLICIT ports only: mapping https' implicit 443 here would
- * make every ordinary internet origin match whenever appUrl is a standard
- * https URL. Standard-port deployments are covered by the exact-origin
- * allowlist instead.
- */
-function knownAppPorts(deps: PluginRoutesDeps): Set<string> {
-  const ports = new Set<string>([String(deps.config.serverPort)]);
-  if (deps.config.devAppPort !== undefined) {
-    ports.add(String(deps.config.devAppPort));
-  }
-  if (deps.config.appUrl !== undefined) {
-    try {
-      const port = new URL(deps.config.appUrl).port;
-      if (port.length > 0) ports.add(port);
-    } catch {
-      // Ignore an unparseable appUrl; the other ports still apply.
-    }
-  }
-  return ports;
-}
+type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
 
 function parsePluginMentionTrigger(
   value: string | undefined,
@@ -88,52 +50,17 @@ function parsePluginMentionTrigger(
  * "local" auth (design §4.6): the request must come from the BB app itself.
  * The load-bearing CSRF defense is the JSON-only rule below — a cross-origin
  * JSON POST always triggers a CORS preflight, which the server's allowlist
- * denies. The Origin check adds a cheap second layer, but it must tolerate
- * BB being served over LAN/Tailscale addresses the server cannot enumerate
- * (and the dev proxy rewriting Host): any origin on a known BB app port is
- * accepted. There is deliberately NO Host allowlist — pinning Host only on
- * plugin routes adds no real protection while the rest of the local API has
- * none (a whole-server story is the actual fix; design doc §10).
+ * denies. The shared Origin check also tolerates BB being served over
+ * LAN/Tailscale addresses the server cannot enumerate, but only when the
+ * origin hostname is bound to the request hostname.
  */
 function localAuthProblem(
   context: Context,
   deps: PluginRoutesDeps,
 ): WireAuthProblem | null {
-  const allowedOrigins = allowedAppOrigins(deps);
-  const requestUrl = new URL(context.req.url);
-  const origin = context.req.header("origin");
-  if (origin !== undefined && origin !== requestUrl.origin) {
-    // Only an origin with an EXPLICIT port can match the port rule —
-    // implicit-port origins (ordinary internet sites) must match the exact
-    // allowlist.
-    let originPort: string | null = null;
-    try {
-      const port = new URL(origin).port;
-      originPort = port.length > 0 ? port : null;
-    } catch {
-      originPort = null;
-    }
-    if (
-      !allowedOrigins.has(origin) &&
-      (originPort === null || !knownAppPorts(deps).has(originPort))
-    ) {
-      return {
-        status: 403,
-        error: `origin "${origin}" is not a local BB app origin`,
-      };
-    }
-  }
-  const method = context.req.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    const contentType = context.req.header("content-type") ?? "";
-    if (!contentType.toLowerCase().startsWith("application/json")) {
-      return {
-        status: 415,
-        error: "content-type must be application/json",
-      };
-    }
-  }
-  return null;
+  return browserRequestProblem(context, deps, {
+    requireJsonForMutation: true,
+  });
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -462,6 +389,10 @@ export function registerPluginRoutes(
   });
 
   app.post("/plugins/install", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
     const json: unknown = await context.req.json().catch(() => null);
     const parsed = pluginInstallRequestSchema.safeParse(json);
     if (!parsed.success) {
