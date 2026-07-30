@@ -18,14 +18,23 @@ const DUE_AUTOMATION_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = 10_000;
 
 const hostListSchema = z.array(
-  z.object({ status: z.enum(["connected", "disconnected"]) }).passthrough(),
+  z
+    .object({
+      id: z.string(),
+      status: z.enum(["connected", "disconnected"]),
+    })
+    .passthrough(),
 );
 type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     hosts: { list(): Promise<unknown> };
     threads: {
-      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      get(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+      ): Promise<unknown>;
+      send(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+      ): Promise<unknown>;
       spawn(
         args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
       ): Promise<unknown>;
@@ -63,7 +72,7 @@ async function processDueAutomation(
     pluginDataDir: string;
     automation: AutomationRow;
     now: number;
-    agentHostsAvailable: boolean;
+    connectedHostIds: ReadonlySet<string>;
     serverUrl: string;
   },
 ): Promise<void> {
@@ -91,8 +100,17 @@ async function processDueAutomation(
     return;
   }
 
-  if (execution.mode === "agent" && !args.agentHostsAvailable) {
-    return;
+  if (execution.mode === "agent") {
+    if (args.connectedHostIds.size === 0) return;
+    const environment = execution.environment;
+    if (
+      args.automation.targetThreadId === null &&
+      environment.type === "host" &&
+      environment.hostId !== undefined &&
+      !args.connectedHostIds.has(environment.hostId)
+    ) {
+      return;
+    }
   }
 
   const claim = claimAutomationScheduledRun(db, {
@@ -137,22 +155,25 @@ async function processDueAutomation(
   }
 }
 
-async function hasConnectedHost(
+async function connectedHostIds(
   bb: Pick<BbPluginApi, "log"> & {
     sdk: { hosts: { list(): Promise<unknown> } };
   },
-): Promise<boolean> {
+): Promise<Set<string>> {
   try {
-    return hostListSchema
-      .parse(await bb.sdk.hosts.list())
-      .some((host) => host.status === "connected");
+    return new Set(
+      hostListSchema
+        .parse(await bb.sdk.hosts.list())
+        .filter((host) => host.status === "connected")
+        .map((host) => host.id),
+    );
   } catch (error) {
     bb.log.warn(
       `Failed to list hosts for automation sweep: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return false;
+    return new Set();
   }
 }
 
@@ -167,14 +188,14 @@ export async function sweepDueAutomations(
 ): Promise<void> {
   const now = args.now ?? Date.now();
   const due = listDueAutomations(db, { now, limit: DUE_AUTOMATION_BATCH_SIZE });
-  const agentHostsAvailable = await hasConnectedHost(bb);
+  const availableHostIds = await connectedHostIds(bb);
   for (const automation of due) {
     try {
       await processDueAutomation(bb, db, {
         pluginDataDir: args.pluginDataDir,
         automation,
         now,
-        agentHostsAvailable,
+        connectedHostIds: availableHostIds,
         serverUrl: args.serverUrl,
       });
     } catch (error) {

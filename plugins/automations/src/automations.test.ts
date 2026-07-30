@@ -36,6 +36,7 @@ import {
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { automationScriptDir } from "./script-files.js";
+import type { AgentEnvironment } from "./rpc-types.js";
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
@@ -47,6 +48,7 @@ function createScheduledAutomation(
   db: Db,
   nextRunAt: number,
   id = "auto_test",
+  environment: AgentEnvironment = { type: "project-default" },
 ) {
   return createAutomation(db, {
     id,
@@ -65,7 +67,7 @@ function createScheduledAutomation(
       providerId: "codex",
       model: "gpt-5",
       permissionMode: "accept-edits",
-      environment: { type: "project-default" },
+      environment,
     },
     origin: "human",
     createdByThreadId: null,
@@ -346,6 +348,57 @@ describe("automation data access", () => {
       now: 1000,
     });
 
+    expect(getAutomation(db, automation.id)?.runCount).toBe(0);
+    expect(
+      listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
+    ).toHaveLength(0);
+  });
+
+  it("waits when an automation's explicit host is disconnected", async () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000, "auto_pinned", {
+      type: "host",
+      hostId: "host_offline",
+      workspace: { type: "unmanaged", path: "/tmp/pinned" },
+    });
+    let spawned = false;
+    const bb = {
+      sdk: {
+        hosts: {
+          list: async () => [
+            { id: "host_online", status: "connected" },
+            { id: "host_offline", status: "disconnected" },
+          ],
+        },
+        threads: {
+          get: async () => {
+            throw new Error("not expected");
+          },
+          send: async () => {
+            throw new Error("not expected");
+          },
+          spawn: async () => {
+            spawned = true;
+            throw new Error("not expected");
+          },
+        },
+      },
+      realtime: { publish: () => undefined },
+      log: {
+        debug: () => undefined,
+        error: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+      },
+    };
+
+    await sweepDueAutomations(bb, db, {
+      pluginDataDir: "/tmp",
+      serverUrl: "http://127.0.0.1:38886",
+      now: 1000,
+    });
+
+    expect(spawned).toBe(false);
     expect(getAutomation(db, automation.id)?.runCount).toBe(0);
     expect(
       listAutomationRuns(db, { automationId: automation.id, limit: 10 }),

@@ -70,7 +70,10 @@ async function bootAutomationsPlugin(
       },
       hosts: {
         async list() {
-          return [{ id: "host_test", status: "connected" }];
+          return [
+            { id: "host_test", name: "atum", status: "connected" },
+            { id: "host_other", name: "kunst", status: "disconnected" },
+          ];
         },
       },
       providers: {
@@ -573,6 +576,57 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("selects an explicit machine and shows the execution target", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    const created = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Pinned host",
+      "--at",
+      new Date(Date.now() + 60_000).toISOString(),
+      "--prompt",
+      "use this machine",
+      "--provider",
+      "codex",
+      "--model",
+      "gpt-5",
+      "--environment",
+      "/tmp/design-doctrine",
+      "--machine",
+      "kunst",
+      "--json",
+    ]);
+    expect(created.exitCode).toBe(0);
+    expect(
+      automationResponseSchema.parse(JSON.parse(created.stdout ?? "")),
+    ).toMatchObject({
+      execution: {
+        environment: {
+          type: "host",
+          hostId: "host_other",
+          workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
+        },
+      },
+    });
+
+    const list = await harness.runCli(["list", "--project", PROJECT_ID]);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toContain("Target");
+    expect(list.stdout).toContain("kunst:/tmp/design-doctrine");
+
+    const show = await harness.runCli([
+      "show",
+      JSON.parse(created.stdout ?? "").id,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain("Target:    kunst:/tmp/design-doctrine");
+    await harness.dispose();
+  });
+
   it("rejects conflicting targets and invalid permission modes before updating", async () => {
     const { harness } = await bootAutomationsPlugin();
     const created = await createAgentAutomation(harness);
@@ -590,6 +644,19 @@ describe("automations server plugin harness", () => {
     expect(conflictingTargets.exitCode).toBe(1);
     expect(conflictingTargets.stderr).toContain(
       "Cannot combine target options",
+    );
+
+    const machineWithoutWorkspace = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--host",
+      "kunst",
+    ]);
+    expect(machineWithoutWorkspace.exitCode).toBe(1);
+    expect(machineWithoutWorkspace.stderr).toContain(
+      "--machine/--host requires --environment <path> or --new-environment worktree",
     );
 
     const invalidPermissionMode = await harness.runCli([

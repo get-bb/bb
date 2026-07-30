@@ -48,11 +48,15 @@ Agent mode flags:
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path
 --new-environment <kind>       Create a new environment (worktree)
 --base-branch <branch>         Base branch for new managed worktrees
+--machine <id-or-name>         Host for a path/worktree target (--host alias)
 ```
 
 When `--permission-mode` is omitted, the plugin chooses Approve for me
 (`auto`) when the provider supports it and otherwise uses Full Access
-(`full`).
+(`full`). For an unmanaged path or new worktree, omit `--machine` to use the
+first connected host, or set it explicitly when machine placement matters. An
+explicit machine may be offline when configured; scheduled runs wait without
+claiming a run until that machine reconnects.
 
 Script mode flags:
 
@@ -80,6 +84,7 @@ Managing:
 ```bash
 bb plugin run automations list --project <id>
 bb plugin run automations show <automationId> --project <id>
+# Text output includes the resolved execution target and host name.
 bb plugin run automations update <automationId> --project <id> [--name <name>] [schedule flags] [complete execution flags | partial agent update flags]
 bb plugin run automations pause <automationId> --project <id>
 bb plugin run automations resume <automationId> --project <id>
@@ -106,11 +111,15 @@ bb plugin run automations update <automationId> --project <id> \
 bb plugin run automations update <automationId> --project <id> \
   --target-thread <thread-id>
 bb plugin run automations update <automationId> --project <id> \
-  --new-environment worktree [--base-branch <branch>]
+  --new-environment worktree [--base-branch <branch>] [--machine <id-or-name>]
+bb plugin run automations update <automationId> --project <id> \
+  --environment /absolute/workspace/path --machine <id-or-name>
 ```
 
 `--target-thread`, `--environment`, and `--new-environment` are mutually
-exclusive. These flags apply only to agent automations; script automations have
-no execution environment.
+exclusive. `--machine` (alias `--host`) requires a path-valued `--environment`
+or `--new-environment worktree`; a reused environment already owns its host.
+These flags apply only to agent automations; script automations have no
+execution environment.
 
 Every command supports `--json`.

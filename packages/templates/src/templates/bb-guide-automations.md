@@ -27,13 +27,18 @@ Agent execution:
   --prompt <text> --provider <id> --model <model>
   [--permission-mode <accept-edits|auto|full>]
   [--environment <environment-id|path> | --new-environment worktree]
-  [--base-branch <branch>] [--target-thread <thread-id>]
+  [--base-branch <branch>] [--machine <id-or-name>] [--target-thread <thread-id>]
 
 Script execution:
 
   --script <inline> | --script-file <path>
   [--interpreter <bash|sh|node|python3>]
   [--timeout <milliseconds>] [--env-json '{"KEY":"value"}']
+
+Text `list` and `show` output includes the resolved execution target and host.
+`--machine` (alias `--host`) applies only to a path-valued `--environment` or a
+new worktree. Explicitly targeted scheduled runs wait while that host is
+disconnected instead of moving to another machine.
 
 `update` can combine name, schedule, and execution changes. Execution changes
 replace the previous execution completely: provide all required agent fields or

@@ -429,6 +429,8 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+  For a path or new-worktree target, add `--machine <id-or-name>` (alias
+  `--host`) when the host matters; otherwise bb uses a connected host.
 - Create a one-shot agent automation with
   `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
   or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.
@@ -450,15 +452,19 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   minute. One-shot automations use `--at` or `--in` and fire once.
 - Pass `--project <id>` explicitly for every automation command.
 - Use `bb automation list`, `bb automation show <id>`, and
-  `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
-  run's captured stdout.
+  `bb automation runs <id>` to inspect. Text `list`/`show` output names the
+  execution target and host; `--output <run-id>` prints a script run's captured
+  stdout.
 - Partially update an existing agent automation in place by omitting
   `--provider` and `--model` and using `bb automation update <id> --project <id>
 --prompt "..."`, `--permission-mode accept-edits|auto|full`, or exactly one
   target option:
   `--target-thread <id>`, `--environment <id-or-path>`, or
-  `--new-environment worktree [--base-branch <branch>]`. Omitted execution
-  fields are preserved; target options are mutually exclusive.
+  `--new-environment worktree [--base-branch <branch>]`. Add
+  `--machine <id-or-name>` (alias `--host`) only with a path-valued environment
+  or new worktree. Omitted execution fields are preserved; target options are
+  mutually exclusive. An explicitly targeted scheduled run waits until that
+  host reconnects instead of running elsewhere.
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.

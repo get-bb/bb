@@ -30,6 +30,7 @@ const hostListSchema = z.array(
   z
     .object({
       id: z.string().optional(),
+      name: z.string().optional(),
       status: z.string().optional(),
       connected: z.boolean().optional(),
     })
@@ -155,6 +156,23 @@ function parsePermissionMode(
   );
 }
 
+function machineSelector(args: ParsedArgs): string | undefined {
+  const machine = flag(args, "machine");
+  const host = flag(args, "host");
+  if (args.flags.has("machine") && !machine) {
+    throw new Error("Missing required option --machine <id-or-name>.");
+  }
+  if (args.flags.has("host") && !host) {
+    throw new Error("Missing required option --host <id-or-name>.");
+  }
+  if (machine && host && machine !== host) {
+    throw new Error(
+      "--machine and --host are aliases; provide only one value.",
+    );
+  }
+  return machine ?? host;
+}
+
 function validateAgentTargetOptions(args: ParsedArgs): void {
   const targetOptionNames = [
     "target-thread",
@@ -172,6 +190,22 @@ function validateAgentTargetOptions(args: ParsedArgs): void {
   if (providedTargetOptions.length > 1) {
     throw new Error(
       "Cannot combine target options: --target-thread, --environment, and --new-environment.",
+    );
+  }
+  const selector = machineSelector(args);
+  if (
+    selector &&
+    !args.flags.has("environment") &&
+    !args.flags.has("new-environment")
+  ) {
+    throw new Error(
+      "--machine/--host requires --environment <path> or --new-environment worktree.",
+    );
+  }
+  const environment = flag(args, "environment");
+  if (selector && environment && !looksLikePath(environment)) {
+    throw new Error(
+      "--machine/--host cannot override an existing environment id; it already owns its host.",
     );
   }
   if (args.flags.has("base-branch") && !args.flags.has("new-environment")) {
@@ -236,14 +270,21 @@ function looksLikePath(value: string): boolean {
   return value.includes("/") || value.startsWith(".") || value.startsWith("~");
 }
 
-async function resolveConnectedHostId(
+async function resolveHostId(
   bb: Pick<BbPluginApi, "sdk">,
+  selector?: string,
 ): Promise<string> {
   const hosts = hostListSchema.parse(await bb.sdk.hosts.list());
-  const host =
-    hosts.find((candidate) => candidate.connected === true) ??
-    hosts.find((candidate) => candidate.status === "connected") ??
-    hosts[0];
+  const connected = (candidate: (typeof hosts)[number]) =>
+    candidate.connected === true || candidate.status === "connected";
+  if (selector) {
+    const selected = hosts.find(
+      (candidate) => candidate.id === selector || candidate.name === selector,
+    );
+    if (!selected?.id) throw new Error(`Machine not found: ${selector}`);
+    return selected.id;
+  }
+  const host = hosts.find(connected);
   if (!host?.id) throw new Error("No connected host is available.");
   return host.id;
 }
@@ -255,6 +296,7 @@ async function buildAgentEnvironment(
   const environment = flag(args, "environment")?.trim();
   const newEnvironment = flag(args, "new-environment")?.trim();
   const baseBranch = flag(args, "base-branch")?.trim();
+  const selector = machineSelector(args);
   if (environment && newEnvironment) {
     throw new Error("Cannot combine --environment with --new-environment.");
   }
@@ -266,7 +308,7 @@ async function buildAgentEnvironment(
     }
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveHostId(bb, selector),
       workspace: {
         type: "managed-worktree",
         baseBranch: baseBranch
@@ -279,7 +321,7 @@ async function buildAgentEnvironment(
   if (looksLikePath(environment)) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveHostId(bb, selector),
       workspace: { type: "unmanaged", path: environment },
     };
   }
@@ -347,7 +389,9 @@ async function buildExecution(
     args.flags.has("target-thread") ||
     args.flags.has("environment") ||
     args.flags.has("new-environment") ||
-    args.flags.has("base-branch")
+    args.flags.has("base-branch") ||
+    args.flags.has("machine") ||
+    args.flags.has("host")
   ) {
     throw new Error("Script automations do not accept agent execution flags.");
   }
@@ -393,6 +437,8 @@ async function buildAgentExecutionUpdate(
     "environment",
     "new-environment",
     "base-branch",
+    "machine",
+    "host",
   ] as const;
   if (!agentOptionNames.some((name) => args.flags.has(name))) return undefined;
 
@@ -471,13 +517,64 @@ function formatAutomationTrigger(automation: AutomationResponse): string {
   return `${automation.trigger.cron} (${automation.trigger.timezone})`;
 }
 
-function printAutomation(automation: AutomationResponse): string {
+type HostNames = Map<string, string>;
+
+async function hostNames(bb: Pick<BbPluginApi, "sdk">): Promise<HostNames> {
+  try {
+    return new Map(
+      hostListSchema
+        .parse(await bb.sdk.hosts.list())
+        .filter((host): host is typeof host & { id: string } =>
+          Boolean(host.id),
+        )
+        .map((host) => [host.id, host.name ?? host.id]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function formatAutomationTarget(
+  automation: AutomationResponse,
+  names: HostNames,
+): string {
+  if (
+    automation.execution.mode === "agent" &&
+    automation.execution.targetThreadId
+  ) {
+    return `thread:${automation.execution.targetThreadId}`;
+  }
+  if (automation.execution.mode === "script") return "server";
+  const environment = automation.execution.environment;
+  if (environment.type === "project-default") return "project default";
+  if (environment.type === "reuse") {
+    return `environment:${environment.environmentId}`;
+  }
+  const host = environment.hostId
+    ? (names.get(environment.hostId) ?? environment.hostId)
+    : "default host";
+  if (environment.workspace.type === "unmanaged") {
+    return `${host}:${environment.workspace.path ?? "personal"}`;
+  }
+  if (environment.workspace.type === "personal") return `${host}:personal`;
+  const base =
+    environment.workspace.baseBranch.kind === "named"
+      ? environment.workspace.baseBranch.name
+      : "default";
+  return `${host}:worktree(${base})`;
+}
+
+function printAutomation(
+  automation: AutomationResponse,
+  names: HostNames,
+): string {
   const lines = [
     "",
     `  ID:        ${automation.id}`,
     `  Name:      ${automation.name}`,
     `  Enabled:   ${automation.enabled ? "yes" : "no"}`,
     `  Mode:      ${automation.execution.mode}`,
+    `  Target:    ${formatAutomationTarget(automation, names)}`,
     `  Schedule:  ${formatAutomationTrigger(automation)}`,
     `  Next run:  ${formatTimestamp(automation.nextRunAt)}`,
     `  Last run:  ${formatTimestamp(automation.lastRunAt)}`,
@@ -501,13 +598,17 @@ function table(head: string[], rows: string[][]): string {
   return ["", format(head), ...rows.map(format), ""].join("\n") + "\n";
 }
 
-function printAutomationTable(automations: AutomationResponse[]): string {
+function printAutomationTable(
+  automations: AutomationResponse[],
+  names: HostNames,
+): string {
   return table(
-    ["ID", "Name", "On", "Schedule", "Next run", "Runs", "Origin"],
+    ["ID", "Name", "On", "Target", "Schedule", "Next run", "Runs", "Origin"],
     automations.map((automation) => [
       automation.id,
       automation.name,
       automation.enabled ? "yes" : "no",
+      formatAutomationTarget(automation, names),
       formatAutomationTrigger(automation),
       formatTimestamp(automation.nextRunAt),
       String(automation.runCount),
@@ -541,6 +642,9 @@ bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
+
+Agent workspace targets accept --machine <id-or-name> (alias --host) with
+--environment <path> or --new-environment worktree.
 `;
 }
 
@@ -621,7 +725,7 @@ export function registerAutomationCli(args: {
               json ??
               (result.length === 0
                 ? "No automations found\n"
-                : printAutomationTable(result)),
+                : printAutomationTable(result, await hostNames(bb))),
           };
         }
         if (command === "create") {
@@ -642,7 +746,7 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Automation created: ${created.id}\n${printAutomation(created)}`,
+              `Automation created: ${created.id}\n${printAutomation(created, await hostNames(bb))}`,
           };
         }
         if (command === "show") {
@@ -653,7 +757,10 @@ export function registerAutomationCli(args: {
             automationId,
           });
           const json = optionalJson(parsed, found);
-          return { exitCode: 0, stdout: json ?? printAutomation(found) };
+          return {
+            exitCode: 0,
+            stdout: json ?? printAutomation(found, await hostNames(bb)),
+          };
         }
         if (command === "update") {
           const updated = await service.update(
@@ -664,7 +771,7 @@ export function registerAutomationCli(args: {
             exitCode: 0,
             stdout:
               json ??
-              `Automation ${updated.id} updated\n${printAutomation(updated)}`,
+              `Automation ${updated.id} updated\n${printAutomation(updated, await hostNames(bb))}`,
           };
         }
         if (command === "pause" || command === "resume") {
