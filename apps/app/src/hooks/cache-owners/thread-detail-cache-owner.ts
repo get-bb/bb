@@ -5,6 +5,7 @@ import type {
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import { APP_THREAD_TIMELINE_SEGMENT_LIMIT } from "@/lib/thread-timeline-window";
 import {
   environmentQueryKey,
   hostQueryKey,
@@ -80,7 +81,11 @@ export function ingestThreadDetailBootstrap({
     void queryClient.prefetchQuery({
       queryKey: threadTimelineQueryKey(thread.id),
       queryFn: ({ signal }) =>
-        sdk.threads.timeline({ signal, threadId: thread.id }),
+        sdk.threads.timeline({
+          segmentLimit: APP_THREAD_TIMELINE_SEGMENT_LIMIT,
+          signal,
+          threadId: thread.id,
+        }),
     });
   }
 }

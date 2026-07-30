@@ -26,6 +26,7 @@ import type { ThreadListFilters } from "@/lib/api-types";
 import type { FilePreview } from "@/lib/file-preview";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
+import { APP_THREAD_TIMELINE_SEGMENT_LIMIT } from "@/lib/thread-timeline-window";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import {
@@ -769,6 +770,7 @@ export function useThreadTimeline(
         threadTimelineQueryKey(id),
       );
       const response = await sdk.threads.timeline({
+        segmentLimit: APP_THREAD_TIMELINE_SEGMENT_LIMIT,
         threadId,
         signal,
         ...(previous?.maxSeq !== undefined
@@ -776,7 +778,11 @@ export function useThreadTimeline(
           : {}),
       });
       return mergeThreadTimelineDelta(previous, response, () =>
-        sdk.threads.timeline({ threadId, signal }),
+        sdk.threads.timeline({
+          segmentLimit: APP_THREAD_TIMELINE_SEGMENT_LIMIT,
+          threadId,
+          signal,
+        }),
       );
     },
     enabled,

@@ -2,6 +2,7 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -9,11 +10,13 @@ import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
   threadHostFilePreviewQueryKey,
   threadQueuedMessagesQueryKey,
+  threadTimelineQueryKey,
 } from "./query-keys";
 import {
   useArchivedThreads,
   useThreadHostFilePreview,
   useThreadQueuedMessages,
+  useThreadTimeline,
 } from "./thread-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -29,6 +32,7 @@ vi.mock("@/lib/sdk", () => ({
     threads: {
       list: vi.fn(),
       queuedMessages: { list: vi.fn() },
+      timeline: vi.fn(),
     },
   },
 }));
@@ -46,6 +50,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
+  vi.mocked(sdk.threads.timeline).mockResolvedValue(makeTimelineResponse());
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
     path: "/tmp/log.txt",
@@ -54,6 +59,27 @@ beforeEach(() => {
     content: "preview",
   });
 });
+
+function makeTimelineResponse(maxSeq = 0): ThreadTimelineResponse {
+  return {
+    activeBackgroundCommands: [],
+    activePromptMode: null,
+    activeThinking: null,
+    activeWorkflows: [],
+    goal: null,
+    maxSeq,
+    modelFallback: null,
+    pendingTodos: null,
+    rows: [],
+    timelinePage: {
+      hasOlderRows: false,
+      kind: "latest",
+      olderCursor: null,
+      returnedSegmentCount: 0,
+      segmentLimit: 8,
+    },
+  };
+}
 
 describe("useArchivedThreads", () => {
   it("loads archived threads across all projects when no scope is selected", async () => {
@@ -129,6 +155,61 @@ describe("useThreadQueuedMessages", () => {
         refetchOnWindowFocus: true,
       }),
     );
+  });
+});
+
+describe("useThreadTimeline", () => {
+  it("bounds the initial app timeline window", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(() => useThreadTimeline("thread-1"), { wrapper });
+
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toEqual({
+      segmentLimit: "8",
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
+    });
+  });
+
+  it("keeps the app window bound when a stale delta needs a full fetch", async () => {
+    const previous = makeTimelineResponse(5);
+    const staleDelta = {
+      ...makeTimelineResponse(6),
+      delta: { rowOrder: ["missing-row"], upsertRows: [] },
+    };
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(staleDelta)
+      .mockResolvedValueOnce(makeTimelineResponse(6));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadTimelineQueryKey("thread-1"), previous, {
+      updatedAt: 1,
+    });
+
+    renderHook(() => useThreadTimeline("thread-1"), { wrapper });
+
+    await waitFor(() => {
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
+    });
+    expect(vi.mocked(sdk.threads.timeline).mock.calls).toEqual([
+      [
+        {
+          afterSequence: "5",
+          segmentLimit: "8",
+          signal: expect.any(AbortSignal),
+          threadId: "thread-1",
+        },
+      ],
+      [
+        {
+          segmentLimit: "8",
+          signal: expect.any(AbortSignal),
+          threadId: "thread-1",
+        },
+      ],
+    ]);
   });
 });
 

@@ -9,6 +9,7 @@ import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
 import { isOptimisticTimelineRowId } from "@/lib/optimistic-timeline-row";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { APP_THREAD_TIMELINE_SEGMENT_LIMIT } from "@/lib/thread-timeline-window";
 
 export type ThreadTimelineRowFilter = (row: TimelineRow) => boolean;
 
@@ -488,6 +489,7 @@ export function useThreadTimelineController({
       const response = await sdk.threads.timeline({
         beforeAnchorId: nextOlderCursor.anchorId,
         beforeAnchorSeq: String(nextOlderCursor.anchorSeq),
+        segmentLimit: APP_THREAD_TIMELINE_SEGMENT_LIMIT,
         threadId,
       });
       const olderRows = filterTimelineRows({

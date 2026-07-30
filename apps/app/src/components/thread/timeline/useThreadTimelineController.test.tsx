@@ -175,4 +175,60 @@ describe("useThreadTimelineController", () => {
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("uses the bounded app page size when loading older timeline rows", async () => {
+    const latest = {
+      ...makeTimelineResponse(),
+      rows: [makeUserRow("thread-1:user-seed:10", 10)],
+      timelinePage: {
+        hasOlderRows: true,
+        kind: "latest" as const,
+        olderCursor: {
+          anchorId: "thread-1:user-seed:10",
+          anchorSeq: 10,
+        },
+        returnedSegmentCount: 1,
+        segmentLimit: 8,
+      },
+    };
+    const older = {
+      ...makeTimelineResponse(),
+      rows: [makeUserRow("thread-1:user-seed:1", 1)],
+      timelinePage: {
+        hasOlderRows: false,
+        kind: "older" as const,
+        olderCursor: null,
+        returnedSegmentCount: 1,
+        segmentLimit: 8,
+      },
+    };
+    vi.mocked(sdk.threads.timeline)
+      .mockResolvedValueOnce(latest)
+      .mockResolvedValueOnce(older);
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => useThreadTimelineController({ threadId: "thread-1" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.hasOlderTimelineRows).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.loadOlderTimelineRows();
+    });
+
+    expect(vi.mocked(sdk.threads.timeline).mock.calls[1]?.[0]).toEqual({
+      beforeAnchorId: "thread-1:user-seed:10",
+      beforeAnchorSeq: "10",
+      segmentLimit: "8",
+      threadId: "thread-1",
+    });
+    expect(result.current.timelineRows.map((row) => row.id)).toEqual([
+      "thread-1:user-seed:1",
+      "thread-1:user-seed:10",
+    ]);
+  });
 });
