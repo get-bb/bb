@@ -11,13 +11,16 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import {
+  threadDetailBootstrapQueryKey,
   threadHostFilePreviewQueryKey,
   threadQueuedMessagesQueryKey,
+  threadQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
   useArchivedThreads,
+  useThread,
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
   useThreadQueuedMessages,
@@ -222,16 +225,82 @@ describe("useThreadDetailBootstrap", () => {
   it("only suppresses a thread refetch for a bootstrap fetched after mount", () => {
     expect(
       didThreadDetailBootstrapRefreshAfterMount({
+        dataUpdatedAt: 0,
         isFetchedAfterMount: false,
         isSuccess: true,
       }),
     ).toBe(false);
     expect(
       didThreadDetailBootstrapRefreshAfterMount({
+        dataUpdatedAt: 0,
         isFetchedAfterMount: true,
         isSuccess: true,
       }),
     ).toBe(true);
+  });
+
+  it("skips the duplicate thread read for a freshly cached bootstrap", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const updatedAt = Date.now();
+    queryClient.setQueryData(
+      threadDetailBootstrapQueryKey("thread-1"),
+      THREAD_WITH_INCLUDES,
+      { updatedAt },
+    );
+    queryClient.setQueryData(threadQueryKey("thread-1"), THREAD_WITH_INCLUDES, {
+      updatedAt,
+    });
+
+    const result = renderHook(
+      () => {
+        const bootstrap = useThreadDetailBootstrap("thread-1");
+        return useThread("thread-1", {
+          enabled: bootstrap.isSuccess,
+          refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(bootstrap)
+            ? false
+            : "always",
+        });
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.result.current.isSuccess).toBe(true);
+    });
+    expect(sdk.threads.get).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the thread read for an old cached bootstrap", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      threadDetailBootstrapQueryKey("thread-1"),
+      THREAD_WITH_INCLUDES,
+      { updatedAt: 1 },
+    );
+    queryClient.setQueryData(threadQueryKey("thread-1"), THREAD_WITH_INCLUDES, {
+      updatedAt: 1,
+    });
+
+    renderHook(
+      () => {
+        const bootstrap = useThreadDetailBootstrap("thread-1");
+        return useThread("thread-1", {
+          enabled: bootstrap.isSuccess,
+          refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(bootstrap)
+            ? false
+            : "always",
+        });
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.threads.get).toHaveBeenCalledTimes(1);
+    });
+    expect(sdk.threads.get).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
+    });
   });
 });
 

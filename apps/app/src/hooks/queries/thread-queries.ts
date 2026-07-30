@@ -87,6 +87,7 @@ interface QueryOptions {
 
 const THREAD_LIST_STALE_TIME_MS = 10_000;
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
+const THREAD_DETAIL_STALE_TIME_MS = 5_000;
 export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
 export const THREAD_SEARCH_DEBOUNCE_MS = 150;
 export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
@@ -97,10 +98,16 @@ interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
 }
 
 export function didThreadDetailBootstrapRefreshAfterMount(query: {
+  dataUpdatedAt: number;
   isFetchedAfterMount: boolean;
   isSuccess: boolean;
 }): boolean {
-  return query.isSuccess && query.isFetchedAfterMount;
+  return (
+    query.isSuccess &&
+    (query.isFetchedAfterMount ||
+      (query.dataUpdatedAt > 0 &&
+        Date.now() - query.dataUpdatedAt <= THREAD_DETAIL_STALE_TIME_MS))
+  );
 }
 
 type ThreadTimelineQueryOptions = QueryOptions;
@@ -529,7 +536,7 @@ export function useThread(id: string, options?: QueryOptions) {
         signal,
       }),
     enabled,
-    staleTime: 5_000,
+    staleTime: THREAD_DETAIL_STALE_TIME_MS,
     refetchOnMount: options?.refetchOnMount ?? true,
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
