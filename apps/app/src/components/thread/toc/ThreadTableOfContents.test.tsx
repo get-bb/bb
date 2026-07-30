@@ -74,6 +74,33 @@ function userConversationRow(index = 1): TimelineRow {
   };
 }
 
+function assistantConversationRow({
+  id,
+  index,
+  sourceSeqStart = index,
+  text,
+}: {
+  id: string;
+  index: number;
+  sourceSeqStart?: number;
+  text: string;
+}): TimelineRow {
+  return {
+    id,
+    threadId: "thr_toc_test",
+    turnId: `turn_${index}`,
+    sourceSeqStart,
+    sourceSeqEnd: index,
+    startedAt: index,
+    createdAt: index,
+    kind: "conversation",
+    role: "assistant",
+    text,
+    attachments: null,
+    turnRequest: null,
+  };
+}
+
 function TocHost({
   hasOlderTimelineRows = false,
   loadOlderTimelineRows = () => {},
@@ -161,13 +188,17 @@ function createScrollElement({
 
 function outlineResponse(
   items: ThreadConversationOutlineItem[],
+  maxSeq = items.length,
 ): ThreadConversationOutlineResponse {
-  return { items, maxSeq: items.length };
+  return { items, maxSeq };
 }
 
-function setOutline(items: ThreadConversationOutlineItem[] | undefined): void {
+function setOutline(
+  items: ThreadConversationOutlineItem[] | undefined,
+  maxSeq?: number,
+): void {
   vi.mocked(useThreadConversationOutline).mockReturnValue({
-    data: items === undefined ? undefined : outlineResponse(items),
+    data: items === undefined ? undefined : outlineResponse(items, maxSeq),
   } as ReturnType<typeof useThreadConversationOutline>);
 }
 
@@ -611,6 +642,205 @@ describe("ThreadTableOfContents", () => {
     expect(screen.getByText("Agent messages")).not.toBeNull();
   });
 
+  it("overlays live assistant previews and rows on the stable full outline", async () => {
+    setOutline(
+      [
+        {
+          id: "u1",
+          role: "user",
+          preview: "First question",
+          attachmentSummary: null,
+        },
+        {
+          id: "u2",
+          role: "user",
+          preview: "Second question",
+          attachmentSummary: null,
+        },
+        {
+          id: "u3",
+          role: "user",
+          preview: "Third question",
+          attachmentSummary: null,
+        },
+        {
+          id: "a0",
+          role: "assistant",
+          preview: "Stored historical preview",
+          attachmentSummary: null,
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          preview: "Stale streaming preview",
+          attachmentSummary: null,
+        },
+      ],
+      10,
+    );
+
+    render(
+      <TocHost
+        timelineRows={[
+          assistantConversationRow({
+            id: "a0",
+            index: 10,
+            text: "Loaded historical text must not win",
+          }),
+          assistantConversationRow({
+            id: "a1",
+            index: 11,
+            sourceSeqStart: 9,
+            text: "Current streaming preview",
+          }),
+          assistantConversationRow({
+            id: "a2",
+            index: 12,
+            text: "New streaming row",
+          }),
+        ]}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(await screen.findByText("Agent messages"));
+
+    expect(screen.getByText("Stored historical preview")).not.toBeNull();
+    expect(
+      screen.queryByText("Loaded historical text must not win"),
+    ).toBeNull();
+    expect(screen.getByText("Current streaming preview")).not.toBeNull();
+    expect(screen.getByText("New streaming row")).not.toBeNull();
+    expect(screen.queryByText("Stale streaming preview")).toBeNull();
+  });
+
+  it("does not rebind scroll-spy when only a live assistant label changes", async () => {
+    const storedOutline: ThreadConversationOutlineItem[] = [
+      {
+        id: "u1",
+        role: "user",
+        preview: "First question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+    ];
+    setOutline(storedOutline, 10);
+    const addEventListener = vi.spyOn(scrollElement, "addEventListener");
+    const view = render(
+      <TocHost
+        timelineRows={[
+          assistantConversationRow({
+            id: "a-live",
+            index: 11,
+            text: "First live text",
+          }),
+        ]}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(await screen.findByText("Agent messages"));
+    expect(await screen.findByText("First live text")).not.toBeNull();
+    const scrollListenerAdds = () =>
+      addEventListener.mock.calls.filter(([type]) => type === "scroll").length;
+    expect(scrollListenerAdds()).toBe(1);
+
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          assistantConversationRow({
+            id: "a-live",
+            index: 12,
+            text: "Second live text",
+          }),
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText("Second live text")).not.toBeNull();
+    expect(scrollListenerAdds()).toBe(1);
+
+    setOutline(
+      [
+        ...storedOutline,
+        {
+          id: "a-live",
+          role: "assistant",
+          preview: "Final stored text",
+          attachmentSummary: null,
+        },
+      ],
+      12,
+    );
+    view.rerender(
+      <TocHost
+        timelineRows={[
+          assistantConversationRow({
+            id: "a-live",
+            index: 12,
+            text: "Second live text",
+          }),
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText("Final stored text")).not.toBeNull();
+    expect(screen.getAllByText("Final stored text")).toHaveLength(1);
+    expect(screen.queryByText("Second live text")).toBeNull();
+  });
+
+  it("caps live assistant previews to the outline payload limit", async () => {
+    setOutline(
+      [
+        {
+          id: "u1",
+          role: "user",
+          preview: "First question",
+          attachmentSummary: null,
+        },
+        {
+          id: "u2",
+          role: "user",
+          preview: "Second question",
+          attachmentSummary: null,
+        },
+        {
+          id: "u3",
+          role: "user",
+          preview: "Third question",
+          attachmentSummary: null,
+        },
+      ],
+      10,
+    );
+    const boundedPreview = "x".repeat(200);
+    render(
+      <TocHost
+        timelineRows={[
+          assistantConversationRow({
+            id: "a-live",
+            index: 11,
+            text: `${boundedPreview} overflow`,
+          }),
+        ]}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(await screen.findByText("Agent messages"));
+
+    expect(screen.getByText(boundedPreview)).not.toBeNull();
+    expect(screen.queryByText(`${boundedPreview} overflow`)).toBeNull();
+  });
+
   it("renders an agent-to-agent message source as a thread mention", async () => {
     setOutline([
       {
@@ -894,6 +1124,33 @@ describe("ThreadTableOfContents", () => {
         user: "user-2",
       },
     );
+  });
+
+  it("tracks a live assistant row that is newer than the outline", () => {
+    const scrollElement = createScrollElement({
+      clientHeight: 100,
+      scrollHeight: 1_000,
+      scrollTop: 400,
+      rows: [{ id: "agent-live", top: 20, bottom: 80 }],
+    });
+
+    expect(
+      findActiveItemIds({
+        agentItems: [],
+        scrollElement,
+        supplementalAgentItems: [
+          {
+            id: "agent-live",
+            label: "Streaming response",
+            role: "assistant",
+          },
+        ],
+        userItems: [],
+      }),
+    ).toEqual({
+      agent: "agent-live",
+      user: null,
+    });
   });
 
   it("does not mark a role active at the bottom when that role is offscreen", () => {

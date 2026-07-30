@@ -12,9 +12,9 @@
  * Why this isn't a flat `invalidateQueries(prefix)` table:
  * - Scoping uses notification metadata, not just the change kind. Thread changes
  *   carry `projectId`, `eventTypes`, and `hasPendingInteraction` so we invalidate
- *   only the affected project's lists, only refresh prompt history when an
- *   appended batch actually contained a turn request, and patch the sidebar
- *   pending-interaction badge from metadata instead of refetching.
+ *   only the affected project's lists, keep full-thread outlines at stable
+ *   boundaries, refresh prompt history only for turn requests, and patch the
+ *   sidebar pending-interaction badge without refetching.
  * - Some handlers do surgical `setQueryData` rather than invalidation
  *   (`patchThreadListPendingInteractionState`) or mark queries stale without an
  *   active refetch (`mark*Stale` for read-state changes), which a uniform
@@ -101,6 +101,7 @@ import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,
   getProjectSourceDependentInvalidationQueryKeys,
+  getThreadConversationOutlineInvalidationQueryKeys,
   getThreadDetailInvalidationQueryKeys,
   getThreadListInvalidationQueryKeys,
   getThreadPendingInteractionInvalidationQueryKeys,
@@ -151,6 +152,40 @@ export function resolveTrailingRefetchDelayMs(
   return Math.min(
     TRAILING_REFETCH_MAX_INTERVAL_MS,
     Math.max(TRAILING_REFETCH_MIN_INTERVAL_MS, observedFetchDurationMs),
+  );
+}
+
+// These high-volume updates either cannot change conversation rows or only
+// extend an in-flight assistant/plan preview. The live timeline owns that
+// streaming state; the full-thread outline refreshes at item/lifecycle
+// boundaries, when the final row is stable. Unknown and structural event types
+// remain conservative and invalidate the outline.
+const THREAD_OUTLINE_STREAMING_EVENT_TYPES: ReadonlySet<ThreadEventType> =
+  new Set([
+    "item/agentMessage/delta",
+    "item/commandExecution/outputDelta",
+    "item/fileChange/outputDelta",
+    "item/reasoning/summaryTextDelta",
+    "item/reasoning/textDelta",
+    "item/plan/delta",
+    "item/mcpToolCall/progress",
+    "item/toolCall/progress",
+    "item/backgroundTask/progress",
+    "thread/tokenUsage/updated",
+    "thread/contextWindowUsage/updated",
+    "turn/plan/updated",
+    "turn/diff/updated",
+    "provider/unhandled",
+  ]);
+
+function shouldInvalidateThreadConversationOutline(
+  eventTypes: readonly ThreadEventType[] | undefined,
+): boolean {
+  if (!eventTypes || eventTypes.length === 0) {
+    return true;
+  }
+  return eventTypes.some(
+    (eventType) => !THREAD_OUTLINE_STREAMING_EVENT_TYPES.has(eventType),
   );
 }
 
@@ -660,14 +695,23 @@ function dirtyThreadSearchQueries(): QueryKey[] {
 }
 
 function dirtyThreadTimelineQueries({
+  eventTypes,
   queryClient,
   threadId,
 }: ThreadRealtimeDirtyContext): void {
-  // Window only: completed turn-summary-details are immutable, so realtime
-  // event batches must not refetch open detail panels (see helper docs).
+  // Keep the loaded window live for every append. The full-thread outline is a
+  // separate projection: rebuilding it for token/progress events blocks the
+  // server event loop without adding a stable navigation row.
   invalidateQueryKeysWithoutCancelingActiveFetches({
     queryClient,
     queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
+  });
+  if (!shouldInvalidateThreadConversationOutline(eventTypes)) {
+    return;
+  }
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: getThreadConversationOutlineInvalidationQueryKeys({ threadId }),
   });
 }
 

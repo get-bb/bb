@@ -20,6 +20,10 @@ export interface TocItem {
   role: "user" | "assistant";
 }
 
+interface TimelineTocItem extends TocItem {
+  sourceSeqEnd: number;
+}
+
 type TocTab = "user" | "agent";
 
 interface ActiveItemIds {
@@ -45,6 +49,8 @@ const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 // Only worth showing once the conversation has enough user turns to navigate.
 const TOC_MIN_USER_MESSAGES = 3;
 const TOC_MAX_RAIL_TICKS = 20;
+// Matches the server's conversation-outline preview payload.
+const TOC_PREVIEW_MAX_LENGTH = 200;
 // Updating the active rail tick changes overlay DOM and invalidates layout.
 // Wait for a scroll burst to settle instead of doing that work in the same
 // animation frames the timeline is trying to paint.
@@ -78,7 +84,9 @@ function toTocLabel({
   text: string;
 }): string {
   const textLabel = toPreviewLabel(text);
-  return textLabel || toAttachmentPreviewLabel(attachments);
+  const label = textLabel || toAttachmentPreviewLabel(attachments);
+  if (label.length <= TOC_PREVIEW_MAX_LENGTH) return label;
+  return label.slice(0, TOC_PREVIEW_MAX_LENGTH).trimEnd();
 }
 
 function toAttachmentSummaryLabel(
@@ -222,15 +230,17 @@ function TocItemPreview({
 }
 
 /**
- * Builds the user/agent item lists for the minimap. Prefers the full
- * conversation outline (the whole thread, independent of pagination); falls
- * back to the loaded timeline window so the minimap still renders on first
- * paint and in environments without the outline endpoint (e.g. stories).
+ * Builds the user/agent item lists for the minimap. The full outline owns
+ * history while the loaded timeline window supplies live assistant labels and
+ * rows. Keeping those layers separate is important: streaming updates must not
+ * walk and recreate the entire outline (#898).
  */
 function useConversationTocItems({
+  outlineMaxSeq,
   outlineItems,
   timelineRows,
 }: {
+  outlineMaxSeq: number | undefined;
   outlineItems: readonly ThreadConversationOutlineItem[] | undefined;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -238,26 +248,29 @@ function useConversationTocItems({
     if (!outlineItems || outlineItems.length === 0) return null;
     const userItems: TocItem[] = [];
     const agentItems: TocItem[] = [];
+    const agentItemIds = new Set<string>();
     for (const item of outlineItems) {
       const tocItem = outlineItemToTocItem(item);
       if (tocItem.role === "user") {
         userItems.push(tocItem);
       } else {
         agentItems.push(tocItem);
+        agentItemIds.add(tocItem.id);
       }
     }
-    return { agentItems, userItems };
+    return { agentItemIds, agentItems, userItems };
   }, [outlineItems]);
 
   const timelineTocItems = useMemo(() => {
-    const userItems: TocItem[] = [];
-    const agentItems: TocItem[] = [];
+    const userItems: TimelineTocItem[] = [];
+    const agentItems: TimelineTocItem[] = [];
     for (const row of timelineRows) {
       if (row.kind !== "conversation") continue;
-      const item: TocItem = {
+      const item: TimelineTocItem = {
         id: row.id,
         label: toTocLabel({ attachments: row.attachments, text: row.text }),
         role: row.role,
+        sourceSeqEnd: row.sourceSeqEnd,
       };
       if (row.role === "user") {
         userItems.push(item);
@@ -269,7 +282,40 @@ function useConversationTocItems({
     return { agentItems, userItems };
   }, [timelineRows]);
 
-  return outlineTocItems ?? timelineTocItems;
+  const liveAgentOverlay = useMemo(() => {
+    if (!outlineTocItems || outlineMaxSeq === undefined) {
+      return {
+        itemsById: new Map<string, TocItem>(),
+        supplementalItemIdsKey: "",
+        supplementalItems: [] as TocItem[],
+      };
+    }
+    const itemsById = new Map<string, TocItem>();
+    const supplementalItems: TocItem[] = [];
+    for (const item of timelineTocItems.agentItems) {
+      if (item.sourceSeqEnd <= outlineMaxSeq) continue;
+      itemsById.set(item.id, item);
+      if (!outlineTocItems.agentItemIds.has(item.id)) {
+        supplementalItems.push(item);
+      }
+    }
+    return {
+      itemsById,
+      supplementalItemIdsKey: JSON.stringify(
+        supplementalItems.map((item) => item.id),
+      ),
+      supplementalItems,
+    };
+  }, [outlineMaxSeq, outlineTocItems, timelineTocItems.agentItems]);
+
+  const baseItems = outlineTocItems ?? timelineTocItems;
+  return {
+    agentItems: baseItems.agentItems,
+    liveAgentItemsById: liveAgentOverlay.itemsById,
+    supplementalAgentItemIdsKey: liveAgentOverlay.supplementalItemIdsKey,
+    supplementalAgentItems: liveAgentOverlay.supplementalItems,
+    userItems: baseItems.userItems,
+  };
 }
 
 function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
@@ -422,13 +468,20 @@ function findLastVisibleItemId({
 export function findActiveItemIds({
   agentItems,
   scrollElement,
+  supplementalAgentItems = [],
   userItems,
 }: {
   agentItems: readonly TocItem[];
   scrollElement: HTMLElement | null;
+  supplementalAgentItems?: readonly TocItem[];
   userItems: readonly TocItem[];
 }): ActiveItemIds {
-  if (!scrollElement || (userItems.length === 0 && agentItems.length === 0)) {
+  if (
+    !scrollElement ||
+    (userItems.length === 0 &&
+      agentItems.length === 0 &&
+      supplementalAgentItems.length === 0)
+  ) {
     return { agent: null, user: null };
   }
   const scrollRect = scrollElement.getBoundingClientRect();
@@ -438,6 +491,9 @@ export function findActiveItemIds({
   const rolesById = new Map<string, TocTab>();
   for (const item of userItems) rolesById.set(item.id, "user");
   for (const item of agentItems) rolesById.set(item.id, "agent");
+  for (const item of supplementalAgentItems) {
+    rolesById.set(item.id, "agent");
+  }
   const userRows: HTMLElement[] = [];
   const agentRows: HTMLElement[] = [];
 
@@ -501,8 +557,15 @@ export function ThreadTableOfContents({
     enabled: timelineRows.length > 0,
   });
   const senderThreadMetadataById = useSenderThreadMetadataById();
-  const { agentItems, userItems } = useConversationTocItems({
+  const {
+    agentItems,
+    liveAgentItemsById,
+    supplementalAgentItemIdsKey,
+    supplementalAgentItems,
+    userItems,
+  } = useConversationTocItems({
     outlineItems: outlineQuery.data?.items,
+    outlineMaxSeq: outlineQuery.data?.maxSeq,
     timelineRows,
   });
   const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
@@ -524,7 +587,10 @@ export function ThreadTableOfContents({
   });
   const itemEls = useRef(new Map<string, HTMLElement>());
   const activeIdsRef = useRef<ActiveItemIds>({ agent: null, user: null });
-  const hasAgentMessages = agentItems.length > 0;
+  const supplementalAgentItemsRef = useRef(supplementalAgentItems);
+  supplementalAgentItemsRef.current = supplementalAgentItems;
+  const hasAgentMessages =
+    agentItems.length > 0 || supplementalAgentItems.length > 0;
   const activeTab = tab === "agent" && hasAgentMessages ? "agent" : "user";
   const items = activeTab === "user" ? userItems : agentItems;
   const activeId = activeTab === "user" ? activeUserId : activeAgentId;
@@ -567,7 +633,12 @@ export function ThreadTableOfContents({
     };
     const updateActiveItems = () => {
       publishActiveItems(
-        findActiveItemIds({ agentItems, scrollElement, userItems }),
+        findActiveItemIds({
+          agentItems,
+          scrollElement,
+          supplementalAgentItems: supplementalAgentItemsRef.current,
+          userItems,
+        }),
       );
     };
     let updateTimeout: number | null = null;
@@ -597,7 +668,13 @@ export function ThreadTableOfContents({
         window.clearTimeout(updateTimeout);
       }
     };
-  }, [agentItems, bottomAnchor, tocVisible, userItems]);
+  }, [
+    agentItems,
+    bottomAnchor,
+    supplementalAgentItemIdsKey,
+    tocVisible,
+    userItems,
+  ]);
 
   useEffect(() => {
     if (!tocVisible || !open) return;
@@ -679,6 +756,45 @@ export function ThreadTableOfContents({
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) return null;
 
+  const renderPanelItem = (item: TocItem) => {
+    const displayedItem =
+      activeTab === "agent" ? (liveAgentItemsById.get(item.id) ?? item) : item;
+    const active = item.id === activeId;
+    const pending = item.id === pendingJumpId;
+    return (
+      <li key={item.id}>
+        <button
+          ref={(node) => {
+            if (node) itemEls.current.set(item.id, node);
+            else itemEls.current.delete(item.id);
+          }}
+          type="button"
+          aria-busy={pending}
+          onClick={() => {
+            void handleSelect(item.id);
+          }}
+          className={cn(
+            "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
+            active ? "bg-state-hover" : "hover:bg-state-hover",
+          )}
+        >
+          <span
+            className={cn(
+              "text-xs leading-snug",
+              active ? "text-foreground" : "text-muted-foreground",
+              pending && "animate-pulse",
+            )}
+          >
+            <TocItemPreview
+              item={displayedItem}
+              senderThreadMetadataById={senderThreadMetadataById}
+            />
+          </span>
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div
       ref={setRootElement}
@@ -755,48 +871,10 @@ export function ThreadTableOfContents({
                       className="h-px w-full"
                     />
                     <ul className="flex flex-col">
-                      {items.map((item) => {
-                        const active = item.id === activeId;
-                        const pending = item.id === pendingJumpId;
-                        return (
-                          <li key={item.id}>
-                            <button
-                              ref={(node) => {
-                                if (node) itemEls.current.set(item.id, node);
-                                else itemEls.current.delete(item.id);
-                              }}
-                              type="button"
-                              aria-busy={pending}
-                              onClick={() => {
-                                void handleSelect(item.id);
-                              }}
-                              className={cn(
-                                "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
-                                active
-                                  ? "bg-state-hover"
-                                  : "hover:bg-state-hover",
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  "text-xs leading-snug",
-                                  active
-                                    ? "text-foreground"
-                                    : "text-muted-foreground",
-                                  pending && "animate-pulse",
-                                )}
-                              >
-                                <TocItemPreview
-                                  item={item}
-                                  senderThreadMetadataById={
-                                    senderThreadMetadataById
-                                  }
-                                />
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
+                      {items.map(renderPanelItem)}
+                      {activeTab === "agent"
+                        ? supplementalAgentItems.map(renderPanelItem)
+                        : null}
                     </ul>
                     <div
                       ref={bottomSentinelRef}

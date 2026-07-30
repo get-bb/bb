@@ -22,6 +22,7 @@ import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
+  threadConversationOutlineQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
@@ -975,6 +976,85 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(turnDetailsKey)?.isInvalidated).not.toBe(
       true,
     );
+
+    effects.dispose();
+  });
+
+  it("keeps the full outline stable during high-volume streaming updates", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    queryClient.setQueryData(outlineKey, { items: [], maxSeq: 1 });
+    queryClient.setQueryData(timelineKey, {
+      rows: [],
+      timelinePage: {
+        kind: "latest",
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        eventTypes: [
+          "item/agentMessage/delta",
+          "item/commandExecution/outputDelta",
+          "item/fileChange/outputDelta",
+          "item/reasoning/summaryTextDelta",
+          "item/reasoning/textDelta",
+          "item/plan/delta",
+          "item/mcpToolCall/progress",
+          "item/toolCall/progress",
+          "item/backgroundTask/progress",
+          "thread/tokenUsage/updated",
+          "thread/contextWindowUsage/updated",
+          "turn/plan/updated",
+          "turn/diff/updated",
+          "provider/unhandled",
+        ],
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).not.toBe(true);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/completed"] },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).toBe(true);
+
+    effects.dispose();
+  });
+
+  it("keeps outline invalidation conservative without event metadata", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    queryClient.setQueryData(outlineKey, { items: [], maxSeq: 1 });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(outlineKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
   });
