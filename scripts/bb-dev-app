@@ -1,12 +1,12 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="${0:A:h}"
-REPO_ROOT="${BB_DEV_REPO_ROOT:-${script_dir:h}}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${BB_DEV_REPO_ROOT:-$(dirname -- "${script_dir}")}"
 
 resolve_dev_node_bin_dir() {
   if [[ -n "${BB_DEV_NODE_BIN_DIR:-}" ]]; then
-    print -r -- "${BB_DEV_NODE_BIN_DIR}"
+    printf '%s\n' "${BB_DEV_NODE_BIN_DIR}"
     return
   fi
 
@@ -65,7 +65,7 @@ else
 fi
 
 sanitize_label() {
-  print -r -- "$1" \
+  printf '%s\n' "$1" \
     | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9._-]+/-/g; s/^[._-]+//; s/[._-]+$//'
 }
@@ -244,11 +244,17 @@ stop_dev_app() {
   sleep 2
 
   local pids=()
-  pids+=("${(@f)$(port_listener_pids "${BB_DEV_APP_PORT}")}")
-  pids+=("${(@f)$(port_listener_pids "${BB_SERVER_PORT}")}")
-  pids+=("${(@f)$(port_listener_pids "${BB_HOST_DAEMON_PORT}")}")
-  pids+=("${(@f)$(desktop_pids)}")
-  pids=("${(@u)pids}")
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && pids+=("${pid}")
+  done < <(
+    {
+      port_listener_pids "${BB_DEV_APP_PORT}"
+      port_listener_pids "${BB_SERVER_PORT}"
+      port_listener_pids "${BB_HOST_DAEMON_PORT}"
+      desktop_pids
+    } | sort -u
+  )
 
   if (( ${#pids[@]} > 0 )); then
     log "Stopping remaining dev-instance processes: ${pids[*]}"
@@ -352,21 +358,36 @@ wait_for_log_pattern() {
 }
 
 start_dev_server() {
+  local repo_root_q path_q dev_log_q
+  printf -v repo_root_q '%q' "${REPO_ROOT}"
+  printf -v path_q '%q' "${PATH}"
+  printf -v dev_log_q '%q' "${DEV_LOG}"
   log "Starting dev server session ${DEV_SESSION}"
   rm -f "${DEV_LOG}"
-  screen -dmS "${DEV_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm dev > ${(q)DEV_LOG} 2>&1"
+  screen -dmS "${DEV_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm dev > ${dev_log_q} 2>&1"
   wait_for_log_pattern "${DEV_LOG}" "Host daemon started" "dev server" 90
 }
 
 start_desktop() {
+  local repo_root_q path_q desktop_log_q
+  printf -v repo_root_q '%q' "${REPO_ROOT}"
+  printf -v path_q '%q' "${PATH}"
+  printf -v desktop_log_q '%q' "${DESKTOP_LOG}"
   log "Starting desktop session ${DESKTOP_SESSION}"
   rm -f "${DESKTOP_LOG}"
-  screen -dmS "${DESKTOP_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm exec turbo run dev --filter=@bb/desktop > ${(q)DESKTOP_LOG} 2>&1"
+  screen -dmS "${DESKTOP_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm exec turbo run dev --filter=@bb/desktop > ${desktop_log_q} 2>&1"
   wait_for_log_pattern "${DESKTOP_LOG}" "@bb/desktop: app http://localhost:${BB_DEV_APP_PORT}" "desktop app" 120
 }
 
 open_app_url() {
-  /usr/bin/open "http://localhost:${BB_DEV_APP_PORT}" >/dev/null 2>&1 || true
+  local url="http://localhost:${BB_DEV_APP_PORT}"
+  if command -v open >/dev/null 2>&1; then
+    open "${url}" >/dev/null 2>&1 || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${url}" >/dev/null 2>&1 || true
+  elif command -v gio >/dev/null 2>&1; then
+    gio open "${url}" >/dev/null 2>&1 || true
+  fi
 }
 
 start_current() {
@@ -454,7 +475,7 @@ main() {
       start_current "${open_after_start}" "${start_desktop_app}"
       ;;
     branch)
-      switch_to_branch "${positional[1]:-}"
+      switch_to_branch "${positional[0]:-}"
       start_current "${open_after_start}" "${start_desktop_app}"
       ;;
     current)
@@ -470,7 +491,7 @@ main() {
       print_env
       ;;
     logs)
-      follow_logs "${positional[1]:-dev}"
+      follow_logs "${positional[0]:-dev}"
       ;;
     help|-h|--help|"")
       usage
