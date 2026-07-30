@@ -62,8 +62,8 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    const first = cache.getOrBuild("k", build);
-    const second = cache.getOrBuild("k", build);
+    const first = cache.getOrBuild(baseKeyArgs, build);
+    const second = cache.getOrBuild(baseKeyArgs, build);
 
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
@@ -74,36 +74,94 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    cache.getOrBuild("k1", build);
-    cache.getOrBuild("k2", build);
+    cache.getOrBuild(baseKeyArgs, build);
+    cache.getOrBuild({ ...baseKeyArgs, maxSeq: 11 }, build);
 
     expect(build).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(1);
+  });
+
+  it("retains only the newest revision for the same request shape", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(3));
+
+    for (let maxSeq = 1; maxSeq <= 128; maxSeq += 1) {
+      cache.getOrBuild({ ...baseKeyArgs, maxSeq }, build);
+    }
+
+    expect(build).toHaveBeenCalledTimes(128);
+    expect(cache.size).toBe(1);
   });
 
   it("does not cache responses above the row cap (streaming expanded turns)", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
     const build = vi.fn(() => makeResponse(50));
 
-    cache.getOrBuild("k", build);
-    cache.getOrBuild("k", build);
+    cache.getOrBuild(baseKeyArgs, build);
+    cache.getOrBuild(baseKeyArgs, build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
   });
 
+  it("drops an obsolete revision when its replacement exceeds the row cap", () => {
+    const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
+    cache.getOrBuild(baseKeyArgs, () => makeResponse(3));
+
+    const buildLarge = vi.fn(() => makeResponse(50));
+    const nextRevision = { ...baseKeyArgs, maxSeq: 11 };
+    cache.getOrBuild(nextRevision, buildLarge);
+
+    expect(cache.size).toBe(0);
+    cache.getOrBuild(nextRevision, buildLarge);
+    expect(buildLarge).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the prior revision when its replacement build fails", () => {
+    const cache = createThreadTimelineCache();
+    const first = cache.getOrBuild(baseKeyArgs, () => makeResponse(3));
+
+    expect(() =>
+      cache.getOrBuild({ ...baseKeyArgs, maxSeq: 11 }, () => {
+        throw new Error("build failed");
+      }),
+    ).toThrow("build failed");
+
+    expect(cache.getOrBuild(baseKeyArgs, () => makeResponse(4))).toBe(first);
+    expect(cache.size).toBe(1);
+  });
+
+  it("keeps different request shapes independently cached", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(1));
+    const summaryKeyArgs = { ...baseKeyArgs, summaryOnly: true };
+
+    cache.getOrBuild(baseKeyArgs, build);
+    cache.getOrBuild(summaryKeyArgs, build);
+    cache.getOrBuild(baseKeyArgs, build);
+    cache.getOrBuild(summaryKeyArgs, build);
+
+    expect(build).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(2);
+  });
+
   it("evicts least-recently-used entries beyond maxEntries", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
+    const a1 = { ...baseKeyArgs, threadId: "thr_a", maxSeq: 1 };
+    const a2 = { ...a1, maxSeq: 2 };
+    const b1 = { ...baseKeyArgs, threadId: "thr_b", maxSeq: 1 };
+    const c1 = { ...baseKeyArgs, threadId: "thr_c", maxSeq: 1 };
 
-    cache.getOrBuild("a", build); // [a]
-    cache.getOrBuild("b", build); // [a,b]
-    cache.getOrBuild("a", build); // touch a -> [b,a]
-    cache.getOrBuild("c", build); // evict b -> [a,c]
+    cache.getOrBuild(a1, build); // [a1]
+    cache.getOrBuild(b1, build); // [a1,b1]
+    cache.getOrBuild(a2, build); // replace a1 -> [b1,a2]
+    cache.getOrBuild(c1, build); // evict b1 -> [a2,c1]
 
     expect(cache.size).toBe(2);
     const buildAgain = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("a", buildAgain); // still cached
-    cache.getOrBuild("b", buildAgain); // evicted -> rebuild
+    cache.getOrBuild(a2, buildAgain); // still cached
+    cache.getOrBuild(b1, buildAgain); // evicted -> rebuild
     expect(buildAgain).toHaveBeenCalledTimes(1);
   });
 });

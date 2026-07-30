@@ -54,7 +54,6 @@ import {
 } from "../../services/threads/timeline.js";
 import { createSlowThreadTimelineBuildLogger } from "../../services/threads/timeline-build-log.js";
 import {
-  buildThreadTimelineCacheKey,
   buildThreadTimelineParamsKey,
   createThreadTimelineCache,
 } from "../../services/threads/timeline-cache.js";
@@ -399,30 +398,27 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeProviderUnhandledOperations,
     };
-    const full = timelineCache.getOrBuild(
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
-      () => {
-        const { profile, response } = buildThreadTimelineWithProfile(
-          deps.db,
-          thread,
-          {
-            eventBudget,
-            includeProviderUnhandledOperations,
-            includeNestedRows,
-            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-            maxSeq,
-            page,
-            providerDisplayName,
-            summaryOnly,
-          },
-        );
-        slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        return truncateTimelineResponseOutputs(
-          response,
-          DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-        );
-      },
-    );
+    const full = timelineCache.getOrBuild({ ...keyArgs, maxSeq }, () => {
+      const { profile, response } = buildThreadTimelineWithProfile(
+        deps.db,
+        thread,
+        {
+          eventBudget,
+          includeProviderUnhandledOperations,
+          includeNestedRows,
+          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+          maxSeq,
+          page,
+          providerDisplayName,
+          summaryOnly,
+        },
+      );
+      slowTimelineBuildLogger.log({ profile, threadId: thread.id });
+      return truncateTimelineResponseOutputs(
+        response,
+        DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      );
+    });
 
     // Delta: when the client tells us the revision it currently holds and our
     // last-sent snapshot still matches it exactly, return only the changed rows.
