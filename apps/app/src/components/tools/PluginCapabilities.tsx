@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { PluginCapability } from "@bb/server-contract";
 import {
   ResourceDetailCollection,
@@ -6,6 +6,12 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -16,59 +22,95 @@ import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 function pluginActivityIcon(
+  activity: "service" | "schedule",
   state: "running" | "backoff" | "stopped" | "ok" | "error" | null,
 ): { name: IconName; className: string; label: string } {
-  if (state === "running" || state === "ok") {
+  if (activity === "service" && state === "running") {
     return {
       name: "CircleCheck",
       className: "text-success",
-      label: "Healthy",
+      label: "Running",
     };
   }
-  if (state === "backoff") {
+  if (activity === "service" && state === "backoff") {
     return {
-      name: "AlertTriangle",
+      name: "RotateCcw",
       className: "text-warning",
-      label: "Retrying",
+      label: "Restarting",
     };
   }
-  if (state === "error") {
-    return { name: "CircleX", className: "text-destructive", label: "Failed" };
+  if (activity === "service" && state === "stopped") {
+    return {
+      name: "Pause",
+      className: "text-muted-foreground",
+      label: "Stopped",
+    };
   }
-  if (state === null) {
+  if (activity === "schedule" && state === null) {
     return {
       name: "Clock",
       className: "text-muted-foreground",
-      label: "No runs yet",
+      label: "Scheduled",
     };
   }
-  return {
-    name: "Pause",
-    className: "text-muted-foreground",
-    label: "Stopped",
-  };
+  if (activity === "schedule" && state === "running") {
+    return {
+      name: "Loading",
+      className: "animate-spin text-muted-foreground",
+      label: "Running",
+    };
+  }
+  if (activity === "schedule" && state === "ok") {
+    return {
+      name: "CircleCheck",
+      className: "text-success",
+      label: "Succeeded",
+    };
+  }
+  if (activity === "schedule" && state === "error") {
+    return { name: "CircleX", className: "text-destructive", label: "Failed" };
+  }
+  return activity === "service"
+    ? {
+        name: "Pause",
+        className: "text-muted-foreground",
+        label: "Stopped",
+      }
+    : {
+        name: "Clock",
+        className: "text-muted-foreground",
+        label: "Scheduled",
+      };
 }
 
 function PluginActivityState({
+  activity,
   state,
-  resourceLabel,
 }: {
+  activity: "service" | "schedule";
   state: "running" | "backoff" | "stopped" | "ok" | "error" | null;
-  resourceLabel: string;
 }) {
-  const icon = pluginActivityIcon(state);
+  const icon = pluginActivityIcon(activity, state);
   return (
-    <span
-      role="img"
-      aria-label={`${resourceLabel}: ${icon.label}`}
-      className="inline-flex"
-    >
-      <Icon
-        name={icon.name}
-        className={cn("size-4", icon.className)}
-        aria-hidden
-      />
-    </span>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={icon.label}
+            tabIndex={0}
+            className="inline-flex"
+          >
+            <Icon
+              name={icon.name}
+              className={cn("size-4", icon.className)}
+              aria-hidden
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{icon.label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -221,63 +263,6 @@ function pluginAppSurfaceItems(
   ];
 }
 
-/**
- * One category and its items, as a row group inside the Includes collection.
- *
- * A category is a label on a run of rows, not an object in its own right, so it
- * gets a group header rather than a card. Wrapping each category in its own
- * bordered panel drew a box around what is usually a single row and made
- * Includes read as unrelated objects instead of one list. `ResourceDetailCollection`
- * is the house pattern for exactly this — the same one Activity, skill Files,
- * and automation Run history already use.
- */
-function PluginCapabilityGroup({
-  icon,
-  label,
-  items,
-}: {
-  icon: IconName;
-  label: string;
-  items: readonly PluginCapabilityItem[];
-}) {
-  return (
-    <section data-plugin-capability-group>
-      <div className="flex items-center gap-2 bg-surface-recessed/40 px-3 py-1.5">
-        <Icon
-          name={icon}
-          className="size-3.5 shrink-0 text-subtle-foreground"
-          aria-hidden
-        />
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </h3>
-      </div>
-      <ul className="min-w-0 divide-y divide-border/50">
-        {items.map((item) => (
-          <li
-            key={item.key}
-            className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2"
-          >
-            <span
-              className={cn(
-                "min-w-0 break-words text-sm leading-snug text-foreground",
-                item.mono && "break-all font-mono",
-              )}
-            >
-              {item.label}
-            </span>
-            {item.detail ? (
-              <span className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
-                {item.detail}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 export function PluginIncludes({
   plugin,
   hasSettings,
@@ -342,19 +327,16 @@ export function PluginIncludes({
         mono: kind === "skill" || kind === "agent-tool",
       }));
 
-  const groups: Array<{
+  const categories: Array<{
     icon: IconName;
-    label: string;
     items: PluginCapabilityItem[];
   }> = [
     {
       icon: "AppWindow",
-      label: "App surfaces",
       items: appItems,
     },
     {
       icon: "Terminal",
-      label: "Command",
       items: plugin.cliCommand
         ? [
             {
@@ -368,31 +350,28 @@ export function PluginIncludes({
     },
     {
       icon: "Settings",
-      label: "Settings",
       items: settingsItems,
     },
     {
       icon: "Explore",
-      label: "Skills",
       items: declared("skill"),
     },
     {
       icon: "Toolbox",
-      label: "Agent tools",
       items: declared("agent-tool"),
     },
     {
       icon: "MessageCirclePlus",
-      label: "Thread integrations",
       items: declared("thread-integration"),
     },
     {
       icon: "Palette",
-      label: "Themes",
       items: declared("theme"),
     },
   ];
-  const populated = groups.filter(({ items }) => items.length > 0);
+  const items = categories.flatMap(({ icon, items: groupItems }) =>
+    groupItems.map((item) => ({ ...item, icon })),
+  );
 
   // Commands, settings, agent tools, thread integrations and app surfaces are
   // only observable on a *running* plugin — not merely an enabled one. A
@@ -409,9 +388,9 @@ export function PluginIncludes({
     ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
     : "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.";
 
-  // Includes is a stable part of the plugin recipe, so it explains an empty
+  // Capabilities is a stable part of the plugin recipe, so it explains an empty
   // result rather than disappearing.
-  if (populated.length === 0) {
+  if (items.length === 0) {
     return (
       <EmptyStatePanel className="py-6">
         {live
@@ -425,19 +404,40 @@ export function PluginIncludes({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        What this plugin adds to bb and where you can use it.
-      </p>
-      <ResourceDetailCollection>
-        {populated.map(({ icon, label, items }) => (
-          <PluginCapabilityGroup
-            key={label}
-            icon={icon}
-            label={label}
-            items={items}
-          />
+      <dl className="grid grid-cols-[fit-content(20rem)_minmax(0,1fr)]">
+        {items.map((item, index) => (
+          <Fragment key={item.key}>
+            <dt
+              className={cn(
+                "flex min-w-0 items-start gap-2 py-2 pr-6",
+                index > 0 && "border-t border-border/50",
+              )}
+            >
+              <Icon
+                name={item.icon}
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <span
+                className={cn(
+                  "min-w-0 break-all text-sm leading-snug text-foreground",
+                  item.mono && "font-mono",
+                )}
+              >
+                {item.label}
+              </span>
+            </dt>
+            <dd
+              className={cn(
+                "min-w-0 py-2 text-xs leading-relaxed text-muted-foreground",
+                index > 0 && "border-t border-border/50",
+              )}
+            >
+              {item.detail}
+            </dd>
+          </Fragment>
         ))}
-      </ResourceDetailCollection>
+      </dl>
       {live ? null : (
         <p className="flex min-w-0 items-start gap-2 text-xs leading-relaxed text-muted-foreground">
           <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -449,12 +449,10 @@ export function PluginIncludes({
 }
 
 /**
- * A run of activity rows under a quiet group header, matching Includes.
+ * A run of health rows under a quiet group header.
  *
- * Activity and Includes sit next to each other on the same page and answer
- * neighbouring questions, so they share one row-group language rather than each
- * inventing a heading style. The group name carries the meaning; the sentence
- * of boilerplate that used to sit under it did not.
+ * The group name carries the meaning, so no boilerplate needs to sit above the
+ * collection.
  */
 function PluginActivityGroup({
   title,
@@ -494,9 +492,6 @@ export function PluginActivity({
   }
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        Live health for the background work this plugin runs.
-      </p>
       <ResourceDetailCollection>
         {showOverallState && runtimeStatus !== null ? (
           <PluginActivityGroup title="Plugin health">
@@ -532,21 +527,17 @@ export function PluginActivity({
         {plugin.services.length > 0 ? (
           <PluginActivityGroup title="Background services">
             {plugin.services.map((service) => {
-              const state = pluginActivityIcon(service.state);
               return (
                 <ResourceDetailListItem
                   key={service.name}
                   leading={
                     <PluginActivityState
+                      activity="service"
                       state={service.state}
-                      resourceLabel={service.name}
                     />
                   }
                 >
                   <span className="block">{service.name}</span>
-                  <span className={cn("block text-xs", state.className)}>
-                    {state.label}
-                  </span>
                 </ResourceDetailListItem>
               );
             })}
@@ -555,21 +546,17 @@ export function PluginActivity({
         {plugin.schedules.length > 0 ? (
           <PluginActivityGroup title="Scheduled jobs">
             {plugin.schedules.map((schedule) => {
-              const state = pluginActivityIcon(schedule.lastStatus);
               return (
                 <ResourceDetailListItem
                   key={schedule.name}
                   leading={
                     <PluginActivityState
+                      activity="schedule"
                       state={schedule.lastStatus}
-                      resourceLabel={schedule.name}
                     />
                   }
                 >
                   <span className="block">{schedule.name}</span>
-                  <span className={cn("block text-xs", state.className)}>
-                    {state.label}
-                  </span>
                   {schedule.lastError ? (
                     <span className="block text-xs text-destructive">
                       {schedule.lastError}

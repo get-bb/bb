@@ -9,11 +9,14 @@
  * required section fails here rather than silently drifting.
  */
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AutomationResponse } from "bb-plugin-automations/rpc-types";
-import { AutomationDetailView } from "bb-plugin-automations/detail-view";
+import {
+  AutomationDetailView,
+  AutomationRunStatusIndicator,
+} from "bb-plugin-automations/detail-view";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -90,17 +93,17 @@ function renderPlugin(plugin: PluginListItem) {
 }
 
 describe("Plugin detail recipe", () => {
-  it("keeps Release directly below About, followed by Includes", () => {
+  it("keeps Release directly below About, followed by Capabilities", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["release", "Release"],
-      ["includes", "Includes"],
+      ["includes", "Capabilities"],
     ]);
   });
 
-  it("places Settings and Activity after Includes when they apply", () => {
+  it("places Settings and Health after Capabilities when they apply", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       hasSettings: true,
@@ -110,9 +113,9 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["release", "Release"],
-      ["includes", "Includes"],
+      ["includes", "Capabilities"],
       ["configuration", "Settings"],
-      ["activity", "Activity"],
+      ["activity", "Health"],
     ]);
   });
 
@@ -127,8 +130,8 @@ describe("Plugin detail recipe", () => {
     ).toBeTruthy();
   });
 
-  it("groups declared capabilities under product-facing Includes headings", () => {
-    renderPlugin({
+  it("lists declared capabilities without category chrome", () => {
+    const { container } = renderPlugin({
       ...PLUGIN,
       cliCommand: { name: "gh", summary: "Work with GitHub" },
       capabilities: [
@@ -159,25 +162,26 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    // Bind each item to its own heading. Asserting that both strings merely
-    // exist somewhere on the page passes even when two kinds are wired to each
-    // other's groups, which is exactly the mis-wiring this guards against.
-    for (const [heading, item] of [
-      ["Command", "bb gh"],
-      ["Skills", "review"],
-      ["Agent tools", "gh_search"],
-      ["Thread integrations", "Pull requests"],
-      ["Themes", "GitHub Dark"],
+    const capabilities = container.querySelector(
+      '[data-resource-detail-section="includes"]',
+    );
+    expect(capabilities?.querySelector("dl")).not.toBeNull();
+    expect(
+      capabilities?.querySelector("[data-plugin-capability-group]"),
+    ).toBeNull();
+
+    for (const item of [
+      "bb gh",
+      "review",
+      "gh_search",
+      "Pull requests",
+      "GitHub Dark",
     ] as const) {
-      const group = screen
-        .getByText(heading)
-        .closest("[data-plugin-capability-group]");
-      expect(group, `no group rendered for ${heading}`).not.toBeNull();
-      expect(within(group as HTMLElement).getByText(item)).toBeTruthy();
+      expect(screen.getByText(item)).toBeTruthy();
     }
   });
 
-  it("keeps browser-registered app surfaces in Includes", () => {
+  it("keeps browser-registered app surfaces in Capabilities", () => {
     setPluginSlotRegistrations("github", {
       homepageSections: [],
       settingsSections: [],
@@ -197,14 +201,16 @@ describe("Plugin detail recipe", () => {
     });
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
-    expect(screen.getByText("App surfaces")).toBeTruthy();
     expect(screen.getByText("Issues")).toBeTruthy();
   });
 
-  it("explains an empty Includes instead of dropping the section", () => {
+  it("explains empty capabilities instead of dropping the section", () => {
     const { container } = renderPlugin(PLUGIN);
 
-    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
+    expect(renderedRecipe(container)).toContainEqual([
+      "includes",
+      "Capabilities",
+    ]);
     expect(
       screen.getByText("This plugin declares no user-facing capabilities."),
     ).toBeTruthy();
@@ -225,7 +231,10 @@ describe("Plugin detail recipe", () => {
       ],
     });
 
-    expect(renderedRecipe(container)).toContainEqual(["includes", "Includes"]);
+    expect(renderedRecipe(container)).toContainEqual([
+      "includes",
+      "Capabilities",
+    ]);
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
     expect(
       screen.getByText(
@@ -388,7 +397,7 @@ const AUTOMATION: AutomationResponse = {
 };
 
 describe("Automation detail recipe", () => {
-  it("keeps Definition ahead of Run history, including with no runs yet", () => {
+  it("keeps Definition ahead of Runs, including with no runs yet", () => {
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -415,6 +424,17 @@ describe("Automation detail recipe", () => {
 
     const recipe = renderedRecipe(container);
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
-    expect(recipe.at(-1)?.[1]).toBe("Run history");
+    expect(recipe.at(-1)?.[1]).toBe("Runs");
+  });
+
+  it("renders a subdued glyph for skipped runs", () => {
+    const { container } = render(
+      <AutomationRunStatusIndicator status="skipped" />,
+    );
+
+    expect(screen.getByRole("img", { name: "Skipped" })).toBeTruthy();
+    const icon = container.querySelector('[data-icon="CircleDashed"]');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute("class")).toContain("text-subtle-foreground");
   });
 });

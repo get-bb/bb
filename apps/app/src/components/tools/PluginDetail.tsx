@@ -227,7 +227,7 @@ export function PluginDetail({
             )}
           </div>
         </ResourceDetailReleaseSection>
-        <ResourceDetailIncludesSection label="Includes">
+        <ResourceDetailIncludesSection label="Capabilities">
           <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
         </ResourceDetailIncludesSection>
         {hasSettings ? (
@@ -236,7 +236,7 @@ export function PluginDetail({
           </ResourceDetailConfigurationSection>
         ) : null}
         {hasActivity ? (
-          <ResourceActivitySection label="Activity">
+          <ResourceActivitySection label="Health">
             <PluginActivity plugin={plugin} runtimeStatus={runtimeStatus} />
           </ResourceActivitySection>
         ) : null}

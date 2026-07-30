@@ -185,7 +185,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
     label: string;
-    icon: IconName | null;
+    icon: IconName;
     className: string;
   }
 > = {
@@ -201,8 +201,8 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   },
   skipped: {
     label: "Skipped",
-    icon: null,
-    className: "text-muted-foreground",
+    icon: "CircleDashed",
+    className: "text-subtle-foreground",
   },
   succeeded: {
     label: "Succeeded",
@@ -219,22 +219,17 @@ export function AutomationRunStatusIndicator({
   showLabel?: boolean;
 }) {
   const visual = AUTOMATION_RUN_STATUS_VISUALS[status];
-  if (visual.icon === null && !showLabel) {
-    return <span className="sr-only">{visual.label}</span>;
-  }
   return (
     <span
       role="img"
       aria-label={visual.label}
       className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
     >
-      {visual.icon ? (
-        <Icon
-          name={visual.icon}
-          className={cn("size-4", visual.className)}
-          aria-hidden
-        />
-      ) : null}
+      <Icon
+        name={visual.icon}
+        className={cn("size-4", visual.className)}
+        aria-hidden
+      />
       {showLabel ? <span>{visual.label}</span> : null}
     </span>
   );
@@ -460,7 +455,7 @@ export function AutomationDetailView({
           )}
         </ResourceDefinitionSection>
 
-        <ResourceActivitySection label="Run history">
+        <ResourceActivitySection label="Runs">
           {runsState.error !== null ? (
             <ResourceDetailPanel
               surface="recessed"

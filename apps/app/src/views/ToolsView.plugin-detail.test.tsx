@@ -215,7 +215,7 @@ describe("PluginDetail official catalog lifecycle", () => {
 });
 
 describe("PluginDetail capability inventory", () => {
-  it("names each contributed capability in roomy category groups", () => {
+  it("lists each contributed capability and keeps health separate", () => {
     const EmptySlot = () => null;
     setPluginSlotRegistrations("capability-demo", {
       homepageSections: [],
@@ -262,8 +262,35 @@ describe("PluginDetail capability inventory", () => {
         name: "capability",
         summary: "Inspect contributed capabilities.",
       },
+      capabilities: [
+        {
+          kind: "skill",
+          id: "review",
+          label: "review",
+          detail: "Review repository changes.",
+        },
+        {
+          kind: "agent-tool",
+          id: "fetch_issues",
+          label: "fetch_issues",
+          detail: "Fetches repository issues.",
+        },
+        {
+          kind: "thread-integration",
+          id: "pull-request-mentions",
+          label: "Pull request mentions",
+          detail: "Displays pull request references.",
+        },
+        {
+          kind: "theme",
+          id: "github.dark",
+          label: "GitHub Dark",
+          detail: "A dark GitHub-inspired theme.",
+        },
+      ],
       services: [
         { name: "watch", state: "running" as const },
+        { name: "restart", state: "backoff" as const },
         { name: "sync", state: "stopped" as const },
       ],
       schedules: [
@@ -274,6 +301,30 @@ describe("PluginDetail capability inventory", () => {
           lastRunAt: null,
           lastStatus: null,
           lastError: null,
+        },
+        {
+          name: "in-progress",
+          cron: "0 10 * * *",
+          nextRunAt: 1_800_000_000_000,
+          lastRunAt: null,
+          lastStatus: "running" as const,
+          lastError: null,
+        },
+        {
+          name: "completed",
+          cron: "0 11 * * *",
+          nextRunAt: 1_800_000_000_000,
+          lastRunAt: null,
+          lastStatus: "ok" as const,
+          lastError: null,
+        },
+        {
+          name: "failed",
+          cron: "0 12 * * *",
+          nextRunAt: 1_800_000_000_000,
+          lastRunAt: null,
+          lastStatus: "error" as const,
+          lastError: "Timed out",
         },
       ],
     } satisfies PluginListItem;
@@ -311,17 +362,33 @@ describe("PluginDetail capability inventory", () => {
     );
     expect(includes).not.toBeNull();
     const inventory = within(includes as HTMLElement);
-    expect(inventory.getByText("Run monitor")).toBeTruthy();
-    expect(inventory.getByText("Adds a page to the app sidebar.")).toBeTruthy();
-    expect(inventory.getByText("enhance-prompt")).toBeTruthy();
+    expect(includes?.querySelector("dl")).not.toBeNull();
     expect(
-      inventory.getByText("Adds an action beside the thread composer."),
-    ).toBeTruthy();
-    expect(inventory.getByText("Advanced preferences")).toBeTruthy();
-    expect(inventory.getByText("Custom settings section")).toBeTruthy();
-    expect(inventory.getByText("API token")).toBeTruthy();
-    expect(inventory.getByText("apiToken")).toBeTruthy();
-    expect(inventory.getByText("bb capability")).toBeTruthy();
+      includes?.querySelector("[data-plugin-capability-group]"),
+    ).toBeNull();
+    for (const text of [
+      "Run monitor",
+      "Adds a page to the app sidebar.",
+      "enhance-prompt",
+      "Adds an action beside the thread composer.",
+      "Advanced preferences",
+      "Custom settings section",
+      "API token",
+      "Setting",
+      "apiToken",
+      "bb capability",
+      "Inspect contributed capabilities.",
+      "review",
+      "Review repository changes.",
+      "fetch_issues",
+      "Fetches repository issues.",
+      "Pull request mentions",
+      "Displays pull request references.",
+      "GitHub Dark",
+      "A dark GitHub-inspired theme.",
+    ]) {
+      expect(inventory.getByText(text)).toBeTruthy();
+    }
     expect(inventory.queryByText("watch")).toBeNull();
     expect(inventory.queryByText("daily-cleanup")).toBeNull();
     expect(includes?.textContent).not.toContain("2 background services");
@@ -331,25 +398,32 @@ describe("PluginDetail capability inventory", () => {
     );
     expect(activity).not.toBeNull();
     const runtime = within(activity as HTMLElement);
+    expect(runtime.getByText("Health")).toBeTruthy();
     expect(runtime.getByText("Background services")).toBeTruthy();
     expect(runtime.getByText("watch")).toBeTruthy();
+    expect(runtime.getByText("restart")).toBeTruthy();
     expect(runtime.getByText("sync")).toBeTruthy();
     expect(runtime.getByText("Scheduled jobs")).toBeTruthy();
     expect(runtime.getByText("daily-cleanup")).toBeTruthy();
+    expect(runtime.getByText("in-progress")).toBeTruthy();
+    expect(runtime.getByText("completed")).toBeTruthy();
+    expect(runtime.getByText("failed")).toBeTruthy();
+    expect(runtime.getByText("Timed out")).toBeTruthy();
 
-    const groups = includes?.querySelectorAll("[data-plugin-capability-group]");
-    expect(groups?.length).toBe(3);
-    // Categories are row groups inside one collection, not cards. A per-group
-    // panel drew a border around what is usually a single row, so the boxes are
-    // asserted *absent* here: the one surface belongs to the collection that
-    // contains every group.
-    for (const group of groups ?? []) {
-      expect(group.classList).not.toContain("rounded-md");
-      expect(group.classList).not.toContain("border");
+    for (const [label, icon] of [
+      ["Running", "CircleCheck"],
+      ["Restarting", "RotateCcw"],
+      ["Stopped", "Pause"],
+      ["Scheduled", "Clock"],
+      ["Running", "Loading"],
+      ["Succeeded", "CircleCheck"],
+      ["Failed", "CircleX"],
+    ]) {
+      const status = runtime.getAllByRole("img", { name: label }).find(
+        (element) => element.querySelector(`[data-icon="${icon}"]`) !== null,
+      );
+      expect(status, `${label} should use ${icon}`).toBeTruthy();
+      expect(status?.getAttribute("tabindex")).toBe("0");
     }
-    const surface = groups?.[0]?.parentElement;
-    expect(surface?.className).toContain("rounded-md");
-    expect(surface?.className).toContain("border");
-    expect(surface?.className).toContain("divide-y");
   });
 });

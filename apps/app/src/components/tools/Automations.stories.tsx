@@ -292,7 +292,7 @@ export function DetailStates() {
           Automation detail states
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          An automation page is Definition then Run history. Run history owns
+          An automation page is Definition then Runs. Runs owns
           its loading, empty, failed, and populated states without moving.
         </p>
       </header>
@@ -311,18 +311,18 @@ export function DetailStates() {
         </DetailState>
         <DetailState
           name="No runs yet"
-          note="Run history stays in place and explains itself rather than collapsing."
+          note="The Runs section stays in place and explains itself rather than collapsing."
         >
           <AutomationDetail />
         </DetailState>
         <DetailState
-          name="Run history loading"
+          name="Runs loading"
           note="The definition is usable while history is still arriving."
         >
           <AutomationDetail loading />
         </DetailState>
         <DetailState
-          name="Run history failed"
+          name="Runs failed"
           note="Only the section that failed shows an error; the definition is unaffected."
         >
           <AutomationDetail error="Request timed out" />
