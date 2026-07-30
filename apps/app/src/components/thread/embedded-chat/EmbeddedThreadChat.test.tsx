@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   // while the component is unmounted must appear after a remount.
   timelineRows: [] as Array<{ text: string }>,
   injectedTimelineProps: [] as Array<unknown>,
+  timelineProjectIds: [] as Array<string | undefined>,
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
@@ -77,8 +78,12 @@ vi.mock("@/components/ui/overflow-fade", () => ({
 
 vi.mock("@/components/thread/timeline", () => ({
   isRunningThreadRuntimeDisplayStatus: (status: string) => status === "active",
-  ThreadTimelinePanelContent: (props: { timeline?: unknown }) => {
+  ThreadTimelinePanelContent: (props: {
+    timeline?: unknown;
+    projectId?: string;
+  }) => {
     mocks.injectedTimelineProps.push(props.timeline);
+    mocks.timelineProjectIds.push(props.projectId);
     return (
       <div>
         {mocks.timelineRows.map((row, index) => (
@@ -268,9 +273,17 @@ describe("EmbeddedThreadChat", () => {
     mocks.threadRuntimeDisplayStatus = "idle";
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
+    mocks.timelineProjectIds = [];
   });
   afterEach(() => {
     cleanup();
+  });
+
+  it("forwards the project to the timeline so attachment images resolve to API URLs", () => {
+    // Without it, uploaded attachment paths stay relative and the browser
+    // resolves them against the current route (e.g. /plugins/<id>/...).
+    renderEmbeddedChat();
+    expect(mocks.timelineProjectIds.at(-1)).toBe("proj-1");
   });
 
   it("restores the draft and a stream that advanced while unmounted on remount", () => {
