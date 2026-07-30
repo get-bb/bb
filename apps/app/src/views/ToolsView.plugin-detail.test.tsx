@@ -339,10 +339,17 @@ describe("PluginDetail capability inventory", () => {
 
     const groups = includes?.querySelectorAll("[data-plugin-capability-group]");
     expect(groups?.length).toBe(3);
+    // Categories are row groups inside one collection, not cards. A per-group
+    // panel drew a border around what is usually a single row, so the boxes are
+    // asserted *absent* here: the one surface belongs to the collection that
+    // contains every group.
     for (const group of groups ?? []) {
-      expect(group.classList).toContain("overflow-hidden");
-      expect(group.classList).toContain("rounded-md");
-      expect(group.classList).toContain("border");
+      expect(group.classList).not.toContain("rounded-md");
+      expect(group.classList).not.toContain("border");
     }
+    const surface = groups?.[0]?.parentElement;
+    expect(surface?.className).toContain("rounded-md");
+    expect(surface?.className).toContain("border");
+    expect(surface?.className).toContain("divide-y");
   });
 });
