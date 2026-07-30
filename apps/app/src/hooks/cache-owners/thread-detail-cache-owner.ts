@@ -4,13 +4,11 @@ import type {
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import { sdk } from "@/lib/sdk";
 import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
   threadQueryKey,
-  threadTimelineQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -24,7 +22,6 @@ interface UpsertHostListArgs {
 export interface ThreadDetailBootstrapIngestionArgs {
   queryClient: QueryClient;
   thread: ThreadWithIncludesResponse;
-  timelinePrefetch: boolean;
 }
 
 function stripThreadIncludes(
@@ -54,7 +51,6 @@ function upsertHostList({ host, hosts }: UpsertHostListArgs): HostList {
 export function ingestThreadDetailBootstrap({
   queryClient,
   thread,
-  timelinePrefetch,
 }: ThreadDetailBootstrapIngestionArgs): void {
   queryClient.setQueryData(
     threadQueryKey(thread.id),
@@ -74,13 +70,5 @@ export function ingestThreadDetailBootstrap({
     queryClient.setQueryData<HostList>(hostsQueryKey(), (hosts) =>
       upsertHostList({ host, hosts }),
     );
-  }
-
-  if (timelinePrefetch) {
-    void queryClient.prefetchQuery({
-      queryKey: threadTimelineQueryKey(thread.id),
-      queryFn: ({ signal }) =>
-        sdk.threads.timeline({ signal, threadId: thread.id }),
-    });
   }
 }

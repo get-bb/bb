@@ -633,7 +633,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     enabled:
       Boolean(threadId) && (!isThreadView || hasThreadDetailBootstrapSettled),
     refetchOnMount:
-      isThreadView && threadDetailBootstrapQuery.isSuccess ? true : "always",
+      isThreadView && threadDetailBootstrapQuery.isSuccess ? false : "always",
   });
   const threadDisplayTitle = thread
     ? getThreadDisplayTitle(thread)

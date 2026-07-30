@@ -545,15 +545,32 @@ export function useThreadDetailBootstrap(
   return useQuery<ThreadWithIncludesResponse>({
     queryKey: threadDetailBootstrapQueryKey(id),
     queryFn: async ({ signal }) => {
+      const threadId = requireThreadId(id, "useThreadDetailBootstrap");
+      const timelinePrefetch = options?.timelinePrefetch ?? false;
+
+      // The thread shell and timeline are independent reads. Starting the
+      // timeline only after the bootstrap completes adds a full network
+      // round-trip to every cold thread open, which is especially visible
+      // through bb connect's edge + tunnel path.
+      if (timelinePrefetch) {
+        void queryClient.prefetchQuery({
+          queryKey: threadTimelineQueryKey(threadId),
+          queryFn: ({ signal: timelineSignal }) =>
+            sdk.threads.timeline({
+              signal: timelineSignal,
+              threadId,
+            }),
+        });
+      }
+
       const thread = await sdk.threads.get({
         include: "environment,host",
-        threadId: requireThreadId(id, "useThreadDetailBootstrap"),
+        threadId,
         signal,
       });
       ingestThreadDetailBootstrap({
         queryClient,
         thread,
-        timelinePrefetch: options?.timelinePrefetch ?? false,
       });
       return thread;
     },

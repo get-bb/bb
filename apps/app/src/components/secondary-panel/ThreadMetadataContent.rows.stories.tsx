@@ -60,8 +60,10 @@ export function ParentSelector() {
             parentThreads={parentThreads}
             canAssignToParent
             canTakeOverThread={false}
+            isLoadingParentThreads={false}
             updateThreadPending={false}
             onAssignParent={noop}
+            onParentSelectorOpenChange={noop}
           />
         </RowStage>
       </StoryRow>
@@ -74,8 +76,10 @@ export function ParentSelector() {
             parentThreads={[]}
             canAssignToParent={false}
             canTakeOverThread={false}
+            isLoadingParentThreads={false}
             updateThreadPending={false}
             onAssignParent={noop}
+            onParentSelectorOpenChange={noop}
           />
         </RowStage>
       </StoryRow>
@@ -88,8 +92,10 @@ export function ParentSelector() {
             parentThreads={parentThreads}
             canAssignToParent={false}
             canTakeOverThread
+            isLoadingParentThreads={false}
             updateThreadPending={false}
             onAssignParent={noop}
+            onParentSelectorOpenChange={noop}
           />
         </RowStage>
       </StoryRow>
@@ -102,8 +108,10 @@ export function ParentSelector() {
             parentThreads={parentThreads}
             canAssignToParent
             canTakeOverThread={false}
+            isLoadingParentThreads={false}
             updateThreadPending={false}
             onAssignParent={noop}
+            onParentSelectorOpenChange={noop}
             defaultOpen
           />
         </RowStage>

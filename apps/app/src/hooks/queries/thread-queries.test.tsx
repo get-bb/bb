@@ -2,6 +2,10 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ThreadTimelineResponse,
+  ThreadWithIncludesResponse,
+} from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -12,6 +16,7 @@ import {
 } from "./query-keys";
 import {
   useArchivedThreads,
+  useThreadDetailBootstrap,
   useThreadHostFilePreview,
   useThreadQueuedMessages,
 } from "./thread-queries";
@@ -27,8 +32,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: {
+      get: vi.fn(),
       list: vi.fn(),
       queuedMessages: { list: vi.fn() },
+      timeline: vi.fn(),
     },
   },
 }));
@@ -38,20 +45,102 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadListRealtimeSubscription: vi.fn(),
 }));
 
+const THREAD_WITH_INCLUDES = {
+  id: "thread-1",
+  projectId: "project-1",
+  environmentId: null,
+  providerId: "codex",
+  title: "Thread",
+  titleFallback: "Thread",
+  sectionId: null,
+  status: "idle",
+  parentThreadId: null,
+  sourceThreadId: null,
+  originKind: null,
+  childOrigin: null,
+  originPluginId: null,
+  visibility: "visible",
+  archivedAt: null,
+  pinnedAt: null,
+  deletedAt: null,
+  lastReadAt: null,
+  latestAttentionAt: 1,
+  createdAt: 1,
+  updatedAt: 1,
+  runtime: {
+    displayStatus: "idle",
+    hostReconnectGraceExpiresAt: null,
+  },
+  canSpawnChild: true,
+  environment: null,
+  host: null,
+} satisfies ThreadWithIncludesResponse;
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
 beforeEach(() => {
+  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_WITH_INCLUDES);
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
+  vi.mocked(sdk.threads.timeline).mockResolvedValue({
+    rows: [],
+    activePromptMode: null,
+    activeThinking: null,
+    activeWorkflows: [],
+    activeBackgroundCommands: [],
+    pendingTodos: null,
+    goal: null,
+    modelFallback: null,
+    timelinePage: {
+      kind: "latest",
+      segmentLimit: 100,
+      returnedSegmentCount: 0,
+      hasOlderRows: false,
+      olderCursor: null,
+    },
+    maxSeq: 0,
+  } satisfies ThreadTimelineResponse);
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
     path: "/tmp/log.txt",
     url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
     mimeType: "text/plain",
     content: "preview",
+  });
+});
+
+describe("useThreadDetailBootstrap", () => {
+  it("starts the timeline request before the thread bootstrap settles", async () => {
+    let resolveThread:
+      | ((thread: ThreadWithIncludesResponse) => void)
+      | undefined;
+    const threadPromise = new Promise<ThreadWithIncludesResponse>((resolve) => {
+      resolveThread = resolve;
+    });
+    vi.mocked(sdk.threads.get).mockReturnValue(threadPromise);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const result = renderHook(
+      () =>
+        useThreadDetailBootstrap("thread-1", {
+          timelinePrefetch: true,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.threads.get).toHaveBeenCalledTimes(1);
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
+    });
+    expect(result.result.current.isPending).toBe(true);
+
+    resolveThread?.(THREAD_WITH_INCLUDES);
+    await waitFor(() => {
+      expect(result.result.current.isSuccess).toBe(true);
+    });
   });
 });
 

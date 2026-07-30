@@ -231,7 +231,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "hostQueryKey",
     "hostsQueryKey",
     "threadQueryKey",
-    "threadTimelineQueryKey",
   ],
   "hooks/cache-owners/thread-tabs-cache-owner.ts": ["threadTabsQueryKey"],
   "hooks/cache-owners/thread-list-cache-owner.ts": [

@@ -1,5 +1,11 @@
 // Transport-generic tunnel client session: proxies relayed HTTP/WS streams
 // from one live tunnel socket to per-stream loopback origins.
+import {
+  request as httpRequest,
+  type IncomingMessage,
+  type RequestOptions,
+} from "node:http";
+import { request as httpsRequest } from "node:https";
 import { WebSocket as NodeWebSocket } from "ws";
 import {
   HEARTBEAT_REQUEST,
@@ -20,6 +26,55 @@ const HEARTBEAT_DEADLINE_MS = 60_000;
 
 const UNREGISTERED_PORT_BODY = "this port is not shared";
 const textEncoder = new TextEncoder();
+const INITIAL_THREAD_LOAD_PATH =
+  /^\/api\/v1\/threads\/[^/]+\/(?:timeline|conversation-outline)(?:\?|$)/u;
+
+interface OriginHttpRequestArgs {
+  body: Buffer | undefined;
+  headers: Record<string, string>;
+  method: string;
+  signal: AbortSignal;
+  url: URL;
+}
+
+function requestOriginHttp(
+  args: OriginHttpRequestArgs,
+): Promise<IncomingMessage> {
+  const request = args.url.protocol === "https:" ? httpsRequest : httpRequest;
+  const options: RequestOptions = {
+    headers: args.headers,
+    method: args.method,
+    signal: args.signal,
+  };
+  return new Promise<IncomingMessage>((resolve, reject) => {
+    const originRequest = request(args.url, options, resolve);
+    originRequest.once("error", reject);
+    originRequest.end(args.body);
+  });
+}
+
+function responseHeaderPairs(response: IncomingMessage): HeaderPair[] {
+  const headers: HeaderPair[] = [];
+  for (let index = 0; index < response.rawHeaders.length; index += 2) {
+    const name = response.rawHeaders[index];
+    const value = response.rawHeaders[index + 1];
+    if (name !== undefined && value !== undefined) {
+      headers.push([name, value]);
+    }
+  }
+  return headers;
+}
+
+function isInitialThreadLoad(path: string): boolean {
+  if (!INITIAL_THREAD_LOAD_PATH.test(path)) {
+    return false;
+  }
+  return !new URL(path, "http://bb.local").searchParams.has("afterSequence");
+}
+
+function roundDurationMs(durationMs: number): number {
+  return Math.round(durationMs * 10) / 10;
+}
 
 /** True when this open-ws is the bb app's realtime socket via the bare handle. */
 export function isBareBbRealtimeWs(
@@ -237,41 +292,53 @@ export class TunnelSession {
       ...(resolved.host !== undefined ? { host: resolved.host } : {}),
     });
     try {
+      const startedAt = performance.now();
       const body = meta.hasBody ? Buffer.concat(stream.chunks) : undefined;
-      const res = await fetch(`${resolved.origin}${meta.path}`, {
+      const res = await requestOriginHttp({
+        url: new URL(`${resolved.origin.replace(/\/$/u, "")}${meta.path}`),
         method: meta.method,
         headers,
         body,
-        redirect: "manual",
         signal: stream.abort.signal,
       });
-      const respHeaders: HeaderPair[] = [];
-      // fetch transparently decompresses a compressed origin body, so when
-      // content-encoding is present the origin's content-length describes
-      // compressed bytes we are not forwarding — relaying it would corrupt
-      // the response framing at the relay. Drop both.
-      const decompressed = res.headers.get("content-encoding") !== null;
-      res.headers.forEach((v, n) => {
-        const lower = n.toLowerCase();
-        if (lower === "content-encoding") return;
-        if (decompressed && lower === "content-length") return;
-        respHeaders.push([n, v]);
-      });
+      const originTtfbMs = performance.now() - startedAt;
+      const respHeaders = responseHeaderPairs(res);
+      const initialThreadLoad = isInitialThreadLoad(meta.path);
+      if (initialThreadLoad) {
+        respHeaders.push([
+          "server-timing",
+          `bb_connect_origin;dur=${roundDurationMs(originTtfbMs)}`,
+        ]);
+      }
       this.send({
         type: "resp-head",
         streamId,
-        status: res.status,
+        status: res.statusCode ?? 502,
         headers: respHeaders,
       });
-      if (res.body) {
-        const reader = res.body.getReader();
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const c of chunkBody(streamId, value)) this.send(c);
-        }
+      let responseBytes = 0;
+      for await (const chunk of res) {
+        const value =
+          chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
+        responseBytes += value.byteLength;
+        for (const frame of chunkBody(streamId, value)) this.send(frame);
       }
       this.send({ type: "body-end", streamId });
+      if (initialThreadLoad) {
+        const totalMs = performance.now() - startedAt;
+        this.options.log.info?.(
+          [
+            "bb connect thread load",
+            `path=${meta.path}`,
+            `status=${res.statusCode ?? 502}`,
+            `originTtfbMs=${roundDurationMs(originTtfbMs)}`,
+            `originBodyMs=${roundDurationMs(totalMs - originTtfbMs)}`,
+            `totalMs=${roundDurationMs(totalMs)}`,
+            `responseBytes=${responseBytes}`,
+            `contentEncoding=${res.headers["content-encoding"] ?? "identity"}`,
+          ].join(" "),
+        );
+      }
     } catch (e) {
       // Unreachable share ports and other fetch failures: clean close-stream,
       // not a crash. Aborted streams are silent.
