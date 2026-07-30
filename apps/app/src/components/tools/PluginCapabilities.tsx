@@ -1,4 +1,6 @@
 import { Fragment, type ReactNode } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
 import {
   ResourceDetailCollection,
@@ -14,7 +16,10 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  reloadPlugin,
   usePluginSettingsView,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
@@ -473,6 +478,74 @@ function PluginActivityGroup({
   );
 }
 
+function PluginRuntimeStatusAlert({
+  plugin,
+  runtimeStatus,
+  onReload,
+  reloadPending,
+}: {
+  plugin: PluginListItem;
+  runtimeStatus: PluginRuntimeStatusPresentation;
+  onReload: () => void;
+  reloadPending: boolean;
+}) {
+  const canReload =
+    plugin.status === "error" || plugin.status === "degraded";
+  const destructive = runtimeStatus.tone === "error";
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "flex min-w-0 items-start gap-2.5 rounded-lg border px-3 py-2.5",
+        destructive
+          ? "border-destructive/30 bg-destructive/5"
+          : "border-warning/30 bg-warning/5",
+      )}
+    >
+      <Icon
+        name={runtimeStatus.icon}
+        className={cn(
+          "mt-0.5 size-4 shrink-0",
+          destructive ? "text-destructive" : "text-warning",
+        )}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1">
+        <p
+          className={cn(
+            "text-sm font-medium",
+            destructive ? "text-destructive" : "text-warning",
+          )}
+        >
+          {runtimeStatus.label}
+        </p>
+        {plugin.statusDetail ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {plugin.statusDetail}
+          </p>
+        ) : null}
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {runtimeStatus.recovery}
+        </p>
+      </div>
+      {canReload ? (
+        <Button
+          type="button"
+          size="sm"
+          disabled={reloadPending}
+          className="h-7 shrink-0 px-2.5 text-xs"
+          onClick={onReload}
+        >
+          {reloadPending ? (
+            <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
+          ) : null}
+          {reloadPending ? "Reloading…" : "Reload"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function PluginActivity({
   plugin,
   runtimeStatus,
@@ -480,6 +553,16 @@ export function PluginActivity({
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
 }) {
+  const queryClient = useQueryClient();
+  const reload = useMutation({
+    mutationFn: () => reloadPlugin(fetch, plugin.id),
+    onSuccess: () => invalidatePluginList({ queryClient }),
+    onError: (error) => {
+      appToast.error("Failed to reload plugin", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
   const showOverallState = plugin.enabled && runtimeStatus !== null;
   const hasHandlerErrors = plugin.handlerStats.errorCount > 0;
   if (
@@ -492,38 +575,15 @@ export function PluginActivity({
   }
   return (
     <div className="space-y-3">
+      {showOverallState && runtimeStatus !== null ? (
+        <PluginRuntimeStatusAlert
+          plugin={plugin}
+          runtimeStatus={runtimeStatus}
+          reloadPending={reload.isPending}
+          onReload={() => reload.mutate()}
+        />
+      ) : null}
       <ResourceDetailCollection>
-        {showOverallState && runtimeStatus !== null ? (
-          <PluginActivityGroup title="Plugin health">
-            <ResourceDetailListItem
-              leading={
-                <Icon
-                  name={
-                    runtimeStatus.tone === "error" ? "CircleX" : "AlertTriangle"
-                  }
-                  className={cn(
-                    "size-4",
-                    runtimeStatus.tone === "error"
-                      ? "text-destructive"
-                      : "text-warning",
-                  )}
-                  aria-hidden
-                />
-              }
-            >
-              <span className="block">{runtimeStatus.label}</span>
-              {plugin.statusDetail ? (
-                <span className="block text-xs text-muted-foreground">
-                  {plugin.statusDetail}
-                </span>
-              ) : null}
-              <span className="mt-1 block text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Next:</span>{" "}
-                {runtimeStatus.recovery}
-              </span>
-            </ResourceDetailListItem>
-          </PluginActivityGroup>
-        ) : null}
         {plugin.services.length > 0 ? (
           <PluginActivityGroup title="Background services">
             {plugin.services.map((service) => {

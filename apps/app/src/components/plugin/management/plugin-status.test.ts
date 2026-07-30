@@ -84,10 +84,10 @@ describe("pluginRowSignal (the one-signal rule)", () => {
   });
 
   it.each([
-    ["error", "CircleX", "Error", "error"],
+    ["error", "CircleX", "Failed", "error"],
     ["incompatible", "AlertCircle", "Incompatible", "error"],
     ["missing", "FileQuestion", "Missing", "error"],
-    ["needs-configuration", "Settings", "Setup required", "warning"],
+    ["needs-configuration", "Settings", "Unconfigured", "warning"],
     ["degraded", "AlertTriangle", "Degraded", "warning"],
   ] as const)(
     "names the %s runtime status instead of collapsing it into attention",
@@ -142,13 +142,13 @@ describe("pluginRuntimeStatusPresentation", () => {
         plugin({}, { status: "error", source: "path:/plugins/linear" }),
       ),
     ).toMatchObject({
-      label: "Error",
+      label: "Failed",
       recovery: "Edit the plugin, then reload it.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "error" })),
     ).toMatchObject({
-      label: "Error",
+      label: "Failed",
       recovery: "Reload the plugin. If the error continues, reinstall it.",
     });
   });
@@ -159,7 +159,7 @@ describe("pluginRuntimeStatusPresentation", () => {
         plugin({}, { status: "needs-configuration", hasSettings: true }),
       ),
     ).toMatchObject({
-      label: "Setup required",
+      label: "Unconfigured",
       recovery:
         "Complete the Settings section; bb reloads the plugin after you save.",
     });

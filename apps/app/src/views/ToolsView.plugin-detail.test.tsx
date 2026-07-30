@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -52,6 +53,8 @@ const GITHUB_PLUGIN = {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("ToolsScrollPage layout", () => {
@@ -211,6 +214,123 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(
       screen.queryByRole("button", { name: "Automations actions" }),
     ).toBeNull();
+  });
+});
+
+describe("PluginDetail runtime health", () => {
+  function renderRuntimeStatus(
+    status: Extract<
+      PluginListItem["status"],
+      | "error"
+      | "incompatible"
+      | "missing"
+      | "needs-configuration"
+      | "degraded"
+    >,
+  ) {
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    const result = render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              source: "builtin:github",
+              provenance: "builtin",
+              catalogEntryId: null,
+              status,
+              statusDetail: "The runtime reported a problem.",
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+    return { ...result, queryClient };
+  }
+
+  it("lifts a failed runtime status into a destructive alert above the lists", () => {
+    const { container } = renderRuntimeStatus("error");
+    const health = container.querySelector(
+      '[data-resource-detail-section="activity"]',
+    );
+    const alert = within(health as HTMLElement).getByRole("alert");
+
+    expect(alert.textContent).toContain("Failed");
+    expect(alert.textContent).toContain("The runtime reported a problem.");
+    expect(alert.textContent).toContain("Reload the plugin.");
+    expect(alert.className).toContain("border-destructive/30");
+    expect(within(health as HTMLElement).queryByText("Plugin health")).toBeNull();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it("offers Reload for degraded runtime status", () => {
+    const { container } = renderRuntimeStatus("degraded");
+    const alert = within(
+      container.querySelector(
+        '[data-resource-detail-section="activity"]',
+      ) as HTMLElement,
+    ).getByRole("alert");
+
+    expect(alert.className).toContain("border-warning/30");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it.each(["incompatible", "missing"] as const)(
+    "does not offer Reload for %s runtime status",
+    (status) => {
+      renderRuntimeStatus(status);
+
+      expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+    },
+  );
+
+  it("keeps needs-configuration actionless because saving Settings retries it", () => {
+    renderRuntimeStatus("needs-configuration");
+
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  });
+
+  it("reloads the affected plugin and reflects its pending state", async () => {
+    let resolveReload: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveReload = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { queryClient } = renderRuntimeStatus("error");
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/plugins/reload?id=github",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    const pending = screen.getByRole("button", { name: "Reloading…" });
+    expect(pending.getAttribute("disabled")).not.toBeNull();
+
+    resolveReload?.(
+      new Response(JSON.stringify({ ok: true, plugins: [] }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["plugin-list"] });
+    });
   });
 });
 

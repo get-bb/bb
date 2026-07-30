@@ -174,6 +174,13 @@ export async function setPluginEnabled(
   else await plugins.disable({ pluginId });
 }
 
+export async function reloadPlugin(
+  fetchImpl: FetchLike,
+  pluginId: string,
+): Promise<void> {
+  await createPluginsClient(fetchImpl).reload({ pluginId });
+}
+
 export async function removePlugin(
   fetchImpl: FetchLike,
   pluginId: string,

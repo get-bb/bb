@@ -24,7 +24,7 @@ export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   PluginRuntimeStatusDefinition | null
 > = {
   running: null,
-  error: { icon: "CircleX", label: "Error", tone: "error" },
+  error: { icon: "CircleX", label: "Failed", tone: "error" },
   incompatible: {
     icon: "AlertCircle",
     label: "Incompatible",
@@ -34,7 +34,7 @@ export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   disabled: null,
   "needs-configuration": {
     icon: "Settings",
-    label: "Setup required",
+    label: "Unconfigured",
     tone: "warning",
   },
   degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
