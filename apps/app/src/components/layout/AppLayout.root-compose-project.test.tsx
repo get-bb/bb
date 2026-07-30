@@ -133,6 +133,7 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
+  didThreadDetailBootstrapRefreshAfterMount: () => true,
   useThread: (...args: unknown[]) => mockUseThread(...args),
   useThreadDetailBootstrap: (...args: unknown[]) =>
     mockUseThreadDetailBootstrap(...args),

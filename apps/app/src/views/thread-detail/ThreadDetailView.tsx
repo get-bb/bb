@@ -54,6 +54,7 @@ import {
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
+  didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   useProjectThreadSubset,
   useThread,
@@ -216,10 +217,7 @@ import {
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import {
-  buildParentSelectorOptions,
-  isRootThread,
-} from "./threadParentSelectorOptions";
+import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
@@ -531,7 +529,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     error,
   } = useThread(threadId ?? "", {
     enabled: hasThreadDetailBootstrapSettled,
-    refetchOnMount: threadDetailBootstrapQuery.isSuccess ? true : "always",
+    // A successful bootstrap just populated this exact query with a fresh
+    // thread response; refetching it immediately adds redundant tunnel work.
+    refetchOnMount: didThreadDetailBootstrapRefreshAfterMount(
+      threadDetailBootstrapQuery,
+    )
+      ? false
+      : "always",
   });
   // Treat placeholder data (a full thread row primed from the sidebar list
   // cache) as resolved so switching to an uncached thread renders the shell
@@ -726,8 +730,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [browserTabs],
   );
   const isThreadRoot = isRootThread(thread);
+  const [
+    parentThreadsRequestedForThreadId,
+    setParentThreadsRequestedForThreadId,
+  ] = useState<string | null>(null);
   const shouldLoadParentThreads =
-    threadQueryState.status === "ready" && isThreadRoot;
+    threadQueryState.status === "ready" &&
+    isThreadRoot &&
+    parentThreadsRequestedForThreadId === thread?.id;
   const parentThreadSubsetQuery = useProjectThreadSubset({
     enabled: shouldLoadParentThreads,
     filters: PARENT_THREAD_SELECTOR_FILTERS,
@@ -751,6 +761,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         : EMPTY_PARENT_THREADS,
     [parentThreadSubsetQuery.data, shouldLoadParentThreads],
   );
+  const handleParentSelectorOpenChange = useCallback(
+    (open: boolean) => {
+      if (open && thread?.id) {
+        setParentThreadsRequestedForThreadId(thread.id);
+      }
+    },
+    [thread?.id],
+  );
+  const handleRetryParentThreads = parentThreadSubsetQuery.retry;
   const {
     activePromptMode,
     activeThinking,
@@ -1836,16 +1855,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     parentThread?.title && parentThread.title.trim().length > 0
       ? parentThread.title
       : parentThreadId;
-  const parentSelectorOptions = useMemo(
-    () =>
-      buildParentSelectorOptions({
-        currentThreadId: thread?.id,
-        parentThreads,
-        parentThreadDisplayName,
-        parentThreadId,
-      }),
-    [parentThreads, parentThreadDisplayName, parentThreadId, thread?.id],
-  );
   const handleAssignParent = useCallback(
     (nextParentThreadId: string | null) => {
       if (!thread || updateThread.isPending) {
@@ -2290,10 +2299,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       </PageShell>
     );
   }
-  const hasAssignableParent = parentSelectorOptions.some(
-    (option) => option.value !== "none",
-  );
-  const canAssignToParent = isThreadRoot && hasAssignableParent;
+  const canAssignToParent = isThreadRoot;
   const canTakeOverThread = Boolean(thread.parentThreadId);
   const threadEnvironmentDisplay = environment
     ? formatEnvironmentDisplay({
@@ -2586,6 +2592,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             parentThreads,
             canAssignToParent,
             canTakeOverThread,
+            isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
+            isParentThreadsError: parentThreadSubsetQuery.isError,
             environment: environment ?? null,
             environmentDisplayHost: environmentDisplayHostContext,
             workspaceStatus,
@@ -2601,6 +2609,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               updateThread.isPending || updateEnvironment.isPending,
             storage: metadataStorage,
             onAssignParent: handleAssignParent,
+            onParentSelectorOpenChange: handleParentSelectorOpenChange,
+            onRetryParentThreads: handleRetryParentThreads,
             onMergeBaseBranchChange: handleMergeBaseBranchChange,
             onMergeBasePickerOpenChange: handleMergeBasePickerOpenChange,
             onMergeBaseBranchSearchQueryChange: setMergeBaseBranchSearchQuery,
