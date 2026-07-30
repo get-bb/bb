@@ -16,13 +16,13 @@ vi.mock("@/lib/sdk", () => ({
   sdk: { system: { config: vi.fn() } },
 }));
 
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
@@ -56,7 +56,7 @@ afterEach(() => {
 
 describe("usePromptMentions", () => {
   it("shows loading for a non-at plugin trigger while the query is debouncing", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = urlForFetchInput(input);
       if (url === "/api/v1/plugins/contributions") {

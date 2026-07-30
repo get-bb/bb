@@ -58,7 +58,6 @@ function createService(args: {
   dataDir: string;
   db: DbConnection;
   bundled: BundledPluginRegistration[];
-  isEnabled?: () => boolean;
 }): PluginService {
   return createPluginService({
     db: args.db,
@@ -70,7 +69,6 @@ function createService(args: {
     logger,
     dataDir: args.dataDir,
     appVersion: "0.9.0",
-    isEnabled: args.isEnabled ?? (() => true),
     bundledPlugins: args.bundled,
     loadTimeoutMs: 2000,
   });
@@ -215,32 +213,9 @@ describe("store-installed official plugins", () => {
     expect(service.list()).toEqual([]);
 
     // Reinstalling from the store clears the tombstone.
-    await expect(service.installOfficialPlugin("fixture")).resolves.toMatchObject(
-      { id: "builtin-fixture", status: "running" },
-    );
-  });
-
-  it("keeps store-installed officials behind the plugins experiment", async () => {
-    let enabled = true;
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      bundled: [officialEntry()],
-      isEnabled: () => enabled,
-    });
-    await service.start();
-    await service.installOfficialPlugin("fixture");
-    expect(service.list()).toMatchObject([{ status: "running" }]);
-
-    enabled = false;
-    await service.onExperimentsChanged();
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        status: "disabled",
-        statusDetail: 'disabled by the "Plugins" experiment',
-      },
-    ]);
+    await expect(
+      service.installOfficialPlugin("fixture"),
+    ).resolves.toMatchObject({ id: "builtin-fixture", status: "running" });
   });
 
   it("rejects unknown official plugin names", async () => {

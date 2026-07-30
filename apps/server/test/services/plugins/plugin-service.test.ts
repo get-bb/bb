@@ -47,14 +47,12 @@ async function writePlugin(
 describe("plugin service", () => {
   let db: DbConnection;
   let workDir: string;
-  let experimentOn: boolean;
   let service: PluginService;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
-    experimentOn = true;
     service = createPluginService({
       db,
       hub: {
@@ -65,7 +63,6 @@ describe("plugin service", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => experimentOn,
       loadTimeoutMs: 2000,
     });
   });
@@ -280,7 +277,6 @@ describe("plugin service", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.0.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
     });
     const gated = await writePlugin(workDir, {
@@ -302,35 +298,6 @@ describe("plugin service", () => {
     const entry = service.list().find((p) => p.id === "hang");
     expect(entry?.status).toBe("error");
     expect(entry?.statusDetail).toContain("timed out");
-  });
-
-  it("experiment off: nothing loads at start; live toggle loads and disposes", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-gated",
-      serverSource: `
-        export default function plugin(bb: any) {
-          const g = globalThis as any;
-          g.__gatedLoads = (g.__gatedLoads ?? 0) + 1;
-          bb.onDispose(() => { g.__gatedDisposed = true; });
-        }
-      `,
-    });
-    experimentOn = true;
-    await service.installPath(rootDir);
-    const globals = globalThis as Record<string, unknown>;
-    const loadsAfterInstall = globals.__gatedLoads as number;
-
-    experimentOn = false;
-    await service.onExperimentsChanged();
-    expect(globals.__gatedDisposed).toBe(true);
-    expect(service.getApi("gated")).toBeUndefined();
-
-    experimentOn = true;
-    await service.onExperimentsChanged();
-    expect(globals.__gatedLoads).toBe(loadsAfterInstall + 1);
-    expect(service.list().find((p) => p.id === "gated")?.status).toBe(
-      "running",
-    );
   });
 
   it("disable unloads and disposes; enable loads again", async () => {
@@ -374,7 +341,6 @@ describe("plugins-changed broadcast", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
     });
   });

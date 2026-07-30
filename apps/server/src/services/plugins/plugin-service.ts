@@ -140,9 +140,7 @@ export interface PluginSkillRootContribution {
 }
 
 export interface PluginService {
-  /** Whether the `plugins` experiment is currently on. */
-  isEnabled(): boolean;
-  /** Whether this installed plugin has builtin provenance (experiment-exempt). */
+  /** Whether this installed plugin has builtin provenance. */
   isBuiltin(id: string): boolean;
   /** Thread lifecycle event emitter, called from the lifecycle seams. */
   events: PluginThreadEventEmitter;
@@ -153,7 +151,7 @@ export interface PluginService {
   bindSdk(args: { baseUrl: string }): void;
   /** Load all enabled plugins. Call after the HTTP listener is up. */
   start(): Promise<void>;
-  /** Dispose all loaded plugins (server shutdown or experiment turned off). */
+  /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
   /** React to experiments that affect plugin loading being toggled at runtime. */
   onExperimentsChanged(): Promise<void>;
@@ -260,13 +258,13 @@ export interface PluginService {
   ): Promise<string | undefined>;
   /**
    * CLI command metadata for GET /plugins/contributions: fast, no plugin
-   * code execution, empty when the experiment is off. Sorted by plugin id.
+   * code execution. Sorted by plugin id.
    */
   listCliContributions(): PluginCliContribution[];
   /**
    * Run a plugin's registered CLI command wrapped in the failure-isolation
    * discipline. Never throws for dispatch problems: an unknown / not-running
-   * plugin, disabled experiment, missing registration, throwing handler, or
+   * plugin, closed experiment gate, missing registration, throwing handler, or
    * malformed handler result all map to exitCode 1 with a helpful stderr —
    * the bb CLI prints stderr and exits with exitCode.
    */
@@ -279,7 +277,7 @@ export interface PluginService {
    * Skills roots of running plugins (manifest bb.skills or the skills/
    * convention dir), ordered by plugin id — the "plugin" precedence tier
    * passed to resolveInjectedSkillSources per turn. Missing directories are
-   * tolerated downstream; empty when the experiment is off.
+   * tolerated downstream.
    */
   listSkillRootContributions(): PluginSkillRootContribution[];
   /**
@@ -287,7 +285,7 @@ export interface PluginService {
    * plugin id then registration order, deduped defensively (first wins —
    * registration already blocks collisions). Appended to a session's
    * dynamicTools at thread.start/turn.submit time; changes apply on the
-   * NEXT session start. Empty when the experiment is off.
+   * NEXT session start.
    */
   listAgentTools(): PluginAgentToolContribution[];
   /**
@@ -302,7 +300,7 @@ export interface PluginService {
   /**
    * Dynamic instruction providers from bb.agents.contributeInstructions,
    * ordered by plugin id. Resolved live at thread.start/turn.submit;
-   * empty when the experiment is off or no plugin registered a provider.
+   * empty when no plugin registered a provider.
    * At most one provider per plugin (duplicate registration is rejected).
    */
   listInstructionContributions(): PluginInstructionContribution[];
@@ -325,7 +323,7 @@ export interface PluginService {
   /**
    * Thread actions of running plugins (bb.ui.registerThreadAction), ordered
    * by plugin id then registration order, for GET /plugins/contributions.
-   * No plugin code runs; empty when the experiment is off.
+   * No plugin code runs.
    */
   listThreadActionContributions(): PluginThreadActionContribution[];
   /** Live thread-action lookup for POST /plugins/:id/actions/:actionId. */
@@ -347,8 +345,7 @@ export interface PluginService {
   /**
    * Mention providers of running plugins (bb.ui.registerMentionProvider),
    * ordered by plugin id then registration order, for
-   * GET /plugins/contributions. No plugin code runs; empty when the
-   * experiment is off.
+   * GET /plugins/contributions. No plugin code runs.
    */
   listMentionProviderContributions(): PluginMentionProviderContribution[];
   /**
@@ -1160,7 +1157,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
    * Broadcast that the set of running plugins (and therefore host-rendered
    * contributions) changed, so open app pages re-fetch instead of waiting
    * out their query stale time. Fired on install/remove/enable/disable/
-   * reload/experiment-toggle completion.
+   * reload completion.
    */
   function notifyPluginsChanged(): void {
     deps.hub.notifySystem(["plugins-changed"]);
@@ -1393,7 +1390,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
 
   return {
-    isEnabled: () => deps.isEnabled(),
     isBuiltin: isBuiltinPluginId,
 
     listThemes() {
@@ -1683,7 +1679,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     getBrandingAsset(id, variant) {
       // Branding is identity, not runtime: serve it for a disabled or
       // incompatible plugin too, matching the inventory. Still gated by
-      // shouldExposePluginId (experiment / not-removed).
+      // shouldExposePluginId (experiment gate / not-removed).
       if (!shouldExposePluginId(id)) return undefined;
       const set = loaded.has(id)
         ? brandingAssets.get(id)
@@ -1852,7 +1848,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const plugin = loaded.get(id);
       if (!shouldExposePluginId(id)) {
         return fail(
-          'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
+          `plugin "${id}" is turned off by an experiment in Settings → Experiments.`,
         );
       }
       if (!plugin) {
@@ -2169,8 +2165,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (!shouldExposePluginId(pluginId)) {
         return {
           ok: false,
-          error:
-            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
+          error: `plugin "${pluginId}" is turned off by an experiment in Settings → Experiments.`,
         };
       }
       const separatorIndex = itemId.indexOf(":");

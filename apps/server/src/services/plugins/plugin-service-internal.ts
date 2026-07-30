@@ -63,8 +63,6 @@ export interface LoadedPlugin {
   services: ServiceRuntime[];
   isBuiltin: boolean;
   builtinName: string | null;
-  /** Loads/exposes regardless of the "Plugins" experiment (builtin provenance). */
-  experimentExempt: boolean;
 }
 
 export interface PluginServiceDeps {
@@ -95,8 +93,6 @@ export interface PluginServiceDeps {
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;
-  /** The `plugins` experiment gate for user-installed plugins, read live. */
-  isEnabled: () => boolean;
   /** Declared first-party plugins bundled with the app; test-only override. */
   bundledPlugins?: readonly BundledPluginRegistration[];
   /** Managed source-development only: rebuild and reload builtin frontends. */

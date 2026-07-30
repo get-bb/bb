@@ -11,7 +11,6 @@ import { registerPluginCommands } from "../../commands/plugin.js";
 const version = (value: string) => ({ version: value, display: value });
 
 const pluginList = (id: string, source: string) => ({
-  enabled: true,
   plugins: [
     {
       id,

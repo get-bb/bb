@@ -1,9 +1,21 @@
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, getPluginSettingsValues, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  getPluginSettingsValues,
+  migrate,
+  type DbConnection,
+} from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import {
@@ -63,7 +75,6 @@ describe("plugin settings + storage", () => {
       logger,
       dataDir,
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
     });
   });
@@ -100,7 +111,10 @@ describe("plugin settings + storage", () => {
 
     function state(): {
       initial: Record<string, unknown>;
-      changes: Array<{ next: Record<string, unknown>; prev: Record<string, unknown> }>;
+      changes: Array<{
+        next: Record<string, unknown>;
+        prev: Record<string, unknown>;
+      }>;
       settings: { get(): Promise<Record<string, unknown>> };
     } {
       return (globalThis as Record<string, unknown>).__configurable as never;
@@ -125,7 +139,13 @@ describe("plugin settings + storage", () => {
         note: "hello",
       });
 
-      const secretPath = join(dataDir, "plugins", "configurable", "secrets", "apiKey");
+      const secretPath = join(
+        dataDir,
+        "plugins",
+        "configurable",
+        "secrets",
+        "apiKey",
+      );
       expect(await readFile(secretPath, "utf8")).toBe("sk-secret-123");
       expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
 
@@ -155,7 +175,9 @@ describe("plugin settings + storage", () => {
       expect(state().changes).toHaveLength(1);
 
       // Unset deletes the secret file and falls back to undefined.
-      const cleared = await service.updateSettings("configurable", { apiKey: null });
+      const cleared = await service.updateSettings("configurable", {
+        apiKey: null,
+      });
       await expect(stat(secretPath)).rejects.toThrow();
       expect(cleared?.values.apiKey).toEqual({ set: false });
       expect((await state().settings.get()).apiKey).toBeUndefined();
@@ -190,7 +212,9 @@ describe("plugin settings + storage", () => {
       await expect(
         service.updateSettings("configurable", { mode: "warp" }),
       ).rejects.toThrow(/must be one of/);
-      expect(await service.updateSettings("missing-plugin", {})).toBeUndefined();
+      expect(
+        await service.updateSettings("missing-plugin", {}),
+      ).toBeUndefined();
     });
 
     it("remove clears settings rows and secret files", async () => {
@@ -235,7 +259,9 @@ describe("plugin settings + storage", () => {
       const put = await app.request("/plugins/configurable/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ values: { apiKey: "wire-secret", autoSync: false } }),
+        body: JSON.stringify({
+          values: { apiKey: "wire-secret", autoSync: false },
+        }),
       });
       expect(put.status).toBe(200);
       const putBody = (await put.json()) as { values: Record<string, unknown> };
@@ -248,7 +274,9 @@ describe("plugin settings + storage", () => {
         body: JSON.stringify({ values: { bogus: 1 } }),
       });
       expect(badKey.status).toBe(400);
-      expect(((await badKey.json()) as { error: string }).error).toContain("bogus");
+      expect(((await badKey.json()) as { error: string }).error).toContain(
+        "bogus",
+      );
 
       const badBody = await app.request("/plugins/configurable/settings", {
         method: "PUT",

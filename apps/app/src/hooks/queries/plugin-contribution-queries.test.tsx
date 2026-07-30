@@ -20,13 +20,13 @@ vi.mock("@/lib/sdk", () => ({
   sdk: { system: { config: vi.fn() } },
 }));
 
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
@@ -58,8 +58,8 @@ afterEach(() => {
 });
 
 describe("usePluginContributions", () => {
-  it("fetches contributions and drops malformed entries once the plugins experiment is on", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
+  it("fetches contributions and drops malformed entries", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
       threadActions: [
@@ -152,25 +152,8 @@ describe("usePluginContributions", () => {
     );
   });
 
-  it("does not fetch while the plugins experiment is off", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
-    const fetchMock = mockFetchJsonOnce({ cliCommands: [], threadActions: [] });
-
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(() => usePluginContributions(), { wrapper });
-
-    // Give the system-config query time to settle; the contributions query
-    // must stay disabled the whole way.
-    await waitFor(() => {
-      expect(sdk.system.config).toHaveBeenCalled();
-    });
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(result.current.data).toBeUndefined();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it("shapes a failed contributions request as empty rather than an error", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(true));
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     mockFetchJsonOnce({ ok: false }, { status: 503 });
 
     const { wrapper } = createQueryClientTestHarness();

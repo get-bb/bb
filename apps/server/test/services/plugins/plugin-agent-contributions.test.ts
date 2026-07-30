@@ -2,16 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createConnection,
-  migrate,
-  setExperiments,
-  type DbConnection,
-} from "@bb/db";
-import {
-  defaultExperiments,
-  encodeClientTurnRequestIdNumber,
-} from "@bb/domain";
+import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -100,14 +92,12 @@ async function writePlugin(
 describe("plugin skills tier", () => {
   let db: DbConnection;
   let workDir: string;
-  let experimentOn: boolean;
   let service: PluginService;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-skills-test-"));
-    experimentOn = true;
     service = createPluginService({
       db,
       hub: {
@@ -118,7 +108,6 @@ describe("plugin skills tier", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => experimentOn,
       loadTimeoutMs: 2000,
     });
   });
@@ -201,9 +190,6 @@ describe("plugin skills tier", () => {
       skillTreeRegistry: new SkillTreeRegistry(),
     });
     expect(sources.map((source) => source.name)).toEqual(["relocated-skill"]);
-
-    experimentOn = false;
-    expect(service.listSkillRootContributions()).toEqual([]);
   });
 
   it("a skill added after install is discovered on the next resolve after reload", async () => {
@@ -234,7 +220,6 @@ describe("plugin agent contributions reach thread runtime config", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     pluginsDir = await mkdtemp(join(tmpdir(), "bb-plugin-runtime-test-"));
   });
 
@@ -304,12 +289,5 @@ describe("plugin agent contributions reach thread runtime config", () => {
     expect(
       reloaded.injectedSkillSources.map((source) => source.name),
     ).toContain("late-skill");
-
-    // Turning the experiment off removes the contribution on the next turn.
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const gated = await buildCommand(3);
-    expect(
-      gated.injectedSkillSources.map((source) => source.name),
-    ).not.toContain("ctx-skill");
   });
 });

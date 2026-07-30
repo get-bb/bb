@@ -13,7 +13,6 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
-        plugins: false,
         toolsHub: false,
         sideChatPlugin: false,
       });
@@ -27,7 +26,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
-          plugins: false,
           toolsHub: true,
           sideChatPlugin: false,
         }),
@@ -35,13 +33,11 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
-        plugins: false,
         toolsHub: true,
         sideChatPlugin: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
-        plugins: false,
         toolsHub: true,
         sideChatPlugin: false,
       });
@@ -51,33 +47,9 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         claudeCodeMockCliTraffic: true,
-        plugins: false,
         toolsHub: true,
         sideChatPlugin: false,
       });
-    });
-  });
-
-  it("normalizes sideChatPlugin off when plugins is off", async () => {
-    await withTestHarness(async (harness) => {
-      const put = await harness.app.request("/api/v1/settings/experiments", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          claudeCodeMockCliTraffic: false,
-          plugins: false,
-          toolsHub: false,
-          sideChatPlugin: true,
-        }),
-      });
-      expect(put.status).toBe(200);
-      expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        claudeCodeMockCliTraffic: false,
-        plugins: false,
-        toolsHub: false,
-        sideChatPlugin: false,
-      });
-      expect(getExperiments(harness.db).sideChatPlugin).toBe(false);
     });
   });
 
@@ -91,7 +63,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
-          plugins: false,
           toolsHub: false,
           sideChatPlugin: false,
         }),

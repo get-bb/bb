@@ -31,7 +31,7 @@ shows where it would go; webhook mode covers the same flow.
 
 ## Setup
 
-1. Install the plugin (requires the "Plugins" experiment):
+1. Install the plugin:
 
    ```
    bb plugin install ./examples/plugins/slack-bot
@@ -65,4 +65,4 @@ shows where it would go; webhook mode covers the same flow.
    ```
 
 4. Mention the bot in a channel it has been invited to. `bb plugin logs
-   slack-bot` shows what it is doing.
+slack-bot` shows what it is doing.

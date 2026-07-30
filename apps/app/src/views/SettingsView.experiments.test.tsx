@@ -6,18 +6,16 @@ import { ExperimentsSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
-  pluginsEnabled?: boolean;
   sideChatPluginEnabled?: boolean;
   onSideChatPluginEnabledChange?: (enabled: boolean) => void;
+  onToolsHubEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
       claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
-      onPluginsEnabledChange={vi.fn()}
-      pluginsEnabled={overrides?.pluginsEnabled ?? false}
-      onToolsHubEnabledChange={vi.fn()}
+      onToolsHubEnabledChange={overrides?.onToolsHubEnabledChange ?? vi.fn()}
       toolsHubEnabled={false}
       onSideChatPluginEnabledChange={
         overrides?.onSideChatPluginEnabledChange ?? vi.fn()
@@ -27,52 +25,19 @@ function renderSection(overrides?: {
   );
 }
 
-describe("ExperimentsSettingsSection side-chat plugin toggle", () => {
-  it("is visible but disabled while the Plugins experiment is off", () => {
+describe("ExperimentsSettingsSection", () => {
+  it("reports side-chat plugin toggles", () => {
     const onChange = vi.fn();
-    renderSection({
-      pluginsEnabled: false,
-      onSideChatPluginEnabledChange: onChange,
-    });
-    const toggle = screen.getByLabelText("Side chat plugin");
-    expect(toggle.hasAttribute("disabled")).toBe(true);
-    expect(
-      screen.queryByText(/Requires the Plugins experiment/),
-    ).not.toBeNull();
-    fireEvent.click(toggle);
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("is enabled when the Plugins experiment is on and reports toggles", () => {
-    const onChange = vi.fn();
-    renderSection({
-      pluginsEnabled: true,
-      onSideChatPluginEnabledChange: onChange,
-    });
+    renderSection({ onSideChatPluginEnabledChange: onChange });
     const toggle = screen.getByLabelText("Side chat plugin");
     expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);
     expect(onChange).toHaveBeenCalledWith(true);
   });
-});
 
-describe("ExperimentsSettingsSection Tools Hub toggle", () => {
-  it("reports Tools Hub changes independently of plugin runtime state", () => {
+  it("reports Tools Hub changes", () => {
     const onChange = vi.fn();
-    render(
-      <ExperimentsSettingsSection
-        claudeCodeMockCliTrafficEnabled={false}
-        disabled={false}
-        onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
-        onPluginsEnabledChange={vi.fn()}
-        pluginsEnabled={false}
-        onToolsHubEnabledChange={onChange}
-        toolsHubEnabled={false}
-        onSideChatPluginEnabledChange={vi.fn()}
-        sideChatPluginEnabled={false}
-      />,
-    );
-
+    renderSection({ onToolsHubEnabledChange: onChange });
     const toggle = screen.getByLabelText("Tools Hub");
     expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);

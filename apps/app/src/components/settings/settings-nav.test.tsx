@@ -48,7 +48,6 @@ beforeEach(() => {
     data: {
       experiments: {
         ...defaultExperiments,
-        plugins: false,
         toolsHub: false,
       },
     },
@@ -94,7 +93,6 @@ describe("useSettingsNavState", () => {
       data: {
         experiments: {
           ...defaultExperiments,
-          plugins: true,
           toolsHub: false,
         },
       },
@@ -113,7 +111,6 @@ describe("useSettingsNavState", () => {
       data: {
         experiments: {
           ...defaultExperiments,
-          plugins: true,
           toolsHub: true,
         },
       },

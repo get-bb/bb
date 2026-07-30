@@ -3,16 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  createConnection,
-  migrate,
-  setExperiments,
-  type DbConnection,
-} from "@bb/db";
-import {
-  defaultExperiments,
-  encodeClientTurnRequestIdNumber,
-} from "@bb/domain";
+import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
 import {
@@ -69,14 +61,12 @@ async function writePlugin(
 describe("bb.agents.registerTool", () => {
   let db: DbConnection;
   let workDir: string;
-  let experimentOn: boolean;
   let service: PluginService;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-test-"));
-    experimentOn = true;
     service = createPluginService({
       db,
       hub: {
@@ -87,7 +77,6 @@ describe("bb.agents.registerTool", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => experimentOn,
       loadTimeoutMs: 2000,
     });
   });
@@ -353,41 +342,17 @@ describe("bb.agents.registerTool", () => {
     expect(entry.statusDetail).toContain("built-in bb tool");
     expect(service.listAgentTools()).toEqual([]);
   });
-
-  it("the plugins experiment gates the registry", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-gated-tool",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.registerTool({
-            name: "gated_tool",
-            description: "Gated",
-            parameters: { type: "object" },
-            execute: () => "gated",
-          });
-        }
-      `,
-    });
-    await service.installPath(rootDir);
-    expect(service.listAgentTools()).toHaveLength(1);
-
-    experimentOn = false;
-    expect(service.listAgentTools()).toEqual([]);
-    expect(service.findAgentTool("gated_tool")).toBeUndefined();
-  });
 });
 
 describe("bb.agents.contributeInstructions", () => {
   let db: DbConnection;
   let workDir: string;
-  let experimentOn: boolean;
   let service: PluginService;
 
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
-    experimentOn = true;
     service = createPluginService({
       db,
       hub: {
@@ -398,7 +363,6 @@ describe("bb.agents.contributeInstructions", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => experimentOn,
       loadTimeoutMs: 2000,
     });
   });
@@ -472,22 +436,6 @@ describe("bb.agents.contributeInstructions", () => {
     await service.reload("transient");
     expect(service.listInstructionContributions()).toEqual([]);
   });
-
-  it("the plugins experiment gates instruction contributions", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-gated-instr",
-      serverSource: `
-        export default function plugin(bb: any) {
-          bb.agents.contributeInstructions(() => "gated");
-        }
-      `,
-    });
-    await service.installPath(rootDir);
-    expect(service.listInstructionContributions()).toHaveLength(1);
-
-    experimentOn = false;
-    expect(service.listInstructionContributions()).toEqual([]);
-  });
 });
 
 describe("plugin tools reach thread runtime config", () => {
@@ -496,7 +444,6 @@ describe("plugin tools reach thread runtime config", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     pluginsDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-runtime-"));
   });
 
@@ -584,16 +531,6 @@ describe("plugin tools reach thread runtime config", () => {
       "Call demo_lookup before guessing demo data.",
     );
     expect(command.instructions).not.toContain("quiet_tool");
-
-    // Turning the experiment off removes plugin tools on the next session
-    // start but keeps the built-in tool and its instructions.
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const gated = await buildCommand(2);
-    expect(gated.dynamicTools.map((tool) => tool.name)).toEqual([
-      UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
-    ]);
-    expect(gated.instructions).toContain("update_environment_directory");
-    expect(gated.instructions).not.toContain("demo_lookup");
   });
 
   it("resolves different conditional tools, skills, instructions, and context without rebuilding static registrations", async () => {
@@ -874,7 +811,6 @@ describe("plugin tools reach thread runtime config", () => {
 describe("internal tool-call dispatch to plugin tools", () => {
   it("dispatches by name to plugin tools and keeps update_environment_directory working", async () => {
     await withTestHarness(async (harness) => {
-      setExperiments(harness.db, { ...defaultExperiments, plugins: true });
       const pluginsDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-wire-"));
       try {
         const rootDir = await writePlugin(pluginsDir, {

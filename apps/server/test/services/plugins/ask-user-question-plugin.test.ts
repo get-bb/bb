@@ -1,10 +1,6 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import {
-  defaultExperiments,
-  encodeClientTurnRequestIdNumber,
-} from "@bb/domain";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import { builtinPluginSource } from "../../../src/services/plugins/builtin-registry.js";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
@@ -34,7 +30,6 @@ describe("ask-user-question builtin plugin", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     const entry = await harness.pluginService.install(
       builtinPluginSource("ask-user-question"),
     );

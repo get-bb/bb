@@ -432,23 +432,20 @@ Experimental surfaces are off by default and can be changed in Settings →
 Experiments or with `bb settings experiment <key> <true|false>`. The `toolsHub`
 experiment exposes the unified Skills, Plugins, and Automations management UI.
 It is a UI-only gate: installed skills, automation execution, plugin runtimes,
-CLI commands, and backend APIs keep working while the Tools Hub is off. The
-separate `plugins` experiment still controls whether user-installed plugin code
-loads.
+CLI commands, and backend APIs keep working while the Tools Hub is off.
 
 ## Thread Timeline Window
 
-A thread-timeline window is bounded by segment (user-message) count *and* by
+A thread-timeline window is bounded by segment (user-message) count _and_ by
 event count. Segment count alone is a weak bound on work, because an agentic
 turn can be thousands of events: a thread with 21 user messages and 21k events
 used to reproject its entire history on every timeline request. That projection
 is synchronous, so it blocked the server's event loop — which also delayed
 `/internal/session/events`, the endpoint the host daemon awaits before every
 dynamic tool call and before registering every interactive request. One slow
-thread therefore slowed agent work on *every* thread on the host.
+thread therefore slowed agent work on _every_ thread on the host.
 
-A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default
-1500) and returns however many whole turns fit. Older turns load automatically
+A window is capped at `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` events (default 1500) and returns however many whole turns fit. Older turns load automatically
 as you scroll toward the top of the loaded window; a manual "Load older
 messages" button remains on surfaces that render no scroll body, and after a
 failed page so a broken fetch is retried on request rather than in a loop.
@@ -457,7 +454,7 @@ head-state banners (goal, pending todos, running workflows, background
 commands) are resolved by thread-scoped lookups rather than by scanning the
 window, so a narrow window cannot drop them mid-session.
 
-A turn larger than the whole budget is cut at the budget while it is *running*,
+A turn larger than the whole budget is cut at the budget while it is _running_,
 so watching an agent work through a very long turn costs the budget per update
 rather than the whole turn; scrolling up loads the earlier part. Once the turn
 finishes it is rendered whole again, because a finished turn collapses into one
@@ -475,12 +472,9 @@ raising `BB_LOG_LEVEL`.
 
 ## Plugins
 
-User-installed plugins are gated behind the "Plugins" experiment (Settings →
-Experiments, off by default). While the experiment is off, user plugin code
-does not load and `bb plugin` commands for user plugins report that plugins are
-disabled. Builtin plugins, including connect, ship with bb and remain available
-when the Plugins experiment is off. Toggling the Plugins experiment applies
-live to user-installed plugins.
+Plugins are on by default. Builtin plugins, including connect, ship with bb;
+user-installed plugins come from `bb plugin install` or the bundled official
+store.
 
 Plugin state lives under the data dir:
 
@@ -542,8 +536,8 @@ the newest compatible stable release, ranges track within the range, dist-tags
 track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
 branches track their head while tags and commits are pinned. Local
 path installs register the directory in place and never delete it. Builtin
-plugins use `builtin:<name>`, ship with bb, and remain available when the
-Plugins experiment is off unless removed. Managed (`git:`/`npm:`) installs
+plugins use `builtin:<name>` and ship with bb unless removed. Managed
+(`git:`/`npm:`) installs
 refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
 does not match the package manifest; installing a non-builtin source whose

@@ -19,7 +19,6 @@ describe("plugin catalog routes", () => {
       db,
       appVersion: "1.0.0",
       plugins: {
-        isEnabled: () => false,
         installOfficialPlugin: async () => {
           throw new Error("unexpected install");
         },
@@ -52,7 +51,7 @@ describe("plugin catalog routes", () => {
     });
     expect(install.status).toBe(422);
     await expect(install.json()).resolves.toMatchObject({
-      error: expect.stringContaining("Plugins are disabled"),
+      error: expect.stringContaining("unexpected install"),
     });
 
     const versionOverride = await app.request("/plugin-catalog/install", {

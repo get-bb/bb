@@ -108,7 +108,6 @@ describe("plugin update service and routes", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
@@ -264,9 +263,7 @@ describe("plugin update service and routes", () => {
         detail: expect.stringContaining("retired remote marketplace"),
       }),
     ]);
-    expect(
-      fetched.filter((url) => url.includes("api.github.com")),
-    ).toEqual([]);
+    expect(fetched.filter((url) => url.includes("api.github.com"))).toEqual([]);
   });
 
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
@@ -440,7 +437,6 @@ describe("plugin update service and routes", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
       stabilizationWindowMs: 1,
       serviceRestartBaseMs: 1000,
@@ -541,7 +537,6 @@ describe("plugin update service and routes", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
-      isEnabled: () => true,
       stabilizationWindowMs: 0,
       afterPluginRollbackStateRestored: async () => {
         throw new Error("simulated process exit during rollback");
@@ -578,7 +573,6 @@ describe("plugin update service and routes", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "1.0.0",
-      isEnabled: () => true,
       stabilizationWindowMs: 0,
     });
     await service.start();
@@ -626,7 +620,6 @@ describe("plugin update service and routes", () => {
         logger,
         dataDir: join(workDir, "data"),
         appVersion: "1.0.0",
-        isEnabled: () => true,
         stabilizationWindowMs: 0,
         artifactRetentionMs: 50,
         now: () => clock,

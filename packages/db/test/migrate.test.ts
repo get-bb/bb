@@ -255,17 +255,19 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropThreadSectionSchema(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound. Later migrations add plugins, bb_connect, multi_machine, and
-  // thread_splits; the current schema has removed all three, so only drop a
+  // thread_splits; the current schema has removed all four, so only drop a
   // column when an older migration under test left it present.
-  db.$client
-    .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
-    .run();
   const experimentColumns = new Set(
     db.$client
       .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
       .all()
       .map((column) => column.name),
   );
+  if (experimentColumns.has("plugins")) {
+    db.$client
+      .prepare("ALTER TABLE system_experiments DROP COLUMN plugins")
+      .run();
+  }
   if (experimentColumns.has("bb_connect")) {
     db.$client
       .prepare("ALTER TABLE system_experiments DROP COLUMN bb_connect")
@@ -396,6 +398,22 @@ function dropSideChatPluginExperimentColumn(db: DbConnection): void {
   if (columns.some((column) => column.name === "side_chat_plugin")) {
     db.$client
       .prepare("ALTER TABLE system_experiments DROP COLUMN side_chat_plugin")
+      .run();
+  }
+}
+
+// Migration 0082 drops the `plugins` experiment column. Rewind scenarios that
+// clear its migration row must restore the column before replaying the
+// migration, since ALTER TABLE DROP COLUMN is not re-appliable.
+function restorePluginsExperimentColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+    .all();
+  if (!columns.some((column) => column.name === "plugins")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE system_experiments ADD `plugins` integer DEFAULT false NOT NULL",
+      )
       .run();
   }
 }
@@ -1255,6 +1273,7 @@ describe("migrate", () => {
         .run(permissionModesMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
 
       migrate(db);
@@ -1648,6 +1667,7 @@ describe("migrate", () => {
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
 
       expect(
@@ -1738,6 +1758,7 @@ describe("migrate", () => {
         .run(threadSectionsRepairMigrationWhen);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
+      restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
 
       expect(() => migrate(db)).not.toThrow();

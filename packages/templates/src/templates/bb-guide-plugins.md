@@ -12,10 +12,10 @@ background services, cron schedules, HTTP/RPC endpoints, thread lifecycle
 handlers, settings, storage — and `bb` CLI subcommands that agents and humans
 run like any other command. Plugins are full-trust code inside the server.
 
-User-installed plugins are an experiment, off by default: enable "Plugins" under
-Settings → Experiments first. Builtin plugins (`builtin:<name>`) ship with bb and
-can remain available even when the experiment is off. Plugin state lives under
-`<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file, secrets, logs).
+Plugins are on by default. Builtin plugins (`builtin:<name>`) ship with bb;
+user-installed plugins come from `bb plugin install` or the official store.
+Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file,
+secrets, logs).
 
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
@@ -239,9 +239,7 @@ refresh.
 Frontend entries (app.tsx) default-export `definePluginApp` from
 `@bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
-form; no props in V1, optional host-rendered title; builtin slot entries work
-with the Plugins experiment off while the Tools → Plugins management
-bucket stays experiment-gated),
+form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a

@@ -39,13 +39,6 @@ async function searchCatalog(
   return createCliBbSdk(baseUrl).plugins.catalog.search({ query });
 }
 
-export function canDevelopPlugin(
-  pluginsExperimentEnabled: boolean,
-  entry: Pick<PluginEntry, "source">,
-): boolean {
-  return pluginsExperimentEnabled || entry.source.startsWith("builtin:");
-}
-
 const pluginSettingDescriptorSchema = z.object({
   type: z.enum(["string", "boolean", "select", "project"]),
   label: z.string(),
@@ -341,7 +334,7 @@ export function registerPluginCommands(
 ): void {
   const plugin = program
     .command("plugin")
-    .description("Manage BB plugins (experimental)")
+    .description("Manage BB plugins")
     // Required (with the program's enablePositionalOptions) for `run` to
     // pass flags after <id> through to the plugin command untouched.
     .enablePositionalOptions();
@@ -389,11 +382,6 @@ export function registerPluginCommands(
         if (opts.json) {
           outputJson(opts, result);
           return;
-        }
-        if (!result.enabled) {
-          console.log(
-            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
-          );
         }
         if (result.plugins.length === 0) {
           console.log("No plugins installed.");
@@ -778,12 +766,6 @@ export function registerPluginCommands(
         if (!entry) {
           console.error(
             `This directory is not installed as a plugin — run \`bb plugin install ${path ?? "."}\` first, then re-run \`bb plugin dev\`.`,
-          );
-          process.exit(1);
-        }
-        if (!canDevelopPlugin(list.enabled, entry)) {
-          console.error(
-            'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
           );
           process.exit(1);
         }

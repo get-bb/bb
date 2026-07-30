@@ -148,7 +148,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
     mode: "boolean",
   }).notNull(),
-  plugins: integer("plugins", { mode: "boolean" }).notNull().default(false),
   toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
   sideChatPlugin: integer("side_chat_plugin", { mode: "boolean" })
     .notNull()

@@ -8,8 +8,8 @@ import type { PluginCliCommandInfo } from "./plugin-api.js";
  * `bb` subcommands installed plugins contribute, one section per plugin, at
  * near-zero context cost. Lives under <dataDir>/skills-generated (a distinct
  * root resolved with the data-dir skill tier mechanics) and exists only while
- * the plugins experiment is on and at least one CLI command is registered —
- * the plugin service rewrites or removes it on load/reload/toggle.
+ * at least one CLI command is registered — the plugin service rewrites or
+ * removes it on load/reload/toggle.
  */
 export interface PluginCliContribution {
   pluginId: string;

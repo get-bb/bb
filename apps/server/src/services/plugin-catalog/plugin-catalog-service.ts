@@ -30,7 +30,7 @@ export interface PluginCatalogService {
 export function createPluginCatalogService(deps: {
   db: DbConnection;
   appVersion: string;
-  plugins: Pick<PluginService, "installOfficialPlugin" | "isEnabled">;
+  plugins: Pick<PluginService, "installOfficialPlugin">;
   officialPlugins?: readonly BundledPluginRegistration[];
   warn?: (message: string) => void;
 }): PluginCatalogService {
@@ -95,7 +95,10 @@ export function createPluginCatalogService(deps: {
           const manifest = await entryManifest(entry);
           return manifest === null
             ? null
-            : { pluginId: entry.pluginId, result: searchResult(entry, manifest) };
+            : {
+                pluginId: entry.pluginId,
+                result: searchResult(entry, manifest),
+              };
         }),
       );
       return entries
@@ -115,15 +118,12 @@ export function createPluginCatalogService(deps: {
               .includes(query),
         )
         .map(({ result }) => result)
-        .sort((left, right) => left.displayName.localeCompare(right.displayName));
+        .sort((left, right) =>
+          left.displayName.localeCompare(right.displayName),
+        );
     },
 
     async install(entryId) {
-      if (!deps.plugins.isEnabled()) {
-        throw new Error(
-          'Plugins are disabled — enable the "Plugins" experiment in Settings → Experiments.',
-        );
-      }
       const entry = officialPlugins.find(
         (candidate) => candidate.name === entryId,
       );

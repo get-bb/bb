@@ -145,7 +145,6 @@ function createService(args: {
   autoInstall?: boolean;
   defaultEnabled?: boolean;
   experiment?: "sideChatPlugin";
-  isEnabled?: () => boolean;
   includeBuiltin?: boolean;
   pluginId?: string;
   rootDir?: string;
@@ -161,7 +160,6 @@ function createService(args: {
     logger,
     dataDir: args.dataDir,
     appVersion: "0.9.0",
-    isEnabled: args.isEnabled ?? (() => false),
     bundledPlugins:
       args.includeBuiltin === false
         ? []
@@ -552,11 +550,10 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(2);
   });
 
-  it("keeps builtin CLI and UI contributions available when the experiment is off", async () => {
+  it("keeps builtin CLI and UI contributions available", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
-      isEnabled: () => false,
     });
 
     await service.start();
@@ -621,7 +618,6 @@ describe("builtin plugin reconciliation", () => {
       db,
       dataDir: join(workDir, "data"),
       builtinName: "hot-server",
-      isEnabled: () => false,
       rootDir: mutableRoot,
       watchBuiltinPluginSources: true,
     });
@@ -672,7 +668,6 @@ describe("builtin plugin reconciliation", () => {
       db,
       dataDir: join(workDir, "data"),
       builtinName: "hot-app",
-      isEnabled: () => false,
       rootDir: mutableRoot,
       watchBuiltinPluginSources: true,
     });
@@ -822,7 +817,6 @@ describe("builtin plugin reconciliation", () => {
       db,
       dataDir: join(workDir, "data"),
       builtinName: "automations",
-      isEnabled: () => true,
       rootDir: copiedRoot,
     });
 

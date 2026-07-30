@@ -9,7 +9,6 @@ export function getExperiments(db: DbConnection): Experiments {
   const row = db
     .select({
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
-      plugins: systemExperiments.plugins,
       toolsHub: systemExperiments.toolsHub,
       sideChatPlugin: systemExperiments.sideChatPlugin,
     })
@@ -29,7 +28,6 @@ export function setExperiments(
     .values({
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-      plugins: experiments.plugins,
       toolsHub: experiments.toolsHub,
       sideChatPlugin: experiments.sideChatPlugin,
       updatedAt,
@@ -38,8 +36,7 @@ export function setExperiments(
       target: systemExperiments.id,
       set: {
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-        plugins: experiments.plugins,
-        toolsHub: experiments.toolsHub,
+          toolsHub: experiments.toolsHub,
         sideChatPlugin: experiments.sideChatPlugin,
         updatedAt,
       },

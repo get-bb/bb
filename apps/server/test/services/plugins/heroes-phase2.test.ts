@@ -1,11 +1,8 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments, setThreadExecutionOverride } from "@bb/db";
-import {
-  defaultExperiments,
-  encodeClientTurnRequestIdNumber,
-} from "@bb/domain";
+import { setThreadExecutionOverride } from "@bb/db";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
@@ -47,7 +44,6 @@ describe("hero plugin: small-ux-pack", () => {
 
   beforeEach(async () => {
     server = await startTestServer({ appVersion: APP_VERSION });
-    setExperiments(server.db, { ...defaultExperiments, plugins: true });
     // The thread action sends a follow-up through the plugin's loopback
     // bb.sdk, so the SDK must be bound to the listening server.
     server.pluginService.bindSdk({ baseUrl: server.baseUrl });
@@ -187,7 +183,6 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness({ appVersion: APP_VERSION });
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     const entry = await harness.pluginService.installPath(
       join(EXAMPLES_DIR, "agent-enrichment"),
     );

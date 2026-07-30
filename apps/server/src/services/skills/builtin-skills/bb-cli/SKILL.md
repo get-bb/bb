@@ -64,7 +64,7 @@ message agents, or inspect projects, providers, and environments.
 - The default-off `toolsHub` experiment exposes the unified Skills, Plugins,
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
-  tools; the separate `plugins` experiment controls user plugin runtime loading.
+  tools.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole
@@ -582,13 +582,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
 - A bb plugin is a TypeScript package running inside the bb server, extending
   it with services, schedules, HTTP/RPC endpoints, settings — and `bb` CLI
   subcommands that agents run through bash like any other command.
-- **Enable user-installed plugins first.** Plugins are an experiment, off by
-  default: turn on **"Plugins"** under Settings → Experiments. Auto-installed
-  builtin plugins ship with bb and remain available even when the experiment
-  is off (except `connect`, which is gated by the **"bb connect"**
-  experiment, and `side-chat`, which is gated by the **"Side chat plugin"**
-  experiment); store-installed official plugins are a user opt-in and stay
-  behind the Plugins experiment like other installs.
+- Plugins are on by default. Auto-installed builtin plugins ship with bb
+  (except `side-chat`, which is gated by the **"Side chat plugin"**
+  experiment); official plugins install from the bundled store on demand.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
   - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
     the app and install from the local copy — no network. Installed official

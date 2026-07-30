@@ -199,7 +199,6 @@ export const installedPluginSchema = z.object({
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;
 
 export const pluginListResponseSchema = z.object({
-  enabled: z.boolean(),
   plugins: z.array(installedPluginSchema),
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;

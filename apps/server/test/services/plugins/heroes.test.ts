@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getLatestThreadSequence, getThread, setExperiments } from "@bb/db";
-import { defaultExperiments, turnScope } from "@bb/domain";
+import { getLatestThreadSequence, getThread } from "@bb/db";
+import { turnScope } from "@bb/domain";
 import {
   generatedSkillsRootPath,
   pluginCommandsSkillDir,
@@ -57,7 +57,6 @@ describe("hero plugin: agent-enrichment", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness({ appVersion: APP_VERSION });
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     const entry = await harness.pluginService.installPath(
       join(EXAMPLES_DIR, "agent-enrichment"),
     );
@@ -166,7 +165,6 @@ describe("hero plugin: slack-bot", () => {
     const slackCalls: Array<{ url: string; body: Record<string, unknown> }> =
       [];
     try {
-      setExperiments(server.db, { ...defaultExperiments, plugins: true });
       const { host } = seedHostSession(server.deps);
       seedPrimaryHost(server.deps, host.id);
       const { project } = seedProjectWithSource(server.deps, {

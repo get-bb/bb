@@ -54,15 +54,13 @@ const ROW = {
 describe("fetchPluginList envelope", () => {
   it("binds browser fetch before the SDK invokes it", async () => {
     const result = await fetchPluginList(
-      receiverSensitiveFetch({ enabled: true, plugins: [ROW] }),
+      receiverSensitiveFetch({ plugins: [ROW] }),
     );
     expect(result.plugins).toHaveLength(1);
   });
 
   it("parses the { enabled, plugins } envelope and normalizes updateState", async () => {
-    const result = await fetchPluginList(
-      fetchReturning({ enabled: true, plugins: [ROW] }),
-    );
+    const result = await fetchPluginList(fetchReturning({ plugins: [ROW] }));
     expect(result.plugins).toHaveLength(1);
     const plugin = result.plugins[0];
     expect(plugin?.provenance).toBe("direct");
@@ -80,7 +78,6 @@ describe("fetchPluginList envelope", () => {
   it("preserves authoritative source and activity metadata for detail pages", async () => {
     const result = await fetchPluginList(
       fetchReturning({
-        enabled: true,
         plugins: [
           {
             ...ROW,
@@ -120,13 +117,8 @@ describe("fetchPluginList envelope", () => {
     expect(plugin?.app.hasApp).toBe(true);
   });
 
-  it("rejects an envelope missing enabled or plugins instead of half-parsing it", async () => {
-    await expect(
-      fetchPluginList(fetchReturning({ plugins: [ROW] })),
-    ).rejects.toThrow();
-    await expect(
-      fetchPluginList(fetchReturning({ enabled: true })),
-    ).rejects.toThrow();
+  it("rejects an envelope missing plugins instead of half-parsing it", async () => {
+    await expect(fetchPluginList(fetchReturning({}))).rejects.toThrow();
   });
 
   it("rejects a list containing rows missing server-mandated fields", async () => {
@@ -137,7 +129,6 @@ describe("fetchPluginList envelope", () => {
     await expect(
       fetchPluginList(
         fetchReturning({
-          enabled: true,
           plugins: [
             noUpdateState,
             noProvenance,
@@ -158,15 +149,13 @@ describe("fetchPluginList envelope", () => {
       updateState: { lastFailure: { version: "1.7.0" } },
     };
     await expect(
-      fetchPluginList(
-        fetchReturning({ enabled: true, plugins: [partialFailure] }),
-      ),
+      fetchPluginList(fetchReturning({ plugins: [partialFailure] })),
     ).rejects.toThrow();
   });
 
   it("returns an empty list only for a successful empty response", async () => {
     await expect(
-      fetchPluginList(fetchReturning({ enabled: true, plugins: [] })),
+      fetchPluginList(fetchReturning({ plugins: [] })),
     ).resolves.toEqual({ plugins: [] });
   });
 

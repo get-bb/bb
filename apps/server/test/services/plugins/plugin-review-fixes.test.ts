@@ -2,8 +2,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -50,7 +48,6 @@ describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-review-fixes-"));
     delete globals.__rfLoads;
     delete globals.__rfDisposals;

@@ -1,8 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -73,7 +71,6 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
   });
 
   afterEach(async () => {

@@ -21,7 +21,7 @@ export interface BundledPluginDefinition {
   category?: string;
   /**
    * Experiment key that must be on for this bundled plugin to load. Omitted =
-   * always loadable (builtins additionally bypass the `plugins` experiment).
+   * always loadable.
    */
   experiment?: keyof Experiments;
 }

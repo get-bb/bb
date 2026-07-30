@@ -17,8 +17,6 @@ No dependencies, no build step: the shipped BB app renders everything from
 
 ## Install
 
-Requires the "Plugins" experiment (Settings → Experiments).
-
 ```
 bb plugin install ./examples/plugins/small-ux-pack
 bb plugin list

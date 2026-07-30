@@ -56,13 +56,13 @@ function responseJson(body: unknown): Response {
   });
 }
 
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
@@ -179,7 +179,7 @@ describe("PluginSettingsForm", () => {
 describe("PluginsSettingsSection", () => {
   it("offers only Installed and Browse management tabs", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData(systemConfigQueryKey(), systemConfig(true));
+    queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
     queryClient.setQueryData(pluginListQueryKey(true), { plugins: [] });
     render(
       <MemoryRouter>
@@ -329,7 +329,7 @@ describe("PluginSettingsDetail settings gating", () => {
     });
   });
 
-  it("renders a slot-only settings page while the plugins experiment is off", async () => {
+  it("renders a slot-only settings page", async () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -355,11 +355,10 @@ describe("PluginSettingsDetail settings gating", () => {
               : input.url;
         const path = new URL(rawUrl, "http://localhost").pathname;
         if (path === "/api/v1/system/config") {
-          return responseJson(systemConfig(false));
+          return responseJson(systemConfig());
         }
         if (path === "/api/v1/plugins") {
           return responseJson({
-            enabled: false,
             plugins: [serverPlugin({ id: "connect", hasSettings: false })],
           });
         }

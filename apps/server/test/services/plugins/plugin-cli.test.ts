@@ -1,8 +1,6 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@bb/plugin-sdk";
 import {
   generatedSkillsRootPath,
@@ -97,7 +95,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     rootDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-acme",
       serverSource: CLI_SOURCE,
@@ -137,18 +134,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     // bb plugin list shows the registered command too.
     const entry = harness.pluginService.list().find((p) => p.id === "acme");
     expect(entry?.cliCommand).toEqual({ name: "acme", summary: "Acme tools" });
-  });
-
-  it("contributions are empty when the experiment is off", async () => {
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/contributions`,
-    );
-    expect(await response.json()).toEqual({
-      cliCommands: [],
-      threadActions: [],
-      mentionProviders: [],
-    });
   });
 
   it("runs the command end to end: argv and ctx pass through verbatim", async () => {
@@ -378,22 +363,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     const reloaded = await readFile(skillFile, "utf8");
     expect(reloaded).toContain("## bb acme2 — Acme v2");
     expect(reloaded).not.toContain("## bb acme —");
-
-    // Turning the experiment off removes the generated skill entirely.
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    await harness.pluginService.onExperimentsChanged();
-    await expect(readFile(skillFile, "utf8")).rejects.toThrow();
-    const goneSources = resolveInjectedSkillSources(testLogger, {
-      additionalSkillsRootPaths: [
-        generatedSkillsRootPath(harness.config.dataDir),
-      ],
-      builtinSkillsRootPath: join(harness.config.dataDir, "builtin-skills"),
-      dataDir: harness.config.dataDir,
-      skillTreeRegistry: harness.deps.skillTreeRegistry,
-    });
-    expect(
-      goneSources.find((source) => source.name === "plugin-commands"),
-    ).toBeUndefined();
   });
 
   it("bb.log writes JSONL to the plugin log file and the tail endpoint serves it", async () => {

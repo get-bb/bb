@@ -1,8 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -125,7 +123,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     rootDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-wire",
       serverSource: WIRE_SOURCE,
@@ -472,18 +469,6 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(await badBody.json()).toMatchObject({
       ok: false,
       error: { code: "invalid_json" },
-    });
-  });
-
-  it("returns the structured disabled error when the experiment is off", async () => {
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/wire/http/hello`,
-    );
-    expect(response.status).toBe(422);
-    expect(await response.json()).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Plugins are disabled"),
     });
   });
 

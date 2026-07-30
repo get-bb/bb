@@ -33,8 +33,6 @@ plugin works as-is from `examples/`; if you copy it elsewhere, run
 
 ## Install
 
-Requires the "Plugins" experiment (Settings → Experiments).
-
 ```
 bb plugin install ./examples/plugins/agent-enrichment
 bb plugin list

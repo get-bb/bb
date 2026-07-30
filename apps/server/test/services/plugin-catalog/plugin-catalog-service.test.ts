@@ -28,7 +28,6 @@ describe("bundled plugin catalog service", () => {
   afterEach(() => db.$client.close());
 
   function service(options?: {
-    enabled?: boolean;
     officialPlugins?: Parameters<
       typeof createPluginCatalogService
     >[0]["officialPlugins"];
@@ -38,7 +37,6 @@ describe("bundled plugin catalog service", () => {
       db,
       appVersion: "1.0.0",
       plugins: {
-        isEnabled: () => options?.enabled ?? true,
         installOfficialPlugin: async (name: string) => {
           installedNames.push(name);
           throw new Error("installation stopped by test");
@@ -129,14 +127,6 @@ describe("bundled plugin catalog service", () => {
       "installation stopped by test",
     );
     expect(installedNames).toEqual(["docs"]);
-  });
-
-  it("refuses installs while the plugins experiment is disabled", async () => {
-    const catalog = service({ enabled: false });
-    await expect(catalog.install("docs")).rejects.toThrow(
-      "Plugins are disabled",
-    );
-    expect(installedNames).toEqual([]);
   });
 
   it("rejects unknown catalog entries", async () => {

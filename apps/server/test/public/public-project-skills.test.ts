@@ -983,7 +983,6 @@ describe("public project skills route", () => {
       await withTestHarness(async (harness) => {
         setExperiments(harness.db, {
           ...defaultExperiments,
-          plugins: true,
         });
         const { pluginRootPath, skillFilePath } =
           await writePluginSkillFixture(workDir);

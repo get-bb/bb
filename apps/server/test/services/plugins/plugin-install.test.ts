@@ -264,7 +264,6 @@ describe("plugin install flows", () => {
       logger,
       dataDir,
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
       onArtifactMaterialize: () => {

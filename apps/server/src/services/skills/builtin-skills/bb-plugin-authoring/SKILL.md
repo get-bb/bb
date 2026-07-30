@@ -10,9 +10,8 @@ Its backend entry default-exports a factory that receives the full plugin API
 (`bb`); an optional frontend entry registers React UI inside the bb app.
 Plugins are full-trust code: they can read all local bb data.
 
-User-installed plugins are gated behind the "Plugins" experiment (Settings →
-Experiments). Builtin plugins ship with bb and can remain available under their
-own product gates. `bb plugin list` tells you if plugins are disabled.
+Plugins are on by default. Builtin plugins ship with bb; a few sit behind
+their own product gates. `bb plugin list` shows each plugin's status.
 
 ## Quickstart
 
@@ -858,9 +857,7 @@ Slot props contracts (versioned, additive-only):
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
-  settings sections. Slot-derived sidebar entries work for builtin plugin
-  frontends even when the user-installed Plugins experiment is off; the
-  Tools → Plugins management surface remains experiment-gated.
+  settings sections.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
   `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep

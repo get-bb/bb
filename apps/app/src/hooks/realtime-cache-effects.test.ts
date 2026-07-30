@@ -180,7 +180,7 @@ describe("createRealtimeCacheEffects", () => {
 
   it("invalidates plugin contributions and command catalogs on plugins-changed", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const contributionsKey = pluginContributionsQueryKey(true);
+    const contributionsKey = pluginContributionsQueryKey();
     queryClient.setQueryData(contributionsKey, {
       threadActions: [],
       mentionProviders: [],

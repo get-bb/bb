@@ -1,16 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPluginDevLoop, isIgnoredPluginDevPath } from "@bb/plugin-build";
-import { canDevelopPlugin } from "../commands/plugin.js";
-
-describe("canDevelopPlugin", () => {
-  it("allows builtins while the user-installed Plugins experiment is off", () => {
-    expect(canDevelopPlugin(false, { source: "builtin:automations" })).toBe(
-      true,
-    );
-    expect(canDevelopPlugin(false, { source: "path:/tmp/plugin" })).toBe(false);
-  });
-});
-
 describe("createPluginDevLoop", () => {
   beforeEach(() => {
     vi.useFakeTimers();

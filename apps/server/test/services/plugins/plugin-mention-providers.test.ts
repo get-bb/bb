@@ -2,13 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createConnection,
-  migrate,
-  setExperiments,
-  type DbConnection,
-} from "@bb/db";
-import { defaultExperiments, type PromptInput } from "@bb/domain";
+import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -182,7 +177,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     const rootDir = await writePlugin(
       join(harness.config.dataDir, "fixtures"),
       { name: "bb-plugin-mentions", serverSource: MENTION_SOURCE },
@@ -341,22 +335,12 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     );
   });
 
-  it("enforces local auth on search and the experiment gate", async () => {
+  it("enforces local auth on search", async () => {
     const foreign = await harness.app.request(
       `${BASE}/api/v1/plugins/mentions/search?q=fix`,
       { headers: { origin: EVIL_ORIGIN } },
     );
     expect(foreign.status).toBe(403);
-
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const disabled = await harness.app.request(
-      `${BASE}/api/v1/plugins/mentions/search?q=fix`,
-    );
-    expect(disabled.status).toBe(200);
-    expect(await disabled.json()).toEqual({
-      ok: true,
-      groups: [],
-    });
   });
 
   it("resolves each unique mention once at send and attaches agent-only context inputs", async () => {
@@ -653,7 +637,6 @@ describe("mention search time box", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
       mentionSearchTimeoutMs: 100,
     });
@@ -732,7 +715,6 @@ describe("mention resolve time box", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
       mentionResolveTimeoutMs: 100,
     });

@@ -6,12 +6,8 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments, upsertInstalledPlugin } from "@bb/db";
-import {
-  defaultExperiments,
-  PLUGIN_SDK_MAJOR,
-  PLUGIN_SDK_VERSION,
-} from "@bb/domain";
+import { upsertInstalledPlugin } from "@bb/db";
+import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -102,7 +98,6 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
   });
 
   afterEach(async () => {

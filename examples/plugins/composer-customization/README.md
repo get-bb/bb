@@ -15,7 +15,7 @@ chrome and keep custom action buttons keyboard accessible.
 
 ## Install and try it
 
-Enable Settings → Experiments → Plugins, then run:
+Run:
 
 ```sh
 bb plugin install ./examples/plugins/composer-customization

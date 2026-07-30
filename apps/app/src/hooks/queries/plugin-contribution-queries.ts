@@ -1,5 +1,4 @@
 import { useQuery, type QueryKey } from "@tanstack/react-query";
-import { useSystemConfig } from "./system-queries";
 import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
@@ -107,34 +106,28 @@ async function fetchPluginContributions(
   };
 }
 
-export function pluginContributionsQueryKey(pluginsEnabled: boolean): QueryKey {
-  return ["plugin-contributions", pluginsEnabled];
+export function pluginContributionsQueryKey(): QueryKey {
+  return ["plugin-contributions"];
 }
 
 /**
- * Prefix covering every contributions cache entry (both experiment-flag
- * variants). The realtime `plugins-changed` broadcast invalidates it so
- * `bb plugin reload/enable/disable` reaches open pages without waiting out
- * the stale time.
+ * Prefix covering every contributions cache entry. The realtime
+ * `plugins-changed` broadcast invalidates it so `bb plugin
+ * reload/enable/disable` reaches open pages without waiting out the stale
+ * time.
  */
 export function allPluginContributionsQueryKeyPrefix(): QueryKey {
   return ["plugin-contributions"];
 }
 
 /**
- * All host-rendered plugin contributions, fetched only while the `plugins`
- * experiment is on (per system config). Consumers read their kind from the
- * shared result so the app makes one contributions request total. The
- * experiment flag rides the query key: flipping it off moves consumers to a
- * never-fetched (undefined) entry instead of a stale cached one.
+ * All host-rendered plugin contributions. Consumers read their kind from the
+ * shared result so the app makes one contributions request total.
  */
 export function usePluginContributions() {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   return useQuery({
-    queryKey: pluginContributionsQueryKey(pluginsEnabled),
+    queryKey: pluginContributionsQueryKey(),
     queryFn: ({ signal }) => fetchPluginContributions(signal),
-    enabled: pluginsEnabled,
     staleTime: 30_000,
   });
 }

@@ -74,7 +74,6 @@ describe("prebuilt server bundle loading", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
     });
   });

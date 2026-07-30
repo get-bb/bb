@@ -215,7 +215,7 @@ export function App() {
   // Reconcile the favicon tint with the server-stored appearance (and migrate
   // any legacy localStorage-only preference on first load).
   useFaviconColorSync();
-  // Load plugin frontend bundles once the `plugins` experiment resolves.
+  // Load plugin frontend bundles once system config resolves.
   usePluginFrontendBoot();
 
   return (

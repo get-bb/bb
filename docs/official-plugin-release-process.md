@@ -51,7 +51,7 @@ ls packages/bb-app/server/dist/builtin-plugins
 
 Every bundled plugin directory must contain a rewritten `package.json`
 pointing at `./dist/server.js` plus the prebuilt `dist/` artifacts. Then, in a
-dev build with the Plugins experiment on:
+dev build:
 
 ```bash
 bb plugin search docs

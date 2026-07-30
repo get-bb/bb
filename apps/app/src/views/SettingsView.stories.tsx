@@ -343,13 +343,6 @@ function ExperimentsStory() {
           claudeCodeMockCliTraffic: enabled,
         }))
       }
-      onPluginsEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          plugins: enabled,
-        }))
-      }
-      pluginsEnabled={state.experiments.plugins}
       onToolsHubEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,

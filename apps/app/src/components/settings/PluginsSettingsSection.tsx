@@ -40,7 +40,6 @@ import {
   type PluginSettingFieldDescriptor,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   getPluginFrontendDiagnostics,
@@ -73,18 +72,12 @@ import {
  *   banner, "Updates & source" card, and the host-rendered settings form.
  *   Secrets are write-only: the server reports only `{ set }`, and an empty
  *   secret input means "leave unchanged".
- *
- * Both render a hint instead of content while the `plugins` experiment is
- * off (the settings nav only links here while it is on).
  */
 
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
-
-const PLUGINS_EXPERIMENT_OFF_MESSAGE =
-  "Plugins are off. Turn on the Plugins experiment in Settings → Experiments.";
 
 /**
  * Seed prompt for the "Create a plugin" entry point: opens the composer
@@ -387,17 +380,13 @@ function PluginsTabButton({
 /** The "Plugins" bucket: Installed / Browse (Layer 1). */
 export function PluginsSettingsSection() {
   const navigate = useNavigate();
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const listQuery = usePluginList({ enabled: pluginsEnabled });
+  const listQuery = usePluginList({ enabled: true });
   const plugins = listQuery.data?.plugins ?? [];
   const [tab, setTab] = useState<PluginsTab>("installed");
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
-
-  if (systemConfig.data === undefined) return null;
 
   const startCreatePlugin = () =>
     navigate(getRootComposeRoutePath(), {
@@ -412,64 +401,56 @@ export function PluginsSettingsSection() {
           Customize bb to your liking with plugins.
         </p>
       </div>
-      {!pluginsEnabled ? (
-        <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-          <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1" role="tablist">
-              <PluginsTabButton
-                label="Installed"
-                count={plugins.length}
-                active={tab === "installed"}
-                onClick={() => setTab("installed")}
-              />
-              <PluginsTabButton
-                label="Browse"
-                active={tab === "browse"}
-                onClick={() => setTab("browse")}
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2.5 text-xs text-muted-foreground"
-                onClick={startCreatePlugin}
-              >
-                <Icon name="Code" className="size-3.5" />
-                Create a plugin
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-7 px-2.5 text-xs"
-                onClick={() => setAddDialog({ open: true, initial: null })}
-              >
-                <Icon name="Plus" className="size-3.5" />
-                Add plugin
-              </Button>
-            </div>
-          </div>
-          {tab === "installed" ? (
-            <InstalledPluginsTab plugins={plugins} />
-          ) : (
-            <BrowsePluginsTab
-              onInstall={(initial) => setAddDialog({ open: true, initial })}
-            />
-          )}
-          <AddPluginDialog
-            open={addDialog.open}
-            initial={addDialog.initial}
-            onOpenChange={(open) =>
-              setAddDialog((current) => ({ ...current, open }))
-            }
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1" role="tablist">
+          <PluginsTabButton
+            label="Installed"
+            count={plugins.length}
+            active={tab === "installed"}
+            onClick={() => setTab("installed")}
           />
-        </>
+          <PluginsTabButton
+            label="Browse"
+            active={tab === "browse"}
+            onClick={() => setTab("browse")}
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2.5 text-xs text-muted-foreground"
+            onClick={startCreatePlugin}
+          >
+            <Icon name="Code" className="size-3.5" />
+            Create a plugin
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setAddDialog({ open: true, initial: null })}
+          >
+            <Icon name="Plus" className="size-3.5" />
+            Add plugin
+          </Button>
+        </div>
+      </div>
+      {tab === "installed" ? (
+        <InstalledPluginsTab plugins={plugins} />
+      ) : (
+        <BrowsePluginsTab
+          onInstall={(initial) => setAddDialog({ open: true, initial })}
+        />
       )}
+      <AddPluginDialog
+        open={addDialog.open}
+        initial={addDialog.initial}
+        onOpenChange={(open) =>
+          setAddDialog((current) => ({ ...current, open }))
+        }
+      />
     </section>
   );
 }
@@ -692,19 +673,7 @@ export function PluginSettingsDetailSection({
 }: {
   pluginId: string;
 }) {
-  const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
-  const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === pluginId,
-  );
-  const listQuery = usePluginList({
-    enabled: pluginsEnabled || hasSettingsSections,
-  });
-  if (systemConfig.data === undefined) return null;
-  if (!pluginsEnabled && !hasSettingsSections) {
-    return <EmptyState message={PLUGINS_EXPERIMENT_OFF_MESSAGE} />;
-  }
+  const listQuery = usePluginList({ enabled: true });
   const plugin = listQuery.data?.plugins.find((entry) => entry.id === pluginId);
   if (plugin === undefined) {
     return listQuery.data === undefined ? null : (

@@ -82,15 +82,11 @@ export function useSettingsNavState(): SettingsNavState {
   const { hasDaemon } = useHostDaemon();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const systemConfig = useSystemConfig();
-  const pluginsEnabled = systemConfig.data?.experiments.plugins === true;
   const toolsHubEnabled = systemConfig.data?.experiments.toolsHub === true;
   const settingsSectionPluginIds = new Set(
     settingsSections.map((section) => section.pluginId),
   );
-  const pluginListQuery = usePluginList({
-    enabled:
-      !toolsHubEnabled && (pluginsEnabled || settingsSectionPluginIds.size > 0),
-  });
+  const pluginListQuery = usePluginList({ enabled: !toolsHubEnabled });
 
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
   const providerMatch = matchPath(
@@ -126,7 +122,7 @@ export function useSettingsNavState(): SettingsNavState {
       return hasDaemon || fileOpeners.length > 0;
     }
     if (section.id === "plugins") {
-      return pluginsEnabled && !toolsHubEnabled;
+      return !toolsHubEnabled;
     }
     return true;
   });

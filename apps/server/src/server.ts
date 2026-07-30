@@ -10,7 +10,6 @@ import {
   buildLocalAppOrigins,
   type BuildLocalAppOriginsArgs,
 } from "@bb/config/local-app-origins";
-import { getExperiments } from "@bb/db";
 import type { AppDeps, ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
@@ -420,7 +419,6 @@ export function createApp(
     pendingInteractions: deps.pendingInteractions,
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
-    isEnabled: () => getExperiments(deps.db).plugins,
     sharedPorts: deps.sharedPorts,
     ensureSharedPortTunnel: (hostId) =>
       deps.sharedPorts.ensureTunnelIdentity(hostId, () =>

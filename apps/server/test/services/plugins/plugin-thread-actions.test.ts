@@ -1,13 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
-import { seedHost, seedProjectWithSource, seedThread } from "../../helpers/seed.js";
+import {
+  seedHost,
+  seedProjectWithSource,
+  seedThread,
+} from "../../helpers/seed.js";
 
 // The harness config uses serverPort 3334, so this host is on the local-app
 // origin allowlist the "local" auth mode enforces.
@@ -97,7 +99,6 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness();
-    setExperiments(harness.db, { ...defaultExperiments, plugins: true });
     const host = seedHost(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {
       hostId: host.id,
@@ -138,7 +139,13 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
         icon: null,
         confirm: "Really run the quiet action?",
       },
-      { pluginId: "actions", id: "boom", title: "Boom", icon: null, confirm: null },
+      {
+        pluginId: "actions",
+        id: "boom",
+        title: "Boom",
+        icon: null,
+        confirm: null,
+      },
       {
         pluginId: "actions",
         id: "bad-toast",
@@ -147,19 +154,6 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
         confirm: null,
       },
     ]);
-  });
-
-  it("contributions go empty when the experiment is off", async () => {
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/contributions`,
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      cliCommands: [],
-      threadActions: [],
-      mentionProviders: [],
-    });
   });
 
   it("runs an action and passes the returned toast through, with the thread's projectId in ctx", async () => {
@@ -267,18 +261,6 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
     ).toEqual([]);
   });
 
-  it("returns the structured disabled error when the experiment is off", async () => {
-    setExperiments(harness.db, { ...defaultExperiments, plugins: false });
-    const response = await runAction(harness, "actions", "echo-ctx", {
-      threadId,
-    });
-    expect(response.status).toBe(422);
-    expect(await response.json()).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Plugins are disabled"),
-    });
-  });
-
   it("rejects duplicate action ids at registration (load fails loudly)", async () => {
     const rootDir = await writePlugin(
       join(harness.config.dataDir, "fixtures"),
@@ -294,6 +276,8 @@ describe("plugin thread actions (bb.ui.registerThreadAction)", () => {
     );
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("error");
-    expect(entry.statusDetail).toContain('thread action "a" is already registered');
+    expect(entry.statusDetail).toContain(
+      'thread action "a" is already registered',
+    );
   });
 });

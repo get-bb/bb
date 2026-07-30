@@ -1247,7 +1247,7 @@ describe("@bb/sdk", () => {
       candidate: { version: "1.3.0", display: "1.3.0" },
     };
     const queue = createFetchQueue([
-      { body: { enabled: true, plugins: [plugin] } },
+      { body: { plugins: [plugin] } },
       { body: { ok: true, plugin } },
       { body: { ok: true, plugin } },
       {
@@ -1298,10 +1298,7 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await expect(sdk.plugins.list()).resolves.toEqual({
-      enabled: true,
-      plugins: [plugin],
-    });
+    await expect(sdk.plugins.list()).resolves.toEqual({ plugins: [plugin] });
     await expect(
       sdk.plugins.install({ source: "npm:@bb/notes@^1" }),
     ).resolves.toEqual(plugin);

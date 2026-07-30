@@ -15,8 +15,6 @@ Demonstrates the SDK's host-owned `ThreadChat` component and the
 
 ## Install
 
-Requires the "Plugins" experiment (Settings → Experiments).
-
 ```
 bb plugin install ./examples/plugins/thread-chat-demo
 ```

@@ -657,19 +657,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return null;
   }
 
-  // Auto-installed builtins load regardless of the "Plugins" experiment;
-  // store-installed officials share bundled (builtin) sources but were a
-  // user opt-in through the catalog, so they stay behind the experiment.
-  function experimentGateExempt(row: InstalledPluginRow): boolean {
-    return row.provenance === "builtin";
-  }
-
   /**
    * Per-plugin experiment gate declared in the bundled registry (e.g. the
    * side-chat builtin behind `sideChatPlugin`). Open for every plugin whose
-   * registry entry names no experiment. Distinct from the global `plugins`
-   * experiment: a bundled plugin's own experiment gates it even when it is
-   * builtin-provenance exempt from the global one.
+   * registry entry names no experiment.
    */
   function pluginExperimentGate(pluginId: string): keyof Experiments | null {
     const bundled = deps.bundledPlugins ?? BUNDLED_PLUGINS;
@@ -686,7 +677,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
-    return row !== undefined && experimentGateExempt(row);
+    return row !== undefined && row.provenance === "builtin";
   }
 
   function experimentGateDisabledDetail(
@@ -695,31 +686,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!pluginExperimentGateOpen(row.id)) {
       return `disabled by the "${pluginExperimentGate(row.id)}" experiment`;
     }
-    if (!experimentGateExempt(row)) {
-      return 'disabled by the "Plugins" experiment';
-    }
     return null;
   }
 
   function shouldLoadRow(row: InstalledPluginRow): boolean {
-    return (
-      pluginExperimentGateOpen(row.id) &&
-      (experimentGateExempt(row) || deps.isEnabled())
-    );
+    return pluginExperimentGateOpen(row.id);
   }
 
   function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return (
-      pluginExperimentGateOpen(plugin.manifest.id) &&
-      (plugin.experimentExempt || deps.isEnabled())
-    );
+    return pluginExperimentGateOpen(plugin.manifest.id);
   }
 
   function shouldExposePluginId(id: string): boolean {
     const plugin = loaded.get(id);
     if (plugin !== undefined) return shouldExposeLoadedPlugin(plugin);
     const row = getInstalledPlugin(deps.db, id);
-    if (row === undefined) return deps.isEnabled();
+    if (row === undefined) return true;
     return shouldLoadRow(row);
   }
 
@@ -1047,7 +1029,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       })),
       isBuiltin: loadedBuiltinName !== null,
       builtinName: loadedBuiltinName,
-      experimentExempt: experimentGateExempt(row),
     };
     if (previous !== undefined) {
       await disposePluginInstance(row.id, previous);

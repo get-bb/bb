@@ -6,10 +6,9 @@ import {
   createConnection,
   getThread,
   migrate,
-  setExperiments,
   type DbConnection,
 } from "@bb/db";
-import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -95,7 +94,6 @@ describe("plugin bb.sdk bind gate", () => {
       logger,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
-      isEnabled: () => true,
       loadTimeoutMs: 2000,
     });
   });
@@ -204,7 +202,6 @@ describe("plugin bb.sdk against a running server", () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
     try {
-      setExperiments(server.db, { ...defaultExperiments, plugins: true });
       const { host } = seedHostSession(server.deps);
       seedPrimaryHost(server.deps, host.id);
       const { project } = seedProjectWithSource(server.deps, {

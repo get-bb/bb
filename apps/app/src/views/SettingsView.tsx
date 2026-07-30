@@ -209,8 +209,6 @@ export interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onPluginsEnabledChange: (enabled: boolean) => void;
-  pluginsEnabled: boolean;
   onToolsHubEnabledChange: (enabled: boolean) => void;
   toolsHubEnabled: boolean;
   onSideChatPluginEnabledChange: (enabled: boolean) => void;
@@ -921,7 +919,6 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const PLUGINS_EXPERIMENT_LABEL = "Plugins";
 const TOOLS_HUB_EXPERIMENT_LABEL = "Tools Hub";
 const SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL = "Side chat plugin";
 
@@ -929,8 +926,6 @@ export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
-  onPluginsEnabledChange,
-  pluginsEnabled,
   onToolsHubEnabledChange,
   toolsHubEnabled,
   onSideChatPluginEnabledChange,
@@ -968,28 +963,12 @@ export function ExperimentsSettingsSection({
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={PLUGINS_EXPERIMENT_LABEL}
-          description="Enable BB plugins (bb plugin). Plugins are full-trust code that extends the server and UI. This feature is unstable, and plugins might break in the future. Off unloads all plugin code."
-        >
-          <Switch
-            checked={pluginsEnabled}
-            disabled={disabled}
-            onCheckedChange={onPluginsEnabledChange}
-            aria-label={PLUGINS_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
           label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
-          description={
-            pluginsEnabled
-              ? "Replace the native side chat with the builtin side-chat plugin. Hides the native Reply in side chat entry points while on."
-              : "Replace the native side chat with the builtin side-chat plugin. Requires the Plugins experiment."
-          }
+          description="Replace the native side chat with the builtin side-chat plugin. Hides the native Reply in side chat entry points while on."
         >
           <Switch
             checked={sideChatPluginEnabled}
-            disabled={disabled || !pluginsEnabled}
+            disabled={disabled}
             onCheckedChange={onSideChatPluginEnabledChange}
             aria-label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
           />
@@ -1151,13 +1130,6 @@ export function SettingsView() {
             claudeCodeMockCliTraffic: enabled,
           })
         }
-        onPluginsEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            plugins: enabled,
-          })
-        }
-        pluginsEnabled={experiments.plugins}
         onToolsHubEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,

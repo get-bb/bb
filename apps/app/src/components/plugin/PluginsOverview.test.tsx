@@ -26,13 +26,13 @@ function responseJson(body: unknown, status = 200): Response {
   });
 }
 
-function systemConfig(pluginsEnabled: boolean): SystemConfigResponse {
+function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
     keybindings: [],
     defaultKeybindings: [],
     keybindingOverrides: [],
-    experiments: { ...defaultExperiments, plugins: pluginsEnabled },
+    experiments: defaultExperiments,
     appearance: defaultAppTheme,
     customThemes: [],
     pluginThemes: [],
@@ -84,10 +84,7 @@ const GITHUB_CATALOG_ENTRY = {
   incompatibleReason: null,
 };
 
-function installFetch(
-  pluginsEnabled = true,
-  plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN],
-) {
+function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -99,13 +96,10 @@ function installFetch(
             : input.url;
       const url = new URL(rawUrl, "http://localhost");
       if (url.pathname === "/api/v1/system/config") {
-        return responseJson(systemConfig(pluginsEnabled));
+        return responseJson(systemConfig());
       }
       if (url.pathname === "/api/v1/plugins") {
-        return responseJson({
-          enabled: pluginsEnabled,
-          plugins,
-        });
+        return responseJson({ plugins });
       }
       if (url.pathname === "/api/v1/plugin-catalog") {
         return responseJson({ catalog: { pluginCount: 4 } });
@@ -236,7 +230,7 @@ describe("PluginsOverview", () => {
         name: `Plugin ${ordinal}`,
       };
     });
-    installFetch(true, plugins);
+    installFetch(plugins);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/tools/plugins"]}>
@@ -315,7 +309,7 @@ describe("PluginsOverview", () => {
     );
 
     try {
-      installFetch(true, plugins);
+      installFetch(plugins);
       const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
       render(
         <MemoryRouter initialEntries={["/tools/plugins"]}>
@@ -368,7 +362,7 @@ describe("PluginsOverview", () => {
   });
 
   it("sorts built-ins first and alphabetically within provenance groups", async () => {
-    installFetch(true, [
+    installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
         id: "local-zulu",
@@ -416,7 +410,7 @@ describe("PluginsOverview", () => {
   });
 
   it("uses the same passive provenance tag for built-in and BB Official plugins", async () => {
-    installFetch(true, [
+    installFetch([
       AUTOMATIONS_PLUGIN,
       {
         ...AUTOMATIONS_PLUGIN,
@@ -440,21 +434,5 @@ describe("PluginsOverview", () => {
     const builtIn = (await screen.findByText("Built-in")).parentElement;
     const official = screen.getByText("BB Official").parentElement;
     expect(official?.className).toBe(builtIn?.className);
-  });
-
-  it("keeps installed plugins visible when plugin installation is off", async () => {
-    installFetch(false);
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
-      <MemoryRouter initialEntries={["/tools/plugins?view=browse"]}>
-        <QueryClientWrapper>
-          <PluginsOverview />
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
-    expect(screen.getByText(/Browsing and installation are off/)).toBeTruthy();
   });
 });

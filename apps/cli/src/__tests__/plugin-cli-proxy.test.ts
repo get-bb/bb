@@ -225,7 +225,7 @@ describe("findDisabledPluginForCommand", () => {
                   id: "automations",
                   enabled: true,
                   status: "disabled",
-                  statusDetail: 'disabled by the "Plugins" experiment',
+                  statusDetail: 'disabled by the "sideChatPlugin" experiment',
                 },
               ],
             }),
@@ -239,7 +239,7 @@ describe("findDisabledPluginForCommand", () => {
       id: "automations",
       enabled: true,
       status: "disabled",
-      statusDetail: 'disabled by the "Plugins" experiment',
+      statusDetail: 'disabled by the "sideChatPlugin" experiment',
     });
   });
 

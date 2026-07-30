@@ -24,7 +24,6 @@ import {
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
@@ -32,11 +31,8 @@ import {
 
 type PluginsCollectionMode = "installed" | "browse";
 
-function modeFromSearchParams(
-  value: string | null,
-  installationEnabled: boolean,
-): PluginsCollectionMode {
-  if (installationEnabled && value === "browse") return value;
+function modeFromSearchParams(value: string | null): PluginsCollectionMode {
+  if (value === "browse") return value;
   return "installed";
 }
 
@@ -49,19 +45,12 @@ function modeFromSearchParams(
 export function PluginsOverview() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const systemConfig = useSystemConfig();
-  const installationEnabled = systemConfig.data?.experiments.plugins === true;
-  // Installed and builtin plugins remain visible even when installing new
-  // plugins is disabled by the experiment.
   const listQuery = usePluginList({ enabled: true });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
     [listQuery.data],
   );
-  const activeMode = modeFromSearchParams(
-    searchParams.get("view"),
-    installationEnabled,
-  );
+  const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
@@ -83,9 +72,7 @@ export function PluginsOverview() {
         plugins.length === 1 ? "plugin" : "plugins"
       }`,
     },
-    ...(installationEnabled
-      ? [{ id: "browse" as const, label: "Browse" }]
-      : []),
+    { id: "browse" as const, label: "Browse" },
   ];
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const visiblePlugins = useMemo(
@@ -126,7 +113,6 @@ export function PluginsOverview() {
     installedPagination.total > installedPagination.pageSize;
 
   const changeMode = (mode: PluginsCollectionMode) => {
-    if (!installationEnabled && mode === "browse") return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -151,17 +137,13 @@ export function PluginsOverview() {
     <CreateWithTemplatesButton
       kind="plugin"
       label="New plugin"
-      menuActions={
-        installationEnabled
-          ? [
-              {
-                label: "Install from source",
-                icon: "Download",
-                onSelect: () => setAddDialog({ open: true, initial: null }),
-              },
-            ]
-          : []
-      }
+      menuActions={[
+        {
+          label: "Install from source",
+          icon: "Download",
+          onSelect: () => setAddDialog({ open: true, initial: null }),
+        },
+      ]}
       onCreate={startCreatePlugin}
     />
   );
@@ -231,12 +213,6 @@ export function PluginsOverview() {
         ) : (
           <InstalledPluginsTab plugins={installedPagination.items} />
         )}
-        {!installationEnabled && systemConfig.data !== undefined ? (
-          <p className="px-1 text-2xs text-subtle-foreground">
-            Browsing and installation are off. Turn on Plugins in Settings →
-            Experiments to add plugins.
-          </p>
-        ) : null}
       </ResourceCollectionViewport>
     );
   }

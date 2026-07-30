@@ -54,7 +54,6 @@ Check light AND dark (toggle the app theme in Settings → Appearance, or `docum
 ## Known gotchas
 
 - `pnpm bb:dev plugin list` currently fails CLI response validation (pre-existing repo bug, missing `displayName`). Use `curl -s http://localhost:23943/api/v1/plugins` instead.
-- The dev instance's Plugins experiment is already enabled (`PUT /api/v1/settings/experiments`). Fresh data dirs need it re-enabled.
 - Backend factory reloads must stay clean: never keep `bb` in module state; register everything inside the factory; `onDispose` for cleanup.
 - RPC methods are the only bridge frontend→backend; the frontend cannot use `bb.sdk` (validate inputs server-side).
 

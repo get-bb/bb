@@ -1,12 +1,8 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getStoredFaviconColor, getStoredThemeId, setExperiments } from "@bb/db";
-import {
-  appThemeSchema,
-  defaultExperiments,
-  formatPluginThemeId,
-} from "@bb/domain";
+import { getStoredFaviconColor, getStoredThemeId } from "@bb/db";
+import { appThemeSchema, formatPluginThemeId } from "@bb/domain";
 import {
   themeCatalogResponseSchema,
   systemConfigResponseSchema,
@@ -138,22 +134,31 @@ describe("appearance settings", () => {
 
   it("rejects an unknown favicon color", async () => {
     await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "default", faviconColor: "chartreuse" }),
-      });
+      const response = await harness.app.request(
+        "/api/v1/settings/appearance",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            themeId: "default",
+            faviconColor: "chartreuse",
+          }),
+        },
+      );
       expect(response.status).toBe(400);
     });
   });
 
   it("rejects an incomplete appearance selection", async () => {
     await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "nord" }),
-      });
+      const response = await harness.app.request(
+        "/api/v1/settings/appearance",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ themeId: "nord" }),
+        },
+      );
       expect(response.status).toBe(400);
     });
   });
@@ -185,8 +190,11 @@ describe("appearance settings", () => {
 
   it("lists and activates palettes shipped by loaded plugins", async () => {
     await withTestHarness(async (harness) => {
-      setExperiments(harness.db, { ...defaultExperiments, plugins: true });
-      const root = join(harness.config.dataDir, "fixtures", "bb-plugin-palette");
+      const root = join(
+        harness.config.dataDir,
+        "fixtures",
+        "bb-plugin-palette",
+      );
       await mkdir(join(root, "themes"), { recursive: true });
       await writeFile(
         join(root, "package.json"),
@@ -209,13 +217,23 @@ describe("appearance settings", () => {
           },
         }),
       );
-      await writeFile(join(root, "server.ts"), "export default function () {}\n");
-      await writeFile(join(root, "themes", "ocean.css"), ":root { --canvas: blue; }");
+      await writeFile(
+        join(root, "server.ts"),
+        "export default function () {}\n",
+      );
+      await writeFile(
+        join(root, "themes", "ocean.css"),
+        ":root { --canvas: blue; }",
+      );
       await harness.pluginService.installPath(root);
 
       const themeId = formatPluginThemeId("palette", "ocean");
-      const catalogResponse = await harness.app.request("/api/v1/settings/themes");
-      const catalog = themeCatalogResponseSchema.parse(await readJson(catalogResponse));
+      const catalogResponse = await harness.app.request(
+        "/api/v1/settings/themes",
+      );
+      const catalog = themeCatalogResponseSchema.parse(
+        await readJson(catalogResponse),
+      );
       expect(catalog.plugins).toEqual([
         {
           id: themeId,
@@ -225,11 +243,14 @@ describe("appearance settings", () => {
         },
       ]);
 
-      const response = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId, faviconColor: "default" }),
-      });
+      const response = await harness.app.request(
+        "/api/v1/settings/appearance",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ themeId, faviconColor: "default" }),
+        },
+      );
       expect(response.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(response))).toEqual({
         themeId,
@@ -269,25 +290,31 @@ describe("appearance settings", () => {
 
   it("rejects selecting a custom theme that does not exist", async () => {
     await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          themeId: "nonexistent",
-          faviconColor: "default",
-        }),
-      });
+      const response = await harness.app.request(
+        "/api/v1/settings/appearance",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            themeId: "nonexistent",
+            faviconColor: "default",
+          }),
+        },
+      );
       expect(response.status).toBe(404);
     });
   });
 
   it("rejects a theme id that is not a safe path segment", async () => {
     await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/settings/appearance", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ themeId: "../evil", faviconColor: "default" }),
-      });
+      const response = await harness.app.request(
+        "/api/v1/settings/appearance",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ themeId: "../evil", faviconColor: "default" }),
+        },
+      );
       expect(response.status).toBe(400);
     });
   });

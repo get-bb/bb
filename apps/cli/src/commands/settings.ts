@@ -82,7 +82,6 @@ function updateExperiment(
   const enabled = parseBoolean(value);
   switch (key) {
     case "claudeCodeMockCliTraffic":
-    case "plugins":
     case "toolsHub":
     case "sideChatPlugin":
       return experimentsSchema.parse({ ...experiments, [key]: enabled });
