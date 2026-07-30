@@ -93,6 +93,9 @@ const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
 // observed re-applies so a deleted/never-arriving row can't hang at the top.
 const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
 const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
+const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
+  '[data-timeline-row-list="top-level"]';
+const DIRECT_TIMELINE_ROW_SELECTOR = `:scope > ${TIMELINE_ROW_ID_SELECTOR}`;
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",
   "ArrowUp",
@@ -161,6 +164,20 @@ interface TopMostVisibleRow {
   offsetWithinRow: number;
 }
 
+function getScrollAnchorRows(scrollArea: HTMLElement): NodeListOf<HTMLElement> {
+  const topLevelList = scrollArea.querySelector<HTMLElement>(
+    TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR,
+  );
+  if (topLevelList) {
+    return topLevelList.querySelectorAll<HTMLElement>(
+      DIRECT_TIMELINE_ROW_SELECTOR,
+    );
+  }
+  // Embedded/test surfaces may render timeline rows without the app's
+  // top-level list wrapper.
+  return scrollArea.querySelectorAll<HTMLElement>(TIMELINE_ROW_ID_SELECTOR);
+}
+
 // The top-most timeline row whose bottom edge is below the scroll area's top
 // edge — i.e. the first row still (at least partially) visible. `offsetWithinRow`
 // is how far the scroll area's top sits past that row's top, so restore can
@@ -169,20 +186,37 @@ function getTopMostVisibleRow(
   scrollArea: HTMLElement,
 ): TopMostVisibleRow | null {
   const scrollAreaTop = scrollArea.getBoundingClientRect().top;
-  const rows = scrollArea.querySelectorAll<HTMLElement>(
-    TIMELINE_ROW_ID_SELECTOR,
-  );
-  for (const row of rows) {
-    const rowId = row.dataset.timelineRowId;
-    if (!rowId) continue;
+  const rows = getScrollAnchorRows(scrollArea);
+  let low = 0;
+  let high = rows.length - 1;
+  let visibleRow: HTMLElement | null = null;
+  let visibleRowRect: DOMRect | null = null;
+
+  // Top-level timeline rows are laid out in document order without overlap, so
+  // their bottom edges are monotonic. Binary search avoids the old O(n) walk
+  // from the first loaded row on every throttled scroll-anchor capture. On a
+  // long thread near the bottom, that walk forced hundreds of layout reads per
+  // sample while the browser was already busy scrolling.
+  while (low <= high) {
+    const index = low + Math.floor((high - low) / 2);
+    const row = rows[index];
+    if (!row) break;
     const rowRect = row.getBoundingClientRect();
-    if (rowRect.bottom <= scrollAreaTop + 1) continue;
-    return {
-      rowId,
-      offsetWithinRow: Math.max(0, scrollAreaTop - rowRect.top),
-    };
+    if (rowRect.bottom <= scrollAreaTop + 1) {
+      low = index + 1;
+      continue;
+    }
+    visibleRow = row;
+    visibleRowRect = rowRect;
+    high = index - 1;
   }
-  return null;
+
+  const rowId = visibleRow?.dataset.timelineRowId;
+  if (!rowId || !visibleRowRect) return null;
+  return {
+    rowId,
+    offsetWithinRow: Math.max(0, scrollAreaTop - visibleRowRect.top),
+  };
 }
 
 function findTimelineRowElement(

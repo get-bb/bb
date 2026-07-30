@@ -130,9 +130,7 @@ function renderTimeline({
       scrollAreaClassName={SCROLL_AREA_CLASS}
       scrollAnchorThreadId={threadId}
     >
-      {showCapturePrependAnchorControl ? (
-        <CapturePrependAnchorControl />
-      ) : null}
+      {showCapturePrependAnchorControl ? <CapturePrependAnchorControl /> : null}
       {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
       {rowIds.map((rowId) => (
         <div key={rowId} data-timeline-row-id={rowId}>
@@ -242,6 +240,43 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     });
   });
 
+  it("finds the visible anchor with logarithmic row measurements", () => {
+    const rowIds = Array.from({ length: 128 }, (_, index) => `row-${index}`);
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds,
+    });
+    mockScrollAreaRect(scrollArea);
+    const visibleIndex = 100;
+    const rowRectSpies = rowIds.map((rowId, index) => {
+      const top = (index - visibleIndex) * 10;
+      const row = requireHTMLElement(rowElements.get(rowId)!);
+      return vi
+        .spyOn(row, "getBoundingClientRect")
+        .mockReturnValue(new DOMRect(0, top, 100, 10));
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_400,
+      clientHeight: 100,
+      scrollTop: 1_000,
+    });
+
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-100",
+      offsetWithinRow: 0,
+      atBottom: false,
+    });
+    expect(
+      rowRectSpies.reduce(
+        (measurementCount, spy) => measurementCount + spy.mock.calls.length,
+        0,
+      ),
+    ).toBeLessThanOrEqual(8);
+  });
+
   it("does not treat a native-anchor jump during prepend as bottom intent", () => {
     const { getByRole, scrollArea } = renderTimeline({
       threadId: "thread-a",
@@ -256,9 +291,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
 
     fireEvent.wheel(scrollArea, { deltaY: -100 });
     fireEvent.scroll(scrollArea);
-    fireEvent.click(
-      getByRole("button", { name: "Capture prepend anchor" }),
-    );
+    fireEvent.click(getByRole("button", { name: "Capture prepend anchor" }));
 
     // Chromium's native scroll anchoring can move the scrollport to its
     // temporary maximum before the explicit prepend compensation runs.

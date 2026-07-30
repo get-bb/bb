@@ -45,6 +45,10 @@ const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 // Only worth showing once the conversation has enough user turns to navigate.
 const TOC_MIN_USER_MESSAGES = 3;
 const TOC_MAX_RAIL_TICKS = 20;
+// Updating the active rail tick changes overlay DOM and invalidates layout.
+// Wait for a scroll burst to settle instead of doing that work in the same
+// animation frames the timeline is trying to paint.
+const TOC_ACTIVE_UPDATE_IDLE_MS = 120;
 // Hard stop so a pagination bug can never spin the jump loop forever.
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
@@ -230,22 +234,24 @@ function useConversationTocItems({
   outlineItems: readonly ThreadConversationOutlineItem[] | undefined;
   timelineRows: readonly TimelineRow[];
 }) {
-  return useMemo(() => {
+  const outlineTocItems = useMemo(() => {
+    if (!outlineItems || outlineItems.length === 0) return null;
     const userItems: TocItem[] = [];
     const agentItems: TocItem[] = [];
-
-    if (outlineItems && outlineItems.length > 0) {
-      for (const item of outlineItems) {
-        const tocItem = outlineItemToTocItem(item);
-        if (tocItem.role === "user") {
-          userItems.push(tocItem);
-        } else {
-          agentItems.push(tocItem);
-        }
+    for (const item of outlineItems) {
+      const tocItem = outlineItemToTocItem(item);
+      if (tocItem.role === "user") {
+        userItems.push(tocItem);
+      } else {
+        agentItems.push(tocItem);
       }
-      return { agentItems, userItems };
     }
+    return { agentItems, userItems };
+  }, [outlineItems]);
 
+  const timelineTocItems = useMemo(() => {
+    const userItems: TocItem[] = [];
+    const agentItems: TocItem[] = [];
     for (const row of timelineRows) {
       if (row.kind !== "conversation") continue;
       const item: TocItem = {
@@ -261,7 +267,9 @@ function useConversationTocItems({
     }
 
     return { agentItems, userItems };
-  }, [outlineItems, timelineRows]);
+  }, [timelineRows]);
+
+  return outlineTocItems ?? timelineTocItems;
 }
 
 function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
@@ -343,6 +351,74 @@ function isScrollElementNearBottom(scrollElement: HTMLElement): boolean {
   );
 }
 
+function findFirstVisibleItemId({
+  rows,
+  scrollBottom,
+  scrollTop,
+}: {
+  rows: readonly HTMLElement[];
+  scrollBottom: number;
+  scrollTop: number;
+}): string | null {
+  let low = 0;
+  let high = rows.length - 1;
+  let visibleRow: HTMLElement | null = null;
+  let visibleRect: DOMRect | null = null;
+
+  while (low <= high) {
+    const index = low + Math.floor((high - low) / 2);
+    const row = rows[index];
+    if (!row) break;
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom <= scrollTop) {
+      low = index + 1;
+      continue;
+    }
+    visibleRow = row;
+    visibleRect = rect;
+    high = index - 1;
+  }
+
+  if (!visibleRow || !visibleRect || visibleRect.top >= scrollBottom) {
+    return null;
+  }
+  return visibleRow.dataset.timelineRowId ?? null;
+}
+
+function findLastVisibleItemId({
+  rows,
+  scrollBottom,
+  scrollTop,
+}: {
+  rows: readonly HTMLElement[];
+  scrollBottom: number;
+  scrollTop: number;
+}): string | null {
+  let low = 0;
+  let high = rows.length - 1;
+  let visibleRow: HTMLElement | null = null;
+  let visibleRect: DOMRect | null = null;
+
+  while (low <= high) {
+    const index = low + Math.floor((high - low) / 2);
+    const row = rows[index];
+    if (!row) break;
+    const rect = row.getBoundingClientRect();
+    if (rect.top >= scrollBottom) {
+      high = index - 1;
+      continue;
+    }
+    visibleRow = row;
+    visibleRect = rect;
+    low = index + 1;
+  }
+
+  if (!visibleRow || !visibleRect || visibleRect.bottom <= scrollTop) {
+    return null;
+  }
+  return visibleRow.dataset.timelineRowId ?? null;
+}
+
 export function findActiveItemIds({
   agentItems,
   scrollElement,
@@ -362,45 +438,52 @@ export function findActiveItemIds({
   const rolesById = new Map<string, TocTab>();
   for (const item of userItems) rolesById.set(item.id, "user");
   for (const item of agentItems) rolesById.set(item.id, "agent");
-  let nearestUser: { id: string; distance: number } | null = null;
-  let nearestAgent: { id: string; distance: number } | null = null;
-  let lastVisibleUserId: string | null = null;
-  let lastVisibleAgentId: string | null = null;
+  const userRows: HTMLElement[] = [];
+  const agentRows: HTMLElement[] = [];
 
   for (const row of findTimelineRowElements(scrollElement)) {
     const rowId = row.dataset.timelineRowId;
     if (!rowId) continue;
     const role = rolesById.get(rowId);
-    if (!role) continue;
-    const rect = row.getBoundingClientRect();
-    if (rect.bottom <= scrollTop || rect.top >= scrollBottom) continue;
-    if (isNearBottom) {
-      if (role === "user") {
-        lastVisibleUserId = rowId;
-      } else {
-        lastVisibleAgentId = rowId;
-      }
-      continue;
-    }
-    const distance =
-      rect.top <= scrollTop
-        ? Math.max(0, scrollTop - rect.bottom)
-        : rect.top - scrollTop;
-    const nearest = { id: rowId, distance };
     if (role === "user") {
-      if (!nearestUser || distance < nearestUser.distance) {
-        nearestUser = nearest;
-      }
-    } else if (!nearestAgent || distance < nearestAgent.distance) {
-      nearestAgent = nearest;
+      userRows.push(row);
+    } else if (role === "agent") {
+      agentRows.push(row);
     }
   }
 
+  // Conversation rows are non-overlapping and retain document order, so their
+  // top/bottom edges are monotonic within each role. The former full scan
+  // measured every loaded conversation row on every animation-frame scroll
+  // update; binary search keeps the same nearest/last-visible semantics with
+  // logarithmic layout reads.
   if (isNearBottom) {
-    return { agent: lastVisibleAgentId, user: lastVisibleUserId };
+    return {
+      agent: findLastVisibleItemId({
+        rows: agentRows,
+        scrollBottom,
+        scrollTop,
+      }),
+      user: findLastVisibleItemId({
+        rows: userRows,
+        scrollBottom,
+        scrollTop,
+      }),
+    };
   }
 
-  return { agent: nearestAgent?.id ?? null, user: nearestUser?.id ?? null };
+  return {
+    agent: findFirstVisibleItemId({
+      rows: agentRows,
+      scrollBottom,
+      scrollTop,
+    }),
+    user: findFirstVisibleItemId({
+      rows: userRows,
+      scrollBottom,
+      scrollTop,
+    }),
+  };
 }
 
 export function ThreadTableOfContents({
@@ -436,13 +519,11 @@ export function ThreadTableOfContents({
     scrollRef,
     topSentinelRef,
   } = useScrollOverflowState<HTMLDivElement>({
+    enabled: open,
     measureOverflow: true,
   });
-  const railRef = useRef<HTMLDivElement>(null);
-  const tickEls = useRef(new Map<string, HTMLElement>());
   const itemEls = useRef(new Map<string, HTMLElement>());
   const activeIdsRef = useRef<ActiveItemIds>({ agent: null, user: null });
-  const activeUpdateFrameRef = useRef<number | null>(null);
   const hasAgentMessages = agentItems.length > 0;
   const activeTab = tab === "agent" && hasAgentMessages ? "agent" : "user";
   const items = activeTab === "user" ? userItems : agentItems;
@@ -470,36 +551,36 @@ export function ThreadTableOfContents({
     };
   }, []);
 
-  const updateActiveItems = useCallback(() => {
-    const scrollElement = bottomAnchor?.getScrollElement() ?? null;
-    const nextActiveIds = findActiveItemIds({
-      agentItems,
-      scrollElement,
-      userItems,
-    });
-    const currentActiveIds = activeIdsRef.current;
-    if (nextActiveIds.user !== currentActiveIds.user) {
-      setActiveUserId(nextActiveIds.user);
-    }
-    if (nextActiveIds.agent !== currentActiveIds.agent) {
-      setActiveAgentId(nextActiveIds.agent);
-    }
-    activeIdsRef.current = nextActiveIds;
-  }, [agentItems, bottomAnchor, userItems]);
-
-  const scheduleActiveItemsUpdate = useCallback(() => {
-    if (activeUpdateFrameRef.current !== null) return;
-    activeUpdateFrameRef.current = window.requestAnimationFrame(() => {
-      activeUpdateFrameRef.current = null;
-      updateActiveItems();
-    });
-  }, [updateActiveItems]);
-
   useEffect(() => {
     if (!tocVisible) return;
-    scheduleActiveItemsUpdate();
     const scrollElement = bottomAnchor?.getScrollElement();
     if (!scrollElement) return;
+    const publishActiveItems = (nextActiveIds: ActiveItemIds) => {
+      const currentActiveIds = activeIdsRef.current;
+      if (nextActiveIds.user !== currentActiveIds.user) {
+        setActiveUserId(nextActiveIds.user);
+      }
+      if (nextActiveIds.agent !== currentActiveIds.agent) {
+        setActiveAgentId(nextActiveIds.agent);
+      }
+      activeIdsRef.current = nextActiveIds;
+    };
+    const updateActiveItems = () => {
+      publishActiveItems(
+        findActiveItemIds({ agentItems, scrollElement, userItems }),
+      );
+    };
+    let updateTimeout: number | null = null;
+    const scheduleActiveItemsUpdate = () => {
+      if (updateTimeout !== null) {
+        window.clearTimeout(updateTimeout);
+      }
+      updateTimeout = window.setTimeout(() => {
+        updateTimeout = null;
+        updateActiveItems();
+      }, TOC_ACTIVE_UPDATE_IDLE_MS);
+    };
+    scheduleActiveItemsUpdate();
     scrollElement.addEventListener("scroll", scheduleActiveItemsUpdate, {
       passive: true,
     });
@@ -508,41 +589,18 @@ export function ThreadTableOfContents({
         ? null
         : new ResizeObserver(scheduleActiveItemsUpdate);
     resizeObserver?.observe(scrollElement);
+
     return () => {
       scrollElement.removeEventListener("scroll", scheduleActiveItemsUpdate);
       resizeObserver?.disconnect();
-      if (activeUpdateFrameRef.current !== null) {
-        window.cancelAnimationFrame(activeUpdateFrameRef.current);
-        activeUpdateFrameRef.current = null;
+      if (updateTimeout !== null) {
+        window.clearTimeout(updateTimeout);
       }
     };
-  }, [bottomAnchor, scheduleActiveItemsUpdate, tocVisible]);
-
-  // Keep the active tick visible if the rail overflows in constrained layouts.
-  useEffect(() => {
-    if (!tocVisible) return;
-    const container = railRef.current;
-    const el = activeUserId ? tickEls.current.get(activeUserId) : null;
-    if (!container || !el) return;
-    const containerRect = container.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const pad = 12;
-    if (elRect.top < containerRect.top + pad) {
-      container.scrollTo({
-        top: container.scrollTop - (containerRect.top + pad - elRect.top),
-      });
-    } else if (elRect.bottom > containerRect.bottom - pad) {
-      container.scrollTo({
-        top:
-          container.scrollTop + (elRect.bottom - (containerRect.bottom - pad)),
-      });
-    }
-    // `railItems` is a dep so the active tick re-centers when the rail content
-    // swaps (e.g. the full outline replacing the loaded-window fallback).
-  }, [activeUserId, railItems, tocVisible]);
+  }, [agentItems, bottomAnchor, tocVisible, userItems]);
 
   useEffect(() => {
-    if (!tocVisible) return;
+    if (!tocVisible || !open) return;
     const container = scrollRef.current;
     const el = activeId ? itemEls.current.get(activeId) : null;
     if (!container || !el) return;
@@ -627,7 +685,10 @@ export function ThreadTableOfContents({
       data-thread-toc=""
       className="group/toc relative w-8"
       onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={(event) => {
+        if (event.currentTarget.contains(document.activeElement)) return;
+        setOpen(false);
+      }}
       onFocusCapture={() => setOpen(true)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
@@ -637,126 +698,128 @@ export function ThreadTableOfContents({
     >
       {tocVisible ? (
         <div className="relative">
-          <div
-            ref={railRef}
-            aria-hidden
+          <button
+            type="button"
+            aria-label="Thread table of contents"
+            aria-expanded={open}
+            aria-controls={`thread-toc-panel-${threadId}`}
+            onClick={() => setOpen(true)}
             className="no-scrollbar flex max-h-[calc(100vh-7rem)] w-8 cursor-pointer flex-col items-center gap-2 overflow-y-auto py-2"
           >
-            {railItems.map((item) => (
-              <span
-                key={item.id}
-                ref={(node) => {
-                  if (node) tickEls.current.set(item.id, node);
-                  else tickEls.current.delete(item.id);
-                }}
-                className={cn(
-                  "h-[3px] shrink-0 rounded-full transition-all duration-150",
-                  item.id === activeUserId
-                    ? "w-5 bg-foreground/30 group-hover/toc:bg-foreground/70"
-                    : "w-3 bg-foreground/5 group-hover/toc:bg-foreground/20",
-                )}
-              />
-            ))}
-          </div>
-
-          <div
-            className={cn(
-              "absolute right-full top-0 w-[18.25rem] max-w-[calc(100vw-3rem)] pr-1 transition-all duration-150",
-              open
-                ? "pointer-events-auto translate-x-0 opacity-100"
-                : "pointer-events-none translate-x-1 opacity-0",
-            )}
-          >
-            <div className="rounded-lg border border-border bg-popover p-1 shadow-lg">
-              <div className="flex items-center gap-1 pb-1">
-                {hasAgentMessages ? (
-                  <TocPanelTab
-                    label="Agent messages"
-                    active={activeTab === "agent"}
-                    onSelect={() => setTab("agent")}
-                  />
-                ) : null}
-                <TocPanelTab
-                  label="Your messages"
-                  active={activeTab === "user"}
-                  onSelect={() => setTab("user")}
+            <span
+              aria-hidden
+              className="flex w-full flex-col items-center gap-2"
+            >
+              {railItems.map((item) => (
+                <span
+                  key={item.id}
+                  className={cn(
+                    "h-[3px] shrink-0 rounded-full transition-all duration-150",
+                    item.id === activeUserId
+                      ? "w-5 bg-foreground/30 group-hover/toc:bg-foreground/70"
+                      : "w-3 bg-foreground/5 group-hover/toc:bg-foreground/20",
+                  )}
                 />
-              </div>
-              <div className="relative isolate">
-                <div
-                  ref={scrollRef}
-                  className="max-h-64 overflow-y-auto overflow-x-hidden"
-                >
-                  <div
-                    ref={topSentinelRef}
-                    aria-hidden
-                    className="h-px w-full"
-                  />
-                  <ul className="flex flex-col">
-                    {items.map((item) => {
-                      const active = item.id === activeId;
-                      const pending = item.id === pendingJumpId;
-                      return (
-                        <li key={item.id}>
-                          <button
-                            ref={(node) => {
-                              if (node) itemEls.current.set(item.id, node);
-                              else itemEls.current.delete(item.id);
-                            }}
-                            type="button"
-                            aria-busy={pending}
-                            onClick={() => {
-                              void handleSelect(item.id);
-                            }}
-                            className={cn(
-                              "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
-                              active
-                                ? "bg-state-hover"
-                                : "hover:bg-state-hover",
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "text-xs leading-snug",
-                                active
-                                  ? "text-foreground"
-                                  : "text-muted-foreground",
-                                pending && "animate-pulse",
-                              )}
-                            >
-                              <TocItemPreview
-                                item={item}
-                                senderThreadMetadataById={
-                                  senderThreadMetadataById
-                                }
-                              />
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <div
-                    ref={bottomSentinelRef}
-                    aria-hidden
-                    className="h-px w-full"
+              ))}
+            </span>
+          </button>
+
+          {open ? (
+            <div
+              id={`thread-toc-panel-${threadId}`}
+              className="pointer-events-auto absolute right-full top-0 w-[18.25rem] max-w-[calc(100vw-3rem)] pr-1"
+            >
+              <div className="rounded-lg border border-border bg-popover p-1 shadow-lg">
+                <div className="flex items-center gap-1 pb-1">
+                  {hasAgentMessages ? (
+                    <TocPanelTab
+                      label="Agent messages"
+                      active={activeTab === "agent"}
+                      onSelect={() => setTab("agent")}
+                    />
+                  ) : null}
+                  <TocPanelTab
+                    label="Your messages"
+                    active={activeTab === "user"}
+                    onSelect={() => setTab("user")}
                   />
                 </div>
-                {aboveOverflow ? (
+                <div className="relative isolate">
                   <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-popover/90 via-popover/60 to-transparent"
-                  />
-                ) : null}
-                {belowOverflow ? (
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
-                  />
-                ) : null}
+                    ref={scrollRef}
+                    className="max-h-64 overflow-y-auto overflow-x-hidden"
+                  >
+                    <div
+                      ref={topSentinelRef}
+                      aria-hidden
+                      className="h-px w-full"
+                    />
+                    <ul className="flex flex-col">
+                      {items.map((item) => {
+                        const active = item.id === activeId;
+                        const pending = item.id === pendingJumpId;
+                        return (
+                          <li key={item.id}>
+                            <button
+                              ref={(node) => {
+                                if (node) itemEls.current.set(item.id, node);
+                                else itemEls.current.delete(item.id);
+                              }}
+                              type="button"
+                              aria-busy={pending}
+                              onClick={() => {
+                                void handleSelect(item.id);
+                              }}
+                              className={cn(
+                                "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",
+                                active
+                                  ? "bg-state-hover"
+                                  : "hover:bg-state-hover",
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "text-xs leading-snug",
+                                  active
+                                    ? "text-foreground"
+                                    : "text-muted-foreground",
+                                  pending && "animate-pulse",
+                                )}
+                              >
+                                <TocItemPreview
+                                  item={item}
+                                  senderThreadMetadataById={
+                                    senderThreadMetadataById
+                                  }
+                                />
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div
+                      ref={bottomSentinelRef}
+                      aria-hidden
+                      className="h-px w-full"
+                    />
+                  </div>
+                  {aboveOverflow ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-popover/90 via-popover/60 to-transparent"
+                    />
+                  ) : null}
+                  {belowOverflow ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
+                    />
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -35,6 +35,11 @@ export interface ScrollOverflowStateBinding<TElement extends HTMLElement>
 
 export interface UseScrollOverflowStateOptions {
   /**
+   * Enables observation after a conditionally-rendered scroll region mounts.
+   * Disable it while the region is absent so reopening rebinds fresh nodes.
+   */
+  enabled?: boolean;
+  /**
    * Adds a measurement fallback for compact scroll regions whose overflow
    * affordance must appear immediately on mount. IntersectionObserver remains
    * the primary path; this fallback covers environments where sentinel
@@ -70,6 +75,10 @@ export function useScrollOverflowState<
   }, []);
 
   useEffect(() => {
+    if (options.enabled === false) {
+      applyFlags({ above: false, below: false });
+      return;
+    }
     if (!options.measureOverflow || typeof window === "undefined") {
       return;
     }
@@ -126,9 +135,10 @@ export function useScrollOverflowState<
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [applyFlags, options.measureOverflow]);
+  }, [applyFlags, options.enabled, options.measureOverflow]);
 
   useEffect(() => {
+    if (options.enabled === false) return;
     const scroll = scrollRef.current;
     const topSentinel = topSentinelRef.current;
     const bottomSentinel = bottomSentinelRef.current;
@@ -167,7 +177,7 @@ export function useScrollOverflowState<
     return () => {
       observer.disconnect();
     };
-  }, [applyFlags]);
+  }, [applyFlags, options.enabled]);
 
   return {
     scrollRef,

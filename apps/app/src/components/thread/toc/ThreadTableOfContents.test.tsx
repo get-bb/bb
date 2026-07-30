@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -149,8 +150,9 @@ function createScrollElement({
   for (const row of rows) {
     const rowElement = document.createElement("div");
     rowElement.dataset.timelineRowId = row.id;
-    rowElement.getBoundingClientRect = () =>
-      rect({ bottom: row.bottom, top: row.top });
+    rowElement.getBoundingClientRect = vi.fn(() =>
+      rect({ bottom: row.bottom, top: row.top }),
+    );
     scrollElement.append(rowElement);
   }
 
@@ -283,6 +285,12 @@ function manyUserItems(count: number): TocItem[] {
 let scrollElement: HTMLElement;
 let scrollElementIntoView: ReturnType<typeof vi.fn>;
 
+function openTocPanel(): void {
+  const toc = document.querySelector<HTMLElement>("[data-thread-toc]");
+  if (!toc) throw new Error("Expected the thread table of contents.");
+  fireEvent.mouseEnter(toc);
+}
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   vi.stubGlobal(
@@ -311,6 +319,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -373,6 +382,7 @@ describe("ThreadTableOfContents", () => {
         ]}
       />,
     );
+    openTocPanel();
 
     expect(await screen.findByText("Your messages")).not.toBeNull();
     expect(
@@ -398,8 +408,167 @@ describe("ThreadTableOfContents", () => {
         ]}
       />,
     );
+    openTocPanel();
 
     expect(screen.queryByText("Your messages")).not.toBeNull();
+  });
+
+  it("measures fresh geometry only after scrolling settles", () => {
+    vi.useFakeTimers();
+    const rows = [
+      userConversationRow(1),
+      userConversationRow(2),
+      userConversationRow(3),
+    ];
+    const rowElements = rows.map((row) => {
+      const element = timelineRowElement(row.id);
+      scrollElement.append(element);
+      return element;
+    });
+    const positions = [
+      { top: 0, bottom: 20 },
+      { top: 100, bottom: 120 },
+      { top: 200, bottom: 220 },
+    ];
+    rowElements.forEach((element, index) => {
+      element.getBoundingClientRect = vi.fn(() => rect(positions[index]!));
+    });
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 400 },
+    });
+    scrollElement.getBoundingClientRect = () => rect({ top: 0, bottom: 100 });
+
+    render(<TocHost timelineRows={rows} />);
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    const railTicks = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[data-thread-toc] [aria-hidden] > span",
+        ),
+      );
+    expect(railTicks()[0]?.classList.contains("w-5")).toBe(true);
+
+    act(() => {
+      positions[0] = { top: -30, bottom: -10 };
+      positions[1] = { top: 0, bottom: 20 };
+      fireEvent.scroll(scrollElement);
+      vi.advanceTimersByTime(119);
+    });
+    expect(railTicks()[0]?.classList.contains("w-5")).toBe(true);
+    expect(railTicks()[1]?.classList.contains("w-5")).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(railTicks()[0]?.classList.contains("w-5")).toBe(false);
+    expect(railTicks()[1]?.classList.contains("w-5")).toBe(true);
+  });
+
+  it("opens consistently from pointer and keyboard activation and preserves focus", () => {
+    render(
+      <TocHost
+        timelineRows={[
+          userConversationRow(1),
+          userConversationRow(2),
+          userConversationRow(3),
+        ]}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "Thread table of contents",
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Your messages")).toBeNull();
+
+    const toc = document.querySelector<HTMLElement>("[data-thread-toc]");
+    if (!toc) throw new Error("Expected the thread table of contents.");
+    fireEvent.mouseEnter(toc);
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.mouseLeave(toc);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Your messages")).not.toBeNull();
+
+    const firstMessage = screen.getByRole("button", {
+      name: "Loaded after client-side navigation 1",
+    });
+    act(() => firstMessage.focus());
+    fireEvent.mouseLeave(toc);
+
+    expect(document.activeElement).toBe(firstMessage);
+    expect(screen.getByText("Your messages")).not.toBeNull();
+  });
+
+  it("tracks overflow when an initially closed panel opens and reopens", () => {
+    render(
+      <TocHost
+        timelineRows={Array.from({ length: 30 }, (_, index) =>
+          userConversationRow(index + 1),
+        )}
+      />,
+    );
+    const trigger = screen.getByRole("button", {
+      name: "Thread table of contents",
+    });
+    const toc = document.querySelector<HTMLElement>("[data-thread-toc]");
+    if (!toc) throw new Error("Expected the thread table of contents.");
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      }),
+    );
+    const flushAnimationFrames = () => {
+      act(() => {
+        for (const callback of animationFrames.splice(0)) callback(0);
+      });
+    };
+
+    const openAndOverflow = () => {
+      fireEvent.click(trigger);
+      const scrollRegion = document.querySelector<HTMLElement>(
+        '[id^="thread-toc-panel-"] .max-h-64',
+      );
+      if (!scrollRegion) throw new Error("Expected the TOC scroll region.");
+      Object.defineProperties(scrollRegion, {
+        clientHeight: { configurable: true, value: 100 },
+        scrollHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, writable: true, value: 0 },
+      });
+      flushAnimationFrames();
+      expect(
+        document.querySelector('[class*="bg-gradient-to-t"]'),
+      ).not.toBeNull();
+
+      scrollRegion.scrollTop = 400;
+      fireEvent.scroll(scrollRegion);
+      flushAnimationFrames();
+      expect(
+        document.querySelector('[class*="bg-gradient-to-b"]'),
+      ).not.toBeNull();
+      expect(document.querySelector('[class*="bg-gradient-to-t"]')).toBeNull();
+    };
+
+    openAndOverflow();
+    fireEvent.mouseLeave(toc);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    openAndOverflow();
   });
 
   it("renders the full conversation outline, including attachment-only labels", async () => {
@@ -433,6 +602,7 @@ describe("ThreadTableOfContents", () => {
     // timelineRows is empty: the minimap lists the full thread from the outline,
     // not just the loaded window.
     render(<TocHost timelineRows={[]} />);
+    openTocPanel();
 
     expect(await screen.findByText("First question")).not.toBeNull();
     expect(screen.getByText("Second question")).not.toBeNull();
@@ -465,6 +635,7 @@ describe("ThreadTableOfContents", () => {
     ]);
 
     render(<TocHost timelineRows={[]} />);
+    openTocPanel();
 
     expect(await screen.findByText("Agent")).not.toBeNull();
     expect(
@@ -527,6 +698,7 @@ describe("ThreadTableOfContents", () => {
         </ThreadTitleMentionResourcesProvider>
       </QueryClientProvider>,
     );
+    openTocPanel();
 
     expect(await screen.findByText("Ask Calendar specialist")).not.toBeNull();
     expect(screen.queryByText("@thread:thr_nested")).toBeNull();
@@ -575,6 +747,7 @@ describe("ThreadTableOfContents", () => {
         loadOlderTimelineRows={loadOlder}
       />,
     );
+    openTocPanel();
     fireEvent.click(await screen.findByText("Loaded question"));
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
@@ -615,6 +788,7 @@ describe("ThreadTableOfContents", () => {
         loadOlderTimelineRows={loadOlder}
       />,
     );
+    openTocPanel();
     fireEvent.click(await screen.findByText("Ancient question"));
 
     await waitFor(() => expect(loadOlder).toHaveBeenCalled());
@@ -651,6 +825,7 @@ describe("ThreadTableOfContents", () => {
         loadOlderTimelineRows={loadOlder}
       />,
     );
+    openTocPanel();
     fireEvent.click(await screen.findByText("Unreachable"));
 
     // hasOlder is false, so the loop body never runs; no scroll, no pagination.
@@ -739,5 +914,47 @@ describe("ThreadTableOfContents", () => {
         user: null,
       },
     );
+  });
+
+  it("finds active items with logarithmic row measurements", () => {
+    const allItems = Array.from(
+      { length: 256 },
+      (_, index): TocItem => ({
+        id: `item-${index}`,
+        label: `Message ${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+      }),
+    );
+    const manyUserItems = allItems.filter((item) => item.role === "user");
+    const manyAgentItems = allItems.filter((item) => item.role === "assistant");
+    const visibleIndex = 200;
+    const scrollElement = createScrollElement({
+      clientHeight: 100,
+      scrollHeight: 3_000,
+      scrollTop: 400,
+      rows: allItems.map((item, index) => {
+        const top = (index - visibleIndex) * 10;
+        return { id: item.id, top, bottom: top + 10 };
+      }),
+    });
+
+    expect(
+      findActiveItemIds({
+        agentItems: manyAgentItems,
+        scrollElement,
+        userItems: manyUserItems,
+      }),
+    ).toEqual({
+      agent: "item-201",
+      user: "item-200",
+    });
+    const rowMeasurementCount = Array.from(
+      scrollElement.querySelectorAll<HTMLElement>("[data-timeline-row-id]"),
+    ).reduce(
+      (count, row) =>
+        count + vi.mocked(row.getBoundingClientRect).mock.calls.length,
+      0,
+    );
+    expect(rowMeasurementCount).toBeLessThanOrEqual(16);
   });
 });
