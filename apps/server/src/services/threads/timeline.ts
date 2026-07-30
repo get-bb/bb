@@ -742,26 +742,6 @@ function ensureInTurnWindowWholeItemRows(
     return rows;
   }
 
-  const completedItemIds = new Set<string>();
-  for (const row of rows) {
-    if (row.type === "item/completed" && row.itemId !== null) {
-      completedItemIds.add(row.itemId);
-    }
-  }
-  const bufferedTextItemIds = new Set<string>();
-  for (const row of rows) {
-    if (
-      row.itemId !== null &&
-      itemIdsStartingBeforeWindow.has(row.itemId) &&
-      !completedItemIds.has(row.itemId) &&
-      (row.itemKind === "agentMessage" ||
-        row.itemKind === "plan" ||
-        row.itemKind === "reasoning")
-    ) {
-      bufferedTextItemIds.add(row.itemId);
-    }
-  }
-
   // This window owns these items, so it needs the lifecycle rows that fell
   // below the cut — without them a finished command renders "pending" and
   // carries neither its command line nor its start time. Only the two lifecycle
@@ -778,6 +758,29 @@ function ensureInTurnWindowWholeItemRows(
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
   }).filter((row) => row.sequence < args.sequenceStart);
+
+  const completedItemIds = new Set<string>();
+  for (const row of [...rows, ...backfillRows]) {
+    if (row.type === "item/completed" && row.itemId !== null) {
+      completedItemIds.add(row.itemId);
+    }
+  }
+  // Delta rows are stored with a null itemKind, and an item that started below
+  // the cut has only delta rows inside the window — so the kind must be read
+  // from the backfilled item/started row, never from the in-window rows.
+  const bufferedTextItemIds = new Set<string>();
+  for (const row of backfillRows) {
+    if (
+      row.type === "item/started" &&
+      row.itemId !== null &&
+      !completedItemIds.has(row.itemId) &&
+      (row.itemKind === "agentMessage" ||
+        row.itemKind === "plan" ||
+        row.itemKind === "reasoning")
+    ) {
+      bufferedTextItemIds.add(row.itemId);
+    }
+  }
   const bufferedTextRows = listStoredBufferedTextDeltaRowsByItemIds(db, {
     beforeSequence: args.sequenceStart,
     itemIds: [...bufferedTextItemIds],
