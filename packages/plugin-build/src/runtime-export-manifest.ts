@@ -12,6 +12,7 @@ export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
     "Markdown",
     "ThreadChat",
     "definePluginApp",
+    "experimental_NewThreadComposer",
     "useBbContext",
     "useBbNavigate",
     "useComposer",

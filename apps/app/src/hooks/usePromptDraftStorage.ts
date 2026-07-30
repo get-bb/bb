@@ -20,6 +20,9 @@ const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 export type PromptDraftScope =
   | { kind: "automation-edit"; automationId: string }
   | { kind: "new-thread" }
+  // A plugin-rendered new-thread composer. `key` keeps its draft out of the
+  // root composer's, and lets one plugin run several independent composers.
+  | { kind: "plugin-new-thread"; key: string }
   | { kind: "side-chat"; parentThreadId: string; tabId: string }
   | { kind: "thread"; projectId: string; threadId: string };
 
@@ -229,6 +232,10 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   }
   if (scope.kind === "new-thread") {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+  }
+  if (scope.kind === "plugin-new-thread") {
+    const normalizedKey = normalizeStorageSegment(scope.key);
+    return `${PROMPT_DRAFT_STORAGE_PREFIX}-plugin-draft-${normalizedKey}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
   if (scope.kind === "side-chat") {
     const normalizedParentThreadId = normalizeStorageSegment(

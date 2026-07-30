@@ -7,6 +7,7 @@
 
 import * as react from 'react';
 import { ComponentType, ReactNode } from 'react';
+import { z } from 'zod';
 
 /** A JSON-safe path segment reported by a Standard Schema validation issue. */
 type PluginRpcIssuePathSegment = string | number;
@@ -64,6 +65,167 @@ type PluginRpcHandlers<Contract extends PluginRpcContract> = {
 type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
 type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
 type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
+
+declare const reasoningLevelSchema: z.ZodEnum<{
+    none: "none";
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+    ultracode: "ultracode";
+    max: "max";
+    ultra: "ultra";
+}>;
+type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
+declare const serviceTierSchema: z.ZodEnum<{
+    default: "default";
+    fast: "fast";
+}>;
+type ServiceTier = z.infer<typeof serviceTierSchema>;
+declare const permissionModeSchema: z.ZodEnum<{
+    full: "full";
+    auto: "auto";
+    "accept-edits": "accept-edits";
+}>;
+type PermissionMode = z.infer<typeof permissionModeSchema>;
+declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    visibility: z.ZodOptional<z.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z.ZodLiteral<"text">;
+    text: z.ZodString;
+    mentions: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        start: z.ZodNumber;
+        end: z.ZodNumber;
+        resource: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"thread">;
+            threadId: z.ZodString;
+            projectId: z.ZodOptional<z.ZodString>;
+            label: z.ZodString;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"project">;
+            projectId: z.ZodString;
+            label: z.ZodString;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"section">;
+            sectionId: z.ZodString;
+            label: z.ZodString;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"path">;
+            source: z.ZodEnum<{
+                workspace: "workspace";
+                "thread-storage": "thread-storage";
+            }>;
+            entryKind: z.ZodEnum<{
+                file: "file";
+                directory: "directory";
+            }>;
+            path: z.ZodString;
+            label: z.ZodString;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"command">;
+            trigger: z.ZodEnum<{
+                "/": "/";
+            }>;
+            name: z.ZodString;
+            source: z.ZodEnum<{
+                command: "command";
+                skill: "skill";
+            }>;
+            origin: z.ZodEnum<{
+                user: "user";
+                project: "project";
+                builtin: "builtin";
+            }>;
+            label: z.ZodString;
+            argumentHint: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"plugin">;
+            pluginId: z.ZodString;
+            icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            itemId: z.ZodString;
+            label: z.ZodString;
+        }, z.core.$strip>], "kind">>;
+    }, z.core.$strip>>>;
+}, z.core.$strip>, z.ZodObject<{
+    visibility: z.ZodOptional<z.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z.ZodLiteral<"image">;
+    url: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    visibility: z.ZodOptional<z.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z.ZodLiteral<"localImage">;
+    path: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    visibility: z.ZodOptional<z.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z.ZodLiteral<"localFile">;
+    path: z.ZodString;
+    name: z.ZodOptional<z.ZodString>;
+    sizeBytes: z.ZodOptional<z.ZodNumber>;
+    mimeType: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>], "type">;
+type PromptInput = z.infer<typeof promptInputSchema>;
+
+declare const createThreadEnvironmentArgsSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    type: z.ZodLiteral<"reuse">;
+    environmentId: z.ZodString;
+}, z.core.$strip>, z.ZodObject<{
+    type: z.ZodLiteral<"host">;
+    hostId: z.ZodOptional<z.ZodString>;
+    workspace: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        type: z.ZodLiteral<"unmanaged">;
+        path: z.ZodNullable<z.ZodString>;
+        branch: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"existing">;
+            name: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"new">;
+            baseBranch: z.ZodString;
+        }, z.core.$strict>], "kind">>;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"managed-worktree">;
+        baseBranch: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"named">;
+            name: z.ZodString;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"default">;
+        }, z.core.$strip>], "kind">;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"personal">;
+    }, z.core.$strip>], "type">;
+}, z.core.$strip>, z.ZodObject<{
+    type: z.ZodLiteral<"project-default">;
+}, z.core.$strip>], "type">;
+type CreateThreadEnvironmentArgs = z.infer<typeof createThreadEnvironmentArgsSchema>;
+
+declare const createExecutionInputSourcesSchema: z.ZodObject<{
+    providerId: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    model: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    serviceTier: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    reasoningLevel: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    permissionMode: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+}, z.core.$strict>;
+type CreateExecutionInputSources = z.infer<typeof createExecutionInputSourcesSchema>;
 
 /**
  * A value that survives a JSON round trip without coercion or data loss.
@@ -706,6 +868,72 @@ interface ThreadChatProps {
     messageActions?: readonly ThreadChatMessageAction[];
 }
 /**
+ * Every selection the composer resolved, JSON-serializable so a plugin can
+ * forward it to its own backend rpc verbatim and hand it straight to
+ * `bb.sdk.threads.spawn`.
+ *
+ * The split is deliberate: the composer owns *user selections*, the plugin
+ * owns *filing and attribution*. `bb.sdk.threads.spawn` auto-fills
+ * `origin: "plugin"` and `originPluginId`, so a thread created this way stays
+ * attributed to the plugin — which it would not be if the component created
+ * the thread itself. The plugin adds `sectionId`, `parentThreadId`, `title`,
+ * and `visibility` to the request on its own; they are deliberately not
+ * composer props.
+ */
+interface NewThreadRequest {
+    projectId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: ReasoningLevel;
+    permissionMode: PermissionMode;
+    /** Omitted when the selected provider has no service tiers. */
+    serviceTier?: ServiceTier;
+    /**
+     * Per-field provenance (caller-explicit vs. default) for the execution
+     * options above, forwarded to `spawn` so the server records what the user
+     * actually chose.
+     */
+    executionInputSources: CreateExecutionInputSources;
+    environment: CreateThreadEnvironmentArgs;
+    input: PromptInput[];
+}
+/**
+ * Props of the host-owned `experimental_NewThreadComposer` component — bb's
+ * full new-thread compose surface (prompt editor with @-mentions and expand,
+ * attachments, provider/model/reasoning picker, voice, submit, and the row
+ * beneath with project, environment, branch-from, and permission mode),
+ * rendered by the BB app inside a plugin slot.
+ *
+ * It is the create-side counterpart to `ThreadChat`: same deliberate
+ * exception to the no-host-components rule (§5.5), same additive versioning.
+ */
+interface NewThreadComposerProps {
+    /** Seeds the project picker. The user can change it. */
+    defaultProjectId?: string;
+    /** Seeds the draft, only while the draft is still empty. */
+    initialPrompt?: string;
+    placeholder?: string;
+    /**
+     * "contained" (default) fills and scrolls inside a bounded parent;
+     * "document" grows with its content and defers scrolling to the page.
+     */
+    layout?: "contained" | "document";
+    /** Bump to focus the editor. */
+    focusRequest?: number;
+    className?: string;
+    /**
+     * Where the draft persists. Drafts survive reloads and are shared by every
+     * composer using the same key; defaults to a key scoped to this plugin.
+     */
+    draftKey?: string;
+    /**
+     * Fires on submit with every selection resolved. The draft clears when this
+     * resolves and is KEPT if it throws, so a failed create never loses what the
+     * user typed.
+     */
+    onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+}
+/**
  * Props of the host-owned `Markdown` component — bb's chat message renderer
  * (the same typography, spacing, and code styling as timeline messages).
  * Use it wherever plugin UI quotes or previews message content so it reads
@@ -787,12 +1015,19 @@ interface PluginSdkApp {
      * {@link MarkdownProps}).
      */
     Markdown: ComponentType<MarkdownProps>;
+    /**
+     * The host-owned new-thread compose surface (see
+     * {@link NewThreadComposerProps}). Experimental: see
+     * docs/api_to_audit.md for what to audit before the prefix drops.
+     */
+    experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
     useComposerView(): ComposerView;
 }
 
 declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
 declare const ThreadChat: react.ComponentType<ThreadChatProps>;
 declare const Markdown: react.ComponentType<MarkdownProps>;
+declare const experimental_NewThreadComposer: react.ComponentType<NewThreadComposerProps>;
 declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useRealtimeConnectionState: () => PluginRealtimeConnectionState;
@@ -802,5 +1037,5 @@ declare const useBbNavigate: () => BbNavigate;
 declare const useComposer: () => PluginComposerApi;
 declare const useComposerView: () => ComposerView;
 
-export { Markdown, ThreadChat, definePluginApp, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

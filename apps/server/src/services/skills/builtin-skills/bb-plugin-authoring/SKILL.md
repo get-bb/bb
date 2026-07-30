@@ -1014,6 +1014,61 @@ className?, leadingContent?, messageActions? }` —
   message content (e.g. a reply header) so it reads like the rest of the
   chat instead of a differently-styled bundled renderer. Renderer options
   beyond content/className stay host-internal.
+- `experimental_NewThreadComposer` — bb's complete compose surface for
+  CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
+  editor with @-mentions and expand, `+` attachments,
+  provider/model/reasoning picker, voice, submit, and the row beneath with
+  project, environment, "Branch from:", and permission mode. Never
+  hand-roll a textarea + "Start thread" button. Props:
+  `{ onSubmit, defaultProjectId?, initialPrompt?, placeholder?, layout?,
+focusRequest?, className?, draftKey? }` — `defaultProjectId` seeds the
+  project picker (the user can change it); `initialPrompt` seeds the draft
+  only while it is still empty; `layout` is `"contained"` (default) or
+  `"document"` like `ThreadChat`; `focusRequest` is a change-detected nonce
+  that focuses the editor; `draftKey` picks where the draft persists
+  (default: a key scoped to your plugin).
+
+  The composer resolves selections; YOUR PLUGIN creates the thread. On
+  submit it calls `onSubmit(request)` with a JSON-serializable
+  `NewThreadRequest`
+  `{ projectId, providerId, model, reasoningLevel, permissionMode,
+serviceTier?, executionInputSources, environment, input }`. Forward it
+  verbatim to your backend rpc and hand it to `bb.sdk.threads.spawn`,
+  adding `sectionId` / `parentThreadId` / `title` / `visibility` yourself —
+  `spawn` fills in `origin: "plugin"` and `originPluginId`, so threads
+  created this way stay attributed to your plugin. The draft clears when
+  `onSubmit` resolves and is KEPT if it throws, so a failed create never
+  loses what the user typed.
+
+  Alias it on import — JSX reads a lowercase-initial name as an intrinsic
+  element, so `<experimental_NewThreadComposer />` does not compile:
+
+  ```tsx
+  // app.tsx
+  import { experimental_NewThreadComposer as NewThreadComposer } from "@bb/plugin-sdk/app";
+
+  <NewThreadComposer
+    defaultProjectId={projectId}
+    onSubmit={async (request) => {
+      await rpc.call("createThread", { request, sectionId });
+    }}
+  />
+  ```
+
+  ```ts
+  // server.ts
+  async createThread({ request, sectionId }) {
+    const thread = await bb.sdk.threads.spawn({
+      ...request,
+      ...(sectionId ? { sectionId } : {}),
+    });
+    return { threadId: thread.id };
+  }
+  ```
+
+  Experimental: the `experimental_` prefix will drop once the entry in
+  `docs/api_to_audit.md` is audited. Give it real width — the control row
+  does not fit in a ~420px column.
 
 Hooks:
 

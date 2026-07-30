@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type ComponentType,
   type ReactElement,
@@ -41,6 +42,7 @@ import {
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
   type MarkdownProps,
+  type NewThreadComposerProps,
   type ThreadChatProps,
   type JsonValue,
 } from "@bb/plugin-sdk";
@@ -273,6 +275,59 @@ function TestMarkdown({ content, className }: MarkdownProps) {
   );
 }
 
+/**
+ * Stand-in for the host-owned new-thread composer: a textarea plus a submit
+ * button that calls `onSubmit` with a fixed, obviously-synthetic request, so
+ * plugin tests can drive the create path without the real compose surface.
+ */
+function TestNewThreadComposer({
+  defaultProjectId,
+  initialPrompt,
+  placeholder,
+  layout = "contained",
+  focusRequest,
+  className,
+  draftKey,
+  onSubmit,
+}: NewThreadComposerProps) {
+  const [text, setText] = useState(initialPrompt ?? "");
+  return (
+    <div
+      data-testid="bb-new-thread-composer"
+      data-default-project-id={defaultProjectId ?? ""}
+      data-layout={layout}
+      data-focus-request={focusRequest ?? 0}
+      data-draft-key={draftKey ?? ""}
+      className={className}
+    >
+      <textarea
+        data-testid="bb-new-thread-composer-input"
+        placeholder={placeholder}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <button
+        type="button"
+        data-testid="bb-new-thread-composer-submit"
+        onClick={() => {
+          void onSubmit({
+            projectId: defaultProjectId ?? "project-test",
+            providerId: "codex",
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            permissionMode: "auto",
+            executionInputSources: {},
+            environment: { type: "project-default" },
+            input: [{ type: "text", text, mentions: [] }],
+          });
+        }}
+      >
+        Start thread
+      </button>
+    </div>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -337,6 +392,7 @@ const testPluginSdkApp = {
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
+  experimental_NewThreadComposer: TestNewThreadComposer,
   useComposerView(): ComposerView {
     const composer = useSlotEnv("useComposerView").composer;
     const version = useSyncExternalStore(

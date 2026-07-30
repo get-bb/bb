@@ -48,6 +48,8 @@ const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
+export const experimental_NewThreadComposer =
+  runtime.experimental_NewThreadComposer;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;
