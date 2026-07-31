@@ -90,12 +90,11 @@ const mutableRoots = new Map<string, MutableRoot>();
 const MUTABLE_ROOT_MARKER = /[?&]bbPluginLoad=(\d+)\.(\d+)/;
 let nextMutableRootId = 1;
 let nextMutableRootEpoch = 1;
-let mutableRootHooksRegistered = false;
+let mutableRootHooks: { deregister: () => void } | null = null;
 
 function registerMutableRootHooks(): void {
-  if (mutableRootHooksRegistered) return;
-  mutableRootHooksRegistered = true;
-  registerHooks({
+  if (mutableRootHooks !== null) return;
+  mutableRootHooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       const resolved = nextResolve(specifier, context);
       if (mutableRoots.size === 0) return resolved;
@@ -153,28 +152,50 @@ function mutableRootUrl(canonicalDir: string): string {
 /**
  * The URL marker only re-keys ESM modules. Node caches a CommonJS child by
  * resolved filename and ignores the query, so a `.cjs` file (or anything
- * reached through `createRequire`) would survive the reload untouched.
+ * reached through `createRequire`) would survive the reload untouched. There
+ * is one CommonJS cache per filename and no room for a per-epoch key, so the
+ * evicted entries are returned and restored if the candidate never commits.
  */
-function purgeCommonJsCache(canonicalDir: string): void {
+function evictCommonJsCache(canonicalDir: string): Map<string, NodeModule> {
   const prefix = join(canonicalDir, "/");
   const cache = createRequire(import.meta.url).cache;
+  const evicted = new Map<string, NodeModule>();
   for (const filename of Object.keys(cache)) {
-    if (filename.startsWith(prefix)) delete cache[filename];
+    if (!filename.startsWith(prefix)) continue;
+    const entry = cache[filename];
+    if (entry !== undefined) evicted.set(filename, entry);
+    delete cache[filename];
   }
+  return evicted;
 }
 
-/** Invalidate a mutable plugin tree so the next import re-reads from disk. */
-function bumpMutableRootGeneration(rootDir: string): void {
+/**
+ * Invalidate a mutable plugin tree so the next import re-reads from disk.
+ * Returns a rollback for the candidate that never commits: the retained
+ * plugin keeps its own epoch, so a cross-root import cannot reach the
+ * rejected files, and its CommonJS children are put back as they were.
+ */
+function bumpMutableRootGeneration(rootDir: string): () => void {
   registerMutableRootHooks();
   const canonicalDir = mutableRootDir(rootDir);
   const rootUrl = mutableRootUrl(canonicalDir);
+  const previous = mutableRoots.get(rootUrl);
   mutableRoots.set(rootUrl, {
     // A removed-then-reinstalled root takes a fresh id, so its new modules
     // can never collide with URLs the old registration already evaluated.
-    id: mutableRoots.get(rootUrl)?.id ?? nextMutableRootId++,
+    id: previous?.id ?? nextMutableRootId++,
     epoch: nextMutableRootEpoch++,
   });
-  purgeCommonJsCache(canonicalDir);
+  const evicted = evictCommonJsCache(canonicalDir);
+  return () => {
+    if (previous === undefined) mutableRoots.delete(rootUrl);
+    else mutableRoots.set(rootUrl, previous);
+    const cache = createRequire(import.meta.url).cache;
+    for (const [filename, entry] of evicted) {
+      // Only restore what the failed candidate did not already replace.
+      if (cache[filename] === undefined) cache[filename] = entry;
+    }
+  };
 }
 
 /**
@@ -183,7 +204,19 @@ function bumpMutableRootGeneration(rootDir: string): void {
  * surviving module graph of a failed reload still resolves against its id.
  */
 export function forgetMutableRoot(rootDir: string): void {
-  mutableRoots.delete(mutableRootUrl(mutableRootDir(rootDir)));
+  releaseMutableRoots([mutableRootUrl(mutableRootDir(rootDir))]);
+}
+
+/**
+ * Release roots owned by a stopping runtime and tear the hook down once no
+ * roots remain, so a process that creates many services (tests, restarts)
+ * does not pay for historical roots on every later resolve.
+ */
+function releaseMutableRoots(rootUrls: Iterable<string>): void {
+  for (const rootUrl of rootUrls) mutableRoots.delete(rootUrl);
+  if (mutableRoots.size > 0 || mutableRootHooks === null) return;
+  mutableRootHooks.deregister();
+  mutableRootHooks = null;
 }
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
@@ -223,6 +256,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const disposingPluginIds = new Set<string>();
   const builtinSourceWatchers: FSWatcher[] = [];
+  /** Mutable roots this runtime registered, released when it stops. */
+  const ownedRootUrls = new Set<string>();
 
   function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = lifecycleChains.get(id) ?? Promise.resolve();
@@ -1084,11 +1119,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     });
     // Mutable trees are edited between loads, so invalidate the previous
     // generation's URLs before importing (managed git:/npm: artifacts are
-    // immutable after promotion and keep their cached modules). A failed
-    // candidate needs no rollback: the surviving plugin's lazy imports
-    // inherit their own generation from the parent URL.
+    // immutable after promotion and keep their cached modules).
+    let rollbackGeneration: (() => void) | undefined;
     if (row.sourceKind === "path" || row.sourceKind === "builtin") {
-      bumpMutableRootGeneration(row.rootDir);
+      rollbackGeneration = bumpMutableRootGeneration(row.rootDir);
+      ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
       // Fresh instance per load: guarantees re-imports see current sources.
@@ -1114,6 +1149,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         handle.api,
       );
     } catch (error) {
+      // The candidate never commits, so its epoch and its CommonJS evictions
+      // must not outlive it: the retained plugin keeps serving its own files.
+      rollbackGeneration?.();
       for (const database of handle.databaseHandles.splice(0)) {
         try {
           database.close();
@@ -1277,6 +1315,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     for (const id of [...loaded.keys()]) {
       await withLifecycleLock(id, () => disposeOne(id));
     }
+    // This runtime is going away, so hand its roots back. The resolve hook is
+    // process-wide and is torn down once the last runtime releases its own.
+    releaseMutableRoots(ownedRootUrls);
+    ownedRootUrls.clear();
   }
 
   function clearRuntimeState(id: string): void {

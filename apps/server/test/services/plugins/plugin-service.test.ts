@@ -365,6 +365,62 @@ describe("plugin service", () => {
     expect(await readShared()).toBe("shared2");
   });
 
+  // A candidate that never commits must stay private. Cross-root importers do
+  // not inherit the retained plugin's epoch (they resolve against the imported
+  // root), so without a rollback they would read the rejected files.
+  it("hides a failed reload's sources from a plugin that imports it", async () => {
+    const importerDir = join(workDir, "bb-plugin-fail-importer");
+    const importedDir = join(workDir, "bb-plugin-fail-imported");
+    await writeEsmPlugin(importerDir, "fail-importer");
+    await writeEsmPlugin(importedDir, "fail-imported");
+    await writeEsmSources(importedDir, "failImported", "entry1", "sub1");
+    await writeFile(
+      join(importerDir, "server.js"),
+      `export default function plugin() {
+         globalThis.failImporterRead = async () => {
+           const shared = await import(
+             ${JSON.stringify(join(importedDir, "shared.js"))}
+           );
+           const helper = (await import(
+             ${JSON.stringify(join(importedDir, "helper.cjs"))}
+           )).default;
+           return shared.SHARED + ":" + helper.H;
+         };
+       }\n`,
+    );
+    await writeFile(
+      join(importedDir, "shared.js"),
+      `export const SHARED = "shared1";\n`,
+    );
+    await writeFile(
+      join(importedDir, "helper.cjs"),
+      `module.exports = { H: "cjs1" };\n`,
+    );
+    await service.installPath(importedDir);
+    await service.installPath(importerDir);
+    const globals = globalThis as Record<string, unknown>;
+    const read = globals.failImporterRead as () => Promise<string>;
+    expect(await read()).toBe("shared1:cjs1");
+
+    // Edit every file, then break the entry so the reload cannot commit.
+    await writeFile(
+      join(importedDir, "shared.js"),
+      `export const SHARED = "shared-rejected";\n`,
+    );
+    await writeFile(
+      join(importedDir, "helper.cjs"),
+      `module.exports = { H: "cjs-rejected" };\n`,
+    );
+    await writeFile(join(importedDir, "server.js"), `export default 42;\n`);
+    await service.reload("fail-imported");
+    expect(service.list().find((p) => p.id === "fail-imported")?.status).toBe(
+      "running",
+    );
+
+    // The retained plugin's files must still be the committed ones.
+    expect(await read()).toBe("shared1:cjs1");
+  });
+
   // Node canonicalizes ESM files through symbolic links, so a root tracked as
   // the un-canonicalized install path never matches the module URL.
   it("reload re-reads an ESM plugin installed through a symbolic link", async () => {
