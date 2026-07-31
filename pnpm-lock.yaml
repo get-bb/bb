@@ -533,6 +533,13 @@ importers:
       zod:
         specifier: 4.3.6
         version: 4.3.6
+    optionalDependencies:
+      '@esbuild/darwin-arm64':
+        specifier: ^0.28.0
+        version: 0.28.1
+      '@esbuild/darwin-x64':
+        specifier: ^0.28.0
+        version: 0.28.1
     devDependencies:
       '@bb/config':
         specifier: workspace:*

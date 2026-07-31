@@ -55,6 +55,15 @@
   },
   "packageManager": "pnpm@9.15.0",
   "pnpm": {
+    "supportedArchitectures": {
+      "os": [
+        "current"
+      ],
+      "cpu": [
+        "arm64",
+        "x64"
+      ]
+    },
     "overrides": {
       "zod": "4.3.6"
     }
