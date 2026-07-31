@@ -1,7 +1,8 @@
 import { existsSync, type FSWatcher } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
@@ -67,6 +68,49 @@ const pluginSdkAlias: Record<string, string> | undefined = existsSync(
 )
   ? { "@bb/plugin-sdk": pluginSdkRuntimePath }
   : undefined;
+
+/**
+ * Per-root reload generation for mutable (path:/source-builtin) plugin trees.
+ * `jiti.import` hands a `"type": "module"` entry to native `import()`, and
+ * Node's ESM registry keys modules by resolved URL forever — so a re-import
+ * after an edit returns the first-evaluated module and `bb plugin reload`
+ * silently keeps the old code. A resolve hook stamps the current generation
+ * onto every URL inside a mutable plugin root, which makes each reload a
+ * distinct URL for the entry AND every file it imports.
+ */
+const mutableRootGenerations = new Map<string, number>();
+let mutableRootHooksRegistered = false;
+
+function registerMutableRootHooks(): void {
+  if (mutableRootHooksRegistered) return;
+  mutableRootHooksRegistered = true;
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const resolved = nextResolve(specifier, context);
+      if (!resolved.url.startsWith("file:")) return resolved;
+      for (const [rootUrl, generation] of mutableRootGenerations) {
+        if (!resolved.url.startsWith(rootUrl)) continue;
+        const separator = resolved.url.includes("?") ? "&" : "?";
+        return {
+          ...resolved,
+          url: `${resolved.url}${separator}bbPluginLoad=${generation}`,
+          shortCircuit: true,
+        };
+      }
+      return resolved;
+    },
+  });
+}
+
+/** Invalidate a mutable plugin tree so the next import re-reads from disk. */
+function bumpMutableRootGeneration(rootDir: string): void {
+  registerMutableRootHooks();
+  const rootUrl = pathToFileURL(join(rootDir, "/")).href;
+  mutableRootGenerations.set(
+    rootUrl,
+    (mutableRootGenerations.get(rootUrl) ?? 0) + 1,
+  );
+}
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
@@ -965,6 +1009,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       },
     });
     try {
+      // Mutable trees are edited between loads, so invalidate the previous
+      // generation's URLs before importing (managed git:/npm: artifacts are
+      // immutable after promotion and keep their cached modules).
+      if (row.sourceKind === "path" || row.sourceKind === "builtin") {
+        bumpMutableRootGeneration(row.rootDir);
+      }
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,

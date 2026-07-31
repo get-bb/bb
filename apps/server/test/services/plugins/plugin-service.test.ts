@@ -224,6 +224,54 @@ describe("plugin service", () => {
     );
   });
 
+  // The fixture above writes TypeScript, which jiti always transpiles, so it
+  // never exercises the path real plugins take: every published plugin ships
+  // `"type": "module"` with plain `.js`, which jiti hands to native import().
+  // Node's ESM registry then keys the module by URL forever, so reload used to
+  // re-run the first-evaluated factory. Submodules regressed separately from
+  // the entry, so both are asserted.
+  it("reload re-reads an ESM plugin's entry and its submodules", async () => {
+    const rootDir = join(workDir, "bb-plugin-esm-reloader");
+    await mkdir(rootDir, { recursive: true });
+    await writeFile(
+      join(rootDir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-esm-reloader",
+        version: "0.1.0",
+        type: "module",
+        bb: {
+          name: "ESM reload fixture",
+          description: "ESM reload fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.js",
+        },
+      }),
+    );
+    const writeSources = async (entry: string, sub: string): Promise<void> => {
+      await writeFile(join(rootDir, "marker.js"), `export const MARKER = "${sub}";\n`);
+      await writeFile(
+        join(rootDir, "server.js"),
+        `import { MARKER } from "./marker.js";
+         export default function plugin() {
+           globalThis.__esmReloader = "${entry}:" + MARKER;
+         }\n`,
+      );
+    };
+    const globals = globalThis as Record<string, unknown>;
+
+    await writeSources("entry1", "sub1");
+    await service.installPath(rootDir);
+    expect(globals.__esmReloader).toBe("entry1:sub1");
+
+    await writeSources("entry2", "sub1");
+    await service.reload("esm-reloader");
+    expect(globals.__esmReloader).toBe("entry2:sub1");
+
+    await writeSources("entry2", "sub2");
+    await service.reload("esm-reloader");
+    expect(globals.__esmReloader).toBe("entry2:sub2");
+  });
+
   it("stale API handles throw after reload", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-staler",
