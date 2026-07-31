@@ -1321,6 +1321,7 @@ function EmbeddedThreadChatWithComposer({
         onSendToMainMessage={onSendToMainMessage}
         onMessageAddToChat={handleAddToChat}
         onSelectionAddToChat={handleAddToChat}
+        projectId={projectId}
         provisioningLabel={labels.provisioning}
         rowFilter={rowFilter}
         showLoadOlderRows={showLoadOlderRows}

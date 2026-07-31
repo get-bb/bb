@@ -13,31 +13,33 @@ import { describe, expect, it } from "vitest";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
+import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
-  getProjectStoredPromptAttachmentPaths,
   hasPromptBranchSelectionChanged,
   hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
-  isProjectSourceWorktreeUnavailable,
   mergeMissingPromptDraftAttachments,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
   restorePromptDraftAfterOptionChange,
-  resolveComposeHostId,
-  resolveRootComposeEffectiveEnvironmentValue,
-  resolveRootComposeProviderRouting,
-  resolveRootComposeProjectRouting,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
+import {
+  isProjectSourceWorktreeUnavailable,
+  resolveComposeHostId,
+  resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposeProjectRouting,
+  resolveRootComposeProviderRouting,
+} from "./root-compose-environment-selection";
 
 describe("requestRootComposePluginFocus", () => {
   it("routes host focus through the subscriber that reveals the root composer", () => {

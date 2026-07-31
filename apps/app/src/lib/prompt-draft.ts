@@ -374,3 +374,20 @@ export function promptInputToDraft(
     attachments,
   };
 }
+
+export function getProjectStoredPromptAttachmentPaths(
+  attachments: readonly PromptDraftAttachment[],
+): string[] {
+  return [
+    ...new Set(
+      attachments.flatMap((attachment) => {
+        const path = attachment.path;
+        const isRuntimeReadable =
+          /^[\\/]/u.test(path) ||
+          /^[a-zA-Z]:[\\/]/u.test(path) ||
+          /^[a-zA-Z][a-zA-Z0-9+.-]*:/u.test(path);
+        return isRuntimeReadable ? [] : [path];
+      }),
+    ),
+  ];
+}

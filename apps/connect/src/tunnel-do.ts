@@ -10,6 +10,7 @@ import {
   type Frame,
   type HeaderPair,
 } from "@bb/tunnel-contract";
+import { relayedResponse } from "./response-encoding.js";
 
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
@@ -540,7 +541,7 @@ export class TunnelDO {
         >();
         let response: Response;
         try {
-          response = new Response(readable, { status: frame.status, headers });
+          response = relayedResponse(readable, frame.status, headers);
         } catch {
           // Any other unconstructable response (e.g. an out-of-range status):
           // answer 502 rather than leaving the request pending.

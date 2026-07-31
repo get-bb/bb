@@ -255,7 +255,10 @@ function seedTurns(
           scope: turnScope(turnId),
           providerThreadId,
           itemId: `${turnId}-item-${streaming}`,
-          itemKind: "commandExecution",
+          // Delta rows are persisted with a null itemKind (see
+          // deriveStoredEventItemFieldsFromSource); seeding a kind here would
+          // exercise a row shape production can never write.
+          itemKind: null,
           data: JSON.stringify({
             threadId: thread.id,
             providerThreadId,
@@ -757,7 +760,7 @@ describe("in-turn windows and items that only stream", () => {
         scope: turnScope(turnId),
         providerThreadId,
         itemId,
-        itemKind: "agentMessage",
+        itemKind: null,
         data: JSON.stringify({
           delta,
           itemId,
@@ -788,7 +791,7 @@ describe("in-turn windows and items that only stream", () => {
         scope: turnScope(turnId),
         providerThreadId,
         itemId,
-        itemKind: "agentMessage",
+        itemKind: null,
         data: JSON.stringify({
           delta,
           itemId,

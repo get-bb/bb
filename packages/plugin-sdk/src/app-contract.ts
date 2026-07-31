@@ -1,4 +1,14 @@
 import type { ComponentType, ReactNode } from "react";
+import type {
+  PermissionMode,
+  PromptInput,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
+import type {
+  CreateExecutionInputSources,
+  CreateThreadEnvironmentArgs,
+} from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcCallArgs,
@@ -720,6 +730,78 @@ export interface ThreadChatProps {
   messageActions?: readonly ThreadChatMessageAction[];
 }
 
+// ---------------------------------------------------------------------------
+// experimental_NewThreadComposer — the host-owned new-thread compose surface.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every selection the composer resolved, JSON-serializable so a plugin can
+ * forward it to its own backend rpc verbatim and hand it straight to
+ * `bb.sdk.threads.spawn`.
+ *
+ * The split is deliberate: the composer owns *user selections*, the plugin
+ * owns *filing and attribution*. `bb.sdk.threads.spawn` auto-fills
+ * `origin: "plugin"` and `originPluginId`, so a thread created this way stays
+ * attributed to the plugin — which it would not be if the component created
+ * the thread itself. The plugin adds `sectionId`, `parentThreadId`, `title`,
+ * and `visibility` to the request on its own; they are deliberately not
+ * composer props.
+ */
+export interface NewThreadRequest {
+  projectId: string;
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+  permissionMode: PermissionMode;
+  /** Omitted when the selected provider has no service tiers. */
+  serviceTier?: ServiceTier;
+  /**
+   * Per-field provenance (caller-explicit vs. default) for the execution
+   * options above, forwarded to `spawn` so the server records what the user
+   * actually chose.
+   */
+  executionInputSources: CreateExecutionInputSources;
+  environment: CreateThreadEnvironmentArgs;
+  input: PromptInput[];
+}
+
+/**
+ * Props of the host-owned `experimental_NewThreadComposer` component — bb's
+ * full new-thread compose surface (prompt editor with @-mentions and expand,
+ * attachments, provider/model/reasoning picker, voice, submit, and the row
+ * beneath with project, environment, branch-from, and permission mode),
+ * rendered by the BB app inside a plugin slot.
+ *
+ * It is the create-side counterpart to `ThreadChat`: same deliberate
+ * exception to the no-host-components rule (§5.5), same additive versioning.
+ */
+export interface NewThreadComposerProps {
+  /** Seeds the project picker. The user can change it. */
+  defaultProjectId?: string;
+  /** Seeds the draft, only while the draft is still empty. */
+  initialPrompt?: string;
+  placeholder?: string;
+  /**
+   * "contained" (default) fills and scrolls inside a bounded parent;
+   * "document" grows with its content and defers scrolling to the page.
+   */
+  layout?: "contained" | "document";
+  /** Bump to focus the editor. */
+  focusRequest?: number;
+  className?: string;
+  /**
+   * Where the draft persists. Drafts survive reloads and are shared by every
+   * composer using the same key; defaults to a key scoped to this plugin.
+   */
+  draftKey?: string;
+  /**
+   * Fires on submit with every selection resolved. The draft clears when this
+   * resolves and is KEPT if it throws, so a failed create never loses what the
+   * user typed.
+   */
+  onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+}
+
 /**
  * Props of the host-owned `Markdown` component — bb's chat message renderer
  * (the same typography, spacing, and code styling as timeline messages).
@@ -816,5 +898,11 @@ export interface PluginSdkApp {
    * {@link MarkdownProps}).
    */
   Markdown: ComponentType<MarkdownProps>;
+  /**
+   * The host-owned new-thread compose surface (see
+   * {@link NewThreadComposerProps}). Experimental: see
+   * docs/api_to_audit.md for what to audit before the prefix drops.
+   */
+  experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
   useComposerView(): ComposerView;
 }

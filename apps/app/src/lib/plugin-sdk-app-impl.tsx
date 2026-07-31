@@ -1,4 +1,5 @@
 import type { MarkdownProps, PluginSdkApp } from "@bb/plugin-sdk";
+import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { definePluginApp } from "./plugin-app-definition";
@@ -42,6 +43,9 @@ export const pluginSdkAppImplementation = {
   // exception to §5.5) — stable product capabilities, not a UI kit.
   ThreadChat: PluginThreadChat,
   Markdown: PluginMarkdown,
+  // Experimental (see docs/api_to_audit.md): the create-side counterpart to
+  // ThreadChat.
+  experimental_NewThreadComposer: PluginNewThreadComposer,
 } satisfies PluginSdkApp;
 
 /**

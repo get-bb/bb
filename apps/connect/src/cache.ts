@@ -9,6 +9,8 @@
 // ORIGIN's Cache-Control, so a dev server is proxied uncached while a bundled
 // immutable build is cached.
 
+import { rebuiltResponse } from "./response-encoding.js";
+
 const CACHE_HOST = "https://bb-connect-asset-cache.internal";
 const MIN_CACHEABLE_MAX_AGE = 300;
 
@@ -49,7 +51,11 @@ export async function serveWithCache(
 
   const hit = await cache.match(key);
   if (hit) {
-    const r = new Response(hit.body, hit);
+    // The cache stores the origin's bytes still encoded, so `hit.body` is raw
+    // gzip/br whenever the origin compressed — it must be rebuilt as
+    // pre-encoded (see response-encoding.ts) or the visitor gets raw gzip
+    // labelled text/html. This is NOT symmetric with the miss path below.
+    const r = rebuiltResponse(hit.body, hit);
     r.headers.set("x-bb-cache", "hit");
     return r;
   }
@@ -58,6 +64,10 @@ export async function serveWithCache(
   if (isCacheable(resp)) {
     // clone() before the body is consumed by the returned response.
     ctx.waitUntil(cache.put(key, resp.clone()));
+    // Subrequest bodies are the opposite case: workerd content-decodes a
+    // tunnelled response as it is read here, so `resp.body` is already plain
+    // bytes and the default (automatic) encoding is the correct one. Marking
+    // this one pre-encoded would advertise a gzip body that isn't gzipped.
     const r = new Response(resp.body, resp);
     r.headers.set("x-bb-cache", "miss");
     return r;

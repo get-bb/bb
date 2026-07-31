@@ -14,7 +14,6 @@ import {
   type Host,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
-  type ProjectSource,
   type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
@@ -22,9 +21,7 @@ import {
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
-  ProjectBranchesResponse,
   SidebarBootstrapResponse,
-  SystemProvidersQuery,
   TerminalSession,
 } from "@bb/server-contract";
 import {
@@ -46,7 +43,6 @@ import {
   encodeHostValue,
   encodeReuseValue,
   parseEnvironmentValue,
-  REUSE_VALUE_WITHOUT_ENVIRONMENT,
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import {
@@ -125,6 +121,7 @@ import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import {
   arePromptDraftStatesEqual,
+  getProjectStoredPromptAttachmentPaths,
   isPromptDraftEmpty,
   promptDraftToInput,
   type PromptDraftAttachment,
@@ -140,7 +137,6 @@ import {
   readThreadHandoffCreateSeedFromLocationState,
 } from "@/lib/thread-handoff-request";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
-import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
   getProjectComposeRoutePath,
@@ -192,6 +188,15 @@ import {
   type RootComposeSelectedBranch,
 } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
+import {
+  buildReuseThreadOptions,
+  isProjectSourceWorktreeUnavailable,
+  PROJECT_SOURCE_WORKTREE_DISABLED_REASON,
+  resolveComposeHostId,
+  resolveRootComposeEffectiveEnvironmentValue,
+  resolveRootComposeProjectRouting,
+  resolveRootComposeProviderRouting,
+} from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
@@ -288,22 +293,6 @@ export function mergeMissingPromptDraftAttachments(
   return [...currentAttachments, ...missingAttachments];
 }
 
-export function getProjectStoredPromptAttachmentPaths(
-  attachments: readonly PromptDraftAttachment[],
-): string[] {
-  return [
-    ...new Set(
-      attachments.flatMap((attachment) => {
-        const path = attachment.path;
-        const isRuntimeReadable =
-          /^[\\/]/u.test(path) ||
-          /^[a-zA-Z]:[\\/]/u.test(path) ||
-          /^[a-zA-Z][a-zA-Z0-9+.-]*:/u.test(path);
-        return isRuntimeReadable ? [] : [path];
-      }),
-    ),
-  ];
-}
 
 export function restorePromptDraftAfterOptionChange({
   currentDraft,
@@ -425,20 +414,6 @@ export function requestRootComposePluginFocus(storageKey: string | null): void {
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
 }
-
-interface ResolveRootComposeEffectiveEnvironmentValueArgs {
-  environmentSelectionValue: string;
-  isProjectless: boolean;
-  /** Ids of all hosts known to the server. */
-  knownHostIds: ReadonlySet<string>;
-  primaryHostId: string | null;
-  projectSources: readonly ProjectSource[];
-  reuseThreadOptions: readonly ReuseThreadOption[];
-  reuseThreadOptionsLoading: boolean;
-}
-
-const PROJECT_SOURCE_WORKTREE_DISABLED_REASON =
-  "Project source is not a git repository";
 
 interface ShouldNavigateAfterThreadCreateArgs {
   isForkDraft: boolean;
@@ -640,200 +615,6 @@ export function shouldReplaceInitialPromptFromLocationState(
   );
 }
 
-function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
-  if (thread.environmentId === null) return false;
-  return (
-    thread.environmentWorkspaceDisplayKind === "managed-worktree" ||
-    thread.environmentWorkspaceDisplayKind === "unmanaged-worktree"
-  );
-}
-
-function buildReuseThreadOptions(
-  threads: readonly ThreadListEntry[],
-  /** Host id → machine name, provided only when worktree rows should carry a
-   * machine hint when more than one host exists. */
-  hostNameById: ReadonlyMap<string, string> | null = null,
-): ReuseThreadOption[] {
-  // One option per worktree env. Threads within each env are sorted
-  // most-recently-active first so the picker preview surfaces the threads
-  // the user is most likely to recognize. Only unarchived threads reach
-  // here — `useThreads({ archived: false })` filters at the source. Envs
-  // with no unarchived threads naturally drop out.
-  const threadsByEnvironmentId = new Map<string, ThreadListEntry[]>();
-  const branchByEnvironmentId = new Map<string, string | null>();
-  const nameByEnvironmentId = new Map<string, string | null>();
-  const hostIdByEnvironmentId = new Map<string, string | null>();
-  for (const thread of threads) {
-    if (!isWorktreeWithEnv(thread)) continue;
-    if (thread.environmentId === null) continue;
-    let bucket = threadsByEnvironmentId.get(thread.environmentId);
-    if (!bucket) {
-      bucket = [];
-      threadsByEnvironmentId.set(thread.environmentId, bucket);
-      branchByEnvironmentId.set(
-        thread.environmentId,
-        thread.environmentBranchName,
-      );
-      nameByEnvironmentId.set(thread.environmentId, thread.environmentName);
-      hostIdByEnvironmentId.set(thread.environmentId, thread.environmentHostId);
-    }
-    bucket.push(thread);
-  }
-  const options: ReuseThreadOption[] = [];
-  for (const [environmentId, bucket] of threadsByEnvironmentId) {
-    bucket.sort(
-      (left, right) => right.latestAttentionAt - left.latestAttentionAt,
-    );
-    const hostId = hostIdByEnvironmentId.get(environmentId) ?? null;
-    options.push({
-      environmentId,
-      branchName: branchByEnvironmentId.get(environmentId) ?? null,
-      name: nameByEnvironmentId.get(environmentId) ?? null,
-      hostName:
-        hostNameById !== null && hostId !== null
-          ? (hostNameById.get(hostId) ?? null)
-          : null,
-      threads: bucket.map((thread) => ({
-        id: thread.id,
-        title: getThreadDisplayTitle(thread),
-      })),
-    });
-  }
-  options.sort((left, right) => {
-    const leftLabel = left.name ?? left.branchName;
-    const rightLabel = right.name ?? right.branchName;
-    if (leftLabel && rightLabel) {
-      return leftLabel.localeCompare(rightLabel);
-    }
-    return left.environmentId.localeCompare(right.environmentId);
-  });
-  return options;
-}
-
-export function isProjectSourceWorktreeUnavailable(
-  data: ProjectBranchesResponse | undefined,
-): boolean {
-  return data?.checkout.kind === "unknown";
-}
-
-export function resolveRootComposeEffectiveEnvironmentValue({
-  environmentSelectionValue,
-  isProjectless,
-  knownHostIds,
-  primaryHostId,
-  projectSources,
-  reuseThreadOptions,
-  reuseThreadOptionsLoading,
-}: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
-  if (!primaryHostId) {
-    return "";
-  }
-
-  const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
-
-  // A host selection survives as long as that machine still exists and has
-  // this project. Otherwise it falls through to the primary-host rewrite.
-  if (
-    parsedSelection?.type === "host" &&
-    knownHostIds.has(parsedSelection.hostId)
-  ) {
-    // Projectless threads run in the machine's personal workspace — no
-    // project source is required and there is no worktree mode to keep.
-    if (isProjectless) {
-      return encodeHostValue(parsedSelection.hostId, "local");
-    }
-    if (
-      findLocalPathProjectSourceForHost(
-        projectSources,
-        parsedSelection.hostId,
-      ) !== undefined
-    ) {
-      return environmentSelectionValue;
-    }
-  }
-  const canUseHostWorkspace =
-    isProjectless ||
-    findLocalPathProjectSourceForHost(projectSources, primaryHostId) !==
-      undefined;
-  const fallbackHostValue = canUseHostWorkspace
-    ? encodeHostValue(primaryHostId, "local")
-    : "";
-
-  if (isProjectless) {
-    return fallbackHostValue;
-  }
-
-  if (parsedSelection?.type === "reuse") {
-    if (parsedSelection.environmentId === null) {
-      return reuseThreadOptionsLoading || reuseThreadOptions.length > 0
-        ? environmentSelectionValue
-        : fallbackHostValue;
-    }
-
-    if (reuseThreadOptionsLoading) {
-      return REUSE_VALUE_WITHOUT_ENVIRONMENT;
-    }
-
-    return reuseThreadOptions.some(
-      (option) => option.environmentId === parsedSelection.environmentId,
-    )
-      ? environmentSelectionValue
-      : fallbackHostValue;
-  }
-
-  if (!canUseHostWorkspace) {
-    return "";
-  }
-
-  if (parsedSelection?.type === "host") {
-    return encodeHostValue(primaryHostId, parsedSelection.mode);
-  }
-
-  return fallbackHostValue;
-}
-
-/**
- * The machine the composed thread will run on: the effective selection's host
- * when it names one, otherwise the primary. Provider-CLI status, update
- * actions, and submit blocking all key off this host — the primary's CLI
- * state must not gate work targeted at another machine.
- */
-export function resolveComposeHostId(
-  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
-  primaryHostId: string | null,
-): string | null {
-  return parsedEnvironment?.type === "host"
-    ? parsedEnvironment.hostId
-    : primaryHostId;
-}
-
-export function resolveRootComposeProjectRouting(
-  parsedEnvironment: ReturnType<typeof parseEnvironmentValue>,
-  primaryHostId: string | null,
-): { environmentId?: string; hostId?: string } {
-  if (parsedEnvironment?.type === "reuse") {
-    return parsedEnvironment.environmentId === null
-      ? {}
-      : { environmentId: parsedEnvironment.environmentId };
-  }
-  const hostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
-  return hostId === null ? {} : { hostId };
-}
-
-export function resolveRootComposeProviderRouting(
-  args: ResolveRootComposeEffectiveEnvironmentValueArgs,
-): SystemProvidersQuery {
-  const parsed = parseEnvironmentValue(
-    resolveRootComposeEffectiveEnvironmentValue(args),
-  );
-  if (parsed?.type === "host") {
-    return { hostId: parsed.hostId };
-  }
-  if (parsed?.type === "reuse" && parsed.environmentId !== null) {
-    return { environmentId: parsed.environmentId };
-  }
-  return {};
-}
 
 export function buildMobileRecentThreads({
   sidebarNavigation,

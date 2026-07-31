@@ -6,806 +6,10 @@
 // and read the real source: https://github.com/ymichael/bb
 
 import { ComponentType, ReactNode } from 'react';
-import Database from 'better-sqlite3';
-import { Context } from 'hono';
 import * as z from 'zod';
 import { z as z$1 } from 'zod';
-
-/**
- * A value that survives a JSON round trip without coercion or data loss.
- *
- * Host boundaries still validate values at runtime because TypeScript cannot
- * exclude non-finite numbers and plugin bundles can bypass static types.
- */
-type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | {
-    [key: string]: JsonValue$1;
-};
-
-/** A JSON-safe path segment reported by a Standard Schema validation issue. */
-type PluginRpcIssuePathSegment = string | number;
-/** Validator-neutral validation detail carried by an RPC error envelope. */
-interface PluginRpcValidationIssue {
-    message: string;
-    path?: PluginRpcIssuePathSegment[];
-}
-/** Stable wire error categories for plugin RPC. */
-type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
-/** Structured RPC failure returned as `{ ok: false, error }`. */
-interface PluginRpcError {
-    code: PluginRpcErrorCode;
-    message: string;
-    issues?: PluginRpcValidationIssue[];
-}
-/**
- * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
- * Zod 4 schemas implement this interface directly; other validators can do
- * the same without becoming part of BB's public protocol.
- */
-interface StandardSchemaV1<Input = unknown, Output = Input> {
-    readonly "~standard": {
-        readonly version: 1;
-        readonly vendor: string;
-        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
-        readonly types?: {
-            readonly input: Input;
-            readonly output: Output;
-        };
-    };
-}
-type StandardSchemaV1Result<Output> = {
-    readonly value: Output;
-    readonly issues?: undefined;
-} | {
-    readonly issues: readonly StandardSchemaV1Issue[];
-};
-interface StandardSchemaV1Issue {
-    readonly message: string;
-    readonly path?: PropertyKey | readonly (PropertyKey | {
-        readonly key: PropertyKey;
-    })[];
-}
-type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
-type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
-interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
-    readonly input: InputSchema;
-    readonly output: OutputSchema;
-}
-type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
-/** Define a shared RPC contract while preserving exact method/schema types. */
-declare function defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
-type PluginRpcHandlers<Contract extends PluginRpcContract> = {
-    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
-};
-type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
-type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
-type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
-
-/**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
- * side effects. The BB app imports these to keep its real implementation in
- * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
- * `@bb/plugin-sdk/app`.
- *
- * Per-slot props are versioned contracts: additive-only within an SDK major.
- */
-/** Props passed to a `homepageSection` component. */
-interface PluginHomepageSectionProps {
-    /** Project in view on the compose surface; null when none is selected. */
-    projectId: string | null;
-}
-/**
- * Props passed to a `settingsSection` component.
- *
- * Deliberately empty in V1; versioned additive like the other slot props.
- */
-interface PluginSettingsSectionProps {
-}
-/** Props passed to a `navPanel` component (it owns its whole route). */
-interface PluginNavPanelProps {
-    /**
-     * The route remainder after the panel root, "" at the root. The panel's
-     * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
-     * `/plugins/notes/notes/work/ideas.md` renders the panel with
-     * `subPath: "work/ideas.md"`. Navigate within the panel via
-     * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
-     * back/forward then walks panel-internal history.
-     */
-    subPath: string;
-}
-/** Props passed to a panel tab opened by a `threadPanelAction`. */
-interface PluginThreadPanelProps {
-    threadId: string;
-    /**
-     * The JSON value the action's `openPanel` call passed (round-tripped
-     * through persistence, so the tab restores across reloads); null when the
-     * action opened the panel without params.
-     */
-    params: JsonValue$1 | null;
-}
-interface PluginPendingInteractionView {
-    id: string;
-    threadId: string;
-    title: string;
-    payload: JsonValue$1;
-    createdAt: number;
-    expiresAt: number | null;
-}
-interface PluginPendingInteractionProps {
-    interaction: PluginPendingInteractionView;
-    submit(value: JsonValue$1): Promise<void>;
-    cancel(): Promise<void>;
-}
-/**
- * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
- * Deliberately empty; the registration's `run` carries the behavior.
- */
-interface PluginSidebarFooterActionProps {
-}
-/**
- * Where a file being opened by a `fileOpener` lives. `path` semantics follow
- * the source: workspace paths are relative to the environment's worktree,
- * thread-storage paths are relative to the thread's storage root, host paths
- * are absolute on the thread's host.
- */
-interface PluginFileOpenerSource {
-    kind: "workspace" | "host" | "thread-storage";
-    threadId: string | null;
-    environmentId: string | null;
-    projectId: string | null;
-}
-/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
-interface PluginFileOpenerProps {
-    path: string;
-    source: PluginFileOpenerSource;
-}
-/**
- * Message context passed to a `messageDirective` component — the assistant
- * (or nested agent) message that contained the directive.
- */
-interface PluginMessageDirectiveMessage {
-    id: string;
-    threadId: string;
-    turnId: string | null;
-    projectId: string | null;
-}
-/**
- * Open a worktree-relative file in the host's workspace file viewer. Returns
- * true when the host accepted the path; false when the path is invalid or the
- * viewer declined it.
- */
-type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
-/**
- * Props passed to a `messageDirective` component. Attributes are untrusted
- * strings parsed from the directive; the plugin validates its own fields.
- */
-interface PluginMessageDirectiveProps {
-    /** Parsed, untrusted directive attributes (e.g. `{ file: "demo.html" }`). */
-    attributes: Readonly<Record<string, string>>;
-    /** Original directive source text (useful for diagnostics / crash fallback). */
-    source: string;
-    message: PluginMessageDirectiveMessage;
-    /**
-     * Opens a worktree-relative file in the host's workspace file viewer. Null
-     * when the message surface has no workspace viewer available.
-     */
-    openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
-}
-interface PluginHomepageSectionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    title: string;
-    component: ComponentType<PluginHomepageSectionProps>;
-}
-interface PluginSettingsSectionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Optional host-rendered section heading. */
-    title?: string;
-    /**
-     * Optional one-line host-rendered subheading under `title`, in the built-in
-     * SettingsSection idiom (ignored when `title` is absent).
-     */
-    description?: string;
-    component: ComponentType<PluginSettingsSectionProps>;
-}
-interface PluginNavPanelRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon: string;
-    /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
-    path: string;
-    component: ComponentType<PluginNavPanelProps>;
-    /**
-     * Optional component rendered on the right side of the shared title bar
-     * (e.g. a sync button or a count). Contained separately from the body: a
-     * throwing headerContent is hidden without breaking the title bar.
-     */
-    headerContent?: ComponentType<PluginNavPanelProps>;
-}
-/** Context handed to a `threadPanelAction`'s `run`. */
-interface PluginThreadPanelActionContext {
-    /** The thread whose panel launcher invoked the action. */
-    threadId: string;
-    /**
-     * Open a tab in the thread's side panel rendering this action's
-     * `component`. `title` labels the tab (default: the action's `title`);
-     * `params` must be JSON-serializable — it is persisted with the tab and
-     * reaches the component as its `params` prop. Opening with params
-     * identical to an already-open tab of this action focuses that tab
-     * (updating its title) instead of duplicating it. May be called more than
-     * once (different params ⇒ multiple tabs) or not at all.
-     */
-    openPanel(options?: {
-        title?: string;
-        params?: JsonValue$1;
-    }): void;
-}
-interface PluginThreadPanelActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Label of the action row in the panel's new-tab launcher. */
-    title: string;
-    /**
-     * Icon hint (BB icon name) used when the plugin ships no logo; the
-     * launcher row and opened tabs prefer the plugin's logo.
-     */
-    icon?: string;
-    /** Rendered inside every panel tab this action opens. */
-    component: ComponentType<PluginThreadPanelProps>;
-    /**
-     * How the host frames the tab content. "padded" (default) wraps the
-     * component in the panel's scroll container with standard padding —
-     * right for document-like content. "flush" gives the component the full
-     * tab area (no padding, definite height, no host scrolling) — right for
-     * app-like content that manages its own layout, such as
-     * `ThreadChat`.
-     */
-    layout?: "padded" | "flush";
-    /**
-     * Runs when the user activates the action: call your RPC methods, show a
-     * toast, and/or open panel tabs via `context.openPanel`. Omitted =
-     * immediately open a panel tab with defaults. Errors (sync or async) are
-     * contained and logged; they never break the launcher.
-     */
-    run?(context: PluginThreadPanelActionContext): void | Promise<void>;
-}
-interface PluginPendingInteractionRegistration {
-    /** Matches `rendererId` passed to `bb.ui.requestInput`. */
-    id: string;
-    component: ComponentType<PluginPendingInteractionProps>;
-}
-/** Context handed to a `sidebarFooterAction`'s `run`. */
-interface PluginSidebarFooterActionContext {
-    /**
-     * Navigate to this plugin's detail page in Tools, where declarative settings
-     * and `settingsSection` slots render.
-     */
-    openSettings(): void;
-}
-/**
- * An icon button in the app sidebar footer (next to Settings / bug report).
- * Host-rendered for consistent chrome — plugins supply icon, label, and
- * `run` behavior only.
- */
-interface PluginSidebarFooterActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip and accessible label for the icon button. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon: string;
-    /**
-     * Runs when the user activates the action (e.g. call `openSettings()`,
-     * open a panel via other surfaces, toast). Errors (sync or async) are
-     * contained and logged; they never break the sidebar.
-     */
-    run(context: PluginSidebarFooterActionContext): void | Promise<void>;
-}
-/**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
- */
-interface PluginFileOpenerRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Label in the "Open with" menu (e.g. "Notes editor"). */
-    title: string;
-    /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
-    extensions: readonly string[];
-    component: ComponentType<PluginFileOpenerProps>;
-}
-/**
- * Register a leaf message directive rendered inside assistant (and nested
- * agent) message Markdown. `id` is the directive name: `inline-vis` matches
- * `::inline-vis{file="demo.html"}`.
- */
-interface PluginMessageDirectiveRegistration {
-    /**
-     * The directive name. Lowercase kebab-case beginning with a letter.
-     */
-    id: string;
-    component: ComponentType<PluginMessageDirectiveProps>;
-}
-/**
- * A narrow, stable reference to one rendered chat message — NOT an internal
- * timeline row. `sourceSeqEnd` is the last source event sequence the message
- * covers, the anchor the server accepts for provider-history forks.
- */
-interface ThreadChatMessageReference {
-    id: string;
-    threadId: string;
-    role: "user" | "assistant";
-    /** Visible text of the message. */
-    text: string;
-    sourceSeqEnd: number;
-}
-interface PluginMessageActionThreadPanelOptions {
-    /** A `threadPanelAction` id registered by this same plugin. */
-    actionId: string;
-    title?: string;
-    params?: JsonValue$1;
-}
-/** Context handed to a `messageAction`'s `run`. */
-interface PluginMessageActionContext {
-    /** The thread whose timeline surfaced the action. */
-    threadId: string;
-    message: ThreadChatMessageReference;
-    /**
-     * Present only when the action was invoked from the text-selection menu;
-     * the exact text the user highlighted inside `message`.
-     */
-    selectedText?: string;
-    /**
-     * Open one of this plugin's `threadPanelAction` components in the current
-     * thread's side panel — the registration-callback equivalent of
-     * `useBbNavigate().openThreadPanel`. Returns true when the host
-     * accepted (the action id exists and the surface has a panel); false
-     * otherwise.
-     */
-    openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
-}
-/**
- * An action on chat messages: an icon button in the per-message action bar
- * (user and assistant messages) and an entry in the assistant-message
- * text-selection menu. Host-rendered chrome — the plugin supplies title,
- * icon hint, and `run` behavior only.
- */
-interface PluginMessageActionRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(context: PluginMessageActionContext): void | Promise<void>;
-}
-interface PluginAppSlots {
-    homepageSection(registration: PluginHomepageSectionRegistration): void;
-    settingsSection(registration: PluginSettingsSectionRegistration): void;
-    navPanel(registration: PluginNavPanelRegistration): void;
-    threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
-    pendingInteraction(registration: PluginPendingInteractionRegistration): void;
-    sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
-    fileOpener(registration: PluginFileOpenerRegistration): void;
-    messageDirective(registration: PluginMessageDirectiveRegistration): void;
-    messageAction(registration: PluginMessageActionRegistration): void;
-}
-interface PluginAppComposer {
-    customize(registration: ComposerCustomization): void;
-}
-/** Stable lifecycle values for one content-script instance in one bb client. */
-interface PluginContentScriptContext {
-    /** The id of the plugin that owns this script. */
-    readonly pluginId: string;
-    /** Monotonic per-client generation, starting at 1. */
-    readonly generation: number;
-    /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
-    readonly signal: AbortSignal;
-    /**
-     * Persistently decorate any thread row for this plugin generation.
-     *
-     * Unlike `useComposer().setThreadRowStatus`, this status is not owned by the
-     * currently mounted composer and therefore survives route changes. Passing
-     * `null` clears the plugin's status for that thread. The host clears every
-     * remaining status when the frontend generation deactivates.
-     *
-     * Optional so bundles can feature-detect support while this experimental
-     * surface rolls out across 0.x clients.
-     */
-    readonly experimental_setThreadRowStatus?: (threadId: string, status: PluginComposerThreadRowStatus | null) => void;
-}
-/** Cleanup returned by a frontend content script. */
-type PluginContentScriptDisposer = () => void | Promise<void>;
-/**
- * Trusted same-origin JavaScript/TypeScript mounted once per active frontend
- * generation in each bb app window or browser tab.
- */
-interface PluginContentScriptRegistration {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /**
-     * Install behavior into the bb app shell. The host awaits a returned
-     * promise, contains failures, and calls the returned disposer exactly once.
-     */
-    mount(context: PluginContentScriptContext): void | PluginContentScriptDisposer | Promise<void | PluginContentScriptDisposer>;
-}
-/** Lifecycle surface for trusted frontend content scripts. */
-interface PluginAppContentScripts {
-    register(registration: PluginContentScriptRegistration): void;
-}
-interface PluginAppBuilder {
-    slots: PluginAppSlots;
-    composer: PluginAppComposer;
-    contentScripts: PluginAppContentScripts;
-}
-type PluginAppSetup = (app: PluginAppBuilder) => void;
-/**
- * The opaque product of `definePluginApp` — a plugin's `app.tsx` default
- * export. The host re-runs `setup` against a fresh collector on every
- * (re)interpretation, replacing that plugin's registrations wholesale.
- */
-interface PluginAppDefinition {
-    /** Brand the host checks before interpreting a bundle's default export. */
-    readonly __bbPluginApp: true;
-    readonly setup: PluginAppSetup;
-}
-interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
-    /**
-     * Invoke one of the plugin's `bb.rpc` methods (POST
-     * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
-     * inferred output; rejects with an `Error` carrying the server's message,
-     * stable `code`, and validation `issues` when present.
-     */
-    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
-}
-interface PluginSettingsState {
-    /**
-     * Effective non-secret setting values (secret settings are excluded —
-     * read them server-side). Undefined while loading or unavailable.
-     */
-    values: Record<string, string | boolean> | undefined;
-    isLoading: boolean;
-}
-/** State of the app's shared realtime connection to the bb server. */
-type PluginRealtimeConnectionState = "connecting" | "connected" | "reconnecting";
-/** Where `useComposer()` writes. */
-type PluginComposerScope = {
-    kind: "thread";
-    threadId: string;
-} | {
-    kind: "queued-message";
-    threadId: string;
-    queuedMessageId: string;
-} | {
-    kind: "side-chat";
-    projectId: string;
-    parentThreadId: string;
-    tabId: string;
-    childThreadId: string | null;
-} | {
-    kind: "new-thread";
-    /** Root compose's effective selected project; null only while unresolved. */
-    projectId: string | null;
-};
-/** One plugin-owned composer customization registration. */
-interface ComposerCustomization {
-    /** Unique within the plugin; letters, digits, `-`, `_`. */
-    id: string;
-    /** Composer kinds where this customization is active; omit for all kinds. */
-    scopes?: readonly PluginComposerScope["kind"][];
-    actions?: readonly {
-        id: string;
-        component: ComponentType;
-    }[];
-    banners?: readonly {
-        id: string;
-        /** Host chrome around the banner. Defaults to `"card"`. */
-        chrome?: "card" | "bare";
-        component: ComponentType;
-    }[];
-    plusMenu?: readonly ComposerPlusMenuItem[];
-    richText?: ComposerRichTextSpec;
-}
-/** Host-rendered menu row in the composer's `+` menu. */
-interface ComposerPlusMenuItem {
-    id: string;
-    label: string;
-    /** BB icon name; unknown names fall back to the generic plugin icon. */
-    icon?: string;
-    /** Accessible description for the host-rendered row. */
-    description?: string;
-    disabled?: boolean | ((view: ComposerView) => boolean);
-    run(context: {
-        composer: PluginComposerApi;
-        view: ComposerView;
-    }): void | Promise<void>;
-}
-/** Reactive read-side of the composer a plugin surface is mounted in. */
-interface ComposerView {
-    scope: PluginComposerScope;
-    layout: "expanded" | "compact" | "zen";
-    draft: {
-        text: string;
-        isEmpty: boolean;
-        attachmentCount: number;
-    };
-    run: {
-        isRunning: boolean;
-        isSubmitting: boolean;
-    };
-}
-interface ComposerRichTextSpec {
-    /** Content-derived paint: match ranges receive `className`; text is never mutated. */
-    effects?: readonly {
-        id: string;
-        /** Plain-text offsets into the current structured draft. */
-        match(text: string): readonly {
-            from: number;
-            to: number;
-        }[];
-        className: string;
-    }[];
-    /** Debounced, read-only observation of the structured draft. */
-    onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
-}
-interface ComposerStructuredDraft {
-    text: string;
-    mentions: readonly {
-        from: number;
-        to: number;
-        provider: string;
-        id: string;
-        label: string;
-    }[];
-}
-/** Host-rendered paint applied to the editable composer text. */
-interface PluginComposerTextEffect {
-    className: string;
-}
-/** Host-rendered status that temporarily replaces a thread's draft glyph. */
-interface PluginComposerThreadRowStatus {
-    /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
-    icon: string;
-    /** Accessible label for the status glyph. */
-    label: string;
-    /**
-     * Semantic host treatment for the status glyph. `running` automatically
-     * shimmers; terminal `success` and `error` tones are static. Defaults to the
-     * neutral tone.
-     */
-    tone?: "default" | "running" | "success" | "error";
-}
-/** An @-mention pill bound to one of the calling plugin's mention providers. */
-interface PluginComposerMention {
-    /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
-    provider: string;
-    /** Item id your provider's `resolve` will receive at send time. */
-    id: string;
-    /** Pill text shown in the composer. */
-    label: string;
-}
-/**
- * Programmatic access to the chat composer draft — the same shared draft the
- * built-in "Add to chat" affordances (file preview, diff, terminal selections)
- * write to. While a queued message is being edited, writes land in that
- * message's inline editor. In a side chat, writes land in the visible side-chat
- * draft. Otherwise, inside a thread context writes land in that thread's draft;
- * anywhere else (nav panel, homepage section) they seed the new-thread composer
- * draft, which persists until the user sends or clears it.
- */
-interface PluginComposerApi {
-    scope: PluginComposerScope;
-    /** Current plain text for this composer scope. */
-    readonly text: string;
-    /**
-     * Replace the draft's plain text. Attachments are preserved. Inline mentions
-     * outside the changed range are preserved and rebased; mentions overlapped
-     * by the replacement are removed because their text representation changed.
-     */
-    setText(next: string): void;
-    /**
-     * Replace the draft's plain text from the latest committed value. Uses the
-     * same structured-state reconciliation as `setText`.
-     */
-    updateText(updater: (current: string) => string): void;
-    /** Clear plain text without clearing independently attached files. */
-    clear(): void;
-    /**
-     * Apply a host-rendered effect to this composer's editable text, or clear it.
-     * Effects are scoped to the calling plugin and automatically clear when the
-     * slot unmounts or its composer scope changes.
-     */
-    setTextEffect(effect: PluginComposerTextEffect | null): void;
-    /**
-     * Lock or unlock editing for this composer. Locks are scoped to the calling
-     * plugin and automatically release when the slot unmounts or its composer
-     * scope changes.
-     */
-    setInputLock(locked: boolean): void;
-    /**
-     * Replace this composer's thread-row draft glyph with a host-rendered status,
-     * or clear it. New-thread composers have no row, so calls are a no-op.
-     * Side-chat and queued side-chat scopes decorate the visible parent-thread
-     * row. Status is scoped to the calling plugin and automatically clears when
-     * the slot unmounts or its composer scope changes.
-     */
-    setThreadRowStatus(status: PluginComposerThreadRowStatus | null): void;
-    /**
-     * Append text to the draft as a `> ` blockquote block and focus the
-     * composer. Blank text is a no-op. This is the "reference this selection
-     * in chat" primitive.
-     */
-    addQuote(text: string): void;
-    /**
-     * Insert an @-mention pill that resolves through this plugin's mention
-     * provider at send time — the durable way to reference an entity whose
-     * content should be fetched fresh when the message is sent.
-     */
-    insertMention(mention: PluginComposerMention): void;
-    /** Focus the composer caret at the end of the draft. */
-    focus(): void;
-}
-/**
- * A consumer-supplied action on the messages of one `ThreadChat` instance,
- * rendered in the embedded timeline's per-message action bar alongside the
- * native and slot-registered actions. Unlike the `messageAction` slot this is
- * scoped to the rendering component, not registered globally.
- */
-interface ThreadChatMessageAction {
-    /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
-    id: string;
-    /** Tooltip / menu label for the action. */
-    title: string;
-    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
-    icon?: string;
-    /**
-     * Message roles the action applies to. Omitted = both user and assistant
-     * messages.
-     */
-    roles?: readonly ("user" | "assistant")[];
-    /**
-     * Runs when the user activates the action. Errors (sync or async) are
-     * contained and logged; they never break the timeline.
-     */
-    run(message: ThreadChatMessageReference): void | Promise<void>;
-}
-/**
- * Props of the host-owned `ThreadChat` component — one thread's chat
- * (timeline, and for the composer variants the full send/queue/draft
- * engine), rendered by the BB app inside a plugin slot. This is the
- * deliberate exception to the no-host-components rule (§5.5): a stable
- * product capability, not a UI kit. Versioned additive like slot props;
- * internal timeline rows, query hooks, and prompt-box configuration are
- * deliberately not exposed.
- */
-interface ThreadChatProps {
-    threadId: string;
-    /**
-     * "full" (default) is the page presentation (centered reading width);
-     * "compact" is the side-panel presentation; "timeline" renders the
-     * transcript without a composer.
-     */
-    variant?: "full" | "compact" | "timeline";
-    /**
-     * "contained" (default) fills and scrolls inside a bounded parent;
-     * "document" grows with its content and defers scrolling to the page.
-     */
-    layout?: "contained" | "document";
-    /** Bump to focus the composer (ignored by `variant: "timeline"`). */
-    focusRequest?: number;
-    /**
-     * Who controls the permission mode sends run with. "inherit" (default)
-     * pins every send to the thread's own resolved default and renders the
-     * picker as a dimmed label — a plugin surface can never widen it.
-     * "editable" gives this chat its own picker, so the user can raise or
-     * lower permissions for this thread independently of the thread it was
-     * forked from. Ignored by `variant: "timeline"` (no composer).
-     */
-    permissionPolicy?: "inherit" | "editable";
-    className?: string;
-    /** Rendered above the conversation, scrolling with it. */
-    leadingContent?: ReactNode;
-    /**
-     * Actions rendered in this instance's per-message action bar (see
-     * {@link ThreadChatMessageAction}).
-     */
-    messageActions?: readonly ThreadChatMessageAction[];
-}
-/**
- * Props of the host-owned `Markdown` component — bb's chat message renderer
- * (the same typography, spacing, and code styling as timeline messages).
- * Use it wherever plugin UI quotes or previews message content so it reads
- * like the rest of the chat. Like `ThreadChat`, this is a stable product
- * capability, not a UI kit; renderer internals stay private.
- */
-interface MarkdownProps {
-    /** Markdown source, rendered exactly like a chat message body. */
-    content: string;
-    className?: string;
-}
-/** Current app selection, derived from the route. */
-interface BbContext {
-    projectId: string | null;
-    threadId: string | null;
-}
-interface BbNavigate {
-    toThread(threadId: string): void;
-    toProject(projectId: string): void;
-    /**
-     * Navigate to one of this plugin's own nav panels by its `path`.
-     * `subPath` targets a location inside the panel (the component's
-     * `subPath` prop); `replace` swaps the current history entry instead of
-     * pushing — use it for redirects so back does not bounce.
-     */
-    toPluginPanel(path: string, options?: {
-        subPath?: string;
-        replace?: boolean;
-    }): void;
-    /**
-     * Navigate to the root compose surface (the new-thread screen). Pass
-     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
-     * composer on arrival — the pairing behind "Create via chat" style entry
-     * points that drop the user into chat with a prefilled prompt.
-     */
-    toCompose(options?: {
-        initialPrompt?: string;
-        focusPrompt?: boolean;
-    }): void;
-    /**
-     * Open one of this plugin's registered thread-panel actions in the current
-     * thread surface. Returns false when the surface has no thread side panel or
-     * the action is unavailable.
-     */
-    openThreadPanel(options: {
-        actionId: string;
-        title?: string;
-        params?: JsonValue$1;
-    }): boolean;
-}
-/**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
- * the real implementation and `satisfies` this interface; `bb plugin build`
- * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
- */
-interface PluginSdkApp {
-    definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
-    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
-    useRealtime(channel: string, handler: (payload: unknown) => void): void;
-    /**
-     * Observe the same shared connection that delivers `useRealtime` signals.
-     * Use a subsequent transition to `connected` to reconcile server state that
-     * may have changed while ephemeral signals could not be delivered. The first
-     * connection can transition from `connecting` and is not a reconnection.
-     */
-    useRealtimeConnectionState(): PluginRealtimeConnectionState;
-    useSettings(): PluginSettingsState;
-    useBbContext(): BbContext;
-    useBbNavigate(): BbNavigate;
-    useComposer(): PluginComposerApi;
-    /**
-     * The host-owned chat component (see {@link ThreadChatProps}). Together
-     * with `Markdown`, the only components the SDK ships — everything else
-     * stays vendored per §5.5.
-     */
-    ThreadChat: ComponentType<ThreadChatProps>;
-    /**
-     * The host-owned chat-message markdown renderer (see
-     * {@link MarkdownProps}).
-     */
-    Markdown: ComponentType<MarkdownProps>;
-    useComposerView(): ComposerView;
-}
+import Database from 'better-sqlite3';
+import { Context } from 'hono';
 
 /**
  * App-wide server-backed preferences.
@@ -1059,9 +263,9 @@ declare const hostSchema: z$1.ZodObject<{
 type Host = z$1.infer<typeof hostSchema>;
 
 interface JsonObject {
-    [key: string]: JsonValue;
+    [key: string]: JsonValue$1;
 }
-type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | JsonObject;
 
 declare const pendingInteractionResolutionSchema: z$1.ZodUnion<readonly [z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     decision: z$1.ZodLiteral<"allow_once">;
@@ -1257,7 +461,7 @@ declare const pluginPendingInteractionSchema: z$1.ZodObject<{
     payload: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin">;
         title: z$1.ZodString;
-        data: z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>;
+        data: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
     }, z$1.core.$strip>;
     resolution: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin_submitted">;
@@ -1278,6 +482,110 @@ declare const projectSourceSchema: z$1.ZodObject<{
 }, z$1.core.$strip>;
 type ProjectSource = z$1.infer<typeof projectSourceSchema>;
 
+declare const reasoningLevelSchema: z$1.ZodEnum<{
+    none: "none";
+    low: "low";
+    medium: "medium";
+    high: "high";
+    xhigh: "xhigh";
+    ultracode: "ultracode";
+    max: "max";
+    ultra: "ultra";
+}>;
+type ReasoningLevel = z$1.infer<typeof reasoningLevelSchema>;
+declare const serviceTierSchema: z$1.ZodEnum<{
+    default: "default";
+    fast: "fast";
+}>;
+type ServiceTier = z$1.infer<typeof serviceTierSchema>;
+declare const permissionModeSchema: z$1.ZodEnum<{
+    full: "full";
+    auto: "auto";
+    "accept-edits": "accept-edits";
+}>;
+type PermissionMode = z$1.infer<typeof permissionModeSchema>;
+declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+    visibility: z$1.ZodOptional<z$1.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z$1.ZodLiteral<"text">;
+    text: z$1.ZodString;
+    mentions: z$1.ZodDefault<z$1.ZodArray<z$1.ZodObject<{
+        start: z$1.ZodNumber;
+        end: z$1.ZodNumber;
+        resource: z$1.ZodPipe<z$1.ZodTransform<unknown, unknown>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"thread">;
+            threadId: z$1.ZodString;
+            projectId: z$1.ZodOptional<z$1.ZodString>;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"project">;
+            projectId: z$1.ZodString;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"section">;
+            sectionId: z$1.ZodString;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"path">;
+            source: z$1.ZodEnum<{
+                workspace: "workspace";
+                "thread-storage": "thread-storage";
+            }>;
+            entryKind: z$1.ZodEnum<{
+                file: "file";
+                directory: "directory";
+            }>;
+            path: z$1.ZodString;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"command">;
+            trigger: z$1.ZodEnum<{
+                "/": "/";
+            }>;
+            name: z$1.ZodString;
+            source: z$1.ZodEnum<{
+                command: "command";
+                skill: "skill";
+            }>;
+            origin: z$1.ZodEnum<{
+                user: "user";
+                project: "project";
+                builtin: "builtin";
+            }>;
+            label: z$1.ZodString;
+            argumentHint: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"plugin">;
+            pluginId: z$1.ZodString;
+            icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
+            itemId: z$1.ZodString;
+            label: z$1.ZodString;
+        }, z$1.core.$strip>], "kind">>;
+    }, z$1.core.$strip>>>;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    visibility: z$1.ZodOptional<z$1.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z$1.ZodLiteral<"image">;
+    url: z$1.ZodString;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    visibility: z$1.ZodOptional<z$1.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z$1.ZodLiteral<"localImage">;
+    path: z$1.ZodString;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    visibility: z$1.ZodOptional<z$1.ZodEnum<{
+        "agent-only": "agent-only";
+    }>>;
+    type: z$1.ZodLiteral<"localFile">;
+    path: z$1.ZodString;
+    name: z$1.ZodOptional<z$1.ZodString>;
+    sizeBytes: z$1.ZodOptional<z$1.ZodNumber>;
+    mimeType: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>], "type">;
+type PromptInput = z$1.infer<typeof promptInputSchema>;
 declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
     seq: z$1.ZodOptional<z$1.ZodNumber>;
     model: z$1.ZodString;
@@ -1568,9 +876,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1796,9 +1104,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1925,9 +1233,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -1997,9 +1305,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         taskStatus: z$1.ZodEnum<{
             pending: "pending";
-            completed: "completed";
             running: "running";
             paused: "paused";
+            completed: "completed";
             failed: "failed";
             killed: "killed";
             stopped: "stopped";
@@ -2165,7 +1473,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         jsonrpc: z$1.ZodLiteral<"2.0">;
         id: z$1.ZodOptional<z$1.ZodUnion<readonly [z$1.ZodString, z$1.ZodNumber]>>;
         method: z$1.ZodString;
-        params: z$1.ZodOptional<z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>;
+        params: z$1.ZodOptional<z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>;
     }, z$1.core.$strip>;
     parentToolCallId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>], "type">, z$1.ZodObject<{
@@ -2487,7 +1795,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     status: z$1.ZodString;
     message: z$1.ZodString;
     operationId: z$1.ZodString;
-    metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>>;
+    metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"system/permissionGrant/lifecycle">;
     threadId: z$1.ZodString;
@@ -2718,8 +2026,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
             pending: "pending";
-            in_progress: "in_progress";
             completed: "completed";
+            in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>;
@@ -2834,6 +2142,37 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
 }, z$1.core.$strip>;
 type ThreadQueuedMessage = z$1.infer<typeof threadQueuedMessageSchema>;
 
+declare const createThreadEnvironmentArgsSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+    type: z$1.ZodLiteral<"reuse">;
+    environmentId: z$1.ZodString;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    type: z$1.ZodLiteral<"host">;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    workspace: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        type: z$1.ZodLiteral<"unmanaged">;
+        path: z$1.ZodNullable<z$1.ZodString>;
+        branch: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"existing">;
+            name: z$1.ZodString;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"new">;
+            baseBranch: z$1.ZodString;
+        }, z$1.core.$strict>], "kind">>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"managed-worktree">;
+        baseBranch: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"named">;
+            name: z$1.ZodString;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"default">;
+        }, z$1.core.$strip>], "kind">;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        type: z$1.ZodLiteral<"personal">;
+    }, z$1.core.$strip>], "type">;
+}, z$1.core.$strip>, z$1.ZodObject<{
+    type: z$1.ZodLiteral<"project-default">;
+}, z$1.core.$strip>], "type">;
+type CreateThreadEnvironmentArgs = z$1.infer<typeof createThreadEnvironmentArgsSchema>;
 declare const workspaceFileListResponseSchema: z$1.ZodObject<{
     files: z$1.ZodArray<z$1.ZodObject<{
         path: z$1.ZodString;
@@ -3141,8 +2480,8 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
         provider: z$1.ZodNullable<z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
         }>>;
         scope: z$1.ZodEnum<{
             plugin: "plugin";
@@ -3174,8 +2513,8 @@ type SkillFilesResponse = z$1.infer<typeof skillFilesResponseSchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -3196,8 +2535,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -3299,8 +2638,8 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             full: "full";
         }>;
     }, z$1.core.$strip>>;
@@ -3489,8 +2828,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -3697,10 +3036,10 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
+                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
-                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -3720,13 +3059,13 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
+            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
             conflicts: "conflicts";
-            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -4145,8 +3484,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            append: "append";
             replace: "replace";
+            append: "append";
         }>;
         type: z$1.ZodLiteral<"thread.start">;
         requestId: z$1.ZodString;
@@ -4634,8 +3973,8 @@ declare const hostDaemonCommandRegistry: {
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
             projectId: z$1.ZodString;
             providerId: z$1.ZodString;
@@ -4930,8 +4269,8 @@ declare const hostDaemonCommandRegistry: {
                 }>;
             }, z$1.core.$strip>;
             instructionMode: z$1.ZodEnum<{
-                append: "append";
                 replace: "replace";
+                append: "append";
             }>;
             projectId: z$1.ZodString;
             providerId: z$1.ZodString;
@@ -5911,9 +5250,9 @@ declare const hostDaemonCommandRegistry: {
         executablePath: z$1.ZodNullable<z$1.ZodString>;
         installed: z$1.ZodBoolean;
         installSource: z$1.ZodEnum<{
-            external: "external";
             notInstalled: "notInstalled";
             npmGlobal: "npmGlobal";
+            external: "external";
         }>;
         currentVersion: z$1.ZodNullable<z$1.ZodString>;
         latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -6086,13 +5425,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6136,13 +5475,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6198,13 +5537,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6246,13 +5585,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6370,9 +5709,9 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     executablePath: z$1.ZodNullable<z$1.ZodString>;
     installed: z$1.ZodBoolean;
     installSource: z$1.ZodEnum<{
-        external: "external";
         notInstalled: "notInstalled";
         npmGlobal: "npmGlobal";
+        external: "external";
     }>;
     currentVersion: z$1.ZodNullable<z$1.ZodString>;
     latestVersion: z$1.ZodNullable<z$1.ZodString>;
@@ -6523,11 +5862,11 @@ type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
     id: z$1.ZodString;
     outcome: z$1.ZodEnum<{
-        unavailable: "unavailable";
         incompatible: "incompatible";
         current: "current";
         "update-available": "update-available";
         pinned: "pinned";
+        unavailable: "unavailable";
     }>;
     devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
     installed: z$1.ZodObject<{
@@ -6594,11 +5933,11 @@ declare const installedPluginSchema: z$1.ZodObject<{
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
-            unavailable: "unavailable";
             incompatible: "incompatible";
             current: "current";
             "update-available": "update-available";
             pinned: "pinned";
+            unavailable: "unavailable";
         }>>;
         availableVersion: z$1.ZodOptional<z$1.ZodString>;
         blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6698,11 +6037,11 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
-                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
+                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6804,11 +6143,11 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
-                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
+                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6922,7 +6261,7 @@ declare const pluginSettingsResponseSchema: z$1.ZodObject<{
         label: z$1.ZodString;
         description: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strict>], "type">>;
-    values: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>;
+    values: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>;
 }, z$1.core.$strip>;
 type PluginSettingsResponse = z$1.infer<typeof pluginSettingsResponseSchema>;
 declare const pluginTokenResponseSchema: z$1.ZodObject<{
@@ -6960,8 +6299,8 @@ declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
             supportsUserQuestion: z$1.ZodBoolean;
             supportsFork: z$1.ZodBoolean;
             supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-                auto: "auto";
                 "accept-edits": "accept-edits";
+                auto: "auto";
                 full: "full";
             }>>;
         }, z$1.core.$strip>;
@@ -7417,8 +6756,8 @@ declare const systemCliSkillsStatusResponseSchema: z$1.ZodObject<{
         hostName: z$1.ZodString;
         status: z$1.ZodEnum<{
             unknown: "unknown";
-            missing: "missing";
             installed: "installed";
+            missing: "missing";
             outdated: "outdated";
         }>;
     }, z$1.core.$strip>>;
@@ -7463,9 +6802,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7494,9 +6833,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7864,7 +7203,7 @@ declare const timelineToolWorkRowSchema: z$1.ZodObject<{
     workKind: z$1.ZodLiteral<"tool">;
     callId: z$1.ZodString;
     toolName: z$1.ZodString;
-    toolArgs: z$1.ZodNullable<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>>>;
+    toolArgs: z$1.ZodNullable<z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>>>;
     output: z$1.ZodString;
     completedAt: z$1.ZodNullable<z$1.ZodNumber>;
     approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
@@ -8201,6 +7540,29 @@ interface TimelineTurnRow extends TimelineRowBase {
 type TimelineSourceRow = TimelineConversationRow | TimelineWorkRow | TimelineSystemRow;
 type TimelineRow = TimelineSourceRow | TimelineTurnRow;
 
+declare const createExecutionInputSourcesSchema: z$1.ZodObject<{
+    providerId: z$1.ZodOptional<z$1.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    model: z$1.ZodOptional<z$1.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    serviceTier: z$1.ZodOptional<z$1.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    reasoningLevel: z$1.ZodOptional<z$1.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+    permissionMode: z$1.ZodOptional<z$1.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
+}, z$1.core.$strict>;
+type CreateExecutionInputSources = z$1.infer<typeof createExecutionInputSourcesSchema>;
 declare const createThreadRequestSchema: z$1.ZodObject<{
     projectId: z$1.ZodString;
     providerId: z$1.ZodOptional<z$1.ZodString>;
@@ -8313,10 +7675,10 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         providerId: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8559,10 +7921,10 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>>>;
     title: z$1.ZodOptional<z$1.ZodString>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     visibility: z$1.ZodDefault<z$1.ZodEnum<{
         visible: "visible";
         hidden: "hidden";
@@ -8678,10 +8040,10 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8808,10 +8170,10 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -9033,8 +8395,8 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             full: "full";
         }>;
         serviceTier: z$1.ZodEnum<{
@@ -9413,9 +8775,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            unmanaged: "unmanaged";
-            "managed-worktree": "managed-worktree";
             personal: "personal";
+            "managed-worktree": "managed-worktree";
+            unmanaged: "unmanaged";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -9607,7 +8969,7 @@ declare const threadPendingInteractionsResponseSchema: z$1.ZodArray<z$1.ZodUnion
     payload: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin">;
         title: z$1.ZodString;
-        data: z$1.ZodType<JsonValue, unknown, z$1.core.$ZodTypeInternals<JsonValue, unknown>>;
+        data: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
     }, z$1.core.$strip>;
     resolution: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodLiteral<"plugin_submitted">;
@@ -9709,8 +9071,8 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
@@ -9891,8 +9253,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;
@@ -10068,8 +9430,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -10083,8 +9445,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         originalModel: z$1.ZodString;
         fallbackModel: z$1.ZodString;
         reason: z$1.ZodEnum<{
-            refusal: "refusal";
             provider: "provider";
+            refusal: "refusal";
         }>;
         message: z$1.ZodString;
     }, z$1.core.$strip>>;
@@ -10310,6 +9672,874 @@ declare const updateThreadTabsRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strict>], "kind">>;
 }, z$1.core.$strict>;
 type UpdateThreadTabsRequest = z$1.infer<typeof updateThreadTabsRequestSchema>;
+
+/**
+ * A value that survives a JSON round trip without coercion or data loss.
+ *
+ * Host boundaries still validate values at runtime because TypeScript cannot
+ * exclude non-finite numbers and plugin bundles can bypass static types.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+
+/** A JSON-safe path segment reported by a Standard Schema validation issue. */
+type PluginRpcIssuePathSegment = string | number;
+/** Validator-neutral validation detail carried by an RPC error envelope. */
+interface PluginRpcValidationIssue {
+    message: string;
+    path?: PluginRpcIssuePathSegment[];
+}
+/** Stable wire error categories for plugin RPC. */
+type PluginRpcErrorCode = "invalid_json" | "invalid_input" | "handler_error" | "invalid_output" | "non_json_result" | "unknown_method";
+/** Structured RPC failure returned as `{ ok: false, error }`. */
+interface PluginRpcError {
+    code: PluginRpcErrorCode;
+    message: string;
+    issues?: PluginRpcValidationIssue[];
+}
+/**
+ * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
+ * Zod 4 schemas implement this interface directly; other validators can do
+ * the same without becoming part of BB's public protocol.
+ */
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        };
+    };
+}
+type StandardSchemaV1Result<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: readonly StandardSchemaV1Issue[];
+};
+interface StandardSchemaV1Issue {
+    readonly message: string;
+    readonly path?: PropertyKey | readonly (PropertyKey | {
+        readonly key: PropertyKey;
+    })[];
+}
+type StandardSchemaV1InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["input"];
+type StandardSchemaV1InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema["~standard"]["types"]>["output"];
+interface PluginRpcMethodContract<InputSchema extends StandardSchemaV1 = StandardSchemaV1, OutputSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    readonly input: InputSchema;
+    readonly output: OutputSchema;
+}
+type PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract>>;
+/** Define a shared RPC contract while preserving exact method/schema types. */
+declare function defineRpcContract<const Contract extends PluginRpcContract>(contract: Contract): Contract;
+type PluginRpcHandlers<Contract extends PluginRpcContract> = {
+    [Method in keyof Contract]: (input: StandardSchemaV1InferOutput<Contract[Method]["input"]>) => StandardSchemaV1InferInput<Contract[Method]["output"]> | Promise<StandardSchemaV1InferInput<Contract[Method]["output"]>>;
+};
+type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchemaV1InferInput<Method["input"]>;
+type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
+type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
+
+/**
+ * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * side effects. The BB app imports these to keep its real implementation in
+ * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
+ * `@bb/plugin-sdk/app`.
+ *
+ * Per-slot props are versioned contracts: additive-only within an SDK major.
+ */
+/** Props passed to a `homepageSection` component. */
+interface PluginHomepageSectionProps {
+    /** Project in view on the compose surface; null when none is selected. */
+    projectId: string | null;
+}
+/**
+ * Props passed to a `settingsSection` component.
+ *
+ * Deliberately empty in V1; versioned additive like the other slot props.
+ */
+interface PluginSettingsSectionProps {
+}
+/** Props passed to a `navPanel` component (it owns its whole route). */
+interface PluginNavPanelProps {
+    /**
+     * The route remainder after the panel root, "" at the root. The panel's
+     * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
+     * `/plugins/notes/notes/work/ideas.md` renders the panel with
+     * `subPath: "work/ideas.md"`. Navigate within the panel via
+     * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
+     * back/forward then walks panel-internal history.
+     */
+    subPath: string;
+}
+/** Props passed to a panel tab opened by a `threadPanelAction`. */
+interface PluginThreadPanelProps {
+    threadId: string;
+    /**
+     * The JSON value the action's `openPanel` call passed (round-tripped
+     * through persistence, so the tab restores across reloads); null when the
+     * action opened the panel without params.
+     */
+    params: JsonValue | null;
+}
+interface PluginPendingInteractionView {
+    id: string;
+    threadId: string;
+    title: string;
+    payload: JsonValue;
+    createdAt: number;
+    expiresAt: number | null;
+}
+interface PluginPendingInteractionProps {
+    interaction: PluginPendingInteractionView;
+    submit(value: JsonValue): Promise<void>;
+    cancel(): Promise<void>;
+}
+/**
+ * Props for a `sidebarFooterAction` — host-rendered (no plugin component).
+ * Deliberately empty; the registration's `run` carries the behavior.
+ */
+interface PluginSidebarFooterActionProps {
+}
+/**
+ * Where a file being opened by a `fileOpener` lives. `path` semantics follow
+ * the source: workspace paths are relative to the environment's worktree,
+ * thread-storage paths are relative to the thread's storage root, host paths
+ * are absolute on the thread's host.
+ */
+interface PluginFileOpenerSource {
+    kind: "workspace" | "host" | "thread-storage";
+    threadId: string | null;
+    environmentId: string | null;
+    projectId: string | null;
+}
+/** Props passed to a `fileOpener` component (rendered as a panel file tab). */
+interface PluginFileOpenerProps {
+    path: string;
+    source: PluginFileOpenerSource;
+}
+/**
+ * Message context passed to a `messageDirective` component — the assistant
+ * (or nested agent) message that contained the directive.
+ */
+interface PluginMessageDirectiveMessage {
+    id: string;
+    threadId: string;
+    turnId: string | null;
+    projectId: string | null;
+}
+/**
+ * Open a worktree-relative file in the host's workspace file viewer. Returns
+ * true when the host accepted the path; false when the path is invalid or the
+ * viewer declined it.
+ */
+type PluginMessageDirectiveOpenWorkspaceFile = (path: string) => boolean;
+/**
+ * Props passed to a `messageDirective` component. Attributes are untrusted
+ * strings parsed from the directive; the plugin validates its own fields.
+ */
+interface PluginMessageDirectiveProps {
+    /** Parsed, untrusted directive attributes (e.g. `{ file: "demo.html" }`). */
+    attributes: Readonly<Record<string, string>>;
+    /** Original directive source text (useful for diagnostics / crash fallback). */
+    source: string;
+    message: PluginMessageDirectiveMessage;
+    /**
+     * Opens a worktree-relative file in the host's workspace file viewer. Null
+     * when the message surface has no workspace viewer available.
+     */
+    openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
+}
+interface PluginHomepageSectionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    title: string;
+    component: ComponentType<PluginHomepageSectionProps>;
+}
+interface PluginSettingsSectionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Optional host-rendered section heading. */
+    title?: string;
+    /**
+     * Optional one-line host-rendered subheading under `title`, in the built-in
+     * SettingsSection idiom (ignored when `title` is absent).
+     */
+    description?: string;
+    component: ComponentType<PluginSettingsSectionProps>;
+}
+interface PluginNavPanelRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
+    path: string;
+    component: ComponentType<PluginNavPanelProps>;
+    /**
+     * Optional component rendered on the right side of the shared title bar
+     * (e.g. a sync button or a count). Contained separately from the body: a
+     * throwing headerContent is hidden without breaking the title bar.
+     */
+    headerContent?: ComponentType<PluginNavPanelProps>;
+}
+/** Context handed to a `threadPanelAction`'s `run`. */
+interface PluginThreadPanelActionContext {
+    /** The thread whose panel launcher invoked the action. */
+    threadId: string;
+    /**
+     * Open a tab in the thread's side panel rendering this action's
+     * `component`. `title` labels the tab (default: the action's `title`);
+     * `params` must be JSON-serializable — it is persisted with the tab and
+     * reaches the component as its `params` prop. Opening with params
+     * identical to an already-open tab of this action focuses that tab
+     * (updating its title) instead of duplicating it. May be called more than
+     * once (different params ⇒ multiple tabs) or not at all.
+     */
+    openPanel(options?: {
+        title?: string;
+        params?: JsonValue;
+    }): void;
+}
+interface PluginThreadPanelActionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Label of the action row in the panel's new-tab launcher. */
+    title: string;
+    /**
+     * Icon hint (BB icon name) used when the plugin ships no logo; the
+     * launcher row and opened tabs prefer the plugin's logo.
+     */
+    icon?: string;
+    /** Rendered inside every panel tab this action opens. */
+    component: ComponentType<PluginThreadPanelProps>;
+    /**
+     * How the host frames the tab content. "padded" (default) wraps the
+     * component in the panel's scroll container with standard padding —
+     * right for document-like content. "flush" gives the component the full
+     * tab area (no padding, definite height, no host scrolling) — right for
+     * app-like content that manages its own layout, such as
+     * `ThreadChat`.
+     */
+    layout?: "padded" | "flush";
+    /**
+     * Runs when the user activates the action: call your RPC methods, show a
+     * toast, and/or open panel tabs via `context.openPanel`. Omitted =
+     * immediately open a panel tab with defaults. Errors (sync or async) are
+     * contained and logged; they never break the launcher.
+     */
+    run?(context: PluginThreadPanelActionContext): void | Promise<void>;
+}
+interface PluginPendingInteractionRegistration {
+    /** Matches `rendererId` passed to `bb.ui.requestInput`. */
+    id: string;
+    component: ComponentType<PluginPendingInteractionProps>;
+}
+/** Context handed to a `sidebarFooterAction`'s `run`. */
+interface PluginSidebarFooterActionContext {
+    /**
+     * Navigate to this plugin's detail page in Tools, where declarative settings
+     * and `settingsSection` slots render.
+     */
+    openSettings(): void;
+}
+/**
+ * An icon button in the app sidebar footer (next to Settings / bug report).
+ * Host-rendered for consistent chrome — plugins supply icon, label, and
+ * `run` behavior only.
+ */
+interface PluginSidebarFooterActionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Tooltip and accessible label for the icon button. */
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon: string;
+    /**
+     * Runs when the user activates the action (e.g. call `openSettings()`,
+     * open a panel via other surfaces, toast). Errors (sync or async) are
+     * contained and logged; they never break the sidebar.
+     */
+    run(context: PluginSidebarFooterActionContext): void | Promise<void>;
+}
+/**
+ * Register this plugin as a viewer/editor for file extensions. The user
+ * picks (and can set as default) an opener per extension via the file tab's
+ * "Open with" menu; matching files opened in the panel then render
+ * `component` in a plugin tab instead of the built-in preview. Applies to
+ * working-tree, host, and thread-storage files — never to git-ref snapshots
+ * (diff views always use the built-in preview). The built-in preview stays
+ * one menu click away, and a missing/disabled opener falls back to it.
+ */
+interface PluginFileOpenerRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Label in the "Open with" menu (e.g. "Notes editor"). */
+    title: string;
+    /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
+    extensions: readonly string[];
+    component: ComponentType<PluginFileOpenerProps>;
+}
+/**
+ * Register a leaf message directive rendered inside assistant (and nested
+ * agent) message Markdown. `id` is the directive name: `inline-vis` matches
+ * `::inline-vis{file="demo.html"}`.
+ */
+interface PluginMessageDirectiveRegistration {
+    /**
+     * The directive name. Lowercase kebab-case beginning with a letter.
+     */
+    id: string;
+    component: ComponentType<PluginMessageDirectiveProps>;
+}
+/**
+ * A narrow, stable reference to one rendered chat message — NOT an internal
+ * timeline row. `sourceSeqEnd` is the last source event sequence the message
+ * covers, the anchor the server accepts for provider-history forks.
+ */
+interface ThreadChatMessageReference {
+    id: string;
+    threadId: string;
+    role: "user" | "assistant";
+    /** Visible text of the message. */
+    text: string;
+    sourceSeqEnd: number;
+}
+interface PluginMessageActionThreadPanelOptions {
+    /** A `threadPanelAction` id registered by this same plugin. */
+    actionId: string;
+    title?: string;
+    params?: JsonValue;
+}
+/** Context handed to a `messageAction`'s `run`. */
+interface PluginMessageActionContext {
+    /** The thread whose timeline surfaced the action. */
+    threadId: string;
+    message: ThreadChatMessageReference;
+    /**
+     * Present only when the action was invoked from the text-selection menu;
+     * the exact text the user highlighted inside `message`.
+     */
+    selectedText?: string;
+    /**
+     * Open one of this plugin's `threadPanelAction` components in the current
+     * thread's side panel — the registration-callback equivalent of
+     * `useBbNavigate().openThreadPanel`. Returns true when the host
+     * accepted (the action id exists and the surface has a panel); false
+     * otherwise.
+     */
+    openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
+}
+/**
+ * An action on chat messages: an icon button in the per-message action bar
+ * (user and assistant messages) and an entry in the assistant-message
+ * text-selection menu. Host-rendered chrome — the plugin supplies title,
+ * icon hint, and `run` behavior only.
+ */
+interface PluginMessageActionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Tooltip / menu label for the action. */
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon?: string;
+    /**
+     * Runs when the user activates the action. Errors (sync or async) are
+     * contained and logged; they never break the timeline.
+     */
+    run(context: PluginMessageActionContext): void | Promise<void>;
+}
+interface PluginAppSlots {
+    homepageSection(registration: PluginHomepageSectionRegistration): void;
+    settingsSection(registration: PluginSettingsSectionRegistration): void;
+    navPanel(registration: PluginNavPanelRegistration): void;
+    threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
+    pendingInteraction(registration: PluginPendingInteractionRegistration): void;
+    sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
+    fileOpener(registration: PluginFileOpenerRegistration): void;
+    messageDirective(registration: PluginMessageDirectiveRegistration): void;
+    messageAction(registration: PluginMessageActionRegistration): void;
+}
+interface PluginAppComposer {
+    customize(registration: ComposerCustomization): void;
+}
+/** Stable lifecycle values for one content-script instance in one bb client. */
+interface PluginContentScriptContext {
+    /** The id of the plugin that owns this script. */
+    readonly pluginId: string;
+    /** Monotonic per-client generation, starting at 1. */
+    readonly generation: number;
+    /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
+    readonly signal: AbortSignal;
+    /**
+     * Persistently decorate any thread row for this plugin generation.
+     *
+     * Unlike `useComposer().setThreadRowStatus`, this status is not owned by the
+     * currently mounted composer and therefore survives route changes. Passing
+     * `null` clears the plugin's status for that thread. The host clears every
+     * remaining status when the frontend generation deactivates.
+     *
+     * Optional so bundles can feature-detect support while this experimental
+     * surface rolls out across 0.x clients.
+     */
+    readonly experimental_setThreadRowStatus?: (threadId: string, status: PluginComposerThreadRowStatus | null) => void;
+}
+/** Cleanup returned by a frontend content script. */
+type PluginContentScriptDisposer = () => void | Promise<void>;
+/**
+ * Trusted same-origin JavaScript/TypeScript mounted once per active frontend
+ * generation in each bb app window or browser tab.
+ */
+interface PluginContentScriptRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /**
+     * Install behavior into the bb app shell. The host awaits a returned
+     * promise, contains failures, and calls the returned disposer exactly once.
+     */
+    mount(context: PluginContentScriptContext): void | PluginContentScriptDisposer | Promise<void | PluginContentScriptDisposer>;
+}
+/** Lifecycle surface for trusted frontend content scripts. */
+interface PluginAppContentScripts {
+    register(registration: PluginContentScriptRegistration): void;
+}
+interface PluginAppBuilder {
+    slots: PluginAppSlots;
+    composer: PluginAppComposer;
+    contentScripts: PluginAppContentScripts;
+}
+type PluginAppSetup = (app: PluginAppBuilder) => void;
+/**
+ * The opaque product of `definePluginApp` — a plugin's `app.tsx` default
+ * export. The host re-runs `setup` against a fresh collector on every
+ * (re)interpretation, replacing that plugin's registrations wholesale.
+ */
+interface PluginAppDefinition {
+    /** Brand the host checks before interpreting a bundle's default export. */
+    readonly __bbPluginApp: true;
+    readonly setup: PluginAppSetup;
+}
+interface PluginRpcClient<Contract extends PluginRpcContract = PluginRpcContract> {
+    /**
+     * Invoke one of the plugin's `bb.rpc` methods (POST
+     * /api/v1/plugins/&lt;id&gt;/rpc/&lt;method&gt;). Resolves with the method's
+     * inferred output; rejects with an `Error` carrying the server's message,
+     * stable `code`, and validation `issues` when present.
+     */
+    call<Method extends Extract<keyof Contract, string>>(method: Method, ...args: PluginRpcCallArgs<Contract[Method]>): Promise<PluginRpcResult<Contract[Method]>>;
+}
+interface PluginSettingsState {
+    /**
+     * Effective non-secret setting values (secret settings are excluded —
+     * read them server-side). Undefined while loading or unavailable.
+     */
+    values: Record<string, string | boolean> | undefined;
+    isLoading: boolean;
+}
+/** State of the app's shared realtime connection to the bb server. */
+type PluginRealtimeConnectionState = "connecting" | "connected" | "reconnecting";
+/** Where `useComposer()` writes. */
+type PluginComposerScope = {
+    kind: "thread";
+    threadId: string;
+} | {
+    kind: "queued-message";
+    threadId: string;
+    queuedMessageId: string;
+} | {
+    kind: "side-chat";
+    projectId: string;
+    parentThreadId: string;
+    tabId: string;
+    childThreadId: string | null;
+} | {
+    kind: "new-thread";
+    /** Root compose's effective selected project; null only while unresolved. */
+    projectId: string | null;
+};
+/** One plugin-owned composer customization registration. */
+interface ComposerCustomization {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Composer kinds where this customization is active; omit for all kinds. */
+    scopes?: readonly PluginComposerScope["kind"][];
+    actions?: readonly {
+        id: string;
+        component: ComponentType;
+    }[];
+    banners?: readonly {
+        id: string;
+        /** Host chrome around the banner. Defaults to `"card"`. */
+        chrome?: "card" | "bare";
+        component: ComponentType;
+    }[];
+    plusMenu?: readonly ComposerPlusMenuItem[];
+    richText?: ComposerRichTextSpec;
+}
+/** Host-rendered menu row in the composer's `+` menu. */
+interface ComposerPlusMenuItem {
+    id: string;
+    label: string;
+    /** BB icon name; unknown names fall back to the generic plugin icon. */
+    icon?: string;
+    /** Accessible description for the host-rendered row. */
+    description?: string;
+    disabled?: boolean | ((view: ComposerView) => boolean);
+    run(context: {
+        composer: PluginComposerApi;
+        view: ComposerView;
+    }): void | Promise<void>;
+}
+/** Reactive read-side of the composer a plugin surface is mounted in. */
+interface ComposerView {
+    scope: PluginComposerScope;
+    layout: "expanded" | "compact" | "zen";
+    draft: {
+        text: string;
+        isEmpty: boolean;
+        attachmentCount: number;
+    };
+    run: {
+        isRunning: boolean;
+        isSubmitting: boolean;
+    };
+}
+interface ComposerRichTextSpec {
+    /** Content-derived paint: match ranges receive `className`; text is never mutated. */
+    effects?: readonly {
+        id: string;
+        /** Plain-text offsets into the current structured draft. */
+        match(text: string): readonly {
+            from: number;
+            to: number;
+        }[];
+        className: string;
+    }[];
+    /** Debounced, read-only observation of the structured draft. */
+    onDraftChange?(draft: ComposerStructuredDraft, view: ComposerView): void;
+}
+interface ComposerStructuredDraft {
+    text: string;
+    mentions: readonly {
+        from: number;
+        to: number;
+        provider: string;
+        id: string;
+        label: string;
+    }[];
+}
+/** Host-rendered paint applied to the editable composer text. */
+interface PluginComposerTextEffect {
+    className: string;
+}
+/** Host-rendered status that temporarily replaces a thread's draft glyph. */
+interface PluginComposerThreadRowStatus {
+    /** BB icon-name hint; unknown names fall back to the generic plugin icon. */
+    icon: string;
+    /** Accessible label for the status glyph. */
+    label: string;
+    /**
+     * Semantic host treatment for the status glyph. `running` automatically
+     * shimmers; terminal `success` and `error` tones are static. Defaults to the
+     * neutral tone.
+     */
+    tone?: "default" | "running" | "success" | "error";
+}
+/** An @-mention pill bound to one of the calling plugin's mention providers. */
+interface PluginComposerMention {
+    /** Mention provider id registered by THIS plugin via `bb.ui.registerMentionProvider`. */
+    provider: string;
+    /** Item id your provider's `resolve` will receive at send time. */
+    id: string;
+    /** Pill text shown in the composer. */
+    label: string;
+}
+/**
+ * Programmatic access to the chat composer draft — the same shared draft the
+ * built-in "Add to chat" affordances (file preview, diff, terminal selections)
+ * write to. While a queued message is being edited, writes land in that
+ * message's inline editor. In a side chat, writes land in the visible side-chat
+ * draft. Otherwise, inside a thread context writes land in that thread's draft;
+ * anywhere else (nav panel, homepage section) they seed the new-thread composer
+ * draft, which persists until the user sends or clears it.
+ */
+interface PluginComposerApi {
+    scope: PluginComposerScope;
+    /** Current plain text for this composer scope. */
+    readonly text: string;
+    /**
+     * Replace the draft's plain text. Attachments are preserved. Inline mentions
+     * outside the changed range are preserved and rebased; mentions overlapped
+     * by the replacement are removed because their text representation changed.
+     */
+    setText(next: string): void;
+    /**
+     * Replace the draft's plain text from the latest committed value. Uses the
+     * same structured-state reconciliation as `setText`.
+     */
+    updateText(updater: (current: string) => string): void;
+    /** Clear plain text without clearing independently attached files. */
+    clear(): void;
+    /**
+     * Apply a host-rendered effect to this composer's editable text, or clear it.
+     * Effects are scoped to the calling plugin and automatically clear when the
+     * slot unmounts or its composer scope changes.
+     */
+    setTextEffect(effect: PluginComposerTextEffect | null): void;
+    /**
+     * Lock or unlock editing for this composer. Locks are scoped to the calling
+     * plugin and automatically release when the slot unmounts or its composer
+     * scope changes.
+     */
+    setInputLock(locked: boolean): void;
+    /**
+     * Replace this composer's thread-row draft glyph with a host-rendered status,
+     * or clear it. New-thread composers have no row, so calls are a no-op.
+     * Side-chat and queued side-chat scopes decorate the visible parent-thread
+     * row. Status is scoped to the calling plugin and automatically clears when
+     * the slot unmounts or its composer scope changes.
+     */
+    setThreadRowStatus(status: PluginComposerThreadRowStatus | null): void;
+    /**
+     * Append text to the draft as a `> ` blockquote block and focus the
+     * composer. Blank text is a no-op. This is the "reference this selection
+     * in chat" primitive.
+     */
+    addQuote(text: string): void;
+    /**
+     * Insert an @-mention pill that resolves through this plugin's mention
+     * provider at send time — the durable way to reference an entity whose
+     * content should be fetched fresh when the message is sent.
+     */
+    insertMention(mention: PluginComposerMention): void;
+    /** Focus the composer caret at the end of the draft. */
+    focus(): void;
+}
+/**
+ * A consumer-supplied action on the messages of one `ThreadChat` instance,
+ * rendered in the embedded timeline's per-message action bar alongside the
+ * native and slot-registered actions. Unlike the `messageAction` slot this is
+ * scoped to the rendering component, not registered globally.
+ */
+interface ThreadChatMessageAction {
+    /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
+    id: string;
+    /** Tooltip / menu label for the action. */
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon?: string;
+    /**
+     * Message roles the action applies to. Omitted = both user and assistant
+     * messages.
+     */
+    roles?: readonly ("user" | "assistant")[];
+    /**
+     * Runs when the user activates the action. Errors (sync or async) are
+     * contained and logged; they never break the timeline.
+     */
+    run(message: ThreadChatMessageReference): void | Promise<void>;
+}
+/**
+ * Props of the host-owned `ThreadChat` component — one thread's chat
+ * (timeline, and for the composer variants the full send/queue/draft
+ * engine), rendered by the BB app inside a plugin slot. This is the
+ * deliberate exception to the no-host-components rule (§5.5): a stable
+ * product capability, not a UI kit. Versioned additive like slot props;
+ * internal timeline rows, query hooks, and prompt-box configuration are
+ * deliberately not exposed.
+ */
+interface ThreadChatProps {
+    threadId: string;
+    /**
+     * "full" (default) is the page presentation (centered reading width);
+     * "compact" is the side-panel presentation; "timeline" renders the
+     * transcript without a composer.
+     */
+    variant?: "full" | "compact" | "timeline";
+    /**
+     * "contained" (default) fills and scrolls inside a bounded parent;
+     * "document" grows with its content and defers scrolling to the page.
+     */
+    layout?: "contained" | "document";
+    /** Bump to focus the composer (ignored by `variant: "timeline"`). */
+    focusRequest?: number;
+    /**
+     * Who controls the permission mode sends run with. "inherit" (default)
+     * pins every send to the thread's own resolved default and renders the
+     * picker as a dimmed label — a plugin surface can never widen it.
+     * "editable" gives this chat its own picker, so the user can raise or
+     * lower permissions for this thread independently of the thread it was
+     * forked from. Ignored by `variant: "timeline"` (no composer).
+     */
+    permissionPolicy?: "inherit" | "editable";
+    className?: string;
+    /** Rendered above the conversation, scrolling with it. */
+    leadingContent?: ReactNode;
+    /**
+     * Actions rendered in this instance's per-message action bar (see
+     * {@link ThreadChatMessageAction}).
+     */
+    messageActions?: readonly ThreadChatMessageAction[];
+}
+/**
+ * Every selection the composer resolved, JSON-serializable so a plugin can
+ * forward it to its own backend rpc verbatim and hand it straight to
+ * `bb.sdk.threads.spawn`.
+ *
+ * The split is deliberate: the composer owns *user selections*, the plugin
+ * owns *filing and attribution*. `bb.sdk.threads.spawn` auto-fills
+ * `origin: "plugin"` and `originPluginId`, so a thread created this way stays
+ * attributed to the plugin — which it would not be if the component created
+ * the thread itself. The plugin adds `sectionId`, `parentThreadId`, `title`,
+ * and `visibility` to the request on its own; they are deliberately not
+ * composer props.
+ */
+interface NewThreadRequest {
+    projectId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: ReasoningLevel;
+    permissionMode: PermissionMode;
+    /** Omitted when the selected provider has no service tiers. */
+    serviceTier?: ServiceTier;
+    /**
+     * Per-field provenance (caller-explicit vs. default) for the execution
+     * options above, forwarded to `spawn` so the server records what the user
+     * actually chose.
+     */
+    executionInputSources: CreateExecutionInputSources;
+    environment: CreateThreadEnvironmentArgs;
+    input: PromptInput[];
+}
+/**
+ * Props of the host-owned `experimental_NewThreadComposer` component — bb's
+ * full new-thread compose surface (prompt editor with @-mentions and expand,
+ * attachments, provider/model/reasoning picker, voice, submit, and the row
+ * beneath with project, environment, branch-from, and permission mode),
+ * rendered by the BB app inside a plugin slot.
+ *
+ * It is the create-side counterpart to `ThreadChat`: same deliberate
+ * exception to the no-host-components rule (§5.5), same additive versioning.
+ */
+interface NewThreadComposerProps {
+    /** Seeds the project picker. The user can change it. */
+    defaultProjectId?: string;
+    /** Seeds the draft, only while the draft is still empty. */
+    initialPrompt?: string;
+    placeholder?: string;
+    /**
+     * "contained" (default) fills and scrolls inside a bounded parent;
+     * "document" grows with its content and defers scrolling to the page.
+     */
+    layout?: "contained" | "document";
+    /** Bump to focus the editor. */
+    focusRequest?: number;
+    className?: string;
+    /**
+     * Where the draft persists. Drafts survive reloads and are shared by every
+     * composer using the same key; defaults to a key scoped to this plugin.
+     */
+    draftKey?: string;
+    /**
+     * Fires on submit with every selection resolved. The draft clears when this
+     * resolves and is KEPT if it throws, so a failed create never loses what the
+     * user typed.
+     */
+    onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+}
+/**
+ * Props of the host-owned `Markdown` component — bb's chat message renderer
+ * (the same typography, spacing, and code styling as timeline messages).
+ * Use it wherever plugin UI quotes or previews message content so it reads
+ * like the rest of the chat. Like `ThreadChat`, this is a stable product
+ * capability, not a UI kit; renderer internals stay private.
+ */
+interface MarkdownProps {
+    /** Markdown source, rendered exactly like a chat message body. */
+    content: string;
+    className?: string;
+}
+/** Current app selection, derived from the route. */
+interface BbContext {
+    projectId: string | null;
+    threadId: string | null;
+}
+interface BbNavigate {
+    toThread(threadId: string): void;
+    toProject(projectId: string): void;
+    /**
+     * Navigate to one of this plugin's own nav panels by its `path`.
+     * `subPath` targets a location inside the panel (the component's
+     * `subPath` prop); `replace` swaps the current history entry instead of
+     * pushing — use it for redirects so back does not bounce.
+     */
+    toPluginPanel(path: string, options?: {
+        subPath?: string;
+        replace?: boolean;
+    }): void;
+    /**
+     * Navigate to the root compose surface (the new-thread screen). Pass
+     * `initialPrompt` to seed the composer draft and `focusPrompt` to focus the
+     * composer on arrival — the pairing behind "Create via chat" style entry
+     * points that drop the user into chat with a prefilled prompt.
+     */
+    toCompose(options?: {
+        initialPrompt?: string;
+        focusPrompt?: boolean;
+    }): void;
+    /**
+     * Open one of this plugin's registered thread-panel actions in the current
+     * thread surface. Returns false when the surface has no thread side panel or
+     * the action is unavailable.
+     */
+    openThreadPanel(options: {
+        actionId: string;
+        title?: string;
+        params?: JsonValue;
+    }): boolean;
+}
+/**
+ * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * the real implementation and `satisfies` this interface; `bb plugin build`
+ * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
+ */
+interface PluginSdkApp {
+    definePluginApp(setup: PluginAppSetup): PluginAppDefinition;
+    useRpc<Contract extends PluginRpcContract = PluginRpcContract>(): PluginRpcClient<Contract>;
+    useRealtime(channel: string, handler: (payload: unknown) => void): void;
+    /**
+     * Observe the same shared connection that delivers `useRealtime` signals.
+     * Use a subsequent transition to `connected` to reconcile server state that
+     * may have changed while ephemeral signals could not be delivered. The first
+     * connection can transition from `connecting` and is not a reconnection.
+     */
+    useRealtimeConnectionState(): PluginRealtimeConnectionState;
+    useSettings(): PluginSettingsState;
+    useBbContext(): BbContext;
+    useBbNavigate(): BbNavigate;
+    useComposer(): PluginComposerApi;
+    /**
+     * The host-owned chat component (see {@link ThreadChatProps}). Together
+     * with `Markdown`, the only components the SDK ships — everything else
+     * stays vendored per §5.5.
+     */
+    ThreadChat: ComponentType<ThreadChatProps>;
+    /**
+     * The host-owned chat-message markdown renderer (see
+     * {@link MarkdownProps}).
+     */
+    Markdown: ComponentType<MarkdownProps>;
+    /**
+     * The host-owned new-thread compose surface (see
+     * {@link NewThreadComposerProps}). Experimental: see
+     * docs/api_to_audit.md for what to audit before the prefix drops.
+     */
+    experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+    useComposerView(): ComposerView;
+}
 
 interface EnvironmentActionArgs {
     environmentId: string;
@@ -10761,7 +10991,7 @@ interface PluginReloadArgs {
     pluginId?: string;
 }
 interface PluginSettingsUpdateArgs extends PluginIdArgs {
-    values: Record<string, JsonValue>;
+    values: Record<string, JsonValue$1>;
 }
 interface PluginTokenArgs extends PluginIdArgs {
     rotate?: boolean;
@@ -10771,7 +11001,7 @@ interface PluginCheckUpdatesArgs {
     signal?: AbortSignal;
 }
 interface PluginRpcArgs<TOutput> extends PluginIdArgs {
-    input?: JsonValue;
+    input?: JsonValue$1;
     method: string;
     outputSchema: z$1.ZodType<TOutput>;
 }
@@ -11392,7 +11622,7 @@ interface ThreadInteractionResolveArgs extends ThreadInteractionTargetArgs {
     resolution: PendingInteractionResolution;
 }
 interface ThreadInteractionRespondArgs extends ThreadInteractionTargetArgs {
-    value: JsonValue;
+    value: JsonValue$1;
 }
 type ThreadWaitTarget = {
     kind: "status";
@@ -11718,7 +11948,7 @@ interface PluginCliContext {
 type PluginInteractionCancelReason = "user" | "request-aborted" | "thread-stopped" | "thread-deleted" | "plugin-disposed" | "server-restarted" | "timeout";
 type PluginInteractionResult = {
     outcome: "submitted";
-    value: JsonValue$1;
+    value: JsonValue;
 } | {
     outcome: "cancelled";
     reason: PluginInteractionCancelReason;
@@ -11727,7 +11957,7 @@ interface PluginInteractionRequest {
     threadId: string;
     rendererId: string;
     title: string;
-    payload: JsonValue$1;
+    payload: JsonValue;
     /** Defaults to ten minutes; capped at one hour. */
     timeoutMs?: number;
 }
@@ -12120,4 +12350,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue$1 as JsonValue, MarkdownProps, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginStatusApi, PluginStorage, PluginThreadActionContext, PluginThreadActionRegistration, PluginThreadActionResult, PluginThreadActionToast, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

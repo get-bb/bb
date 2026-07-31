@@ -177,6 +177,8 @@ export interface NewThreadPromptBoxUIProps {
   textEffects?: readonly ComposerTextEffectSource[];
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
+  /** Overrides the default new-thread placeholder copy. */
+  placeholder?: string;
 
   history: HistoryConfig;
   typeahead: TypeaheadConfig;
@@ -226,6 +228,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   pluginComposerHost,
   textEffects,
   zenModeStorageKey,
+  placeholder: placeholderOverride,
   history,
   typeahead,
   attachments,
@@ -262,7 +265,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   );
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
-  const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
+  const placeholder =
+    placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
   const promptModeInput = useMemo(
     () => ({
       providerId: execution.provider.selectedId,

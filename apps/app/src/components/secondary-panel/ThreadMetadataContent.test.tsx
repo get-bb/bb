@@ -1,8 +1,12 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
-import { describe, expect, it } from "vitest";
-import { EnvironmentRow } from "./ThreadMetadataContent";
+import { describe, expect, it, vi } from "vitest";
+import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
+import { parentThreads } from "./ThreadMetadataContent.fixtures";
 
 const localHost = { locality: "local", identity: null } as const;
 
@@ -99,5 +103,82 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain(
       'aria-label="Create new thread in this worktree"',
     );
+  });
+});
+
+describe("ParentSelectorRow", () => {
+  it("requests candidates only when the parent menu opens", async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <MemoryRouter>
+        <ParentSelectorRow
+          thread={makeThread({ environmentId: null })}
+          projectId="proj_test"
+          parentThreadDisplayName={null}
+          parentThreads={[]}
+          canAssignToParent
+          canTakeOverThread={false}
+          isLoadingParentThreads
+          isParentThreadsError={false}
+          updateThreadPending={false}
+          onAssignParent={vi.fn()}
+          onParentSelectorOpenChange={onOpenChange}
+          onRetryParentThreads={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByRole("button"), {
+      button: 0,
+      ctrlKey: false,
+    });
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(await screen.findByText("Loading threads…")).toBeTruthy();
+  });
+
+  it("offers a retry after candidate loading fails and shows recovered results", async () => {
+    const onRetry = vi.fn();
+    const row = (isError: boolean, candidates = parentThreads) => (
+      <MemoryRouter>
+        <ParentSelectorRow
+          thread={makeThread({ environmentId: null })}
+          projectId="proj_test"
+          parentThreadDisplayName={null}
+          parentThreads={candidates}
+          canAssignToParent
+          canTakeOverThread={false}
+          isLoadingParentThreads={false}
+          isParentThreadsError={isError}
+          updateThreadPending={false}
+          onAssignParent={vi.fn()}
+          onParentSelectorOpenChange={vi.fn()}
+          onRetryParentThreads={onRetry}
+        />
+      </MemoryRouter>
+    );
+    const result = render(row(true, []));
+
+    fireEvent.pointerDown(screen.getByRole("button"), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByText("Retry loading threads"));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    result.rerender(row(false));
+    const trigger = screen
+      .getAllByRole("button")
+      .reverse()
+      .find((candidate) => candidate.getAttribute("aria-haspopup") === "menu");
+    if (!trigger) {
+      throw new Error("missing parent selector trigger");
+    }
+    fireEvent.pointerDown(trigger, {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(await screen.findByText("Codex Parent")).toBeTruthy();
   });
 });

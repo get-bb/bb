@@ -10,5 +10,5 @@
     "types": ["@cloudflare/workers-types"],
     "lib": ["ES2022"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }
