@@ -19,7 +19,7 @@ import type {
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolExperimentalActivity,
+  PluginAgentToolExperimentalStatusLabels,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -72,7 +72,7 @@ export type {
   PluginAgentConfigurationContext,
   PluginAgentToolContentPart,
   PluginAgentToolContext,
-  PluginAgentToolExperimentalActivity,
+  PluginAgentToolExperimentalStatusLabels,
   PluginAgentToolRegistrationBase,
   PluginAgentToolResult,
   PluginAgents,
@@ -223,7 +223,7 @@ export interface PluginAgentToolRecord {
   name: string;
   description: string;
   /** Native timeline labels, null when the standard BB title should render. */
-  experimentalActivity: PluginAgentToolExperimentalActivity | null;
+  experimentalStatusLabels: PluginAgentToolExperimentalStatusLabels | null;
   /** Instructions snippet for the thread-instructions assembly; null when
    * the registration carried none (description-only). */
   instructions: string | null;
@@ -988,7 +988,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
-      experimental_activity?: PluginAgentToolExperimentalActivity;
+      experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
       parameters: unknown;
       execute(
         params: never,
@@ -1027,18 +1027,18 @@ export function createPluginApi(options: {
           `tool "${name}" instructions exceed the ${PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS}-character limit`,
         );
       }
-      const experimentalActivity = tool.experimental_activity;
-      if (experimentalActivity !== undefined) {
+      const experimentalStatusLabels = tool.experimental_statusLabels;
+      if (experimentalStatusLabels !== undefined) {
         if (
-          typeof experimentalActivity !== "object" ||
-          experimentalActivity === null ||
-          typeof experimentalActivity.running !== "string" ||
-          typeof experimentalActivity.completed !== "string" ||
-          experimentalActivity.running.trim().length === 0 ||
-          experimentalActivity.completed.trim().length === 0
+          typeof experimentalStatusLabels !== "object" ||
+          experimentalStatusLabels === null ||
+          typeof experimentalStatusLabels.pending !== "string" ||
+          typeof experimentalStatusLabels.completed !== "string" ||
+          experimentalStatusLabels.pending.trim().length === 0 ||
+          experimentalStatusLabels.completed.trim().length === 0
         ) {
           throw new Error(
-            `tool "${name}" experimental_activity must provide non-empty running and completed strings`,
+            `tool "${name}" experimental_statusLabels must provide non-empty pending and completed strings`,
           );
         }
       }
@@ -1105,12 +1105,12 @@ export function createPluginApi(options: {
       const record: PluginAgentToolRecord = {
         name,
         description: tool.description,
-        experimentalActivity:
-          experimentalActivity === undefined
+        experimentalStatusLabels:
+          experimentalStatusLabels === undefined
             ? null
             : {
-                running: experimentalActivity.running,
-                completed: experimentalActivity.completed,
+                pending: experimentalStatusLabels.pending,
+                completed: experimentalStatusLabels.completed,
               },
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0

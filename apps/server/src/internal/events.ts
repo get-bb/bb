@@ -277,12 +277,12 @@ function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
 }
 
 /**
- * Plugin activity labels are server-owned presentation metadata: providers do
+ * Plugin status labels are server-owned presentation metadata: providers do
  * not know about them, and old daemon clients therefore need no protocol
  * change. Persist the snapshot on both lifecycle events so historical rows
  * remain readable if a plugin later reloads or disappears.
  */
-function withPluginToolActivity(
+function withPluginToolStatusLabels(
   envelope: HostDaemonEventEnvelope,
 ): HostDaemonEventEnvelope {
   const event = envelope.event;
@@ -293,9 +293,9 @@ function withPluginToolActivity(
   ) {
     return envelope;
   }
-  const activity = findPluginAgentTool(event.item.tool)?.record
-    .experimentalActivity;
-  if (activity === null || activity === undefined) return envelope;
+  const statusLabels = findPluginAgentTool(event.item.tool)?.record
+    .experimentalStatusLabels;
+  if (statusLabels === null || statusLabels === undefined) return envelope;
 
   return {
     ...envelope,
@@ -303,7 +303,7 @@ function withPluginToolActivity(
       ...event,
       item: {
         ...event.item,
-        activity,
+        statusLabels,
       },
     },
   };
@@ -905,7 +905,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       }
       const labelledEntries = entries.map((entry) => ({
         ...entry,
-        envelope: withPluginToolActivity(entry.envelope),
+        envelope: withPluginToolStatusLabels(entry.envelope),
       }));
       const eventInputs = labelledEntries.map((entry) => {
         return toStoredEvent({

@@ -50,7 +50,7 @@ interface FileChangeItemEventArgs {
 }
 
 interface ToolCallItemEventArgs {
-  activity?: { running: string; completed: string };
+  statusLabels?: { pending: string; completed: string };
   itemId?: string;
   result?: string;
   seq: number;
@@ -283,7 +283,7 @@ function fileChangeItemEvent({
 }
 
 function toolCallItemEvent({
-  activity,
+  statusLabels,
   itemId = "tool-call-1",
   result,
   seq,
@@ -303,7 +303,7 @@ function toolCallItemEvent({
         id: itemId,
         tool,
         ...(toolArgs ? { arguments: toolArgs } : {}),
-        ...(activity ? { activity } : {}),
+        ...(statusLabels ? { statusLabels } : {}),
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         ...(result ? { result } : {}),
       },
@@ -912,21 +912,21 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
-  it("preserves server-enriched plugin activity labels on a tool row", () => {
-    const activity = {
-      running: "Reading project overview",
+  it("preserves server-enriched plugin status labels on a tool row", () => {
+    const statusLabels = {
+      pending: "Reading project overview",
       completed: "Read project overview",
     };
     const rows = buildTimelineRows([
       turnStartedEvent({ seq: 1 }),
       toolCallItemEvent({
-        activity,
+        statusLabels,
         seq: 2,
         tool: "repository_context",
         type: "item/started",
       }),
       toolCallItemEvent({
-        activity,
+        statusLabels,
         seq: 3,
         tool: "repository_context",
         type: "item/completed",
@@ -935,7 +935,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     expect(collectToolRows(rows)).toEqual([
       expect.objectContaining({
-        activity,
+        statusLabels,
         status: "completed",
         toolName: "repository_context",
       }),

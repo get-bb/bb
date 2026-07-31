@@ -22,7 +22,7 @@ Before stabilization, audit:
 - validation, accessibility labels, reduced motion, and cleanup on plugin
   reload/disable/removal.
 
-## `bb.agents.registerTool({ experimental_activity })`
+## `bb.agents.registerTool({ experimental_statusLabels })`
 
 **What it does.** Lets a native plugin tool supply one short label while it is
 pending and one after successful completion. BB snapshots the labels into the

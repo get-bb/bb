@@ -352,12 +352,13 @@ export interface PluginAgentToolContext {
 }
 
 /**
- * Native timeline labels for a plugin tool. This is experimental: BB may
- * refine its presentation contract before the field is stabilized.
+ * Native timeline labels for a plugin tool, keyed by BB's own timeline row
+ * status. This is experimental: BB may refine its presentation contract
+ * before the field is stabilized.
  */
-export interface PluginAgentToolExperimentalActivity {
+export interface PluginAgentToolExperimentalStatusLabels {
   /** Label shown while the tool call is pending. */
-  running: string;
+  pending: string;
   /** Label shown after the tool call completes successfully. */
   completed: string;
 }
@@ -380,7 +381,7 @@ export interface PluginAgentToolRegistrationBase {
    * apply only while the call is pending and after successful completion;
    * approval, error, and interruption states keep BB's standard rendering.
    */
-  experimental_activity?: PluginAgentToolExperimentalActivity;
+  experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */

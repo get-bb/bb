@@ -498,12 +498,12 @@ describe("buildTimelineRowTitle", () => {
     ]);
   });
 
-  it("uses native plugin activity labels while preserving the generic fallback", () => {
+  it("uses native plugin status labels while preserving the generic fallback", () => {
     const completed = buildTimelineRowTitle(
       {
         ...toolRow(),
-        activity: {
-          running: "Reading project overview",
+        statusLabels: {
+          pending: "Reading project overview",
           completed: "Read project overview",
         },
       },
@@ -514,8 +514,8 @@ describe("buildTimelineRowTitle", () => {
         ...toolRow(),
         status: "pending",
         completedAt: null,
-        activity: {
-          running: "Reading project overview",
+        statusLabels: {
+          pending: "Reading project overview",
           completed: "Read project overview",
         },
       },

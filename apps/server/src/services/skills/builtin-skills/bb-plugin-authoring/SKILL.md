@@ -583,8 +583,8 @@ bb.agents.registerTool({
   // Optional experimental native timeline labels. Without these, BB shows
   // its normal tool name and arguments. Errors/interruptions keep that
   // standard rendering so the failing tool remains identifiable.
-  experimental_activity: {
-    running: "Searching bundled docs",
+  experimental_statusLabels: {
+    pending: "Searching bundled docs",
     completed: "Searched bundled docs",
   },
   parameters: z.object({ query: z.string().min(1) }),
@@ -619,10 +619,12 @@ session start, not mid-session. Name collisions: within one factory execution
 duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
 
-`experimental_activity` is optional and supplies static, concise labels for
-the native timeline's pending and successfully completed states. BB snapshots
-the labels into each plugin tool-call event; it is not a frontend bundle hook.
-Omit it to retain BB's standard `Running tool …` / `Ran tool …` wording.
+`experimental_statusLabels` is optional and supplies static, concise labels
+keyed by BB's timeline row status (`pending`, `completed`). BB snapshots the
+labels into each plugin tool-call event; it is not a frontend bundle hook. A
+status with no label — error, interrupted, or awaiting approval — falls back
+to BB's standard `Running tool …` / `Ran tool …` wording, as does omitting the
+field entirely.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this

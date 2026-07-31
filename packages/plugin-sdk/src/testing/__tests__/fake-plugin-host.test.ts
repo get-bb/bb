@@ -603,8 +603,8 @@ describe("agent tools", () => {
     bb.agents.registerTool({
       name: "lookup_doc",
       description: "Look up a doc",
-      experimental_activity: {
-        running: "Looking up a doc",
+      experimental_statusLabels: {
+        pending: "Looking up a doc",
         completed: "Looked up a doc",
       },
       parameters: z.object({ query: z.string().min(1) }),
@@ -614,8 +614,8 @@ describe("agent tools", () => {
       type: "object",
       properties: { query: { type: "string" } },
     });
-    expect(harness.registrations.agentTools[0]?.experimentalActivity).toEqual({
-      running: "Looking up a doc",
+    expect(harness.registrations.agentTools[0]?.experimentalStatusLabels).toEqual({
+      pending: "Looking up a doc",
       completed: "Looked up a doc",
     });
     await expect(

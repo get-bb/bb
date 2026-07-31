@@ -269,7 +269,7 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
-  it("keeps experimental activity labels with a registered native tool", async () => {
+  it("keeps experimental status labels with a registered native tool", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-readable-tool",
       serverSource: "export default function plugin() {}",
@@ -280,8 +280,8 @@ describe("bb.agents.registerTool", () => {
     api.agents.registerTool({
       name: "repository_context",
       description: "Read project context",
-      experimental_activity: {
-        running: "Reading project overview",
+      experimental_statusLabels: {
+        pending: "Reading project overview",
         completed: "Read project overview",
       },
       parameters: { type: "object" },
@@ -289,22 +289,22 @@ describe("bb.agents.registerTool", () => {
     });
 
     expect(service.findAgentTool("repository_context")?.record).toMatchObject({
-      experimentalActivity: {
-        running: "Reading project overview",
+      experimentalStatusLabels: {
+        pending: "Reading project overview",
         completed: "Read project overview",
       },
     });
 
     expect(() =>
       (api.agents.registerTool as (tool: unknown) => void)({
-        name: "invalid_activity",
-        description: "Invalid activity fixture",
-        experimental_activity: { running: "", completed: "Done" },
+        name: "invalid_status_labels",
+        description: "Invalid status-labels fixture",
+        experimental_statusLabels: { pending: "", completed: "Done" },
         parameters: { type: "object" },
         execute: () => "unused",
       }),
     ).toThrow(
-      'tool "invalid_activity" experimental_activity must provide non-empty running and completed strings',
+      'tool "invalid_status_labels" experimental_statusLabels must provide non-empty pending and completed strings',
     );
   });
 

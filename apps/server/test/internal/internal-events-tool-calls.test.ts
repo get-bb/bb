@@ -81,15 +81,15 @@ async function flushDeferredChildThreadNotifications(): Promise<void> {
 }
 
 describe("internal event and tool-call routes", () => {
-  it("snapshots native plugin activity labels into tool-call events", async () => {
+  it("snapshots native plugin status labels into tool-call events", async () => {
     await withTestHarness(async (harness) => {
-      const activity = {
-        running: "Reading project overview",
+      const statusLabels = {
+        pending: "Reading project overview",
         completed: "Read project overview",
       };
       const record = {
         name: "repository_context",
-        experimentalActivity: activity,
+        experimentalStatusLabels: statusLabels,
       } as PluginAgentToolRecord;
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
@@ -165,8 +165,8 @@ describe("internal event and tool-call routes", () => {
           );
         expect(storedToolEvents).toHaveLength(2);
         expect(
-          storedToolEvents.map((event) => JSON.parse(event.data).item.activity),
-        ).toEqual([activity, activity]);
+          storedToolEvents.map((event) => JSON.parse(event.data).item.statusLabels),
+        ).toEqual([statusLabels, statusLabels]);
       } finally {
         setPluginAgentContributions(undefined);
       }
