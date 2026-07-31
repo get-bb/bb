@@ -620,7 +620,8 @@ duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
 
 `experimental_statusLabels` is optional and supplies static, concise labels
-keyed by BB's timeline row status (`pending`, `completed`). BB snapshots the
+keyed by BB's timeline row status (`pending`, `completed`). Each label is
+limited to 80 characters; a longer label rejects the registration. BB snapshots the
 labels into each plugin tool-call event; it is not a frontend bundle hook. A
 status with no label — error, interrupted, or awaiting approval — falls back
 to BB's standard `Running tool …` / `Ran tool …` wording, as does omitting the

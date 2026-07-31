@@ -306,6 +306,22 @@ describe("bb.agents.registerTool", () => {
     ).toThrow(
       'tool "invalid_status_labels" experimental_statusLabels must provide non-empty pending and completed strings',
     );
+
+    // Labels ride on two stored events per call and share one timeline row.
+    expect(() =>
+      (api.agents.registerTool as (tool: unknown) => void)({
+        name: "oversized_status_labels",
+        description: "Oversized status-labels fixture",
+        experimental_statusLabels: {
+          pending: "x".repeat(81),
+          completed: "Done",
+        },
+        parameters: { type: "object" },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "oversized_status_labels" experimental_statusLabels exceed the 80-character limit',
+    );
   });
 
   it("cross-plugin name collision drops the later registration with a status detail", async () => {

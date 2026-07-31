@@ -31,6 +31,8 @@ keeps the ordinary `Running tool …` / `Ran tool …` title. Approval, error, a
 interruption states deliberately keep their standard titles so the raw tool
 identity and failure state remain clear.
 
+Each label is capped at 80 characters and rendered as a truncating segment.
+
 **Audit before stabilizing.**
 
 1. **Presentation scope.** Confirm two static labels cover enough real tool

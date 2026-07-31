@@ -341,6 +341,8 @@ const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 // Agent tool names are shown to (and called by) the model.
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
+/** Status labels ride on every tool-call event and share one timeline row. */
+const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 
 // Thread action ids become URL path segments.
 const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -1039,6 +1041,16 @@ export function createPluginApi(options: {
         ) {
           throw new Error(
             `tool "${name}" experimental_statusLabels must provide non-empty pending and completed strings`,
+          );
+        }
+        if (
+          experimentalStatusLabels.pending.length >
+            PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+          experimentalStatusLabels.completed.length >
+            PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
+        ) {
+          throw new Error(
+            `tool "${name}" experimental_statusLabels exceed the ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS}-character limit`,
           );
         }
       }

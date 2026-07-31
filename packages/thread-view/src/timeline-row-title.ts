@@ -438,7 +438,9 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
       : null;
   if (label !== null) {
     return makeTitle({
-      segments: [segment(label, { shimmer: status === "pending" })],
+      segments: [
+        segment(label, { shimmer: status === "pending", truncate: true }),
+      ],
       decorations: filterNull([
         durationDecoration(row.startedAt, row.completedAt),
       ]),
