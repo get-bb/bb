@@ -86,7 +86,7 @@ import {
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import { createPluginRegistration } from "./plugin-registration.js";
-import { createPluginRuntime } from "./plugin-runtime.js";
+import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
 
 import { pluginUpdateCheckEntrySchema } from "./plugin-service-internal.js";
@@ -1585,6 +1585,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
+          // The uninstalled tree is no longer reloadable, so stop the module
+          // resolve hook from scanning it on every later import.
+          forgetMutableRoot(row.rootDir);
           // Configuration goes with the registration (a future same-id plugin
           // must not inherit secrets); kv rows and data.db are plugin data and
           // survive a remove/reinstall cycle. Schedule rows belong to the

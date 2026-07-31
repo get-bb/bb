@@ -291,6 +291,80 @@ describe("plugin service", () => {
     expect(globals.esmReloader).toBe("entry2:sub2");
   });
 
+  // The URL marker re-keys ESM modules only. Node caches a CommonJS child by
+  // resolved filename and ignores the query, so both a static `.cjs` import
+  // and a `createRequire()` call must be invalidated another way.
+  it("reload re-reads a plugin's CommonJS children", async () => {
+    const rootDir = join(workDir, "bb-plugin-cjs-child");
+    await writeEsmPlugin(rootDir, "cjs-child");
+    const writeSources = async (value: string): Promise<void> => {
+      await writeFile(
+        join(rootDir, "helper.cjs"),
+        `module.exports = { H: "${value}" };\n`,
+      );
+      await writeFile(
+        join(rootDir, "required.cjs"),
+        `module.exports = { R: "${value}" };\n`,
+      );
+    };
+    await writeFile(
+      join(rootDir, "server.js"),
+      `import { createRequire } from "node:module";
+       import helper from "./helper.cjs";
+       const require = createRequire(import.meta.url);
+       export default function plugin() {
+         globalThis.cjsChild = helper.H + ":" + require("./required.cjs").R;
+       }\n`,
+    );
+    const globals = globalThis as Record<string, unknown>;
+
+    await writeSources("cjs-before");
+    await service.installPath(rootDir);
+    expect(globals.cjsChild).toBe("cjs-before:cjs-before");
+
+    await writeSources("cjs-after");
+    await service.reload("cjs-child");
+    expect(globals.cjsChild).toBe("cjs-after:cjs-after");
+  });
+
+  // The marker carries the root id as well as the epoch. Without the id, an
+  // import that crosses into another plugin's tree would carry the importer's
+  // epoch and pin the imported plugin to a stale module.
+  it("reload of an imported plugin is visible to a plugin that imports it", async () => {
+    const importerDir = join(workDir, "bb-plugin-importer");
+    const importedDir = join(workDir, "bb-plugin-imported");
+    await writeEsmPlugin(importerDir, "importer");
+    await writeEsmPlugin(importedDir, "imported");
+    await writeEsmSources(importedDir, "imported", "entry1", "sub1");
+    await writeFile(
+      join(importerDir, "server.js"),
+      `export default function plugin() {
+         globalThis.importerReadShared = async () =>
+           (await import(${JSON.stringify(join(importedDir, "shared.js"))})).SHARED;
+       }\n`,
+    );
+    await writeFile(
+      join(importedDir, "shared.js"),
+      `export const SHARED = "shared1";\n`,
+    );
+    await service.installPath(importedDir);
+    await service.installPath(importerDir);
+    const globals = globalThis as Record<string, unknown>;
+    const readShared = globals.importerReadShared as () => Promise<string>;
+    expect(await readShared()).toBe("shared1");
+
+    // Reload only the imported plugin; the importer keeps running.
+    await writeFile(
+      join(importedDir, "shared.js"),
+      `export const SHARED = "shared2";\n`,
+    );
+    await writeEsmSources(importedDir, "imported", "entry2", "sub2");
+    await service.reload("imported");
+    expect(globals.imported).toBe("entry2:sub2");
+    // The importer's next cross-root import must see the reloaded plugin.
+    expect(await readShared()).toBe("shared2");
+  });
+
   // Node canonicalizes ESM files through symbolic links, so a root tracked as
   // the un-canonicalized install path never matches the module URL.
   it("reload re-reads an ESM plugin installed through a symbolic link", async () => {
