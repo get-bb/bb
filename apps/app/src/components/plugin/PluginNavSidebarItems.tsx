@@ -36,7 +36,6 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
-  isToolsRoutePath,
 } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -174,17 +173,19 @@ function PluginNavSidebarItemList({
   const [hiddenKeys, setHiddenKeys] = useAtom(hiddenPluginNavPanelsAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
-  const { visible, hidden, normalizedOrder } = useMemo(
-    () =>
-      arrangePluginNavPanels({
-        panels: rows,
-        // Users who customized their plugin order before the Tools row joined
-        // the list keep Tools on top instead of finding it at the bottom.
-        storedOrder: seedLeadingNavPanelKeys(storedOrder, [TOOLS_NAV_ROW_KEY]),
-        hiddenKeys,
-      }),
-    [hiddenKeys, rows, storedOrder],
-  );
+  const { visible, hidden, normalizedOrder } = useMemo(() => {
+    // Users who customized their plugin order before the Tools row joined the
+    // list keep Tools on top instead of finding it at the bottom. Seed only
+    // while the row exists, so a build without it saves no key for it.
+    const leadingKeys = rows.some((row) => row.kind === "tools")
+      ? [TOOLS_NAV_ROW_KEY]
+      : [];
+    return arrangePluginNavPanels({
+      panels: rows,
+      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
+      hiddenKeys,
+    });
+  }, [hiddenKeys, rows, storedOrder]);
 
   // Give newly installed panels a slot in the persisted order. This only ever
   // adds keys: a plugin frontend that has not registered yet keeps its slot, so
@@ -404,7 +405,7 @@ function PluginNavRowVisibilityMenuItem({
  */
 function ToolsNavSidebarItem({
   row,
-  pathname,
+  pathname: _pathname,
   onNavigate,
   ...props
 }: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
@@ -417,7 +418,9 @@ function ToolsNavSidebarItem({
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
       icon={<Icon name="Toolbox" />}
-      isActive={isToolsRoutePath(pathname)}
+      // Never active: AppLayout swaps AppSidebar out for ToolsSidebar on every
+      // Tools route, so this row is only on screen while Tools is closed.
+      isActive={false}
       onSelect={() => {
         onNavigate?.();
         void navigate(row.routePath);

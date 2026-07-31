@@ -54,7 +54,6 @@ function registerPanel(pluginId: string, title: string) {
 function renderSidebarItems(
   options: {
     toolsRoutePath?: string;
-    initialRoute?: string;
     storedOrder?: string[];
   } = {},
 ) {
@@ -66,7 +65,7 @@ function renderSidebarItems(
   }
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={[options.initialRoute ?? "/"]}>
+      <MemoryRouter initialEntries={["/"]}>
         <ToolsHubExperimentProvider enabled={false}>
           <SidebarProvider>
             <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
@@ -227,14 +226,18 @@ describe("PluginNavSidebarItems", () => {
     });
   });
 
-  it("marks the Tools row current on any Tools sub-route", () => {
-    renderSidebarItems({
-      toolsRoutePath: "/tools/skills",
-      initialRoute: "/tools/skills/registry",
-    });
+  it("saves no Tools key while the row is absent", async () => {
+    registerPanel("docs", "Docs");
 
+    // Tools is off, so nothing should reserve a slot for a row that never
+    // renders here.
+    renderSidebarItems({ storedOrder: ["docs/main"] });
+
+    await waitFor(() => {
+      expect(panelRowNames()).toEqual(["Docs"]);
+    });
     expect(
-      screen.getByRole("button", { name: "Tools" }).getAttribute("aria-current"),
-    ).toBe("page");
+      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
+    ).not.toContain("__builtin__/tools");
   });
 });
