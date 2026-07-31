@@ -282,6 +282,12 @@ function TestMarkdown({ content, className }: MarkdownProps) {
  */
 function TestNewThreadComposer({
   defaultProjectId,
+  defaultProviderId,
+  defaultModel,
+  defaultReasoningLevel,
+  defaultServiceTier,
+  defaultPermissionMode,
+  defaultEnvironment,
   initialPrompt,
   placeholder,
   layout = "contained",
@@ -295,6 +301,16 @@ function TestNewThreadComposer({
     <div
       data-testid="bb-new-thread-composer"
       data-default-project-id={defaultProjectId ?? ""}
+      data-default-provider-id={defaultProviderId ?? ""}
+      data-default-model={defaultModel ?? ""}
+      data-default-reasoning-level={defaultReasoningLevel ?? ""}
+      data-default-service-tier={defaultServiceTier ?? ""}
+      data-default-permission-mode={defaultPermissionMode ?? ""}
+      data-default-environment={
+        defaultEnvironment === undefined
+          ? ""
+          : JSON.stringify(defaultEnvironment)
+      }
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-draft-key={draftKey ?? ""}
@@ -310,14 +326,20 @@ function TestNewThreadComposer({
         type="button"
         data-testid="bb-new-thread-composer-submit"
         onClick={() => {
+          // Untouched submits echo the `default*` seeds back, mirroring the
+          // real composer's round-trip guarantee so plugin tests can cover
+          // the store-then-restore pattern.
           void onSubmit({
             projectId: defaultProjectId ?? "project-test",
-            providerId: "codex",
-            model: "gpt-5",
-            reasoningLevel: "medium",
-            permissionMode: "auto",
+            providerId: defaultProviderId ?? "codex",
+            model: defaultModel ?? "gpt-5",
+            reasoningLevel: defaultReasoningLevel ?? "medium",
+            permissionMode: defaultPermissionMode ?? "auto",
+            ...(defaultServiceTier !== undefined
+              ? { serviceTier: defaultServiceTier }
+              : {}),
             executionInputSources: {},
-            environment: { type: "project-default" },
+            environment: defaultEnvironment ?? { type: "project-default" },
             input: [{ type: "text", text, mentions: [] }],
           });
         }}

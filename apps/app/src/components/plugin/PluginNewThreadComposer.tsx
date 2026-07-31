@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "r
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
+import type { CreateExecutionInputSources } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -15,6 +16,7 @@ import {
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import {
   useProjectPromptHistory,
@@ -75,6 +77,12 @@ import {
  */
 export function PluginNewThreadComposer({
   defaultProjectId,
+  defaultProviderId,
+  defaultModel,
+  defaultReasoningLevel,
+  defaultServiceTier,
+  defaultPermissionMode,
+  defaultEnvironment,
   initialPrompt,
   placeholder,
   layout = "contained",
@@ -105,6 +113,36 @@ export function PluginNewThreadComposer({
   if (seededDefaultProjectId !== defaultProjectId) {
     setSeededDefaultProjectId(defaultProjectId);
     setPickedProjectId(defaultProjectId ?? null);
+  }
+
+  // --- Execution/environment seeds ---------------------------------------
+  // The `default*` props are seeds, value-compared so a plugin can pass a
+  // fresh `defaultEnvironment` object each render. A signature change means
+  // the caller switched records: it re-seeds every selection (via the
+  // creation-options resetKey below), including ones the user had touched.
+  // `defaultProjectId` is part of the identity so switching to a record that
+  // differs ONLY by project still clears the previous record's branch
+  // override — otherwise record two would lose its branch seed.
+  const seedSignature = JSON.stringify([
+    defaultProjectId ?? null,
+    defaultProviderId ?? null,
+    defaultModel ?? null,
+    defaultReasoningLevel ?? null,
+    defaultServiceTier ?? null,
+    defaultPermissionMode ?? null,
+    defaultEnvironment ?? null,
+  ]);
+  const environmentSeed =
+    defaultEnvironment === undefined
+      ? null
+      : newThreadEnvironmentArgsToSeed(defaultEnvironment);
+  // The seeded branch shows until the user picks or clears one; re-seed on a
+  // signature change so switching records reloads that record's branch.
+  const [seededSignature, setSeededSignature] = useState(seedSignature);
+  const [branchSeedOverridden, setBranchSeedOverridden] = useState(false);
+  if (seededSignature !== seedSignature) {
+    setSeededSignature(seedSignature);
+    setBranchSeedOverridden(false);
   }
   const projectId = useMemo(() => {
     const candidate = pickedProjectId ?? PERSONAL_PROJECT_ID;
@@ -192,17 +230,23 @@ export function PluginNewThreadComposer({
     projectDefaultExecutionOptionsQuery.data ??
     null;
   // "component-local" keeps every pick inside this composer: a plugin panel
-  // must not rewrite the user's persisted root-composer defaults.
+  // must not rewrite the user's persisted root-composer defaults. The
+  // `default*` seed props take precedence over the project's remembered
+  // defaults; the seed signature in resetKey makes a seed change reset even
+  // user-touched selections (switching saved records must reload them).
   const creationOptions = useThreadCreationOptions({
     scope: "component-local",
     preferenceProjectId: projectId,
-    resetKey: projectId,
+    resetKey: `${projectId} ${seedSignature}`,
     resolveProviderRouting,
-    initialProviderId: projectDefaults?.providerId,
-    initialModel: projectDefaults?.model,
-    initialServiceTier: projectDefaults?.serviceTier,
-    initialReasoningLevel: projectDefaults?.reasoningLevel,
-    initialPermissionMode: projectDefaults?.permissionMode,
+    initialProviderId: defaultProviderId ?? projectDefaults?.providerId,
+    initialModel: defaultModel ?? projectDefaults?.model,
+    initialServiceTier: defaultServiceTier ?? projectDefaults?.serviceTier,
+    initialReasoningLevel:
+      defaultReasoningLevel ?? projectDefaults?.reasoningLevel,
+    initialPermissionMode:
+      defaultPermissionMode ?? projectDefaults?.permissionMode,
+    initialEnvironmentSelectionValue: environmentSeed?.selectionValue,
   });
   const {
     activeModel,
@@ -225,7 +269,7 @@ export function PluginNewThreadComposer({
     selectedProviderId,
     serviceTier,
     serviceTierSupportByProvider,
-    setEnvironmentSelectionValue,
+    setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
     setReasoningLevel,
     setSelectedModel,
@@ -235,6 +279,50 @@ export function PluginNewThreadComposer({
     supportsServiceTier,
   } = creationOptions;
   const selectedThreadModel = activeModel?.model ?? selectedModel;
+  // Changing the environment retires the seeded branch for good. Without this,
+  // switching away and back would resurrect it — the seed is keyed on the
+  // environment matching, so returning would silently re-apply a branch the
+  // user had already navigated out of.
+  const setEnvironmentSelectionValue = useCallback(
+    (value: string) => {
+      setBranchSeedOverridden(true);
+      setCreationEnvironmentSelectionValue(value);
+    },
+    [setCreationEnvironmentSelectionValue],
+  );
+  // Provenance for the seeded execution fields. "explicit" is right whether or
+  // not the user then changed the value: either way it is a concrete choice
+  // the composer displayed, not a default the server should re-derive. Fields
+  // with no seed keep the hook's own provenance, so an unseeded caller sends
+  // exactly what it sent before.
+  const seededExecutionInputSources = useMemo(
+    (): CreateExecutionInputSources => ({
+      ...(defaultProviderId !== undefined
+        ? { providerId: "explicit" as const }
+        : {}),
+      ...(defaultModel !== undefined ? { model: "explicit" as const } : {}),
+      ...(defaultReasoningLevel !== undefined
+        ? { reasoningLevel: "explicit" as const }
+        : {}),
+      // Mirrors the submitted request, which omits serviceTier entirely when
+      // the selected provider has no tiers.
+      ...(defaultServiceTier !== undefined && supportsServiceTier && serviceTier
+        ? { serviceTier: "explicit" as const }
+        : {}),
+      ...(defaultPermissionMode !== undefined
+        ? { permissionMode: "explicit" as const }
+        : {}),
+    }),
+    [
+      defaultModel,
+      defaultPermissionMode,
+      defaultProviderId,
+      defaultReasoningLevel,
+      defaultServiceTier,
+      serviceTier,
+      supportsServiceTier,
+    ],
+  );
 
   // --- Environment / branch selection -------------------------------------
   const effectiveEnvironmentValue = useMemo(
@@ -271,15 +359,44 @@ export function PluginNewThreadComposer({
         ? "worktree"
         : "other";
   const {
-    selectedBranch,
-    onBranchChange: handleBranchChange,
-    onClearBranch: handleClearBranch,
+    selectedBranch: pickedBranch,
+    onBranchChange,
+    onClearBranch,
     onCreateBranch: handleCreateBranch,
-    onCreateBranchFrom: handleCreateBranchFrom,
+    onCreateBranchFrom,
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
   });
+  // The seeded branch backs the picker only while the user has not picked or
+  // cleared one AND the environment still matches the seed — a manual pick,
+  // clear, or environment change makes the composer behave exactly as if the
+  // seed were absent.
+  const selectedBranch =
+    pickedBranch ??
+    (!branchSeedOverridden &&
+    environmentSeed !== null &&
+    effectiveEnvironmentValue === environmentSeed.selectionValue
+      ? environmentSeed.branch
+      : null);
+  const handleBranchChange = useCallback(
+    (name: string) => {
+      setBranchSeedOverridden(true);
+      onBranchChange(name);
+    },
+    [onBranchChange],
+  );
+  const handleClearBranch = useCallback(() => {
+    setBranchSeedOverridden(true);
+    onClearBranch();
+  }, [onClearBranch]);
+  const handleCreateBranchFrom = useCallback(
+    (name: string) => {
+      setBranchSeedOverridden(true);
+      onCreateBranchFrom(name);
+    },
+    [onCreateBranchFrom],
+  );
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   useEffect(() => {
     setBranchSearchQuery("");
@@ -305,14 +422,16 @@ export function PluginNewThreadComposer({
   useEffect(() => {
     if (!projectSourceWorktreeUnavailable || !requestsManagedWorktree) return;
     if (parsedEnvironment?.type !== "host") return;
-    setEnvironmentSelectionValue(
+    // A host-driven correction, not a user pick, so it uses the raw setter:
+    // retiring the branch seed is reserved for the user changing environment.
+    setCreationEnvironmentSelectionValue(
       encodeHostValue(parsedEnvironment.hostId, "local"),
     );
   }, [
     parsedEnvironment,
     projectSourceWorktreeUnavailable,
     requestsManagedWorktree,
-    setEnvironmentSelectionValue,
+    setCreationEnvironmentSelectionValue,
   ]);
   const branchOptions = useMemo(() => {
     const branches = branchesQuery.data?.branches ?? [];
@@ -367,9 +486,13 @@ export function PluginNewThreadComposer({
     },
     [refetchBranches],
   );
+  const selectedBranchName = selectedBranch?.name ?? null;
   const handleCreateBranchFromSeed = useCallback(() => {
-    handleCreateBranch(branchSelectionSeed);
-  }, [branchSelectionSeed, handleCreateBranch]);
+    setBranchSeedOverridden(true);
+    // Prefer the effective selection (which may be the environment seed's
+    // branch) as the base — the hook only knows about manual picks.
+    handleCreateBranch(selectedBranchName ?? branchSelectionSeed);
+  }, [branchSelectionSeed, handleCreateBranch, selectedBranchName]);
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
@@ -543,7 +666,17 @@ export function PluginNewThreadComposer({
       reasoningLevel,
       permissionMode,
       ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-      executionInputSources,
+      // A seeded field is a caller-explicit value, so it must carry a
+      // provenance source: the server DISCARDS a requested providerId/model
+      // whose source key is absent (resolveRequestedCreateExecutionValue) and
+      // falls back to the project's stored defaults — which would silently
+      // undo the very seeds the caller passed in. `component-local` scope
+      // never reports a providerId source at all, so seeding is the only
+      // thing that makes the composer's provider survive the round trip.
+      executionInputSources: {
+        ...executionInputSources,
+        ...seededExecutionInputSources,
+      },
       environment: selectedEnvironment,
       input,
     };
@@ -566,6 +699,7 @@ export function PluginNewThreadComposer({
     onSubmit,
     permissionMode,
     projectId,
+    seededExecutionInputSources,
     promptDraft,
     reasoningLevel,
     selectedEnvironment,

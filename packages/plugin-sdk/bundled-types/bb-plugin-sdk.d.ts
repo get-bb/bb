@@ -3036,10 +3036,10 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
-                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
+                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -3059,13 +3059,13 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
-            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
             conflicts: "conflicts";
+            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -5862,11 +5862,11 @@ type HostProviderCliInstallEvent = ProviderCliInstallEvent;
 declare const pluginUpdateCheckEntrySchema: z$1.ZodObject<{
     id: z$1.ZodString;
     outcome: z$1.ZodEnum<{
+        unavailable: "unavailable";
         incompatible: "incompatible";
         current: "current";
         "update-available": "update-available";
         pinned: "pinned";
-        unavailable: "unavailable";
     }>;
     devMode: z$1.ZodOptional<z$1.ZodLiteral<true>>;
     installed: z$1.ZodObject<{
@@ -5933,11 +5933,11 @@ declare const installedPluginSchema: z$1.ZodObject<{
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            unavailable: "unavailable";
             incompatible: "incompatible";
             current: "current";
             "update-available": "update-available";
             pinned: "pinned";
-            unavailable: "unavailable";
         }>>;
         availableVersion: z$1.ZodOptional<z$1.ZodString>;
         blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6037,11 +6037,11 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -6143,11 +6143,11 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
+                unavailable: "unavailable";
                 incompatible: "incompatible";
                 current: "current";
                 "update-available": "update-available";
                 pinned: "pinned";
-                unavailable: "unavailable";
             }>>;
             availableVersion: z$1.ZodOptional<z$1.ZodString>;
             blockedVersion: z$1.ZodOptional<z$1.ZodString>;
@@ -10427,6 +10427,70 @@ interface NewThreadRequest {
 interface NewThreadComposerProps {
     /** Seeds the project picker. The user can change it. */
     defaultProjectId?: string;
+    /**
+     * Seeds the provider picker. Like every `default*` prop this is a SEED, not
+     * a controlled value: the composer stays uncontrolled, the user can change
+     * it, and when omitted the composer falls back to the project's remembered
+     * execution defaults exactly as before. When provided it takes precedence
+     * over those project defaults.
+     *
+     * Re-seeding: the `default*` props are value-compared each render. When any
+     * of them changes after mount, the composer re-seeds EVERY execution and
+     * environment selection from the new props — including selections the user
+     * had already touched — so switching between two saved records in the same
+     * mounted composer reloads that record's values (the same rule
+     * `defaultProjectId` already follows).
+     *
+     * Every seeded field is reported as caller-explicit in the submitted
+     * request's `executionInputSources`. That is what makes the seed survive
+     * `threads.spawn`: the server drops a requested `providerId`/`model` that
+     * carries no provenance source and re-derives it from the project's stored
+     * defaults, which would silently undo the seed.
+     */
+    defaultProviderId?: string;
+    /** Seeds the model picker. Same seed semantics as {@link defaultProviderId}. */
+    defaultModel?: string;
+    /**
+     * Seeds the reasoning-level picker. Same seed semantics as
+     * {@link defaultProviderId}. If the seeded model does not support this
+     * level, the composer reconciles to the closest supported one.
+     */
+    defaultReasoningLevel?: ReasoningLevel;
+    /**
+     * Seeds the service-tier picker. Same seed semantics as
+     * {@link defaultProviderId}. Ignored (and omitted from the submitted
+     * request) when the selected provider has no service tiers.
+     */
+    defaultServiceTier?: ServiceTier;
+    /** Seeds the permission-mode picker. Same seed semantics as {@link defaultProviderId}. */
+    defaultPermissionMode?: PermissionMode;
+    /**
+     * Seeds the environment and branch pickers from a previously submitted
+     * `NewThreadRequest.environment`. Same seed semantics as
+     * {@link defaultProviderId}: a seed the user can change, taking precedence
+     * over the composer's own environment default when provided.
+     *
+     * Round trip: feeding a submitted request's `environment` back in and
+     * resubmitting untouched reproduces an equivalent environment, with these
+     * documented limits — the composer cannot represent every args variant:
+     *
+     * - `{ type: "project-default" }` seeds nothing; the composer resolves its
+     *   own default and submits that concrete environment instead.
+     * - A `host` environment whose host no longer exists (or whose project has
+     *   no source on it) falls back to the composer's default host, exactly as
+     *   the primary compose surface would.
+     * - A `reuse` environment whose worktree no longer has unarchived threads
+     *   falls back the same way.
+     * - An `unmanaged` workspace's `path` has no composer control; the seeded
+     *   selection submits `path: null` (the host's configured checkout). The
+     *   composer itself never produces a non-null `path`, so real round trips
+     *   are unaffected.
+     * - A `managed-worktree` with `baseBranch: { kind: "default" }` leaves the
+     *   branch picker on its default, which may resolve to a named base branch
+     *   when the project configures a dedicated worktree base — the same branch
+     *   the original `default` submission would have created from.
+     */
+    defaultEnvironment?: CreateThreadEnvironmentArgs;
     /** Seeds the draft, only while the draft is still empty. */
     initialPrompt?: string;
     placeholder?: string;

@@ -83,3 +83,21 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `pluginComposerHost`, so plugin composer customizations, banners, and
    `useComposer()` writes do not reach it. Decide whether composers rendered
    by a plugin should participate in that surface before stabilizing.
+
+6. **Seeding props and the round-trip guarantee.** The `default*` props
+   (`defaultProviderId`, `defaultModel`, `defaultReasoningLevel`,
+   `defaultServiceTier`, `defaultPermissionMode`, `defaultEnvironment`) seed
+   the composer from a stored `NewThreadRequest` so a plugin can re-open a
+   saved configuration without silently resetting it to project defaults.
+   They are seeds (uncontrolled), take precedence over project defaults, and
+   re-seed on any value change — including user-touched selections — via the
+   creation-options resetKey. `defaultEnvironment` maps args back to picker
+   selections in
+   `apps/app/src/components/plugin/new-thread-environment-seed.ts`; its
+   unrepresentable variants (`project-default`, `personal` without a
+   `hostId`, an `unmanaged` `path`) are documented on the prop. Before
+   stabilizing, confirm the mapping still inverts
+   `resolveRootComposeThreadEnvironment` (the round-trip tests in
+   `new-thread-environment-seed.test.ts` and
+   `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
+   re-seed-on-change rule should instead be an explicit reset nonce.
