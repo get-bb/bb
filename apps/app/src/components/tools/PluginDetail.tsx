@@ -30,10 +30,6 @@ import {
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import {
-  PluginDetailFactRow,
-  PluginDetailTable,
-} from "@/components/tools/plugin-detail-table";
 import { usePluginSource } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
@@ -212,8 +208,25 @@ export function PluginDetail({
           </Pill>
         ) : undefined
       }
+      // Version and install date are identity, so they sit with the identity.
+      // They had been a two-row bordered table inside About, carrying the same
+      // weight as Capabilities and the health tables for two trivial facts, and
+      // floated hard right with a void between them and the description.
       metadata={
-        <span className="block break-all font-mono">{plugin.rootDir}</span>
+        <>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <span className="font-mono">{plugin.version}</span>
+            <span aria-hidden>·</span>
+            {installedAt === null ? (
+              <span>Updates with bb</span>
+            ) : (
+              <span>Installed {formatAbsoluteDate(installedAt)}</span>
+            )}
+          </span>
+          <span className="mt-0.5 block break-all font-mono">
+            {plugin.rootDir}
+          </span>
+        </>
       }
       lifecycleControl={
         <Switch
@@ -234,33 +247,15 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         {/*
-          About and Release are one block, not two sections. Both answer "what
-          is this thing" rather than "what does it do", and as separate headed
-          sections they gave two rank-1 headings to a sentence and two facts —
-          out-competing Capabilities, which is what the page is actually for.
-          They wrap onto separate lines when the column is too narrow.
+          About is prose, nothing else. Release used to be a second headed
+          section, then a fact table beside this paragraph; both gave a rank-1
+          surface to two facts and out-competed Capabilities, which is what the
+          page is for. The facts now sit in the header, with the identity.
         */}
         <ResourceDetailOverviewSection label="About">
-          <div className="flex min-w-0 flex-wrap items-start gap-x-8 gap-y-4">
-            <p className="min-w-[16rem] max-w-prose flex-1 text-sm leading-relaxed text-muted-foreground">
-              {plugin.description ?? "This plugin does not describe itself."}
-            </p>
-            <PluginDetailTable>
-              <PluginDetailFactRow label="Version" mono>
-                {plugin.version}
-              </PluginDetailFactRow>
-              {installedAt === null ? null : (
-                <PluginDetailFactRow label="Installed">
-                  {formatAbsoluteDate(installedAt)}
-                </PluginDetailFactRow>
-              )}
-              {hasUpdateManagement ? null : (
-                <PluginDetailFactRow label="Updates">
-                  Included with bb releases
-                </PluginDetailFactRow>
-              )}
-            </PluginDetailTable>
-          </div>
+          <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+            {plugin.description ?? "This plugin does not describe itself."}
+          </p>
         </ResourceDetailOverviewSection>
         <ResourceDetailIncludesSection label="Capabilities">
           <PluginIncludes plugin={plugin} hasSettings={hasSettings} />

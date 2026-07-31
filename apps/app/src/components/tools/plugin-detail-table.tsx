@@ -11,11 +11,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 /**
  * The one table treatment every plugin-detail section uses.
  *
- * About, Capabilities, Background services and Scheduled jobs are all the same
- * kind of object — a bordered list of rows — so they share a shell rather than
- * each inventing a surface. The shell hugs its contents instead of stretching
- * to the page width, which is what stopped short rows stranding a wide empty
- * gutter.
+ * Capabilities, Background services and Scheduled jobs are all the same kind of
+ * object — a bordered list of rows — so they share a shell rather than each
+ * inventing a surface. The shell hugs its contents instead of stretching to the
+ * page width, which is what stopped short rows stranding a wide empty gutter.
  */
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
@@ -34,40 +33,6 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 // inherits the 16px/24px root leading, and that — not the padding — was what
 // made these rows stand 10px taller than every other row in the app.
 const CELL = "px-2.5 py-1.5 align-top text-sm leading-snug";
-
-/** A label/value row, for the About block. */
-export function PluginDetailFactRow({
-  label,
-  children,
-  mono = false,
-}: {
-  label: string;
-  children: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <tr>
-      <th
-        scope="row"
-        className={cn(
-          CELL,
-          "whitespace-nowrap bg-surface-recessed text-xs font-medium text-muted-foreground",
-        )}
-      >
-        {label}
-      </th>
-      <td
-        className={cn(
-          CELL,
-          "max-w-[42rem] text-sm text-foreground",
-          mono && "font-mono text-xs",
-        )}
-      >
-        {children}
-      </td>
-    </tr>
-  );
-}
 
 /**
  * A glyph whose tooltip names what it stands for.

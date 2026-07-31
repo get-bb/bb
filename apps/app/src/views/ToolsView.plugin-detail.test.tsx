@@ -119,16 +119,18 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    // About and Release are one block: one heading, and the version reads as a
-    // labelled fact rather than its own section.
+    // About is prose only. Release is gone as a section, and its two facts sit
+    // in the header meta line with the identity rather than in a bordered
+    // table carrying the same weight as Capabilities.
     expect(screen.getByText("About")).toBeTruthy();
     expect(screen.queryByText("Release")).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
-    expect(screen.getByText("Version")).toBeTruthy();
-    expect(screen.getByText("0.1.0")).toBeTruthy();
-    expect(screen.getByText("Included with bb releases")).toBeTruthy();
+    const meta = screen.getByText("0.1.0");
+    expect(meta.className).toContain("font-mono");
+    expect(meta.closest("[data-resource-detail-section]")).toBeNull();
+    expect(screen.getByText("Updates with bb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
