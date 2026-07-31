@@ -923,6 +923,12 @@ interface NewThreadComposerProps {
      * had already touched — so switching between two saved records in the same
      * mounted composer reloads that record's values (the same rule
      * `defaultProjectId` already follows).
+     *
+     * Every seeded field is reported as caller-explicit in the submitted
+     * request's `executionInputSources`. That is what makes the seed survive
+     * `threads.spawn`: the server drops a requested `providerId`/`model` that
+     * carries no provenance source and re-derives it from the project's stored
+     * defaults, which would silently undo the seed.
      */
     defaultProviderId?: string;
     /** Seeds the model picker. Same seed semantics as {@link defaultProviderId}. */

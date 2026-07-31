@@ -54,9 +54,18 @@ const PROJECT = {
   ],
 };
 
+// A second project on the same host, so a record switch can differ ONLY by
+// project id.
+const OTHER_PROJECT = {
+  ...PROJECT,
+  id: "proj_2",
+  name: "Project Two",
+  sources: [{ ...PROJECT.sources[0], id: "src_2", projectId: "proj_2" }],
+};
+
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({
-    data: { projects: [PROJECT], personalProject: undefined },
+    data: { projects: [PROJECT, OTHER_PROJECT], personalProject: undefined },
   }),
 }));
 
@@ -188,12 +197,12 @@ function latestPromptBoxProps(): Record<string, any> {
   return props as Record<string, any>;
 }
 
-function renderComposer(
+function composerElement(
   seed: NewThreadRequest,
   onSubmit: (request: NewThreadRequest) => void,
   draftKey: string,
 ) {
-  return render(
+  return (
     <MemoryRouter>
       <PluginNewThreadComposer
         draftKey={draftKey}
@@ -207,8 +216,16 @@ function renderComposer(
         initialPrompt="review every PR for slop"
         onSubmit={onSubmit}
       />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderComposer(
+  seed: NewThreadRequest,
+  onSubmit: (request: NewThreadRequest) => void,
+  draftKey: string,
+) {
+  return render(composerElement(seed, onSubmit, draftKey));
 }
 
 const STORED_REQUEST: NewThreadRequest = {
@@ -217,7 +234,15 @@ const STORED_REQUEST: NewThreadRequest = {
   model: "gpt-5.6-sol",
   reasoningLevel: "high",
   permissionMode: "full",
-  executionInputSources: {},
+  // Every seeded field must carry caller-explicit provenance. Without it the
+  // server drops the requested providerId/model and re-derives them from the
+  // project's stored defaults, undoing the seed.
+  executionInputSources: {
+    providerId: "explicit",
+    model: "explicit",
+    reasoningLevel: "explicit",
+    permissionMode: "explicit",
+  },
   environment: {
     type: "host",
     hostId: "host_1",
@@ -297,22 +322,13 @@ describe("PluginNewThreadComposer seeding", () => {
       },
     };
     view.rerender(
-      <MemoryRouter>
-        <PluginNewThreadComposer
-          draftKey="re-seed"
-          defaultProjectId={otherRecord.projectId}
-          defaultProviderId={otherRecord.providerId}
-          defaultModel={otherRecord.model}
-          defaultReasoningLevel={otherRecord.reasoningLevel}
-          defaultServiceTier={otherRecord.serviceTier}
-          defaultPermissionMode={otherRecord.permissionMode}
-          defaultEnvironment={otherRecord.environment}
-          initialPrompt="review every PR for slop"
-          onSubmit={(request) => {
-            submitted.push(request);
-          }}
-        />
-      </MemoryRouter>,
+      composerElement(
+        otherRecord,
+        (request) => {
+          submitted.push(request);
+        },
+        "re-seed",
+      ),
     );
 
     await waitFor(() => {
@@ -322,6 +338,76 @@ describe("PluginNewThreadComposer seeding", () => {
 
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual(otherRecord);
+  });
+
+  it("re-seeds the branch when the next record differs only by project", async () => {
+    const submitted: NewThreadRequest[] = [];
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    const view = renderComposer(STORED_REQUEST, onSubmit, "project-switch");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    // The user clears the seeded branch on record one.
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.branch.onClear();
+    });
+
+    // Record two: identical seeds except the project.
+    const otherProjectRecord: NewThreadRequest = {
+      ...STORED_REQUEST,
+      projectId: "proj_2",
+    };
+    view.rerender(composerElement(otherProjectRecord, onSubmit, "project-switch"));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    // The previous record's "cleared" state must not leak: record two keeps
+    // its own seeded base branch.
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toEqual(otherProjectRecord);
+  });
+
+  it("does not resurrect the branch seed after the user leaves and returns to the environment", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(STORED_REQUEST, (request) => {
+      submitted.push(request);
+    }, "env-return");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    // Away to working-locally, then back to the seeded worktree environment.
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onChange(
+        "host:host_1:local",
+      );
+    });
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onChange(
+        "host:host_1:worktree",
+      );
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    // Back in worktree mode, but the retired seed no longer pins "release" —
+    // the base branch falls to the environment's own default.
+    expect(submitted[0].environment).toEqual({
+      type: "host",
+      hostId: "host_1",
+      workspace: {
+        type: "managed-worktree",
+        baseBranch: { kind: "default" },
+      },
+    });
   });
 
   it("keeps project defaults when no seed props are passed", async () => {
