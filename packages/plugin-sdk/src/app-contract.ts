@@ -376,6 +376,21 @@ export interface PluginContentScriptContext {
   readonly generation: number;
   /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
   readonly signal: AbortSignal;
+  /**
+   * Persistently decorate any thread row for this plugin generation.
+   *
+   * Unlike `useComposer().setThreadRowStatus`, this status is not owned by the
+   * currently mounted composer and therefore survives route changes. Passing
+   * `null` clears the plugin's status for that thread. The host clears every
+   * remaining status when the frontend generation deactivates.
+   *
+   * Optional so bundles can feature-detect support while this experimental
+   * surface rolls out across 0.x clients.
+   */
+  readonly experimental_setThreadRowStatus?: (
+    threadId: string,
+    status: PluginComposerThreadRowStatus | null,
+  ) => void;
 }
 
 /** Cleanup returned by a frontend content script. */

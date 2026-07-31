@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
-  SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -476,10 +475,16 @@ describe("ThreadRow", () => {
     expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
     expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
     expect(Array.from(runningIcon.classList)).toContain(
+      "motion-safe:[animation-duration:1.5s]",
+    );
+    expect(Array.from(runningIcon.classList)).not.toContain(
       "animate-shine-icon-status",
     );
-    expect(Array.from(runningIcon.classList)).toContain(
-      SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
+    expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
+      "text-success",
+    );
+    expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
+      "motion-safe:animate-pulse",
     );
   });
 

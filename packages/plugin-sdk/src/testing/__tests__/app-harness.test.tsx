@@ -49,7 +49,10 @@ function TypedRpcPanel() {
   return <div>{title}</div>;
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function Panel({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc();
@@ -283,6 +286,98 @@ describe("loadPluginApp", () => {
       "second:dispose",
       "first:dispose",
     ]);
+  });
+
+  it("models current-host thread-row statuses, validation, and lifecycle cleanup", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let retainedSetter:
+      | ((
+          threadId: string,
+          status: {
+            icon: string;
+            label: string;
+            tone?: "running";
+          } | null,
+        ) => void)
+      | undefined;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "thread-status",
+          mount({ experimental_setThreadRowStatus }) {
+            retainedSetter = experimental_setThreadRowStatus;
+            retainedSetter?.("  thr_source  ", {
+              icon: " AiContentGenerator01 ",
+              label: " Improving draft ",
+              tone: "running",
+            });
+            (
+              experimental_setThreadRowStatus as
+                | ((threadId: unknown, status: unknown) => void)
+                | undefined
+            )?.(42, {
+              icon: "AiContentGenerator01",
+              label: "Invalid thread",
+            });
+          },
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "prompt-shaper",
+    });
+    expect(mounted.inspection.getThreadRowStatus("thr_source")).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Improving draft",
+      tone: "running",
+    });
+    expect(mounted.inspection.threadRowStatusCalls).toEqual([
+      {
+        threadId: "thr_source",
+        status: {
+          icon: "AiContentGenerator01",
+          label: "Improving draft",
+          tone: "running",
+        },
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('"threadId" must be a non-empty string'),
+    );
+
+    await mounted.lifecycle.dispose();
+    expect(mounted.inspection.getThreadRowStatus("thr_source")).toBeNull();
+    retainedSetter?.("thr_source", {
+      icon: "AiContentGenerator01",
+      label: "Late stale status",
+      tone: "running",
+    });
+    expect(mounted.inspection.getThreadRowStatus("thr_source")).toBeNull();
+    expect(mounted.inspection.threadRowStatusCalls).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it("can omit the experimental thread-row status API for compatibility tests", async () => {
+    let setterWasAvailable = true;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "compatibility",
+          mount({ experimental_setThreadRowStatus }) {
+            setterWasAvailable = experimental_setThreadRowStatus !== undefined;
+          },
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "prompt-shaper",
+      omitExperimentalThreadRowStatus: true,
+    });
+    expect(setterWasAvailable).toBe(false);
+    expect(mounted.inspection.threadRowStatusCalls).toEqual([]);
+    await mounted.lifecycle.dispose();
   });
 
   it("rolls back earlier content scripts when a later mount rejects", async () => {

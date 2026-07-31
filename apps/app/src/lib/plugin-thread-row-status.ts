@@ -57,6 +57,28 @@ export function setPluginThreadRowStatus(
   }
 }
 
+export function clearPluginThreadRowStatuses(pluginId: string): void {
+  for (const [threadId, statuses] of statusesByThreadId) {
+    const previous = getPluginThreadRowStatus(threadId);
+    for (const [owner, entry] of statuses) {
+      if (entry.pluginId === pluginId) statuses.delete(owner);
+    }
+    if (statuses.size === 0) statusesByThreadId.delete(threadId);
+    if (getPluginThreadRowStatus(threadId) !== previous) notify(threadId);
+  }
+}
+
+export function clearPluginThreadRowStatusesByOwner(
+  owner: ThreadRowStatusOwner,
+): void {
+  for (const [threadId, statuses] of statusesByThreadId) {
+    const previous = getPluginThreadRowStatus(threadId);
+    statuses.delete(owner);
+    if (statuses.size === 0) statusesByThreadId.delete(threadId);
+    if (getPluginThreadRowStatus(threadId) !== previous) notify(threadId);
+  }
+}
+
 export function subscribePluginThreadRowStatus(
   threadId: string,
   listener: ThreadRowStatusListener,

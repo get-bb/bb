@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { definePluginApp } from "./plugin-app-definition";
 import {
@@ -17,6 +18,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "./plugin-slots";
+import {
+  getPluginThreadRowStatus,
+  resetPluginThreadRowStatusesForTest,
+} from "./plugin-thread-row-status";
 
 function candidate(
   pluginId: string,
@@ -55,6 +60,10 @@ function contentScriptModule(
 ): Record<string, unknown> {
   return { default: definePluginApp(setup) };
 }
+
+afterEach(() => {
+  resetPluginThreadRowStatusesForTest();
+});
 
 function makeDeps(initial: PluginFrontendCandidate[] = []) {
   return {
@@ -247,6 +256,158 @@ describe("reconcilePluginFrontends", () => {
       "v2:abort",
       "v2:dispose",
     ]);
+  });
+
+  it("keeps content-script thread statuses across routes and clears them on deactivation", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "thread-status",
+          mount({ experimental_setThreadRowStatus }) {
+            experimental_setThreadRowStatus?.("thr_source", {
+              icon: "AiContentGenerator01",
+              label: "Improve Prompt is improving the draft",
+              tone: "running",
+            });
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginThreadRowStatus("thr_source")).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Improve Prompt is improving the draft",
+      tone: "running",
+    });
+
+    deps.fetchCandidates.mockResolvedValue([]);
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginThreadRowStatus("thr_source")).toBeNull();
+  });
+
+  it("rolls back a status from a partially mounted generation and rejects its retained setter", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    let retainedSetter:
+      | ((
+          threadId: string,
+          status: PluginComposerThreadRowStatus | null,
+        ) => void)
+      | undefined;
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "thread-status",
+          mount({ experimental_setThreadRowStatus }) {
+            retainedSetter = experimental_setThreadRowStatus;
+            retainedSetter?.("thr_source", {
+              icon: "AiContentGenerator01",
+              label: "Partial generation",
+              tone: "running",
+            });
+          },
+        });
+        app.contentScripts.register({
+          id: "broken",
+          mount() {
+            throw new Error("later mount failed");
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginThreadRowStatus("thr_source")).toBeNull();
+
+    retainedSetter?.("thr_source", {
+      icon: "AiContentGenerator01",
+      label: "Stale callback",
+      tone: "running",
+    });
+    expect(getPluginThreadRowStatus("thr_source")).toBeNull();
+  });
+
+  it("does not let a retained old-generation setter overwrite its replacement", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    let oldSetter:
+      | ((
+          threadId: string,
+          status: PluginComposerThreadRowStatus | null,
+        ) => void)
+      | undefined;
+    deps.importModule.mockImplementation(async (url: string) =>
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "thread-status",
+          mount({ experimental_setThreadRowStatus }) {
+            if (url.includes("h=v1")) {
+              oldSetter = experimental_setThreadRowStatus;
+            }
+            experimental_setThreadRowStatus?.("thr_source", {
+              icon: "AiContentGenerator01",
+              label: url.includes("h=v1")
+                ? "Old generation"
+                : "Replacement generation",
+              tone: "running",
+            });
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    deps.fetchCandidates.mockResolvedValue([candidate("prompt-shaper", "v2")]);
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginThreadRowStatus("thr_source")?.label).toBe(
+      "Replacement generation",
+    );
+
+    oldSetter?.("thr_source", {
+      icon: "AiContentGenerator01",
+      label: "Late old generation",
+      tone: "running",
+    });
+    expect(getPluginThreadRowStatus("thr_source")?.label).toBe(
+      "Replacement generation",
+    );
+  });
+
+  it("warns and ignores non-string and blank content-script thread ids", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "thread-status",
+          mount({ experimental_setThreadRowStatus }) {
+            const setStatus = experimental_setThreadRowStatus as
+              | ((threadId: unknown, status: unknown) => void)
+              | undefined;
+            setStatus?.(42, {
+              icon: "AiContentGenerator01",
+              label: "Invalid number id",
+            });
+            setStatus?.("   ", {
+              icon: "AiContentGenerator01",
+              label: "Invalid blank id",
+            });
+          },
+        });
+      }),
+    );
+
+    await expect(
+      reconcilePluginFrontends(state, deps),
+    ).resolves.toBeUndefined();
+    expect(getPluginThreadRowStatus("42")).toBeNull();
+    expect(deps.warn).toHaveBeenCalledTimes(2);
+    expect(deps.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"threadId" must be a non-empty string'),
+    );
   });
 
   it("disposes the old generation and rolls back a failed multi-script candidate in reverse order", async () => {
@@ -465,21 +626,44 @@ describe("reconcilePluginFrontends", () => {
     const deps = makeDeps([candidate("hello", "v1")]);
     const cleanup = vi.fn();
     let resolveMount: ((dispose: () => void) => void) | undefined;
+    let retainedSetter:
+      | ((
+          threadId: string,
+          status: PluginComposerThreadRowStatus | null,
+        ) => void)
+      | undefined;
     deps.importModule.mockResolvedValue(
       contentScriptModule((app) => {
         app.contentScripts.register({
           id: "pending",
-          mount: () =>
-            new Promise<() => void>((resolve) => {
+          mount: ({ experimental_setThreadRowStatus }) => {
+            retainedSetter = experimental_setThreadRowStatus;
+            retainedSetter?.("thr_pending", {
+              icon: "AiContentGenerator01",
+              label: "Pending activation",
+              tone: "running",
+            });
+            return new Promise<() => void>((resolve) => {
               resolveMount = resolve;
-            }),
+            });
+          },
         });
       }),
     );
 
     const reconcile = reconcilePluginFrontends(state, deps);
     await vi.waitFor(() => expect(resolveMount).toBeTypeOf("function"));
+    expect(getPluginThreadRowStatus("thr_pending")?.label).toBe(
+      "Pending activation",
+    );
     await disposePluginFrontends(state, deps);
+    expect(getPluginThreadRowStatus("thr_pending")).toBeNull();
+    retainedSetter?.("thr_pending", {
+      icon: "AiContentGenerator01",
+      label: "Late pending activation",
+      tone: "running",
+    });
+    expect(getPluginThreadRowStatus("thr_pending")).toBeNull();
     resolveMount?.(cleanup);
     await reconcile;
 

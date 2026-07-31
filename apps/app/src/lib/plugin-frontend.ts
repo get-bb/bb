@@ -29,6 +29,7 @@ import type {
   PluginContentScriptRegistration,
   PluginSdkApp,
 } from "@bb/plugin-sdk";
+import { normalizeComposerThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import {
   collectPluginAppRegistrations,
@@ -41,6 +42,11 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
+import {
+  clearPluginThreadRowStatuses,
+  clearPluginThreadRowStatusesByOwner,
+  setPluginThreadRowStatus,
+} from "./plugin-thread-row-status";
 
 /**
  * Plugin frontend bundle loading (plugin design §5.1). Once per page load,
@@ -355,6 +361,7 @@ export interface PluginFrontendReconcileState {
   activeGenerations: Map<string, ActivePluginFrontendGeneration>;
   generationByPluginId: Map<string, number>;
   pendingControllers: Map<string, AbortController>;
+  pendingStatusOwners: Map<string, symbol>;
   diagnostics: Map<string, PluginFrontendDiagnostic>;
   tornDown: boolean;
 }
@@ -366,6 +373,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
     activeGenerations: new Map(),
     generationByPluginId: new Map(),
     pendingControllers: new Map(),
+    pendingStatusOwners: new Map(),
     diagnostics: new Map(),
     tornDown: false,
   };
@@ -397,6 +405,7 @@ interface ActivePluginFrontendGeneration {
   generation: number;
   hash: string;
   controller: AbortController;
+  statusOwner: symbol;
   scripts: MountedContentScript[];
   disposed: boolean;
 }
@@ -463,6 +472,7 @@ async function disposeGeneration(
     );
     if (failure !== null) failures.push(failure);
   }
+  clearPluginThreadRowStatusesByOwner(activation.statusOwner);
   return failures;
 }
 
@@ -472,8 +482,12 @@ async function deactivateCommittedGeneration(
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginFrontendFailure[]> {
   const active = state.activeGenerations.get(pluginId);
-  if (active === undefined) return [];
+  if (active === undefined) {
+    clearPluginThreadRowStatuses(pluginId);
+    return [];
+  }
   const failures = await disposeGeneration(pluginId, active, deps);
+  clearPluginThreadRowStatuses(pluginId);
   state.activeGenerations.delete(pluginId);
   state.appliedHashes.delete(pluginId);
   deps.removeRegistrations(pluginId);
@@ -486,6 +500,7 @@ async function mountWithTimeout(
   registration: PluginContentScriptRegistration,
   generation: number,
   controller: AbortController,
+  statusOwner: symbol,
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginContentScriptDisposer | null> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -495,6 +510,33 @@ async function mountWithTimeout(
       pluginId,
       generation,
       signal: controller.signal,
+      experimental_setThreadRowStatus: (threadId: unknown, status: unknown) => {
+        if (controller.signal.aborted) return;
+        if (typeof threadId !== "string") {
+          deps.warn(
+            `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+          );
+          return;
+        }
+        const normalizedThreadId = threadId.trim();
+        if (normalizedThreadId.length === 0) {
+          deps.warn(
+            `bb plugin "${pluginId}": contentScript.experimental_setThreadRowStatus: "threadId" must be a non-empty string`,
+          );
+          return;
+        }
+        const normalizedStatus = normalizeComposerThreadRowStatus(
+          status,
+          (reason) => deps.warn(`bb plugin "${pluginId}": ${reason}`),
+        );
+        if (normalizedStatus === undefined) return;
+        setPluginThreadRowStatus(
+          normalizedThreadId,
+          pluginId,
+          normalizedStatus,
+          statusOwner,
+        );
+      },
     }),
   );
   const timeoutMs =
@@ -543,6 +585,7 @@ async function activateContentScripts(
   generation: number,
   registrations: readonly PluginContentScriptRegistration[],
   controller: AbortController,
+  statusOwner: symbol,
   deps: PluginFrontendReconcileDeps,
 ): Promise<
   | { ok: true; activation: ActivePluginFrontendGeneration }
@@ -552,6 +595,7 @@ async function activateContentScripts(
     generation,
     hash,
     controller,
+    statusOwner,
     scripts: [],
     disposed: false,
   };
@@ -562,6 +606,7 @@ async function activateContentScripts(
         registration,
         generation,
         controller,
+        statusOwner,
         deps,
       );
       activation.scripts.push({ id: registration.id, dispose });
@@ -711,16 +756,22 @@ export async function reconcilePluginFrontends(
         deps,
       );
       const controller = new AbortController();
+      const statusOwner = Symbol(
+        `${pluginId}:content-script-generation:${generation}`,
+      );
       state.pendingControllers.set(pluginId, controller);
+      state.pendingStatusOwners.set(pluginId, statusOwner);
       const activationResult = await activateContentScripts(
         pluginId,
         candidate.bundle.hash,
         generation,
         collected.contentScripts,
         controller,
+        statusOwner,
         deps,
       );
       state.pendingControllers.delete(pluginId);
+      state.pendingStatusOwners.delete(pluginId);
       if (state.tornDown) {
         if (activationResult.ok) {
           await disposeGeneration(pluginId, activationResult.activation, deps);
@@ -773,11 +824,18 @@ export async function disposePluginFrontends(
   deps: PluginFrontendReconcileDeps,
 ): Promise<void> {
   state.tornDown = true;
-  for (const controller of state.pendingControllers.values()) {
+  const pendingPluginIds = [...state.pendingControllers.keys()];
+  for (const [pluginId, controller] of state.pendingControllers) {
     controller.abort();
+    const statusOwner = state.pendingStatusOwners.get(pluginId);
+    if (statusOwner !== undefined) {
+      clearPluginThreadRowStatusesByOwner(statusOwner);
+    }
   }
   state.pendingControllers.clear();
+  state.pendingStatusOwners.clear();
   const pluginIds = new Set([
+    ...pendingPluginIds,
     ...state.records.keys(),
     ...state.activeGenerations.keys(),
   ]);
@@ -786,6 +844,7 @@ export async function disposePluginFrontends(
     if (active !== undefined) {
       await disposeGeneration(pluginId, active, deps);
     }
+    clearPluginThreadRowStatuses(pluginId);
     deps.removeRegistrations(pluginId);
     deps.applyCss(pluginId, null);
   }

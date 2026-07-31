@@ -55,7 +55,6 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
-  SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -156,19 +155,35 @@ function PluginThreadRowStatusIndicator({
 }: {
   status: PluginComposerThreadRowStatus;
 }) {
+  if (status.tone === "running") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center justify-center motion-safe:animate-pulse",
+          COARSE_POINTER_ICON_SIZE_CLASS,
+          "text-success",
+        )}
+      >
+        <Icon
+          name={pluginIconName(status.icon)}
+          className={cn(
+            "pointer-events-none shrink-0 animate-shine-icon",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            "motion-safe:[animation-duration:1.5s]",
+          )}
+          aria-label={status.label}
+        />
+      </span>
+    );
+  }
+
   return (
     <Icon
       name={pluginIconName(status.icon)}
       className={cn(
         "pointer-events-none shrink-0",
         COARSE_POINTER_ICON_SIZE_CLASS,
-        status.tone === "running"
-          ? [
-              "animate-shine-icon",
-              "animate-shine-icon-status",
-              SIDEBAR_PLUGIN_WORKING_STATUS_COLOR_CLASS,
-            ]
-          : status.tone === "success"
+        status.tone === "success"
             ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
             : status.tone === "error"
               ? "text-destructive"

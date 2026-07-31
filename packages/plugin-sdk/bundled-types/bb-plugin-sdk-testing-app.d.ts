@@ -114,12 +114,23 @@ interface ContentScriptTestMountOptions {
     pluginId: string;
     /** Defaults to 1. Pass the host generation you want the plugin to observe. */
     generation?: number;
+    /**
+     * Simulate an older compatible host that predates the optional experimental
+     * thread-row status API. Current-host behavior is enabled by default.
+     */
+    omitExperimentalThreadRowStatus?: boolean;
+}
+interface ContentScriptThreadRowStatusCall {
+    threadId: string;
+    status: PluginComposerThreadRowStatus | null;
 }
 interface MountedPluginContentScripts {
     inspection: {
         readonly mountedIds: readonly string[];
         readonly signal: AbortSignal;
         readonly disposed: boolean;
+        readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
+        getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
     };
     lifecycle: {
         /** Abort, then run returned cleanup functions once in reverse order. */
@@ -203,4 +214,4 @@ declare function renderSlot<Props extends object, Contract extends PluginRpcCont
 }, props: Props, options?: RenderSlotOptions<Contract>): RenderedSlot;
 
 export { installTestPluginRuntime, loadPluginApp, mountPluginContentScripts, renderSlot };
-export type { CapturedPluginApp, ComposerLog, ContentScriptTestMountOptions, MountedPluginContentScripts, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };
+export type { CapturedPluginApp, ComposerLog, ContentScriptTestMountOptions, ContentScriptThreadRowStatusCall, MountedPluginContentScripts, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };
