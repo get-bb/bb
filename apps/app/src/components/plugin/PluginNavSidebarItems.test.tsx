@@ -209,6 +209,24 @@ describe("PluginNavSidebarItems", () => {
     expect(panelRowNames()).toEqual(["Tools", "GitHub", "Docs"]);
   });
 
+  it("keeps a saved order when plugin frontends register after the first render", async () => {
+    // The Tools row makes this list mount before any plugin has registered.
+    // The order effect must not save that empty snapshot over the user's rows.
+    renderSidebarItems({
+      toolsRoutePath: "/tools/skills",
+      storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
+    });
+
+    expect(panelRowNames()).toEqual(["Tools"]);
+
+    registerPanel("docs", "Docs");
+    registerPanel("github", "GitHub");
+
+    await waitFor(() => {
+      expect(panelRowNames()).toEqual(["GitHub", "Tools", "Docs"]);
+    });
+  });
+
   it("marks the Tools row current on any Tools sub-route", () => {
     renderSidebarItems({
       toolsRoutePath: "/tools/skills",

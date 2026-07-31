@@ -33,9 +33,14 @@ export interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> 
   /** Panels parked in the "More" disclosure, in user order. */
   hidden: TPanel[];
   /**
-   * `storedOrder` pruned to registered panels and extended with panels that
-   * have never been ordered. Callers persist this so the stored list doesn't
-   * accumulate keys for plugins the user removed long ago.
+   * `storedOrder` with duplicates dropped and never-ordered panels appended.
+   * Callers persist this so newly installed panels get a slot.
+   *
+   * Keys of panels that are not registered right now keep their position. A
+   * plugin frontend can register late — the sidebar mounts before every plugin
+   * has loaded — so treating "absent" as "removed" would save a shortened order
+   * during startup and lose the user's arrangement. Keeping the key also makes
+   * an uninstalled-and-reinstalled plugin return to its old slot.
    */
   normalizedOrder: string[];
 }
@@ -45,15 +50,20 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   storedOrder,
   hiddenKeys,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
-  const byKey = new Map(panels.map((panel) => [getPluginNavPanelKey(panel), panel]));
+  const byKey = new Map(
+    panels.map((panel) => [getPluginNavPanelKey(panel), panel]),
+  );
   const ordered: TPanel[] = [];
+  const normalizedOrder: string[] = [];
   const seen = new Set<string>();
   for (const key of storedOrder) {
-    const panel = byKey.get(key);
-    // Skip unknown keys (plugin removed) and duplicates (corrupted storage).
-    if (!panel || seen.has(key)) continue;
+    // Skip duplicates (corrupted storage). An unregistered key keeps its slot
+    // in the order but contributes no row.
+    if (seen.has(key)) continue;
     seen.add(key);
-    ordered.push(panel);
+    normalizedOrder.push(key);
+    const panel = byKey.get(key);
+    if (panel) ordered.push(panel);
   }
   // Panels the user has never ordered — newly installed plugins — land last, in
   // registry order, rather than jumping to the top of a customized list.
@@ -61,6 +71,7 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
     const key = getPluginNavPanelKey(panel);
     if (seen.has(key)) continue;
     seen.add(key);
+    normalizedOrder.push(key);
     ordered.push(panel);
   }
 
@@ -72,11 +83,7 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
     else visible.push(panel);
   }
 
-  return {
-    visible,
-    hidden,
-    normalizedOrder: ordered.map(getPluginNavPanelKey),
-  };
+  return { visible, hidden, normalizedOrder };
 }
 
 interface ReorderPluginNavPanelsArgs {
