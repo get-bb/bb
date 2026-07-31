@@ -1,4 +1,4 @@
-import { existsSync, type FSWatcher } from "node:fs";
+import { existsSync, realpathSync, type FSWatcher } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -88,24 +88,53 @@ function registerMutableRootHooks(): void {
     resolve(specifier, context, nextResolve) {
       const resolved = nextResolve(specifier, context);
       if (!resolved.url.startsWith("file:")) return resolved;
+      // A plugin's own files must keep the generation of the parent that
+      // pulled them in, so a later dynamic import from a still-active plugin
+      // cannot mix its modules with those of a newer (or failed) load.
+      const inherited = /[?&]bbPluginLoad=(\d+)/.exec(
+        context.parentURL ?? "",
+      )?.[1];
+      // Longest match wins: a plugin nested inside another plugin's tree owns
+      // its own files, and the outer root must not claim them.
+      let match: { rootUrl: string; generation: number } | undefined;
       for (const [rootUrl, generation] of mutableRootGenerations) {
         if (!resolved.url.startsWith(rootUrl)) continue;
-        const separator = resolved.url.includes("?") ? "&" : "?";
-        return {
-          ...resolved,
-          url: `${resolved.url}${separator}bbPluginLoad=${generation}`,
-          shortCircuit: true,
-        };
+        if (match !== undefined && rootUrl.length <= match.rootUrl.length) {
+          continue;
+        }
+        match = { rootUrl, generation };
       }
-      return resolved;
+      if (match === undefined) return resolved;
+      const separator = resolved.url.includes("?") ? "&" : "?";
+      return {
+        ...resolved,
+        url: `${resolved.url}${separator}bbPluginLoad=${inherited ?? match.generation}`,
+        shortCircuit: true,
+      };
     },
   });
+}
+
+/**
+ * Node canonicalizes ESM files through symbolic links, so the tracked root
+ * must be the real path — otherwise a symlinked install never matches and
+ * reload silently serves cached code.
+ */
+function mutableRootUrl(rootDir: string): string {
+  let canonical = rootDir;
+  try {
+    canonical = realpathSync(rootDir);
+  } catch {
+    // A vanished root fails later with a useful load error; resolve() is a
+    // good enough key until then.
+  }
+  return pathToFileURL(join(canonical, "/")).href;
 }
 
 /** Invalidate a mutable plugin tree so the next import re-reads from disk. */
 function bumpMutableRootGeneration(rootDir: string): void {
   registerMutableRootHooks();
-  const rootUrl = pathToFileURL(join(rootDir, "/")).href;
+  const rootUrl = mutableRootUrl(rootDir);
   mutableRootGenerations.set(
     rootUrl,
     (mutableRootGenerations.get(rootUrl) ?? 0) + 1,
@@ -1008,13 +1037,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         deps.sharedPorts?.replaceDeclarationsForOwner(row.id, declarations);
       },
     });
+    // Mutable trees are edited between loads, so invalidate the previous
+    // generation's URLs before importing (managed git:/npm: artifacts are
+    // immutable after promotion and keep their cached modules). A failed
+    // candidate needs no rollback: the surviving plugin's lazy imports
+    // inherit their own generation from the parent URL.
+    if (row.sourceKind === "path" || row.sourceKind === "builtin") {
+      bumpMutableRootGeneration(row.rootDir);
+    }
     try {
-      // Mutable trees are edited between loads, so invalidate the previous
-      // generation's URLs before importing (managed git:/npm: artifacts are
-      // immutable after promotion and keep their cached modules).
-      if (row.sourceKind === "path" || row.sourceKind === "builtin") {
-        bumpMutableRootGeneration(row.rootDir);
-      }
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,
