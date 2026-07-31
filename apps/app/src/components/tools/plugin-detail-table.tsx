@@ -27,7 +27,13 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
   );
 }
 
-const CELL = "px-3 py-2 align-top";
+// Matched to ResourceDetailListItem (detail-shell.tsx:150), the house row
+// density. A table cell is still a row; it should not sit looser than one.
+//
+// The type is pinned here rather than left to the cell's contents: a `td`
+// inherits the 16px/24px root leading, and that — not the padding — was what
+// made these rows stand 10px taller than every other row in the app.
+const CELL = "px-2.5 py-1.5 align-top text-sm leading-snug";
 
 /** A label/value row, for the About block. */
 export function PluginDetailFactRow({
@@ -45,7 +51,7 @@ export function PluginDetailFactRow({
         scope="row"
         className={cn(
           CELL,
-          "w-[9rem] whitespace-nowrap bg-surface-recessed text-xs font-medium text-muted-foreground",
+          "whitespace-nowrap bg-surface-recessed text-xs font-medium text-muted-foreground",
         )}
       >
         {label}
@@ -89,7 +95,7 @@ export function PluginDetailGlyph({
             role="img"
             aria-label={label}
             tabIndex={0}
-            className="inline-flex shrink-0 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <Icon
               name={icon}
@@ -127,10 +133,15 @@ export function PluginDetailRow({
         colSpan={hasDetail ? undefined : 2}
       >
         <span className="flex min-w-0 items-start gap-2">
-          <span className="mt-0.5">{glyph}</span>
+          {/*
+            `flex`, not a plain span: as a block it wrapped the inline-level
+            glyph in a line box, which added four invisible pixels to every row
+            in every one of these tables.
+          */}
+          <span className="mt-px flex shrink-0">{glyph}</span>
           <span
             className={cn(
-              "min-w-0 break-words text-sm leading-snug text-foreground",
+              "min-w-0 break-words text-foreground",
               mono && "font-mono",
             )}
           >
@@ -142,7 +153,7 @@ export function PluginDetailRow({
         <td
           className={cn(
             CELL,
-            "max-w-[34rem] text-xs leading-relaxed text-muted-foreground",
+            "max-w-[34rem] text-xs leading-normal text-muted-foreground",
           )}
         >
           {detail}
