@@ -517,7 +517,21 @@ describe("PluginDetail capability inventory", () => {
     );
     expect(includes).not.toBeNull();
     const inventory = within(includes as HTMLElement);
-    expect(includes?.querySelector("table")).not.toBeNull();
+    const table = includes?.querySelector("table");
+    expect(table).not.toBeNull();
+
+    // Flat: row rules and nothing else. The page is already the panel
+    // (detail-sections.tsx:38), so a bordered box per list put a card inside a
+    // card and made three ordinary lists read as three raised widgets.
+    const shell = table?.parentElement as HTMLElement;
+    expect(shell.className).not.toContain("border");
+    expect(shell.className).not.toContain("rounded");
+
+    // And with no box to sit inside, the first column is flush with the
+    // section heading rather than indented by a border and its padding.
+    const firstCell = table?.querySelector("td") as HTMLElement;
+    expect(firstCell.className).not.toContain("pl-");
+    expect(firstCell.className).not.toContain("px-");
     expect(
       includes?.querySelector("[data-plugin-capability-group]"),
     ).toBeNull();

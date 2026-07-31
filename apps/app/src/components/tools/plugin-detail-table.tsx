@@ -12,13 +12,17 @@ import { cn } from "@bb/shared-ui/lib/utils";
  * The one table treatment every plugin-detail section uses.
  *
  * Capabilities, Background services and Scheduled jobs are all the same kind of
- * object — a bordered list of rows — so they share a shell rather than each
- * inventing a surface. The shell hugs its contents instead of stretching to the
- * page width, which is what stopped short rows stranding a wide empty gutter.
+ * object — a list of rows — so they share a shell rather than each inventing a
+ * surface. Flat: row rules and nothing else. The page is already the panel
+ * (detail-sections.tsx:38), so boxing each list put a card inside a card and
+ * made three ordinary lists look like three raised widgets.
+ *
+ * With no box, the rows sit flush against the section heading's left edge
+ * instead of being indented by a border and its padding.
  */
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
-    <div className="inline-block max-w-full overflow-hidden rounded-md border border-border align-top">
+    <div className="inline-block max-w-full align-top">
       <table className="w-auto max-w-full border-collapse text-left">
         <tbody className="divide-y divide-border/60">{children}</tbody>
       </table>
@@ -32,7 +36,11 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 // The type is pinned here rather than left to the cell's contents: a `td`
 // inherits the 16px/24px root leading, and that — not the padding — was what
 // made these rows stand 10px taller than every other row in the app.
-const CELL = "px-2.5 py-1.5 align-top text-sm leading-snug";
+//
+// Horizontal padding is per column, not shared: a flat table has no box to sit
+// inside, so an outer gutter would just push the first column off the section's
+// left edge and hang dead space off the last.
+const CELL = "py-1.5 align-top text-sm leading-snug";
 
 /**
  * A glyph whose tooltip names what it stands for.
@@ -94,7 +102,7 @@ export function PluginDetailRow({
   return (
     <tr>
       <td
-        className={cn(CELL, "max-w-[17rem]")}
+        className={cn(CELL, "max-w-[17rem]", hasDetail && "pr-6")}
         colSpan={hasDetail ? undefined : 2}
       >
         <span className="flex min-w-0 items-start gap-2">
