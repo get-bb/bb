@@ -17,6 +17,7 @@ import {
 } from "@/lib/plugin-slots";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
+import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -50,13 +51,25 @@ function registerPanel(pluginId: string, title: string) {
   );
 }
 
-function renderSidebarItems() {
+function renderSidebarItems(
+  options: {
+    toolsRoutePath?: string;
+    initialRoute?: string;
+    storedOrder?: string[];
+  } = {},
+) {
+  const store = createStore();
+  // Seed the store rather than localStorage: the storage atom captured its
+  // initial value when this module was imported, before the test could write.
+  if (options.storedOrder) {
+    store.set(pluginNavPanelOrderAtom, options.storedOrder);
+  }
   return render(
-    <Provider store={createStore()}>
-      <MemoryRouter>
+    <Provider store={store}>
+      <MemoryRouter initialEntries={[options.initialRoute ?? "/"]}>
         <ToolsHubExperimentProvider enabled={false}>
           <SidebarProvider>
-            <PluginNavSidebarItems />
+            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
           </SidebarProvider>
         </ToolsHubExperimentProvider>
       </MemoryRouter>
@@ -64,11 +77,13 @@ function renderSidebarItems() {
   );
 }
 
+const ROW_LABELS = new Set(["Tools", "Docs", "GitHub"]);
+
 function panelRowNames(): string[] {
   return screen
     .getAllByRole("button")
     .map((button) => button.textContent?.trim() ?? "")
-    .filter((label) => label === "Docs" || label === "GitHub");
+    .filter((label) => ROW_LABELS.has(label));
 }
 
 beforeEach(() => {
@@ -153,5 +168,55 @@ describe("PluginNavSidebarItems", () => {
     await waitFor(() => {
       expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
     });
+  });
+
+  it("hides the built-in Tools row like a plugin row", async () => {
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems({ toolsRoutePath: "/tools/skills" });
+
+    // Tools leads the list, above the plugin rows.
+    expect(panelRowNames()).toEqual(["Tools", "Docs"]);
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Tools panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+
+    await waitFor(() => {
+      expect(panelRowNames()).toEqual(["Docs"]);
+    });
+    expect(
+      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+    ).toContain("More (1)");
+    expect(
+      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
+    ).toContain("__builtin__/tools");
+  });
+
+  it("keeps Tools on top for users who already reordered their plugin rows", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("github", "GitHub");
+
+    renderSidebarItems({
+      toolsRoutePath: "/tools/skills",
+      storedOrder: ["github/main", "docs/main"],
+    });
+
+    expect(panelRowNames()).toEqual(["Tools", "GitHub", "Docs"]);
+  });
+
+  it("marks the Tools row current on any Tools sub-route", () => {
+    renderSidebarItems({
+      toolsRoutePath: "/tools/skills",
+      initialRoute: "/tools/skills/registry",
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Tools" }).getAttribute("aria-current"),
+    ).toBe("page");
   });
 });

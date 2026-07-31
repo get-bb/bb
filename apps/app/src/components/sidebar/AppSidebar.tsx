@@ -204,12 +204,6 @@ export function AppSidebar({
     });
   }, [closeOnMobile, navigate]);
 
-  const handleOpenTools = useCallback(() => {
-    if (toolsRoutePath === undefined) return;
-    closeOnMobile();
-    void navigate(toolsRoutePath);
-  }, [closeOnMobile, navigate, toolsRoutePath]);
-
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
@@ -390,9 +384,6 @@ export function AppSidebar({
             splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
-            onOpenTools={
-              toolsRoutePath === undefined ? undefined : handleOpenTools
-            }
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
@@ -407,6 +398,7 @@ export function AppSidebar({
         <PluginNavSidebarItems
           onNavigate={closeOnMobile}
           splitEnabled={threadSplitsEnabled}
+          toolsRoutePath={toolsRoutePath}
         />
         <SidebarContent>
           <ProjectList

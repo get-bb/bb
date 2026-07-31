@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
@@ -415,22 +415,6 @@ describe("sidebar thread search navigation items", () => {
 });
 
 describe("ProjectListActionButtons", () => {
-  it("exposes one Tools entry instead of duplicating tool-family navigation", () => {
-    const onOpenTools = vi.fn();
-    render(
-      <ProjectListActionButtons
-        onNewChat={vi.fn()}
-        onOpenTools={onOpenTools}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    expect(onOpenTools).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("button", { name: "Skills" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Plugins" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Automations" })).toBeNull();
-  });
-
   it("shows the compose pane position when New thread is open in a split", () => {
     const store = createStore();
     store.set(splitLayoutAtom, {

@@ -4,6 +4,8 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -34,12 +36,14 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
+  TOOLS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
 import { usePaneContentSplitIndicator } from "@/components/sidebar/paneContentSplitIndicator";
+import type { MiniMapSlot } from "@/components/sidebar/paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
 import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
@@ -60,48 +64,109 @@ import {
   havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
   reorderPluginNavPanels,
+  seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 
 /**
- * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row
- * per registered panel, styled like primary sidebar actions, navigating to
- * the panel's own route under /plugins/<pluginId>/<path>. Renders nothing
- * while no plugin contributes a panel. Only host chrome renders here — the
- * plugin's component mounts on the route (PluginPanelView).
+ * Reserved plugin id for rows the host owns rather than a plugin. Real plugin
+ * ids come from a plugin manifest name, so they never take this shape.
+ */
+const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
+
+/** Order/hidden preference key of the built-in Tools row. */
+export const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
+  pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+  id: "tools",
+});
+
+/**
+ * One sidebar nav row. Plugin rows come from `navPanel` slots; the Tools row is
+ * host chrome that shares the list so both obey the same order and hide
+ * preferences.
+ */
+type SidebarNavRow =
+  | {
+      kind: "tools";
+      pluginId: string;
+      id: string;
+      title: string;
+      /** Last visited Tools route, so the row returns where the user was. */
+      routePath: string;
+    }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      id: string;
+      title: string;
+      panel: PluginNavPanelSlot;
+    };
+
+/**
+ * Sidebar entries for plugin `navPanel` slots (plugin design §5.2) plus the
+ * built-in Tools row: one row per entry, styled like primary sidebar actions.
+ * Plugin rows navigate to the panel's own route under
+ * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. Only host
+ * chrome renders here — a plugin's component mounts on the route
+ * (PluginPanelView).
  *
- * Rows are drag-reorderable and can be hidden; hidden panels move into a
+ * Rows are drag-reorderable and can be hidden; hidden rows move into a
  * collapsed "More" disclosure below the list rather than disappearing. Both
  * preferences live in `pluginNavSidebarAtoms`.
  */
-export function PluginNavSidebarItems(props: {
+export function PluginNavSidebarItems({
+  toolsRoutePath,
+  ...props
+}: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
+  /** Omit to drop the built-in Tools row, e.g. when its experiment is off. */
+  toolsRoutePath?: string;
 }) {
   const { navPanels } = usePluginSlots();
   const toolsHubEnabled = useToolsHubExperiment();
-  const visibleNavPanels = toolsHubEnabled
-    ? navPanels.filter(
+  const rows = useMemo<SidebarNavRow[]>(() => {
+    const pluginRows = navPanels
+      .filter(
         (panel) =>
+          !toolsHubEnabled ||
           !(
             panel.pluginId === AUTOMATIONS_PLUGIN_ID &&
             panel.path === AUTOMATIONS_PLUGIN_PANEL_PATH
           ),
       )
-    : navPanels;
+      .map<SidebarNavRow>((panel) => ({
+        kind: "plugin",
+        pluginId: panel.pluginId,
+        id: panel.id,
+        title: panel.title,
+        panel,
+      }));
+    if (toolsRoutePath === undefined) return pluginRows;
+    return [
+      {
+        kind: "tools",
+        pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+        id: "tools",
+        title: "Tools",
+        routePath: toolsRoutePath,
+      },
+      ...pluginRows,
+    ];
+  }, [navPanels, toolsHubEnabled, toolsRoutePath]);
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
-  if (visibleNavPanels.length === 0) return null;
-  return <PluginNavSidebarItemList {...props} navPanels={visibleNavPanels} />;
+  if (rows.length === 0) return null;
+  return <PluginNavSidebarItemList {...props} rows={rows} />;
 }
 
 function PluginNavSidebarItemList({
   onNavigate,
-  navPanels,
+  rows,
   splitEnabled = false,
 }: {
   onNavigate?: () => void;
-  navPanels: ReturnType<typeof usePluginSlots>["navPanels"];
+  rows: readonly SidebarNavRow[];
   splitEnabled?: boolean;
 }) {
   const location = useLocation();
@@ -112,11 +177,13 @@ function PluginNavSidebarItemList({
   const { visible, hidden, normalizedOrder } = useMemo(
     () =>
       arrangePluginNavPanels({
-        panels: navPanels,
-        storedOrder,
+        panels: rows,
+        // Users who customized their plugin order before the Tools row joined
+        // the list keep Tools on top instead of finding it at the bottom.
+        storedOrder: seedLeadingNavPanelKeys(storedOrder, [TOOLS_NAV_ROW_KEY]),
         hiddenKeys,
       }),
-    [hiddenKeys, navPanels, storedOrder],
+    [hiddenKeys, rows, storedOrder],
   );
 
   // Keep the persisted order in step with what is actually installed, so keys
@@ -187,10 +254,10 @@ function PluginNavSidebarItemList({
           items={visibleKeys}
           strategy={verticalListSortingStrategy}
         >
-          {visible.map((panel) => (
-            <SortablePluginNavSidebarItem
-              key={getPluginNavPanelKey(panel)}
-              panel={panel}
+          {visible.map((row) => (
+            <SortableSidebarNavRow
+              key={getPluginNavPanelKey(row)}
+              row={row}
               reorderDisabled={reorderDisabled}
               onHide={handleHide}
               {...rowProps}
@@ -206,10 +273,10 @@ function PluginNavSidebarItemList({
             onToggle={() => setIsOverflowOpen((open) => !open)}
           />
           {isOverflowOpen
-            ? hidden.map((panel) => (
-                <PluginNavSidebarItem
-                  key={getPluginNavPanelKey(panel)}
-                  panel={panel}
+            ? hidden.map((row) => (
+                <SidebarNavRowItem
+                  key={getPluginNavPanelKey(row)}
+                  row={row}
                   isHidden
                   onShow={handleShow}
                   {...rowProps}
@@ -260,19 +327,19 @@ function PluginNavSidebarOverflowToggle({
   );
 }
 
-const SortablePluginNavSidebarItem = function SortablePluginNavSidebarItem({
-  panel,
+const SortableSidebarNavRow = function SortableSidebarNavRow({
+  row,
   reorderDisabled,
   ...props
-}: PluginNavSidebarItemProps & { reorderDisabled: boolean }) {
+}: SidebarNavRowItemProps & { reorderDisabled: boolean }) {
   const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: getPluginNavPanelKey(panel),
+    id: getPluginNavPanelKey(row),
     disabled: reorderDisabled,
   });
   return (
-    <PluginNavSidebarItem
+    <SidebarNavRowItem
       {...props}
-      panel={panel}
+      row={row}
       dragBindings={dragBindings}
       rowRef={setNodeRef}
       rowStyle={style}
@@ -280,8 +347,8 @@ const SortablePluginNavSidebarItem = function SortablePluginNavSidebarItem({
   );
 };
 
-interface PluginNavSidebarItemProps {
-  panel: PluginNavPanelSlot;
+interface SidebarNavRowItemProps {
+  row: SidebarNavRow;
   pathname: string;
   onNavigate?: () => void;
   splitEnabled: boolean;
@@ -292,6 +359,18 @@ interface PluginNavSidebarItemProps {
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
+}
+
+function SidebarNavRowItem({
+  row,
+  splitEnabled,
+  ...props
+}: SidebarNavRowItemProps) {
+  return row.kind === "tools" ? (
+    <ToolsNavSidebarItem {...props} row={row} />
+  ) : (
+    <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
+  );
 }
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
@@ -318,25 +397,52 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
+/**
+ * The Tools row. It has no split-pane content kind, so it navigates in place
+ * and draws no mini-map; everything else matches a plugin row.
+ */
+function ToolsNavSidebarItem({
+  row,
+  pathname,
+  onNavigate,
+  ...props
+}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
+  row: Extract<SidebarNavRow, { kind: "tools" }>;
+}) {
+  const navigate = useNavigate();
+  return (
+    <SidebarNavRowChrome
+      {...props}
+      rowKey={getPluginNavPanelKey(row)}
+      title={row.title}
+      icon={<Icon name="Toolbox" />}
+      isActive={
+        pathname === TOOLS_ROUTE_PATH ||
+        pathname.startsWith(`${TOOLS_ROUTE_PATH}/`)
+      }
+      onSelect={() => {
+        onNavigate?.();
+        void navigate(row.routePath);
+      }}
+    />
+  );
+}
+
 function PluginNavSidebarItem({
-  panel,
+  row,
   pathname,
   onNavigate,
   splitEnabled,
-  isHidden = false,
-  onHide,
-  onShow,
-  dragBindings,
-  rowRef,
-  rowStyle,
-}: PluginNavSidebarItemProps) {
+  ...props
+}: Omit<SidebarNavRowItemProps, "row"> & {
+  row: Extract<SidebarNavRow, { kind: "plugin" }>;
+}) {
+  const { panel } = row;
   const navigate = useNavigate();
-  const [isActionsOpen, setIsActionsOpen] = useState(false);
   const path = getPluginPanelRoutePath({
     pluginId: panel.pluginId,
     path: panel.path,
   });
-  const isActive = pathname === path || pathname.startsWith(`${path}/`);
   const content = {
     kind: "plugin-panel",
     pluginId: panel.pluginId,
@@ -349,7 +455,63 @@ function PluginNavSidebarItem({
     label: panel.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
-  const key = getPluginNavPanelKey(panel);
+
+  return (
+    <SidebarNavRowChrome
+      {...props}
+      rowKey={getPluginNavPanelKey(row)}
+      title={panel.title}
+      icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
+      isActive={pathname === path || pathname.startsWith(`${path}/`)}
+      splitMiniMap={splitIndicator.miniMap}
+      // Split-drag initiator; engages only when the pointer leaves the
+      // sidebar, so it coexists with the dnd-kit reorder listeners.
+      onPointerDown={onPointerDown}
+      onSelect={(event) => {
+        onNavigate?.();
+        if (event.metaKey || event.ctrlKey) {
+          openInSplit();
+          return;
+        }
+        void navigate(path);
+      }}
+    />
+  );
+}
+
+interface SidebarNavRowChromeProps {
+  rowKey: string;
+  title: string;
+  icon: ReactNode;
+  isActive: boolean;
+  onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onPointerDown?: PointerEventHandler<HTMLElement>;
+  splitMiniMap?: MiniMapSlot[] | null;
+  isHidden?: boolean;
+  onHide?: (key: string) => void;
+  onShow?: (key: string) => void;
+  dragBindings?: SidebarSortableDragBindings;
+  rowRef?: (element: HTMLElement | null) => void;
+  rowStyle?: CSSProperties;
+}
+
+/** Shared chrome for every sidebar nav row: button, hide menus, drag handle. */
+function SidebarNavRowChrome({
+  rowKey,
+  title,
+  icon,
+  isActive,
+  onSelect,
+  onPointerDown,
+  splitMiniMap = null,
+  isHidden = false,
+  onHide,
+  onShow,
+  dragBindings,
+  rowRef,
+  rowStyle,
+}: SidebarNavRowChromeProps) {
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
   // dnd-kit's KeyboardSensor activates on Space/Enter and preventDefaults them.
   // On a real <button> row that would swallow Enter-to-open, so the row keeps
   // only the pointer/touch drag activators. Reordering stays a pointer gesture.
@@ -359,7 +521,7 @@ function PluginNavSidebarItem({
     <PluginNavRowVisibilityMenuItem
       surface={surface}
       isHidden={isHidden}
-      onSelect={() => (isHidden ? onShow?.(key) : onHide?.(key))}
+      onSelect={() => (isHidden ? onShow?.(rowKey) : onHide?.(rowKey))}
     />
   );
 
@@ -385,25 +547,16 @@ function PluginNavSidebarItem({
             ref={dragBindings?.setActivatorNodeRef}
             {...dragBindings?.attributes}
             {...pointerDragListeners}
-            // Split-drag initiator; engages only when the pointer leaves the
-            // sidebar, so it coexists with the dnd-kit reorder listeners.
             onPointerDown={onPointerDown}
-            onClick={(event) => {
-              onNavigate?.();
-              if (event.metaKey || event.ctrlKey) {
-                openInSplit();
-                return;
-              }
-              void navigate(path);
-            }}
+            onClick={onSelect}
           >
-            <PluginIcon pluginId={panel.pluginId} icon={panel.icon} />
+            {icon}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="min-w-0 truncate">{panel.title}</span>
-              {splitIndicator.miniMap ? (
+              <span className="min-w-0 truncate">{title}</span>
+              {splitMiniMap ? (
                 <SplitPaneMiniMap
-                  slots={splitIndicator.miniMap}
-                  label={`${panel.title} — open in split`}
+                  slots={splitMiniMap}
+                  label={`${title} — open in split`}
                 />
               ) : null}
             </span>
@@ -421,7 +574,7 @@ function PluginNavSidebarItem({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label={`${panel.title} panel options`}
+                  aria-label={`${title} panel options`}
                   className={cn(
                     "rounded-md p-0 text-muted-foreground",
                     "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
@@ -441,7 +594,7 @@ function PluginNavSidebarItem({
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent aria-label={`${panel.title} panel options`}>
+      <ContextMenuContent aria-label={`${title} panel options`}>
         {visibilityItem("context")}
       </ContextMenuContent>
     </ContextMenu>
