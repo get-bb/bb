@@ -813,9 +813,6 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       childThreadId: null,
     });
-    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
-      "thr_parent",
-    );
     fireEvent.click(screen.getByRole("button", { name: "Plugin replace" }));
 
     expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
@@ -849,9 +846,6 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       childThreadId: "thr_side",
     });
-    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
-      "thr_parent",
-    );
     expect(screen.getByTestId("side-chat-composer")).toHaveProperty(
       "value",
       "Plugin replacement",
@@ -1092,10 +1086,6 @@ describe("SideChatTabContent", () => {
       threadId: "thr_side",
       queuedMessageId: "qmsg_side_1",
     });
-    expect(mocks.latestPluginComposerHost?.threadRowStatusThreadId).toBe(
-      "thr_parent",
-    );
-
     const bottomComposer = screen
       .getAllByTestId("side-chat-composer")
       .find(

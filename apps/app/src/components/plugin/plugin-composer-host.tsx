@@ -23,8 +23,6 @@ export interface PluginComposerHost {
   scope: PluginComposerScope;
   draft: PromptDraftState;
   textEffectKey: string;
-  /** Visible thread row decorated by plugin status, when it differs from scope. */
-  threadRowStatusThreadId?: string | null;
   getCurrent(): PromptDraftState;
   setDraft(next: PromptDraftState): void;
   focus(): void;

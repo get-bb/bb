@@ -29,7 +29,7 @@ import type {
   PluginContentScriptRegistration,
   PluginSdkApp,
 } from "@bb/plugin-sdk";
-import { normalizeComposerThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
+import { normalizePluginThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import {
   collectPluginAppRegistrations,
@@ -525,7 +525,7 @@ async function mountWithTimeout(
           );
           return;
         }
-        const normalizedStatus = normalizeComposerThreadRowStatus(
+        const normalizedStatus = normalizePluginThreadRowStatus(
           status,
           (reason) => deps.warn(`bb plugin "${pluginId}": ${reason}`),
         );

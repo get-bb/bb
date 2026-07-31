@@ -595,7 +595,6 @@ export function SideChatTabContent({
           childThreadId,
         },
         composerIdentity: `side-chat:${sourceThread.projectId}:${sourceThread.id}:${tab.id}:${childThreadId ?? ""}`,
-        threadRowStatusThreadId: sourceThread.id,
         isExternalSubmitPending: createQueuedMessage.isPending,
         onSendOrQueueInput: sendOrQueueSideChatInput,
         onDraftSubmitted: handleDraftSubmitted,

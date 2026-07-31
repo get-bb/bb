@@ -27,7 +27,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import { useComposer } from "@/lib/plugin-sdk-hooks";
+import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 import {
   ThreadRow,
@@ -139,34 +139,43 @@ function OverflowFixture() {
 }
 
 function ThreadRowStatusAction() {
-  const { setThreadRowStatus } = useComposer();
+  const statusOwner = useMemo(() => Symbol("thread-row-status-story"), []);
   const [status, setStatus] = useState<
     "running" | "success" | "error" | "clear"
   >("running");
   useEffect(() => {
+    const setStatusForThread = (
+      nextStatus: Parameters<typeof setPluginThreadRowStatus>[2],
+    ) =>
+      setPluginThreadRowStatus(
+        THREAD_ID,
+        "story-thread-row-status",
+        nextStatus,
+        statusOwner,
+      );
     if (status === "running") {
-      setThreadRowStatus({
+      setStatusForThread({
         icon: "Zap",
         label: "Plugin running",
         tone: "running",
       });
     } else if (status === "success") {
-      setThreadRowStatus({
+      setStatusForThread({
         icon: "Check",
         label: "Plugin completed",
         tone: "success",
       });
     } else if (status === "error") {
-      setThreadRowStatus({
+      setStatusForThread({
         icon: "AlertCircle",
         label: "Plugin failed",
         tone: "error",
       });
     } else {
-      setThreadRowStatus(null);
+      setStatusForThread(null);
     }
-    return () => setThreadRowStatus(null);
-  }, [setThreadRowStatus, status]);
+    return () => setStatusForThread(null);
+  }, [status, statusOwner]);
 
   return (
     <div className="flex items-center gap-0.5">

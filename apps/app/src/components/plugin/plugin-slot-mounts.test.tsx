@@ -49,10 +49,6 @@ import {
 } from "@/lib/plugin-sdk-hooks";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffects } from "@/lib/composer-text-effects";
-import {
-  getPluginThreadRowStatus,
-  resetPluginThreadRowStatusesForTest,
-} from "@/lib/plugin-thread-row-status";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
@@ -85,7 +81,6 @@ function registrationSet(
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  resetPluginThreadRowStatusesForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
@@ -230,15 +225,12 @@ describe("useComposer", () => {
         updateText: composer.updateText,
         clear: composer.clear,
         setTextEffect: composer.setTextEffect,
-        setThreadRowStatus: composer.setThreadRowStatus,
       });
       const methodsAreStable =
         initialMethods.current.setText === composer.setText &&
         initialMethods.current.updateText === composer.updateText &&
         initialMethods.current.clear === composer.clear &&
-        initialMethods.current.setTextEffect === composer.setTextEffect &&
-        initialMethods.current.setThreadRowStatus ===
-          composer.setThreadRowStatus;
+        initialMethods.current.setTextEffect === composer.setTextEffect;
       return (
         <div>
           <div>scope: {composer.scope.kind}</div>
@@ -287,23 +279,6 @@ describe("useComposer", () => {
           </button>
           <button type="button" onClick={() => composer.setTextEffect(null)}>
             {label}-clear-effect
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              composer.setThreadRowStatus({
-                icon: "AiContentGenerator01",
-                label: "Plugin improving draft",
-              })
-            }
-          >
-            {label}-start-row-status
-          </button>
-          <button
-            type="button"
-            onClick={() => composer.setThreadRowStatus(null)}
-          >
-            {label}-clear-row-status
           </button>
           <button type="button" onClick={() => composer.focus()}>
             {label}-focus
@@ -380,6 +355,24 @@ describe("useComposer", () => {
     );
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+
+  it("keeps the withdrawn thread-row status method callable for prebuilt 0.4.1 bundles", () => {
+    let runtimeComposer: object | undefined;
+    registerComposerProbe("legacy-runtime", (composer) => {
+      runtimeComposer = composer;
+    });
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_legacy_runtime"]}>
+        <ComposerCustomizationMount />
+        <ThreadDraftViewer threadId="thr_legacy_runtime" />
+      </MemoryRouter>,
+    );
+
+    expect(runtimeComposer).toBeDefined();
+    expect(Reflect.get(runtimeComposer ?? {}, "setThreadRowStatus")).toBeTypeOf(
+      "function",
+    );
   });
 
   it("reads, replaces, functionally updates, and clears the latest thread text without leaking to the new-thread scope", () => {
@@ -557,15 +550,9 @@ describe("useComposer", () => {
     expect(composerTextEffectValues(firstEffectKey)).toEqual([
       { className: "test-text-effect" },
     ]);
-    fireEvent.click(screen.getByText("queued-start-row-status"));
-    expect(getPluginThreadRowStatus("thr_queue")).toEqual({
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-    });
     fireEvent.click(screen.getByText("change-queued-scope"));
     expect(screen.getByText("scope: queued-message")).toBeDefined();
     expect(composerTextEffectValues(firstEffectKey)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_queue")).toBeNull();
   });
 
   it("shares a queued-message host with sibling plugin surfaces in the pane", () => {
@@ -691,7 +678,6 @@ describe("useComposer", () => {
           },
           draft,
           textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
-          threadRowStatusThreadId: "thr_parent",
           getCurrent: () => draftRef.current,
           setDraft,
           focus: () => {},
@@ -737,14 +723,7 @@ describe("useComposer", () => {
       JSON.parse(screen.getByTestId("side-attachments").textContent ?? "[]"),
     ).toHaveLength(1);
 
-    fireEvent.click(screen.getByText("side-start-row-status"));
-    expect(getPluginThreadRowStatus("thr_parent")).toEqual({
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-    });
-
     fireEvent.click(screen.getByText("create-side-child"));
-    expect(getPluginThreadRowStatus("thr_parent")).toBeNull();
     expect(
       JSON.parse(screen.getByTestId("side-scope-details").textContent ?? "{}"),
     ).toEqual({
@@ -757,12 +736,6 @@ describe("useComposer", () => {
     expect(screen.getByTestId("side-composer-text").textContent).toBe(
       "replacement",
     );
-    fireEvent.click(screen.getByText("side-start-row-status"));
-    expect(getPluginThreadRowStatus("thr_parent")).toEqual({
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-    });
-    expect(getPluginThreadRowStatus("thr_side")).toBeNull();
   });
 
   it("targets the new-thread composer without leaking replacements to thread drafts", () => {
@@ -957,147 +930,33 @@ describe("useComposer", () => {
     const storageKey = screen.getByTestId("draft-key").textContent ?? "";
 
     fireEvent.click(screen.getByText("effect-start-effect"));
-    fireEvent.click(screen.getByText("effect-start-row-status"));
     expect(composerTextEffectValues(storageKey)).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_effect")).not.toBeNull();
     fireEvent.click(screen.getByText("effect-clear-effect"));
     expect(composerTextEffectValues(storageKey)).toEqual([]);
     fireEvent.click(screen.getByText("effect-start-effect"));
-    fireEvent.click(screen.getByText("effect-start-row-status"));
 
     view.unmount();
     expect(composerTextEffectValues(storageKey)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_effect")).toBeNull();
-  });
-
-  it("normalizes thread-row statuses and preserves the last valid host state after rejection", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const capturedComposerApis: PluginComposerApi[] = [];
-    registerComposerProbe("status-validation", (composer) => {
-      capturedComposerApis.push(composer);
-    });
-    render(
-      <MemoryRouter initialEntries={["/threads/thr_status_validation"]}>
-        <ComposerCustomizationMount />
-        <ThreadDraftViewer threadId="thr_status_validation" />
-      </MemoryRouter>,
-    );
-    const composerApi = capturedComposerApis.at(-1);
-    if (composerApi === undefined)
-      throw new Error("composer API was not captured");
-    const setStatus = composerApi.setThreadRowStatus as (
-      status: unknown,
-    ) => void;
-
-    act(() =>
-      setStatus({
-        icon: "  AiContentGenerator01  ",
-        label: "  Plugin improving draft  ",
-        tone: "success",
-      }),
-    );
-    const successStatus = {
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-      tone: "success" as const,
-    };
-    expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
-      successStatus,
-    );
-
-    act(() =>
-      setStatus({
-        icon: "Zap",
-        label: "Plugin running",
-        tone: "running",
-      }),
-    );
-    expect(getPluginThreadRowStatus("thr_status_validation")).toEqual({
-      icon: "Zap",
-      label: "Plugin running",
-      tone: "running",
-    });
-
-    const errorStatus = {
-      icon: "AlertCircle",
-      label: "Plugin failed",
-      tone: "error" as const,
-    };
-    act(() => setStatus(errorStatus));
-    expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
-      errorStatus,
-    );
-
-    const invalidStatuses: Array<{
-      value: unknown;
-      warning: string;
-    }> = [
-      {
-        value: [],
-        warning: "status must be null or a non-array object",
-      },
-      {
-        value: { icon: "AiContentGenerator01", label: "   " },
-        warning: '"label" must be a non-blank string',
-      },
-      {
-        value: { icon: "AiContentGenerator01", label: 42 },
-        warning: '"label" must be a non-blank string',
-      },
-      {
-        value: { icon: "   ", label: "Working" },
-        warning: '"icon" must be a non-blank string',
-      },
-      {
-        value: {
-          icon: "AiContentGenerator01",
-          label: "Working",
-          tone: "warning",
-        },
-        warning:
-          '"tone" must be "default", "running", "success", or "error" when set',
-      },
-    ];
-    for (const invalid of invalidStatuses) {
-      act(() => setStatus(invalid.value));
-      expect(getPluginThreadRowStatus("thr_status_validation")).toEqual(
-        errorStatus,
-      );
-      expect(warn).toHaveBeenLastCalledWith(
-        expect.stringContaining(invalid.warning),
-      );
-    }
-
-    expect(warn).toHaveBeenCalledTimes(invalidStatuses.length);
-    act(() => setStatus(null));
-    expect(getPluginThreadRowStatus("thr_status_validation")).toBeNull();
-    expect(warn).toHaveBeenCalledTimes(invalidStatuses.length);
   });
 
   it("keeps a same-plugin hook owner's visual state when its sibling unmounts", () => {
     const captured = new Map<
       string,
-      Pick<PluginComposerApi, "setTextEffect" | "setThreadRowStatus">
+      Pick<PluginComposerApi, "setTextEffect">
     >();
 
     function VisualOwner({ label }: { label: string }) {
       const composer = useComposer();
       captured.set(label, {
         setTextEffect: composer.setTextEffect,
-        setThreadRowStatus: composer.setThreadRowStatus,
       });
       return (
         <button
           type="button"
           onClick={() => {
             composer.setTextEffect({ className: "test-text-effect" });
-            composer.setThreadRowStatus({
-              icon: "AiContentGenerator01",
-              label: `${label} status`,
-              tone: "success",
-            });
           }}
         >
           start-{label}
@@ -1132,10 +991,6 @@ describe("useComposer", () => {
       { className: "test-text-effect" },
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
-      "first status",
-    );
-
     const staleFirst = captured.get("first");
     expect(staleFirst).toBeDefined();
     fireEvent.click(screen.getByText("unmount-first"));
@@ -1143,20 +998,12 @@ describe("useComposer", () => {
     expect(composerTextEffectValues(storageKey)).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
-      "second status",
-    );
-
     act(() => {
       staleFirst?.setTextEffect(null);
-      staleFirst?.setThreadRowStatus(null);
     });
     expect(composerTextEffectValues(storageKey)).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_shared_owner")?.label).toBe(
-      "second status",
-    );
   });
 
   it("keeps the next scope's visual state when the previous scope cleans up", () => {
@@ -1167,18 +1014,13 @@ describe("useComposer", () => {
     };
 
     function ScopedVisualWriter() {
-      const { scope, setTextEffect, setThreadRowStatus } = useComposer();
+      const { scope, setTextEffect } = useComposer();
       const queuedMessageId =
         scope.kind === "queued-message" ? scope.queuedMessageId : "unexpected";
 
       useLayoutEffect(() => {
         setTextEffect({ className: "test-text-effect" });
-        setThreadRowStatus({
-          icon: "AiContentGenerator01",
-          label: `${queuedMessageId} status`,
-          tone: "success",
-        });
-      }, [queuedMessageId, setTextEffect, setThreadRowStatus]);
+      }, [queuedMessageId, setTextEffect]);
 
       return null;
     }
@@ -1223,18 +1065,11 @@ describe("useComposer", () => {
     expect(composerTextEffectValues("shared-scope-effect")).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
-      "qmsg_1 status",
-    );
-
     fireEvent.click(screen.getByText("change-visual-scope"));
 
     expect(composerTextEffectValues("shared-scope-effect")).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_scope_owner")?.label).toBe(
-      "qmsg_2 status",
-    );
   });
 
   it("clears a text effect when the plugin composer scope changes", () => {
@@ -1268,24 +1103,19 @@ describe("useComposer", () => {
     expect(composerTextEffectValues(storageKey)).toEqual([]);
   });
 
-  it("clears and rejects captured lock, effect, and status setters after scope cleanup or unmount", () => {
+  it("clears and rejects captured lock and effect setters after scope cleanup or unmount", () => {
     const captured: Array<
-      Pick<
-        PluginComposerApi,
-        "setInputLock" | "setTextEffect" | "setThreadRowStatus"
-      >
+      Pick<PluginComposerApi, "setInputLock" | "setTextEffect">
     > = [];
     registerComposerProbe("owned", (composer) => {
       const previous = captured.at(-1);
       if (
         previous?.setInputLock !== composer.setInputLock ||
-        previous?.setTextEffect !== composer.setTextEffect ||
-        previous.setThreadRowStatus !== composer.setThreadRowStatus
+        previous?.setTextEffect !== composer.setTextEffect
       ) {
         captured.push({
           setInputLock: composer.setInputLock,
           setTextEffect: composer.setTextEffect,
-          setThreadRowStatus: composer.setThreadRowStatus,
         });
       }
     });
@@ -1313,66 +1143,39 @@ describe("useComposer", () => {
       .map((element) => element.textContent ?? "");
 
     fireEvent.click(screen.getByText("owned-start-effect"));
-    fireEvent.click(screen.getByText("owned-start-row-status"));
     act(() => captured[0]!.setInputLock(true));
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(true);
     expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_owned")).not.toBeNull();
-
     const staleScopeSetters = captured[0]!;
     fireEvent.click(screen.getByText("change-owned-scope"));
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
     expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
-
     act(() => {
       staleScopeSetters.setInputLock(true);
       staleScopeSetters.setTextEffect({ className: "stale-text-effect" });
-      staleScopeSetters.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "stale status",
-        tone: "success",
-      });
     });
     expect(getComposerInputLock(initialStorageKey ?? null)).toBe(false);
     expect(composerTextEffectValues(initialStorageKey ?? null)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_owned")).toBeNull();
-
     const currentSetters = captured.at(-1)!;
     act(() => {
       currentSetters.setInputLock(true);
       currentSetters.setTextEffect({ className: "test-text-effect" });
-      currentSetters.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "current status",
-        tone: "success",
-      });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(true);
     expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([
       { className: "test-text-effect" },
     ]);
-    expect(getPluginThreadRowStatus("thr_owned_next")?.label).toBe(
-      "current status",
-    );
-
     view.unmount();
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
     expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
     act(() => {
       currentSetters.setInputLock(true);
       currentSetters.setTextEffect({ className: "unmounted-text-effect" });
-      currentSetters.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "unmounted status",
-      });
     });
     expect(getComposerInputLock(nextStorageKey ?? null)).toBe(false);
     expect(composerTextEffectValues(nextStorageKey ?? null)).toEqual([]);
-    expect(getPluginThreadRowStatus("thr_owned_next")).toBeNull();
   });
 
   it("appends mention pills with offsets into the new-thread draft", () => {

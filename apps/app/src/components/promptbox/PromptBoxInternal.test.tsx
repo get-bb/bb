@@ -1173,10 +1173,6 @@ describe("PromptBoxInternal plugin composer actions", () => {
       const composer = useComposer();
       composer.setInputLock(true);
       composer.setTextEffect({ className: "crashed-action-effect" });
-      composer.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "Crashed action status",
-      });
       throw new Error("action crashed");
     }
     setPluginSlotRegistrations(

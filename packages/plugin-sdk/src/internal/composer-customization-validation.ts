@@ -9,14 +9,15 @@ const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 type RejectionReporter = (reason: string) => void;
 
 /**
- * Parse the runtime value handed to `setThreadRowStatus`. `undefined` means
- * the value was rejected; `null` remains the explicit clear operation.
+ * Parse the runtime value handed to
+ * `PluginContentScriptContext.experimental_setThreadRowStatus`. `undefined`
+ * means the value was rejected; `null` remains the explicit clear operation.
  */
-export function normalizeComposerThreadRowStatus(
+export function normalizePluginThreadRowStatus(
   value: unknown,
   onRejected: RejectionReporter,
 ): PluginComposerThreadRowStatus | null | undefined {
-  const kind = "composer.setThreadRowStatus";
+  const kind = "contentScript.experimental_setThreadRowStatus";
   if (value === null) return null;
   if (typeof value !== "object" || Array.isArray(value)) {
     onRejected(`${kind}: status must be null or a non-array object`);

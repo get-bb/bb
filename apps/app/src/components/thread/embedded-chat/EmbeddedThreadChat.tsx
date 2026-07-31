@@ -152,8 +152,6 @@ export interface EmbeddedThreadChatComposerProps {
   pluginComposerBottomScope?: PluginComposerHost["scope"] | null;
   /** Identity string namespacing this composer among retained instances. */
   composerIdentity?: string;
-  /** Thread whose row status plugin composer customizations reflect. */
-  threadRowStatusThreadId?: string;
   /** ORed into queue-pending guards for consumer-owned submit mutations. */
   isExternalSubmitPending?: boolean;
   /**
@@ -811,8 +809,6 @@ function EmbeddedThreadChatWithComposer({
     };
   }, [isActive, queuedComposerHostIdentity]);
   const setStoredPromptDraft = promptDraft.setDraft;
-  const threadRowStatusThreadId =
-    composer.threadRowStatusThreadId ?? threadId ?? undefined;
   const bottomPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (bottomScope === null) return null;
     const identity = bottomComposerHostIdentity;
@@ -820,9 +816,6 @@ function EmbeddedThreadChatWithComposer({
     return {
       scope: bottomScope,
       textEffectKey: identity,
-      ...(threadRowStatusThreadId !== undefined
-        ? { threadRowStatusThreadId }
-        : {}),
       draft: currentPromptDraftRef.current,
       getCurrent: () =>
         activeBottomComposerIdentityRef.current === identity
@@ -839,12 +832,7 @@ function EmbeddedThreadChatWithComposer({
         }
       },
     };
-  }, [
-    bottomComposerHostIdentity,
-    bottomScope,
-    setStoredPromptDraft,
-    threadRowStatusThreadId,
-  ]);
+  }, [bottomComposerHostIdentity, bottomScope, setStoredPromptDraft]);
   const queuedPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (
       queuedComposerIdentity === null ||
@@ -873,9 +861,6 @@ function EmbeddedThreadChatWithComposer({
         queuedMessageId: queuedEdit.queuedMessageId,
       },
       textEffectKey: identity,
-      ...(threadRowStatusThreadId !== undefined
-        ? { threadRowStatusThreadId }
-        : {}),
       draft: initialDraft,
       getCurrent: () => {
         if (activeQueuedComposerIdentityRef.current !== identity) {
@@ -904,7 +889,6 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     queuedComposerIdentity,
     queuedComposerHostIdentity,
-    threadRowStatusThreadId,
     updateInlineQueuedMessage,
   ]);
   const bottomPluginComposerHostWithDraft = useMemo<PluginComposerHost | null>(

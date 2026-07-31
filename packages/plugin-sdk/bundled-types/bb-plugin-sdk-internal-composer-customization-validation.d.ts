@@ -10,10 +10,11 @@ import { ComposerCustomization, PluginComposerThreadRowStatus } from '@bb/plugin
 declare const PLUGIN_SLOT_ID_PATTERN: RegExp;
 type RejectionReporter = (reason: string) => void;
 /**
- * Parse the runtime value handed to `setThreadRowStatus`. `undefined` means
- * the value was rejected; `null` remains the explicit clear operation.
+ * Parse the runtime value handed to
+ * `PluginContentScriptContext.experimental_setThreadRowStatus`. `undefined`
+ * means the value was rejected; `null` remains the explicit clear operation.
  */
-declare function normalizeComposerThreadRowStatus(value: unknown, onRejected: RejectionReporter): PluginComposerThreadRowStatus | null | undefined;
+declare function normalizePluginThreadRowStatus(value: unknown, onRejected: RejectionReporter): PluginComposerThreadRowStatus | null | undefined;
 declare function requireSlotId(kind: string, value: unknown): string;
 declare function requireMessageDirectiveId(kind: string, value: unknown): string;
 declare function requireNonEmptyString(kind: string, field: string, value: unknown): string;
@@ -26,4 +27,4 @@ declare function requireUniqueId(kind: string, seen: Set<string>, id: string): v
  */
 declare function collectComposerCustomization(registration: unknown, seenIds: Set<string>, onRejected: RejectionReporter): ComposerCustomization | null;
 
-export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, normalizeComposerThreadRowStatus, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalString, requireSlotId, requireUniqueId };
+export { PLUGIN_SLOT_ID_PATTERN, collectComposerCustomization, normalizePluginThreadRowStatus, requireComponent, requireMessageDirectiveId, requireNonEmptyString, requireOptionalString, requireSlotId, requireUniqueId };

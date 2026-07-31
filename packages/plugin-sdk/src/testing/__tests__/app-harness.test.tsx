@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useEffect, useState } from "react";
-import { act, cleanup, fireEvent, within } from "@testing-library/react";
+import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
@@ -86,7 +86,7 @@ function RealtimeConnectionProbe() {
 
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "setTextEffect" | "setInputLock" | "setThreadRowStatus"
+  "setTextEffect" | "setInputLock"
 > | null = null;
 
 function InlineVis({
@@ -109,7 +109,6 @@ function ComposerProbe() {
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
-    setThreadRowStatus: composer.setThreadRowStatus,
   };
   return (
     <div>
@@ -134,20 +133,6 @@ function ComposerProbe() {
       </button>
       <button type="button" onClick={() => composer.clear()}>
         clear
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          composer.setThreadRowStatus({
-            icon: "AiContentGenerator01",
-            label: "Plugin improving draft",
-          })
-        }
-      >
-        set row status
-      </button>
-      <button type="button" onClick={() => composer.setThreadRowStatus(null)}>
-        clear row status
       </button>
       <button type="button" onClick={() => composer.addQuote("picked text")}>
         quote
@@ -344,6 +329,35 @@ describe("loadPluginApp", () => {
     ]);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('"threadId" must be a non-empty string'),
+    );
+
+    const unsafeSetter = retainedSetter as
+      | ((threadId: unknown, status: unknown) => void)
+      | undefined;
+    unsafeSetter?.("thr_source", {
+      icon: "   ",
+      label: "Missing icon",
+    });
+    unsafeSetter?.("thr_source", {
+      icon: "AiContentGenerator01",
+      label: "Invalid tone",
+      tone: "warning",
+    });
+    expect(mounted.inspection.getThreadRowStatus("thr_source")).toEqual({
+      icon: "AiContentGenerator01",
+      label: "Improving draft",
+      tone: "running",
+    });
+    expect(mounted.inspection.threadRowStatusCalls).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'contentScript.experimental_setThreadRowStatus: "icon" must be a non-blank string',
+      ),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'contentScript.experimental_setThreadRowStatus: "tone" must be "default", "running", "success", or "error" when set',
+      ),
     );
 
     await mounted.lifecycle.dispose();
@@ -860,8 +874,6 @@ describe("renderSlot", () => {
         slot.getByTestId("composer-scope-details").textContent ?? "{}",
       ),
     ).toEqual(sideChatScope);
-    fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus?.label).toBe("Plugin improving draft");
   });
 
   it("drives host-originated composer text and scope changes", async () => {
@@ -952,135 +964,6 @@ describe("renderSlot", () => {
     expect(slot.composer.focusCount).toBe(3);
   });
 
-  it("records composer thread-row status changes", () => {
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      {},
-      { context: { projectId: "proj_1", threadId: "thr_1" } },
-    );
-
-    fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus).toEqual({
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-    });
-
-    fireEvent.click(slot.getByText("clear row status"));
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(2);
-  });
-
-  it("normalizes thread-row statuses and preserves the last valid harness state after rejection", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      {},
-      { context: { projectId: "proj_1", threadId: "thr_1" } },
-    );
-    const setters = capturedComposerVisualSetters;
-    if (setters === null) throw new Error("composer setters were not captured");
-    const setStatus = setters.setThreadRowStatus as (status: unknown) => void;
-
-    act(() => {
-      setStatus({
-        icon: "  AiContentGenerator01  ",
-        label: "  Plugin improving draft  ",
-        tone: "default",
-      });
-    });
-    const defaultStatus = {
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-      tone: "default" as const,
-    };
-    expect(slot.composer.threadRowStatus).toEqual(defaultStatus);
-    expect(slot.composer.threadRowStatusCalls).toEqual([defaultStatus]);
-
-    const runningStatus = {
-      icon: "Zap",
-      label: "Plugin running",
-      tone: "running" as const,
-    };
-    act(() => setStatus(runningStatus));
-    expect(slot.composer.threadRowStatus).toEqual(runningStatus);
-
-    const errorStatus = {
-      icon: "AlertCircle",
-      label: "Plugin failed",
-      tone: "error" as const,
-    };
-    act(() => setStatus(errorStatus));
-    expect(slot.composer.threadRowStatus).toEqual(errorStatus);
-    const acceptedStatuses = [defaultStatus, runningStatus, errorStatus];
-    expect(slot.composer.threadRowStatusCalls).toEqual(acceptedStatuses);
-
-    const invalidStatuses: Array<{
-      value: unknown;
-      warning: string;
-    }> = [
-      {
-        value: "working",
-        warning: "status must be null or a non-array object",
-      },
-      {
-        value: { icon: "AiContentGenerator01", label: "" },
-        warning: '"label" must be a non-blank string',
-      },
-      {
-        value: { icon: "AiContentGenerator01", label: { text: "Working" } },
-        warning: '"label" must be a non-blank string',
-      },
-      {
-        value: { icon: "", label: "Working" },
-        warning: '"icon" must be a non-blank string',
-      },
-      {
-        value: {
-          icon: "AiContentGenerator01",
-          label: "Working",
-          tone: null,
-        },
-        warning:
-          '"tone" must be "default", "running", "success", or "error" when set',
-      },
-    ];
-    for (const invalid of invalidStatuses) {
-      act(() => setStatus(invalid.value));
-      expect(slot.composer.threadRowStatus).toEqual(errorStatus);
-      expect(slot.composer.threadRowStatusCalls).toEqual(acceptedStatuses);
-      expect(warn).toHaveBeenLastCalledWith(
-        expect.stringContaining(invalid.warning),
-      );
-    }
-
-    const rejectionWarningCount = () =>
-      warn.mock.calls.filter(
-        ([message]) =>
-          typeof message === "string" &&
-          message.startsWith("composer.setThreadRowStatus:"),
-      ).length;
-    expect(rejectionWarningCount()).toBe(invalidStatuses.length);
-    act(() => setStatus(null));
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toEqual([
-      ...acceptedStatuses,
-      null,
-    ]);
-    expect(rejectionWarningCount()).toBe(invalidStatuses.length);
-  });
-
-  it("ignores thread-row status changes outside a thread composer", () => {
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      {},
-      { context: { projectId: "proj_1", threadId: null } },
-    );
-
-    fireEvent.click(slot.getByText("set row status"));
-    expect(slot.composer.threadRowStatus).toBeNull();
-    expect(slot.composer.threadRowStatusCalls).toEqual([]);
-  });
-
   it("invalidates visual-state setters through both unmount controls", () => {
     for (const control of ["top-level", "lifecycle"] as const) {
       const slot = renderSlot(
@@ -1094,36 +977,23 @@ describe("renderSlot", () => {
 
       setters.setTextEffect({ className: "improve-shimmer" });
       setters.setInputLock(true);
-      setters.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "Plugin improving draft",
-        tone: "success",
-      });
       expect(slot.composer.textEffect).toEqual({
         className: "improve-shimmer",
       });
       expect(slot.composer.inputLocked).toBe(true);
-      expect(slot.composer.threadRowStatus?.tone).toBe("success");
 
       if (control === "top-level") slot.unmount();
       else slot.lifecycle.unmount();
       expect(slot.composer.textEffect).toBeNull();
       expect(slot.composer.inputLocked).toBe(false);
-      expect(slot.composer.threadRowStatus).toBeNull();
 
       setters.setTextEffect({ className: "late-effect" });
       setters.setInputLock(true);
-      setters.setThreadRowStatus({
-        icon: "AiContentGenerator01",
-        label: "late status",
-      });
       expect(slot.composer.textEffect).toBeNull();
-      expect(slot.composer.threadRowStatus).toBeNull();
       expect(slot.composer.textEffectCalls).toEqual([
         { className: "improve-shimmer" },
       ]);
       expect(slot.composer.inputLockCalls).toEqual([true]);
-      expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
     }
   });
 
@@ -1137,25 +1007,14 @@ describe("renderSlot", () => {
     if (setters === null) throw new Error("composer setters were not captured");
 
     setters.setTextEffect({ className: "cleanup-effect" });
-    setters.setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "Plugin improving draft",
-    });
     cleanup();
 
     expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
 
     setters.setTextEffect({ className: "late-effect" });
-    setters.setThreadRowStatus({
-      icon: "AiContentGenerator01",
-      label: "late status",
-    });
     expect(slot.composer.textEffect).toBeNull();
-    expect(slot.composer.threadRowStatus).toBeNull();
     expect(slot.composer.textEffectCalls).toEqual([
       { className: "cleanup-effect" },
     ]);
-    expect(slot.composer.threadRowStatusCalls).toHaveLength(1);
   });
 });

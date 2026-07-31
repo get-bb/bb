@@ -15,13 +15,11 @@ import type {
   ComposerView,
   PluginComposerApi,
   PluginComposerMention,
-  PluginComposerThreadRowStatus,
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
 } from "@bb/plugin-sdk";
-import { normalizeComposerThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -34,7 +32,6 @@ import {
 import { sdk } from "@/lib/sdk";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
-import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 import {
   usePromptDraftStorage,
   type PromptDraftScope,
@@ -71,6 +68,13 @@ type FetchLike = (
   input: string,
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
+
+/**
+ * Runtime-only compatibility for bundles built against SDK 0.4.1 before the
+ * composer-scoped status API was withdrawn. Keep this unadvertised no-op until
+ * those bundles are outside the supported upgrade window.
+ */
+const legacySetThreadRowStatus = (_status: unknown): void => {};
 
 export function getAutomationPluginPanelRoutePath(subPath: string): string {
   const parts = subPath.split("/").filter((part) => part.length > 0);
@@ -622,25 +626,6 @@ export function useComposer(): PluginComposerApi {
   }, [setText]);
 
   const composerScope = composerHost?.scope;
-  const threadRowStatusThreadId =
-    composerHost?.threadRowStatusThreadId !== undefined
-      ? composerHost.threadRowStatusThreadId
-      : composerScope?.kind === "side-chat"
-        ? (composerScope.childThreadId ?? composerScope.parentThreadId)
-        : composerScope?.kind === "thread" ||
-            composerScope?.kind === "queued-message"
-          ? composerScope.threadId
-          : composerScope === undefined && threadId !== undefined
-            ? threadId
-            : null;
-  const threadRowStatusScopeKey =
-    composerScope?.kind === "queued-message"
-      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
-      : composerScope?.kind === "side-chat"
-        ? `side-chat:${composerScope.projectId}:${composerScope.parentThreadId}:${composerScope.tabId}:${composerScope.childThreadId ?? ""}`
-        : threadRowStatusThreadId === null
-          ? "new-thread"
-          : `thread:${threadRowStatusThreadId}`;
   const composerOwnershipScopeKey =
     composerScope?.kind === "queued-message"
       ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
@@ -657,7 +642,6 @@ export function useComposer(): PluginComposerApi {
     pluginId,
     composerOwnershipScopeKey,
     textEffectKey ?? "null",
-    threadRowStatusScopeKey,
   ].join("\u0000");
   const scopeOwnership = useMemo(
     () => createComposerScopeOwnership(scopeOwnershipKey),
@@ -674,19 +658,7 @@ export function useComposer(): PluginComposerApi {
     scopeOwnership.invalidate();
     setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
     setComposerInputLock(textEffectKey, pluginId, false, visualStateOwner);
-    setPluginThreadRowStatus(
-      threadRowStatusThreadId,
-      pluginId,
-      null,
-      visualStateOwner,
-    );
-  }, [
-    pluginId,
-    scopeOwnership,
-    textEffectKey,
-    threadRowStatusThreadId,
-    visualStateOwner,
-  ]);
+  }, [pluginId, scopeOwnership, textEffectKey, visualStateOwner]);
   const registerVisualStateOwner = useCallback(() => {
     slotOwnershipRegistry?.register(visualStateOwner, releaseVisualState);
   }, [releaseVisualState, slotOwnershipRegistry, visualStateOwner]);
@@ -725,37 +697,6 @@ export function useComposer(): PluginComposerApi {
       visualStateOwner,
     ],
   );
-  const setThreadRowStatus = useCallback(
-    (status: PluginComposerThreadRowStatus | null) => {
-      if (
-        !scopeOwnership.isActive() ||
-        threadRowStatusScopeKey === "new-thread"
-      ) {
-        return;
-      }
-      const normalizedStatus = normalizeComposerThreadRowStatus(
-        status,
-        (reason) => console.warn(`bb plugin "${pluginId}": ${reason}`),
-      );
-      if (normalizedStatus === undefined) return;
-      if (normalizedStatus !== null) registerVisualStateOwner();
-      setPluginThreadRowStatus(
-        threadRowStatusThreadId,
-        pluginId,
-        normalizedStatus,
-        visualStateOwner,
-      );
-    },
-    [
-      pluginId,
-      registerVisualStateOwner,
-      scopeOwnership,
-      threadRowStatusScopeKey,
-      threadRowStatusThreadId,
-      visualStateOwner,
-    ],
-  );
-
   useEffect(() => {
     scopeOwnership.activate();
     return () => {
@@ -766,7 +707,6 @@ export function useComposer(): PluginComposerApi {
     releaseVisualState,
     scopeOwnership,
     slotOwnershipRegistry,
-    threadRowStatusScopeKey,
     visualStateOwner,
   ]);
 
@@ -840,7 +780,7 @@ export function useComposer(): PluginComposerApi {
       clear,
       setTextEffect,
       setInputLock,
-      setThreadRowStatus,
+      setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
       focus,
@@ -856,7 +796,6 @@ export function useComposer(): PluginComposerApi {
       setText,
       setTextEffect,
       setInputLock,
-      setThreadRowStatus,
       threadId,
       updateText,
     ],

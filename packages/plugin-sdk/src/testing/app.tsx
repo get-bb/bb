@@ -49,7 +49,7 @@ import {
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   collectComposerCustomization,
-  normalizeComposerThreadRowStatus,
+  normalizePluginThreadRowStatus,
   PLUGIN_SLOT_ID_PATTERN,
   requireComponent,
   requireMessageDirectiveId,
@@ -123,9 +123,6 @@ export interface ComposerLog {
   /** Whether this plugin currently holds the composer input lock. */
   inputLocked: boolean;
   inputLockCalls: boolean[];
-  /** Latest host-rendered thread-row status requested by the plugin. */
-  threadRowStatus: PluginComposerThreadRowStatus | null;
-  threadRowStatusCalls: Array<PluginComposerThreadRowStatus | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -784,9 +781,8 @@ export async function mountPluginContentScripts(
       return;
     }
     const normalizedThreadId = threadId.trim();
-    const normalizedStatus = normalizeComposerThreadRowStatus(
-      status,
-      (reason) => console.warn(`bb plugin "${options.pluginId}": ${reason}`),
+    const normalizedStatus = normalizePluginThreadRowStatus(status, (reason) =>
+      console.warn(`bb plugin "${options.pluginId}": ${reason}`),
     );
     if (normalizedStatus === undefined) return;
     const recordedStatus =
@@ -1111,8 +1107,6 @@ export function renderSlot<
     textEffectCalls: [],
     inputLocked: false,
     inputLockCalls: [],
-    threadRowStatus: null,
-    threadRowStatusCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -1146,18 +1140,6 @@ export function renderSlot<
         if (!composerOwnership.active) return;
         composerLog.inputLocked = locked;
         composerLog.inputLockCalls.push(locked);
-      },
-      setThreadRowStatus(status) {
-        if (!composerOwnership.active || composerScope.kind === "new-thread") {
-          return;
-        }
-        const normalizedStatus = normalizeComposerThreadRowStatus(
-          status,
-          (reason) => console.warn(reason),
-        );
-        if (normalizedStatus === undefined) return;
-        composerLog.threadRowStatus = normalizedStatus;
-        composerLog.threadRowStatusCalls.push(normalizedStatus);
       },
       addQuote(text) {
         const trimmed = text.replace(/\r\n|\r/gu, "\n").trim();
@@ -1205,7 +1187,6 @@ export function renderSlot<
     composerOwnership.active = false;
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
-    composerLog.threadRowStatus = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>
