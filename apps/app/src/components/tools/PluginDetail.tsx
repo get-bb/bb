@@ -10,7 +10,6 @@ import {
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
-import { Icon } from "@bb/shared-ui/icon";
 import { Pill } from "@bb/shared-ui/pill";
 import { Switch } from "@bb/shared-ui/switch";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
@@ -29,8 +28,8 @@ import {
   PluginIncludes,
   PluginSchedules,
   PluginServices,
-  pluginHasHealthAlerts,
 } from "@/components/tools/PluginCapabilities";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   PluginDetailFactRow,
   PluginDetailTable,
@@ -58,6 +57,48 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
+/**
+ * The plugin page's conditions, as full-width bars above the page itself.
+ *
+ * These render outside ToolsScrollPage rather than inside the detail column:
+ * a frontend crash, a blocked update, or a dead runtime is a condition on the
+ * whole page, and inset into the centered column it read as just another
+ * content block halfway down.
+ */
+export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
+  const frontendDiagnostics = useSyncExternalStore(
+    subscribePluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+    getPluginFrontendDiagnostics,
+  );
+  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
+  const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
+  return (
+    <>
+      {frontendFailure === null || frontendFailure === undefined ? null : (
+        <PluginBannerBar
+          tone="destructive"
+          icon="CircleX"
+          title={`Frontend ${frontendFailure.phase} failure${
+            frontendFailure.scriptId === null
+              ? ""
+              : ` in content script \u201C${frontendFailure.scriptId}\u201D`
+          }`}
+          detail={frontendFailure.message}
+        />
+      )}
+      {hasUpdateManagement ? (
+        <PluginCompatibilityBanner plugin={plugin} />
+      ) : null}
+      {hasUpdateManagement ? <PluginUpdateBanner plugin={plugin} /> : null}
+      <PluginHealthAlerts
+        plugin={plugin}
+        runtimeStatus={pluginRuntimeStatusPresentation(plugin)}
+      />
+    </>
+  );
+}
+
 export function PluginDetail({
   isLoading,
   plugin,
@@ -78,11 +119,6 @@ export function PluginDetail({
   onDelete: (plugin: PluginListItem) => void;
 }) {
   const { settingsSections } = usePluginSlots();
-  const frontendDiagnostics = useSyncExternalStore(
-    subscribePluginFrontendDiagnostics,
-    getPluginFrontendDiagnostics,
-    getPluginFrontendDiagnostics,
-  );
   // Hooks run before the loading and not-found returns below, so this has to
   // tolerate a null plugin rather than read `plugin.id` unconditionally.
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -114,15 +150,9 @@ export function PluginDetail({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
-  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
   const sourceLabel = pluginSourceLabel(plugin);
   const canEditSource = pluginIsLocalSource(plugin);
   const canRemove = plugin.provenance !== "builtin";
-  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
-  const hasBanners =
-    (frontendFailure !== null && frontendFailure !== undefined) ||
-    hasUpdateManagement ||
-    pluginHasHealthAlerts(plugin, runtimeStatus);
   // Only update-managed plugins have an install record; a built-in ships with
   // bb and a path install is whatever is on disk right now.
   const installedAt = hasUpdateManagement
@@ -202,45 +232,6 @@ export function PluginDetail({
         ) : undefined
       }
     >
-      {/*
-        One banner slot, directly under the header. These were previously three
-        recipes in three places — a frontend failure above About, and the
-        update and compatibility banners buried inside Release, halfway down the
-        page. Anything the user may need to act on now surfaces before the
-        content it affects.
-      */}
-      {hasBanners ? (
-        <div className="space-y-2">
-          {frontendFailure !== null && frontendFailure !== undefined ? (
-            <div
-              role="alert"
-              className="flex min-w-0 items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3.5 py-3"
-            >
-              <Icon
-                name="CircleX"
-                className="mt-0.5 size-4 shrink-0 text-destructive"
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  Frontend {frontendFailure.phase} failure
-                  {frontendFailure.scriptId === null
-                    ? ""
-                    : ` in content script “${frontendFailure.scriptId}”`}
-                </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  {frontendFailure.message}
-                </p>
-              </div>
-            </div>
-          ) : null}
-          {hasUpdateManagement ? (
-            <PluginCompatibilityBanner plugin={plugin} />
-          ) : null}
-          {hasUpdateManagement ? <PluginUpdateBanner plugin={plugin} /> : null}
-          <PluginHealthAlerts plugin={plugin} runtimeStatus={runtimeStatus} />
-        </div>
-      ) : null}
       <ResourceDetailStack>
         {/*
           About and Release are one block, not two sections. Both answer "what

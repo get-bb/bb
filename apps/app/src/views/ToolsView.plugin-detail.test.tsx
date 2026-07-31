@@ -20,7 +20,11 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginDetail, ToolsScrollPage } from "./ToolsView";
+import {
+  PluginDetail,
+  PluginDetailBanners,
+  ToolsScrollPage,
+} from "./ToolsView";
 
 const GITHUB_PLUGIN = {
   id: "github",
@@ -228,19 +232,23 @@ describe("PluginDetail runtime health", () => {
   ) {
     const { queryClient, wrapper: QueryClientWrapper } =
       createQueryClientTestHarness();
+    const plugin = {
+      ...GITHUB_PLUGIN,
+      source: "builtin:github",
+      provenance: "builtin" as const,
+      catalogEntryId: null,
+      status,
+      statusDetail: "The runtime reported a problem.",
+    };
+    // Banners and page are siblings in production too (ToolsView.tsx:236): the
+    // stack renders outside the scroll page so it can span the pane.
     const result = render(
       <MemoryRouter>
         <QueryClientWrapper>
+          <PluginDetailBanners plugin={plugin} />
           <PluginDetail
             isLoading={false}
-            plugin={{
-              ...GITHUB_PLUGIN,
-              source: "builtin:github",
-              provenance: "builtin",
-              catalogEntryId: null,
-              status,
-              statusDetail: "The runtime reported a problem.",
-            }}
+            plugin={plugin}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -264,15 +272,41 @@ describe("PluginDetail runtime health", () => {
     expect(alert.className).toContain("border-destructive/30");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
-    // The banner stack sits above every section, not inside the one it
-    // describes: a broken runtime is the first thing to read on the page.
+    // The banner spans the pane rather than sitting inset in the detail
+    // column, and it precedes every section: a broken runtime is a condition
+    // on the page, not a block of its content.
+    expect(alert.className).not.toContain("rounded");
     const about = container.querySelector(
       '[data-resource-detail-section="overview"]',
     ) as HTMLElement;
     expect(
-      alert.compareDocumentPosition(about) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      alert.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("spans the pane instead of sitting inset in the detail column", () => {
+    const { container } = renderRuntimeStatus("error");
+    const alert = screen.getByRole("alert");
+
+    // Full-bleed: the tinted surface has no radius and no side borders, only a
+    // rule under it, so it reads as a bar across the pane rather than a card.
+    expect(alert.className).toContain("border-b");
+    expect(alert.className).not.toContain("rounded");
+    expect(alert.className).not.toContain("mx-");
+
+    // Only the text lines up with the page gutter, using the same column width
+    // and padding as ToolsScrollPage (ToolsView.tsx:87), so a banner and a
+    // section heading share a left edge.
+    const inner = alert.firstElementChild as HTMLElement;
+    expect(inner.className).toContain("max-w-5xl");
+    expect(inner.className).toContain("px-4");
+    expect(inner.className).toContain("md:px-5");
+
+    // And it is outside the detail page entirely, not nested in a section.
+    expect(alert.closest("[data-resource-detail-section]")).toBeNull();
+    expect(
+      container.querySelector('[data-resource-detail-section="overview"]'),
+    ).not.toBeNull();
   });
 
   it("offers Reload for degraded runtime status", () => {

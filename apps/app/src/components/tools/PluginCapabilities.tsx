@@ -4,6 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   PluginDetailGlyph,
   PluginDetailRow,
@@ -19,7 +20,6 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
-import { cn } from "@bb/shared-ui/lib/utils";
 
 function pluginActivityIcon(
   activity: "service" | "schedule",
@@ -441,62 +441,44 @@ function PluginRuntimeStatusAlert({
   onReload: () => void;
   reloadPending: boolean;
 }) {
-  const canReload =
-    plugin.status === "error" || plugin.status === "degraded";
-  const destructive = runtimeStatus.tone === "error";
+  const canReload = plugin.status === "error" || plugin.status === "degraded";
   return (
-    <div
-      role="alert"
-      className={cn(
-        // Matched to the other banners in the stack: same radius, same padding,
-        // same gap. They read as one column of alerts, not three recipes.
-        "flex min-w-0 items-start gap-3 rounded-md border px-3.5 py-3",
-        destructive
-          ? "border-destructive/30 bg-destructive/5"
-          : "border-warning/30 bg-warning/5",
-      )}
-    >
-      <Icon
-        name={runtimeStatus.icon}
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          destructive ? "text-destructive" : "text-warning",
-        )}
-        aria-hidden
-      />
-      <div className="min-w-0 flex-1">
-        {/*
-          The title is plain foreground like every other banner: the icon and
-          the border already carry the tone, and colouring the label too made
-          this one alert shout past the others in the same stack.
-        */}
-        <p className="text-sm font-medium text-foreground">
-          {runtimeStatus.label}
-        </p>
-        {plugin.statusDetail ? (
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {plugin.statusDetail}
-          </p>
-        ) : null}
-        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+    <PluginBannerBar
+      tone={runtimeStatus.tone === "error" ? "destructive" : "warning"}
+      icon={runtimeStatus.icon}
+      title={runtimeStatus.label}
+      detail={
+        <>
+          {plugin.statusDetail === null ? null : (
+            <>
+              {plugin.statusDetail}
+              <br />
+            </>
+          )}
           {runtimeStatus.recovery}
-        </p>
-      </div>
-      {canReload ? (
-        <Button
-          type="button"
-          size="sm"
-          disabled={reloadPending}
-          className="h-7 shrink-0 px-2.5 text-xs"
-          onClick={onReload}
-        >
-          {reloadPending ? (
-            <Icon name="Loading" className="size-3.5 animate-spin" aria-hidden />
-          ) : null}
-          {reloadPending ? "Reloading…" : "Reload"}
-        </Button>
-      ) : null}
-    </div>
+        </>
+      }
+      action={
+        canReload ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={reloadPending}
+            className="h-7 px-2.5 text-xs"
+            onClick={onReload}
+          >
+            {reloadPending ? (
+              <Icon
+                name="Loading"
+                className="size-3.5 animate-spin"
+                aria-hidden
+              />
+            ) : null}
+            {reloadPending ? "Reloading\u2026" : "Reload"}
+          </Button>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -553,22 +535,14 @@ export function PluginHealthAlerts({
         />
       ) : null}
       {errorCount > 0 ? (
-        <div className="flex min-w-0 items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3.5 py-3">
-          <Icon
-            name="AlertCircle"
-            className="mt-0.5 size-4 shrink-0 text-destructive"
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">
-              {errorCount} failed{" "}
-              {errorCount === 1 ? "handler call" : "handler calls"}
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-              Reload the plugin to clear this count after resolving the cause.
-            </p>
-          </div>
-        </div>
+        <PluginBannerBar
+          tone="destructive"
+          icon="AlertCircle"
+          title={`${errorCount} failed ${
+            errorCount === 1 ? "handler call" : "handler calls"
+          }`}
+          detail="Reload the plugin to clear this count after resolving the cause."
+        />
       ) : null}
     </>
   );

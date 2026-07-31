@@ -16,7 +16,10 @@ import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { PluginDetail } from "@/components/tools/PluginDetail";
+import {
+  PluginDetail,
+  PluginDetailBanners,
+} from "@/components/tools/PluginDetail";
 import { ProviderLogo } from "@/components/tools/SkillsCollection";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
@@ -496,16 +499,28 @@ function Plugin({
   isLoading?: boolean;
 }) {
   return (
-    <PluginDetail
-      isLoading={isLoading}
-      plugin={plugin}
-      pending={false}
-      openSourceDisabled
-      onToggle={noop}
-      onEdit={noop}
-      onOpenSource={noop}
-      onDelete={noop}
-    />
+    // Banners are siblings of the page, not children, and they span the pane
+    // (ToolsView.tsx:236). The negative inset undoes the story card's padding
+    // so the full-bleed bars read the way they do in the app.
+    <div className="flex min-w-0 flex-col">
+      {plugin === null ? null : (
+        <div className="-mx-4 md:-mx-5">
+          <PluginDetailBanners plugin={plugin} />
+        </div>
+      )}
+      <div className="pt-3 md:pt-4">
+        <PluginDetail
+          isLoading={isLoading}
+          plugin={plugin}
+          pending={false}
+          openSourceDisabled
+          onToggle={noop}
+          onEdit={noop}
+          onOpenSource={noop}
+          onDelete={noop}
+        />
+      </div>
+    </div>
   );
 }
 

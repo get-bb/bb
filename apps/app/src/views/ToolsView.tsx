@@ -23,6 +23,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import {
   PluginDetail,
+  PluginDetailBanners,
   pluginIsLocalSource,
   pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
@@ -46,7 +47,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
 
-export { PluginDetail };
+export { PluginDetail, PluginDetailBanners };
 
 function ToolsBodyFallback() {
   return (
@@ -228,53 +229,64 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
 
   return (
-    <ToolsScrollPage>
-      {listQuery.isError ? (
-        <ResourceListState
-          state="error"
-          message="Couldn't load plugin."
-          onRetry={() => void listQuery.refetch()}
-        />
-      ) : (
-        <PluginDetail
-          isLoading={isLoading}
-          plugin={selectedPlugin}
-          pending={
-            selectedPlugin !== null && pendingPluginId === selectedPlugin.id
-          }
-          openSourceDisabled={!canOpenPreferredDirectoryTarget}
-          onToggle={(target) => pluginToggle.mutate(target)}
-          onEdit={handleEditPlugin}
-          onOpenSource={handleOpenPluginSource}
-          onDelete={setDeleteTarget}
-        />
+    // The banner stack sits outside the scroll page so it spans the pane and
+    // pins to the top: a broken runtime is a condition on the whole page, not
+    // a block of its content, and it should not scroll away from the controls
+    // that resolve it.
+    <div className="flex h-full min-h-0 flex-col">
+      {selectedPlugin === null ? null : (
+        <PluginDetailBanners plugin={selectedPlugin} />
       )}
-      <ConfirmDeleteDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !pluginDelete.isPending) setDeleteTarget(null);
-        }}
-      >
-        {deleteTarget ? (
-          <ConfirmDeleteDialogContent
-            title={
-              pluginIsLocalSource(deleteTarget)
-                ? "Remove plugin from bb?"
-                : "Uninstall plugin?"
-            }
-            description={
-              pluginIsLocalSource(deleteTarget)
-                ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
-                : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-            }
-            confirmLabel={pluginRemovalLabel(deleteTarget)}
-            pending={pluginDelete.isPending}
-            onConfirm={() => pluginDelete.mutate(deleteTarget)}
-            onCancel={() => setDeleteTarget(null)}
-          />
-        ) : null}
-      </ConfirmDeleteDialog>
-    </ToolsScrollPage>
+      <div className="min-h-0 flex-1">
+        <ToolsScrollPage>
+          {listQuery.isError ? (
+            <ResourceListState
+              state="error"
+              message="Couldn't load plugin."
+              onRetry={() => void listQuery.refetch()}
+            />
+          ) : (
+            <PluginDetail
+              isLoading={isLoading}
+              plugin={selectedPlugin}
+              pending={
+                selectedPlugin !== null && pendingPluginId === selectedPlugin.id
+              }
+              openSourceDisabled={!canOpenPreferredDirectoryTarget}
+              onToggle={(target) => pluginToggle.mutate(target)}
+              onEdit={handleEditPlugin}
+              onOpenSource={handleOpenPluginSource}
+              onDelete={setDeleteTarget}
+            />
+          )}
+          <ConfirmDeleteDialog
+            open={deleteTarget !== null}
+            onOpenChange={(open) => {
+              if (!open && !pluginDelete.isPending) setDeleteTarget(null);
+            }}
+          >
+            {deleteTarget ? (
+              <ConfirmDeleteDialogContent
+                title={
+                  pluginIsLocalSource(deleteTarget)
+                    ? "Remove plugin from bb?"
+                    : "Uninstall plugin?"
+                }
+                description={
+                  pluginIsLocalSource(deleteTarget)
+                    ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
+                    : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
+                }
+                confirmLabel={pluginRemovalLabel(deleteTarget)}
+                pending={pluginDelete.isPending}
+                onConfirm={() => pluginDelete.mutate(deleteTarget)}
+                onCancel={() => setDeleteTarget(null)}
+              />
+            ) : null}
+          </ConfirmDeleteDialog>
+        </ToolsScrollPage>
+      </div>
+    </div>
   );
 }
 

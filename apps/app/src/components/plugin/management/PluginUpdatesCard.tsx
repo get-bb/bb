@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import { ResourceActionButton } from "@bb/shared-ui/resource-list";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
-import { SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
+import { formatAbsoluteDate } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
@@ -28,22 +28,19 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
   if (failure !== null) {
     return (
-      <div
-        className="flex items-center gap-3 rounded-lg border border-destructive-text/30 bg-destructive/5 px-3 py-2.5"
-        data-testid="plugin-update-failure-banner"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-destructive-text">
-            Update to {failure.version} failed — rolled back
-            {failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {failure.detail.length > 0
-              ? failure.detail
-              : `Code and data were restored to ${plugin.version}.`}
-          </p>
-        </div>
-      </div>
+      <PluginBannerBar
+        tone="destructive"
+        icon="CircleX"
+        testId="plugin-update-failure-banner"
+        title={`Update to ${failure.version} failed — rolled back${
+          failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""
+        }`}
+        detail={
+          failure.detail.length > 0
+            ? failure.detail
+            : `Code and data were restored to ${plugin.version}.`
+        }
+      />
     );
   }
 
@@ -51,28 +48,23 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
   return (
     <>
-      <div
-        className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-        style={SUCCESS_BANNER_STYLE}
-        data-testid="plugin-update-banner"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            Update to {availableVersion}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Compatible with your bb.
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setUpdateOpen(true)}
-        >
-          Update
-        </Button>
-      </div>
+      <PluginBannerBar
+        tone="success"
+        icon="PackageReceive"
+        testId="plugin-update-banner"
+        title={`Update to ${availableVersion}`}
+        detail="Compatible with your bb."
+        action={
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setUpdateOpen(true)}
+          >
+            Update
+          </Button>
+        }
+      />
       <UpdatePluginDialog
         failureStateLabel="Update failed"
         plugin={plugin}
@@ -86,7 +78,7 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 /**
  * A blocked update, rendered in the page's banner stack rather than inside
  * Release. It is something the user may need to act on, so it belongs with the
- * other banners at the top instead of halfway down the page.
+ * other banners above the page instead of halfway down it.
  */
 export function PluginCompatibilityBanner({
   plugin,
@@ -102,27 +94,22 @@ export function PluginCompatibilityBanner({
   if (blockedVersion === null) return null;
   return (
     <>
-      <div className="flex min-w-0 items-start gap-3 rounded-md border border-warning/30 bg-warning/5 px-3.5 py-3">
-        <Icon
-          name="AlertTriangle"
-          className="mt-0.5 size-4 shrink-0 text-warning"
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {blockedVersion} isn&apos;t compatible with this bb
-          </p>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {plugin.updateState.blockedReasons[0] ??
-              `Staying on ${plugin.version}.`}
-          </p>
-        </div>
-        <ResourceActionButton
-          label="View compatibility details"
-          icon="Info"
-          onClick={() => setBlockedOpen(true)}
-        />
-      </div>
+      <PluginBannerBar
+        tone="warning"
+        icon="AlertTriangle"
+        title={`${blockedVersion} isn't compatible with this bb`}
+        detail={
+          plugin.updateState.blockedReasons[0] ??
+          `Staying on ${plugin.version}.`
+        }
+        action={
+          <ResourceActionButton
+            label="View compatibility details"
+            icon="Info"
+            onClick={() => setBlockedOpen(true)}
+          />
+        }
+      />
       <UpdatePluginDialog
         failureStateLabel="Update failed"
         plugin={plugin}
