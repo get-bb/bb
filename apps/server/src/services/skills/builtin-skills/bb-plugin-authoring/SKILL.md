@@ -813,11 +813,18 @@ compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal }`: `generation` is a monotonic per-window
-mount attempt number, and `signal` aborts before cleanup starts. A script may
-return nothing, a disposer, or a promise of either; async mount setup is
-time-boxed to 10 seconds. Keep long-running work outside the returned promise,
-observe `signal`, and catch failures in work the host does not await.
+`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
+`generation` is a monotonic per-window mount attempt number, and `signal`
+aborts before cleanup starts. The optional experimental setter targets an
+explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
+Use `tone: "running"` for the host's animated running treatment. The host
+scopes statuses to the calling plugin and automatically clears them when that
+frontend generation deactivates; feature-detect the setter for compatibility
+with older bb clients.
+
+A script may return nothing, a disposer, or a promise of either; async mount
+setup is time-boxed to 10 seconds. Keep long-running work outside the returned
+promise, observe `signal`, and catch failures in work the host does not await.
 
 A replacement bundle and setup validate before lifecycle cutover. The host
 then aborts and disposes the prior generation before mounting candidate scripts,
