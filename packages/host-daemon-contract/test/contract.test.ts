@@ -1026,8 +1026,8 @@ describe("host-daemon command schemas", () => {
   // `host.install_global_skills` (67) and `host.global_skills_status` (68) are
   // new commands an older daemon would reject, so each bump forces it to update
   // before the server can send them.
-  it("uses protocol version 68 for global skill install and status", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(68);
+  it("uses protocol version 69 for server-owned tool status labels", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(69);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -3014,6 +3014,49 @@ describe("host-daemon session schemas", () => {
         ],
       }),
     ).toThrow();
+
+    // Status labels are server-owned: the ingest enrichment leaves MCP,
+    // unknown, and unlabeled tool calls untouched, so a daemon that supplied
+    // its own labels would otherwise have them persisted and rendered.
+    for (const item of [
+      // MCP tool call — enrichment skips these on `server`.
+      {
+        type: "toolCall" as const,
+        id: "tool-1",
+        server: "some-mcp-server",
+        tool: "search",
+        status: "pending" as const,
+        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
+      },
+      // Native tool with no registered plugin labels.
+      {
+        type: "toolCall" as const,
+        id: "tool-2",
+        tool: "Read",
+        status: "pending" as const,
+        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
+      },
+    ]) {
+      expect(() =>
+        hostDaemonEventBatchRequestSchema.parse({
+          sessionId: "session_123",
+          eventGroups: [
+            {
+              threadId: "thr_123",
+              events: [
+                {
+                  type: "item/started",
+                  threadId: "thr_123",
+                  providerThreadId: "provider-1",
+                  scope: threadScope(),
+                  item,
+                },
+              ],
+            },
+          ],
+        }),
+      ).toThrow();
+    }
 
     expect(() =>
       hostDaemonEventBatchResponseSchema.parse({
