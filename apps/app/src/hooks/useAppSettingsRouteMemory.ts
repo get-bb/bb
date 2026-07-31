@@ -3,8 +3,8 @@ import { matchPath, useLocation } from "react-router-dom";
 import {
   getRootComposeRoutePath,
   getSkillsRoutePath,
+  isToolsRoutePath,
   SETTINGS_ROUTE_PATH,
-  TOOLS_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 interface AppSettingsRouteMemory {
@@ -26,13 +26,6 @@ function isGlobalSettingsRoute(pathname: string): boolean {
   return matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null;
 }
 
-function isToolsRoute(pathname: string): boolean {
-  return (
-    pathname === TOOLS_ROUTE_PATH ||
-    matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null
-  );
-}
-
 /**
  * Remembers the most recently visited core-app, Tools, and global Settings
  * routes while the app shell is mounted. Each focused sidebar can return to
@@ -42,7 +35,7 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
   const currentRoutePath = getLocationRoutePath(location);
   const isSettingsRoute = isGlobalSettingsRoute(location.pathname);
-  const isCurrentToolsRoute = isToolsRoute(location.pathname);
+  const isCurrentToolsRoute = isToolsRoutePath(location.pathname);
   const lastAppRoutePathRef = useRef(
     isSettingsRoute ? getRootComposeRoutePath() : currentRoutePath,
   );

@@ -66,9 +66,9 @@ import {
   getRootComposeRoutePath,
   getThreadRoutePath,
   isProjectlessProjectId,
+  isToolsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
-  TOOLS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -542,9 +542,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const systemConfigQuery = useSystemConfig();
   const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
   const isGlobalToolsView =
-    toolsHubEnabled &&
-    (location.pathname === TOOLS_ROUTE_PATH ||
-      matchPath(`${TOOLS_ROUTE_PATH}/*`, location.pathname) !== null);
+    toolsHubEnabled && isToolsRoutePath(location.pathname);
   const pluginPanelMatch = matchPath(
     PLUGIN_PANEL_ROUTE_PATH,
     location.pathname,

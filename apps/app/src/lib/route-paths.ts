@@ -106,6 +106,14 @@ export function getToolsRoutePath(): string {
   return TOOLS_ROUTE_PATH;
 }
 
+/** True on the Tools hub and every route nested under it. */
+export function isToolsRoutePath(pathname: string): boolean {
+  return (
+    pathname === TOOLS_ROUTE_PATH ||
+    matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null
+  );
+}
+
 export function getSkillsRoutePath(): string {
   return SKILLS_ROUTE_PATH;
 }

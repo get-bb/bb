@@ -36,7 +36,7 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
   getPluginPanelRoutePath,
-  TOOLS_ROUTE_PATH,
+  isToolsRoutePath,
 } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -186,8 +186,9 @@ function PluginNavSidebarItemList({
     [hiddenKeys, rows, storedOrder],
   );
 
-  // Keep the persisted order in step with what is actually installed, so keys
-  // for removed plugins don't linger and newly installed panels get a slot.
+  // Give newly installed panels a slot in the persisted order. This only ever
+  // adds keys: a plugin frontend that has not registered yet keeps its slot, so
+  // an early mount cannot save a shortened order over the user's arrangement.
   useEffect(() => {
     if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
@@ -416,10 +417,7 @@ function ToolsNavSidebarItem({
       rowKey={getPluginNavPanelKey(row)}
       title={row.title}
       icon={<Icon name="Toolbox" />}
-      isActive={
-        pathname === TOOLS_ROUTE_PATH ||
-        pathname.startsWith(`${TOOLS_ROUTE_PATH}/`)
-      }
+      isActive={isToolsRoutePath(pathname)}
       onSelect={() => {
         onNavigate?.();
         void navigate(row.routePath);
