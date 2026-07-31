@@ -184,10 +184,10 @@ function PluginThreadRowStatusIndicator({
         "pointer-events-none shrink-0",
         COARSE_POINTER_ICON_SIZE_CLASS,
         status.tone === "success"
-            ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
-            : status.tone === "error"
-              ? "text-destructive"
-              : "text-muted-foreground",
+          ? SIDEBAR_SUCCESS_STATUS_COLOR_CLASS
+          : status.tone === "error"
+            ? "text-destructive"
+            : "text-muted-foreground",
       )}
       aria-label={status.label}
     />
