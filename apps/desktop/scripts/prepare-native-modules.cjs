@@ -18,6 +18,11 @@ const PLUGIN_BUILD_NATIVE_PACKAGE_NAMES = [
   "lightningcss-darwin-arm64",
   "lightningcss-darwin-x64",
 ];
+const PACKAGED_NATIVE_PACKAGE_NAMES = [
+  NODE_PTY_PACKAGE_NAME,
+  ...PLUGIN_BUILD_NATIVE_PACKAGE_NAMES,
+  BETTER_SQLITE3_PACKAGE_NAME,
+];
 
 // better-sqlite3 must match the runtime that loads it. The packaged app runs
 // the bb server through Electron's bundled Node, so the packaged copy has to
@@ -110,12 +115,10 @@ async function findNativePackageDirectories(rootPath, packageName) {
   );
 }
 
-async function assertPackagedPluginBuildNativePackages(appOutDir) {
-  const packageDirectories = await findPackageDirectories(
-    appOutDir,
-    PLUGIN_BUILD_NATIVE_PACKAGE_NAMES,
-  );
-
+function assertPackagedPluginBuildNativePackages(
+  appOutDir,
+  packageDirectories,
+) {
   for (const packageName of PLUGIN_BUILD_NATIVE_PACKAGE_NAMES) {
     if (packageDirectories.get(packageName).length === 0) {
       throw new Error(`Unable to find ${packageName} under ${appOutDir}`);
@@ -222,17 +225,18 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
     throw new Error(`Packaged app output does not exist: ${appOutDir}`);
   }
 
-  const nodePtyDirectories = await findNativePackageDirectories(
+  const packageDirectories = await findPackageDirectories(
     appOutDir,
-    NODE_PTY_PACKAGE_NAME,
+    PACKAGED_NATIVE_PACKAGE_NAMES,
   );
+  const nodePtyDirectories = packageDirectories.get(NODE_PTY_PACKAGE_NAME);
   if (nodePtyDirectories.length === 0) {
     throw new Error(
       `Unable to find ${NODE_PTY_PACKAGE_NAME} under ${appOutDir}`,
     );
   }
   await Promise.all(nodePtyDirectories.map(prepareNodePtyPackageDirectory));
-  await assertPackagedPluginBuildNativePackages(appOutDir);
+  assertPackagedPluginBuildNativePackages(appOutDir, packageDirectories);
 
   // The Electron target is only known on the real afterPack path. Standalone
   // invocations (e.g. tests, manual node-pty repair) omit it and skip the fetch.
@@ -240,8 +244,7 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
     return { betterSqlite3Directories: [], nodePtyDirectories };
   }
 
-  const betterSqlite3Directories = await findNativePackageDirectories(
-    appOutDir,
+  const betterSqlite3Directories = packageDirectories.get(
     BETTER_SQLITE3_PACKAGE_NAME,
   );
   if (betterSqlite3Directories.length === 0) {
