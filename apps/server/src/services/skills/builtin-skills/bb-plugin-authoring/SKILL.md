@@ -1020,13 +1020,33 @@ className?, leadingContent?, messageActions? }` —
   provider/model/reasoning picker, voice, submit, and the row beneath with
   project, environment, "Branch from:", and permission mode. Never
   hand-roll a textarea + "Start thread" button. Props:
-  `{ onSubmit, defaultProjectId?, initialPrompt?, placeholder?, layout?,
-focusRequest?, className?, draftKey? }` — `defaultProjectId` seeds the
-  project picker (the user can change it); `initialPrompt` seeds the draft
-  only while it is still empty; `layout` is `"contained"` (default) or
-  `"document"` like `ThreadChat`; `focusRequest` is a change-detected nonce
-  that focuses the editor; `draftKey` picks where the draft persists
-  (default: a key scoped to your plugin).
+  `{ onSubmit, defaultProjectId?, defaultProviderId?, defaultModel?,
+defaultReasoningLevel?, defaultServiceTier?, defaultPermissionMode?,
+defaultEnvironment?, initialPrompt?, placeholder?, layout?, focusRequest?,
+className?, draftKey? }` — the `default*` props are SEEDS, not controlled
+  values: the user can change every one, and each takes precedence over the
+  project's remembered defaults when provided. They are value-compared each
+  render; changing any of them after mount re-seeds every selection
+  (including ones the user touched), so switching between two saved records
+  in one mounted composer reloads that record's values. `initialPrompt`
+  seeds the draft only while it is still empty; `layout` is `"contained"`
+  (default) or `"document"` like `ThreadChat`; `focusRequest` is a
+  change-detected nonce that focuses the editor; `draftKey` picks where the
+  draft persists (default: a key scoped to your plugin).
+
+  Store-then-restore: because `onSubmit`'s `NewThreadRequest` fields map
+  1:1 onto the `default*` props, a plugin that saves a request (e.g. an
+  editable rule or template) can re-open it later with
+  `defaultProviderId={saved.providerId}` / `defaultModel={saved.model}` /
+  `defaultReasoningLevel={saved.reasoningLevel}` /
+  `defaultServiceTier={saved.serviceTier}` /
+  `defaultPermissionMode={saved.permissionMode}` /
+  `defaultEnvironment={saved.environment}` (plus `defaultProjectId` and
+  `initialPrompt`), and an untouched resubmit reproduces an equivalent
+  request — the composer never silently resets a saved configuration to
+  project defaults. Limits (documented on `defaultEnvironment`): a
+  `project-default` environment seeds nothing, and a seeded host/worktree
+  that no longer exists falls back to the composer's default environment.
 
   The composer resolves selections; YOUR PLUGIN creates the thread. On
   submit it calls `onSubmit(request)` with a JSON-serializable

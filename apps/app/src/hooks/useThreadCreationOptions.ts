@@ -496,6 +496,13 @@ export function useThreadCreationOptions(
     supportedPermissionModes,
   });
   const environmentSelectionValue = rawEnvironmentSelectionValue;
+  // A resetKey change clears touched fields in a layout effect, which runs
+  // after this render's provenance is computed. Treat the pending reset as
+  // "nothing touched" here — the same render-time rule
+  // `renderedThreadSelections` applies — so the reset render never reports
+  // stale explicit provenance.
+  const touchedFieldsPendingReset =
+    usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
   const executionInputSources = useMemo(
     () =>
       buildExecutionInputSources({
@@ -515,7 +522,9 @@ export function useThreadCreationOptions(
           reasoningLevel: storedReasoningLevel,
           permissionMode: storedPermissionMode,
         },
-        touchedFields: touchedThreadFieldsRef.current,
+        touchedFields: touchedFieldsPendingReset
+          ? new Set<ThreadPromptField>()
+          : touchedThreadFieldsRef.current,
       }),
     [
       effectiveProviderId,
@@ -530,6 +539,7 @@ export function useThreadCreationOptions(
       storedReasoningLevel,
       storedSelectedModel,
       storedServiceTier,
+      touchedFieldsPendingReset,
     ],
   );
 

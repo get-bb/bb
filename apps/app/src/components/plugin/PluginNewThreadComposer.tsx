@@ -15,6 +15,7 @@ import {
 } from "@/components/pickers/environment-picker-value";
 import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import {
   useProjectPromptHistory,
@@ -75,6 +76,12 @@ import {
  */
 export function PluginNewThreadComposer({
   defaultProjectId,
+  defaultProviderId,
+  defaultModel,
+  defaultReasoningLevel,
+  defaultServiceTier,
+  defaultPermissionMode,
+  defaultEnvironment,
   initialPrompt,
   placeholder,
   layout = "contained",
@@ -105,6 +112,32 @@ export function PluginNewThreadComposer({
   if (seededDefaultProjectId !== defaultProjectId) {
     setSeededDefaultProjectId(defaultProjectId);
     setPickedProjectId(defaultProjectId ?? null);
+  }
+
+  // --- Execution/environment seeds ---------------------------------------
+  // The `default*` props are seeds, value-compared so a plugin can pass a
+  // fresh `defaultEnvironment` object each render. A signature change means
+  // the caller switched records: it re-seeds every selection (via the
+  // creation-options resetKey below), including ones the user had touched.
+  const seedSignature = JSON.stringify([
+    defaultProviderId ?? null,
+    defaultModel ?? null,
+    defaultReasoningLevel ?? null,
+    defaultServiceTier ?? null,
+    defaultPermissionMode ?? null,
+    defaultEnvironment ?? null,
+  ]);
+  const environmentSeed =
+    defaultEnvironment === undefined
+      ? null
+      : newThreadEnvironmentArgsToSeed(defaultEnvironment);
+  // The seeded branch shows until the user picks or clears one; re-seed on a
+  // signature change so switching records reloads that record's branch.
+  const [seededSignature, setSeededSignature] = useState(seedSignature);
+  const [branchSeedOverridden, setBranchSeedOverridden] = useState(false);
+  if (seededSignature !== seedSignature) {
+    setSeededSignature(seedSignature);
+    setBranchSeedOverridden(false);
   }
   const projectId = useMemo(() => {
     const candidate = pickedProjectId ?? PERSONAL_PROJECT_ID;
@@ -192,17 +225,23 @@ export function PluginNewThreadComposer({
     projectDefaultExecutionOptionsQuery.data ??
     null;
   // "component-local" keeps every pick inside this composer: a plugin panel
-  // must not rewrite the user's persisted root-composer defaults.
+  // must not rewrite the user's persisted root-composer defaults. The
+  // `default*` seed props take precedence over the project's remembered
+  // defaults; the seed signature in resetKey makes a seed change reset even
+  // user-touched selections (switching saved records must reload them).
   const creationOptions = useThreadCreationOptions({
     scope: "component-local",
     preferenceProjectId: projectId,
-    resetKey: projectId,
+    resetKey: `${projectId} ${seedSignature}`,
     resolveProviderRouting,
-    initialProviderId: projectDefaults?.providerId,
-    initialModel: projectDefaults?.model,
-    initialServiceTier: projectDefaults?.serviceTier,
-    initialReasoningLevel: projectDefaults?.reasoningLevel,
-    initialPermissionMode: projectDefaults?.permissionMode,
+    initialProviderId: defaultProviderId ?? projectDefaults?.providerId,
+    initialModel: defaultModel ?? projectDefaults?.model,
+    initialServiceTier: defaultServiceTier ?? projectDefaults?.serviceTier,
+    initialReasoningLevel:
+      defaultReasoningLevel ?? projectDefaults?.reasoningLevel,
+    initialPermissionMode:
+      defaultPermissionMode ?? projectDefaults?.permissionMode,
+    initialEnvironmentSelectionValue: environmentSeed?.selectionValue,
   });
   const {
     activeModel,
@@ -271,15 +310,44 @@ export function PluginNewThreadComposer({
         ? "worktree"
         : "other";
   const {
-    selectedBranch,
-    onBranchChange: handleBranchChange,
-    onClearBranch: handleClearBranch,
+    selectedBranch: pickedBranch,
+    onBranchChange,
+    onClearBranch,
     onCreateBranch: handleCreateBranch,
-    onCreateBranchFrom: handleCreateBranchFrom,
+    onCreateBranchFrom,
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
   });
+  // The seeded branch backs the picker only while the user has not picked or
+  // cleared one AND the environment still matches the seed — a manual pick,
+  // clear, or environment change makes the composer behave exactly as if the
+  // seed were absent.
+  const selectedBranch =
+    pickedBranch ??
+    (!branchSeedOverridden &&
+    environmentSeed !== null &&
+    effectiveEnvironmentValue === environmentSeed.selectionValue
+      ? environmentSeed.branch
+      : null);
+  const handleBranchChange = useCallback(
+    (name: string) => {
+      setBranchSeedOverridden(true);
+      onBranchChange(name);
+    },
+    [onBranchChange],
+  );
+  const handleClearBranch = useCallback(() => {
+    setBranchSeedOverridden(true);
+    onClearBranch();
+  }, [onClearBranch]);
+  const handleCreateBranchFrom = useCallback(
+    (name: string) => {
+      setBranchSeedOverridden(true);
+      onCreateBranchFrom(name);
+    },
+    [onCreateBranchFrom],
+  );
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   useEffect(() => {
     setBranchSearchQuery("");
@@ -367,9 +435,13 @@ export function PluginNewThreadComposer({
     },
     [refetchBranches],
   );
+  const selectedBranchName = selectedBranch?.name ?? null;
   const handleCreateBranchFromSeed = useCallback(() => {
-    handleCreateBranch(branchSelectionSeed);
-  }, [branchSelectionSeed, handleCreateBranch]);
+    setBranchSeedOverridden(true);
+    // Prefer the effective selection (which may be the environment seed's
+    // branch) as the base — the hook only knows about manual picks.
+    handleCreateBranch(selectedBranchName ?? branchSelectionSeed);
+  }, [branchSelectionSeed, handleCreateBranch, selectedBranchName]);
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
