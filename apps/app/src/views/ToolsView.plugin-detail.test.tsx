@@ -107,31 +107,36 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    const official = screen.getByRole("button", {
-      name: "Uninstall GitHub",
-    });
-    expect(official.textContent).toContain("BB Official");
-    expect(official.textContent).toContain("Uninstall");
-    expect(official.className).toContain("bg-transparent");
-    expect(official.className).toContain("border-border/70");
+    // Provenance is a passive label beside the name, not a control. It used to
+    // be a button that swapped to a red Uninstall on hover — a status that
+    // deleted on click.
+    expect(screen.getByText("BB Official")).toBeTruthy();
     expect(
-      official.querySelector('[data-icon="PackageReceive"]'),
-    ).not.toBeNull();
+      screen.queryByRole("button", { name: "Uninstall GitHub" }),
+    ).toBeNull();
+
+    // About and Release are one block: one heading, and the version reads as a
+    // labelled fact rather than its own section.
     expect(screen.getByText("About")).toBeTruthy();
+    expect(screen.queryByText("Release")).toBeNull();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
-    expect(screen.getByText("Release")).toBeTruthy();
+    expect(screen.getByText("Version")).toBeTruthy();
     expect(screen.getByText("0.1.0")).toBeTruthy();
     expect(screen.getByText("Included with bb releases")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
-    expect(screen.queryByLabelText("GitHub: BB Official")).toBeNull();
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
     expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
-    fireEvent.click(official);
+
+    // Uninstall is irreversible, so it sits with the other ownership actions
+    // rather than beside the reversible enable toggle.
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Uninstall" }));
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
-    expect(screen.queryByRole("button", { name: "GitHub actions" })).toBeNull();
   });
 
   it("uses a plugin-owned canonical icon when no rich logo is declared", () => {
@@ -197,20 +202,13 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    const builtIn = screen.getByLabelText("Automations: Built-in");
-    expect(builtIn.className).toContain("bg-transparent");
-    expect(builtIn.className).toContain("border-border/70");
-    expect(
-      builtIn.querySelector('[data-icon="PackageReceive"]'),
-    ).not.toBeNull();
-    fireEvent.pointerMove(builtIn);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Ships with bb",
-    );
+    expect(screen.getByText("Built-in")).toBeTruthy();
     expect(
       screen.getByRole("switch", { name: "Disable Automations" }),
     ).toBeTruthy();
 
+    // A built-in cannot be edited, opened, or removed, so it gets no menu at
+    // all rather than an empty one.
     expect(
       screen.queryByRole("button", { name: "Automations actions" }),
     ).toBeNull();
@@ -256,30 +254,31 @@ describe("PluginDetail runtime health", () => {
     return { ...result, queryClient };
   }
 
-  it("lifts a failed runtime status into a destructive alert above the lists", () => {
+  it("lifts a failed runtime status into a destructive alert above the content", () => {
     const { container } = renderRuntimeStatus("error");
-    const health = container.querySelector(
-      '[data-resource-detail-section="activity"]',
-    );
-    const alert = within(health as HTMLElement).getByRole("alert");
+    const alert = screen.getByRole("alert");
 
     expect(alert.textContent).toContain("Failed");
     expect(alert.textContent).toContain("The runtime reported a problem.");
     expect(alert.textContent).toContain("Reload the plugin.");
     expect(alert.className).toContain("border-destructive/30");
-    expect(within(health as HTMLElement).queryByText("Plugin health")).toBeNull();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+
+    // The banner stack sits above every section, not inside the one it
+    // describes: a broken runtime is the first thing to read on the page.
+    const about = container.querySelector(
+      '[data-resource-detail-section="overview"]',
+    ) as HTMLElement;
+    expect(
+      alert.compareDocumentPosition(about) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("offers Reload for degraded runtime status", () => {
-    const { container } = renderRuntimeStatus("degraded");
-    const alert = within(
-      container.querySelector(
-        '[data-resource-detail-section="activity"]',
-      ) as HTMLElement,
-    ).getByRole("alert");
+    renderRuntimeStatus("degraded");
 
-    expect(alert.className).toContain("border-warning/30");
+    expect(screen.getByRole("alert").className).toContain("border-warning/30");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
@@ -482,7 +481,7 @@ describe("PluginDetail capability inventory", () => {
     );
     expect(includes).not.toBeNull();
     const inventory = within(includes as HTMLElement);
-    expect(includes?.querySelector("dl")).not.toBeNull();
+    expect(includes?.querySelector("table")).not.toBeNull();
     expect(
       includes?.querySelector("[data-plugin-capability-group]"),
     ).toBeNull();
@@ -513,37 +512,58 @@ describe("PluginDetail capability inventory", () => {
     expect(inventory.queryByText("daily-cleanup")).toBeNull();
     expect(includes?.textContent).not.toContain("2 background services");
 
-    const activity = container.querySelector(
-      '[data-resource-detail-section="activity"]',
-    );
-    expect(activity).not.toBeNull();
-    const runtime = within(activity as HTMLElement);
-    expect(runtime.getByText("Health")).toBeTruthy();
-    expect(runtime.getByText("Background services")).toBeTruthy();
-    expect(runtime.getByText("watch")).toBeTruthy();
-    expect(runtime.getByText("restart")).toBeTruthy();
-    expect(runtime.getByText("sync")).toBeTruthy();
-    expect(runtime.getByText("Scheduled jobs")).toBeTruthy();
-    expect(runtime.getByText("daily-cleanup")).toBeTruthy();
-    expect(runtime.getByText("in-progress")).toBeTruthy();
-    expect(runtime.getByText("completed")).toBeTruthy();
-    expect(runtime.getByText("failed")).toBeTruthy();
-    expect(runtime.getByText("Timed out")).toBeTruthy();
+    // Services and schedules are two objects with two status vocabularies, so
+    // they are two named tables rather than groups inside a "Health" wrapper.
+    const [services, schedules] = Array.from(
+      container.querySelectorAll('[data-resource-detail-section="activity"]'),
+    ) as HTMLElement[];
+    expect(schedules).toBeTruthy();
+    expect(container.textContent).not.toContain("Health");
 
-    for (const [label, icon] of [
-      ["Running", "CircleCheck"],
-      ["Restarting", "RotateCcw"],
-      ["Stopped", "Pause"],
-      ["Scheduled", "Clock"],
-      ["Running", "Loading"],
-      ["Succeeded", "CircleCheck"],
-      ["Failed", "CircleX"],
-    ]) {
-      const status = runtime.getAllByRole("img", { name: label }).find(
-        (element) => element.querySelector(`[data-icon="${icon}"]`) !== null,
-      );
+    const serviceTable = within(services as HTMLElement);
+    expect(serviceTable.getByText("Background services")).toBeTruthy();
+    expect(serviceTable.getByText("watch")).toBeTruthy();
+    expect(serviceTable.getByText("restart")).toBeTruthy();
+    expect(serviceTable.getByText("sync")).toBeTruthy();
+    expect(serviceTable.queryByText("daily-cleanup")).toBeNull();
+
+    const scheduleTable = within(schedules as HTMLElement);
+    expect(scheduleTable.getByText("Scheduled jobs")).toBeTruthy();
+    expect(scheduleTable.getByText("daily-cleanup")).toBeTruthy();
+    expect(scheduleTable.getByText("in-progress")).toBeTruthy();
+    expect(scheduleTable.getByText("completed")).toBeTruthy();
+    expect(scheduleTable.getByText("failed")).toBeTruthy();
+    expect(scheduleTable.getByText("Timed out")).toBeTruthy();
+    expect(scheduleTable.queryByText("watch")).toBeNull();
+
+    for (const [scope, label, icon] of [
+      [serviceTable, "Running", "CircleCheck"],
+      [serviceTable, "Restarting", "RotateCcw"],
+      [serviceTable, "Stopped", "Pause"],
+      [scheduleTable, "Scheduled", "Clock"],
+      // A running job shimmers its own clock. The app never swaps a row's icon
+      // for a spinner to say "working" (ThreadRow.tsx:144).
+      [scheduleTable, "Running", "Clock"],
+      [scheduleTable, "Succeeded", "CircleCheck"],
+      [scheduleTable, "Failed", "CircleX"],
+    ] as const) {
+      const status = scope
+        .getAllByRole("img", { name: label })
+        .find(
+          (element) => element.querySelector(`[data-icon="${icon}"]`) !== null,
+        );
       expect(status, `${label} should use ${icon}`).toBeTruthy();
       expect(status?.getAttribute("tabindex")).toBe("0");
     }
+    expect(
+      scheduleTable
+        .getAllByRole("img", { name: "Running" })
+        .some((element) =>
+          element
+            .querySelector('[data-icon="Clock"]')
+            ?.getAttribute("class")
+            ?.includes("animate-shine-icon"),
+        ),
+    ).toBe(true);
   });
 });

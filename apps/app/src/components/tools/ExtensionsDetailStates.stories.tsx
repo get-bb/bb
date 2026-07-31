@@ -550,18 +550,18 @@ export function PluginDetailStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin detail states"
-        description="A plugin page starts with About and Release, then explains what it adds. Settings and runtime Activity follow only when they apply. About, Release, and Includes never disappear."
+        description="A plugin page opens with one receded About block — the description beside the release facts — and then Capabilities, which is what the page is for. Settings and the two health tables follow only when they apply. About and Capabilities never disappear."
       >
         <State
           name="Full"
-          note="Includes explains the user-facing capabilities. Activity separately explains background services, scheduled jobs, and their live status."
+          note="Capabilities names what the plugin adds. Background services and scheduled jobs are separate tables because they are separate objects with separate status vocabularies."
         >
           <Plugin plugin={FULL_PLUGIN} />
         </State>
 
         <State
           name="Minimal"
-          note="Nothing user-facing is declared, so Includes says so rather than vanishing."
+          note="Nothing user-facing is declared, so Capabilities says so rather than vanishing, and neither health table renders."
         >
           <Plugin plugin={PLUGIN} />
         </State>
@@ -582,7 +582,7 @@ export function PluginDetailStates() {
 
         <State
           name="Unhealthy"
-          note="Abnormal runtime health belongs in Activity with a recovery next step, not in a badge on the title."
+          note="Runtime health and failed handler calls are problems to act on, so they join the banner stack under the header rather than sitting below the content they explain."
         >
           <Plugin
             plugin={{
@@ -601,7 +601,7 @@ export function PluginDetailStates() {
 
         <State
           name="App surfaces"
-          note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Includes; the manifest alone cannot name them."
+          note="Surfaces a plugin frontend registers in the browser once it loads. They enrich Capabilities; the manifest alone cannot name them."
         >
           <PluginWithAppSurfaces />
         </State>
@@ -615,14 +615,14 @@ export function PluginDetailStates() {
 
         <State
           name="Bundled"
-          note="Ships with bb, so Release names the update policy instead of an install date and the header shows passive provenance rather than an uninstall control."
+          note="Ships with bb, so About names the update policy instead of an install date and the header shows passive provenance rather than an uninstall control."
         >
           <Plugin plugin={BUNDLED_PLUGIN} />
         </State>
 
         <State
           name="Update available"
-          note="An offered update sits above the release facts, so the action is visible without the quiet common case growing a table."
+          note="An offered update is a banner under the header, so the action is visible without the quiet common case growing a surface."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>

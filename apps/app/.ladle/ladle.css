@@ -1,6 +1,11 @@
 @import "../src/app.css";
 @source "../src";
 @source ".";
+/* Plugin-owned views render in these stories but live outside apps/app, so
+   Tailwind never saw their classes: anything a plugin used that the app did not
+   silently rendered unstyled here while working in the real app, which builds
+   the plugin's CSS separately. */
+@source "../../../plugins/automations";
 
 .ladle-main {
   padding: 0;

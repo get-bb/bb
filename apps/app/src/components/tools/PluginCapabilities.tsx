@@ -1,19 +1,14 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
-import {
-  ResourceDetailCollection,
-  ResourceDetailListItem,
-} from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+  PluginDetailGlyph,
+  PluginDetailRow,
+  PluginDetailTable,
+} from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import { appToast } from "@/components/ui/app-toast";
@@ -59,9 +54,11 @@ function pluginActivityIcon(
     };
   }
   if (activity === "schedule" && state === "running") {
+    // The app says "working" by shimmering a row's own icon, never by swapping
+    // it for a spinner (ThreadRow.tsx:144). A running job keeps its clock.
     return {
-      name: "Loading",
-      className: "animate-spin text-muted-foreground",
+      name: "Clock",
+      className: "animate-shine-icon text-muted-foreground",
       label: "Running",
     };
   }
@@ -97,25 +94,11 @@ function PluginActivityState({
 }) {
   const icon = pluginActivityIcon(activity, state);
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={icon.label}
-            tabIndex={0}
-            className="inline-flex"
-          >
-            <Icon
-              name={icon.name}
-              className={cn("size-4", icon.className)}
-              aria-hidden
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{icon.label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <PluginDetailGlyph
+      icon={icon.name}
+      label={icon.label}
+      className={icon.className}
+    />
   );
 }
 
@@ -332,16 +315,22 @@ export function PluginIncludes({
         mono: kind === "skill" || kind === "agent-tool",
       }));
 
+  // `kind` is the name behind the glyph, not a column. Most plugins contribute
+  // one or two items per kind, so a Kind column is near-unique per row and
+  // reads as filler; the glyph carries it and names itself on hover or focus.
   const categories: Array<{
     icon: IconName;
+    kind: string;
     items: PluginCapabilityItem[];
   }> = [
     {
       icon: "AppWindow",
+      kind: "App surface",
       items: appItems,
     },
     {
       icon: "Terminal",
+      kind: "Command",
       items: plugin.cliCommand
         ? [
             {
@@ -355,27 +344,32 @@ export function PluginIncludes({
     },
     {
       icon: "Settings",
+      kind: "Setting",
       items: settingsItems,
     },
     {
       icon: "Explore",
+      kind: "Skill",
       items: declared("skill"),
     },
     {
       icon: "Toolbox",
+      kind: "Agent tool",
       items: declared("agent-tool"),
     },
     {
       icon: "MessageCirclePlus",
+      kind: "Thread integration",
       items: declared("thread-integration"),
     },
     {
       icon: "Palette",
+      kind: "Theme",
       items: declared("theme"),
     },
   ];
-  const items = categories.flatMap(({ icon, items: groupItems }) =>
-    groupItems.map((item) => ({ ...item, icon })),
+  const items = categories.flatMap(({ icon, kind, items: groupItems }) =>
+    groupItems.map((item) => ({ ...item, icon, kind })),
   );
 
   // Commands, settings, agent tools, thread integrations and app surfaces are
@@ -409,40 +403,23 @@ export function PluginIncludes({
 
   return (
     <div className="space-y-3">
-      <dl className="grid grid-cols-[fit-content(20rem)_minmax(0,1fr)]">
-        {items.map((item, index) => (
-          <Fragment key={item.key}>
-            <dt
-              className={cn(
-                "flex min-w-0 items-start gap-2 py-2 pr-6",
-                index > 0 && "border-t border-border/50",
-              )}
-            >
-              <Icon
-                name={item.icon}
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden
+      <PluginDetailTable>
+        {items.map((item) => (
+          <PluginDetailRow
+            key={item.key}
+            glyph={
+              <PluginDetailGlyph
+                icon={item.icon}
+                label={item.kind}
+                className="text-muted-foreground"
               />
-              <span
-                className={cn(
-                  "min-w-0 break-all text-sm leading-snug text-foreground",
-                  item.mono && "font-mono",
-                )}
-              >
-                {item.label}
-              </span>
-            </dt>
-            <dd
-              className={cn(
-                "min-w-0 py-2 text-xs leading-relaxed text-muted-foreground",
-                index > 0 && "border-t border-border/50",
-              )}
-            >
-              {item.detail}
-            </dd>
-          </Fragment>
+            }
+            name={item.label}
+            mono={item.mono}
+            detail={item.detail}
+          />
         ))}
-      </dl>
+      </PluginDetailTable>
       {live ? null : (
         <p className="flex min-w-0 items-start gap-2 text-xs leading-relaxed text-muted-foreground">
           <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -450,31 +427,6 @@ export function PluginIncludes({
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * A run of health rows under a quiet group header.
- *
- * The group name carries the meaning, so no boilerplate needs to sit above the
- * collection.
- */
-function PluginActivityGroup({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section>
-      <div className="bg-surface-recessed/40 px-3 py-1.5">
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </h3>
-      </div>
-      <div className="divide-y divide-border/50">{children}</div>
-    </section>
   );
 }
 
@@ -496,7 +448,9 @@ function PluginRuntimeStatusAlert({
     <div
       role="alert"
       className={cn(
-        "flex min-w-0 items-start gap-2.5 rounded-lg border px-3 py-2.5",
+        // Matched to the other banners in the stack: same radius, same padding,
+        // same gap. They read as one column of alerts, not three recipes.
+        "flex min-w-0 items-start gap-3 rounded-md border px-3.5 py-3",
         destructive
           ? "border-destructive/30 bg-destructive/5"
           : "border-warning/30 bg-warning/5",
@@ -511,20 +465,20 @@ function PluginRuntimeStatusAlert({
         aria-hidden
       />
       <div className="min-w-0 flex-1">
-        <p
-          className={cn(
-            "text-sm font-medium",
-            destructive ? "text-destructive" : "text-warning",
-          )}
-        >
+        {/*
+          The title is plain foreground like every other banner: the icon and
+          the border already carry the tone, and colouring the label too made
+          this one alert shout past the others in the same stack.
+        */}
+        <p className="text-sm font-medium text-foreground">
           {runtimeStatus.label}
         </p>
         {plugin.statusDetail ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             {plugin.statusDetail}
           </p>
         ) : null}
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
           {runtimeStatus.recovery}
         </p>
       </div>
@@ -546,7 +500,29 @@ function PluginRuntimeStatusAlert({
   );
 }
 
-export function PluginActivity({
+/**
+ * Whether the plugin has anything to say about its own health beyond the two
+ * tables — a bad overall runtime state, or failed handler calls.
+ */
+export function pluginHasHealthAlerts(
+  plugin: PluginListItem,
+  runtimeStatus: PluginRuntimeStatusPresentation | null,
+): boolean {
+  return (
+    (plugin.enabled && runtimeStatus !== null) ||
+    plugin.handlerStats.errorCount > 0
+  );
+}
+
+/**
+ * The plugin's health problems, for the page's banner stack.
+ *
+ * These are not services or scheduled jobs, so they have no row in either
+ * table; and they are the things a user may need to act on, so they belong with
+ * the other banners under the header rather than below the content they
+ * explain.
+ */
+export function PluginHealthAlerts({
   plugin,
   runtimeStatus,
 }: {
@@ -564,17 +540,10 @@ export function PluginActivity({
     },
   });
   const showOverallState = plugin.enabled && runtimeStatus !== null;
-  const hasHandlerErrors = plugin.handlerStats.errorCount > 0;
-  if (
-    !showOverallState &&
-    !hasHandlerErrors &&
-    plugin.services.length === 0 &&
-    plugin.schedules.length === 0
-  ) {
-    return null;
-  }
+  const errorCount = plugin.handlerStats.errorCount;
+  if (!showOverallState && errorCount === 0) return null;
   return (
-    <div className="space-y-3">
+    <>
       {showOverallState && runtimeStatus !== null ? (
         <PluginRuntimeStatusAlert
           plugin={plugin}
@@ -583,78 +552,69 @@ export function PluginActivity({
           onReload={() => reload.mutate()}
         />
       ) : null}
-      <ResourceDetailCollection>
-        {plugin.services.length > 0 ? (
-          <PluginActivityGroup title="Background services">
-            {plugin.services.map((service) => {
-              return (
-                <ResourceDetailListItem
-                  key={service.name}
-                  leading={
-                    <PluginActivityState
-                      activity="service"
-                      state={service.state}
-                    />
-                  }
-                >
-                  <span className="block">{service.name}</span>
-                </ResourceDetailListItem>
-              );
-            })}
-          </PluginActivityGroup>
-        ) : null}
-        {plugin.schedules.length > 0 ? (
-          <PluginActivityGroup title="Scheduled jobs">
-            {plugin.schedules.map((schedule) => {
-              return (
-                <ResourceDetailListItem
-                  key={schedule.name}
-                  leading={
-                    <PluginActivityState
-                      activity="schedule"
-                      state={schedule.lastStatus}
-                    />
-                  }
-                >
-                  <span className="block">{schedule.name}</span>
-                  {schedule.lastError ? (
-                    <span className="block text-xs text-destructive">
-                      {schedule.lastError}
-                    </span>
-                  ) : (
-                    <span className="block text-xs text-muted-foreground">
-                      Next {formatAbsoluteDate(schedule.nextRunAt)}
-                    </span>
-                  )}
-                </ResourceDetailListItem>
-              );
-            })}
-          </PluginActivityGroup>
-        ) : null}
-        {hasHandlerErrors ? (
-          <PluginActivityGroup title="Handler errors">
-            <ResourceDetailListItem
-              leading={
-                <Icon
-                  name="AlertCircle"
-                  className="size-4 text-destructive"
-                  aria-hidden
-                />
-              }
-            >
-              <span className="block">
-                {plugin.handlerStats.errorCount} failed{" "}
-                {plugin.handlerStats.errorCount === 1
-                  ? "handler call"
-                  : "handler calls"}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Reload the plugin to clear this count after resolving the cause.
-              </span>
-            </ResourceDetailListItem>
-          </PluginActivityGroup>
-        ) : null}
-      </ResourceDetailCollection>
-    </div>
+      {errorCount > 0 ? (
+        <div className="flex min-w-0 items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3.5 py-3">
+          <Icon
+            name="AlertCircle"
+            className="mt-0.5 size-4 shrink-0 text-destructive"
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">
+              {errorCount} failed{" "}
+              {errorCount === 1 ? "handler call" : "handler calls"}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Reload the plugin to clear this count after resolving the cause.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Long-running processes the plugin keeps alive. */
+export function PluginServices({ plugin }: { plugin: PluginListItem }) {
+  return (
+    <PluginDetailTable>
+      {plugin.services.map((service) => (
+        <PluginDetailRow
+          key={service.name}
+          glyph={
+            <PluginActivityState activity="service" state={service.state} />
+          }
+          name={service.name}
+          detail={null}
+        />
+      ))}
+    </PluginDetailTable>
+  );
+}
+
+/** Work the plugin has asked bb to run on a timer. */
+export function PluginSchedules({ plugin }: { plugin: PluginListItem }) {
+  return (
+    <PluginDetailTable>
+      {plugin.schedules.map((schedule) => (
+        <PluginDetailRow
+          key={schedule.name}
+          glyph={
+            <PluginActivityState
+              activity="schedule"
+              state={schedule.lastStatus}
+            />
+          }
+          name={schedule.name}
+          detail={
+            schedule.lastError ? (
+              <span className="text-destructive">{schedule.lastError}</span>
+            ) : (
+              `Next ${formatAbsoluteDate(schedule.nextRunAt)}`
+            )
+          }
+        />
+      ))}
+    </PluginDetailTable>
   );
 }

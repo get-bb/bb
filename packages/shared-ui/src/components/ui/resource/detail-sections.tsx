@@ -116,7 +116,10 @@ export function ResourceDetailPage({
             ) : null}
           </div>
           {metadata ? (
-            <div className="text-xs text-muted-foreground">{metadata}</div>
+            // One tone below muted: the metadata row under a resource title is
+            // rank-4 information on every detail page, and at muted it competed
+            // with the section content below it.
+            <div className="text-xs text-subtle-foreground">{metadata}</div>
           ) : null}
           {description ? (
             <p className="text-xs text-muted-foreground">{description}</p>

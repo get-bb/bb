@@ -38,6 +38,10 @@ import {
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
 } from "./lib/format-schedule";
+import {
+  formatAutomationModelLabel,
+  formatAutomationProviderLabel,
+} from "./lib/model-label";
 
 export interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -126,6 +130,28 @@ export function automationScheduleLabel(
   });
 }
 
+/**
+ * The upcoming run, labelled in full.
+ *
+ * No icon: the row already carries the project and cadence glyphs, and a third
+ * time-shaped icon beside the cadence clock would read as a second clock
+ * meaning something else. The whole meta row now sits a tone below the title,
+ * which is what keeps this from competing.
+ */
+function automationDetailNextRun(
+  automation: AutomationResponse,
+): ReactNode | null {
+  const label = automationDetailScheduleLabel(automation);
+  if (label === null) return null;
+  if (!label.startsWith("Next ")) return label;
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      <span>Next run:</span>
+      <span className="min-w-0 truncate">{label.slice("Next ".length)}</span>
+    </span>
+  );
+}
+
 function automationDetailScheduleLabel(
   automation: AutomationResponse,
 ): string | null {
@@ -201,7 +227,11 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   },
   skipped: {
     label: "Skipped",
-    icon: "CircleDashed",
+    // Not CircleDashed: icon.tsx aliases it to the same DashedLineCircleIcon as
+    // Spinner, so a skipped run rendered an identical shape to a running one.
+    // ArrowTurnForward is the only glyph in the map that reads as "passed
+    // over", and it is shape-distinct from check, x, spinner, clock and pause.
+    icon: "ArrowTurnForward",
     className: "text-subtle-foreground",
   },
   succeeded: {
@@ -247,33 +277,74 @@ function RunRow({
   const showOutput =
     run.runMode === "script" &&
     (run.output !== null || run.error !== null || silent);
+  const visual = AUTOMATION_RUN_STATUS_VISUALS[run.status];
+  const running = run.status === "running";
+  const openable = run.runMode === "agent" && run.threadId !== null;
+  // The whole row is the affordance when there is a thread, so the destination
+  // stays keyboard-reachable without a separate visible button competing with
+  // the timestamp on every line.
+  const RowTag = openable ? "button" : "div";
+  const line = (
+    <RowTag
+      {...(openable
+        ? {
+            type: "button" as const,
+            onClick: () => onOpenThread(run.threadId!),
+          }
+        : {})}
+      className={cn(
+        "group/run flex w-full min-w-0 items-center gap-2.5 rounded-sm px-2 py-1.5 text-left",
+        openable &&
+          "cursor-pointer hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default",
+        running && "bg-surface-recessed/40",
+      )}
+    >
+      <span
+        role="img"
+        aria-label={visual.label}
+        className="inline-flex shrink-0"
+      >
+        <Icon
+          name={visual.icon}
+          className={cn(
+            "size-3.5",
+            visual.className,
+            running && "animate-shine-icon",
+          )}
+          aria-hidden
+        />
+      </span>
+      <span
+        className={cn(
+          "min-w-0 shrink-0 text-sm",
+          running ? "text-muted-foreground" : "text-foreground",
+        )}
+      >
+        {formatScheduleRunTime(run.startedAt)}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-xs",
+          running
+            ? "animate-shine text-muted-foreground"
+            : "text-subtle-foreground",
+        )}
+      >
+        {running ? `${visual.label}\u2026` : (duration ?? "")}
+        {run.skipReason ? `${duration ? " · " : ""}${run.skipReason}` : ""}
+      </span>
+      {openable ? (
+        <Icon
+          name="ChevronRight"
+          className="size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/run:opacity-100 group-focus-visible/run:opacity-100"
+          aria-hidden
+        />
+      ) : null}
+    </RowTag>
+  );
   return (
     <div className="overflow-hidden rounded-sm">
-      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-        <span className="sr-only">
-          {AUTOMATION_RUN_STATUS_VISUALS[run.status].label}
-        </span>
-        <span className="font-medium">
-          {formatScheduleRunTime(run.startedAt)}
-        </span>
-        {duration ? (
-          <span className="text-xs text-muted-foreground">{duration}</span>
-        ) : null}
-        {run.runMode === "agent" && run.threadId ? (
-          <button
-            type="button"
-            onClick={() => onOpenThread(run.threadId!)}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground hover:underline"
-          >
-            View thread
-          </button>
-        ) : null}
-      </div>
-      {run.skipReason ? (
-        <p className="mx-2 mb-2 rounded-md bg-surface-recessed/70 px-3 py-2 text-xs text-muted-foreground">
-          {run.skipReason}
-        </p>
-      ) : null}
+      {line}
       {showOutput ? (
         <pre
           className={cn(
@@ -343,7 +414,7 @@ export function AutomationDetailView({
               <Icon name="Clock" className="size-3.5" aria-hidden />
               {formatAutomationTrigger(automation.trigger)}
             </span>,
-            automationDetailScheduleLabel(automation),
+            automationDetailNextRun(automation),
           ]}
         />
       }
@@ -395,10 +466,25 @@ export function AutomationDetailView({
         >
           {execution.mode === "agent" ? (
             <ResourcePromptPreview
+              // The composer's footer leads with the model and keeps the
+              // provider as supporting text, with no decorative glyph per item.
+              // Environment and permission carry no composer analogue, so they
+              // lose their icons and read as plain trailing metadata.
               context={[
                 {
-                  icon: "Brain",
-                  label: `${execution.providerId} · ${execution.model}`,
+                  label: (
+                    <span className="inline-flex min-w-0 items-baseline gap-1.5">
+                      <span className="min-w-0 truncate text-foreground">
+                        {formatAutomationModelLabel(
+                          execution.model,
+                          execution.providerId,
+                        )}
+                      </span>
+                      <span className="min-w-0 truncate">
+                        {formatAutomationProviderLabel(execution.providerId)}
+                      </span>
+                    </span>
+                  ),
                 },
                 {
                   icon:
@@ -408,22 +494,23 @@ export function AutomationDetailView({
                       : "Folder",
                   label: automationEnvironmentLabel(execution),
                 },
-                {
-                  icon: "Lock",
-                  label: formatPermissionMode(execution.permissionMode),
-                },
+                { label: formatPermissionMode(execution.permissionMode) },
               ]}
             >
               {execution.prompt}
             </ResourcePromptPreview>
           ) : (
+            // Same container as ResourcePromptPreview and the Runs collection:
+            // a script definition is the same kind of object as a prompt
+            // definition, so it should not sit on a recessed surface while its
+            // sibling sits on a flat bordered one.
             <ResourceDetailPanel
-              surface="recessed"
-              className="bg-surface-recessed/45"
+              surface="flat"
+              className="rounded-md border border-border bg-background"
             >
               <div
                 className={cn(
-                  "px-3 py-2",
+                  "px-3 py-3",
                   execution.script && "max-h-[42dvh] overflow-auto",
                 )}
               >
@@ -437,7 +524,7 @@ export function AutomationDetailView({
                   </span>
                 ) : null}
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/35 px-3 py-1.5 text-xs text-muted-foreground">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Icon
                     name="ComputerTerminal01"

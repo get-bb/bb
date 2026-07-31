@@ -32,7 +32,8 @@ export function ResourceDetailPanel({
 }
 
 export interface ResourcePromptContextItem {
-  icon: IconName;
+  /** Omitted where the composer's own footer carries no leading glyph. */
+  icon?: IconName;
   label: ReactNode;
 }
 
@@ -53,9 +54,13 @@ export function ResourcePromptPreview({
   context?: readonly ResourcePromptContextItem[];
 }) {
   return (
+    // Matches ResourceDetailCollection's surface so a detail page's prompt and
+    // its run list read as the same kind of container: same radius, same
+    // border, same flat background. The prompt panel was rounded-lg on a raised
+    // fill, which made it a louder object than the list below it.
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface-raised-solid",
+        "overflow-hidden rounded-md border border-border bg-background",
         className,
       )}
     >
@@ -63,17 +68,19 @@ export function ResourcePromptPreview({
         {children}
       </div>
       {context.length > 0 ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/35 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
           {context.map((item, index) => (
             <span
               key={index}
               className="inline-flex min-w-0 items-center gap-1.5"
             >
-              <Icon
-                name={item.icon}
-                className="size-3.5 shrink-0"
-                aria-hidden
-              />
+              {item.icon ? (
+                <Icon
+                  name={item.icon}
+                  className="size-3.5 shrink-0"
+                  aria-hidden
+                />
+              ) : null}
               <span className="min-w-0 truncate">{item.label}</span>
             </span>
           ))}

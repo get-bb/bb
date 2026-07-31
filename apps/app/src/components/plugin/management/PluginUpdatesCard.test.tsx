@@ -8,7 +8,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
-  PluginReleaseFacts,
+  PluginCompatibilityBanner,
   pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
 
@@ -79,44 +79,15 @@ describe("pluginHasUpdateSurfaces", () => {
   });
 });
 
-describe("PluginReleaseFacts", () => {
-  it("shows current version and installation time without transport metadata", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url === "/api/v1/plugins/linear/source") {
-        return jsonResponse({
-          requested: "npm:@bb-plugins/linear@^1.4.0",
-          resolved: "1.6.2",
-          integrity: "sha512-9f2c",
-          engines: { bb: ">=0.14" },
-          installedAt: 1752200000000,
-          history: [{ version: "1.6.2", activatedAt: 1752200000000 }],
-        });
-      }
-      return jsonResponse({ error: "not found" }, 404);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { wrapper } = createQueryClientTestHarness();
-    render(<PluginReleaseFacts plugin={plugin()} releaseVersion="1.6.2" />, {
-      wrapper,
-    });
-
-    expect(screen.getByText("Current version")).toBeTruthy();
-    expect(screen.getByText("1.6.2")).toBeTruthy();
-    expect(await screen.findByText("Installed")).toBeTruthy();
-    expect(screen.queryByText("Requested")).toBeNull();
-    expect(screen.queryByText("Resolved")).toBeNull();
-    expect(screen.queryByText(/npm:@bb-plugins/)).toBeNull();
-  });
-
-  it("surfaces a newer-but-incompatible release on the card, not the list", () => {
+describe("PluginCompatibilityBanner", () => {
+  it("surfaces a newer-but-incompatible release", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
     );
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginReleaseFacts
+      <PluginCompatibilityBanner
         plugin={plugin({
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -141,7 +112,7 @@ describe("PluginReleaseFacts", () => {
     );
     const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <PluginReleaseFacts plugin={plugin({ provenance: "builtin" })} />,
+      <PluginCompatibilityBanner plugin={plugin({ provenance: "builtin" })} />,
       { wrapper },
     );
     expect(container.textContent).toBe("");

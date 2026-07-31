@@ -200,6 +200,27 @@ const SCRIPT_AUTOMATION: AutomationResponse = {
   },
 };
 
+/** Enabled and recurring, but the server has not computed a next run. */
+const UNSCHEDULED_AUTOMATION: AutomationResponse = {
+  ...DETAIL_AUTOMATION,
+  id: "unscheduled-digest",
+  name: "Unscheduled digest",
+  nextRunAt: null,
+};
+
+/** A one-time automation that already ran and will not run again. */
+const COMPLETED_AUTOMATION: AutomationResponse = {
+  ...DETAIL_AUTOMATION,
+  id: "one-time-backfill",
+  name: "One-time backfill",
+  trigger: { triggerType: "once", runAt: now - 86_400_000 },
+  enabled: false,
+  nextRunAt: null,
+  runCount: 1,
+  lastRunAt: now - 86_400_000,
+  lastRunStatus: "succeeded",
+};
+
 const RUNS: AutomationRunResponse[] = (
   [
     ["succeeded", null],
@@ -214,7 +235,10 @@ const RUNS: AutomationRunResponse[] = (
   threadId: `thr_${index}`,
   status,
   trigger: index === 0 ? "manual" : "schedule",
-  skipReason: status === "skipped" ? "Previous run still in progress" : null,
+  // The only skip reasons the product emits are "empty output" and
+  // "wakeAgent false" (script-runner.ts:101,110). The previous fixture invented
+  // an overlap-suppression string, which read as a second, confusing "running".
+  skipReason: status === "skipped" ? "empty output" : null,
   error,
   output: null,
   exitCode: null,
@@ -292,8 +316,8 @@ export function DetailStates() {
           Automation detail states
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          An automation page is Definition then Runs. Runs owns
-          its loading, empty, failed, and populated states without moving.
+          An automation page is Definition then Runs. Runs owns its loading,
+          empty, failed, and populated states without moving.
         </p>
       </header>
       <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
@@ -308,6 +332,24 @@ export function DetailStates() {
           note="A one-time script. Same two sections, different definition content."
         >
           <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
+        </DetailState>
+        <DetailState
+          name="No next run"
+          note="Enabled and recurring, but nothing is scheduled. The upcoming-run slot says so rather than going blank."
+        >
+          <AutomationDetail
+            value={UNSCHEDULED_AUTOMATION}
+            runs={RUNS.slice(0, 1)}
+          />
+        </DetailState>
+        <DetailState
+          name="Completed one-time run"
+          note="A one-shot that already ran. The trigger still says One time and the run itself is in Runs, so the meta row no longer repeats “Completed”."
+        >
+          <AutomationDetail
+            value={COMPLETED_AUTOMATION}
+            runs={RUNS.slice(0, 1)}
+          />
         </DetailState>
         <DetailState
           name="No runs yet"

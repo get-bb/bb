@@ -93,29 +93,51 @@ function renderPlugin(plugin: PluginListItem) {
 }
 
 describe("Plugin detail recipe", () => {
-  it("keeps Release directly below About, followed by Capabilities", () => {
+  it("folds Release into About, so Capabilities is the second section", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["release", "Release"],
       ["includes", "Capabilities"],
     ]);
   });
 
-  it("places Settings and Health after Capabilities when they apply", () => {
+  it("names each health table after its own object, with no Health wrapper", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       hasSettings: true,
+      services: [{ name: "sync", state: "running" }],
+      schedules: [
+        {
+          name: "nightly",
+          cron: "0 3 * * *",
+          nextRunAt: 1_800_000_000_000,
+          lastRunAt: null,
+          lastStatus: null,
+          lastError: null,
+        },
+      ],
+    });
+
+    expect(renderedRecipe(container)).toEqual([
+      ["overview", "About"],
+      ["includes", "Capabilities"],
+      ["configuration", "Settings"],
+      ["activity", "Background services"],
+      ["activity", "Scheduled jobs"],
+    ]);
+  });
+
+  it("omits a health table the plugin has no rows for", () => {
+    const { container } = renderPlugin({
+      ...PLUGIN,
       services: [{ name: "sync", state: "running" }],
     });
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
-      ["release", "Release"],
       ["includes", "Capabilities"],
-      ["configuration", "Settings"],
-      ["activity", "Health"],
+      ["activity", "Background services"],
     ]);
   });
 
@@ -165,7 +187,7 @@ describe("Plugin detail recipe", () => {
     const capabilities = container.querySelector(
       '[data-resource-detail-section="includes"]',
     );
-    expect(capabilities?.querySelector("dl")).not.toBeNull();
+    expect(capabilities?.querySelector("table")).not.toBeNull();
     expect(
       capabilities?.querySelector("[data-plugin-capability-group]"),
     ).toBeNull();
@@ -433,7 +455,9 @@ describe("Automation detail recipe", () => {
     );
 
     expect(screen.getByRole("img", { name: "Skipped" })).toBeTruthy();
-    const icon = container.querySelector('[data-icon="CircleDashed"]');
+    // Not CircleDashed: icon.tsx aliases it to Spinner, so a skipped run drew
+    // the same shape as a running one.
+    const icon = container.querySelector('[data-icon="ArrowTurnForward"]');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute("class")).toContain("text-subtle-foreground");
   });

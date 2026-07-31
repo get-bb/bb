@@ -1,21 +1,14 @@
 import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  ResourceActionButton,
-  ResourceDetailFact,
-  ResourceDetailFacts,
-} from "@bb/shared-ui/resource-list";
-import { usePluginSource } from "@/hooks/queries/plugin-catalog-queries";
+import { ResourceActionButton } from "@bb/shared-ui/resource-list";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
 import { SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
- * Detail-page release facts. The source endpoint contributes only the useful
- * installation timestamp; requested/resolved transport strings stay out of
- * the user-facing taxonomy.
+ * Whether a plugin has any update surfaces at all.
  *
  * Bundled plugins — auto builtins and store-installed officials alike — are
  * pinned to the copy shipped inside the app and update with bb releases, so
@@ -90,73 +83,52 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-export function PluginReleaseFacts({
+/**
+ * A blocked update, rendered in the page's banner stack rather than inside
+ * Release. It is something the user may need to act on, so it belongs with the
+ * other banners at the top instead of halfway down the page.
+ */
+export function PluginCompatibilityBanner({
   plugin,
-  releaseVersion,
 }: {
   plugin: PluginListItem;
-  /** Includes current release identity alongside the other release facts. */
-  releaseVersion?: string;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
-  const sourceQuery = usePluginSource(plugin.id, { enabled: true });
-
   if (!pluginHasUpdateSurfaces(plugin)) return null;
-
-  const source = sourceQuery.data ?? null;
   const blockedVersion =
     plugin.updateState.availableVersion === null
       ? plugin.updateState.blockedVersion
       : null;
-
+  if (blockedVersion === null) return null;
   return (
-    <div className="space-y-3">
-      <ResourceDetailFacts>
-        {releaseVersion ? (
-          <ResourceDetailFact label="Current version" mono>
-            {releaseVersion}
-          </ResourceDetailFact>
-        ) : null}
-        {source?.installedAt !== null && source?.installedAt !== undefined ? (
-          <ResourceDetailFact label="Installed">
-            {formatAbsoluteDate(source.installedAt)}
-          </ResourceDetailFact>
-        ) : null}
-      </ResourceDetailFacts>
-      {/* Compatibility is not a peer fact: it is a blocked update that the user
-          may need to act on, so it keeps a tone, an icon, and its own action
-          instead of hiding in a fact row. */}
-      {blockedVersion !== null ? (
-        <div className="flex min-w-0 items-start gap-2.5 rounded-md border border-warning/30 bg-warning/5 px-3 py-2.5">
-          <Icon
-            name="AlertTriangle"
-            className="mt-0.5 size-4 shrink-0 text-warning"
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-foreground">
-              {blockedVersion} isn&apos;t compatible with this bb
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {plugin.updateState.blockedReasons[0] ??
-                `Staying on ${plugin.version}.`}
-            </p>
-          </div>
-          <ResourceActionButton
-            label="View compatibility details"
-            icon="Info"
-            onClick={() => setBlockedOpen(true)}
-          />
-        </div>
-      ) : null}
-      {blockedVersion !== null ? (
-        <UpdatePluginDialog
-          failureStateLabel="Update failed"
-          plugin={plugin}
-          open={blockedOpen}
-          onOpenChange={setBlockedOpen}
+    <>
+      <div className="flex min-w-0 items-start gap-3 rounded-md border border-warning/30 bg-warning/5 px-3.5 py-3">
+        <Icon
+          name="AlertTriangle"
+          className="mt-0.5 size-4 shrink-0 text-warning"
+          aria-hidden
         />
-      ) : null}
-    </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">
+            {blockedVersion} isn&apos;t compatible with this bb
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {plugin.updateState.blockedReasons[0] ??
+              `Staying on ${plugin.version}.`}
+          </p>
+        </div>
+        <ResourceActionButton
+          label="View compatibility details"
+          icon="Info"
+          onClick={() => setBlockedOpen(true)}
+        />
+      </div>
+      <UpdatePluginDialog
+        failureStateLabel="Update failed"
+        plugin={plugin}
+        open={blockedOpen}
+        onOpenChange={setBlockedOpen}
+      />
+    </>
   );
 }

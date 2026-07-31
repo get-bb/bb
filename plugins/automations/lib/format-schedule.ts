@@ -192,12 +192,20 @@ export function formatOverviewScheduleMetadata(
   return { emphasis: null, text: label };
 }
 
-/** Detail pages omit the paused label because their lifecycle toggle carries it. */
+/**
+ * Detail pages omit labels another element on the same page already carries.
+ *
+ * "Paused" is carried by the lifecycle toggle. "Completed" is carried by the
+ * Runs section directly below, which shows the finished run with its status
+ * glyph, timestamp, and duration — strictly more than the word, in the place a
+ * reader looks for it. The trigger item still says "One time", so the schedule
+ * shape is not lost.
+ */
 export function formatDetailScheduleStatusLabel(
   args: FormatScheduleStatusLabelArgs,
 ): string | null {
   const label = formatScheduleStatusLabel(args);
-  return label === "Paused" ? null : label;
+  return label === "Paused" || label === "Completed" ? null : label;
 }
 
 export function matchesAutomationStatusFilters(
