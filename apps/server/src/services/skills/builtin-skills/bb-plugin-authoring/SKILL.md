@@ -163,7 +163,7 @@ reports the reload failure in its detail. `bb.pluginId` is the plugin's own id.
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
-instruction providers, thread actions, or mention providers are rejected.
+instruction providers or mention providers are rejected.
 Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
 are additive, so registering multiple listeners is supported.
 
@@ -666,16 +666,6 @@ safety policy such as permission escalation is unchanged. The legacy
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
 ```ts
-bb.ui.registerThreadAction({
-  id: "summarize",
-  title: "Summarize thread",
-  icon: "ListChecks",
-  confirm: "Ask the agent for a summary?", // optional confirm dialog
-  async run({ threadId, projectId }) {
-    return { toast: { kind: "success", message: "Requested." } }; // throw → automatic error toast
-  },
-});
-
 bb.ui.registerMentionProvider({
   id: "issue",
   label: "Issues",
@@ -825,9 +815,9 @@ export default definePluginApp((app) => {
 ### A control in the thread header
 
 `app.slots.experimental_threadHeaderAction` renders a component in the thread
-header's action row — the frontend sibling of `bb.ui.registerThreadAction`
-(which renders a host button and runs server-side). Use the slot when the
-control has to draw live state:
+header's action row. It replaced the older backend-only
+`bb.ui.registerThreadAction`, so a control that needs to draw live state (a
+count, a cluster, a status) is now the only shape:
 
 ```tsx
 app.slots.experimental_threadHeaderAction({
@@ -1449,7 +1439,7 @@ Inspect: `harness.inspection.sdk.calls` /
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
-agent tools/configure provider, thread actions, mention providers). Pass
+agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 
@@ -1553,8 +1543,6 @@ Remaining reference examples in `examples/plugins/`:
   needsConfiguration.
 - `agent-enrichment` — agent surfaces: CLI command, zod-schema native tool,
   docs mention provider, boolean setting, bundled `skills/` directory.
-- `small-ux-pack` — dependency-free host-rendered UI: two thread actions
-  (confirm + toast, and the automatic error-toast path).
 - `cascade` — the big host-component example: a scrollable-tiling strip where
   every column is a `ThreadChat` and the draft column is
   `experimental_NewThreadComposer`, plus a thin index backend (kv layout

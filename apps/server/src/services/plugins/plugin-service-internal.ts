@@ -16,7 +16,6 @@ import type {
   PluginApiHandle,
   PluginBackgroundServiceRecord,
   PluginMentionTrigger,
-  PluginThreadActionToast,
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 export type {
@@ -155,21 +154,6 @@ export interface PluginResolvedAgentConfiguration {
   selectedSkillIdsByPlugin: ReadonlyMap<string, ReadonlySet<string>>;
   dynamicInstructions: Array<{ pluginId: string; text: string }>;
 }
-
-/** One thread action contributed by a running plugin (design §4.9). */
-export interface PluginThreadActionContribution {
-  pluginId: string;
-  id: string;
-  title: string;
-  icon: string | null;
-  confirm: string | null;
-}
-
-/** Result of running a thread action (POST /plugins/:id/actions/:actionId). */
-export type PluginThreadActionRunResult =
-  | { outcome: "unknown-thread" }
-  | { outcome: "ok"; toast: PluginThreadActionToast | null }
-  | { outcome: "error"; error: string };
 
 /** One mention provider contributed by a running plugin (design §4.9). */
 export interface PluginMentionProviderContribution {

@@ -128,7 +128,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
           ],
         },
       ],
-      threadActions: [],
       mentionProviders: [],
     });
     // bb plugin list shows the registered command too.

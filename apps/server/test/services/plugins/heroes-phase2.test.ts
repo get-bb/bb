@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setThreadExecutionOverride } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
@@ -23,8 +22,6 @@ import {
 } from "../../helpers/seed.js";
 import {
   createTestAppHarness,
-  startTestServer,
-  type RunningTestServer,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 
@@ -37,146 +34,6 @@ const EXAMPLES_DIR = fileURLToPath(
 // The examples pin engines.bb to ">=0.9"; the harness default app version
 // ("0.0.0-test") would legitimately mark them incompatible.
 const APP_VERSION = "1.0.0";
-
-describe("hero plugin: small-ux-pack", () => {
-  let server: RunningTestServer;
-  let threadId: string;
-
-  beforeEach(async () => {
-    server = await startTestServer({ appVersion: APP_VERSION });
-    // The thread action sends a follow-up through the plugin's loopback
-    // bb.sdk, so the SDK must be bound to the listening server.
-    server.pluginService.bindSdk({ baseUrl: server.baseUrl });
-
-    const { host } = seedHostSession(server.deps);
-    const { project } = seedProjectWithSource(server.deps, {
-      hostId: host.id,
-      path: "/tmp/small-ux-pack-source",
-    });
-    const environment = seedEnvironment(server.deps, {
-      hostId: host.id,
-      projectId: project.id,
-      path: "/tmp/small-ux-pack-workspace",
-      status: "ready",
-    });
-    const thread = seedThread(server.deps, {
-      projectId: project.id,
-      environmentId: environment.id,
-      status: "idle",
-      title: "Fix the login flow",
-    });
-    threadId = thread.id;
-    // A thread the user has already run once carries a stored model; the
-    // plugin's follow-up send inherits it instead of naming one.
-    setThreadExecutionOverride(server.db, {
-      threadId,
-      modelOverride: "gpt-5",
-    });
-    seedThread(server.deps, {
-      projectId: project.id,
-      title: "Ship the mentions popover",
-    });
-
-    const entry = await server.pluginService.installPath(
-      join(EXAMPLES_DIR, "small-ux-pack"),
-    );
-    expect(entry.id).toBe("small-ux-pack");
-    expect(entry.status).toBe("running");
-  });
-
-  afterEach(async () => {
-    await server.pluginService.stop();
-    await server.close();
-  });
-
-  async function post(path: string, body: unknown): Promise<Response> {
-    return await fetch(`${server.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  }
-
-  it("lists both thread actions (with confirm metadata) in contributions", async () => {
-    const response = await fetch(
-      `${server.baseUrl}/api/v1/plugins/contributions`,
-    );
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      threadActions: unknown;
-    };
-    expect(body.threadActions).toEqual([
-      {
-        pluginId: "small-ux-pack",
-        id: "summarize-thread",
-        title: "Summarize thread",
-        icon: "ListChecks",
-        confirm: "Ask this thread's agent for a three-bullet summary?",
-      },
-      {
-        pluginId: "small-ux-pack",
-        id: "copy-status",
-        title: "Copy status",
-        icon: "Clipboard",
-        confirm: null,
-      },
-    ]);
-  });
-
-  it("Summarize thread sends a follow-up prompt via bb.sdk and returns a success toast", async () => {
-    const response = await post(
-      "/api/v1/plugins/small-ux-pack/actions/summarize-thread",
-      { threadId },
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      toast: {
-        kind: "success",
-        message: "Summary requested — watch for the agent's reply.",
-      },
-    });
-
-    // The idle thread got a real turn: the send dispatched a thread.start
-    // command carrying the summarize prompt.
-    const queued = await waitForQueuedCommand(
-      server,
-      (candidate) =>
-        candidate.command.type === "thread.start" &&
-        candidate.command.threadId === threadId,
-    );
-    if (queued.command.type !== "thread.start") {
-      throw new Error("Expected a thread.start command");
-    }
-    expect(queued.command.input[0]).toMatchObject({
-      type: "text",
-      text: expect.stringContaining("Summarize this thread so far"),
-    });
-
-    const entry = server.pluginService
-      .list()
-      .find((plugin) => plugin.id === "small-ux-pack");
-    expect(entry?.handlerStats.errorCount).toBe(0);
-  });
-
-  it("Copy status demonstrates the error-toast path: a 500 envelope carrying the thread status", async () => {
-    const response = await post(
-      "/api/v1/plugins/small-ux-pack/actions/copy-status",
-      { threadId },
-    );
-    expect(response.status).toBe(500);
-    const body = (await response.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    // The handler really fetched the thread over bb.sdk before throwing.
-    expect(body.error).toContain('thread status is "idle"');
-    expect(body.error).toContain("error toast");
-
-    const entry = server.pluginService
-      .list()
-      .find((plugin) => plugin.id === "small-ux-pack");
-    expect(entry?.handlerStats.errorCount).toBe(1);
-  });
-});
 
 describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
   let harness: TestAppHarness;

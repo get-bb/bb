@@ -566,13 +566,6 @@ describe("builtin plugin reconciliation", () => {
         summary: "Builtin fixture command",
       },
     ]);
-    expect(service.listThreadActionContributions()).toMatchObject([
-      {
-        pluginId: "builtin-fixture",
-        id: "ping",
-        title: "Ping",
-      },
-    ]);
     await expect(
       service.runCliCommand("builtin-fixture", [], {}),
     ).resolves.toMatchObject({

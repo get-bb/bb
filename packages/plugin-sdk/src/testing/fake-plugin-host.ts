@@ -44,8 +44,6 @@ import type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
-  PluginThreadActionContext,
-  PluginThreadActionResult,
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
@@ -155,7 +153,6 @@ function enforcePluginCliOutputLimit(
       }
     : { exitCode: 1, stdout: "", stderr: error.message, error };
 }
-const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const MENTION_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MENTION_TRIGGER_VALUES = [
   "@",
@@ -286,15 +283,6 @@ export interface FakeAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-export interface FakeThreadActionRecord {
-  id: string;
-  title: string;
-  icon: string | null;
-  confirm: string | null;
-  run: (
-    ctx: PluginThreadActionContext,
-  ) => PluginThreadActionResult | Promise<PluginThreadActionResult>;
-}
 
 export interface FakeMentionProviderRecord {
   id: string;
@@ -331,7 +319,6 @@ export interface FakePluginRegistrations {
   instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null;
-  threadActions: FakeThreadActionRecord[];
   threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
 }
@@ -1614,52 +1601,9 @@ function createFakePluginHostInternal(
   };
 
   // --- ui ---
-  const threadActions: FakeThreadActionRecord[] = [];
   const mentionProviders: FakeMentionProviderRecord[] = [];
   const ui: PluginUi = {
     requestInput,
-    registerThreadAction(action) {
-      assertLive();
-      const id = action?.id;
-      if (typeof id !== "string" || !THREAD_ACTION_ID_PATTERN.test(id)) {
-        throw new Error(
-          `invalid thread action id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
-        );
-      }
-      if (threadActions.some((record) => record.id === id)) {
-        throw new Error(`thread action "${id}" is already registered`);
-      }
-      if (
-        typeof action.title !== "string" ||
-        action.title.trim().length === 0
-      ) {
-        throw new Error(`thread action "${id}" must provide a title`);
-      }
-      if (action.icon !== undefined && typeof action.icon !== "string") {
-        throw new Error(`thread action "${id}" icon must be a string`);
-      }
-      if (action.confirm !== undefined && typeof action.confirm !== "string") {
-        throw new Error(`thread action "${id}" confirm must be a string`);
-      }
-      if (typeof action.run !== "function") {
-        throw new Error(
-          `thread action "${id}" must provide a run({ threadId, projectId }) function`,
-        );
-      }
-      threadActions.push({
-        id,
-        title: action.title,
-        icon:
-          action.icon !== undefined && action.icon.trim().length > 0
-            ? action.icon
-            : null,
-        confirm:
-          action.confirm !== undefined && action.confirm.trim().length > 0
-            ? action.confirm
-            : null,
-        run: action.run.bind(action),
-      });
-    },
     registerMentionProvider(provider) {
       assertLive();
       const id = provider?.id;
@@ -1980,7 +1924,6 @@ function createFakePluginHostInternal(
       get instructionProvider() {
         return instructionProvider;
       },
-      threadActions,
       get threadEventHandlers() {
         return {
           "thread.created": threadEventHandlers["thread.created"].length,

@@ -128,7 +128,6 @@ export function registerPluginRoutes(
   app.get("/plugins/contributions", (context) =>
     context.json({
       cliCommands: plugins.listCliContributions(),
-      threadActions: plugins.listThreadActionContributions(),
       mentionProviders: plugins.listMentionProviderContributions(),
     }),
   );
@@ -211,63 +210,6 @@ export function registerPluginRoutes(
       ctx,
     );
     return context.json(result);
-  });
-
-  // Host-rendered thread action invocation (design §4.9). Executes plugin
-  // code with full server capabilities, so it takes the same local-origin
-  // guard as the rpc dispatcher.
-  app.post("/plugins/:id/actions/:actionId", async (context) => {
-    const problem = localAuthProblem(context, deps);
-    if (problem) {
-      return context.json({ ok: false, error: problem.error }, problem.status);
-    }
-    const id = context.req.param("id");
-    const actionId = context.req.param("actionId");
-    // Body first, action second: no await between lookup and invocation
-    // (runThreadAction registers its in-flight marker synchronously), so a
-    // reload during the body read cannot leave a stale record to run.
-    const body = (await context.req.json().catch(() => null)) as {
-      threadId?: unknown;
-    } | null;
-    const threadId = body?.threadId;
-    if (typeof threadId !== "string" || threadId.length === 0) {
-      return context.json(
-        { ok: false, error: "expected { threadId: string }" },
-        400,
-      );
-    }
-    const lookup = plugins.getThreadAction(id, actionId);
-    if (lookup.outcome === "unknown-plugin") {
-      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
-    }
-    if (lookup.outcome === "not-running") {
-      return context.json(
-        { ok: false, error: notRunningError(id, lookup) },
-        503,
-      );
-    }
-    if (lookup.outcome === "not-found") {
-      return context.json(
-        {
-          ok: false,
-          error: `plugin "${id}" has no thread action "${actionId}"`,
-        },
-        404,
-      );
-    }
-    const result = await plugins.runThreadAction(id, lookup.value, threadId);
-    if (result.outcome === "unknown-thread") {
-      return context.json(
-        { ok: false, error: `unknown thread "${threadId}"` },
-        404,
-      );
-    }
-    if (result.outcome === "error") {
-      return context.json({ ok: false, error: result.error }, 500);
-    }
-    return context.json(
-      result.toast ? { ok: true, toast: result.toast } : { ok: true },
-    );
   });
 
   // Frontend bundle assets (design §5.1): the app dynamic-import()s app.js

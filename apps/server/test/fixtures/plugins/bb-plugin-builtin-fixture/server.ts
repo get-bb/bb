@@ -12,11 +12,4 @@ export default function plugin(bb: any) {
     }),
   });
 
-  bb.ui.registerThreadAction({
-    id: "ping",
-    title: "Ping",
-    run: async () => ({
-      toast: { kind: "success", message: "pong" },
-    }),
-  });
 }

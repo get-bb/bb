@@ -69,7 +69,6 @@ import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialo
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
-import { PluginThreadActions } from "@/components/thread/PluginThreadActions";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
@@ -2401,13 +2400,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       pluginActions={
-        <>
-          <PluginThreadHeaderActions
-            threadId={thread.id}
-            projectId={thread.projectId}
-          />
-          <PluginThreadActions threadId={thread.id} />
-        </>
+        <PluginThreadHeaderActions
+          threadId={thread.id}
+          projectId={thread.projectId}
+        />
       }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
       threadTitle={threadTitle}
