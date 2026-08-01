@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
 import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -39,8 +39,8 @@ export const HEADER_MAXIMIZE_ICON_BUTTON_CLASS =
 interface AppPageHeaderProps {
   center?: ReactNode;
   actions?: ReactNode;
-  bordered?: boolean;
   className?: string;
+  headerRef?: Ref<HTMLElement>;
   /**
    * Whether this header occupies the native title-bar row and may drag the
    * desktop window. Split panes below the workspace's top edge disable this.
@@ -57,8 +57,8 @@ interface AppPageHeaderProps {
 export function AppPageHeader({
   center,
   actions,
-  bordered = true,
   className,
+  headerRef,
   isWindowDragRegion = true,
   ownsWindowTopLeft = true,
 }: AppPageHeaderProps) {
@@ -75,24 +75,21 @@ export function AppPageHeader({
     ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
   return (
     <header
+      ref={headerRef}
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
         "relative shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
-        bordered && "border-b border-border-seam",
         className,
       )}
     >
       <div
         data-testid="app-page-header-content-row"
         className={cn(
-          // Center the title/actions on the shared chrome axis using the chrome
-          // row's full height rather than `h-full`: a bordered header's `border-b`
-          // shrinks the content box by 1px, which would otherwise drift the
-          // visual center half a pixel above the traffic-light / sidebar-arrow
-          // axis.
+          // Center title/actions on the shared chrome axis using the full
+          // chrome-row height so native title-bar controls stay aligned.
           CHROME_ROW_CLASS,
-          "gap-1 md:gap-2",
+          "relative z-10 gap-1 md:gap-2",
           // In macOS desktop chrome, keep header content on the shared native
           // traffic-light axis so the title bar lines up with the lights, the
           // pinned collapse trigger, and the sidebar arrows. No-op in the web

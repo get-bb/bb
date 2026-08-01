@@ -96,6 +96,10 @@ import {
 } from "@/lib/bb-desktop";
 import { SplitWorkspaceSecondaryPanelHost } from "./SplitWorkspaceSecondaryPanelHost";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
+import {
+  CONTEXT_INACTIVE_TEXT_CLASS,
+  CONTEXT_SELECTION_SURFACE_CLASS,
+} from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
 
@@ -714,6 +718,7 @@ function SplitTree(props: SplitTreeProps) {
           isMaximized && "absolute inset-0 z-30",
         )}
         data-split-pane-id={node.paneId}
+        data-focused={isFocused ? "true" : "false"}
         data-maximized={isMaximized ? "true" : undefined}
       >
         {/* Only mounted in split mode, so single panes never pay for the extra
@@ -744,11 +749,12 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
-        {/* A subtle pane-wide focus scrim stays consistent across opaque
-            timeline, header, and composer surfaces. Pointer events pass through
-            so interacting with an inactive pane still focuses it. */}
+        {/* Recede inactive pane bodies without adding another boundary. Pane
+            headers sit above this layer so titles, selected tabs, and controls
+            stay crisp while the timeline and composer step back. */}
         <div
           aria-hidden
+          data-pane-focus-scrim=""
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
             isFocused ? "bg-transparent" : "bg-background/30",
@@ -950,8 +956,9 @@ function NonThreadPaneContent({
   ownsWindowTopLeft: boolean;
 }) {
   const { navPanels } = usePluginSlots();
-  const { reservesWindowPanelToggle } = useOptionalPaneContext() ?? {
+  const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
     reservesWindowPanelToggle: false,
+    isFocused: true,
   };
   const isWindowPanelOpen =
     useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
@@ -987,7 +994,13 @@ function NonThreadPaneContent({
           aria-label="Close pane"
           onClick={onRequestClose}
         >
-          <Icon name="X" />
+          <Icon
+            name={
+              content.kind === "new-thread"
+                ? "CloseThreadPane"
+                : "ClosePluginPane"
+            }
+          />
         </Button>
       ) : null}
       {reservesWindowPanelToggle && !isWindowPanelOpen ? (
@@ -1009,14 +1022,18 @@ function NonThreadPaneContent({
     >
       {isBoundedPane || panel ? (
         <AppPageHeader
-          bordered={false}
           isWindowDragRegion={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}
-          className={cn("border-b border-border-seam-vertical/60")}
+          className={isBoundedPane ? "z-[21]" : undefined}
           center={
             <div
+              data-pane-header-focus-tab={
+                isBoundedPane && isFocused ? "" : undefined
+              }
               className={cn(
-                "flex min-w-0 flex-1 items-center",
+                "relative flex min-w-0 flex-1 items-center",
+                isBoundedPane && "-mx-2 -my-1 rounded-md px-2 py-1",
+                isBoundedPane && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
                 beginPaneDrag &&
                   cn(
                     "cursor-grab touch-none select-none",
@@ -1032,7 +1049,14 @@ function NonThreadPaneContent({
               {panel ? (
                 <PluginPanelHeaderCenter panel={panel} />
               ) : (
-                <p className="truncate text-sm font-medium">New thread</p>
+                <p
+                  className={cn(
+                    "relative truncate text-sm font-normal transition-colors",
+                    isBoundedPane && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
+                  )}
+                >
+                  New thread
+                </p>
               )}
             </div>
           }
@@ -1230,7 +1254,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         // the resize affordance. The absolutely-positioned child preserves a
         // generous grab target without consuming layout space.
         "group relative z-[5] flex-shrink-0 transition-colors",
-        horizontal ? "bg-border-seam-vertical" : "bg-border-seam",
+        "bg-border-seam",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",

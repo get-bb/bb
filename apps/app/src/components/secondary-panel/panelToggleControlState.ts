@@ -30,13 +30,13 @@ interface PanelToggleActionPresentation {
  *                          reads as "open the right side panel" — matching the
  *                          in-panel hide button. Lives in the conversation
  *                          header, only while the panel is closed.
- *   expand-panel         → conversation shown: collapse it so the panel fills
- *                          the content area. Renders the maximize glyph. Lives
- *                          in the panel header.
+ *   expand-panel         → conversation shown: expand the right panel so it
+ *                          fills the content area. Renders the shared four-arrow
+ *                          expand glyph. Lives in the panel header.
  *   restore-conversation → conversation collapsed: restore it. Renders the
- *                          minimize glyph. Lives in the panel header (the
- *                          collapsed-conversation rail surfaces the same action
- *                          on its own).
+ *                          matching four-arrow collapse glyph. Lives in the
+ *                          collapsed-conversation rail, where the missing pane
+ *                          is represented.
  */
 const PANEL_TOGGLE_ACTION_PRESENTATION = {
   "show-panel": {
@@ -89,9 +89,9 @@ export interface ResolveConversationCollapseControlArgs {
 }
 
 /**
- * The panel header's collapse toggle. Only ever represents the two panel-open
- * states — collapse the conversation so the panel fills the view, and restore
- * it — so it takes just the conversation-collapse handler.
+ * Resolves the paired conversation disclosure states. The panel header uses the
+ * close state while the conversation is visible; the collapsed rail uses the
+ * matching open state while the panel owns the full canvas.
  */
 export function resolveConversationCollapseControl({
   isConversationCollapsed,

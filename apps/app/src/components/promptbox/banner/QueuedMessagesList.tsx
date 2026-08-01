@@ -141,6 +141,8 @@ const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
 const SURFACE_DRAG_THRESHOLD = 72;
+const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
+  "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
 type QueueSurfaceMode = "collapsed" | "drawer" | "workspace";
 
 function getWorkspaceHeight({
@@ -701,7 +703,12 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             />
             {attachmentCount > 0 ? (
               <span
-                className="inline-flex shrink-0 items-center gap-0.5 text-2xs text-subtle-foreground opacity-70"
+                data-queued-message-attachment=""
+                className={cn(
+                  "ml-auto inline-flex shrink-0 items-center gap-0.5 text-2xs text-subtle-foreground opacity-70 transition-opacity duration-[120ms] ease-out",
+                  !isProcessing &&
+                    "group-hover/row:opacity-0 group-focus-within/row:opacity-0 [@media(hover:none)]:opacity-0",
+                )}
                 role="img"
                 aria-label={
                   attachmentCount === 1
@@ -722,8 +729,10 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         ) : (
           <>
             <div
+              data-queued-message-actions=""
               className={cn(
-                "pointer-events-none hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity md:flex",
+                QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
                 "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
                 "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
               )}
@@ -783,7 +792,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   size="icon"
                   variant="ghost"
                   className={cn(
-                    "pointer-events-none shrink-0 text-muted-foreground opacity-0 transition-opacity md:hidden",
+                    QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                    "pointer-events-none absolute right-2.5 top-1/2 shrink-0 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-[120ms] ease-out md:hidden",
                     "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
                     "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
                     "data-[state=open]:pointer-events-auto data-[state=open]:opacity-100",

@@ -1,4 +1,11 @@
 import { Icon, ICON_NAMES, type IconName } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -34,8 +41,9 @@ const USAGE: Partial<Record<IconName, string>> = {
   CircleDashed: "Child-thread busy section indicator",
   CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
-  Clock:
-    "Thread duration and timestamp affordances, automation prompt action",
+  ClosePluginPane: "Close a split pane containing a plugin surface",
+  CloseThreadPane: "Close an existing or empty thread split pane",
+  Clock: "Thread duration and timestamp affordances, automation prompt action",
   Code: "Right-panel source file visual, Mermaid source toggle",
   Columns2: "Git diff toolbar “split view”",
   Container: "Container icon",
@@ -67,10 +75,10 @@ const USAGE: Partial<Record<IconName, string>> = {
   Loading: "Loading03 thread row working spinner",
   Mail: "Mark unread thread action",
   MailOpen: "Mark read thread action",
-  Maximize2: "Enter zen mode (prompt expand), open Mermaid diagram dialog",
+  Maximize2: "Expand right panel, enter zen mode, open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
-  Minimize2: "Exit zen mode (prompt collapse)",
+  Minimize2: "Restore conversation split, exit zen mode",
   MoreHorizontal:
     "Triple-dot actions menu trigger (project list, projects, threads, project sources, hosts)",
   NewTab: "Right-panel New tab tab",
@@ -102,6 +110,61 @@ const USAGE: Partial<Record<IconName, string>> = {
 };
 
 const NAMES: readonly IconName[] = [...ICON_NAMES].sort();
+
+function ExpandCollapseControl({
+  icon,
+  label,
+}: {
+  icon: "ClosePluginPane" | "CloseThreadPane" | "Maximize2" | "Minimize2";
+  label: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" aria-label={label}>
+          <Icon name={icon} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function ExpandCollapse() {
+  return (
+    <TooltipProvider>
+      <StoryCard>
+        <StoryRow
+          label="Expand right panel"
+          hint="outward corners; used before the panel fills the canvas"
+        >
+          <ExpandCollapseControl icon="Maximize2" label="Expand right panel" />
+        </StoryRow>
+        <StoryRow
+          label="Restore conversation"
+          hint="inward corners; used to return to the split layout"
+        >
+          <ExpandCollapseControl
+            icon="Minimize2"
+            label="Restore conversation"
+          />
+        </StoryRow>
+        <StoryRow
+          label="Close thread pane"
+          hint="conversation-specific cancel glyph; used only by split panes containing threads"
+        >
+          <ExpandCollapseControl icon="CloseThreadPane" label="Close pane" />
+        </StoryRow>
+        <StoryRow
+          label="Close plugin pane"
+          hint="bounded pane cancel glyph; does not imply uninstalling the plugin"
+        >
+          <ExpandCollapseControl icon="ClosePluginPane" label="Close pane" />
+        </StoryRow>
+      </StoryCard>
+    </TooltipProvider>
+  );
+}
 
 export function Overview() {
   return (

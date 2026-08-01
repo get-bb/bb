@@ -441,7 +441,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="with attachments"
-        hint="the attachment icon and count sit directly beside the prompt text"
+        hint="attachment count stays flush right, then crossfades into actions over a short edge fade"
       >
         <ResponsivePromptStage>
           <QueuedMessagesList

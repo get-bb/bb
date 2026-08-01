@@ -32,7 +32,7 @@ describe("resolveConversationCollapseControl", () => {
     expect(state.label).toBe("Expand right panel");
     // The conversation is currently expanded; clicking collapses it.
     expect(state.isExpanded).toBe(true);
-    // An expand-to-fill glyph, not a directional chevron.
+    // The shared four-arrow glyph clearly expands the panel to fill the canvas.
     expect(state.iconName).toBe("Maximize2");
 
     state.onClick();
@@ -49,7 +49,7 @@ describe("resolveConversationCollapseControl", () => {
     expect(state.action).toBe("restore-conversation");
     expect(state.label).toBe("Restore conversation");
     expect(state.isExpanded).toBe(false);
-    // The inverse minimize glyph restores the conversation.
+    // The matching four-arrow collapse glyph restores the split layout.
     expect(state.iconName).toBe("Minimize2");
 
     state.onClick();

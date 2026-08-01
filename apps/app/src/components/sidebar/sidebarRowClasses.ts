@@ -1,4 +1,5 @@
 import { COARSE_POINTER_DOT_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 
 export type SidebarUnreadDotTone = "default" | "error";
 
@@ -69,7 +70,7 @@ export const SIDEBAR_ROW_STATIC_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground";
 
 export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
-  "bg-sidebar-border/70 text-sidebar-foreground";
+  `${CONTEXT_SELECTION_SURFACE_CLASS} text-sidebar-foreground`;
 
 export const SIDEBAR_MORE_ACTION_TRIGGER_CLASS =
   "relative m-1 h-5 w-5 after:absolute after:left-1/2 after:top-1/2 after:h-7 after:w-7 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] max-md:pointer-coarse:m-0 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:after:hidden";

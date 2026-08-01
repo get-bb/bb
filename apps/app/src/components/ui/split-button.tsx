@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactElement, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { buttonVariants } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -11,8 +11,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
+
+function OptionalTooltip({
+  children,
+  content,
+  wrapTrigger = false,
+}: {
+  children: ReactElement;
+  content?: string;
+  wrapTrigger?: boolean;
+}) {
+  if (!content) {
+    return children;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {wrapTrigger ? (
+          <span className="inline-flex">{children}</span>
+        ) : (
+          children
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{content}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface SplitButtonAction {
   ariaKeyshortcuts?: string;
@@ -29,6 +56,8 @@ interface SplitButtonProps {
   /** Escape hatch for targeted overrides (e.g. tighter padding for icon-only primaries). Applied to both buttons. */
   className?: string;
   triggerLabel?: string;
+  primaryTooltip?: string;
+  triggerTooltip?: string;
   mobileTitle?: string;
   /** Render with the secondary menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
@@ -42,6 +71,8 @@ function SplitButton({
   disabled = false,
   className,
   triggerLabel = "More actions",
+  primaryTooltip,
+  triggerTooltip,
   mobileTitle,
   defaultOpen,
   modal,
@@ -51,37 +82,44 @@ function SplitButton({
     SPLIT_BUTTON_TOOLBAR_CLASS,
     className,
   );
-
-  return (
-    <div className="inline-flex items-center">
+  const primaryButton = (
+    <button
+      type="button"
+      disabled={disabled}
+      className={cn(base, "rounded-r-none border-r-0 pr-1 focus-visible:z-10")}
+      aria-label={primaryAction.label}
+      aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
+      onClick={primaryAction.onSelect}
+    >
+      {primaryAction.content ?? primaryAction.label}
+    </button>
+  );
+  const menuTrigger = (
+    <DropdownMenuTrigger asChild>
       <button
         type="button"
         disabled={disabled}
         className={cn(
           base,
-          "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
+          "rounded-l-none border-l-0 px-1 focus-visible:z-10",
+          "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
         )}
-        aria-label={primaryAction.label}
-        aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
-        onClick={primaryAction.onSelect}
+        aria-label={triggerLabel}
       >
-        {primaryAction.content ?? primaryAction.label}
+        <Icon name="ChevronDown" className="size-3" />
       </button>
+    </DropdownMenuTrigger>
+  );
+
+  return (
+    <div className="inline-flex items-center">
+      <OptionalTooltip content={primaryTooltip}>
+        {primaryButton}
+      </OptionalTooltip>
       <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            disabled={disabled}
-            className={cn(
-              base,
-              "rounded-l-none border-l-0 px-1 focus-visible:z-10",
-              "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-            )}
-            aria-label={triggerLabel}
-          >
-            <Icon name="ChevronDown" className="size-3" />
-          </button>
-        </DropdownMenuTrigger>
+        <OptionalTooltip content={triggerTooltip} wrapTrigger>
+          {menuTrigger}
+        </OptionalTooltip>
         <DropdownMenuContent
           align="end"
           sideOffset={2}

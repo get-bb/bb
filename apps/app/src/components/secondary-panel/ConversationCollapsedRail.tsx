@@ -5,6 +5,8 @@ import {
 } from "@/lib/bb-desktop";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
+import { resolveConversationCollapseControl } from "./panelToggleControlState";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 interface ConversationCollapsedRailProps {
   /**
@@ -27,12 +29,10 @@ interface ConversationCollapsedRailProps {
 }
 
 /**
- * The 36px vertical bar that stands in for the conversation when it is collapsed
- * so the secondary panel can fill the content area. The whole recessed body is
- * the expand affordance; it sits where the conversation was, between the sidebar
- * and the panel, showing a chat glyph that stands in for the conversation with a
- * working indicator beneath it. (The canonical expand/collapse control is the
- * panel-header toggle, so the rail carries no chevron of its own.)
+ * A quiet 32px placeholder for the collapsed conversation. It preserves the
+ * spatial relationship between the sidebar and full-width panel without adding
+ * another full-height filled surface. The explicit panel-open glyph at the top
+ * restores the conversation; a working state becomes a compact badge on it.
  *
  * When the rail is the top-left-most surface on macOS desktop, a transparent
  * window-drag strip is reserved above the recessed body (mirroring AppSidebar's
@@ -45,6 +45,11 @@ export function ConversationCollapsedRail({
   reserveTopForDesktopTrafficLights,
   onExpand,
 }: ConversationCollapsedRailProps) {
+  const restoreControl = resolveConversationCollapseControl({
+    isConversationCollapsed: true,
+    onToggleConversationCollapse: onExpand,
+  });
+
   return (
     <div
       // Hidden from the a11y tree + tab order (and made non-interactive) while
@@ -56,7 +61,7 @@ export function ConversationCollapsedRail({
         "flex h-full shrink-0 flex-col overflow-hidden transition-[width,opacity]",
         PANEL_COLLAPSE_TRANSITION_CLASS,
         collapsed
-          ? "w-9 opacity-100 delay-[40ms]"
+          ? "w-8 opacity-100 delay-[40ms]"
           : "pointer-events-none w-0 opacity-0",
       )}
     >
@@ -74,44 +79,42 @@ export function ConversationCollapsedRail({
         */
         <div
           data-testid="conversation-collapsed-rail-traffic-light-strip"
-          className={cn(CHROME_ROW_HEIGHT_CLASS, "shrink-0", MACOS_WINDOW_DRAG_CLASS)}
-        />
-      ) : null}
-      <button
-        type="button"
-        onClick={onExpand}
-        aria-label="Expand conversation"
-        aria-expanded={false}
-        className="flex min-h-0 w-full flex-1 flex-col items-center bg-surface-recessed text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {/*
-          Chat glyph standing in for the collapsed conversation, with the working
-          indicator directly beneath it. The glyph sits in a chrome-row-height
-          band at the top of the rail (`CHROME_ROW_HEIGHT_CLASS`) so it centers
-          on the same line as the secondary panel's tab row rather than floating
-          in the middle of the rail. Both are decorative — the whole recessed
-          body is the button, and its aria-label ("Expand conversation") carries
-          the semantics for AT users. The canonical expand/collapse control is
-          the panel-header toggle; the rail just reopens the conversation on
-          click, so it no longer needs its own chevron affordance.
-        */}
-        <span
           className={cn(
             CHROME_ROW_HEIGHT_CLASS,
-            "flex shrink-0 items-center justify-center",
+            "shrink-0",
+            MACOS_WINDOW_DRAG_CLASS,
           )}
-        >
-          <Icon name="MessageSquare" className="size-4 shrink-0" aria-hidden="true" />
-        </span>
-        <span
-          className="flex h-4 w-4 shrink-0 items-center justify-center"
-          aria-hidden="true"
-        >
-          {isWorking ? (
-            <Icon name="CircleDashed" className="size-3.5 animate-spin" />
-          ) : null}
-        </span>
-      </button>
+        />
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={restoreControl.onClick}
+            aria-label={restoreControl.label}
+            aria-expanded={restoreControl.isExpanded}
+            className={cn(
+              CHROME_ROW_HEIGHT_CLASS,
+              "relative flex w-full shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            )}
+          >
+            <Icon
+              name={restoreControl.iconName}
+              className="size-4 shrink-0"
+              aria-hidden="true"
+            />
+            {isWorking ? (
+              <span
+                className="absolute bottom-1 right-1 flex size-2.5 items-center justify-center rounded-full bg-background"
+                aria-hidden="true"
+              >
+                <Icon name="CircleDashed" className="size-2.5 animate-spin" />
+              </span>
+            ) : null}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{restoreControl.label}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

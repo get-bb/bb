@@ -422,13 +422,7 @@ function AppHeader({
     </>
   ) : null;
 
-  return (
-    <AppPageHeader
-      bordered={!usesProjectChromeStyle}
-      center={center}
-      actions={actions}
-    />
-  );
+  return <AppPageHeader center={center} actions={actions} />;
 }
 
 interface AppLayoutProps {

@@ -36,6 +36,10 @@ export function SplitPaneMiniMap({
   label,
   isWorking = false,
 }: SplitPaneMiniMapProps) {
+  const representsFocusedPane = slots.some(
+    (slot) => slot.isMe && slot.isFocused,
+  );
+
   return (
     <svg
       width={GLYPH_SIZE}
@@ -43,6 +47,7 @@ export function SplitPaneMiniMap({
       viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`}
       className={cn(
         "pointer-events-none !size-3.5 shrink-0",
+        !representsFocusedPane && "opacity-60",
         isWorking && "animate-shine-icon",
       )}
       shapeRendering="crispEdges"

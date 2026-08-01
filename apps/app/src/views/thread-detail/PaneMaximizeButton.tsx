@@ -3,6 +3,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { HEADER_MAXIMIZE_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { usePaneContext } from "./PaneContext";
 
 export function PaneMaximizeButton() {
@@ -21,7 +23,10 @@ export function PaneMaximizeButton() {
           type="button"
           variant="ghost"
           size="icon"
-          className={HEADER_MAXIMIZE_ICON_BUTTON_CLASS}
+          className={cn(
+            HEADER_MAXIMIZE_ICON_BUTTON_CLASS,
+            CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+          )}
           aria-label={accessibleLabel}
           aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
           aria-pressed={isMaximized}

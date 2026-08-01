@@ -108,8 +108,8 @@ semantic** tokens; the rest derive.
 | `--muted` | muted fill: badges, chips, inset blocks | ink 11% |
 | `--border` | default component borders (cards, dividers) | ink 14% |
 | `--border-hairline` | the finest 1px separators | ink ~15% |
-| `--border-seam` | app-shell **horizontal** seam: top nav bar, panel/browser top bars | ink ~10% |
-| `--border-seam-vertical` | app-shell **vertical** seam: sidebar↔content and resizable-panel splits | ink ~12% |
+| `--border-seam` | resizable app-shell boundaries: sidebar↔content, split panes, and side panels | ink ~10% |
+| `--border-seam-vertical` | compatibility alias for `--border-seam`; prefer the orientation-neutral token | `= --border-seam` |
 | `--input` | input/control field borders | ink ~30% |
 | `--surface-recessed` | sunken inset wells (code/diagram backgrounds) | translucent ink |
 | `--surface-raised` | faintly lifted panels | translucent ink |

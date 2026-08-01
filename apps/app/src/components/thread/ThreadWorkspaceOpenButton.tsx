@@ -10,6 +10,8 @@ import {
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ThreadWorkspaceOpenButtonProps {
   onOpenPreferredTarget: () => Promise<void>;
@@ -58,7 +60,7 @@ export function ThreadWorkspaceOpenButton({
       void openTarget(preferredTarget, onOpenPreferredTarget);
     },
     content: (
-      <WorkspaceOpenTargetIcon target={preferredTarget} className="size-5" />
+      <WorkspaceOpenTargetIcon target={preferredTarget} className="size-4" />
     ),
   };
   const secondaryActions: SplitButtonAction[] = targets.map((target) => ({
@@ -79,10 +81,15 @@ export function ThreadWorkspaceOpenButton({
       <AppCommandShortcutHint shortcut={shortcut} />
       <SplitButton
         disabled={isPending}
-        className="px-1"
+        className={cn(
+          "border-border/70 bg-transparent px-1 shadow-none",
+          CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+        )}
         primaryAction={primaryAction}
+        primaryTooltip={`Open in ${preferredTarget.label}`}
         secondaryActions={secondaryActions}
-        triggerLabel="Choose workspace open target"
+        triggerLabel="Choose another app to open workspace"
+        triggerTooltip="Choose another app"
         mobileTitle="Open Workspace"
       />
     </span>

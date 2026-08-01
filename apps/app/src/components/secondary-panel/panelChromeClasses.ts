@@ -1,1 +1,1 @@
-export const SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS = "bg-background";
+export const SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS = "bg-sidebar";

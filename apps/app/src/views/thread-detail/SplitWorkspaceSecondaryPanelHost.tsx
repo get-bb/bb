@@ -264,7 +264,7 @@ export function SplitWorkspaceSecondaryPanelHost({
                 onDragging={handleEmptyPanelDragging}
                 hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
                 className={cn(
-                  "relative z-[5] shrink-0 overflow-visible bg-border-seam-vertical transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  "relative z-[5] shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
                   PANEL_COLLAPSE_TRANSITION_CLASS,
                   isOpen
                     ? "w-px cursor-col-resize opacity-100"
@@ -291,7 +291,7 @@ export function SplitWorkspaceSecondaryPanelHost({
                   data-testid="split-workspace-empty-panel-state"
                   // pt-12 keeps the placeholder clear of the floating window
                   // toggle, which occupies the panel's top chrome corner.
-                  className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-4 pt-12"
+                  className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar p-4 pt-12"
                 >
                   <EmptyStatePanel className="flex-1 rounded-lg">
                     This pane has no right panel.

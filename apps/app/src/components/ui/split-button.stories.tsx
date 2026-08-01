@@ -101,11 +101,7 @@ const editorSecondaries: SplitButtonAction[] = [
 
 export function Overview() {
   return (
-    <StoryCard
-      labelWidth="420px"
-      valueAlign="end"
-      className="max-w-2xl"
-    >
+    <StoryCard labelWidth="420px" valueAlign="end" className="max-w-2xl">
       <StoryRow label="text primary" hint="ThreadDetailHeader git actions">
         <SplitButton
           primaryAction={commitAction}
@@ -116,9 +112,11 @@ export function Overview() {
       <StoryRow label="icon primary" hint="ThreadWorkspaceOpenButton">
         <SplitButton
           primaryAction={openInVSCodeAction}
+          primaryTooltip="Open in VS Code"
           secondaryActions={editorSecondaries}
           className="px-1"
-          triggerLabel="Choose workspace open target"
+          triggerLabel="Choose another app to open workspace"
+          triggerTooltip="Choose another app"
           mobileTitle="Open Workspace"
         />
       </StoryRow>
@@ -133,9 +131,11 @@ export function Overview() {
       <StoryRow label="open menu" hint="defaultOpen + modal=false">
         <SplitButton
           primaryAction={openInVSCodeAction}
+          primaryTooltip="Open in VS Code"
           secondaryActions={editorSecondaries}
           className="px-1"
-          triggerLabel="Choose workspace open target"
+          triggerLabel="Choose another app to open workspace"
+          triggerTooltip="Choose another app"
           mobileTitle="Open Workspace"
           defaultOpen
           modal={false}

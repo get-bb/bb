@@ -91,7 +91,7 @@ function OpenMenuThreadWorkspaceOpenButtonStory() {
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       const trigger = rootRef.current?.querySelector<HTMLButtonElement>(
-        'button[aria-label="Choose workspace open target"]',
+        'button[aria-label="Choose another app to open workspace"]',
       );
       trigger?.dispatchEvent(
         new PointerEvent("pointerdown", {
@@ -128,6 +128,17 @@ export function Overview() {
           onOpenPreferredTarget={openPreferredTarget}
           onOpenTarget={openTarget}
           preferredTarget={vscodeTarget}
+          targets={workspaceOpenTargets}
+        />
+      </StoryRow>
+      <StoryRow
+        label="preferred Finder"
+        hint="production split control with the restored outer border"
+      >
+        <ThreadWorkspaceOpenButton
+          onOpenPreferredTarget={openPreferredTarget}
+          onOpenTarget={openTarget}
+          preferredTarget={finderTarget}
           targets={workspaceOpenTargets}
         />
       </StoryRow>

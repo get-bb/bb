@@ -68,9 +68,11 @@ export interface SecondaryPanelTabStripProps {
   fileTabs: SecondaryPanelFileTab[];
   onReorderTab: SecondaryPanelTabReorderHandler;
   usesDesktopChrome: boolean;
+  activeTreatment?: "fill" | "underline";
 }
 
 interface SortableFileTabProps {
+  activeTreatment: "fill" | "underline";
   activeTabRef: RefObject<HTMLDivElement | null>;
   dragDisabled: boolean;
   noDragClass: string | null;
@@ -80,8 +82,8 @@ interface SortableFileTabProps {
 /**
  * The middle, horizontally-scrolling region of the secondary panel tab strip.
  *
- * Only the file tabs scroll; the leading Info/Diff controls and the trailing
- * new-tab + panel-toggle controls stay anchored outside this component. Edge
+ * Only the file tabs scroll; the leading Info/Diff controls and trailing
+ * new-tab/panel controls stay anchored outside this component. Edge
  * fades and scroll chevrons appear only on a side that has more tabs, and the
  * active tab is auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
@@ -90,6 +92,7 @@ export function SecondaryPanelTabStrip({
   fileTabs,
   onReorderTab,
   usesDesktopChrome,
+  activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
@@ -325,10 +328,14 @@ export function SecondaryPanelTabStrip({
         onDragCancel={handleDragCancel}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+        <SortableContext
+          items={tabIds}
+          strategy={horizontalListSortingStrategy}
+        >
           {fileTabs.map((tab) => (
             <SortableFileTab
               key={tab.id}
+              activeTreatment={activeTreatment}
               activeTabRef={activeTabRef}
               dragDisabled={dragDisabled}
               noDragClass={noDragClass}
@@ -342,7 +349,9 @@ export function SecondaryPanelTabStrip({
             than translating the in-place tab. */}
         {createPortal(
           <DragOverlay className="cursor-grabbing">
-            {draggingTab === null ? null : <FileTab tab={draggingTab} />}
+            {draggingTab === null ? null : (
+              <FileTab tab={draggingTab} activeTreatment={activeTreatment} />
+            )}
           </DragOverlay>,
           document.body,
         )}
@@ -358,14 +367,15 @@ export function SecondaryPanelTabStrip({
       dragDisabled,
       noDragClass,
       draggingTab,
+      activeTreatment,
     ],
   );
 
   return (
     // Hugs its tabs (no `flex-1`) and shrinks (`min-w-0`) to scroll them under
-    // the edge fades/chevrons when they overflow. The New Tab button is pinned
-    // ahead of the strip (left-aligned), so it holds a fixed position instead of
-    // riding the last tab rightward as tabs are added.
+    // the edge fades/chevrons when they overflow. The New Tab button follows this
+    // viewport as an anchored sibling, so it stays visible at the trailing edge
+    // while overflowing tabs scroll beneath the fades.
     <div
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
@@ -417,21 +427,17 @@ export function SecondaryPanelTabStrip({
 }
 
 function SortableFileTab({
+  activeTreatment,
   activeTabRef,
   dragDisabled,
   noDragClass,
   tab,
 }: SortableFileTabProps) {
-  const {
-    isDragging,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({
-    id: tab.id,
-    disabled: dragDisabled,
-  });
+  const { isDragging, listeners, setNodeRef, transform, transition } =
+    useSortable({
+      id: tab.id,
+      disabled: dragDisabled,
+    });
   const setTabRef = useCallback(
     (element: HTMLDivElement | null) => {
       setNodeRef(element);
@@ -463,7 +469,7 @@ function SortableFileTab({
       )}
       {...listeners}
     >
-      <FileTab tab={tab} />
+      <FileTab tab={tab} activeTreatment={activeTreatment} />
     </div>
   );
 }
@@ -533,7 +539,13 @@ function TabStripScrollChevron({
   );
 }
 
-function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
+function FileTab({
+  tab,
+  activeTreatment,
+}: {
+  tab: SecondaryPanelFileTab;
+  activeTreatment: "fill" | "underline";
+}) {
   const title =
     tab.statusLabel === null
       ? tab.filename
@@ -545,6 +557,7 @@ function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
       isActive={tab.isActive}
+      activeTreatment={activeTreatment}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
       closeAction={

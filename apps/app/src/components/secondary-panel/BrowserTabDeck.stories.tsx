@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { BbDesktopBrowserState } from "@bb/desktop-contract";
 import {
   getBrowserHistoryStorageKey,
   type BrowserHistoryEntry,
@@ -15,7 +16,9 @@ export default {
 const noop = () => {};
 
 const EMPTY_TAB_THREAD_ID = "thr_browser_tab_empty_story";
+const NARROW_TAB_THREAD_ID = "thr_browser_tab_narrow_story";
 const RECENTS_TAB_THREAD_ID = "thr_browser_tab_recents_story";
+const LOADING_TAB_THREAD_ID = "thr_browser_tab_loading_story";
 
 // `url` is empty so the tab shows its in-tab new-tab screen rather than a live
 // page — the native WebContentsView only exists in the packaged desktop app.
@@ -24,7 +27,24 @@ function makeBrowserTab(id: string): BrowserFixedPanelTab {
 }
 
 const EMPTY_TAB = makeBrowserTab("browser:empty");
+const NARROW_TAB = makeBrowserTab("browser:narrow");
 const RECENTS_TAB = makeBrowserTab("browser:recents");
+const LOADING_TAB: BrowserFixedPanelTab = {
+  environmentId: null,
+  id: "browser:loading",
+  kind: "browser",
+  title: "Example Docs",
+  url: "https://example.com/docs",
+};
+const LOADING_BROWSER_STATE: BbDesktopBrowserState = {
+  tabId: LOADING_TAB.id,
+  url: LOADING_TAB.url,
+  title: LOADING_TAB.title,
+  isLoading: true,
+  canGoBack: true,
+  canGoForward: false,
+  errorText: null,
+};
 
 const RECENT_VISITS: readonly BrowserHistoryEntry[] = [
   {
@@ -67,9 +87,21 @@ function seedBrowserHistory(
   window.localStorage.setItem(storageKey, JSON.stringify(entries));
 }
 
-function PanelStage({ children }: { children: ReactNode }) {
+function PanelStage({
+  children,
+  width = "wide",
+}: {
+  children: ReactNode;
+  width?: "narrow" | "wide";
+}) {
   return (
-    <div className="flex h-[520px] w-full max-w-[760px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background">
+    <div
+      className={
+        width === "narrow"
+          ? "flex h-[520px] w-[360px] max-w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background"
+          : "flex h-[520px] w-full max-w-[760px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background"
+      }
+    >
       {children}
     </div>
   );
@@ -78,11 +110,12 @@ function PanelStage({ children }: { children: ReactNode }) {
 interface BrowserTabStageProps {
   tab: BrowserFixedPanelTab;
   threadId: string;
+  width?: "narrow" | "wide";
 }
 
-function BrowserTabStage({ tab, threadId }: BrowserTabStageProps) {
+function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
   return (
-    <PanelStage>
+    <PanelStage width={width}>
       <BrowserTabDeck
         browserTabs={[tab]}
         activeBrowserTabId={tab.id}
@@ -97,9 +130,10 @@ function BrowserTabStage({ tab, threadId }: BrowserTabStageProps) {
 
 export function Overview() {
   seedBrowserHistory(EMPTY_TAB_THREAD_ID, []);
+  seedBrowserHistory(NARROW_TAB_THREAD_ID, []);
   seedBrowserHistory(RECENTS_TAB_THREAD_ID, RECENT_VISITS);
   return (
-    <WithDesktopBrowser>
+    <WithDesktopBrowser browserState={LOADING_BROWSER_STATE}>
       <StoryCard>
         <StoryRow
           label="new tab"
@@ -108,10 +142,26 @@ export function Overview() {
           <BrowserTabStage tab={EMPTY_TAB} threadId={EMPTY_TAB_THREAD_ID} />
         </StoryRow>
         <StoryRow
+          label="narrow panel"
+          hint="360px browser panel; hover the compact host strip to recover the full controls"
+        >
+          <BrowserTabStage
+            tab={NARROW_TAB}
+            threadId={NARROW_TAB_THREAD_ID}
+            width="narrow"
+          />
+        </StoryRow>
+        <StoryRow
           label="recently visited"
           hint="start page with seeded per-thread history, styled like the New tab page rows"
         >
           <BrowserTabStage tab={RECENTS_TAB} threadId={RECENTS_TAB_THREAD_ID} />
+        </StoryRow>
+        <StoryRow
+          label="loading page"
+          hint="active navigation holds the quieter toolbar open and keeps Stop immediately available"
+        >
+          <BrowserTabStage tab={LOADING_TAB} threadId={LOADING_TAB_THREAD_ID} />
         </StoryRow>
       </StoryCard>
     </WithDesktopBrowser>

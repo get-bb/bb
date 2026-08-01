@@ -595,7 +595,7 @@ const Sidebar = React.forwardRef<
                 side === "left" ? "left-0" : "right-0",
                 variant === "floating" || variant === "inset"
                   ? "p-2"
-                  : "border-border-seam-vertical data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=right]:border-l",
+                  : "border-border-seam data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=right]:border-l",
                 className,
               )}
               style={
@@ -656,7 +656,7 @@ const Sidebar = React.forwardRef<
             // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam-vertical group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           style={style}

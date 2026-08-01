@@ -70,10 +70,10 @@ describe("SplitThreadArea stories", () => {
       expect(idlePane.querySelector("[data-thread-window]")).toBeTruthy();
       expect(activePane.querySelector("[data-thread-window]")).toBeTruthy();
       const idleScrim = idlePane.querySelector<HTMLElement>(
-        ':scope > [aria-hidden="true"]',
+        ':scope > [data-pane-focus-scrim=""]',
       );
       const activeScrim = activePane.querySelector<HTMLElement>(
-        ':scope > [aria-hidden="true"]',
+        ':scope > [data-pane-focus-scrim=""]',
       );
       expect(idleScrim?.classList).toContain("pointer-events-none");
       expect(idleScrim?.classList).toContain("bg-background/30");

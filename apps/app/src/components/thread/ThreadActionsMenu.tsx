@@ -38,10 +38,21 @@ interface ThreadActionsMenuBaseProps {
   onOpenInSplit?: () => void;
 }
 
+export interface ThreadActionsMenuResponsiveAction {
+  icon: IconName;
+  label: string;
+  onSelect: () => void | Promise<void>;
+}
+
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
   onOpenChange?: (open: boolean) => void;
   triggerClassName?: string;
   align?: "start" | "center" | "end";
+  /**
+   * Contextual toolbar actions that move into this menu when a split header is
+   * too narrow to show them inline.
+   */
+  responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
 }
 
 interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
@@ -52,6 +63,7 @@ interface ThreadActionsContextMenuProps extends ThreadActionsMenuBaseProps {
 type ThreadActionsMenuSurface = "context" | "dropdown";
 
 interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
+  responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
   surface: ThreadActionsMenuSurface;
 }
 
@@ -121,6 +133,7 @@ function ThreadActionsMenuItems({
   thread,
   canDelete = true,
   onOpenInSplit,
+  responsiveActions = [],
   surface,
 }: ThreadActionsMenuItemsProps) {
   const {
@@ -140,6 +153,25 @@ function ThreadActionsMenuItems({
 
   return (
     <>
+      {responsiveActions.length > 0 ? (
+        <>
+          {responsiveActions.map((action) => (
+            <ThreadActionMenuItem
+              key={action.label}
+              surface={surface}
+              icon={action.icon}
+              onSelect={() => {
+                void action.onSelect();
+              }}
+            >
+              {action.label}
+            </ThreadActionMenuItem>
+          ))}
+          {showSeparators ? (
+            <ThreadActionMenuSeparator surface={surface} />
+          ) : null}
+        </>
+      ) : null}
       {onOpenInSplit ? (
         <>
           <ThreadActionMenuItem
@@ -222,6 +254,7 @@ export function ThreadActionsMenu({
   thread,
   canDelete = true,
   onOpenInSplit,
+  responsiveActions,
   onOpenChange,
   triggerClassName,
   align = "end",
@@ -254,6 +287,7 @@ export function ThreadActionsMenu({
           thread={thread}
           canDelete={canDelete}
           onOpenInSplit={onOpenInSplit}
+          responsiveActions={responsiveActions}
           surface="dropdown"
         />
       </DropdownMenuContent>

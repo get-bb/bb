@@ -979,7 +979,9 @@ interface DetailCardWrapperProps {
 /**
  * Shared DetailCard styling used by ThreadMetadataContent and the per-row
  * stories so a single row in isolation looks the same as it does inside the
- * full panel. Owns the info tab's vertical scroll as a last resort: when
+ * full panel. The card is visually flat and inherits the panel canvas so Info
+ * behaves like the other right-panel views rather than reading as a raised
+ * sheet. It owns the info tab's vertical scroll as a last resort: when
  * everything fits there is no scrolling at all. Changed files sizes to its
  * content; thread storage fills the leftover space (its virtualized tree has no
  * intrinsic height to size to). When the two together run out of room they
@@ -990,7 +992,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto bg-surface-raised px-4 py-3"
+      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
     >
       {children}
     </DetailCard>

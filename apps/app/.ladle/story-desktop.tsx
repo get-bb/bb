@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
+  BbDesktopBrowserState,
   BbDesktopInfo,
 } from "@bb/desktop-contract";
 
@@ -19,7 +20,9 @@ const STORY_DESKTOP_INFO: BbDesktopInfo = {
   version: "0.0.0-story",
 };
 
-function createStoryDesktopBrowserApi(): BbDesktopBrowserApi {
+function createStoryDesktopBrowserApi(
+  initialState: BbDesktopBrowserState | null,
+): BbDesktopBrowserApi {
   return {
     attach() {},
     detach() {},
@@ -30,8 +33,16 @@ function createStoryDesktopBrowserApi(): BbDesktopBrowserApi {
     stop() {},
     setBounds() {},
     setVisible() {},
-    onState() {
-      return () => {};
+    onState(listener) {
+      let subscribed = true;
+      if (initialState !== null) {
+        queueMicrotask(() => {
+          if (subscribed) listener(initialState);
+        });
+      }
+      return () => {
+        subscribed = false;
+      };
     },
     onOpenTab() {
       return () => {};
@@ -39,10 +50,12 @@ function createStoryDesktopBrowserApi(): BbDesktopBrowserApi {
   };
 }
 
-function createStoryDesktopApi(): BbDesktopApi {
+function createStoryDesktopApi(
+  browserState: BbDesktopBrowserState | null,
+): BbDesktopApi {
   return {
     ...STORY_DESKTOP_INFO,
-    browser: createStoryDesktopBrowserApi(),
+    browser: createStoryDesktopBrowserApi(browserState),
     async checkForUpdates() {
       return STORY_DESKTOP_INFO;
     },
@@ -59,6 +72,7 @@ function createStoryDesktopApi(): BbDesktopApi {
 }
 
 interface WithDesktopBrowserProps {
+  browserState?: BbDesktopBrowserState | null;
   children: ReactNode;
 }
 
@@ -70,9 +84,12 @@ interface WithDesktopBrowserProps {
  * unmount so it never leaks into the web-build stories that must see the surface
  * as absent. Use exactly one wrapper per story page.
  */
-export function WithDesktopBrowser({ children }: WithDesktopBrowserProps) {
+export function WithDesktopBrowser({
+  browserState = null,
+  children,
+}: WithDesktopBrowserProps) {
   if (typeof window !== "undefined" && window.bbDesktop === undefined) {
-    window.bbDesktop = createStoryDesktopApi();
+    window.bbDesktop = createStoryDesktopApi(browserState);
   }
   useEffect(() => {
     return () => {

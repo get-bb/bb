@@ -319,7 +319,7 @@ export function TasksSidebar({
       ref={asideRef}
       style={overlay ? undefined : { width }}
       className={cn(
-        "relative flex h-full shrink-0 flex-col border-l border-border-seam-vertical bg-sidebar",
+        "relative flex h-full shrink-0 flex-col border-l border-border-seam bg-sidebar",
         overlay && "w-72 min-w-0 max-w-full shrink shadow-lg",
         resizing && "select-none",
       )}

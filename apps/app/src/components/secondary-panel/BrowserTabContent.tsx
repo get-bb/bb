@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent as ReactFocusEvent,
   type FormEvent,
   type RefObject,
 } from "react";
@@ -44,6 +45,9 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+
+export const BROWSER_CHROME_IDLE_COLLAPSE_MS = 5_000;
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -89,6 +93,16 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
+  visibility: BrowserChromeVisibility;
+}
+
+interface BrowserChromeVisibility {
+  isExpanded: boolean;
+  onActivity: () => void;
+  onBlurCapture: (event: ReactFocusEvent<HTMLDivElement>) => void;
+  onFocusCapture: () => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
 }
 
 interface NavButtonProps {
@@ -205,7 +219,13 @@ function browserPageLoadErrorTitle(args: {
   return "Page unavailable";
 }
 
-function NavButton({ icon, label, disabled, onClick, shortcut }: NavButtonProps) {
+function NavButton({
+  icon,
+  label,
+  disabled,
+  onClick,
+  shortcut,
+}: NavButtonProps) {
   const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
   return (
     <button
@@ -215,8 +235,9 @@ function NavButton({ icon, label, disabled, onClick, shortcut }: NavButtonProps)
       aria-label={accessibleLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       className={cn(
-        "flex shrink-0 items-center justify-center text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
+        "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
         COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+        CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
       )}
     >
       <Icon name={icon} aria-hidden />
@@ -240,100 +261,238 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
+  visibility,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
   const addressValue = isEditing ? addressDraft : currentUrl;
+  const compactLabel = getBrowserUrlHost(currentUrl) || "New tab";
 
   return (
     <div
       data-testid="browser-tab-nav-bar"
-      className={`relative flex items-center gap-1 border-b border-border-seam ${SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS} px-2 py-1.5`}
+      data-state={visibility.isExpanded ? "expanded" : "compact"}
+      role="region"
+      aria-label="Browser navigation"
+      aria-expanded={visibility.isExpanded}
+      tabIndex={visibility.isExpanded ? -1 : 0}
+      onBlurCapture={visibility.onBlurCapture}
+      onFocusCapture={visibility.onFocusCapture}
+      onKeyDownCapture={visibility.onActivity}
+      onPointerDownCapture={visibility.onActivity}
+      onPointerEnter={visibility.onPointerEnter}
+      onPointerLeave={visibility.onPointerLeave}
+      className={cn(
+        "relative shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+        SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+        "transition-[height] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+        visibility.isExpanded
+          ? "h-11 max-md:pointer-coarse:h-[52px]"
+          : "h-6 max-md:pointer-coarse:h-9",
+      )}
     >
-      <NavButton
-        icon="ChevronLeft"
-        label="Go back"
-        disabled={!(state?.canGoBack ?? false)}
-        onClick={onBack}
-      />
-      <NavButton
-        icon="ChevronRight"
-        label="Go forward"
-        disabled={!(state?.canGoForward ?? false)}
-        onClick={onForward}
-      />
-      <NavButton
-        icon={isLoading ? "X" : "RotateCcw"}
-        label={isLoading ? "Stop loading" : "Reload"}
-        shortcut={isLoading ? null : reloadShortcut}
-        onClick={onReloadOrStop}
-      />
-      <form onSubmit={onSubmit} className="min-w-0 flex-1">
-        <div className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 max-md:pointer-coarse:h-10">
-          {security === "secure" ? (
-            <Icon
-              name="Lock"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                "text-success",
-              )}
-              aria-label="Secure connection"
-            />
-          ) : security === "insecure" ? (
-            <Icon
-              name="AlertTriangle"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                "text-warning",
-              )}
-              aria-label="Connection not secure"
-            />
-          ) : (
-            <Icon
-              name="Search"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-                "text-muted-foreground",
-              )}
-              aria-hidden
-            />
-          )}
-          <input
-            ref={addressInputRef}
-            type="text"
-            value={addressValue}
-            onChange={(event) => onAddressChange(event.target.value)}
-            onFocus={onAddressFocus}
-            onBlur={onAddressBlur}
-            placeholder="Enter a URL"
-            aria-label={
-              locationShortcut
-                ? `Address and search bar (${locationShortcut.label})`
-                : "Address and search bar"
-            }
-            aria-keyshortcuts={locationShortcut?.ariaKeyshortcuts}
-            autoComplete="off"
-            spellCheck={false}
-            className={cn(
-              "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground",
-              COARSE_POINTER_TEXT_SM_CLASS,
+      <div
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 px-3 text-2xs text-subtle-foreground transition-opacity duration-120 motion-reduce:transition-none",
+          visibility.isExpanded ? "opacity-0" : "opacity-100",
+        )}
+      >
+        <Icon name="Globe" className="size-3 shrink-0 opacity-70" />
+        <span className="min-w-0 truncate">{compactLabel}</span>
+      </div>
+      <div
+        data-testid="browser-tab-nav-controls"
+        className={cn(
+          "absolute inset-x-0 top-0 flex h-11 items-center gap-1 px-2 py-1.5 transition-opacity duration-120 motion-reduce:transition-none max-md:pointer-coarse:h-[52px]",
+          visibility.isExpanded
+            ? "opacity-100"
+            : "pointer-events-none opacity-0",
+        )}
+      >
+        <NavButton
+          icon="ChevronLeft"
+          label="Go back"
+          disabled={!(state?.canGoBack ?? false)}
+          onClick={onBack}
+        />
+        <NavButton
+          icon="ChevronRight"
+          label="Go forward"
+          disabled={!(state?.canGoForward ?? false)}
+          onClick={onForward}
+        />
+        <NavButton
+          icon={isLoading ? "X" : "RotateCcw"}
+          label={isLoading ? "Stop loading" : "Reload"}
+          shortcut={isLoading ? null : reloadShortcut}
+          onClick={onReloadOrStop}
+        />
+        <form onSubmit={onSubmit} className="min-w-0 flex-1">
+          <div className="flex h-8 items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 max-md:pointer-coarse:h-10">
+            {security === "secure" ? (
+              <Icon
+                name="Lock"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                  "text-success",
+                )}
+                aria-label="Secure connection"
+              />
+            ) : security === "insecure" ? (
+              <Icon
+                name="AlertTriangle"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                  "text-warning",
+                )}
+                aria-label="Connection not secure"
+              />
+            ) : (
+              <Icon
+                name="Search"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                  "text-muted-foreground",
+                )}
+                aria-hidden
+              />
             )}
-          />
-        </div>
-      </form>
-      <NavButton
-        icon="ExternalLink"
-        label="Open in external browser"
-        disabled={currentUrl.length === 0}
-        onClick={onOpenExternal}
-      />
-      {isLoading ? (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
-          <span className="block h-full w-1/3 animate-pulse bg-ring" />
-        </span>
-      ) : null}
+            <input
+              ref={addressInputRef}
+              type="text"
+              value={addressValue}
+              onChange={(event) => onAddressChange(event.target.value)}
+              onFocus={onAddressFocus}
+              onBlur={onAddressBlur}
+              placeholder="Enter a URL"
+              aria-label={
+                locationShortcut
+                  ? `Address and search bar (${locationShortcut.label})`
+                  : "Address and search bar"
+              }
+              aria-keyshortcuts={locationShortcut?.ariaKeyshortcuts}
+              autoComplete="off"
+              spellCheck={false}
+              className={cn(
+                "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            />
+          </div>
+        </form>
+        <NavButton
+          icon="ExternalLink"
+          label="Open in external browser"
+          disabled={currentUrl.length === 0}
+          onClick={onOpenExternal}
+        />
+        {isLoading ? (
+          <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
+            <span className="block h-full w-1/3 animate-pulse bg-ring/70 motion-reduce:animate-none" />
+          </span>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function useBrowserChromeAutoCollapse(args: {
+  holdExpanded: boolean;
+}): BrowserChromeVisibility {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const timeoutRef = useRef<number | null>(null);
+  const pointerInsideRef = useRef(false);
+  const focusInsideRef = useRef(false);
+  const holdExpandedRef = useRef(args.holdExpanded);
+
+  const clearCollapseTimer = useCallback(() => {
+    if (timeoutRef.current === null) {
+      return;
+    }
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }, []);
+
+  const shouldHoldExpanded = useCallback(
+    () =>
+      pointerInsideRef.current ||
+      focusInsideRef.current ||
+      holdExpandedRef.current,
+    [],
+  );
+
+  const scheduleCollapse = useCallback(() => {
+    clearCollapseTimer();
+    if (shouldHoldExpanded()) {
+      return;
+    }
+    timeoutRef.current = window.setTimeout(() => {
+      timeoutRef.current = null;
+      if (!shouldHoldExpanded()) {
+        setIsExpanded(false);
+      }
+    }, BROWSER_CHROME_IDLE_COLLAPSE_MS);
+  }, [clearCollapseTimer, shouldHoldExpanded]);
+
+  const onActivity = useCallback(() => {
+    clearCollapseTimer();
+    setIsExpanded(true);
+    if (!shouldHoldExpanded()) {
+      scheduleCollapse();
+    }
+  }, [clearCollapseTimer, scheduleCollapse, shouldHoldExpanded]);
+
+  const onPointerEnter = useCallback(() => {
+    pointerInsideRef.current = true;
+    clearCollapseTimer();
+    setIsExpanded(true);
+  }, [clearCollapseTimer]);
+
+  const onPointerLeave = useCallback(() => {
+    pointerInsideRef.current = false;
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  const onFocusCapture = useCallback(() => {
+    focusInsideRef.current = true;
+    clearCollapseTimer();
+    setIsExpanded(true);
+  }, [clearCollapseTimer]);
+
+  const onBlurCapture = useCallback(
+    (event: ReactFocusEvent<HTMLDivElement>) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        event.currentTarget.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      focusInsideRef.current = false;
+      scheduleCollapse();
+    },
+    [scheduleCollapse],
+  );
+
+  useEffect(() => {
+    holdExpandedRef.current = args.holdExpanded;
+    if (args.holdExpanded) {
+      clearCollapseTimer();
+      return;
+    }
+    scheduleCollapse();
+  }, [args.holdExpanded, clearCollapseTimer, scheduleCollapse]);
+
+  useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
+
+  return {
+    isExpanded,
+    onActivity,
+    onBlurCapture,
+    onFocusCapture,
+    onPointerEnter,
+    onPointerLeave,
+  };
 }
 
 function BrowserUnavailable() {
@@ -443,6 +602,10 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const browserChromeVisibility = useBrowserChromeAutoCollapse({
+    holdExpanded: isEditing || (state?.isLoading ?? false),
+  });
+  const noteBrowserChromeActivity = browserChromeVisibility.onActivity;
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
@@ -563,6 +726,7 @@ export function BrowserTabContent({
       if (nextState.tabId !== tabId) {
         return;
       }
+      noteBrowserChromeActivity();
       setState(nextState);
       setCurrentUrl(nextState.url);
       onUpdateRef.current({
@@ -598,6 +762,7 @@ export function BrowserTabContent({
   }, [
     desktopBrowser,
     environmentId,
+    noteBrowserChromeActivity,
     syncInitialBounds,
     visibilityCoordinator,
     tabId,
@@ -691,6 +856,7 @@ export function BrowserTabContent({
       return;
     }
 
+    noteBrowserChromeActivity();
     setAddressDraft(currentUrl);
     setIsEditing(true);
     addressInputRef.current?.focus({ preventScroll: true });
@@ -703,6 +869,7 @@ export function BrowserTabContent({
     addressFocusRequest,
     currentUrl,
     isPointerCoarse,
+    noteBrowserChromeActivity,
     onAddressFocusRequestConsumed,
     tabId,
   ]);
@@ -713,11 +880,12 @@ export function BrowserTabContent({
       if (url === null) {
         return;
       }
+      noteBrowserChromeActivity();
       setCurrentUrl(url);
       setIsEditing(false);
       desktopBrowser?.navigate({ tabId, url });
     },
-    [desktopBrowser, tabId],
+    [desktopBrowser, noteBrowserChromeActivity, tabId],
   );
 
   const handleAddressSubmit = useCallback(
@@ -734,15 +902,17 @@ export function BrowserTabContent({
   }, [currentUrl]);
 
   const handleReloadOrStop = useCallback(() => {
+    noteBrowserChromeActivity();
     if (state?.isLoading ?? false) {
       desktopBrowser?.stop(tabId);
       return;
     }
     desktopBrowser?.reload(tabId);
-  }, [desktopBrowser, state?.isLoading, tabId]);
+  }, [desktopBrowser, noteBrowserChromeActivity, state?.isLoading, tabId]);
 
   const handleFocusLocation = useCallback((): boolean => {
     if (!canShowNativeBrowserView || desktopBrowser === null) return false;
+    noteBrowserChromeActivity();
     setAddressDraft(currentUrl);
     setIsEditing(true);
     addressInputRef.current?.focus({ preventScroll: true });
@@ -751,20 +921,31 @@ export function BrowserTabContent({
       addressInputRef.current?.select();
     });
     return true;
-  }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
+  }, [
+    canShowNativeBrowserView,
+    currentUrl,
+    desktopBrowser,
+    noteBrowserChromeActivity,
+  ]);
 
   useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
-  useAppCommandHandler("browser.reload", () => {
-    if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
-      return false;
-    }
-    desktopBrowser.reload(tabId);
-    return true;
-  }, 100);
+  useAppCommandHandler(
+    "browser.reload",
+    () => {
+      if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
+        return false;
+      }
+      noteBrowserChromeActivity();
+      desktopBrowser.reload(tabId);
+      return true;
+    },
+    100,
+  );
 
   const handleOpenExternal = useCallback(() => {
+    noteBrowserChromeActivity();
     getBbDesktopInfo()?.openExternalUrl(currentUrl);
-  }, [currentUrl]);
+  }, [currentUrl, noteBrowserChromeActivity]);
 
   if (desktopBrowser === null) {
     return <BrowserUnavailable />;
@@ -782,12 +963,19 @@ export function BrowserTabContent({
         onAddressFocus={handleAddressFocus}
         onAddressBlur={() => setIsEditing(false)}
         onSubmit={handleAddressSubmit}
-        onBack={() => desktopBrowser.goBack(tabId)}
-        onForward={() => desktopBrowser.goForward(tabId)}
+        onBack={() => {
+          noteBrowserChromeActivity();
+          desktopBrowser.goBack(tabId);
+        }}
+        onForward={() => {
+          noteBrowserChromeActivity();
+          desktopBrowser.goForward(tabId);
+        }}
         onReloadOrStop={handleReloadOrStop}
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
+        visibility={browserChromeVisibility}
       />
       <div ref={contentRef} className="relative min-h-0 flex-1">
         {hasPageLoadError ? (

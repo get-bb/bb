@@ -1,5 +1,7 @@
 import {
   useContext,
+  useLayoutEffect,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -9,7 +11,6 @@ import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
-import { Pill } from "@bb/shared-ui/pill";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -25,11 +26,19 @@ import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider"
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import {
+  CONTEXT_INACTIVE_TEXT_CLASS,
+  CONTEXT_SELECTION_SURFACE_CLASS,
+} from "@/components/ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 
-const THREAD_HEADER_ACTION_BUTTON_CLASS =
-  COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
+const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
+  COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
+  "border-border/70 bg-transparent font-normal hover:bg-state-hover",
+);
+const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
 interface ThreadHeaderGitAction {
   label: string;
@@ -38,8 +47,6 @@ interface ThreadHeaderGitAction {
 
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
-  /** Pill shown beside the title for side chats and hierarchical child threads. */
-  childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
   /** Closes this pane; only provided when the layout is split (>1 pane). */
   onClosePane?: () => void;
@@ -54,7 +61,6 @@ interface ThreadDetailHeaderProps {
 
 export function ThreadDetailHeader({
   actionsMenu,
-  childPillLabel,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -69,6 +75,7 @@ export function ThreadDetailHeader({
   const [desktopInfo] = useState(getBbDesktopInfo);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const headerRef = useRef<HTMLElement>(null!);
   // The title doubles as the pane-reorder drag handle when the layout is split;
   // beginPaneDrag is undefined on the single-pane and page surfaces.
   const {
@@ -81,7 +88,33 @@ export function ThreadDetailHeader({
   } = usePaneContext();
   const isWindowPanelOpen =
     useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
-  const showFocusedPaneTitlePill = beginPaneDrag !== undefined && isFocused;
+  const isSplitPaneHeader = beginPaneDrag !== undefined;
+  const [measuredPaneWidth, setMeasuredPaneWidth] = useState(0);
+  const usesResponsiveActionOverflow =
+    isSplitPaneHeader &&
+    measuredPaneWidth > 0 &&
+    measuredPaneWidth < NARROW_SPLIT_HEADER_MAX_WIDTH;
+  useLayoutEffect(() => {
+    if (!isSplitPaneHeader) {
+      return;
+    }
+
+    const header = headerRef.current;
+    const pane = header.closest<HTMLElement>("[data-split-pane-id]");
+    const measuredElement = pane ?? header;
+    const measure = () => {
+      const width = measuredElement.getBoundingClientRect().width;
+      if (width > 0) {
+        setMeasuredPaneWidth(width);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(measuredElement);
+    return () => {
+      observer.disconnect();
+    };
+  }, [isSplitPaneHeader]);
   const handleTitlePointerDown = (event: ReactPointerEvent) => {
     if (!beginPaneDrag || event.button !== 0) {
       return;
@@ -101,16 +134,20 @@ export function ThreadDetailHeader({
 
   const center = (
     <>
-      <div className="relative min-w-0">
-        {showFocusedPaneTitlePill ? (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -inset-x-2 -inset-y-1 rounded-md bg-state-active"
-          />
-        ) : null}
+      <div
+        data-pane-header-focus-tab={
+          isSplitPaneHeader && isFocused ? "" : undefined
+        }
+        className={cn(
+          "relative min-w-0",
+          isSplitPaneHeader && "-mx-2 -my-1 rounded-md px-2 py-1",
+          isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
+        )}
+      >
         <p
           className={cn(
-            "relative min-w-0 truncate text-sm font-medium",
+            "relative min-w-0 truncate text-sm font-normal transition-colors",
+            isSplitPaneHeader && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
             beginPaneDrag &&
               cn(
                 "cursor-grab touch-none select-none",
@@ -124,11 +161,6 @@ export function ThreadDetailHeader({
           <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>
-      {childPillLabel ? (
-        <Pill variant="outline" size="sm">
-          {childPillLabel}
-        </Pill>
-      ) : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region
         (AppPageHeader only exempts the actions slot), so the interactive
@@ -153,88 +185,108 @@ export function ThreadDetailHeader({
 
   const actions = (
     <>
-      {pluginActions}
-      {workspaceOpenButton}
-      {primaryAction && secondaryActions.length > 0 ? (
-        <SplitButton
-          primaryAction={{
-            label: primaryAction.label,
-            onSelect: () => onOpenThreadGitAction(primaryAction.target),
-          }}
-          secondaryActions={secondaryActions.map((action) => ({
-            label: action.label,
-            onSelect: () => onOpenThreadGitAction(action.target),
-          }))}
-        />
-      ) : primaryAction ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-          onClick={() => onOpenThreadGitAction(primaryAction.target)}
-        >
-          {primaryAction.label}
-        </Button>
-      ) : null}
-      {showRightPanelToggle ? (
-        <span className="inline-flex items-center gap-1.5">
-          <AppCommandShortcutHint shortcut={panelShortcut} />
+      <div
+        className="flex items-center gap-1"
+        data-thread-header-workflow-actions=""
+      >
+        {pluginActions}
+        {!usesResponsiveActionOverflow && workspaceOpenButton ? (
+          <span className="inline-flex" data-thread-header-responsive-action="">
+            {workspaceOpenButton}
+          </span>
+        ) : null}
+        {!usesResponsiveActionOverflow && primaryAction ? (
+          <span className="inline-flex" data-thread-header-responsive-action="">
+            {secondaryActions.length > 0 ? (
+              <SplitButton
+                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
+                primaryAction={{
+                  label: primaryAction.label,
+                  onSelect: () => onOpenThreadGitAction(primaryAction.target),
+                }}
+                secondaryActions={secondaryActions.map((action) => ({
+                  label: action.label,
+                  onSelect: () => onOpenThreadGitAction(action.target),
+                }))}
+              />
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
+                onClick={() => onOpenThreadGitAction(primaryAction.target)}
+              >
+                {primaryAction.label}
+              </Button>
+            )}
+          </span>
+        ) : null}
+      </div>
+      <div
+        className="ml-1 flex items-center gap-0.5"
+        data-thread-header-pane-actions=""
+      >
+        {showRightPanelToggle ? (
+          <span className="inline-flex items-center gap-1.5">
+            <AppCommandShortcutHint shortcut={panelShortcut} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                HEADER_ICON_BUTTON_CLASS,
+                CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+              )}
+              aria-label={
+                panelShortcut
+                  ? `${rightPanelLabel} (${panelShortcut.label})`
+                  : rightPanelLabel
+              }
+              aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
+              aria-pressed={isSecondaryPanelOpen}
+              onClick={onToggleSecondaryPanel}
+            >
+              <Icon name={rightPanelIconName} />
+            </Button>
+          </span>
+        ) : null}
+        <PaneMaximizeButton />
+        {onClosePane ? (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className={HEADER_ICON_BUTTON_CLASS}
-            aria-label={
-              panelShortcut
-                ? `${rightPanelLabel} (${panelShortcut.label})`
-                : rightPanelLabel
-            }
-            aria-keyshortcuts={panelShortcut?.ariaKeyshortcuts}
-            aria-pressed={isSecondaryPanelOpen}
-            onClick={onToggleSecondaryPanel}
+            className={cn(
+              HEADER_ICON_BUTTON_CLASS,
+              CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+            )}
+            aria-label="Close pane"
+            onClick={onClosePane}
           >
-            <Icon name={rightPanelIconName} />
+            <Icon name="CloseThreadPane" />
           </Button>
-        </span>
-      ) : null}
-      <PaneMaximizeButton />
-      {onClosePane ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={HEADER_ICON_BUTTON_CLASS}
-          aria-label="Close pane"
-          onClick={onClosePane}
-        >
-          <Icon name="X" />
-        </Button>
-      ) : null}
-      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
-        // Reserve only the fixed 28px corner button. Its modifier-held hint is
-        // positioned below the chrome row by the workspace host, so it never
-        // consumes or covers this pane-action row. With the window panel open,
-        // the toggle overlays the panel's own chrome instead, so the pane
-        // actions sit flush at the pane edge.
-        <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
-      ) : null}
+        ) : null}
+        {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+          // Reserve only the fixed 28px corner button. Its modifier-held hint is
+          // positioned below the chrome row by the workspace host, so it never
+          // consumes or covers this pane-action row. With the window panel open,
+          // the toggle overlays the panel's own chrome instead, so the pane
+          // actions sit flush at the pane edge.
+          <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+        ) : null}
+      </div>
     </>
   );
 
-  // Keep the thread header seam in the vertical-pane family, but soften it so
-  // the top nav does not compete with the title and controls.
   return (
     <AppPageHeader
+      headerRef={headerRef}
       center={center}
       actions={actions}
-      bordered={false}
       isWindowDragRegion={isTopRow}
       ownsWindowTopLeft={ownsWindowTopLeft}
-      className={cn(
-        "border-b border-border-seam-vertical/60",
-        beginPaneDrag && isFocused && "bg-surface-raised",
-      )}
+      className={cn(beginPaneDrag && "z-[21]")}
     />
   );
 }

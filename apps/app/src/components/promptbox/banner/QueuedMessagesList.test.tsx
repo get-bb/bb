@@ -301,6 +301,7 @@ describe("QueuedMessagesList", () => {
     expect(sendButton.closest("div")?.className).toContain("opacity-0");
     expect(sendButton.closest("div")?.className).toContain("md:flex");
     expect(sendButton.closest("div")?.className).toContain("hidden");
+    expect(sendButton.closest("div")?.className).toContain("absolute");
     expect(editButton).toBeTruthy();
     expect(deleteButton).toBeTruthy();
     expect(overflowButton.className).toContain("md:hidden");
@@ -957,6 +958,17 @@ describe("QueuedMessagesList", () => {
     const { container, getByRole } = renderQueuedMessages([queuedMessage]);
 
     expect(getByRole("img", { name: "1 attachment" }).textContent).toBe("1");
+    const attachment = getByRole("img", { name: "1 attachment" });
+    expect(attachment.className).toContain("ml-auto");
+    expect(attachment.className).toContain("group-hover/row:opacity-0");
+    expect(attachment.className).toContain("group-focus-within/row:opacity-0");
+    expect(attachment.className).toContain("[@media(hover:none)]:opacity-0");
+    expect(attachment.className).toContain("duration-[120ms]");
+    const actions = container.querySelector("[data-queued-message-actions]");
+    expect(actions?.className).toContain("right-2.5");
+    expect(actions?.className).toContain("before:w-4");
+    expect(actions?.className).toContain("before:from-transparent");
+    expect(actions?.className).toContain("duration-[120ms]");
     expect(
       container.querySelector('[data-icon="FileAttachment"]'),
     ).not.toBeNull();
@@ -966,6 +978,45 @@ describe("QueuedMessagesList", () => {
         ?.classList.contains("fade-clip-right"),
     ).toBe(false);
     expect(container.textContent).not.toContain("1 attachment");
+  });
+
+  it("keeps attachment state visible while processing and counts multiple files", () => {
+    const queuedMessage = makeQueuedMessage(
+      "q_multiple_attachments",
+      "Review both attached screenshots",
+    );
+    queuedMessage.content.push(
+      {
+        type: "localFile",
+        path: "/tmp/first.png",
+        name: "first.png",
+      },
+      {
+        type: "localFile",
+        path: "/tmp/second.png",
+        name: "second.png",
+      },
+    );
+
+    const { getByRole, getByText } = render(
+      <QueuedMessagesList
+        queuedMessages={[queuedMessage]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={queuedMessage.id}
+        processingAction="send"
+        onSendImmediately={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    const attachment = getByRole("img", { name: "2 attachments" });
+    expect(attachment.textContent).toBe("2");
+    expect(attachment.className).not.toContain("group-hover/row:opacity-0");
+    expect(getByText("Sending...")).not.toBeNull();
   });
 
   it("keeps previews on one ellipsized line in drawer and workspace modes", () => {

@@ -49,6 +49,7 @@ const REQUIRED_RAMP_TOKENS = [
   "state-active",
   "border",
   "border-hairline",
+  "border-seam",
   "input",
   "sidebar",
   "sidebar-accent",
@@ -154,6 +155,12 @@ describe("theme.css neutral ramp", () => {
             `--${token} must derive from var(--ink)/var(--canvas), not a literal`,
           ).toBe(true);
         }
+      });
+
+      it("uses one seam value for every app-shell boundary", () => {
+        expect(block).toMatch(
+          /--border-seam-vertical:\s*var\(--border-seam\);/,
+        );
       });
 
       it("keeps card and popover flush with the background", () => {

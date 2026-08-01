@@ -300,9 +300,7 @@ export function GitDiffTabContent({
 export function ThreadInfoTabContent({
   metadataContent,
 }: ThreadInfoTabContentProps) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col pb-3">{metadataContent}</div>
-  );
+  return <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>;
 }
 
 export function WorkspaceFilePreviewTabContent({
