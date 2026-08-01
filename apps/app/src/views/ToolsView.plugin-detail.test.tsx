@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
@@ -20,16 +20,19 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { PluginDetail, ToolsScrollPage, ToolsView } from "./ToolsView";
 import {
-  PluginDetail,
+  CatalogPluginDetail,
   PluginDetailBanners,
-  ToolsScrollPage,
-} from "./ToolsView";
+  PluginProvenancePill,
+  pluginDetailBannerKind,
+} from "@/components/tools/PluginDetail";
+import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 
 const GITHUB_PLUGIN = {
   id: "github",
   source: "builtin:github",
-  rootDir: "/managed/plugins/github",
+  rootDir: "/Users/you/.bb/plugins/github",
   version: "0.1.0",
   enabled: true,
   status: "running",
@@ -53,6 +56,19 @@ const GITHUB_PLUGIN = {
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 } satisfies PluginListItem;
+
+const GITHUB_CATALOG_ENTRY = {
+  entryId: "github",
+  pluginId: "github",
+  displayName: "GitHub",
+  description: "Browse GitHub issues and pull requests in BB.",
+  icon: "Github",
+  category: "Developer tools",
+  source: "builtin:github",
+  installed: false,
+  compatible: true,
+  incompatibleReason: null,
+} satisfies PluginCatalogSearchEntry;
 
 afterEach(() => {
   cleanup();
@@ -91,7 +107,81 @@ describe("ToolsScrollPage layout", () => {
 });
 
 describe("PluginDetail official catalog lifecycle", () => {
+  it("offers Install from an unowned BB Official plugin detail page", () => {
+    const onInstall = vi.fn();
+    const { container } = render(
+      <CatalogPluginDetail
+        entry={GITHUB_CATALOG_ENTRY}
+        onInstall={onInstall}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "GitHub" })).toBeTruthy();
+    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.getByText("Developer tools")).toBeTruthy();
+    expect(
+      screen.getByText("Browse GitHub issues and pull requests in BB."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Capabilities")).toBeNull();
+    expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+    expect(onInstall).toHaveBeenCalledWith(GITHUB_CATALOG_ENTRY);
+  });
+
+  it("explains why an incompatible official plugin cannot be installed", () => {
+    render(
+      <CatalogPluginDetail
+        entry={{
+          ...GITHUB_CATALOG_ENTRY,
+          compatible: false,
+          incompatibleReason: "Requires bb 0.20 or newer.",
+        }}
+        onInstall={() => {}}
+      />,
+    );
+
+    const compatibilityStatus = screen.getByRole("status");
+    expect(compatibilityStatus.textContent).toBe("Requires bb 0.20 or newer.");
+    expect(compatibilityStatus.className).not.toContain("text-warning");
+    expect(
+      compatibilityStatus
+        .querySelector('[data-icon="AlertTriangle"]')
+        ?.getAttribute("class"),
+    ).toContain("text-warning");
+    expect(
+      screen
+        .getByRole("button", { name: "Install GitHub" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("omits a provenance badge for default direct and local sources", () => {
+    const directPlugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "npm:@example/github@^1.0.0",
+      provenance: "direct",
+      catalogEntryId: null,
+    };
+    const { container, rerender } = render(
+      <PluginProvenancePill plugin={directPlugin} />,
+    );
+    expect(container.textContent).toBe("");
+
+    rerender(
+      <PluginProvenancePill
+        plugin={{
+          ...directPlugin,
+          source: "path:/Users/you/Code/github-plugin",
+        }}
+      />,
+    );
+    expect(container.textContent).toBe("");
+  });
+
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const onDelete = vi.fn();
     const { container } = render(
@@ -129,7 +219,22 @@ describe("PluginDetail official catalog lifecycle", () => {
     ).toBeTruthy();
     const meta = screen.getByText("0.1.0");
     expect(meta.className).toContain("font-mono");
+    expect(meta.parentElement?.className).toContain("text-muted-foreground");
     expect(meta.closest("[data-resource-detail-section]")).toBeNull();
+    const rootPath = screen.getByText("~/.bb/plugins/github");
+    expect(rootPath.className).toContain("truncate");
+    expect(rootPath.className).not.toContain("break-all");
+    expect(rootPath.closest("button")?.className).toContain(
+      "text-subtle-foreground",
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Copy plugin path: /Users/you/.bb/plugins/github",
+      }),
+    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/Users/you/.bb/plugins/github");
+    });
     expect(screen.getByText("Updates with bb")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
@@ -208,7 +313,7 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Built-in")).toBeTruthy();
+    expect(screen.getByText("BB Official")).toBeTruthy();
     expect(
       screen.getByRole("switch", { name: "Disable Automations" }),
     ).toBeTruthy();
@@ -221,16 +326,163 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 });
 
+describe("BB Official plugin detail routing", () => {
+  it("resolves an uninstalled catalog plugin and opens its install confirmation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugins") {
+          return new Response(JSON.stringify({ enabled: true, plugins: [] }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=github") {
+          return new Response(
+            JSON.stringify({ results: [GITHUB_CATALOG_ENTRY] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins/github"]}>
+        <Routes>
+          <Route path="/tools/plugins/:pluginId" element={<ToolsView />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: QueryClientWrapper },
+    );
+
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+    expect(
+      await screen.findByRole("heading", { name: "Install GitHub?" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("full-trust-warning")).toBeTruthy();
+  });
+});
+
+describe("PluginDetail banner precedence", () => {
+  const managedPlugin: PluginListItem = {
+    ...GITHUB_PLUGIN,
+    source: "npm:@example/github@^1.0.0",
+    provenance: "direct",
+    catalogEntryId: null,
+  };
+  const collision: PluginListItem = {
+    ...managedPlugin,
+    status: "degraded",
+    statusDetail: "service issue-sync did not stop",
+    handlerStats: {
+      ...managedPlugin.handlerStats,
+      errorCount: 3,
+    },
+    updateState: {
+      ...EMPTY_PLUGIN_UPDATE_STATE,
+      availableVersion: "1.5.0",
+      blockedVersion: "2.0.0",
+      blockedReasons: ["Requires a newer bb."],
+      lastFailure: {
+        version: "1.4.5",
+        at: null,
+        detail: "The plugin failed to load after the update.",
+      },
+    },
+  };
+
+  it("maps implementation sources into five operational states", () => {
+    // The current server-reported state wins over browser diagnostics and
+    // release metadata because it is the plugin's present-tense condition.
+    expect(pluginDetailBannerKind(collision, true)).toBe("degraded");
+    expect(pluginDetailBannerKind(collision, false)).toBe("degraded");
+
+    const runningPlugin: PluginListItem = {
+      ...collision,
+      status: "running",
+      statusDetail: null,
+      handlerStats: managedPlugin.handlerStats,
+    };
+    expect(pluginDetailBannerKind(runningPlugin, true)).toBe("failed");
+    expect(
+      pluginDetailBannerKind(
+        {
+          ...runningPlugin,
+          handlerStats: { ...runningPlugin.handlerStats, errorCount: 3 },
+        },
+        false,
+      ),
+    ).toBeNull();
+
+    for (const [status, kind] of [
+      ["error", "failed"],
+      ["incompatible", "incompatible"],
+      ["missing", "missing"],
+      ["needs-configuration", "needs-configuration"],
+    ] as const) {
+      expect(pluginDetailBannerKind({ ...runningPlugin, status }, false)).toBe(
+        kind,
+      );
+    }
+
+    // Release opportunities and history never enter the health-banner slot.
+    expect(pluginDetailBannerKind(runningPlugin, false)).toBeNull();
+    expect(
+      pluginDetailBannerKind(
+        { ...runningPlugin, enabled: false, status: "disabled" },
+        true,
+      ),
+    ).toBeNull();
+  });
+
+  it("renders only current health and keeps diagnostics out of user copy", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginDetailBanners plugin={collision} />, { wrapper });
+
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.textContent).toContain("Degraded");
+    expect(alerts[0]?.textContent).toContain(
+      "A background service is still stopping.",
+    );
+    expect(alerts[0]?.textContent).toContain(
+      "Wait a moment, then reload the plugin.",
+    );
+    expect(alerts[0]?.textContent).not.toContain("issue-sync");
+    expect(alerts[0]?.textContent).not.toContain("handler");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+  });
+
+  it("does not promote cumulative handler diagnostics into a page banner", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailBanners
+        plugin={{
+          ...managedPlugin,
+          handlerStats: { ...managedPlugin.handlerStats, errorCount: 3 },
+        }}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  });
+});
+
 describe("PluginDetail runtime health", () => {
   function renderRuntimeStatus(
     status: Extract<
       PluginListItem["status"],
-      | "error"
-      | "incompatible"
-      | "missing"
-      | "needs-configuration"
-      | "degraded"
+      "error" | "incompatible" | "missing" | "needs-configuration" | "degraded"
     >,
+    overrides: Partial<PluginListItem> = {},
   ) {
     const { queryClient, wrapper: QueryClientWrapper } =
       createQueryClientTestHarness();
@@ -241,9 +493,10 @@ describe("PluginDetail runtime health", () => {
       catalogEntryId: null,
       status,
       statusDetail: "The runtime reported a problem.",
+      ...overrides,
     };
-    // Banners and page are siblings in production too (ToolsView.tsx:236): the
-    // stack renders outside the scroll page so it can span the pane.
+    // Banner and page are siblings in production too (ToolsView.tsx:236): the
+    // banner renders outside the scroll page so it can span the pane.
     const result = render(
       <MemoryRouter>
         <QueryClientWrapper>
@@ -269,9 +522,16 @@ describe("PluginDetail runtime health", () => {
     const alert = screen.getByRole("alert");
 
     expect(alert.textContent).toContain("Failed");
-    expect(alert.textContent).toContain("The runtime reported a problem.");
+    expect(alert.textContent).toContain("The plugin couldn't start.");
+    expect(alert.textContent).not.toContain("runtime reported");
     expect(alert.textContent).toContain("Reload the plugin.");
-    expect(alert.className).toContain("border-destructive/30");
+    expect(alert.className).toContain("bg-surface-recessed/55");
+    expect(alert.className).toContain("border-border");
+    expect(alert.className).not.toContain("bg-destructive");
+    expect(alert.className).not.toContain("border-destructive");
+    expect(
+      alert.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
+    ).toContain("text-destructive");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
 
     // The banner spans the pane rather than sitting inset in the detail
@@ -311,11 +571,42 @@ describe("PluginDetail runtime health", () => {
     ).not.toBeNull();
   });
 
-  it("offers Reload for degraded runtime status", () => {
-    renderRuntimeStatus("degraded");
+  it("offers Reload for degraded runtime status without a bottom rule", () => {
+    renderRuntimeStatus("degraded", {
+      statusDetail: "service issue-sync did not stop",
+    });
 
-    expect(screen.getByRole("alert").className).toContain("border-warning/30");
+    const alert = screen.getByRole("alert");
+    expect(alert.className).toContain("bg-surface-recessed/55");
+    expect(alert.className).not.toContain("bg-warning");
+    expect(alert.className).not.toContain("border-warning");
+    expect(
+      alert.querySelector('[data-icon="AlertTriangle"]')?.getAttribute("class"),
+    ).toContain("text-warning");
+    expect(alert.className).not.toContain("border-b");
+    expect(alert.textContent).toContain(
+      "A background service is still stopping.",
+    );
+    expect(alert.textContent).toContain(
+      "Wait a moment, then reload the plugin.",
+    );
+    expect(alert.textContent).not.toContain("issue-sync");
+    expect(alert.textContent).not.toContain("Restart bb");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+
+  it("does not fold cumulative handler diagnostics into the runtime banner", () => {
+    renderRuntimeStatus("degraded", {
+      handlerStats: {
+        ...GITHUB_PLUGIN.handlerStats,
+        errorCount: 3,
+      },
+    });
+
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.textContent).toContain("Degraded");
+    expect(alerts[0]?.textContent).not.toContain("handler");
   });
 
   it.each(["incompatible", "missing"] as const)(
@@ -327,10 +618,57 @@ describe("PluginDetail runtime health", () => {
     },
   );
 
-  it("keeps needs-configuration actionless because saving Settings retries it", () => {
-    renderRuntimeStatus("needs-configuration");
+  it.each([
+    [
+      "incompatible",
+      "This plugin version isn't compatible with your version of bb.",
+      "Update bb to load a compatible bundled plugin.",
+    ],
+    [
+      "missing",
+      "The plugin's files are missing.",
+      "Restart bb. If the files are still missing, reinstall bb.",
+    ],
+  ] as const)(
+    "explains the %s condition and a supported recovery",
+    (status, condition, recovery) => {
+      renderRuntimeStatus(status);
 
+      const alert = screen.getByRole("alert");
+      expect(alert.textContent).toContain(condition);
+      expect(alert.textContent).toContain(recovery);
+      expect(alert.textContent).not.toContain("runtime reported");
+    },
+  );
+
+  it("keeps needs-configuration actionless because saving Settings retries it", () => {
+    renderRuntimeStatus("needs-configuration", {
+      statusDetail: "An API token is required.",
+      hasSettings: true,
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("An API token is required.");
+    expect(alert.textContent).toContain(
+      "Complete the Settings section; bb reloads the plugin after you save.",
+    );
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  });
+
+  it("offers Reload when required configuration lives outside Settings", () => {
+    renderRuntimeStatus("needs-configuration", {
+      statusDetail: "Set GITHUB_TOKEN in the server environment.",
+      hasSettings: false,
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(
+      "Set GITHUB_TOKEN in the server environment.",
+    );
+    expect(alert.textContent).toContain(
+      "Add the required configuration, then reload the plugin.",
+    );
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it("reloads the affected plugin and reflects its pending state", async () => {
@@ -370,7 +708,7 @@ describe("PluginDetail runtime health", () => {
 });
 
 describe("PluginDetail capability inventory", () => {
-  it("lists each contributed capability and keeps health separate", () => {
+  it("lists each contributed capability and keeps health separate", async () => {
     const EmptySlot = () => null;
     setPluginSlotRegistrations("capability-demo", {
       homepageSections: [],
@@ -520,18 +858,37 @@ describe("PluginDetail capability inventory", () => {
     const table = includes?.querySelector("table");
     expect(table).not.toBeNull();
 
-    // Flat: row rules and nothing else. The page is already the panel
-    // (detail-sections.tsx:38), so a bordered box per list put a card inside a
-    // card and made three ordinary lists read as three raised widgets.
+    // Plugin detail uses the same bordered collection treatment as the
+    // automation overview's ResourceListPanel.
     const shell = table?.parentElement as HTMLElement;
-    expect(shell.className).not.toContain("border");
-    expect(shell.className).not.toContain("rounded");
+    expect(shell.className).toContain("rounded-lg");
+    expect(shell.className).toContain("border");
+    expect(shell.className).toContain("border-border");
+    expect(shell.className).toContain("bg-card");
+    expect(shell.className).not.toContain("px-4");
+    expect(shell.className).not.toContain("inline-block");
+    expect(table?.className).toContain("w-full");
+    expect(table?.className).toContain("table-fixed");
+    expect(table?.className).not.toContain("w-auto");
 
-    // And with no box to sit inside, the first column is flush with the
-    // section heading rather than indented by a border and its padding.
+    // The name column has room for ordinary capability and schedule names,
+    // without absorbing the full-width table's spare space and visually
+    // detaching names from descriptions.
+    const columns = table?.querySelectorAll("col");
+    expect(columns).toHaveLength(2);
+    expect(columns?.[0]?.className).toContain("w-40");
+    expect(columns?.[0]?.className).toContain("md:w-48");
+
+    // The cells own the content gutter so the row and column borders connect
+    // directly to the table's outer edge.
     const firstCell = table?.querySelector("td") as HTMLElement;
-    expect(firstCell.className).not.toContain("pl-");
-    expect(firstCell.className).not.toContain("px-");
+    expect(firstCell.className).toContain("border-r");
+    expect(firstCell.className).toContain("border-border");
+    expect(firstCell.className).toContain("pl-4");
+    expect(firstCell.className).toContain("pr-2");
+    const secondCell = table?.querySelector("td + td") as HTMLElement;
+    expect(secondCell.className).toContain("pl-2");
+    expect(secondCell.className).toContain("pr-4");
     expect(
       includes?.querySelector("[data-plugin-capability-group]"),
     ).toBeNull();
@@ -562,20 +919,49 @@ describe("PluginDetail capability inventory", () => {
     expect(inventory.queryByText("daily-cleanup")).toBeNull();
     expect(includes?.textContent).not.toContain("2 background services");
 
+    const commandGlyph = inventory.getByRole("img", { name: "Command" });
+    fireEvent.pointerMove(commandGlyph);
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Command");
+
     // Services and schedules are two objects with two status vocabularies, so
-    // they are two named tables rather than groups inside a "Health" wrapper.
+    // they remain separately named rather than grouped under "Health".
     const [services, schedules] = Array.from(
       container.querySelectorAll('[data-resource-detail-section="activity"]'),
     ) as HTMLElement[];
     expect(schedules).toBeTruthy();
     expect(container.textContent).not.toContain("Health");
 
-    const serviceTable = within(services as HTMLElement);
-    expect(serviceTable.getByText("Background services")).toBeTruthy();
-    expect(serviceTable.getByText("watch")).toBeTruthy();
-    expect(serviceTable.getByText("restart")).toBeTruthy();
-    expect(serviceTable.getByText("sync")).toBeTruthy();
-    expect(serviceTable.queryByText("daily-cleanup")).toBeNull();
+    const serviceSection = within(services as HTMLElement);
+    const serviceTable = serviceSection.getByRole("table", {
+      name: "Background services",
+    });
+    const serviceTableQueries = within(serviceTable);
+    expect(
+      serviceTableQueries
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Status", "Service"]);
+    for (const name of ["watch", "restart", "sync"]) {
+      expect(serviceTableQueries.getByRole("rowheader", { name })).toBeTruthy();
+    }
+    expect(serviceTableQueries.queryByText("daily-cleanup")).toBeNull();
+    for (const label of ["Running", "Restarting", "Stopped"]) {
+      expect(serviceTableQueries.getByText(label)).toBeTruthy();
+    }
+    expect(
+      serviceTableQueries.getByText("Running").getAttribute("class"),
+    ).toContain("animate-shine");
+    expect(
+      serviceTableQueries.getByText("Restarting").getAttribute("class"),
+    ).toContain("animate-shine");
+    expect(
+      serviceTableQueries.getByText("Stopped").closest("td")?.className,
+    ).toContain("opacity-50");
+    const restartingIndicator = serviceTableQueries
+      .getByText("Restarting")
+      .parentElement?.parentElement?.querySelector("[aria-hidden]");
+    expect(restartingIndicator?.className).toContain("bg-muted-foreground/50");
+    expect(restartingIndicator?.className).not.toContain("bg-warning");
 
     const scheduleTable = within(schedules as HTMLElement);
     expect(scheduleTable.getByText("Scheduled jobs")).toBeTruthy();
@@ -583,21 +969,20 @@ describe("PluginDetail capability inventory", () => {
     expect(scheduleTable.getByText("in-progress")).toBeTruthy();
     expect(scheduleTable.getByText("completed")).toBeTruthy();
     expect(scheduleTable.getByText("failed")).toBeTruthy();
-    expect(scheduleTable.getByText("Timed out")).toBeTruthy();
+    expect(scheduleTable.getByText("Timed out").className).not.toContain(
+      "text-destructive",
+    );
     expect(scheduleTable.queryByText("watch")).toBeNull();
 
-    for (const [scope, label, icon] of [
-      [serviceTable, "Running", "CircleCheck"],
-      [serviceTable, "Restarting", "RotateCcw"],
-      [serviceTable, "Stopped", "Pause"],
-      [scheduleTable, "Scheduled", "Clock"],
+    for (const [label, icon] of [
+      ["Scheduled", "Clock"],
       // A running job shimmers its own clock. The app never swaps a row's icon
       // for a spinner to say "working" (ThreadRow.tsx:144).
-      [scheduleTable, "Running", "Clock"],
-      [scheduleTable, "Succeeded", "CircleCheck"],
-      [scheduleTable, "Failed", "CircleX"],
+      ["Running", "Clock"],
+      ["Succeeded", "CircleCheck"],
+      ["Failed", "CircleX"],
     ] as const) {
-      const status = scope
+      const status = scheduleTable
         .getAllByRole("img", { name: label })
         .find(
           (element) => element.querySelector(`[data-icon="${icon}"]`) !== null,

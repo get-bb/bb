@@ -1,13 +1,27 @@
-import {
-  useEffect,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SkillProvider } from "@bb/server-contract";
-import { ResourceListState } from "@bb/shared-ui/resource-list";
-import { pluginSourceQueryKey } from "@/hooks/queries/plugin-catalog-queries";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import {
+  ResourceActionButton,
+  ResourceCreateButton,
+  ResourceInstallControl,
+  ResourceListState,
+  ResourceOverflowMenu,
+} from "@bb/shared-ui/resource-list";
+import { Switch } from "@bb/shared-ui/switch";
+import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
+import { PluginDetailReleaseControl } from "@/components/plugin/management/PluginUpdatesCard";
+import {
+  AutomationLifecycleControl,
+  AutomationRunStatusIndicator,
+} from "bb-plugin-automations/detail-view";
+import { AUTOMATION_CREATE_TEMPLATES } from "bb-plugin-automations/overview-view";
+import {
+  pluginSourceQueryKey,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
   type PluginListItem,
@@ -17,11 +31,16 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import {
+  CatalogPluginDetail,
   PluginDetail,
   PluginDetailBanners,
+  PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
 import { ProviderLogo } from "@/components/tools/SkillsCollection";
-import { SkillDetailView } from "@/components/tools/SkillDetailView";
+import {
+  SkillDetailView,
+  SkillOwnershipBadge,
+} from "@/components/tools/SkillDetailView";
 
 /**
  * Every state each tool type's detail page can be in, rendered as the real
@@ -55,6 +74,7 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
     });
     for (const pluginId of [
       "github",
+      "github-official",
       "github-app-surfaces",
       "github-update-available",
       "github-update-failed",
@@ -81,10 +101,14 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
 function Story({
   title,
   description,
+  renderedLabel = "Rendered page",
+  renderedNote = "The real component",
   children,
 }: {
   title: string;
   description: string;
+  renderedLabel?: string;
+  renderedNote?: string;
   children: ReactNode;
 }) {
   return (
@@ -110,10 +134,10 @@ function Story({
           </span>
           <span className="flex flex-col px-4 py-2">
             <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Rendered page
+              {renderedLabel}
             </span>
             <span className="text-2xs text-subtle-foreground">
-              The real component
+              {renderedNote}
             </span>
           </span>
         </div>
@@ -183,12 +207,14 @@ function Skill({
     content:
       "# writing-voice\n\nLead with the answer. Cut hedging. Prefer short sentences.",
   },
-  headerControl,
+  titleBadge,
+  headerActions,
   provider = null,
 }: {
   files?: readonly string[];
   contentState?: Parameters<typeof SkillDetailView>[0]["contentState"];
-  headerControl?: Parameters<typeof SkillDetailView>[0]["headerControl"];
+  titleBadge?: Parameters<typeof SkillDetailView>[0]["titleBadge"];
+  headerActions?: Parameters<typeof SkillDetailView>[0]["headerActions"];
   provider?: SkillProvider | null;
 }) {
   return (
@@ -200,7 +226,8 @@ function Skill({
       selectedPath={files[0] ?? SKILL_PATH}
       onSelectFile={noop}
       contentState={contentState}
-      headerControl={headerControl}
+      titleBadge={titleBadge}
+      headerActions={headerActions}
     />
   );
 }
@@ -243,7 +270,7 @@ export function SkillDetailStates() {
 
       <State
         name="Content failed"
-        note="Explains what failed and offers a specific retry, inside the section that failed."
+        note="Explains what failed and offers a specific retry inside the affected section. The copy stays neutral; the red icon carries failure severity."
       >
         <Skill
           contentState={{
@@ -255,16 +282,55 @@ export function SkillDetailStates() {
       </State>
 
       <State
-        name="Provider-owned, read-only"
+        name="BB Official"
+        note="A skill that ships with bb uses the same publisher badge as a BB Official plugin. Its read-only behavior remains a separate permission fact."
+      >
+        <Skill
+          titleBadge={{
+            label: "BB Official",
+            tooltip: "Ships with bb",
+          }}
+        />
+      </State>
+
+      <State
+        name="Included"
+        note="A skill supplied by another plugin names that dependency without implying that the skill was acquired separately."
+      >
+        <Skill
+          titleBadge={{
+            label: "Included",
+            tooltip: "Included with GitHub (bb plugin)",
+          }}
+        />
+      </State>
+
+      <State
+        name="Imported"
         note="Ownership is passive: a skill bb cannot write shows its origin as a status, with no edit or acquisition control."
       >
         <Skill
           provider="claude-code"
-          headerControl={{
-            kind: "status",
+          titleBadge={{
             label: "Imported",
             tooltip: "Discovered in Claude Code",
           }}
+        />
+      </State>
+
+      <State
+        name="Before ownership"
+        note="A registry skill has no ownership badge. Fork is the acquisition action at the trailing edge of the detail header."
+      >
+        <Skill
+          headerActions={
+            <ResourceInstallControl
+              accessibleLabel="Fork writing-voice into a new bb skill"
+              label="Fork"
+              icon="Fork"
+              onAction={noop}
+            />
+          }
         />
       </State>
 
@@ -458,6 +524,7 @@ const UPDATE_FAILED_PLUGIN: PluginListItem = {
   id: "github-update-failed",
   updateState: {
     ...EMPTY_PLUGIN_UPDATE_STATE,
+    availableVersion: "1.5.0",
     lastFailure: {
       version: "1.5.0",
       at: new Date(2026, 6, 22).getTime(),
@@ -480,6 +547,19 @@ const BUNDLED_PLUGIN: PluginListItem = {
   sourceDisplay: "Ships with bb",
   capabilities: STATIC_CAPABILITIES,
 };
+
+const UNINSTALLED_CATALOG_PLUGIN = {
+  entryId: "github",
+  pluginId: "github",
+  displayName: "GitHub",
+  description: "Browse GitHub issues and pull requests without leaving bb.",
+  icon: "Github",
+  category: "Developer tools",
+  source: "builtin:github",
+  installed: false,
+  compatible: true,
+  incompatibleReason: null,
+} satisfies PluginCatalogSearchEntry;
 
 const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
   ...PLUGIN,
@@ -524,6 +604,33 @@ function Plugin({
   );
 }
 
+function CatalogPlugin({
+  entry = UNINSTALLED_CATALOG_PLUGIN,
+}: {
+  entry?: PluginCatalogSearchEntry;
+}) {
+  const [installOpen, setInstallOpen] = useState(false);
+  return (
+    <>
+      <div className="pt-3 md:pt-4">
+        <CatalogPluginDetail
+          entry={entry}
+          onInstall={() => setInstallOpen(true)}
+        />
+      </div>
+      <AddPluginDialog
+        open={installOpen}
+        initial={{
+          entryId: entry.entryId,
+          displayName: entry.displayName,
+          icon: entry.icon,
+        }}
+        onOpenChange={setInstallOpen}
+      />
+    </>
+  );
+}
+
 /**
  * App surfaces reach Includes through the browser slot registry rather than the
  * server payload, because a React component cannot cross that boundary. The
@@ -565,18 +672,38 @@ export function PluginDetailStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin detail states"
-        description="A plugin page opens with one receded About block — the description beside the release facts — and then Capabilities, which is what the page is for. Settings and the two health tables follow only when they apply. About and Capabilities never disappear."
+        description="An uninstalled BB Official plugin shows the catalog facts bb can verify and offers Install. Once installed, the page adds runtime capabilities, settings, services, and schedules when they apply."
       >
         <State
+          name="Before ownership"
+          note="An uninstalled BB Official plugin opens as a real detail page. Install is the primary header action; the full-trust confirmation is the commit step."
+        >
+          <CatalogPlugin />
+        </State>
+
+        <State
+          name="Before ownership · incompatible"
+          note="The same page keeps Install visible but disabled and explains the compatibility requirement beside the identity. The neutral copy uses an amber warning icon because no installation failed."
+        >
+          <CatalogPlugin
+            entry={{
+              ...UNINSTALLED_CATALOG_PLUGIN,
+              compatible: false,
+              incompatibleReason: "Requires bb 0.20 or newer.",
+            }}
+          />
+        </State>
+
+        <State
           name="Full"
-          note="Capabilities names what the plugin adds. Background services and scheduled jobs are separate tables because they are separate objects with separate status vocabularies."
+          note="Capabilities names what the plugin adds. Background services use a conventional Status/Service table; scheduled jobs use a separate table for next-run and failure detail."
         >
           <Plugin plugin={FULL_PLUGIN} />
         </State>
 
         <State
           name="Minimal"
-          note="Nothing user-facing is declared, so Capabilities says so rather than vanishing, and neither health table renders."
+          note="Nothing user-facing is declared, so Capabilities says so rather than vanishing, and neither activity section renders."
         >
           <Plugin plugin={PLUGIN} />
         </State>
@@ -597,13 +724,13 @@ export function PluginDetailStates() {
 
         <State
           name="Unhealthy"
-          note="Runtime health and failed handler calls are problems to act on, so they join the banner stack under the header rather than sitting below the content they explain."
+          note="Runtime health is the primary banner. It explains the user-facing condition and recovery without exposing the service identifier or unrelated cumulative handler failures."
         >
           <Plugin
             plugin={{
               ...FULL_PLUGIN,
               status: "degraded",
-              statusDetail: "Reconnecting to the GitHub API",
+              statusDetail: "service issue-sync did not stop",
               handlerStats: {
                 count: 12,
                 totalMs: 340,
@@ -629,29 +756,36 @@ export function PluginDetailStates() {
         </State>
 
         <State
-          name="Bundled"
-          note="Ships with bb, so About names the update policy instead of an install date and the header shows passive provenance rather than an uninstall control."
+          name="BB Official · catalog"
+          note="Installed from bb's catalog. It shares the BB Official badge with built-in plugins, while its install date and ownership menu preserve the lifecycle difference."
+        >
+          <Plugin plugin={CATALOG_PLUGIN} />
+        </State>
+
+        <State
+          name="BB Official · built-in"
+          note="Ships with bb. The badge matches catalog-installed official plugins; the missing install date and ownership menu show that it cannot be uninstalled separately."
         >
           <Plugin plugin={BUNDLED_PLUGIN} />
         </State>
 
         <State
           name="Update available"
-          note="An offered update is a banner under the header, so the action is visible without the quiet common case growing a surface."
+          note="A compatible release adds a compact Update action beside the lifecycle controls. It is release metadata, not plugin health."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>
 
         <State
           name="Update failed"
-          note="A rolled-back update explains what happened and what version is running now."
+          note="The current version is still running after rollback. Update failed is a header action, not a banner; it opens the attempted release, restored version, technical detail, and Retry."
         >
           <Plugin plugin={UPDATE_FAILED_PLUGIN} />
         </State>
 
         <State
           name="Compatibility blocked"
-          note="A newer release exists but cannot be installed. This is an exception, so it keeps a tone, an icon, and its own details action instead of reading as another fact."
+          note="A newer release requires a newer bb. The compact header action opens the compatibility details without implying the current plugin is unhealthy."
         >
           <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
@@ -683,6 +817,676 @@ export function PluginDetailStates() {
           />
         </State>
       </Story>
+    </PluginStoryQueryBoundary>
+  );
+}
+
+export function PluginBannerStates() {
+  return (
+    <PluginStoryQueryBoundary>
+      <Story
+        title="Plugin health banners"
+        description="Each present-tense runtime condition appears in its production position on the real plugin detail page: a full-width banner above the plugin identity and content it affects."
+        renderedLabel="Rendered detail page"
+        renderedNote="The real health banner above the plugin page"
+      >
+        <State
+          name="Health · Failed"
+          note="The plugin runtime or browser interface could not start. The banner gives Reload recovery without exposing the underlying process error."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              status: "error",
+              statusDetail: "worker process exited unexpectedly",
+            }}
+          />
+        </State>
+
+        <State
+          name="Health · Degraded"
+          note="The plugin still runs while a background service finishes stopping. The banner gives the supported wait-and-reload recovery; service identifiers and cumulative handler failures remain diagnostic data."
+        >
+          <Plugin
+            plugin={{
+              ...FULL_PLUGIN,
+              status: "degraded",
+              statusDetail: "service issue-sync did not stop",
+              handlerStats: {
+                count: 12,
+                totalMs: 340,
+                maxMs: 90,
+                errorCount: 3,
+              },
+            }}
+          />
+        </State>
+
+        <State
+          name="Health · Incompatible"
+          note="The installed plugin cannot run with this version of bb. The banner directs the user to install a compatible version without repeating the server's raw compatibility string."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              status: "incompatible",
+              statusDetail: "requires bb 0.20 or newer",
+            }}
+          />
+        </State>
+
+        <State
+          name="Health · Missing"
+          note="The installed entry remains, but its plugin files are missing. The banner gives the source-appropriate remove-and-reinstall resolution."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              status: "missing",
+              statusDetail: "plugin directory was not found",
+            }}
+          />
+        </State>
+
+        <State
+          name="Health · Needs configuration"
+          note="Required settings are incomplete. Saving Settings reloads the plugin, so the banner adds no duplicate action."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              status: "needs-configuration",
+              statusDetail: "an API token is required",
+              hasSettings: true,
+            }}
+          />
+        </State>
+
+        <State
+          name="Health · Needs configuration · external"
+          note="The required value lives outside the Settings section. The plugin-authored message names it, and Reload becomes the supported action after the user adds it."
+        >
+          <Plugin
+            plugin={{
+              ...PLUGIN,
+              status: "needs-configuration",
+              statusDetail: "Set GITHUB_TOKEN in the server environment.",
+              hasSettings: false,
+            }}
+          />
+        </State>
+      </Story>
+    </PluginStoryQueryBoundary>
+  );
+}
+
+export function PluginReleaseStates() {
+  return (
+    <PluginStoryQueryBoundary>
+      <Story
+        title="Plugin release states"
+        description="Release opportunities and history are not runtime-health banners. Each state appears beside the installed version in the real plugin detail header."
+        renderedLabel="Rendered detail page"
+        renderedNote="The real release control in the plugin header"
+      >
+        <State
+          name="Release · update available"
+          note="Not a banner. A compatible release is an optional maintenance action beside the installed version; Update opens confirmation before changing anything."
+        >
+          <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
+        </State>
+
+        <State
+          name="Release · update failed"
+          note="Not a runtime failure banner. The restored version remains installed; the header action opens persisted failure details and offers Retry because a compatible update remains available."
+        >
+          <Plugin plugin={UPDATE_FAILED_PLUGIN} />
+        </State>
+
+        <State
+          name="Release · update blocked"
+          note="Not a banner and not a failed attempt. No compatible update is available; the header control opens the specific bb-version requirement, and the dialog cannot run the update."
+        >
+          <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
+        </State>
+      </Story>
+    </PluginStoryQueryBoundary>
+  );
+}
+
+// --- Cross-resource controls -----------------------------------------------
+
+function NoControl({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs italic text-subtle-foreground">{children}</span>
+  );
+}
+
+function ControlTable({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="max-w-full overflow-x-auto rounded-lg border border-border bg-card">
+        <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
+          <thead className="bg-surface-recessed/55 text-xs text-muted-foreground">
+            <tr>
+              <th className="w-48 px-3 py-2 text-left font-medium">State</th>
+              <th className="w-64 px-3 py-2 text-left font-medium">
+                Rendered control
+              </th>
+              <th className="px-3 py-2 text-left font-medium">Meaning</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">{children}</tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ControlRow({
+  state,
+  control,
+  meaning,
+}: {
+  state: string;
+  control: ReactNode;
+  meaning: ReactNode;
+}) {
+  return (
+    <tr>
+      <th className="px-3 py-2.5 text-left align-top text-xs font-medium text-foreground">
+        {state}
+      </th>
+      <td className="px-3 py-2.5 text-left align-top">
+        <div className="flex min-h-7 items-start justify-start">{control}</div>
+      </td>
+      <td className="px-3 py-2.5 text-left align-top text-xs leading-relaxed text-muted-foreground">
+        {meaning}
+      </td>
+    </tr>
+  );
+}
+
+const CATALOG_PLUGIN = {
+  ...PLUGIN,
+  id: "github-official",
+  provenance: "catalog",
+  catalogEntryId: "github",
+} satisfies PluginListItem;
+
+const pluginUninstallItems = [
+  {
+    label: "Uninstall",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+const pluginLocalItems = [
+  { label: "Edit", icon: "Edit" as const, onSelect: noop },
+  { label: "Open source", icon: "ExternalLink" as const, onSelect: noop },
+  { kind: "separator" as const },
+  {
+    label: "Remove from bb",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+const skillLocalItems = [
+  { label: "Edit", icon: "Edit" as const, onSelect: noop },
+  { label: "Open source", icon: "ExternalLink" as const, onSelect: noop },
+  { kind: "separator" as const },
+  {
+    label: "Delete",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+const automationMenuItems = [
+  { label: "Run now", icon: "Play" as const, onSelect: noop },
+  { kind: "separator" as const },
+  {
+    label: "Delete",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+/**
+ * Every provenance, lifecycle, acquisition, and contextual control currently
+ * emitted by the Automations, Plugins, and Skills resource surfaces. Generic
+ * route recovery actions remain in the detail-state stories where their failed
+ * context is visible; this inventory is for comparing the resource vocabulary.
+ */
+export function ResourceControlStates() {
+  return (
+    <PluginStoryQueryBoundary>
+      <main className="mx-auto w-full max-w-[72rem] space-y-8 px-5 py-6">
+        <header>
+          <h1 className="text-lg font-semibold text-foreground">
+            Resource badge and button states
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            The real controls used by Automations, Plugins, and Skills, grouped
+            by the meaning they carry. Cells are deliberately left-aligned so
+            shape, weight, and vocabulary can be compared directly.
+          </p>
+        </header>
+
+        <ControlTable
+          title="Before ownership"
+          description="Install and Fork are sibling acquisition actions. They share one control shape; their verbs describe what ownership means for each resource."
+        >
+          <ControlRow
+            state="Plugin · Install"
+            control={
+              <ResourceInstallControl
+                accessibleLabel="Install example plugin"
+                onAction={noop}
+              />
+            }
+            meaning="Canonical BB Official plugin acquisition action on both Browse and the pre-ownership detail page."
+          />
+          <ControlRow
+            state="Plugin · installing"
+            control={
+              <ResourceInstallControl
+                accessibleLabel="Install example plugin"
+                pending
+                onAction={noop}
+              />
+            }
+            meaning="The same acquisition action while installation is in flight."
+          />
+          <ControlRow
+            state="Skill · Fork"
+            control={
+              <ResourceInstallControl
+                accessibleLabel="Fork example skill into a new bb skill"
+                label="Fork"
+                icon="Fork"
+                onAction={noop}
+              />
+            }
+            meaning="Creates a new bb-owned skill from a registry source on the skill detail page."
+          />
+          <ControlRow
+            state="Skill · forking"
+            control={
+              <ResourceInstallControl
+                accessibleLabel="Fork example skill into a new bb skill"
+                label="Fork"
+                icon="Fork"
+                pending
+                pendingLabel="Forking"
+                onAction={noop}
+              />
+            }
+            meaning="The sibling skill acquisition action while the fork is in flight."
+          />
+        </ControlTable>
+
+        <ControlTable
+          title="Owned detail-page badges"
+          description="Badges appear only when provenance changes how the resource should be understood. Ordinary owned resources stay unlabelled in their detail-page stories."
+        >
+          <ControlRow
+            state="Plugin · BB Official catalog"
+            control={<PluginProvenancePill plugin={CATALOG_PLUGIN} />}
+            meaning="Published by bb and installed from the catalog."
+          />
+          <ControlRow
+            state="Plugin · BB Official built-in"
+            control={<PluginProvenancePill plugin={BUNDLED_PLUGIN} />}
+            meaning="Ships with bb. The same badge communicates publisher; lifecycle differences remain in metadata and actions."
+          />
+          <ControlRow
+            state="Skill · BB Official"
+            control={
+              <SkillOwnershipBadge
+                label="BB Official"
+                tooltip="Ships with bb"
+              />
+            }
+            meaning="A skill that ships with bb."
+          />
+          <ControlRow
+            state="Skill · Included"
+            control={
+              <SkillOwnershipBadge
+                label="Included"
+                tooltip="Included with GitHub (Claude Code plugin)"
+              />
+            }
+            meaning="A skill bundled inside another plugin."
+          />
+          <ControlRow
+            state="Skill · Imported"
+            control={
+              <SkillOwnershipBadge
+                label="Imported"
+                tooltip="Discovered from Claude Code"
+              />
+            }
+            meaning="A skill discovered from another provider."
+          />
+        </ControlTable>
+
+        <ControlTable
+          title="Plugin lifecycle and ownership actions"
+          description="The provenance badge never doubles as a control. Runtime lifecycle and destructive ownership actions remain separate."
+        >
+          <ControlRow
+            state="Enabled"
+            control={
+              <Switch
+                checked
+                aria-label="Disable example plugin"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="The plugin runtime is enabled."
+          />
+          <ControlRow
+            state="Disabled"
+            control={
+              <Switch
+                checked={false}
+                aria-label="Enable example plugin"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="The plugin remains installed but its runtime is disabled."
+          />
+          <ControlRow
+            state="Lifecycle pending"
+            control={
+              <Switch
+                checked
+                disabled
+                aria-label="Plugin update pending"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="A plugin mutation is in flight, so the lifecycle switch cannot race it."
+          />
+          <ControlRow
+            state="Installed actions"
+            control={
+              <ResourceOverflowMenu
+                label="Direct plugin actions"
+                items={pluginUninstallItems}
+              />
+            }
+            meaning="Direct and catalog installs can be uninstalled from the ownership menu."
+          />
+          <ControlRow
+            state="Local actions"
+            control={
+              <ResourceOverflowMenu
+                label="Local plugin actions"
+                items={pluginLocalItems}
+              />
+            }
+            meaning="Local sources can be edited, opened, or removed from bb without deleting the source directory."
+          />
+          <ControlRow
+            state="BB Official built-in actions"
+            control={<NoControl>No ownership menu</NoControl>}
+            meaning="Built-in plugins cannot be uninstalled or source-edited here."
+          />
+        </ControlTable>
+
+        <ControlTable
+          title="Plugin release actions"
+          description="Release actions share a neutral outline and label. Semantic color stays on the icon: red for a failed attempt, amber for an incompatible candidate."
+        >
+          <ControlRow
+            state="Update available"
+            control={
+              <PluginDetailReleaseControl plugin={UPDATE_AVAILABLE_PLUGIN} />
+            }
+            meaning="A compatible release is available; no warning or failure has occurred."
+          />
+          <ControlRow
+            state="Update failed"
+            control={
+              <PluginDetailReleaseControl plugin={UPDATE_FAILED_PLUGIN} />
+            }
+            meaning="An activation attempt failed and bb restored the installed version. The red failure icon opens recovery details."
+          />
+          <ControlRow
+            state="Update blocked"
+            control={
+              <PluginDetailReleaseControl
+                plugin={COMPATIBILITY_BLOCKED_PLUGIN}
+              />
+            }
+            meaning="No update attempt failed. The amber warning icon opens the unmet compatibility requirement."
+          />
+        </ControlTable>
+
+        <ControlTable
+          title="Skill ownership actions"
+          description="Only mutable local skills expose ownership actions; provenance badges remain passive."
+        >
+          <ControlRow
+            state="Fork · browse card"
+            control={
+              <ResourceInstallControl
+                accessibleLabel="Fork example skill into a new bb skill"
+                label="Fork"
+                icon="Fork"
+                presentation="icon"
+                tooltip="Fork example skill"
+                onAction={noop}
+              />
+            }
+            meaning="The same action in the compact card-header presentation."
+          />
+          <ControlRow
+            state="Local actions"
+            control={
+              <ResourceOverflowMenu
+                label="Local skill actions"
+                items={skillLocalItems}
+              />
+            }
+            meaning="A bb-owned skill can be edited, opened, or deleted."
+          />
+          <ControlRow
+            state="Read-only actions"
+            control={<NoControl>No ownership menu</NoControl>}
+            meaning="BB Official, Included, and Imported skills expose provenance without pretending they are mutable."
+          />
+        </ControlTable>
+
+        <ControlTable
+          title="Automations"
+          description="Lifecycle is the primary control. Creation, editing, run status, and ownership actions remain visually distinct."
+        >
+          <ControlRow
+            state="Active"
+            control={
+              <AutomationLifecycleControl
+                checked
+                label="Pause automation"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="A recurring or future one-time automation is enabled."
+          />
+          <ControlRow
+            state="Paused"
+            control={
+              <AutomationLifecycleControl
+                checked={false}
+                label="Resume automation"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="The automation is retained but will not run."
+          />
+          <ControlRow
+            state="Lifecycle pending"
+            control={
+              <AutomationLifecycleControl
+                checked
+                disabled
+                label="Pause automation"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="An automation mutation is in flight."
+          />
+          <ControlRow
+            state="Completed one-time"
+            control={
+              <AutomationLifecycleControl
+                checked={false}
+                disabled
+                disabledReason="This one-time automation has completed. Edit it to schedule another run."
+                label="Completed automation"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="The schedule is terminal; focus or hover the disabled switch for the reason."
+          />
+          <ControlRow
+            state="Expired one-time"
+            control={
+              <AutomationLifecycleControl
+                checked={false}
+                disabled
+                disabledReason="This one-time automation expired. Edit it to schedule another run."
+                label="Expired automation"
+                onCheckedChange={noop}
+              />
+            }
+            meaning="The scheduled time passed without a completed run."
+          />
+          {(["succeeded", "failed", "running", "skipped"] as const).map(
+            (status) => (
+              <ControlRow
+                key={status}
+                state={`Run · ${status}`}
+                control={
+                  <AutomationRunStatusIndicator status={status} showLabel />
+                }
+                meaning="Persisted run status used in automation history."
+              />
+            ),
+          )}
+          <ControlRow
+            state="Create"
+            control={
+              <ResourceCreateButton
+                label="New automation"
+                templates={AUTOMATION_CREATE_TEMPLATES}
+                onCreate={noop}
+              />
+            }
+            meaning="Starts a blank chat-authored automation or opens the example menu."
+          />
+          <ControlRow
+            state="Edit"
+            control={
+              <ResourceActionButton
+                label="Edit with chat"
+                tooltipLabel="Edit with chat"
+                icon="Edit"
+                onClick={noop}
+              />
+            }
+            meaning="Contextual action attached to the Prompt or Script section."
+          />
+          <ControlRow
+            state="Edit loading"
+            control={
+              <ResourceActionButton
+                label="Editing with chat"
+                tooltipLabel="Editing with chat"
+                icon="Edit"
+                loading
+                onClick={noop}
+              />
+            }
+            meaning="The section action is in flight."
+          />
+          <ControlRow
+            state="Edit unavailable"
+            control={
+              <ResourceActionButton
+                label="Edit with chat"
+                icon="Edit"
+                disabled
+                disabledReason="No writable automation source"
+                onClick={noop}
+              />
+            }
+            meaning="The action remains discoverable and explains why it cannot run."
+          />
+          <ControlRow
+            state="Actions"
+            control={
+              <ResourceOverflowMenu
+                label="Automation actions"
+                items={automationMenuItems}
+              />
+            }
+            meaning="Run now and Delete live in the automation ownership menu."
+          />
+          <ControlRow
+            state="Actions pending"
+            control={
+              <ResourceOverflowMenu
+                label="Automation actions pending"
+                disabled
+                items={automationMenuItems}
+              />
+            }
+            meaning="The menu is disabled while another automation action is pending."
+          />
+          <ControlRow
+            state="Run now"
+            control={
+              <Button type="button" variant="outline" size="sm" onClick={noop}>
+                <Icon name="Play" className="size-3.5" aria-hidden />
+                Run now
+              </Button>
+            }
+            meaning="The empty Runs state offers the manual action inline."
+          />
+          <ControlRow
+            state="Run now pending"
+            control={
+              <Button type="button" variant="outline" size="sm" disabled>
+                <Icon name="Play" className="size-3.5" aria-hidden />
+                Run now
+              </Button>
+            }
+            meaning="Manual execution is unavailable while another action is pending."
+          />
+        </ControlTable>
+      </main>
     </PluginStoryQueryBoundary>
   );
 }

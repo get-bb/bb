@@ -9,22 +9,22 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 
 /**
- * The one table treatment every plugin-detail section uses.
+ * The table treatment for detail-page rows with a name and richer detail.
  *
- * Capabilities, Background services and Scheduled jobs are all the same kind of
- * object — a list of rows — so they share a shell rather than each inventing a
- * surface. Flat: row rules and nothing else. The page is already the panel
- * (detail-sections.tsx:38), so boxing each list put a card inside a card and
- * made three ordinary lists look like three raised widgets.
- *
- * With no box, the rows sit flush against the section heading's left edge
- * instead of being indented by a border and its padding.
+ * Capabilities and Scheduled jobs share a shell. The outer edge, row rules,
+ * and column divider form one connected grid, so names and descriptions remain
+ * easy to scan. Background services use their own labelled Status/Service table
+ * because status is a distinct attribute rather than descriptive copy.
  */
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
-    <div className="inline-block max-w-full align-top">
-      <table className="w-auto max-w-full border-collapse text-left">
-        <tbody className="divide-y divide-border/60">{children}</tbody>
+    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
+      <table className="w-full max-w-full table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-40 md:w-48" />
+          <col />
+        </colgroup>
+        <tbody className="divide-y divide-border">{children}</tbody>
       </table>
     </div>
   );
@@ -37,9 +37,6 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 // inherits the 16px/24px root leading, and that — not the padding — was what
 // made these rows stand 10px taller than every other row in the app.
 //
-// Horizontal padding is per column, not shared: a flat table has no box to sit
-// inside, so an outer gutter would just push the first column off the section's
-// left edge and hang dead space off the last.
 const CELL = "py-1.5 align-top text-sm leading-snug";
 
 /**
@@ -83,7 +80,7 @@ export function PluginDetailGlyph({
   );
 }
 
-/** Name plus description, used by Capabilities and both health tables. */
+/** Name plus description, used by Capabilities and Scheduled jobs. */
 export function PluginDetailRow({
   glyph,
   name,
@@ -95,14 +92,16 @@ export function PluginDetailRow({
   mono?: boolean;
   detail: ReactNode;
 }) {
-  // A table of rows that all lack a detail — background services, say — must
-  // not reserve an empty second column, or it hangs a strip of dead padding off
-  // the right edge of the surface.
+  // A row without detail must not reserve an empty second column, or it hangs a
+  // strip of dead padding off the right edge of the surface.
   const hasDetail = detail !== null && detail !== undefined && detail !== "";
   return (
     <tr>
       <td
-        className={cn(CELL, "max-w-[17rem]", hasDetail && "pr-6")}
+        className={cn(
+          CELL,
+          hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
+        )}
         colSpan={hasDetail ? undefined : 2}
       >
         <span className="flex min-w-0 items-start gap-2">
@@ -126,7 +125,7 @@ export function PluginDetailRow({
         <td
           className={cn(
             CELL,
-            "max-w-[34rem] text-xs leading-normal text-muted-foreground",
+            "pl-2 pr-4 text-xs leading-normal text-muted-foreground",
           )}
         >
           {detail}

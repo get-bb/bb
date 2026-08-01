@@ -114,9 +114,7 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         titleMeta={
-          plugin.provenance === "builtin" ? (
-            <ProvenancePill label="Built-in" />
-          ) : plugin.provenance === "catalog" ? (
+          plugin.provenance === "builtin" || plugin.provenance === "catalog" ? (
             <ProvenancePill label="BB Official" />
           ) : undefined
         }

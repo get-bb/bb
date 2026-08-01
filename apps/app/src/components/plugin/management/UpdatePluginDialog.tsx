@@ -20,6 +20,7 @@ import {
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
+  formatAbsoluteDate,
   KeyValueGrid,
   RollbackNote,
   SUCCESS_TEXT_STYLE,
@@ -42,8 +43,8 @@ export interface UpdatePluginDialogProps {
  * Layer 3 update confirmation (sketch v2, dialogs C): verdict first, checks
  * collapsed, rollback promise always visible. The incompatible variant
  * arrives with details pre-expanded and Update disabled — the details are
- * the story. A "rolled-back" outcome renders in place instead of closing,
- * pointing at the row's specific Update-failed state.
+ * the story. Persisted and in-session rolled-back outcomes render in place
+ * with their recovery action instead of being reduced to tooltip history.
  */
 export function UpdatePluginDialog({
   plugin,
@@ -108,31 +109,67 @@ function UpdatePluginDialogContent({
   });
 
   const fromLine = `Currently ${plugin.version}`;
+  const persistedFailure = state.lastFailure;
+  const failure =
+    rolledBack !== null
+      ? {
+          version:
+            rolledBack.to?.display ??
+            state.availableVersion ??
+            "The new version",
+          at: null,
+          detail: rolledBack.detail ?? "",
+        }
+      : persistedFailure === null
+        ? null
+        : persistedFailure;
 
-  if (rolledBack !== null) {
+  if (failure !== null) {
+    const retryVersion = state.availableVersion;
     return (
       <>
         <DialogHeader>
-          <DialogTitle>Update failed — rolled back</DialogTitle>
-          <DialogDescription>{fromLine}</DialogDescription>
+          <DialogTitle>Update failed</DialogTitle>
+          <DialogDescription>
+            {failure.at === null
+              ? "The update couldn’t be completed."
+              : `Failed on ${formatAbsoluteDate(failure.at)}.`}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="flex items-start gap-2 text-sm text-destructive-text">
-            <Icon name="AlertCircle" className="mt-0.5 size-4 shrink-0" />
+          <div className="flex items-start gap-2 text-sm">
+            <Icon
+              name="CircleX"
+              className="mt-0.5 size-4 shrink-0 text-destructive"
+              aria-hidden
+            />
             <span>
-              {state.availableVersion ?? "The new version"} failed to start. bb
-              restored {plugin.version} and its data automatically.
+              bb couldn&rsquo;t activate {failure.version}. It restored{" "}
+              {plugin.version} and its data.
             </span>
           </div>
-          {rolledBack.detail !== null ? (
-            <p className="rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
-              {rolledBack.detail}
-            </p>
+          {failure.detail.length > 0 ? (
+            <DetailsDisclosure
+              key="failure-details"
+              summary="Technical details"
+              defaultExpanded
+            >
+              <p className="break-words font-mono text-foreground">
+                {failure.detail}
+              </p>
+            </DetailsDisclosure>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            The plugin is marked &ldquo;{failureStateLabel}&rdquo; in the
-            installed list until an update succeeds.
+            {retryVersion === null
+              ? `The restored version can keep running. Try again when a compatible update becomes available.`
+              : `A compatible update to ${retryVersion} is still available. Retry when you’re ready.`}
           </p>
+          {rolledBack === null ? null : (
+            <p className="text-xs text-subtle-foreground">
+              The plugin is marked &ldquo;{failureStateLabel}&rdquo; in the
+              installed list until an update succeeds.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -142,6 +179,20 @@ function UpdatePluginDialogContent({
           >
             Close
           </Button>
+          {retryVersion === null ? null : (
+            <Button
+              type="button"
+              disabled={update.isPending}
+              aria-busy={update.isPending}
+              aria-label={`Retry update to ${retryVersion}`}
+              onClick={() => update.mutate()}
+            >
+              {update.isPending ? (
+                <Icon name="Spinner" className="animate-spin" />
+              ) : null}
+              Retry update
+            </Button>
+          )}
         </DialogFooter>
       </>
     );
@@ -211,8 +262,12 @@ function UpdatePluginDialogContent({
           <DialogDescription>{fromLine}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm text-warning-text">
-            <span aria-hidden="true">✕</span>
+          <div className="flex items-center gap-2 text-sm">
+            <Icon
+              name="AlertTriangle"
+              className="size-4 shrink-0 text-warning"
+              aria-hidden
+            />
             <span>{blocked} isn&rsquo;t compatible with this bb</span>
           </div>
           {/* Failure case: the details ARE the story, so they arrive open. */}

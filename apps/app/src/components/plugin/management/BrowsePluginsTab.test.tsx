@@ -90,13 +90,10 @@ describe("BrowsePluginsTab", () => {
     );
 
     const onInstall = vi.fn();
-    const onOpenInstalled = vi.fn();
+    const onOpenPlugin = vi.fn();
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <BrowsePluginsTab
-        onInstall={onInstall}
-        onOpenInstalled={onOpenInstalled}
-      />,
+      <BrowsePluginsTab onInstall={onInstall} onOpenPlugin={onOpenPlugin} />,
       { wrapper },
     );
 
@@ -136,6 +133,10 @@ describe("BrowsePluginsTab", () => {
       displayName: "Memory",
       icon: "Brain",
     });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    );
+    expect(onOpenPlugin).toHaveBeenCalledWith("memory");
   });
 
   it("uses the shared error state and retries catalog searches", async () => {
@@ -160,10 +161,9 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(
-      <BrowsePluginsTab onInstall={() => {}} onOpenInstalled={() => {}} />,
-      { wrapper },
-    );
+    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
+      wrapper,
+    });
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "BB's official plugins are unavailable.",
@@ -197,12 +197,9 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    const onOpenInstalled = vi.fn();
+    const onOpenPlugin = vi.fn();
     render(
-      <BrowsePluginsTab
-        onInstall={() => {}}
-        onOpenInstalled={onOpenInstalled}
-      />,
+      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={onOpenPlugin} />,
       { wrapper },
     );
 
@@ -220,7 +217,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Open Memory details" }),
     );
-    expect(onOpenInstalled).toHaveBeenCalledWith("memory");
+    expect(onOpenPlugin).toHaveBeenCalledWith("memory");
   });
 
   it("uses the catalog's canonical plugin id for uninstall", async () => {
@@ -262,12 +259,9 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    const onOpenInstalled = vi.fn();
+    const onOpenPlugin = vi.fn();
     render(
-      <BrowsePluginsTab
-        onInstall={() => {}}
-        onOpenInstalled={onOpenInstalled}
-      />,
+      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={onOpenPlugin} />,
       { wrapper },
     );
 
@@ -276,6 +270,6 @@ describe("BrowsePluginsTab", () => {
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Docs details" }));
-    expect(onOpenInstalled).toHaveBeenCalledWith("simple-notes");
+    expect(onOpenPlugin).toHaveBeenCalledWith("simple-notes");
   });
 });

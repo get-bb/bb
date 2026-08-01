@@ -200,6 +200,18 @@ const SCRIPT_AUTOMATION: AutomationResponse = {
   },
 };
 
+const SCRIPT_FILE_AUTOMATION: AutomationResponse = {
+  ...SCRIPT_AUTOMATION,
+  id: "sync-reports",
+  name: "Sync reports",
+  execution: {
+    mode: "script",
+    scriptFile: "/Users/you/.bb/automations/sync-reports.sh",
+    interpreter: "bash",
+    timeoutMs: 60_000,
+  },
+};
+
 /** Enabled and recurring, but the server has not computed a next run. */
 const UNSCHEDULED_AUTOMATION: AutomationResponse = {
   ...DETAIL_AUTOMATION,
@@ -323,7 +335,7 @@ export function DetailStates() {
       <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
         <DetailState
           name="Agent automation"
-          note="A recurring prompt, with every persisted run status in its history."
+          note="A recurring prompt, with every persisted run status in its history. This is the default owned state, so the detail header carries no provenance badge."
         >
           <AutomationDetail runs={RUNS} />
         </DetailState>
@@ -332,6 +344,15 @@ export function DetailStates() {
           note="A one-time script. Same two sections, different definition content."
         >
           <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
+        </DetailState>
+        <DetailState
+          name="Script file"
+          note="An automation backed by a file under the user's home. The visible path is compact; execution still retains the absolute path."
+        >
+          <AutomationDetail
+            value={SCRIPT_FILE_AUTOMATION}
+            runs={RUNS.slice(0, 1)}
+          />
         </DetailState>
         <DetailState
           name="No next run"
@@ -365,7 +386,7 @@ export function DetailStates() {
         </DetailState>
         <DetailState
           name="Runs failed"
-          note="Only the section that failed shows an error; the definition is unaffected."
+          note="Only the section that failed shows an error; the definition is unaffected. The copy stays neutral while the red icon carries failure severity."
         >
           <AutomationDetail error="Request timed out" />
         </DetailState>

@@ -12,7 +12,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AutomationResponse } from "bb-plugin-automations/rpc-types";
+import type {
+  AutomationResponse,
+  AutomationRunResponse,
+} from "bb-plugin-automations/rpc-types";
 import {
   AutomationDetailView,
   AutomationRunStatusIndicator,
@@ -102,7 +105,7 @@ describe("Plugin detail recipe", () => {
     ]);
   });
 
-  it("names each health table after its own object, with no Health wrapper", () => {
+  it("names each activity section after its own object, with no Health wrapper", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       hasSettings: true,
@@ -128,7 +131,7 @@ describe("Plugin detail recipe", () => {
     ]);
   });
 
-  it("omits a health table the plugin has no rows for", () => {
+  it("omits an activity section the plugin has no rows for", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       services: [{ name: "sync", state: "running" }],
@@ -260,9 +263,29 @@ describe("Plugin detail recipe", () => {
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
     expect(
       screen.getByText(
-        "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.",
+        "Some capabilities are only listed while the plugin is enabled.",
       ),
     ).toBeTruthy();
+    expect(container.querySelector('[data-icon="Info"]')).toBeNull();
+  });
+
+  it("does not contradict a degraded plugin's still-running health banner", () => {
+    renderPlugin({
+      ...PLUGIN,
+      status: "degraded",
+      capabilities: [
+        {
+          kind: "theme",
+          id: "github.dark",
+          label: "GitHub Dark",
+          detail: null,
+        },
+      ],
+    });
+
+    expect(screen.getByText("GitHub Dark")).toBeTruthy();
+    expect(screen.queryByText(/This plugin isn't running/)).toBeNull();
+    expect(screen.queryByText(/commands, settings, agent tools/)).toBeNull();
   });
 
   it("says an enabled plugin is not running rather than claiming it declares nothing", () => {
@@ -285,7 +308,7 @@ describe("Plugin detail recipe", () => {
 });
 
 describe("Detail page header slots", () => {
-  it("renders actions, lifecycle control, and overflow menu together", () => {
+  it("renders actions, provenance badge, and overflow menu together", () => {
     // These used to be mutually exclusive — passing `actions` suppressed the
     // other two, which silently dropped the registry skill page's overflow
     // menu. All three now compose; this fails if the suppression returns.
@@ -298,8 +321,7 @@ describe("Detail page header slots", () => {
         onSelectFile={() => {}}
         contentState={{ kind: "ready", content: "# writing-voice" }}
         headerActions={<button type="button">Fork</button>}
-        headerControl={{
-          kind: "status",
+        titleBadge={{
           label: "Imported",
           tooltip: "Discovered in Claude Code",
         }}
@@ -390,6 +412,30 @@ describe("Skill detail recipe", () => {
       ["definition", "/skills/writing-voice/SKILL.md"],
     ]);
   });
+
+  it("keeps file-load failure copy neutral and puts severity on the icon", () => {
+    const { container } = render(
+      <SkillDetailView
+        title="writing-voice"
+        path="/skills/writing-voice/SKILL.md"
+        files={["/skills/writing-voice/SKILL.md"]}
+        selectedPath="/skills/writing-voice/SKILL.md"
+        onSelectFile={() => {}}
+        contentState={{
+          kind: "error",
+          message: "Could not load this file.",
+          onRetry: () => {},
+        }}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Could not load this file.");
+    expect(alert.className).not.toContain("text-destructive");
+    expect(
+      container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
+    ).toContain("text-destructive");
+  });
 });
 
 const AUTOMATION: AutomationResponse = {
@@ -416,6 +462,22 @@ const AUTOMATION: AutomationResponse = {
   lastError: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
+};
+
+const FAILED_SCRIPT_RUN: AutomationRunResponse = {
+  id: "run_failed",
+  automationId: AUTOMATION.id,
+  runMode: "script",
+  threadId: null,
+  status: "failed",
+  trigger: "schedule",
+  skipReason: null,
+  error: "provider timed out",
+  output: null,
+  exitCode: 1,
+  scheduledFor: 1_700_000_000_000,
+  startedAt: 1_700_000_000_000,
+  finishedAt: 1_700_000_001_000,
 };
 
 describe("Automation detail recipe", () => {
@@ -447,7 +509,156 @@ describe("Automation detail recipe", () => {
     const recipe = renderedRecipe(container);
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
     expect(recipe.at(-1)?.[1]).toBe("Runs");
+
+    const emptyRuns = screen
+      .getByText("No runs yet.")
+      .closest('[data-automation-runs-state="empty"]') as HTMLElement;
+    expect(emptyRuns).not.toBeNull();
+    expect(emptyRuns.className).toContain("text-left");
+    expect(emptyRuns.className).not.toContain("text-center");
+    const runsTable = emptyRuns.parentElement as HTMLElement;
+    expect(runsTable.className).toContain("border");
+    expect(runsTable.className).toContain("border-border");
+    expect(runsTable.className).not.toContain("inline-block");
   });
+
+  it("compacts a home-relative script path without changing the definition", () => {
+    render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={{
+            ...AUTOMATION,
+            execution: {
+              mode: "script",
+              scriptFile: "/Users/you/.bb/automations/nightly.sh",
+              interpreter: "bash",
+              timeoutMs: 60_000,
+            },
+          }}
+          projectLabel="Local"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("~/.bb/automations/nightly.sh")).toBeTruthy();
+    expect(
+      screen.queryByText("/Users/you/.bb/automations/nightly.sh"),
+    ).toBeNull();
+  });
+
+  it("keeps run-load failure copy neutral and puts severity on the icon", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={AUTOMATION}
+          projectLabel="Local"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: "network unavailable",
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const errorState = screen
+      .getByText("Failed to load runs.")
+      .closest('[data-automation-runs-state="error"]') as HTMLElement;
+    expect(errorState.className).not.toContain("text-destructive");
+    expect(
+      container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
+    ).toContain("text-destructive");
+  });
+
+  it("keeps failed script details readable without repeating severity color", () => {
+    render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={{
+            ...AUTOMATION,
+            execution: {
+              mode: "script",
+              script: "pnpm test",
+              interpreter: "bash",
+              timeoutMs: 60_000,
+            },
+          }}
+          projectLabel="Local"
+          runsState={{
+            runs: [FAILED_SCRIPT_RUN],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const details = screen.getByText("provider timed out");
+    expect(details.tagName).toBe("PRE");
+    expect(details.className).toContain("text-foreground");
+    expect(details.className).not.toContain("text-destructive");
+  });
+
+  it.each([
+    ["failed", "CircleX", "text-destructive"],
+    ["succeeded", "CircleCheck", "text-success"],
+    ["running", "Loading", "text-muted-foreground"],
+    ["skipped", "ArrowTurnForward", "text-subtle-foreground"],
+  ] as const)(
+    "keeps the %s run label neutral and semantic color on its icon",
+    (status, iconName, iconClass) => {
+      const { container } = render(
+        <AutomationRunStatusIndicator status={status} showLabel />,
+      );
+
+      const indicator = screen.getByRole("img", {
+        name: status[0]!.toUpperCase() + status.slice(1),
+      });
+      expect(indicator.className).toContain("text-muted-foreground");
+      expect(indicator.className).not.toContain("text-destructive");
+      expect(indicator.className).not.toContain("text-success");
+      expect(
+        container
+          .querySelector(`[data-icon="${iconName}"]`)
+          ?.getAttribute("class"),
+      ).toContain(iconClass);
+    },
+  );
 
   it("renders a subdued glyph for skipped runs", () => {
     const { container } = render(

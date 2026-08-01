@@ -1,14 +1,43 @@
 import { Pill } from "@bb/shared-ui/pill";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 
 /** Shared passive provenance badge for resources managed by bb. */
-export function ProvenancePill({ label }: { label: string }) {
-  return (
-    <Pill
-      variant="outline"
-      size="sm"
-      className="rounded-md border-border/40 bg-surface-recessed/45 px-1.5 py-0 text-2xs font-medium leading-none text-subtle-foreground shadow-none"
+export function ProvenancePill({
+  label,
+  tooltip,
+  accessibleLabel,
+}: {
+  label: string;
+  tooltip?: string;
+  accessibleLabel?: string;
+}) {
+  const badge = (
+    <span
+      aria-label={accessibleLabel}
+      tabIndex={tooltip === undefined ? undefined : 0}
+      className="inline-flex"
     >
-      {label}
-    </Pill>
+      <Pill
+        variant="outline"
+        size="sm"
+        className="rounded-md border-border/40 bg-surface-recessed/45 px-2 py-1 text-2xs font-medium leading-none text-subtle-foreground shadow-none"
+      >
+        {label}
+      </Pill>
+    </span>
+  );
+  if (tooltip === undefined) return badge;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

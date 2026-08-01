@@ -15,6 +15,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
+import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import {
   ResourceListState,
   useResourceRouteLabel,
@@ -22,11 +23,16 @@ import {
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import {
+  CatalogPluginDetail,
   PluginDetail,
   PluginDetailBanners,
   pluginIsLocalSource,
   pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
+import {
+  usePluginCatalogSearch,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import {
   removePlugin,
   setPluginEnabled,
@@ -47,7 +53,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
 
-export { PluginDetail, PluginDetailBanners };
+export { PluginDetail };
 
 function ToolsBodyFallback() {
   return (
@@ -143,7 +149,10 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
+  const [installTarget, setInstallTarget] =
+    useState<PluginCatalogSearchEntry | null>(null);
   const listQuery = usePluginList({ enabled: true });
+  const catalogQuery = usePluginCatalogSearch(pluginId, { enabled: true });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
     [listQuery.data],
@@ -195,7 +204,14 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
     plugins.find((plugin) => plugin.id === pluginId) ?? null;
-  useResourceRouteLabel(selectedPlugin?.name ?? selectedPlugin?.id ?? null);
+  const selectedCatalogEntry =
+    catalogQuery.data?.find((entry) => entry.pluginId === pluginId) ?? null;
+  useResourceRouteLabel(
+    selectedPlugin?.name ??
+      selectedPlugin?.id ??
+      selectedCatalogEntry?.displayName ??
+      null,
+  );
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
@@ -228,8 +244,88 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
 
+  let detailContent: ReactNode;
+  if (listQuery.isError) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
+  } else if (isLoading) {
+    detailContent = (
+      <ResourceListState
+        state="loading"
+        message="Loading plugin"
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  } else if (selectedPlugin !== null) {
+    detailContent = (
+      <PluginDetail
+        isLoading={false}
+        plugin={selectedPlugin}
+        pending={pendingPluginId === selectedPlugin.id}
+        openSourceDisabled={!canOpenPreferredDirectoryTarget}
+        onToggle={(target) => pluginToggle.mutate(target)}
+        onEdit={handleEditPlugin}
+        onOpenSource={handleOpenPluginSource}
+        onDelete={setDeleteTarget}
+      />
+    );
+  } else if (catalogQuery.isError) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void catalogQuery.refetch()}
+      />
+    );
+  } else if (catalogQuery.isFetching && catalogQuery.data === undefined) {
+    detailContent = (
+      <ResourceListState
+        state="loading"
+        message="Loading plugin"
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  } else if (selectedCatalogEntry !== null && !selectedCatalogEntry.installed) {
+    detailContent = (
+      <CatalogPluginDetail
+        entry={selectedCatalogEntry}
+        onInstall={setInstallTarget}
+      />
+    );
+  } else if (selectedCatalogEntry?.installed) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load the installed plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
+  } else {
+    detailContent = (
+      <ResourceListState
+        state="empty"
+        message="Plugin not found."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  }
+
   return (
-    // The banner stack sits outside the scroll page so it spans the pane and
+    // The priority banner sits outside the scroll page so it spans the pane and
     // pins to the top: a broken runtime is a condition on the whole page, not
     // a block of its content, and it should not scroll away from the controls
     // that resolve it.
@@ -239,26 +335,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       )}
       <div className="min-h-0 flex-1">
         <ToolsScrollPage>
-          {listQuery.isError ? (
-            <ResourceListState
-              state="error"
-              message="Couldn't load plugin."
-              onRetry={() => void listQuery.refetch()}
-            />
-          ) : (
-            <PluginDetail
-              isLoading={isLoading}
-              plugin={selectedPlugin}
-              pending={
-                selectedPlugin !== null && pendingPluginId === selectedPlugin.id
-              }
-              openSourceDisabled={!canOpenPreferredDirectoryTarget}
-              onToggle={(target) => pluginToggle.mutate(target)}
-              onEdit={handleEditPlugin}
-              onOpenSource={handleOpenPluginSource}
-              onDelete={setDeleteTarget}
-            />
-          )}
+          {detailContent}
           <ConfirmDeleteDialog
             open={deleteTarget !== null}
             onOpenChange={(open) => {
@@ -284,6 +361,22 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
               />
             ) : null}
           </ConfirmDeleteDialog>
+          <AddPluginDialog
+            open={installTarget !== null}
+            initial={
+              installTarget === null
+                ? null
+                : {
+                    entryId: installTarget.entryId,
+                    displayName: installTarget.displayName,
+                    icon: installTarget.icon,
+                  }
+            }
+            onOpenChange={(open) => {
+              if (!open) setInstallTarget(null);
+            }}
+            onInstalled={() => void listQuery.refetch()}
+          />
         </ToolsScrollPage>
       </div>
     </div>

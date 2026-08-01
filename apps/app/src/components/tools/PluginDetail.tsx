@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
@@ -6,16 +6,24 @@ import {
   ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailStack,
+  ResourceInstallControl,
   ResourceListState,
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
-import { Pill } from "@bb/shared-ui/pill";
 import { Switch } from "@bb/shared-ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
+import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
-  PluginCompatibilityBanner,
-  PluginUpdateBanner,
+  PluginDetailReleaseControl,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
@@ -24,25 +32,35 @@ import {
 } from "@/components/plugin/management/plugin-ui";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
-  PluginHealthAlerts,
+  PluginHealthBanner,
   PluginIncludes,
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
-import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
-import { usePluginSource } from "@/hooks/queries/plugin-catalog-queries";
+import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { appToast } from "@/components/ui/app-toast";
+import {
+  usePluginSource,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginFrontendDiagnostics,
   subscribePluginFrontendDiagnostics,
+  type PluginFrontendFailure,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
-  if (plugin.provenance === "builtin") return "Built-in";
-  if (plugin.provenance === "catalog") return "BB Official";
-  if (plugin.source.startsWith("path:")) return null;
-  return "Direct install";
+  return plugin.provenance === "builtin" || plugin.provenance === "catalog"
+    ? "BB Official"
+    : null;
+}
+
+/** Passive provenance shown beside an installed plugin's name. */
+export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
+  const label = pluginSourceLabel(plugin);
+  return label === null ? null : <ProvenancePill label={label} />;
 }
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
@@ -53,14 +71,153 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
+function PluginPath({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPath() {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      appToast.error("Failed to copy path.");
+    }
+  }
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Copy plugin path: ${path}`}
+            onClick={copyPath}
+            className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <span className="min-w-0 truncate text-left font-mono">
+              {formatHomePathForDisplay(path)}
+            </span>
+            <Icon
+              name={copied ? "Check" : "Copy"}
+              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{copied ? "Copied" : "Copy path"}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 /**
- * The plugin page's conditions, as full-width bars above the page itself.
+ * Read-only detail for an uninstalled BB Official catalog entry.
  *
- * These render outside ToolsScrollPage rather than inside the detail column:
- * a frontend crash, a blocked update, or a dead runtime is a condition on the
- * whole page, and inset into the centered column it read as just another
- * content block halfway down.
+ * The catalog exposes identity, category, description, and compatibility. It
+ * cannot enumerate runtime capabilities until the plugin is installed and
+ * running, so this page does not fabricate an installed-plugin inventory.
  */
+export function CatalogPluginDetail({
+  entry,
+  onInstall,
+}: {
+  entry: PluginCatalogSearchEntry;
+  onInstall: (entry: PluginCatalogSearchEntry) => void;
+}) {
+  return (
+    <ResourceDetailPage
+      maxWidthClassName="max-w-5xl"
+      leading={
+        <PluginIcon
+          pluginId={entry.pluginId}
+          icon={entry.icon}
+          className="size-full"
+        />
+      }
+      title={entry.displayName}
+      titleMeta={<ProvenancePill label="BB Official" />}
+      metadata={<span>{entry.category}</span>}
+      description={
+        entry.incompatibleReason === null ? undefined : (
+          <span className="inline-flex items-start gap-1.5" role="status">
+            <Icon
+              name="AlertTriangle"
+              className="mt-0.5 size-3.5 shrink-0 text-warning"
+              aria-hidden
+            />
+            <span>{entry.incompatibleReason}</span>
+          </span>
+        )
+      }
+      actions={
+        <ResourceInstallControl
+          accessibleLabel={`Install ${entry.displayName}`}
+          disabled={!entry.compatible}
+          onAction={() => onInstall(entry)}
+        />
+      }
+    >
+      <ResourceDetailStack>
+        <ResourceDetailOverviewSection label="About">
+          <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+            {entry.description.length > 0
+              ? entry.description
+              : "This plugin does not describe itself."}
+          </p>
+        </ResourceDetailOverviewSection>
+      </ResourceDetailStack>
+    </ResourceDetailPage>
+  );
+}
+
+/**
+ * The plugin page's highest-priority condition, as one full-width bar above
+ * the page itself.
+ *
+ * These render outside ToolsScrollPage rather than inside the detail column.
+ * Only present-tense operational health belongs here; release opportunities
+ * and history stay with the version controls in the detail header.
+ */
+export type PluginDetailBannerKind =
+  | "failed"
+  | "degraded"
+  | "incompatible"
+  | "missing"
+  | "needs-configuration";
+
+export function pluginDetailBannerKind(
+  plugin: PluginListItem,
+  hasFrontendFailure: boolean,
+): PluginDetailBannerKind | null {
+  if (!plugin.enabled) return null;
+  if (plugin.status === "error") return "failed";
+  if (plugin.status === "degraded") return "degraded";
+  if (plugin.status === "incompatible") return "incompatible";
+  if (plugin.status === "missing") return "missing";
+  if (plugin.status === "needs-configuration") return "needs-configuration";
+  if (hasFrontendFailure) return "failed";
+  return null;
+}
+
+function pluginHealthBannerState(
+  plugin: PluginListItem,
+  frontendFailure: PluginFrontendFailure | null | undefined,
+): { plugin: PluginListItem; reloadable?: boolean } | null {
+  if (!plugin.enabled) return null;
+  if (pluginRuntimeStatusPresentation(plugin) !== null) return { plugin };
+
+  if (frontendFailure !== null && frontendFailure !== undefined) {
+    return {
+      plugin: {
+        ...plugin,
+        status: "error",
+        statusDetail: null,
+      },
+    };
+  }
+  return null;
+}
+
 export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
@@ -68,30 +225,14 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
     getPluginFrontendDiagnostics,
   );
   const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
-  const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
+  const banner = pluginHealthBannerState(plugin, frontendFailure);
+  if (banner === null) return null;
   return (
-    <>
-      {frontendFailure === null || frontendFailure === undefined ? null : (
-        <PluginBannerBar
-          tone="destructive"
-          icon="CircleX"
-          title={`Frontend ${frontendFailure.phase} failure${
-            frontendFailure.scriptId === null
-              ? ""
-              : ` in content script \u201C${frontendFailure.scriptId}\u201D`
-          }`}
-          detail={frontendFailure.message}
-        />
-      )}
-      {hasUpdateManagement ? (
-        <PluginCompatibilityBanner plugin={plugin} />
-      ) : null}
-      {hasUpdateManagement ? <PluginUpdateBanner plugin={plugin} /> : null}
-      <PluginHealthAlerts
-        plugin={plugin}
-        runtimeStatus={pluginRuntimeStatusPresentation(plugin)}
-      />
-    </>
+    <PluginHealthBanner
+      plugin={banner.plugin}
+      runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
+      reloadable={banner.reloadable}
+    />
   );
 }
 
@@ -146,7 +287,6 @@ export function PluginDetail({
     plugin.hasSettings ||
     settingsSections.some((section) => section.pluginId === plugin.id);
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
-  const sourceLabel = pluginSourceLabel(plugin);
   const canEditSource = pluginIsLocalSource(plugin);
   const canRemove = plugin.provenance !== "builtin";
   // Only update-managed plugins have an install record; a built-in ships with
@@ -156,8 +296,6 @@ export function PluginDetail({
     : null;
 
   const pluginName = plugin.name ?? plugin.id;
-  const provenanceLabel =
-    plugin.provenance === "catalog" ? "BB Official" : sourceLabel;
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
   // ownership actions rather than beside the reversible enable toggle.
   const overflowItems: ResourceOverflowMenuItem[] = [
@@ -198,23 +336,20 @@ export function PluginDetail({
       leading={<PluginLogo plugin={plugin} className="size-4" />}
       title={pluginName}
       // Provenance is a label, not a control: it sits flush to the name as a
-      // passive pill. It used to render as a green "Installed"/"BB Official"
+      // passive badge. Default owned sources need no label; only BB-published
+      // plugins carry provenance here. It used to render as a green
+      // "Installed"/"BB Official"
       // button that swapped to a red Uninstall on hover — a status that
       // deleted on click, at the same weight as the enable toggle.
-      titleMeta={
-        provenanceLabel ? (
-          <Pill variant="outline" size="sm">
-            {provenanceLabel}
-          </Pill>
-        ) : undefined
-      }
+      titleMeta={<PluginProvenancePill plugin={plugin} />}
       // Version and install date are identity, so they sit with the identity.
       // They had been a two-row bordered table inside About, carrying the same
-      // weight as Capabilities and the health tables for two trivial facts, and
+      // weight as Capabilities and the activity collections for two trivial
+      // facts, and
       // floated hard right with a void between them and the description.
       metadata={
         <>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
             <span className="font-mono">{plugin.version}</span>
             <span aria-hidden>·</span>
             {installedAt === null ? (
@@ -223,11 +358,10 @@ export function PluginDetail({
               <span>Installed {formatAbsoluteDate(installedAt)}</span>
             )}
           </span>
-          <span className="mt-0.5 block break-all font-mono">
-            {plugin.rootDir}
-          </span>
+          <PluginPath path={plugin.rootDir} />
         </>
       }
+      actions={<PluginDetailReleaseControl plugin={plugin} />}
       lifecycleControl={
         <Switch
           checked={plugin.enabled}
@@ -267,9 +401,10 @@ export function PluginDetail({
         ) : null}
         {/*
           Services and schedules are two different objects with two different
-          status vocabularies, so they are two tables under their own names. The
-          "Health" wrapper that used to hold them added a heading level without
-          adding a fact.
+          status vocabularies, so they stay under their own names and use
+          separate semantic tables. Services expose name and status; schedules
+          expose name plus next-run or failure detail. The "Health" wrapper
+          that used to hold them added a heading level without adding a fact.
         */}
         {plugin.services.length > 0 ? (
           <ResourceActivitySection label="Background services">

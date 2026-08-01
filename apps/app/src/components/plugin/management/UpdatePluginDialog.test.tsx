@@ -93,14 +93,94 @@ describe("UpdatePluginDialog", () => {
       { wrapper },
     );
 
+    const compatibilityCopy = screen.getByText(
+      "1.9.0 isn’t compatible with this bb",
+    );
+    const compatibilityLine = compatibilityCopy.parentElement as HTMLElement;
+    expect(compatibilityLine.className).not.toContain("text-warning");
     expect(
-      screen.getByText("1.9.0 isn’t compatible with this bb"),
-    ).toBeTruthy();
+      compatibilityLine
+        .querySelector('[data-icon="AlertTriangle"]')
+        ?.getAttribute("class"),
+    ).toContain("text-warning");
     expect(screen.getByText("needs bb >= 0.15 — you have 0.14.1")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("opens persisted failure details and retries an available update", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        applied: true,
+        from: { version: "1.6.2", display: "1.6.2" },
+        to: { version: "1.8.0", display: "1.8.0" },
+        outcome: "updated",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onOpenChange = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
+    const failedAt = new Date(2026, 6, 22).getTime();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({
+          availableVersion: "1.8.0",
+          lastFailure: {
+            version: "1.7.0",
+            at: failedAt,
+            detail: "factory threw during activation",
+          },
+        })}
+        open
+        failureStateLabel="Update failed"
+        onOpenChange={onOpenChange}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByRole("heading", { name: "Update failed" })).toBeTruthy();
+    expect(screen.getByText("Failed on Jul 22, 2026.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "bb couldn’t activate 1.7.0. It restored 1.6.2 and its data.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("factory threw during activation")).toBeTruthy();
+    expect(
+      document.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
+    ).toContain("text-destructive");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry update to 1.8.0" }),
+    );
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it("keeps a persisted failure actionable without offering an unavailable retry", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({
+          lastFailure: {
+            version: "1.7.0",
+            at: null,
+            detail: "factory threw during activation",
+          },
+        })}
+        open
+        failureStateLabel="Update failed"
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText(/Try again when a compatible update/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Retry update/ })).toBeNull();
   });
 
   it.each([
@@ -135,9 +215,7 @@ describe("UpdatePluginDialog", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-      expect(
-        await screen.findByText("Update failed — rolled back"),
-      ).toBeTruthy();
+      expect(await screen.findByText("Update failed")).toBeTruthy();
       expect(screen.getByText("factory threw during activation")).toBeTruthy();
       expect(
         screen.getByText(
@@ -174,6 +252,6 @@ describe("UpdatePluginDialog", () => {
       ).toBe(false);
     });
     expect(screen.getByText("Update Linear to 1.7.0?")).toBeTruthy();
-    expect(screen.queryByText("Update failed — rolled back")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Update failed" })).toBeNull();
   });
 });

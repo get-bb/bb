@@ -87,7 +87,7 @@ describe("pluginRowSignal (the one-signal rule)", () => {
     ["error", "CircleX", "Failed", "error"],
     ["incompatible", "AlertCircle", "Incompatible", "error"],
     ["missing", "FileQuestion", "Missing", "error"],
-    ["needs-configuration", "Settings", "Unconfigured", "warning"],
+    ["needs-configuration", "Settings", "Needs configuration", "warning"],
     ["degraded", "AlertTriangle", "Degraded", "warning"],
   ] as const)(
     "names the %s runtime status instead of collapsing it into attention",
@@ -143,13 +143,38 @@ describe("pluginRuntimeStatusPresentation", () => {
       ),
     ).toMatchObject({
       label: "Failed",
-      recovery: "Edit the plugin, then reload it.",
+      condition: "The plugin couldn't start.",
+      recovery: "Fix the plugin, then reload it.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "error" })),
     ).toMatchObject({
       label: "Failed",
-      recovery: "Reload the plugin. If the error continues, reinstall it.",
+      condition: "The plugin couldn't start.",
+      recovery:
+        "Reload the plugin. If it still fails, remove it and install it again.",
+    });
+  });
+
+  it("gives missing bundled and installed plugins source-appropriate recovery", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "missing",
+            provenance: "builtin",
+            source: "builtin:linear",
+          },
+        ),
+      ),
+    ).toMatchObject({
+      recovery: "Restart bb. If the files are still missing, reinstall bb.",
+    });
+    expect(
+      pluginRuntimeStatusPresentation(plugin({}, { status: "missing" })),
+    ).toMatchObject({
+      recovery: "Remove the plugin, then install it again from its source.",
     });
   });
 
@@ -159,7 +184,8 @@ describe("pluginRuntimeStatusPresentation", () => {
         plugin({}, { status: "needs-configuration", hasSettings: true }),
       ),
     ).toMatchObject({
-      label: "Unconfigured",
+      label: "Needs configuration",
+      condition: "Required settings are incomplete.",
       recovery:
         "Complete the Settings section; bb reloads the plugin after you save.",
     });

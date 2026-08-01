@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -8,16 +8,9 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
-  PluginCompatibilityBanner,
+  PluginDetailReleaseControl,
   pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
@@ -79,15 +72,31 @@ describe("pluginHasUpdateSurfaces", () => {
   });
 });
 
-describe("PluginCompatibilityBanner", () => {
-  it("surfaces a newer-but-incompatible release", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
-    );
+describe("PluginDetailReleaseControl", () => {
+  it("offers a compatible update as a compact header action", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginCompatibilityBanner
+      <PluginDetailReleaseControl
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            availableVersion: "1.9.0",
+          },
+        })}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Update Linear to 1.9.0" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Compatible with your bb.")).toBeNull();
+  });
+
+  it("opens compatibility details from the blocked header action", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseControl
         plugin={plugin({
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -99,20 +108,70 @@ describe("PluginCompatibilityBanner", () => {
       { wrapper },
     );
 
+    const blockedAction = screen.getByRole("button", {
+      name: "View why update 1.9.0 is blocked",
+    });
+    expect(blockedAction.className).not.toContain("text-warning");
     expect(
-      screen.getByText("1.9.0 isn't compatible with this bb"),
+      blockedAction
+        .querySelector('[data-icon="AlertTriangle"]')
+        ?.getAttribute("class"),
+    ).toContain("text-warning");
+
+    fireEvent.click(blockedAction);
+    expect(
+      screen.getByRole("heading", { name: "Update Linear to 1.9.0?" }),
     ).toBeTruthy();
     expect(screen.getByText("requires bb >= 0.15")).toBeTruthy();
   });
 
-  it("renders nothing for builtins (their update channel is the bb release)", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
+  it("opens persisted rollback details from the failed-update action", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseControl
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            availableVersion: "1.9.0",
+            lastFailure: {
+              version: "1.9.0",
+              at: null,
+              detail: "The plugin failed to load.",
+            },
+          },
+        })}
+      />,
+      { wrapper },
     );
+
+    const failedAction = screen.getByRole("button", {
+      name: "View failed update to 1.9.0",
+    });
+    expect(failedAction.className).not.toContain("text-destructive");
+    expect(
+      failedAction
+        .querySelector('[data-icon="CircleX"]')
+        ?.getAttribute("class"),
+    ).toContain("text-destructive");
+
+    fireEvent.click(failedAction);
+
+    expect(screen.getByRole("heading", { name: "Update failed" })).toBeTruthy();
+    expect(screen.getByText("The plugin failed to load.")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry update to 1.9.0" }),
+    ).toBeTruthy();
+  });
+
+  it("renders nothing for builtins (their update channel is the bb release)", () => {
     const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <PluginCompatibilityBanner plugin={plugin({ provenance: "builtin" })} />,
+      <PluginDetailReleaseControl
+        plugin={{
+          ...plugin({ provenance: "builtin" }),
+          source: "builtin:linear",
+        }}
+      />,
       { wrapper },
     );
     expect(container.textContent).toBe("");

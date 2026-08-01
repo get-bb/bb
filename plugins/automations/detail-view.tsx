@@ -6,7 +6,6 @@ import type {
   AutomationRunStatus,
 } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -29,7 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
   formatDetailScheduleStatusLabel,
@@ -178,7 +177,9 @@ function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (environment.type === "project-default") return "Project default";
   if (environment.workspace.type === "managed-worktree") return "Worktree";
   if (environment.workspace.type === "personal") return "Local";
-  return environment.workspace.path ?? "Local workspace";
+  return environment.workspace.path == null
+    ? "Local workspace"
+    : formatHomePathForDisplay(environment.workspace.path);
 }
 
 function formatPermissionMode(
@@ -349,7 +350,7 @@ function RunRow({
         <pre
           className={cn(
             "mx-2 mb-2 whitespace-pre-wrap rounded-md bg-surface-recessed/70 px-3 py-2 font-mono text-xs leading-relaxed",
-            run.error ? "text-destructive" : "text-foreground",
+            "text-foreground",
             silent && "italic text-subtle-foreground",
           )}
         >
@@ -520,7 +521,7 @@ export function AutomationDetailView({
                   </pre>
                 ) : execution.scriptFile ? (
                   <span className="font-mono text-xs">
-                    {execution.scriptFile}
+                    {formatHomePathForDisplay(execution.scriptFile)}
                   </span>
                 ) : null}
               </div>
@@ -544,12 +545,19 @@ export function AutomationDetailView({
 
         <ResourceActivitySection label="Runs">
           {runsState.error !== null ? (
-            <ResourceDetailPanel
-              surface="recessed"
-              className="px-3 py-5 text-center text-sm text-destructive"
-            >
-              <div className="flex flex-col items-center gap-2">
-                <span>Failed to load runs.</span>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="error"
+                className="flex min-w-0 items-start justify-between gap-3 px-2 py-1.5 text-left text-sm"
+              >
+                <span className="inline-flex items-center gap-2 py-1.5 text-foreground">
+                  <Icon
+                    name="CircleX"
+                    className="size-4 shrink-0 text-destructive"
+                    aria-hidden
+                  />
+                  <span>Failed to load runs.</span>
+                </span>
                 <Button
                   type="button"
                   variant="outline"
@@ -559,18 +567,25 @@ export function AutomationDetailView({
                   Retry
                 </Button>
               </div>
-            </ResourceDetailPanel>
+            </ResourceDetailCollection>
           ) : runsState.loading ? (
-            <ResourceDetailPanel
-              surface="recessed"
-              className="px-3 py-6 text-center text-sm text-muted-foreground"
-            >
-              Loading…
-            </ResourceDetailPanel>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="loading"
+                className="px-2 py-3 text-left text-sm text-muted-foreground"
+              >
+                Loading…
+              </div>
+            </ResourceDetailCollection>
           ) : runsState.runs.length === 0 ? (
-            <EmptyStatePanel className="py-5">
-              <div className="flex flex-col items-center gap-2">
-                <span>No runs yet.</span>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="empty"
+                className="flex min-w-0 items-start justify-between gap-3 px-2 py-1.5 text-left text-sm"
+              >
+                <span className="py-1.5 text-muted-foreground">
+                  No runs yet.
+                </span>
                 <Button
                   type="button"
                   variant="outline"
@@ -582,7 +597,7 @@ export function AutomationDetailView({
                   Run now
                 </Button>
               </div>
-            </EmptyStatePanel>
+            </ResourceDetailCollection>
           ) : (
             <div>
               <ResourceDetailCollection className="divide-border/60">

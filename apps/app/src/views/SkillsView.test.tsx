@@ -252,7 +252,7 @@ describe("SkillsOverview", () => {
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
     expect(markup).toContain("Browse");
-    expect(markup).toContain("Built-in");
+    expect(markup).toContain("BB Official");
     expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open bb-skill"');
     expect(markup.indexOf("Library")).toBeLessThan(
@@ -719,7 +719,7 @@ describe("RegistrySkillDetailView reference creation", () => {
 });
 
 describe("SkillDetailDialogView", () => {
-  it("presents built-in ownership passively without an actions menu", async () => {
+  it("presents a built-in skill as BB Official without an actions menu", async () => {
     const skill = makeSkill({
       name: "bb-cli",
       provider: null,
@@ -728,10 +728,10 @@ describe("SkillDetailDialogView", () => {
     });
     renderSkillDetailDialog(skill);
 
-    const builtIn = screen.getByLabelText("bb-cli is built into bb");
-    expect(builtIn.textContent).toBe("Built-in");
+    const official = screen.getByLabelText("bb-cli is BB Official");
+    expect(official.textContent).toBe("BB Official");
     expect(screen.queryByRole("button", { name: "bb-cli actions" })).toBeNull();
-    fireEvent.pointerMove(builtIn);
+    fireEvent.pointerMove(official);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Ships with bb",
     );
@@ -812,6 +812,10 @@ describe("SkillDetailDialogView", () => {
     screen.getByRole("button", {
       name: "Copy skill path: /home/u/.bb/skills/bb-skill",
     });
+    expect(screen.getByText("~/.bb/skills/bb-skill")).toBeTruthy();
+    expect(screen.queryByText("BB Official", { exact: true })).toBeNull();
+    expect(screen.queryByText("Included", { exact: true })).toBeNull();
+    expect(screen.queryByText("Imported", { exact: true })).toBeNull();
     expect(screen.queryByText("Editable", { exact: true })).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "bb-skill actions" }),

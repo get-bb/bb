@@ -153,7 +153,7 @@ export function PluginsOverview() {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
-        onOpenInstalled={(pluginId) =>
+        onOpenPlugin={(pluginId) =>
           navigate(getPluginDetailRoutePath({ pluginId }))
         }
       />

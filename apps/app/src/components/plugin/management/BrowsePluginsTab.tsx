@@ -37,10 +37,10 @@ import { PlaceholderBadge } from "./plugin-ui";
 /** Browse BB's official plugins, bundled with the app. */
 export function BrowsePluginsTab({
   onInstall,
-  onOpenInstalled,
+  onOpenPlugin,
 }: {
   onInstall: (initial: AddPluginInitial) => void;
-  onOpenInstalled: (pluginId: string) => void;
+  onOpenPlugin: (pluginId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
@@ -143,7 +143,7 @@ export function BrowsePluginsTab({
                     entry={entry}
                     installedPluginId={entry.installed ? entry.pluginId : null}
                     onInstall={onInstall}
-                    onOpenInstalled={onOpenInstalled}
+                    onOpenPlugin={onOpenPlugin}
                   />
                 ))}
               </ResourceBrowseGrid>
@@ -159,12 +159,12 @@ function BrowseCard({
   entry,
   installedPluginId,
   onInstall,
-  onOpenInstalled,
+  onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
   installedPluginId: string | null;
   onInstall: (initial: AddPluginInitial) => void;
-  onOpenInstalled: (pluginId: string) => void;
+  onOpenPlugin: (pluginId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [confirmingUninstall, setConfirmingUninstall] = useState(false);
@@ -227,25 +227,15 @@ function BrowseCard({
 
   return (
     <>
-      {installedPluginId === null ? (
-        <ResourceBrowseCard
-          leading={leading}
-          title={entry.displayName}
-          description={description}
-          byline={byline}
-          headerAction={headerAction}
-        />
-      ) : (
-        <ResourceBrowseCard
-          leading={leading}
-          title={entry.displayName}
-          description={description}
-          byline={byline}
-          headerAction={headerAction}
-          openLabel={`Open ${entry.displayName} details`}
-          onOpen={() => onOpenInstalled(installedPluginId)}
-        />
-      )}
+      <ResourceBrowseCard
+        leading={leading}
+        title={entry.displayName}
+        description={description}
+        byline={byline}
+        headerAction={headerAction}
+        openLabel={`Open ${entry.displayName} details`}
+        onOpen={() => onOpenPlugin(entry.pluginId)}
+      />
       <ConfirmDeleteDialog
         open={confirmingUninstall}
         onOpenChange={(open) => {

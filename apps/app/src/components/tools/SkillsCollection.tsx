@@ -133,7 +133,7 @@ function SkillRow({
       title={skill.name}
       titleMeta={
         skill.scope === "bb-builtin" ? (
-          <ProvenancePill label="Built-in" />
+          <ProvenancePill label="BB Official" />
         ) : undefined
       }
       description={description}
@@ -481,24 +481,21 @@ export function SkillDetailDialogView({
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       path={skill.filePath}
-      headerControl={
+      titleBadge={
         skill.scope === "bb-builtin"
           ? {
-              kind: "status",
-              label: "Built-in",
+              label: "BB Official",
               tooltip: "Ships with bb",
-              accessibleLabel: `${skill.name} is built into bb`,
+              accessibleLabel: `${skill.name} is BB Official`,
             }
           : bundledPluginName !== null
             ? {
-                kind: "status",
                 label: "Included",
                 tooltip: `Included with ${includedPluginDescription(skill)}`,
                 accessibleLabel: `${skill.name} is included with ${includedPluginDescription(skill)}`,
               }
             : skill.provider !== null
               ? {
-                  kind: "status",
                   label: "Imported",
                   tooltip: `Discovered from ${providerLabel(skill.provider)}`,
                   accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { ResourceActionButton } from "@bb/shared-ui/resource-list";
+import { Icon } from "@bb/shared-ui/icon";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
@@ -75,46 +75,110 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
+/** The newest release that exists but cannot run on this bb version. */
+export function pluginCompatibilityBlockedVersion(
+  plugin: PluginListItem,
+): string | null {
+  if (!pluginHasUpdateSurfaces(plugin)) return null;
+  return plugin.updateState.availableVersion === null
+    ? plugin.updateState.blockedVersion
+    : null;
+}
+
 /**
- * A blocked update, rendered in the page's banner stack rather than inside
- * Release. It is something the user may need to act on, so it belongs with the
- * other banners above the page instead of halfway down it.
+ * Release state beside the version and lifecycle controls on plugin detail.
+ *
+ * Updates describe the installed artifact, not the plugin's current ability
+ * to operate. Keeping them in the header prevents routine update availability
+ * and historical rollbacks from competing with present-tense health banners.
  */
-export function PluginCompatibilityBanner({
+export function PluginDetailReleaseControl({
   plugin,
 }: {
   plugin: PluginListItem;
 }) {
-  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const availableVersion = plugin.updateState.availableVersion;
+  const blockedVersion = pluginCompatibilityBlockedVersion(plugin);
+  const failure = plugin.updateState.lastFailure;
+
   if (!pluginHasUpdateSurfaces(plugin)) return null;
-  const blockedVersion =
-    plugin.updateState.availableVersion === null
-      ? plugin.updateState.blockedVersion
-      : null;
+
+  if (failure !== null) {
+    return (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          aria-label={`View failed update to ${failure.version}`}
+          onClick={() => setDetailsOpen(true)}
+        >
+          <Icon
+            name="CircleX"
+            className="size-3.5 text-destructive"
+            aria-hidden
+          />
+          Update failed
+        </Button>
+        <UpdatePluginDialog
+          failureStateLabel="Update failed"
+          plugin={plugin}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        />
+      </>
+    );
+  }
+
+  if (availableVersion !== null) {
+    return (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
+          onClick={() => setDetailsOpen(true)}
+        >
+          <Icon name="PackageReceive" className="size-3.5" aria-hidden />
+          Update
+        </Button>
+        <UpdatePluginDialog
+          failureStateLabel="Update failed"
+          plugin={plugin}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        />
+      </>
+    );
+  }
+
   if (blockedVersion === null) return null;
   return (
     <>
-      <PluginBannerBar
-        tone="warning"
-        icon="AlertTriangle"
-        title={`${blockedVersion} isn't compatible with this bb`}
-        detail={
-          plugin.updateState.blockedReasons[0] ??
-          `Staying on ${plugin.version}.`
-        }
-        action={
-          <ResourceActionButton
-            label="View compatibility details"
-            icon="Info"
-            onClick={() => setBlockedOpen(true)}
-          />
-        }
-      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 px-2.5 text-xs"
+        aria-label={`View why update ${blockedVersion} is blocked`}
+        onClick={() => setDetailsOpen(true)}
+      >
+        <Icon
+          name="AlertTriangle"
+          className="size-3.5 text-warning"
+          aria-hidden
+        />
+        Update blocked
+      </Button>
       <UpdatePluginDialog
         failureStateLabel="Update failed"
         plugin={plugin}
-        open={blockedOpen}
-        onOpenChange={setBlockedOpen}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
       />
     </>
   );

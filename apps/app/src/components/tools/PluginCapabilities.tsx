@@ -4,6 +4,11 @@ import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  ResourceStatus,
+  type ResourceStatusTone,
+} from "@bb/shared-ui/resource-list";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import {
   PluginDetailGlyph,
@@ -83,6 +88,33 @@ function pluginActivityIcon(
         className: "text-muted-foreground",
         label: "Scheduled",
       };
+}
+
+function pluginServiceStatus(state: "running" | "backoff" | "stopped"): {
+  label: string;
+  labelClassName?: string;
+  statusClassName?: string;
+  tone: ResourceStatusTone;
+} {
+  if (state === "running") {
+    return {
+      label: "Running",
+      labelClassName: "animate-shine",
+      tone: "success",
+    };
+  }
+  if (state === "backoff") {
+    return {
+      label: "Restarting",
+      labelClassName: "animate-shine",
+      tone: "muted",
+    };
+  }
+  return {
+    label: "Stopped",
+    statusClassName: "opacity-50",
+    tone: "muted",
+  };
 }
 
 function PluginActivityState({
@@ -382,10 +414,12 @@ export function PluginIncludes({
   // useful work yet. Treating it as not-running would caption a populated list
   // with "this plugin isn't running".
   const live =
-    plugin.status === "running" || plugin.status === "needs-configuration";
+    plugin.status === "running" ||
+    plugin.status === "degraded" ||
+    plugin.status === "needs-configuration";
   const liveCapabilitiesNote = plugin.enabled
     ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
-    : "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.";
+    : "Some capabilities are only listed while the plugin is enabled.";
 
   // Capabilities is a stable part of the plugin recipe, so it explains an empty
   // result rather than disappearing.
@@ -421,8 +455,7 @@ export function PluginIncludes({
         ))}
       </PluginDetailTable>
       {live ? null : (
-        <p className="flex min-w-0 items-start gap-2 text-xs leading-relaxed text-muted-foreground">
-          <Icon name="Info" className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {liveCapabilitiesNote}
         </p>
       )}
@@ -435,29 +468,37 @@ function PluginRuntimeStatusAlert({
   runtimeStatus,
   onReload,
   reloadPending,
+  reloadable,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation;
   onReload: () => void;
   reloadPending: boolean;
+  reloadable?: boolean;
 }) {
-  const canReload = plugin.status === "error" || plugin.status === "degraded";
+  const canReload =
+    reloadable ??
+    (plugin.status === "error" ||
+      plugin.status === "degraded" ||
+      (plugin.status === "needs-configuration" && !plugin.hasSettings));
+  const condition =
+    plugin.status === "needs-configuration" && plugin.statusDetail?.trim()
+      ? plugin.statusDetail
+      : runtimeStatus.condition;
+  const detail = [condition, runtimeStatus.recovery]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .map((part) => {
+      const capitalized = `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
+      return /[.!?]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
+    })
+    .join(" ");
   return (
     <PluginBannerBar
       tone={runtimeStatus.tone === "error" ? "destructive" : "warning"}
       icon={runtimeStatus.icon}
       title={runtimeStatus.label}
-      detail={
-        <>
-          {plugin.statusDetail === null ? null : (
-            <>
-              {plugin.statusDetail}
-              <br />
-            </>
-          )}
-          {runtimeStatus.recovery}
-        </>
-      }
+      detail={detail}
+      separator={plugin.status !== "degraded"}
       action={
         canReload ? (
           <Button
@@ -483,33 +524,21 @@ function PluginRuntimeStatusAlert({
 }
 
 /**
- * Whether the plugin has anything to say about its own health beyond the two
- * tables — a bad overall runtime state, or failed handler calls.
- */
-export function pluginHasHealthAlerts(
-  plugin: PluginListItem,
-  runtimeStatus: PluginRuntimeStatusPresentation | null,
-): boolean {
-  return (
-    (plugin.enabled && runtimeStatus !== null) ||
-    plugin.handlerStats.errorCount > 0
-  );
-}
-
-/**
- * The plugin's health problems, for the page's banner stack.
+ * The plugin's highest-priority health problem for the page banner.
  *
- * These are not services or scheduled jobs, so they have no row in either
- * table; and they are the things a user may need to act on, so they belong with
- * the other banners under the header rather than below the content they
- * explain.
+ * The banner owns the page-level consequence and recovery action. Runtime
+ * diagnostics and cumulative handler counts stay out of user copy because
+ * they do not identify one coherent, actionable incident. Scheduled-job
+ * outcomes stay row-level and do not cause this runtime banner.
  */
-export function PluginHealthAlerts({
+export function PluginHealthBanner({
   plugin,
   runtimeStatus,
+  reloadable,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
+  reloadable?: boolean;
 }) {
   const queryClient = useQueryClient();
   const reload = useMutation({
@@ -522,47 +551,72 @@ export function PluginHealthAlerts({
     },
   });
   const showOverallState = plugin.enabled && runtimeStatus !== null;
-  const errorCount = plugin.handlerStats.errorCount;
-  if (!showOverallState && errorCount === 0) return null;
+  if (!showOverallState || runtimeStatus === null) return null;
   return (
-    <>
-      {showOverallState && runtimeStatus !== null ? (
-        <PluginRuntimeStatusAlert
-          plugin={plugin}
-          runtimeStatus={runtimeStatus}
-          reloadPending={reload.isPending}
-          onReload={() => reload.mutate()}
-        />
-      ) : null}
-      {errorCount > 0 ? (
-        <PluginBannerBar
-          tone="destructive"
-          icon="AlertCircle"
-          title={`${errorCount} failed ${
-            errorCount === 1 ? "handler call" : "handler calls"
-          }`}
-          detail="Reload the plugin to clear this count after resolving the cause."
-        />
-      ) : null}
-    </>
+    <PluginRuntimeStatusAlert
+      plugin={plugin}
+      runtimeStatus={runtimeStatus}
+      reloadPending={reload.isPending}
+      reloadable={reloadable}
+      onReload={() => reload.mutate()}
+    />
   );
 }
 
 /** Long-running processes the plugin keeps alive. */
 export function PluginServices({ plugin }: { plugin: PluginListItem }) {
   return (
-    <PluginDetailTable>
-      {plugin.services.map((service) => (
-        <PluginDetailRow
-          key={service.name}
-          glyph={
-            <PluginActivityState activity="service" state={service.state} />
-          }
-          name={service.name}
-          detail={null}
-        />
-      ))}
-    </PluginDetailTable>
+    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
+      <table
+        aria-label="Background services"
+        className="w-full max-w-full table-fixed border-collapse text-left"
+      >
+        <colgroup>
+          <col className="w-40" />
+          <col />
+        </colgroup>
+        <thead className="bg-surface-recessed/55 text-xs text-muted-foreground">
+          <tr className="border-b border-border">
+            <th scope="col" className="px-4 py-2 font-medium">
+              Status
+            </th>
+            <th
+              scope="col"
+              className="border-l border-border px-4 py-2 font-medium"
+            >
+              Service
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {plugin.services.map((service) => {
+            const status = pluginServiceStatus(service.state);
+            return (
+              <tr key={service.name}>
+                <td
+                  className={cn(
+                    "px-4 py-1.5 align-middle text-left",
+                    status.statusClassName,
+                  )}
+                >
+                  <ResourceStatus tone={status.tone}>
+                    <span className={status.labelClassName}>
+                      {status.label}
+                    </span>
+                  </ResourceStatus>
+                </td>
+                <th
+                  scope="row"
+                  className="break-words border-l border-border px-4 py-1.5 text-left text-sm font-normal leading-snug text-foreground"
+                >
+                  {service.name}
+                </th>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -581,11 +635,8 @@ export function PluginSchedules({ plugin }: { plugin: PluginListItem }) {
           }
           name={schedule.name}
           detail={
-            schedule.lastError ? (
-              <span className="text-destructive">{schedule.lastError}</span>
-            ) : (
-              `Next ${formatAbsoluteDate(schedule.nextRunAt)}`
-            )
+            schedule.lastError ??
+            `Next ${formatAbsoluteDate(schedule.nextRunAt)}`
           }
         />
       ))}
