@@ -215,4 +215,54 @@ describe("daemon lifecycle", () => {
       );
     });
   });
+
+  it("forces the process to exit when a shutdown step never finishes", async () => {
+    const logger = createLogger();
+    const forceExit = vi.fn();
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      releaseLock: () => new Promise<void>(() => undefined),
+      forceExit,
+      shutdownExitGraceMs: 10,
+    });
+
+    await daemon.start();
+    void daemon.shutdown("self-update");
+
+    await vi.waitFor(() => {
+      expect(forceExit).toHaveBeenCalledWith(0);
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "self-update" }),
+      "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
+    );
+  });
+
+  it("forces the process to exit when cleanup succeeds but the event loop stays alive", async () => {
+    const logger = createLogger();
+    const forceExit = vi.fn();
+    const daemon = createDaemon({
+      identity: {
+        hostId: "host-1",
+        hostName: "test-host",
+        instanceId: "instance-1",
+      },
+      logger,
+      releaseLock: async () => undefined,
+      forceExit,
+      shutdownExitGraceMs: 10,
+    });
+
+    await daemon.start();
+    await daemon.shutdown("self-update");
+
+    await vi.waitFor(() => {
+      expect(forceExit).toHaveBeenCalledWith(0);
+    });
+  });
 });
