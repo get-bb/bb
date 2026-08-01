@@ -213,3 +213,43 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
+## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
+
+**What it does.** Renders a plugin component in the thread header's action row.
+The frontend sibling of the backend `bb.ui.registerThreadAction`, which renders
+a host-owned button and runs server-side: use that one for "do a thing", and
+this one when the control must draw live state (a count, a cluster, a status).
+
+The host places it at the left end of the row, before the workspace button, git
+actions, the panel toggle, maximize, and close — the same slot the backend
+actions already use. It mounts once per pane, each with that pane's `threadId`.
+A crash removes just that control and leaves the rest of the header working.
+
+**Audit before stabilizing.**
+
+1. **Two APIs, one region.** `bb.ui.registerThreadAction` and this slot now
+   share a row. Confirm the ordering rule between them, and whether the two
+   should merge behind one registration.
+2. **Budget.** The row is short and already holds five host controls. Decide a
+   cap, or an overflow behavior, before three plugins each add one.
+3. **Compact viewport.** `isCompactViewport` asks every plugin to collapse
+   itself. Confirm that beats a host-owned overflow menu.
+4. **Per-pane mounting.** Confirm plugins handle mounting once per pane, and
+   that a popover opened in one pane cannot leak into another.
+5. **Height discipline.** The host clamps the control's layout box
+   (`max-h-7 max-w-64`) so it cannot grow the chrome row, but deliberately does
+   NOT clip overflow — clipping also hides a popover anchored to the control,
+   which is the normal way to show anything taller. A plugin can therefore
+   still paint outside the row. Decide whether that trade is right, or whether
+   the host should require a portal.
+6. **Other headers.** Decide whether the compose screen, plugin panels, and the
+   workspace header need the same slot, or stay host-only.
+
+### Note on `experimental_threadHeaderAction` crash isolation
+
+`PluginSlotMount` takes an optional `instanceId` that participates in the
+crashed-instance key, so one pane's crashed header control does not disable the
+other pane's copy (or release its owned state). The thread-list slot omits it
+deliberately: it mounts once, and a crash there should disable it everywhere.
+Confirm that split before stabilizing, and decide whether other multi-mount
+slots need the same treatment.

@@ -20,6 +20,7 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type PluginThreadHeaderActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
@@ -156,6 +157,7 @@ type SlotPropsByName = {
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
+  experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
@@ -223,6 +225,11 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
+  ],
+  experimental_threadHeaderAction: [
+    "threadId",
+    "projectId",
+    "isCompactViewport",
   ],
   fileOpener: ["path", "source"],
   messageDirective: [

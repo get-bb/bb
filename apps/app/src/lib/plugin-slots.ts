@@ -9,6 +9,7 @@ import type {
   PluginNavPanelRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
+  PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
@@ -34,6 +35,8 @@ export interface PluginRegistrationSet {
    * calls `experimental_threadList` — still satisfies the set.
    */
   threadLists?: readonly PluginThreadListRegistration[];
+  /** Optional for the same reason as `threadLists`: bundles built earlier. */
+  threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
@@ -66,6 +69,8 @@ export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
+export interface PluginThreadHeaderActionSlot
+  extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
 export interface PluginFileOpenerSlot
   extends PluginFileOpenerRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
@@ -83,6 +88,7 @@ export interface PluginSlotSnapshot {
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
   threadLists: readonly PluginThreadListSlot[];
+  threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
@@ -97,6 +103,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   pendingInteractions: [],
   sidebarFooterActions: [],
   threadLists: [],
+  threadHeaderActions: [],
   fileOpeners: [],
   messageDirectives: [],
   messageActions: [],
@@ -118,6 +125,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     pendingInteractions: PluginPendingInteractionSlot[];
     sidebarFooterActions: PluginSidebarFooterActionSlot[];
     threadLists: PluginThreadListSlot[];
+    threadHeaderActions: PluginThreadHeaderActionSlot[];
     fileOpeners: PluginFileOpenerSlot[];
     messageDirectives: PluginMessageDirectiveSlot[];
     messageActions: PluginMessageActionSlot[];
@@ -130,6 +138,7 @@ function buildSnapshot(): PluginSlotSnapshot {
     pendingInteractions: [],
     sidebarFooterActions: [],
     threadLists: [],
+    threadHeaderActions: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -169,6 +178,9 @@ function buildSnapshot(): PluginSlotSnapshot {
     }
     for (const registration of set.threadLists ?? []) {
       next.threadLists.push({ ...registration, pluginId, generation });
+    }
+    for (const registration of set.threadHeaderActions ?? []) {
+      next.threadHeaderActions.push({ ...registration, pluginId, generation });
     }
     for (const registration of set.fileOpeners) {
       next.fileOpeners.push({ ...registration, pluginId, generation });

@@ -12,6 +12,7 @@ import {
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadListRegistration,
+  type PluginThreadHeaderActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 import {
@@ -77,6 +78,7 @@ export function collectPluginAppRegistrations(
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const threadLists: PluginThreadListRegistration[] = [];
+  const threadHeaderActions: PluginThreadHeaderActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
@@ -90,6 +92,7 @@ export function collectPluginAppRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
+    threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -225,6 +228,16 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_threadHeaderAction(registration) {
+        const kind = "slots.experimental_threadHeaderAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderAction, id);
+        threadHeaderActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       fileOpener(registration) {
         const kind = "slots.fileOpener";
         const id = requireSlotId(kind, registration?.id);
@@ -312,6 +325,7 @@ export function collectPluginAppRegistrations(
     pendingInteractions,
     sidebarFooterActions,
     threadLists,
+    threadHeaderActions,
     fileOpeners,
     messageDirectives,
     messageActions,

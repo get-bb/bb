@@ -70,6 +70,7 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadActions } from "@/components/thread/PluginThreadActions";
+import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
@@ -2399,7 +2400,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
-      pluginActions={<PluginThreadActions threadId={thread.id} />}
+      pluginActions={
+        <>
+          <PluginThreadHeaderActions
+            threadId={thread.id}
+            projectId={thread.projectId}
+          />
+          <PluginThreadActions threadId={thread.id} />
+        </>
+      }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}

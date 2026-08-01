@@ -322,6 +322,26 @@ interface PluginThreadListProps {
     searchQuery: string;
 }
 /**
+ * Props passed to an `experimental_threadHeaderAction` component, rendered in
+ * the thread header's action row.
+ */
+interface PluginThreadHeaderActionProps {
+    /**
+     * The thread this header belongs to. Never null: the slot is not rendered
+     * on the compose screen or other non-thread routes. A split layout renders
+     * one header per pane, so the component mounts once per visible thread,
+     * each with its own id — keep per-thread state in the component, never in a
+     * module-level singleton.
+     */
+    threadId: string;
+    projectId: string;
+    /**
+     * True on phone-width viewports and coarse pointers. Collapse to an
+     * icon-sized control when it is true — the row is short.
+     */
+    isCompactViewport: boolean;
+}
+/**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
  * thread-storage paths are relative to the thread's storage root, host paths
@@ -636,6 +656,29 @@ interface PluginSidebarThreadActions {
      */
     requestDelete(threadId: string): void;
 }
+/**
+ * Render a plugin component in the thread header's action row.
+ *
+ * The frontend sibling of the backend `bb.ui.registerThreadAction`, which
+ * renders a host-owned button and runs server-side. Use that one for "do a
+ * thing"; use this one when the control must draw live state.
+ *
+ * The host places it at the left end of the action row, before the workspace
+ * button, git actions, the panel toggle, maximize, and close. That row is a
+ * 48px chrome row with 28px controls: render one inline control that fits, and
+ * put anything taller in a portalled popover.
+ */
+interface PluginThreadHeaderActionRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /**
+     * Names the region the host wraps around your component (a labelled group).
+     * It does NOT label your control: an icon-only button still needs its own
+     * accessible name.
+     */
+    title: string;
+    component: ComponentType<PluginThreadHeaderActionProps>;
+}
 /** One pane's place in the split layout, as fractions of the split area. */
 interface PluginSidebarSplitPane {
     paneId: string;
@@ -804,6 +847,12 @@ interface PluginAppSlots {
      * docs/api_to_audit.md for what to audit before the prefix drops.
      */
     experimental_threadList(registration: PluginThreadListRegistration): void;
+    /**
+     * Render a component in the thread header's action row (see
+     * {@link PluginThreadHeaderActionRegistration}). Experimental: see
+     * docs/api_to_audit.md.
+     */
+    experimental_threadHeaderAction(registration: PluginThreadHeaderActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
     messageAction(registration: PluginMessageActionRegistration): void;
@@ -1391,4 +1440,4 @@ declare const experimental_useSidebarThreadPullRequest: (threadId: string) => Pl
 declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
 export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

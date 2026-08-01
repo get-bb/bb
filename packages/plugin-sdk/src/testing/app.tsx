@@ -42,6 +42,7 @@ import {
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadSplit,
   type PluginSidebarThreadsState,
+  type PluginThreadHeaderActionRegistration,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
   type PluginRpcContract,
@@ -519,6 +520,7 @@ export interface CapturedPluginApp {
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   threadLists: PluginThreadListRegistration[];
+  threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
@@ -548,6 +550,7 @@ function collectRegistrations(
     pendingInteractions: [],
     sidebarFooterActions: [],
     threadLists: [],
+    threadHeaderActions: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -562,6 +565,7 @@ function collectRegistrations(
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
+    threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -692,6 +696,16 @@ function collectRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadHeaderAction(registration) {
+        const kind = "slots.experimental_threadHeaderAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderAction, id);
+        captured.threadHeaderActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),
         });
       },

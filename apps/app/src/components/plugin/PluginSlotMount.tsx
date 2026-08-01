@@ -65,9 +65,10 @@ export function isPluginSlotInstanceCrashed(
   pluginId: string,
   slotKind: string,
   slotId: string,
+  instanceId?: string,
 ): boolean {
   return crashedSlotInstances.has(
-    pluginSlotInstanceKey(pluginId, slotKind, slotId),
+    pluginSlotInstanceKey(pluginId, slotKind, slotId, instanceId),
   );
 }
 
@@ -75,8 +76,15 @@ export function pluginSlotInstanceKey(
   pluginId: string,
   slotKind: string,
   slotId: string,
+  /**
+   * Discriminates concurrent mounts of ONE slot — the thread header renders a
+   * control per split pane. Without it a crash in one pane would disable the
+   * control in every pane and release their owned state too.
+   */
+  instanceId?: string,
 ): string {
-  return `${pluginId}/${slotKind}/${slotId}`;
+  const base = `${pluginId}/${slotKind}/${slotId}`;
+  return instanceId === undefined ? base : `${base}/${instanceId}`;
 }
 
 /**
@@ -203,6 +211,12 @@ export interface PluginSlotMountProps {
   children: ReactNode;
   crashFallback?: ReactNode;
   /**
+   * Discriminates concurrent mounts of one slot so their crash state stays
+   * independent (see {@link pluginSlotInstanceKey}). Omit for slots that mount
+   * once, where a crash should disable the slot everywhere.
+   */
+  instanceId?: string;
+  /**
    * Called once when this instance crashes. For slots whose fallback is
    * silent host UI (the sidebar's built-in thread list), where the user would
    * otherwise see the plugin simply vanish.
@@ -227,13 +241,19 @@ export function PluginSlotMount({
   slotId,
   children,
   crashFallback,
+  instanceId,
   onCrash,
 }: PluginSlotMountProps) {
   return (
     <PluginContext.Provider value={pluginId}>
       <PluginSlotBoundary
         pluginId={pluginId}
-        instanceKey={pluginSlotInstanceKey(pluginId, slotKind, slotId)}
+        instanceKey={pluginSlotInstanceKey(
+          pluginId,
+          slotKind,
+          slotId,
+          instanceId,
+        )}
         fallback={crashFallback}
         {...(onCrash ? { onCrash } : {})}
       >

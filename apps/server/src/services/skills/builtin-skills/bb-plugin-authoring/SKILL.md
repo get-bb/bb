@@ -822,6 +822,33 @@ export default definePluginApp((app) => {
 });
 ```
 
+### A control in the thread header
+
+`app.slots.experimental_threadHeaderAction` renders a component in the thread
+header's action row — the frontend sibling of `bb.ui.registerThreadAction`
+(which renders a host button and runs server-side). Use the slot when the
+control has to draw live state:
+
+```tsx
+app.slots.experimental_threadHeaderAction({
+  id: "subagents",
+  title: "Subagents",
+  component: ({ threadId, projectId, isCompactViewport }) => { ... },
+});
+```
+
+The row is a 48px chrome row with 28px controls: render ONE inline control, and
+put anything taller in a portalled popover. The host clamps your footprint, so
+an oversized control is clipped rather than allowed to break the header. `title`
+names the host's wrapper region — your icon-only button still needs its own
+accessible name. A split layout renders one header
+per pane, so your component mounts once per visible thread — keep per-thread
+state in the component, never in a module-level singleton.
+
+A common pairing with a replaced sidebar: hide child threads from the list and
+surface them here instead, filtering `experimental_useSidebarThreads()` by
+`parentThreadId === threadId`.
+
 ### Replacing the sidebar thread list
 
 `app.slots.experimental_threadList` is the one **exclusive** slot: only one
