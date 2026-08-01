@@ -51,6 +51,26 @@ function releaseSlotInstanceOwnedState(instanceKey: string): void {
   for (const release of releases) release();
 }
 
+/**
+ * Whether a slot instance is currently disabled by a crash. Read by hosts
+ * that hide their own UI while a plugin owns a region: the boundary's
+ * fallback restores the region's CONTENT, but only the host can restore the
+ * chrome it stopped rendering.
+ *
+ * Safe to read during render: the set only changes in `componentDidCatch`,
+ * which is followed by the boundary's own re-render, and crashed instances
+ * stay crashed for the session.
+ */
+export function isPluginSlotInstanceCrashed(
+  pluginId: string,
+  slotKind: string,
+  slotId: string,
+): boolean {
+  return crashedSlotInstances.has(
+    pluginSlotInstanceKey(pluginId, slotKind, slotId),
+  );
+}
+
 export function pluginSlotInstanceKey(
   pluginId: string,
   slotKind: string,
@@ -90,6 +110,7 @@ interface PluginSlotBoundaryProps {
   instanceKey: string;
   children: ReactNode;
   fallback?: ReactNode;
+  onCrash?: (pluginId: string) => void;
 }
 
 interface PluginSlotBoundaryState {
@@ -130,6 +151,16 @@ class PluginSlotBoundary extends Component<
       `[plugin:${this.props.pluginId}] slot "${this.props.instanceKey}" crashed and is disabled for this session: ${error.message}`,
       info.componentStack,
     );
+    // Contained like the render itself: a throwing notifier must not turn a
+    // recovered slot into an unrecoverable one.
+    try {
+      this.props.onCrash?.(this.props.pluginId);
+    } catch (notifyError) {
+      console.warn(
+        `[plugin:${this.props.pluginId}] slot crash notifier failed`,
+        notifyError,
+      );
+    }
   }
 
   override componentWillUnmount(): void {
@@ -171,6 +202,12 @@ export interface PluginSlotMountProps {
   slotId: string;
   children: ReactNode;
   crashFallback?: ReactNode;
+  /**
+   * Called once when this instance crashes. For slots whose fallback is
+   * silent host UI (the sidebar's built-in thread list), where the user would
+   * otherwise see the plugin simply vanish.
+   */
+  onCrash?: (pluginId: string) => void;
 }
 
 /**
@@ -190,6 +227,7 @@ export function PluginSlotMount({
   slotId,
   children,
   crashFallback,
+  onCrash,
 }: PluginSlotMountProps) {
   return (
     <PluginContext.Provider value={pluginId}>
@@ -197,6 +235,7 @@ export function PluginSlotMount({
         pluginId={pluginId}
         instanceKey={pluginSlotInstanceKey(pluginId, slotKind, slotId)}
         fallback={crashFallback}
+        {...(onCrash ? { onCrash } : {})}
       >
         <div
           data-bb-plugin-root=""

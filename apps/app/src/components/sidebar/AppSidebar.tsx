@@ -23,6 +23,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { PluginThreadList } from "./PluginThreadList";
+import { useThreadListProvider } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -97,6 +99,10 @@ export function AppSidebar({
   toolsRoutePath,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
+  // A plugin may replace the sidebar's scrolling thread list. It never
+  // replaces the chrome around it: the New-thread button, the search field,
+  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
+  const threadListProvider = useThreadListProvider();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const threadSplitsEnabled = useThreadSplitsEnabled();
@@ -342,6 +348,26 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
+  const builtInThreadList = (
+    <ProjectList
+      onNewProject={
+        quickCreateProject.isAvailable
+          ? quickCreateProject.openCreateDialog
+          : undefined
+      }
+      onProjectSelect={closeOnMobile}
+      isCreatingProject={quickCreateProject.isCreating}
+      threadSearch={{
+        activeIndex: threadSearchActiveIndex,
+        isActive: isThreadSearchActive,
+        onActiveIndexChange: setThreadSearchActiveIndex,
+        onNavigationItemsChange: handleThreadSearchNavigationItemsChange,
+        onSelectItem: handleThreadSearchSelectItem,
+        query: threadSearchQuery,
+      }}
+    />
+  );
+
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
       <Sidebar ref={sidebarRef} onKeyDown={handleThreadSearchKeyDown}>
@@ -401,23 +427,16 @@ export function AppSidebar({
           toolsRoutePath={toolsRoutePath}
         />
         <SidebarContent>
-          <ProjectList
-            onNewProject={
-              quickCreateProject.isAvailable
-                ? quickCreateProject.openCreateDialog
-                : undefined
-            }
-            onProjectSelect={closeOnMobile}
-            isCreatingProject={quickCreateProject.isCreating}
-            threadSearch={{
-              activeIndex: threadSearchActiveIndex,
-              isActive: isThreadSearchActive,
-              onActiveIndexChange: setThreadSearchActiveIndex,
-              onNavigationItemsChange: handleThreadSearchNavigationItemsChange,
-              onSelectItem: handleThreadSearchSelectItem,
-              query: threadSearchQuery,
-            }}
-          />
+          {threadListProvider ? (
+            <PluginThreadList
+              slot={threadListProvider}
+              builtInFallback={builtInThreadList}
+              searchQuery={threadSearchQuery}
+              onNavigate={closeOnMobile}
+            />
+          ) : (
+            builtInThreadList
+          )}
         </SidebarContent>
         <SidebarFooter className="relative">
           <OverflowFade placement="above" tone="sidebar" size="sm" />

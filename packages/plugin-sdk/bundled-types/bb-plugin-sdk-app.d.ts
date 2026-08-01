@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -299,6 +299,29 @@ interface PluginPendingInteractionProps {
 interface PluginSidebarFooterActionProps {
 }
 /**
+ * Props passed to an `experimental_threadList` component — the sidebar's
+ * scrolling thread area, replaced wholesale by one plugin.
+ */
+interface PluginThreadListProps {
+    /** The thread the route currently shows; null on non-thread routes. */
+    activeThreadId: string | null;
+    /** The project the route currently shows; null when none is selected. */
+    activeProjectId: string | null;
+    /** True on phone-width viewports and coarse pointers. */
+    isCompactViewport: boolean;
+    /**
+     * Call after the user opens a thread. Closes the mobile sidebar drawer and
+     * is a no-op on desktop, so always call it.
+     */
+    onNavigate: () => void;
+    /**
+     * The host search field's current text, or "" when the field is closed.
+     * The host owns that field, so a plugin list filters by this rather than
+     * shipping a second search box.
+     */
+    searchQuery: string;
+}
+/**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
  * thread-storage paths are relative to the thread's storage root, host paths
@@ -461,6 +484,29 @@ interface PluginSidebarFooterActionRegistration {
     run(context: PluginSidebarFooterActionContext): void | Promise<void>;
 }
 /**
+ * Replace the sidebar's thread list with a plugin component.
+ *
+ * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
+ * scroll area. The built-in list stays the default; the user picks a provider
+ * in Settings → Appearance, stored per client. A provider that is uninstalled,
+ * disabled, or crashing falls back to the built-in list rather than leaving
+ * the user with no sidebar.
+ *
+ * The plugin gets the scrolling list and nothing else. The New-thread button,
+ * the search field, the plugin nav rows, and the footer stay host-rendered in
+ * every sidebar — they are shared surfaces (other plugins live in two of
+ * them), and a replaced list must not be able to remove them.
+ */
+interface PluginThreadListRegistration {
+    /** Unique within the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Label in the Settings → Appearance → Sidebar picker. */
+    title: string;
+    /** Optional one-line description under the title in that picker. */
+    description?: string;
+    component: ComponentType<PluginThreadListProps>;
+}
+/**
  * Register this plugin as a viewer/editor for file extensions. The user
  * picks (and can set as default) an opener per extension via the file tab's
  * "Open with" menu; matching files opened in the panel then render
@@ -554,6 +600,12 @@ interface PluginAppSlots {
     threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
     pendingInteraction(registration: PluginPendingInteractionRegistration): void;
     sidebarFooterAction(registration: PluginSidebarFooterActionRegistration): void;
+    /**
+     * Replace the sidebar's thread list (see
+     * {@link PluginThreadListRegistration}). Experimental: see
+     * docs/api_to_audit.md for what to audit before the prefix drops.
+     */
+    experimental_threadList(registration: PluginThreadListRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
     messageAction(registration: PluginMessageActionRegistration): void;
@@ -1106,4 +1158,4 @@ declare const useComposer: () => PluginComposerApi;
 declare const useComposerView: () => ComposerView;
 
 export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

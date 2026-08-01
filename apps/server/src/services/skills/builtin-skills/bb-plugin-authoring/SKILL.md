@@ -813,7 +813,53 @@ export default definePluginApp((app) => {
     run: ({ openSettings }) => openSettings(),
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
+  app.slots.experimental_threadList({
+    id: "inbox",
+    title: "Inbox",
+    description: "One flat list, newest thread on top.",
+    component: InboxList,
+  });
 });
+```
+
+### Replacing the sidebar thread list
+
+`app.slots.experimental_threadList` is the one **exclusive** slot: only one
+list fills the sidebar's scroll area. Registering it does not take the sidebar
+— the built-in list stays the default, and the user picks a provider in
+**Settings → Appearance → Sidebar**. The choice is per client.
+
+Your component gets the scrolling list and nothing else. The New-thread button,
+the search field, the plugin nav rows, and the footer stay host-rendered —
+other plugins live in two of those, so a replaced list must not remove them.
+Put your own controls at the top of your scroll area instead.
+
+If the chosen plugin is disabled, uninstalled, or its component throws, bb
+renders its own list again (plus a toast on a crash), so the sidebar is never
+empty.
+
+The component receives:
+
+```ts
+interface PluginThreadListProps {
+  activeThreadId: string | null;
+  activeProjectId: string | null;
+  isCompactViewport: boolean;
+  /** Closes the mobile drawer; no-op on desktop. Always call it after opening
+      a thread. */
+  onNavigate: () => void;
+  /** The host search field's text; "" when the field is closed. The host owns
+      that field — filter by this rather than shipping a second one. */
+  searchQuery: string;
+}
+```
+
+**Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
+query selector, not by React state. Put both attributes on each row's anchor or
+`Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` silently stop working:
+
+```tsx
+<a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
 ```
 
 ### Trusted frontend content scripts

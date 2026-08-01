@@ -28,6 +28,72 @@ describe("definePluginApp", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_threadList", () => {
+  it("collects a thread list with its optional fields", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+        description: "One flat list.",
+        component: Component,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(definition).threadLists).toEqual([
+      {
+        id: "inbox",
+        title: "Inbox",
+        description: "One flat list.",
+        component: Component,
+      },
+    ]);
+  });
+
+  it("omits absent optionals rather than storing undefined", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+        component: Component,
+      });
+    });
+
+    const [collected] = collectPluginAppRegistrations(definition).threadLists!;
+    expect(collected).toEqual({
+      id: "inbox",
+      title: "Inbox",
+      component: Component,
+    });
+    expect("description" in collected!).toBe(false);
+  });
+
+  it("rejects two lists with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/inbox/);
+  });
+
+  it("rejects a missing component", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow();
+  });
+});
+
 describe("collectPluginAppRegistrations", () => {
   it("collects every slot kind as plain data", () => {
     const run = () => {};

@@ -125,3 +125,37 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `new-thread-environment-seed.test.ts` and
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
+
+## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
+
+**What it does.** Replaces the sidebar's scrolling thread list with a plugin
+component. Unlike every other `app.slots.*` member this slot is **exclusive**:
+one list at a time fills the scroll area. The built-in list stays the default;
+the user picks a provider in Settings → Appearance → Sidebar, stored per client
+in `localStorage` under `bb.sidebar.threadListProvider`.
+
+Three fallbacks keep the sidebar usable: a preference naming an unregistered
+provider resolves to the built-in list without clearing the stored value; a
+crashing component renders the built-in list (not the usual "plugin crashed"
+chip, which in place of a whole sidebar would strand the user) plus one toast;
+and a disabled or uninstalled plugin gets its list back when it returns.
+
+**Audit before stabilizing.**
+
+1. **Arbitration.** Confirm a client-local single choice is right, versus a
+   per-project or per-workspace choice, and what a synced setting would mean
+   across devices where the plugin is not installed.
+2. **Fallback discoverability.** Confirm one toast is the right signal when a
+   crash silently swaps the user's sidebar back, and whether the preference
+   should self-clear after repeated crashes.
+3. **Region boundary.** The plugin gets the scrolling list and nothing else:
+   the New-thread button, search field, plugin nav rows, and footer stay
+   host-rendered, because they are shared surfaces (other plugins live in two
+   of them) and a replaced list must not remove them. Confirm no real sidebar
+   needs to claim more, and that passing those regions down as props — letting
+   a plugin place them, at the risk of dropping them — stays the wrong trade.
+4. **Search ownership.** The host owns the search field and passes
+   `searchQuery` down. Confirm a plugin list never needs its own field.
+5. **Accessibility.** Confirm the host can still guarantee list semantics,
+   focus order, and the mobile close behavior when a plugin owns the markup —
+   `onNavigate` is currently the plugin's responsibility to call.

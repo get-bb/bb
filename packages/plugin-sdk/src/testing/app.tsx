@@ -37,6 +37,7 @@ import {
   type PluginSettingsSectionRegistration,
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
+  type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
   type PluginRpcContract,
   type PluginRpcResult,
@@ -465,6 +466,7 @@ export interface CapturedPluginApp {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  threadLists: PluginThreadListRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
@@ -493,6 +495,7 @@ function collectRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    threadLists: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -506,6 +509,7 @@ function collectRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    threadList: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -621,6 +625,22 @@ function collectRegistrations(
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           run: registration.run,
+        });
+      },
+      experimental_threadList(registration) {
+        const kind = "slots.experimental_threadList";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadList, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        captured.threadLists.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
         });
       },
       fileOpener(registration) {

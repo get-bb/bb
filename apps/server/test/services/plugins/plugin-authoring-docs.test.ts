@@ -20,6 +20,7 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadEventPayloads,
   type PluginThreadPanelProps,
@@ -154,6 +155,7 @@ type SlotPropsByName = {
   threadPanelAction: PluginThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_threadList: PluginThreadListProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
@@ -215,6 +217,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   threadPanelAction: ["threadId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_threadList: [
+    "activeThreadId",
+    "activeProjectId",
+    "isCompactViewport",
+    "onNavigate",
+    "searchQuery",
+  ],
   fileOpener: ["path", "source"],
   messageDirective: [
     "attributes",
