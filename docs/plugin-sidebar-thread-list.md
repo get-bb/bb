@@ -230,26 +230,23 @@ promise carries the host's error; the plugin decides whether to toast.
 
 ---
 
-## 5. One host component
+## 5. No host components
 
-The SDK deliberately ships almost no components (plugin design §5.5).
-Status icons are **not** an exception: `indicator` and `activity` are data, so
-a plugin draws its own glyphs and owns its own look. That is the point of
-replacing the list.
+The SDK deliberately ships almost no components (plugin design §5.5), and this
+API adds none.
 
-The context menu is the one exception, for the same reason `ThreadChat` is.
+Status icons are data: `indicator`, `indicatorLabel`, and `activity`. The
+context menu is the plugin's too — every item bb's own menu offers (open, open
+in split, pin, mark read, rename, archive, request delete) is on
+`experimental_useSidebarThreadActions`, so a replaced sidebar can rebuild it,
+reorder it, or replace it with something else entirely.
 
-```tsx
-experimental_ThreadContextMenu: ComponentType<{
-  threadId: string;
-  children: ReactNode;
-}>;
-```
+That is the point of replacing the list: a sidebar that cannot choose its own
+glyphs and its own menu is not really replaced.
 
-It wraps a row in bb's own right-click menu — rename, pin, archive, delete,
-open in split. A plugin cannot rebuild this one from data, because the menu
-also carries items contributed by *other* plugins. A plugin that draws its
-own menu would silently delete every other plugin's thread actions.
+The trade is real and worth stating. A plugin menu will not automatically pick
+up a thread action bb adds later, and it can drift from bb's labels and
+ordering. `docs/api_to_audit.md` tracks that as an open question.
 
 ---
 
@@ -502,7 +499,6 @@ plugin that omits the attributes silently breaks nine shortcuts.
 ```tsx
 import {
   definePluginApp,
-  experimental_ThreadContextMenu as ThreadContextMenu,
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   experimental_useSidebarThreadSplit as useSidebarThreadSplit,
   experimental_useSidebarThreads as useSidebarThreads,
@@ -525,8 +521,7 @@ function Row({
   const { splitProps, layout } = useSidebarThreadSplit(thread.id);
 
   return (
-    <ThreadContextMenu threadId={thread.id}>
-      <li>
+    <li>
         <a
           {...splitProps}
           data-sidebar-thread-shortcut-target=""
@@ -556,8 +551,7 @@ function Row({
             <MessageCircleQuestionIcon className="size-3.5" />
           ) : null}
         </a>
-      </li>
-    </ThreadContextMenu>
+    </li>
   );
 }
 
@@ -611,8 +605,9 @@ right-click still opens bb's full menu.
   settled, snoozed, starred — stores it in its own database through
   `bb.storage.database()` and serves it over `bb.rpc`. This keeps plugin
   concepts out of bb's schema and out of the host-daemon protocol.
-- **No status components.** `indicator`, `indicatorLabel`, and `activity` are
-  data. Every plugin draws its own icons.
+- **No components at all.** `indicator`, `indicatorLabel`, and `activity` are
+  data, and so is the action list: plugins draw their own icons and build their
+  own context menus.
 - **No drag to reorder, and no drag into a section.** Those stay host-internal.
   Bring your own drag library; the split drag will not fight it.
 - **No control of the footer, the nav rows, or the window chrome.**
@@ -703,16 +698,3 @@ row, once per visible pane. The frontend sibling of the existing backend
 5. **Other headers.** Decide whether the compose screen, plugin panels, and
    the workspace header need the same slot, or stay host-only.
 
-### `experimental_ThreadContextMenu`
-
-**What it does.** Wraps a plugin's row in bb's thread context menu, including
-items contributed by other plugins.
-
-**Audit before stabilizing.**
-
-1. **The exception.** Confirm this stays the only component in this API, and
-   that a data-only menu contract is genuinely worse.
-2. **Item provenance.** Confirm a replaced sidebar still shows every other
-   plugin's contributed items, and that ordering is stable.
-3. **Trigger surface.** Confirm right-click alone is enough, or expose a
-   controlled open for a "…" hover button.

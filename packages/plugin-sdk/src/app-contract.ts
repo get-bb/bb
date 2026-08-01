@@ -475,6 +475,46 @@ export interface PluginSidebarThreadActions {
   requestDelete(threadId: string): void;
 }
 
+/** One pane's place in the split layout, as fractions of the split area. */
+export interface PluginSidebarSplitPane {
+  paneId: string;
+  rect: { x: number; y: number; width: number; height: number };
+  /** This pane holds the thread the row represents. */
+  isMe: boolean;
+  isFocused: boolean;
+}
+
+/**
+ * Drag-to-split support for one row, plus where that thread currently sits in
+ * the split layout.
+ */
+export interface PluginSidebarThreadSplit {
+  /**
+   * Spread onto the row's interactive element. Carries the pointer handler
+   * that starts a split drag; empty when splits are unavailable, so spreading
+   * it is always safe.
+   *
+   * The host owns every rule: the gesture engages only once the pointer leaves
+   * the sidebar toward the main area (so a list with its own drag-to-reorder
+   * keeps working), an edge drop splits, a center drop replaces, an
+   * already-open thread focuses its pane, and the pane cap coerces a split
+   * into a replace.
+   */
+  splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+  /**
+   * False on compact viewports, when the user disabled splits, and for an
+   * unknown thread id. Gate any "open in split" affordance you draw on it.
+   */
+  isAvailable: boolean;
+  /**
+   * Where this thread sits in the split layout, or null when it is not open in
+   * one (including single-pane layouts). Draw a mini-map, a tint, or nothing.
+   */
+  layout: { panes: readonly PluginSidebarSplitPane[] } | null;
+}
+
 /**
  * Replace the sidebar's thread list with a plugin component.
  *
@@ -1212,6 +1252,14 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadPullRequest(
     threadId: string,
   ): PluginSidebarThreadPullRequestState;
+  /**
+   * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
+   * Call it once per rendered row, like the built-in sidebar does.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarThreadSplit(
+    threadId: string,
+  ): PluginSidebarThreadSplit;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

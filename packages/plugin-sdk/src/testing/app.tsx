@@ -40,6 +40,7 @@ import {
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
   type PluginSidebarThreadPullRequestState,
+  type PluginSidebarThreadSplit,
   type PluginSidebarThreadsState,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
@@ -436,6 +437,21 @@ const testPluginSdkApp = {
   },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
+  },
+  experimental_useSidebarThreadSplit(threadId): PluginSidebarThreadSplit {
+    const env = useSlotEnv("experimental_useSidebarThreadSplit");
+    return useMemo(
+      () => ({
+        splitProps: {
+          onPointerDown: () => {
+            env.sidebarActionCalls.push({ method: "open", threadId });
+          },
+        },
+        isAvailable: true,
+        layout: null,
+      }),
+      [env, threadId],
+    );
   },
   experimental_useSidebarThreadPullRequest(
     threadId,

@@ -15,6 +15,7 @@ export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
     "experimental_NewThreadComposer",
     "experimental_useSidebarThreadActions",
     "experimental_useSidebarThreadPullRequest",
+    "experimental_useSidebarThreadSplit",
     "experimental_useSidebarThreads",
     "useBbContext",
     "useBbNavigate",

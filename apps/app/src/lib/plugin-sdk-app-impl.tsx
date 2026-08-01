@@ -18,6 +18,7 @@ import {
   useSidebarThreadPullRequest,
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
+import { useSidebarThreadSplit } from "./plugin-sidebar-split";
 
 /**
  * The real `@bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
@@ -56,6 +57,7 @@ export const pluginSdkAppImplementation = {
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
+  experimental_useSidebarThreadSplit: useSidebarThreadSplit,
 } satisfies PluginSdkApp;
 
 /**

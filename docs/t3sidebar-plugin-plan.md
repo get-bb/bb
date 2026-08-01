@@ -83,26 +83,21 @@ without a reload.
 **Watch out for.** One mapper, one test file. If the mapping happens in two
 places it will disagree with itself within a month.
 
-## Stage A3: splits and the context menu
+## Stage A3: splits
 
-**What you build.** Two things, both extracted from `ThreadRow.tsx` rather
-than copied:
+**What you build.** `experimental_useSidebarThreadSplit(threadId)`, extracted
+from `ThreadRow.tsx` rather than copied. It wraps `useThreadRowSplitDrag` and
+`usePaneContentSplitIndicator`, and returns a spreadable `splitProps` bag plus
+the pane layout as plain data.
 
-1. `experimental_useSidebarThreadSplit(threadId)`. It wraps
-   `useThreadRowSplitDrag` and `usePaneContentSplitIndicator`, and returns a
-   spreadable `splitProps` bag plus the pane layout as plain data.
-2. `experimental_ThreadContextMenu`. It wraps `ThreadActionsContextMenu`.
-
-**Why no status component.** Status is data — `indicator`, `indicatorLabel`,
-and `activity`. Each plugin draws its own icons. A sidebar that cannot choose
-its own icons is not really a replaced sidebar.
-
-**Why the menu is different.** The context menu carries items contributed by
-*other* plugins. A plugin that draws its own menu silently deletes them.
+**Why no components at all.** Status is data — `indicator`, `indicatorLabel`,
+`activity` — and so is the action list, so the plugin draws its own glyphs and
+builds its own context menu. A sidebar that cannot choose those is not really
+a replaced sidebar.
 
 **How you know it works.** Drag a row from the test plugin onto the right
 edge of the main area. The pane splits. Drag it onto a pane center. The pane
-is replaced. Right-click a row. bb's full menu opens.
+is replaced.
 
 **Watch out for.** The drag must not engage while the pointer stays inside
 the sidebar. That rule is what lets a plugin bring its own drag-to-reorder
@@ -321,7 +316,7 @@ bugs you find in that day are the ones that matter.
 | --- | --- | --- |
 | A1 slot | a plugin can draw the sidebar | — |
 | A2 hooks | it can draw real threads | A1 |
-| A3 splits + menu | rows drag to panes, right-click works | A2 |
+| A3 splits | rows drag out to panes | A2 |
 | A4 header slot | children have a home | A1 |
 | A5 docs | the API is landable | A1–A4 |
 | B1 cards | the whole look | A1–A3 |

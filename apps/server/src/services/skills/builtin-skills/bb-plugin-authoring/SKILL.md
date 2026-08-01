@@ -890,6 +890,26 @@ Unit-test a list with `renderSlot(...)` from `@bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option and assert against
 `inspection.sidebarActionCalls`.
 
+**Splits.** Rows can drag out to the split area:
+
+```tsx
+const { splitProps, isAvailable, layout } =
+  experimental_useSidebarThreadSplit(thread.id);
+
+<a {...splitProps} onClick={...}>
+  {title}
+  {/* layout is data: draw a mini-map, a tint, or nothing */}
+</a>;
+```
+
+The host owns the gesture rules, including the one that matters if your list
+has its own drag-to-reorder: a split drag engages only once the pointer leaves
+the sidebar.
+
+**Your row, your menu.** This API ships no components. Build your own context
+menu from `experimental_useSidebarThreadActions` — it exposes everything bb's
+own menu does, including `requestDelete`, which opens bb's confirmation.
+
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or
 `Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` silently stop working:

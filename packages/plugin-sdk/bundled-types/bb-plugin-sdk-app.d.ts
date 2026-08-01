@@ -636,6 +636,51 @@ interface PluginSidebarThreadActions {
      */
     requestDelete(threadId: string): void;
 }
+/** One pane's place in the split layout, as fractions of the split area. */
+interface PluginSidebarSplitPane {
+    paneId: string;
+    rect: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    };
+    /** This pane holds the thread the row represents. */
+    isMe: boolean;
+    isFocused: boolean;
+}
+/**
+ * Drag-to-split support for one row, plus where that thread currently sits in
+ * the split layout.
+ */
+interface PluginSidebarThreadSplit {
+    /**
+     * Spread onto the row's interactive element. Carries the pointer handler
+     * that starts a split drag; empty when splits are unavailable, so spreading
+     * it is always safe.
+     *
+     * The host owns every rule: the gesture engages only once the pointer leaves
+     * the sidebar toward the main area (so a list with its own drag-to-reorder
+     * keeps working), an edge drop splits, a center drop replaces, an
+     * already-open thread focuses its pane, and the pane cap coerces a split
+     * into a replace.
+     */
+    splitProps: {
+        onPointerDown?: (event: react.PointerEvent<HTMLElement>) => void;
+    };
+    /**
+     * False on compact viewports, when the user disabled splits, and for an
+     * unknown thread id. Gate any "open in split" affordance you draw on it.
+     */
+    isAvailable: boolean;
+    /**
+     * Where this thread sits in the split layout, or null when it is not open in
+     * one (including single-pane layouts). Draw a mini-map, a tint, or nothing.
+     */
+    layout: {
+        panes: readonly PluginSidebarSplitPane[];
+    } | null;
+}
 /**
  * Replace the sidebar's thread list with a plugin component.
  *
@@ -1303,6 +1348,12 @@ interface PluginSdkApp {
      */
     experimental_useSidebarThreadPullRequest(threadId: string): PluginSidebarThreadPullRequestState;
     /**
+     * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
+     * Call it once per rendered row, like the built-in sidebar does.
+     * Experimental: see docs/api_to_audit.md.
+     */
+    experimental_useSidebarThreadSplit(threadId: string): PluginSidebarThreadSplit;
+    /**
      * The host-owned chat component (see {@link ThreadChatProps}). Together
      * with `Markdown`, the only components the SDK ships — everything else
      * stays vendored per §5.5.
@@ -1337,6 +1388,7 @@ declare const useComposerView: () => ComposerView;
 declare const experimental_useSidebarThreads: () => PluginSidebarThreadsState;
 declare const experimental_useSidebarThreadActions: () => PluginSidebarThreadActions;
 declare const experimental_useSidebarThreadPullRequest: (threadId: string) => PluginSidebarThreadPullRequestState;
+declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
-export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
