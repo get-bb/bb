@@ -56,7 +56,12 @@ import { experimental_NewThreadComposer as NewThreadComposer } from "@bb/plugin-
 
 **`ThreadChat` at scale.** Every column is a `<ThreadChat variant="compact" />`.
 A dozen live chats, each loading and streaming its own timeline, with no thread
-content proxied through the plugin's own RPC.
+content proxied through the plugin's own RPC. Overview (`o`) leaves every one of
+them mounted: the strip only shrinks and dims, and a card layer draws over it at
+normal size — one landscape card per thread, naming its project, title, and
+branch. A title has no room inside a column zoomed to 80px, and unmounting the
+chats to make room would reload every timeline on the way back in, so the labels
+leave the scaled world instead of fighting it.
 
 **Living beside the host's focus.** Columns mount asynchronously and each chat
 autofocuses its composer, so timed focus claims lose the race. The panel bounces
@@ -83,6 +88,12 @@ bb plugin reload cascade
 ```
 
 ## Keymap
+
+Trackpad and wheel move the strip too. Sideways travel always moves columns.
+Vertical travel moves rows, except over a thread that still has timeline to
+scroll — that thread keeps the gesture, the way nested scroll areas do
+natively. A column header, the gaps, and the space around the strip are never
+scrollable, so they always move rows.
 
 `h` `l` columns · `j` `k` rows · `H` `L` reorder · `J` `K` move to row ·
 `i` / `↵` composer · `esc` back · `r` width · `o` overview · `n` new thread ·

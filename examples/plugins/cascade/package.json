@@ -11,7 +11,7 @@
     "name": "Cascade",
     "description": "Scrollable-tiling thread layout — scroll columns horizontally, flip rows vertically.",
     "branding": {
-      "icon": "Columns3"
+      "icon": "./assets/icon.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx"

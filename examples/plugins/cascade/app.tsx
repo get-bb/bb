@@ -5,7 +5,11 @@
 // timeline data, drafts, streaming, or sending — it owns the strip and nothing
 // else.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type {
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import {
   definePluginApp,
   // Aliased: JSX reads a lowercase-initial name as an intrinsic element.
@@ -42,6 +46,13 @@ const COLUMN_GAP = 10;
 // Vertical space between rows; the overview label lives in it.
 const ROW_GUTTER = 120;
 const DRAG_THRESHOLD = 5;
+// Wheel/trackpad travel that adds up to one column or row of movement.
+const WHEEL_STEP = 90;
+// A gesture that pauses this long has ended: the next event starts fresh, and
+// may pick a different axis.
+const WHEEL_GESTURE_GAP = 220;
+// A wheel notch, in lines, is worth about this many pixels.
+const WHEEL_LINE_HEIGHT = 16;
 
 const MODE_LABEL: Record<GroupingMode, string> = {
   sections: "sections",
@@ -68,6 +79,37 @@ interface DragState {
   overRow: number | null;
   /** Insertion slot within `overRow`, or null when only the row is targeted. */
   insertAt: number | null;
+}
+
+/**
+ * The nearest ancestor of `node` that can still scroll `delta` on `axis`.
+ *
+ * This is what keeps wheel navigation out of the way of the thread under the
+ * pointer: a timeline still has messages to scroll, or a code block still has
+ * line to scroll, owns the gesture. Only once it has hit its end does the
+ * strip take over — the same chaining a nested scroll area does natively.
+ */
+function scrollableUnder(
+  target: EventTarget | null,
+  root: Element,
+  axis: "x" | "y",
+  delta: number,
+): boolean {
+  let node = target instanceof Element ? target : null;
+  for (; node && node !== root; node = node.parentElement) {
+    if (!(node instanceof HTMLElement)) continue;
+    const style = getComputedStyle(node);
+    const overflow = axis === "y" ? style.overflowY : style.overflowX;
+    if (!/auto|scroll|overlay/.test(overflow)) continue;
+    const size = axis === "y" ? node.clientHeight : node.clientWidth;
+    const content = axis === "y" ? node.scrollHeight : node.scrollWidth;
+    if (content <= size + 1) continue;
+    const position = axis === "y" ? node.scrollTop : node.scrollLeft;
+    const room =
+      delta < 0 ? position > 0 : position + size < content - 1;
+    if (room) return true;
+  }
+  return false;
 }
 
 /** True when the event came from somewhere the user is typing. */
@@ -114,6 +156,7 @@ function CascadePanel({ subPath }: { subPath: string }) {
   const observerRef = useRef<ResizeObserver | null>(null);
   const railRef = useRef<HTMLElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   // Set when a drag actually moved, so the click that ends it is not also
   // read as "zoom into this column".
   const suppressClickRef = useRef(false);
@@ -240,6 +283,11 @@ function CascadePanel({ subPath }: { subPath: string }) {
   const rows = useMemo<CascadeRow[]>(
     () => (index ? buildRows(index, mode, layout?.order ?? {}) : []),
     [index, mode, layout],
+  );
+
+  const projectNames = useMemo(
+    () => new Map((index?.projects ?? []).map((p) => [p.id, p.name])),
+    [index],
   );
 
   const focusOf = useCallback(
@@ -393,6 +441,62 @@ function CascadePanel({ subPath }: { subPath: string }) {
     [rows.length, safeRowIdx],
   );
 
+  // Wheel gestures are continuous and the strip is not: a gesture banks travel
+  // until it is worth a whole column or row, then spends it. `axis` is locked
+  // for the length of a gesture so a slightly diagonal trackpad flick cannot
+  // move sideways and downwards at once.
+  const wheelRef = useRef({ x: 0, y: 0, at: 0, axis: "" as "" | "x" | "y" });
+
+  const onWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      // Overview's card layer is a real scroll container; leave it alone.
+      if (overview || palette) return;
+      const viewport = event.currentTarget;
+
+      const scale = event.deltaMode === 1 ? WHEEL_LINE_HEIGHT : 1;
+      let x = event.deltaX * scale;
+      let y = event.deltaY * scale;
+      // A mouse with one wheel sends shift+vertical to mean horizontal.
+      if (event.shiftKey && x === 0) {
+        x = y;
+        y = 0;
+      }
+
+      const gesture = wheelRef.current;
+      if (event.timeStamp - gesture.at > WHEEL_GESTURE_GAP) {
+        gesture.x = 0;
+        gesture.y = 0;
+        gesture.axis = "";
+      }
+      gesture.at = event.timeStamp;
+      if (gesture.axis === "") {
+        gesture.axis = Math.abs(x) > Math.abs(y) ? "x" : "y";
+      }
+
+      const delta = gesture.axis === "x" ? x : y;
+      if (delta === 0) return;
+      if (scrollableUnder(event.target, viewport, gesture.axis, delta)) {
+        // The thread under the pointer is still scrolling. Bank nothing, or
+        // reaching the end of a long timeline would fling the strip.
+        gesture.x = 0;
+        gesture.y = 0;
+        return;
+      }
+
+      const banked = (gesture.axis === "x" ? gesture.x : gesture.y) + delta;
+      if (Math.abs(banked) < WHEEL_STEP) {
+        if (gesture.axis === "x") gesture.x = banked;
+        else gesture.y = banked;
+        return;
+      }
+      gesture.x = 0;
+      gesture.y = 0;
+      if (gesture.axis === "x") focusColumn(Math.sign(banked));
+      else focusRow(Math.sign(banked));
+    },
+    [overview, palette, focusColumn, focusRow],
+  );
+
   /** Shift a column left/right inside its own row. */
   const moveColumn = useCallback(
     (delta: number) => {
@@ -436,6 +540,9 @@ function CascadePanel({ subPath }: { subPath: string }) {
   const openDraft = useCallback(
     (parent: string | null) => {
       if (!currentRow) return;
+      // The composer lives in the strip, so writing in it means leaving the
+      // card layer.
+      setOverview(false);
       setDraftParent(parent);
       setFocus(currentRow, currentRow.columns.length);
       setDraftOpen(true);
@@ -660,6 +767,9 @@ function CascadePanel({ subPath }: { subPath: string }) {
           return void closeColumn();
         case "i":
           event.preventDefault();
+          // The composers are in the strip, under the card layer, so the first
+          // press comes back out of overview.
+          if (overview) return setOverview(false);
           return enterComposer();
         case "Enter":
           event.preventDefault();
@@ -715,10 +825,6 @@ function CascadePanel({ subPath }: { subPath: string }) {
   const overviewScale = rows.length
     ? Math.min(0.5, (viewport.height - 48) / (rows.length * stride))
     : 1;
-  const labelPx = Math.min(
-    Math.round(14 / (overviewScale || 1)),
-    Math.round(ROW_GUTTER / 1.7),
-  );
 
   const widthOf = useCallback(
     (threadId: string) =>
@@ -794,9 +900,12 @@ function CascadePanel({ subPath }: { subPath: string }) {
         }
       }
 
-      // getBoundingClientRect resolves the overview transform, so scaled rows
-      // hit-test in plain screen coordinates.
-      const rowNodes = worldRef.current?.querySelectorAll("[data-row]") ?? [];
+      // Hit-test whichever layer the user can actually see: the card layer in
+      // overview, the strip otherwise. Both label their rows and columns the
+      // same way, and getBoundingClientRect resolves the strip's transform, so
+      // either one answers in plain screen coordinates.
+      const surface = overview ? overlayRef.current : worldRef.current;
+      const rowNodes = surface?.querySelectorAll("[data-row]") ?? [];
       for (let i = 0; i < rowNodes.length; i += 1) {
         const box = rowNodes[i]!.getBoundingClientRect();
         if (!(y >= box.top && y <= box.bottom)) continue;
@@ -864,7 +973,16 @@ function CascadePanel({ subPath }: { subPath: string }) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [drag, rows, applyDrop, applyReorder]);
+  }, [drag, rows, overview, applyDrop, applyReorder]);
+
+  // Keyboard row moves happen in the overlay too, and its rows scroll, so keep
+  // the focused one on screen.
+  useEffect(() => {
+    if (!overview) return;
+    overlayRef.current
+      ?.querySelectorAll("[data-row]")
+      [safeRowIdx]?.scrollIntoView({ block: "nearest" });
+  }, [overview, safeRowIdx]);
 
   if (!index || !layout) {
     return (
@@ -987,10 +1105,17 @@ function CascadePanel({ subPath }: { subPath: string }) {
 
         <div
           ref={viewportRef}
+          onWheel={onWheel}
           className="relative min-w-0 flex-1 overflow-hidden"
         >
+          {/* The strip. In overview it stays mounted and keeps streaming; it
+              only shrinks and dims, and the card layer above takes the input.
+              Nothing unmounts, so leaving overview reloads no timelines. */}
           <div
-            className="absolute inset-0 origin-center transition-transform duration-300 ease-out"
+            className={cn(
+              "absolute inset-0 origin-center transition-all duration-300 ease-out",
+              overview && "pointer-events-none opacity-20",
+            )}
             style={{ transform: `scale(${overview ? overviewScale : 1})` }}
           >
             <div
@@ -1030,28 +1155,6 @@ function CascadePanel({ subPath }: { subPath: string }) {
                     )}
                     style={{ top: ri * stride }}
                   >
-                    {overview && (
-                      <div
-                        className="absolute left-3 flex items-center gap-2 font-medium text-muted-foreground"
-                        style={{
-                          fontSize: labelPx,
-                          top: -Math.round(labelPx * 1.5),
-                        }}
-                      >
-                        {row.name}
-                        <span
-                          className="rounded border border-border bg-foreground/[0.06] px-1.5 font-mono"
-                          style={{ fontSize: labelPx * 0.62 }}
-                        >
-                          {row.kind === "pinned"
-                            ? "pinned"
-                            : row.kind === "unsectioned"
-                              ? "none"
-                              : MODE_LABEL[mode]}
-                        </span>
-                      </div>
-                    )}
-
                     <div
                       className="absolute inset-y-0 flex items-stretch gap-2.5 py-3 transition-transform duration-300 ease-out"
                       style={{
@@ -1193,6 +1296,116 @@ function CascadePanel({ subPath }: { subPath: string }) {
             </div>
           </div>
 
+          {/* overview — the card layer.
+              Zoomed out, a column is 80px wide and 350 tall, so a title inside
+              it wraps into an unreadable tower however large the type is. The
+              cards therefore leave the scaled world entirely and draw at
+              normal size, in the same rows and the same order, over the strip
+              they describe. */}
+          {overview && (
+            <div
+              ref={overlayRef}
+              className="absolute inset-0 z-20 overflow-y-auto bg-background/70 p-3"
+            >
+              {rows.map((row, ri) => {
+                const focus = focusOf(row);
+                const current = ri === safeRowIdx;
+                const showInsert =
+                  dragging?.overRow === ri && dragging.insertAt !== null;
+                return (
+                  <section
+                    key={row.key}
+                    data-row
+                    className={cn(
+                      "mb-1 rounded-xl border p-2 transition-colors",
+                      current
+                        ? "border-primary/35 bg-primary/[0.06]"
+                        : "border-transparent",
+                      dragging?.overRow === ri &&
+                        dragging.fromRow !== ri &&
+                        (acceptsDrop(row)
+                          ? "border-success bg-success/10"
+                          : "border-destructive bg-destructive/10"),
+                    )}
+                  >
+                    <div className="mb-1.5 flex items-center gap-2 px-0.5">
+                      <span className="w-3 flex-none font-mono text-[10px] text-muted-foreground/70">
+                        {ri + 1}
+                      </span>
+                      <span className="text-xs font-medium">{row.name}</span>
+                      <span className="rounded border border-border bg-foreground/[0.06] px-1.5 font-mono text-[10px] text-muted-foreground">
+                        {row.kind === "pinned"
+                          ? "pinned"
+                          : row.kind === "unsectioned"
+                            ? "none"
+                            : MODE_LABEL[mode]}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground/70">
+                        {row.columns.length}
+                      </span>
+                    </div>
+                    <div className="flex items-stretch gap-2">
+                      {row.columns.map((column, ci) => (
+                        <div key={column.threadId} className="flex min-w-0">
+                          {showInsert && dragging.insertAt === ci && (
+                            <InsertMarker />
+                          )}
+                          <OverviewCard
+                            column={column}
+                            projectName={
+                              projectNames.get(column.projectId) ?? null
+                            }
+                            focused={current && ci === focus}
+                            dragged={
+                              dragging?.column.threadId === column.threadId
+                            }
+                            onMouseDown={() => {
+                              setRowIdx(ri);
+                              setDraftOpen(false);
+                              setFocus(row, ci);
+                            }}
+                            onPointerDown={(event) =>
+                              beginDrag(event, column, ri)
+                            }
+                            onClick={() => {
+                              // A drag that ends over a card is not a click
+                              // asking to zoom into it.
+                              if (suppressClickRef.current) {
+                                suppressClickRef.current = false;
+                                return;
+                              }
+                              setOverview(false);
+                            }}
+                          />
+                        </div>
+                      ))}
+                      {showInsert &&
+                        dragging.insertAt === row.columns.length && (
+                          <InsertMarker />
+                        )}
+                      <button
+                        onClick={() => {
+                          setRowIdx(ri);
+                          setFocus(row, row.columns.length);
+                          setOverview(false);
+                          setDraftOpen(true);
+                        }}
+                        className={cn(
+                          "flex min-h-[68px] w-[132px] flex-none items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground hover:text-foreground",
+                          current && focus === row.columns.length
+                            ? "border-primary/35 ring-1 ring-primary/35"
+                            : "border-input/70 hover:border-input",
+                        )}
+                      >
+                        + New thread
+                      </button>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+
           {/* move palette */}
           {palette && (
             <div className="absolute inset-0 z-30 flex justify-center bg-background/80 pt-[12vh] backdrop-blur-sm">
@@ -1289,6 +1502,75 @@ function CascadePanel({ subPath }: { subPath: string }) {
         <Key>1-9</Key> row
       </footer>
     </div>
+  );
+}
+
+/**
+ * One thread in the overview layer.
+ *
+ * Deliberately a fixed, landscape card at normal type size rather than a
+ * scaled-down column: a title needs width, and the column shape has none to
+ * give at overview scale. It shrinks (never grows) so a crowded row still fits
+ * across the panel without a scrollbar.
+ */
+function OverviewCard({
+  column,
+  projectName,
+  focused,
+  dragged,
+  onMouseDown,
+  onPointerDown,
+  onClick,
+}: {
+  column: CascadeColumn;
+  projectName: string | null;
+  focused: boolean;
+  dragged: boolean;
+  onMouseDown: () => void;
+  onPointerDown: (event: ReactPointerEvent) => void;
+  onClick: () => void;
+}) {
+  return (
+    <article
+      data-column
+      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
+      onClick={onClick}
+      title={column.title}
+      className={cn(
+        // Height comes from the content, not a constant: a two-line title
+        // with a branch under it must not clip. `items-stretch` on the row
+        // then squares every card in it off against the tallest.
+        "flex min-h-[68px] w-[186px] min-w-[92px] shrink cursor-grab flex-col gap-1 overflow-hidden rounded-lg border bg-card px-2.5 py-1.5 active:cursor-grabbing",
+        focused
+          ? "border-primary/35 shadow-md ring-1 ring-primary/35"
+          : "border-border hover:border-input",
+        dragged && "opacity-35",
+      )}
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "h-[7px] w-[7px] flex-none rounded-full",
+            statusTone(column),
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+          {projectName ?? "No project"}
+        </span>
+        {column.pinned && (
+          <span className="flex-none text-[10px] text-attention">★</span>
+        )}
+      </div>
+      <span className="line-clamp-2 text-[13px] font-medium leading-tight">
+        {column.title}
+      </span>
+      {column.branchName !== null && (
+        <span className="truncate font-mono text-[10px] text-muted-foreground">
+          {column.branchName}
+        </span>
+      )}
+    </article>
   );
 }
 
