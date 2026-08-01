@@ -854,6 +854,42 @@ interface PluginThreadListProps {
 }
 ```
 
+**Reading and acting on threads.** Two hooks back a replaced list:
+
+```tsx
+const { status, threads, projects } = experimental_useSidebarThreads();
+const actions = experimental_useSidebarThreadActions();
+
+// threads: PluginSidebarThread[] — id, title, parentThreadId, originKind,
+// providerId, activity counts, isUnread/isPinned, environment.branchName,
+// host ({ id, name } — the machine, useful when a thread has no branch),
+// timestamps, and
+// `indicator` (bb's resolved status kind) + `indicatorLabel` (its a11y string).
+// Draw your own glyph for `indicator`; the SDK ships no status component.
+// Treat an unknown indicator value as "none" — bb adds kinds over time.
+
+// Pull requests are per row and opt-in — a lookup hits the git host, so it is
+// deliberately NOT on the thread payload every sidebar loads:
+const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
+// → { number, title, url, state, attention } | null
+
+actions.open(id, { split: true }); // bb's split placement rules
+actions.openNewThread({ projectId }); // also sets the composer's project
+actions.setPinned(id, true);
+actions.setRead(id, false);
+actions.rename(id, "New title"); // silent; for inline editing
+actions.archive(id); // archives children too, closes their panes
+actions.requestDelete(id); // opens bb's delete confirmation
+```
+
+Destructive actions deliberately route through the host's own flow, so there
+is no silent `delete`: deletion is recursive, and only bb can show the
+confirmation that counts the child threads.
+
+Unit-test a list with `renderSlot(...)` from `@bb/plugin-sdk/testing/app`:
+seed rows with the `sidebarThreads` option and assert against
+`inspection.sidebarActionCalls`.
+
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or
 `Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` silently stop working:

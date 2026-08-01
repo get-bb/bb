@@ -7,7 +7,7 @@
 
 import { ReactNode, ComponentType } from 'react';
 import { RenderResult } from '@testing-library/react';
-import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginThreadListRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginContentScriptRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerMention, PluginComposerThreadRowStatus, BbNavigate, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState } from '@bb/plugin-sdk';
+import { PluginHomepageSectionRegistration, PluginSettingsSectionRegistration, PluginNavPanelRegistration, PluginThreadPanelActionRegistration, ComposerCustomization, PluginPendingInteractionRegistration, PluginSidebarFooterActionRegistration, PluginThreadListRegistration, PluginFileOpenerRegistration, PluginMessageDirectiveRegistration, PluginMessageActionRegistration, PluginContentScriptRegistration, PluginComposerScope, PluginComposerTextEffect, PluginComposerMention, PluginComposerThreadRowStatus, BbNavigate, PluginAppDefinition, PluginRpcContract, StandardSchemaV1InferInput, PluginRpcResult, PluginRealtimeConnectionState, PluginSidebarThreadsState, PluginSidebarPullRequest, PluginSidebarThreadActions } from '@bb/plugin-sdk';
 
 /**
  * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
@@ -76,6 +76,15 @@ interface ComposerLog {
     quotes: string[];
     mentions: PluginComposerMention[];
     focusCount: number;
+}
+/** One recorded `experimental_useSidebarThreadActions()` call. */
+interface SidebarActionCall {
+    method: keyof PluginSidebarThreadActions;
+    threadId?: string;
+    options?: Record<string, unknown>;
+    title?: string;
+    pinned?: boolean;
+    read?: boolean;
 }
 /**
  * Install the test runtime at `globalThis.__bbPluginRuntime.pluginSdkApp`.
@@ -167,6 +176,16 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
         scope?: PluginComposerScope;
         attachmentCount?: number;
     };
+    /**
+     * Threads and projects `experimental_useSidebarThreads()` reports. Omitted →
+     * a ready, empty list. Pass `{ status: "loading" }` to test that branch.
+     */
+    sidebarThreads?: Partial<PluginSidebarThreadsState>;
+    /**
+     * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
+     * by thread id. Omitted → every thread reports none.
+     */
+    sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
     /** Host acceptance for `useBbNavigate().openThreadPanel`. */
     openThreadPanel?: (options: Parameters<BbNavigate["openThreadPanel"]>[0]) => boolean;
 }
@@ -190,6 +209,8 @@ interface RenderedSlotInspectionState {
     readonly rpcCalls: RpcCall[];
     /** Every `useBbNavigate()` call, in order. */
     readonly navigateCalls: NavigateCall[];
+    /** Every `experimental_useSidebarThreadActions()` call, in order. */
+    readonly sidebarActionCalls: SidebarActionCall[];
     /** Everything written through `useComposer()`. */
     readonly composer: ComposerLog;
 }
@@ -212,4 +233,4 @@ declare function renderSlot<Props extends object, Contract extends PluginRpcCont
 }, props: Props, options?: RenderSlotOptions<Contract>): RenderedSlot;
 
 export { installTestPluginRuntime, loadPluginApp, mountPluginContentScripts, renderSlot };
-export type { CapturedPluginApp, ComposerLog, ContentScriptTestMountOptions, ContentScriptThreadRowStatusCall, MountedPluginContentScripts, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall };
+export type { CapturedPluginApp, ComposerLog, ContentScriptTestMountOptions, ContentScriptThreadRowStatusCall, MountedPluginContentScripts, NavigateCall, PluginAppSource, PluginRpcTestHandlers, RenderSlotOptions, RenderedSlot, RenderedSlotBehaviorDrivers, RenderedSlotInspectionState, RenderedSlotLifecycleControls, RpcCall, SidebarActionCall };

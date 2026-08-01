@@ -16,6 +16,7 @@ import {
   type SplitLayout,
   type PaneContent,
 } from "@/lib/split-layout";
+import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import {
   beginSplitDrag,
   decideThreadDrop,
@@ -132,38 +133,14 @@ export function useThreadRowSplitDrag({
   );
 
   const openInSplit = useCallback(() => {
-    const route = getThreadRoutePath({ projectId, threadId });
-    const layout = store.get(splitLayoutAtom);
-    // No split to grow (compact viewport, or a non-thread route with no layout):
-    // behave like an ordinary open.
-    if (!threadSplitsEnabled || isCompact || layout === null) {
-      navigate(route);
-      return;
-    }
-    const existing = findPaneByThread(layout.root, projectId, threadId);
-    if (existing !== null) {
-      const next = setFocus(layout, existing.paneId);
-      if (next !== layout) {
-        store.set(splitLayoutAtom, next);
-      }
-      navigate(route, { replace: true });
-      return;
-    }
-    // Same decision as a drag with a default right-edge target.
-    const decision = decideThreadDrop({
-      zone: "right",
-      threadAlreadyOpen: false,
-      atMaxPanes: countPanes(layout.root) >= MAX_PANES,
+    openThreadInSplit({
+      store,
+      navigate,
+      projectId,
+      threadId,
+      isCompact,
+      threadSplitsEnabled,
     });
-    const content: PaneContent = { kind: "thread", projectId, threadId };
-    const next =
-      decision.zone === "center"
-        ? replacePaneContent(layout, layout.focusedPaneId, content)
-        : splitPane(layout, layout.focusedPaneId, "right", content);
-    if (next !== layout) {
-      store.set(splitLayoutAtom, next);
-    }
-    navigate(route);
   }, [isCompact, navigate, projectId, store, threadId, threadSplitsEnabled]);
 
   return {

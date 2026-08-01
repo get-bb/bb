@@ -13,6 +13,11 @@ import {
   useRpc,
   useSettings,
 } from "./plugin-sdk-hooks";
+import {
+  useSidebarThreadActions,
+  useSidebarThreadPullRequest,
+  useSidebarThreads,
+} from "./plugin-sidebar-hooks";
 
 /**
  * The real `@bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
@@ -46,6 +51,11 @@ export const pluginSdkAppImplementation = {
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.
   experimental_NewThreadComposer: PluginNewThreadComposer,
+  // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
+  // plane, for plugins that replace the list itself.
+  experimental_useSidebarThreads: useSidebarThreads,
+  experimental_useSidebarThreadActions: useSidebarThreadActions,
+  experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
 } satisfies PluginSdkApp;
 
 /**

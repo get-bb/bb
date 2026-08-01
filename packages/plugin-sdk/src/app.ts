@@ -58,3 +58,11 @@ export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;
 export const useComposer = runtime.useComposer;
 export const useComposerView = runtime.useComposerView;
+// Sidebar surfaces for plugins that replace the thread list (experimental —
+// see docs/api_to_audit.md).
+export const experimental_useSidebarThreads =
+  runtime.experimental_useSidebarThreads;
+export const experimental_useSidebarThreadActions =
+  runtime.experimental_useSidebarThreadActions;
+export const experimental_useSidebarThreadPullRequest =
+  runtime.experimental_useSidebarThreadPullRequest;

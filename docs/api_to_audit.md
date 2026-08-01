@@ -159,3 +159,57 @@ and a disabled or uninstalled plugin gets its list back when it returns.
 5. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
+
+## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@bb/plugin-sdk/app`)
+
+**What it does.** Gives a plugin component the sidebar's live thread view and
+the actions that mutate it. The read hook wraps the host's own
+`useSidebarNavigation` query — the same cache and realtime subscriptions the
+built-in sidebar uses — so a plugin list costs no extra request and updates on
+exactly the same events. The action hook routes to the host's own mutations, so
+optimistic updates, toasts, and cache invalidation are identical.
+
+`PluginSidebarThread` is a deliberate copy of the fields a sidebar needs, not a
+re-export of the internal `ThreadListEntry`. `indicator` is
+`resolveThreadListIndicator` already run by the host, so plugins inherit bb's
+precedence (attention before work; plan and goal before the spinner) instead of
+reimplementing it, and `indicatorLabel` carries the matching accessible string.
+
+**Audit before stabilizing.**
+
+1. **DTO scope.** Confirm every field earns its place and that the copy stays
+   worth its maintenance over `ThreadListEntry`. `hasUnsubmittedDraft` is
+   deliberately absent (client-local composer state); confirm plugins do not
+   need it. `host` is resolved host-side to `{ id, name }` because a plugin
+   cannot turn a host id into a machine name — confirm resolution belongs here
+   rather than in a separate hosts hook, and that falling back to the id for an
+   unknown host is the right failure.
+2. **Indicator coupling.** `indicator` freezes bb's precedence into the
+   contract. Confirm new kinds can ship without breaking plugins, and that the
+   documented "treat unknown as none" rule is enough.
+3. **Unread semantics.** `isUnread` is plain read state, so it is true for
+   child threads and running threads that `isUnreadDoneThread` excludes by
+   design. Confirm that is the more useful primitive for a replaced list.
+4. **Scale.** Confirm one array of every thread is right at ten thousand
+   threads, versus a paged or windowed read.
+5. **Draft indicators.** `indicator` never reports "draft" or "working-draft",
+   because an unsubmitted draft is per-composer client state the host reads per
+   row. An idle unread thread holding a draft therefore reads as
+   "unread-success" where the built-in row paints "draft". Decide whether to
+   close that gap (a per-thread draft hook) or keep it documented.
+6. **Action surface.** Destructive and dialog-bearing actions route through
+   `useThreadActions()`, so `archive` closes panes and repairs the route, and
+   `requestDelete` opens bb's confirmation rather than deleting silently.
+   Confirm that split (silent `rename`, host-confirmed delete) is the right
+   line, and decide whether bulk actions and undo belong here.
+7. **Permission.** Decide whether `archive` and `requestDelete` need any plugin
+   permission gate beyond installation trust.
+8. **`experimental_useSidebarThreadPullRequest`.** Per-row and opt-in, because
+   a PR lookup hits the git host and therefore cannot sit on the payload every
+   sidebar loads. It reuses the host's environment-keyed query, so threads
+   sharing a worktree share one lookup and the host keeps its own staleness and
+   refetch rules. Before stabilizing, confirm: the narrowed DTO (number, title,
+   url, state, attention) is enough without leaking checks/review/mergeability;
+   a sidebar of many distinct worktrees does not stampede the git host; and
+   returning `null` for "lookup failed" (rather than an error) is the right
+   failure for a row that should simply show nothing.
