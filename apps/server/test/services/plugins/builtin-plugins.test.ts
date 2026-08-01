@@ -215,6 +215,7 @@ describe("builtin plugin reconciliation", () => {
       ["inline-vis", "AppWindow"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
+      ["t3sidebar", "PanelLeft"],
       ["workflows", "Workflow"],
     ]);
 

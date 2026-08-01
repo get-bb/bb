@@ -1,0 +1,104 @@
+import {
+  experimental_useSidebarThreadActions as useSidebarThreadActions,
+  type PluginSidebarThread,
+} from "@bb/plugin-sdk/app";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { RowContextMenu } from "./RowContextMenu";
+import { threadDisplayTitle } from "./inbox";
+import { snoozeWakeLabel } from "./lifecycle";
+
+/**
+ * A parked thread: one line instead of a card. Density comes from the user
+ * actually parking work, never from the sidebar guessing what still matters.
+ *
+ * Same structure as the card — a full-bleed anchor under the restore button,
+ * because a `<button>` inside an `<a>` is invalid interactive nesting.
+ */
+export function SlimRow({
+  thread,
+  isActive,
+  shelf,
+  wakeAt,
+  now,
+  onNavigate,
+  onRestore,
+}: {
+  thread: PluginSidebarThread;
+  isActive: boolean;
+  shelf: "snoozed" | "settled";
+  wakeAt: number | null;
+  now: number;
+  onNavigate: () => void;
+  onRestore: () => void;
+}) {
+  const actions = useSidebarThreadActions();
+  const title = threadDisplayTitle(thread);
+
+  return (
+    <RowContextMenu thread={thread}>
+      <li className="list-none">
+        <div
+          className={cn(
+            "group/slim relative flex h-8 items-center gap-2 rounded-md px-2.5 text-xs",
+            isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60",
+          )}
+        >
+          <a
+            data-sidebar-thread-shortcut-target=""
+            data-sidebar-thread-id={thread.id}
+            href="#"
+            aria-label={title}
+            onClick={(event) => {
+              event.preventDefault();
+              actions.open(thread.id, {
+                split: event.metaKey || event.ctrlKey,
+              });
+              onNavigate();
+            }}
+            className="absolute inset-0 cursor-pointer rounded-md"
+          />
+          <span
+            className={cn(
+              "pointer-events-none relative min-w-0 flex-1 truncate",
+              isActive ? "text-foreground" : "text-muted-foreground/70",
+              "group-hover/slim:text-foreground",
+            )}
+          >
+            {title}
+          </span>
+          {thread.isUnread ? (
+            <span
+              aria-label="Unread"
+              className="pointer-events-none relative size-[5px] shrink-0 rounded-full bg-muted-foreground/60"
+            />
+          ) : null}
+          {shelf === "snoozed" && wakeAt !== null ? (
+            // A snoozed row shows when it comes BACK, not when it was last
+            // touched: the return ticket is the row's whole story.
+            <span className="pointer-events-none relative shrink-0 tabular-nums text-muted-foreground/60">
+              {snoozeWakeLabel(wakeAt, now)}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            aria-label={
+              shelf === "snoozed" ? "Wake thread now" : "Un-settle thread"
+            }
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRestore();
+            }}
+            className="relative shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/slim:opacity-100"
+          >
+            <Icon
+              name={shelf === "snoozed" ? "Clock" : "ArrowTurnBackward"}
+              className="size-3.5"
+            />
+          </button>
+        </div>
+      </li>
+    </RowContextMenu>
+  );
+}
