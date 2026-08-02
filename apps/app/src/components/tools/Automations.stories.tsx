@@ -190,6 +190,9 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
 const PROJECT_AUTOMATION: AutomationResponse = {
   ...DETAIL_AUTOMATION,
   projectId: "proj_bb",
+  lastRunAt: now,
+  runCount: 3,
+  lastRunStatus: "running",
   execution: {
     mode: "agent",
     prompt: "Summarize yesterday's commits and open pull requests.",
@@ -213,6 +216,9 @@ const SCRIPT_AUTOMATION: AutomationResponse = {
   id: "sync-reports",
   name: "Sync reports",
   trigger: { triggerType: "once", runAt: now },
+  lastRunAt: now - 3_600_000,
+  runCount: 1,
+  lastRunStatus: "succeeded",
   execution: {
     mode: "script",
     script: `#!/usr/bin/env bash
@@ -259,6 +265,9 @@ const UNSCHEDULED_AUTOMATION: AutomationResponse = {
   id: "unscheduled-digest",
   name: "Unscheduled digest",
   nextRunAt: null,
+  lastRunAt: now - 3_600_000,
+  runCount: 1,
+  lastRunStatus: "succeeded",
 };
 
 /** A one-time automation that already ran and will not run again. */
@@ -274,31 +283,59 @@ const COMPLETED_AUTOMATION: AutomationResponse = {
   lastRunStatus: "succeeded",
 };
 
-const RUNS: AutomationRunResponse[] = (
-  [
-    ["succeeded", null],
-    ["failed", "Exit code 1: provider timed out"],
-    ["running", null],
-    ["skipped", null],
-  ] as const
-).map(([status, error], index) => ({
-  id: `run_${index}`,
-  automationId: DETAIL_AUTOMATION.id,
-  runMode: "agent",
-  threadId: `thr_${index}`,
-  status,
-  trigger: index === 0 ? "manual" : "schedule",
-  // The only skip reasons the product emits are "empty output" and
-  // "wakeAgent false" (script-runner.ts:101,110). The previous fixture invented
-  // an overlap-suppression string, which read as a second, confusing "running".
-  skipReason: status === "skipped" ? "empty output" : null,
-  error,
-  output: null,
-  exitCode: null,
-  scheduledFor: now,
-  startedAt: now,
-  finishedAt: status === "running" ? null : now + 42_000,
-}));
+function runsFor(
+  value: AutomationResponse,
+  statuses: readonly AutomationRunResponse["status"][],
+): AutomationRunResponse[] {
+  const script = value.execution.mode === "script";
+  const latestStartedAt = value.lastRunAt ?? now;
+  return statuses.map((status, index) => {
+    const startedAt = latestStartedAt - index * 3_600_000;
+    return {
+      id: `${value.id}_run_${index}`,
+      automationId: value.id,
+      runMode: value.execution.mode,
+      threadId: script ? null : `thr_${value.id}_${index}`,
+      status,
+      trigger:
+        value.trigger.triggerType === "once" && !value.enabled
+          ? "schedule"
+          : index === 0
+            ? "manual"
+            : "schedule",
+      skipReason: script && status === "skipped" ? "empty output" : null,
+      error:
+        status === "failed"
+          ? script
+            ? "Script exited with code 1"
+            : "Provider timed out"
+          : null,
+      output:
+        script && status === "succeeded"
+          ? "Reports written to ./reports"
+          : null,
+      exitCode:
+        script && status !== "running" ? (status === "failed" ? 1 : 0) : null,
+      scheduledFor: startedAt,
+      startedAt,
+      finishedAt: status === "running" ? null : startedAt + 42_000,
+    };
+  });
+}
+
+const PROJECT_RUNS = runsFor(PROJECT_AUTOMATION, [
+  "running",
+  "failed",
+  "succeeded",
+]);
+
+const PAUSED_AUTOMATION: AutomationResponse = {
+  ...DETAIL_AUTOMATION,
+  enabled: false,
+  lastRunAt: now - 3_600_000,
+  runCount: 2,
+  lastRunStatus: "failed",
+};
 
 function AutomationDetail({
   value = DETAIL_AUTOMATION,
@@ -383,14 +420,17 @@ export function DetailStates() {
           <AutomationDetail
             value={PROJECT_AUTOMATION}
             projectLabel="bb"
-            runs={RUNS}
+            runs={PROJECT_RUNS}
           />
         </DetailState>
         <DetailState
           name="Script automation"
           note="The exact stored script that will run, capped with a bottom fade and transient scrollbar. Environment-variable names are available without exposing values."
         >
-          <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
+          <AutomationDetail
+            value={SCRIPT_AUTOMATION}
+            runs={runsFor(SCRIPT_AUTOMATION, ["succeeded"])}
+          />
         </DetailState>
         <DetailState
           name="No next run"
@@ -398,7 +438,7 @@ export function DetailStates() {
         >
           <AutomationDetail
             value={UNSCHEDULED_AUTOMATION}
-            runs={RUNS.slice(0, 1)}
+            runs={runsFor(UNSCHEDULED_AUTOMATION, ["succeeded"])}
           />
         </DetailState>
         <DetailState
@@ -407,7 +447,7 @@ export function DetailStates() {
         >
           <AutomationDetail
             value={COMPLETED_AUTOMATION}
-            runs={RUNS.slice(0, 1)}
+            runs={runsFor(COMPLETED_AUTOMATION, ["succeeded"])}
           />
         </DetailState>
         <DetailState
@@ -433,8 +473,8 @@ export function DetailStates() {
           note="A disabled automation keeps its full definition and history."
         >
           <AutomationDetail
-            value={{ ...DETAIL_AUTOMATION, enabled: false }}
-            runs={RUNS.slice(0, 2)}
+            value={PAUSED_AUTOMATION}
+            runs={runsFor(PAUSED_AUTOMATION, ["failed", "succeeded"])}
           />
         </DetailState>
         <DetailState

@@ -487,7 +487,7 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - The builtin `ask-user-question` plugin gives providers that lack a native
   one an `AskUserQuestion` tool — multiple-choice questions answered in a
   composer form. It is disabled on fresh installations; enable it under
-  Tools → Plugins or with `bb plugin enable ask-user-question`.
+  Extensions → Plugins or with `bb plugin enable ask-user-question`.
 - It contributes no CLI command. Once enabled the tool appears in the agent's
   own tool list, and only for providers without a native equivalent: Claude
   Code threads keep using Claude's built-in `AskUserQuestion`, so the plugin
@@ -501,7 +501,7 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 
 - The builtin `workflows` plugin runs durable provider-independent JavaScript
   orchestration and is disabled on fresh installations. Enable it under
-  Tools → Plugins or with `bb plugin enable workflows` before using its
+  Extensions → Plugins or with `bb plugin enable workflows` before using its
   command.
 - Author and check sources with `bb workflows validate (--script <javascript>|
 --source <javascript>|--file <path>|--name <name>)`; start a background run
@@ -649,7 +649,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     useBbNavigate, useComposer for scoped text editing / quote / mention /
     focus access); components are vendored shadcn source the
     plugin owns. Installed
-    plugins and their settings also appear under Tools → Plugins.
+    plugins and their settings also appear under Extensions → Plugins.
 - Plugins can add top-level `bb` subcommands (e.g. `bb linear issues`). Run
   them directly — unknown `bb` commands are resolved against installed plugins
   and proxied to the server. Core command names always win. In agent threads,

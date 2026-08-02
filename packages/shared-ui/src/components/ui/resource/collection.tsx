@@ -430,6 +430,11 @@ type ResourceBrowseCardProps = {
   byline?: ReactNode;
   headerAction?: ReactNode;
   footerMeta?: ReactNode;
+  /**
+   * Keep the full-card pointer target out of the tab order when a header action
+   * already exposes the exact same operation to keyboard users.
+   */
+  pointerOnlyOpen?: boolean;
 } & (
   | { openLabel: string; onOpen: () => void }
   | { openLabel?: undefined; onOpen?: undefined }
@@ -443,6 +448,7 @@ export function ResourceBrowseCard({
   byline,
   headerAction,
   footerMeta,
+  pointerOnlyOpen = false,
   openLabel,
   onOpen,
 }: ResourceBrowseCardProps) {
@@ -459,7 +465,10 @@ export function ResourceBrowseCard({
       {onOpen ? (
         <button
           type="button"
-          aria-label={openLabel}
+          aria-label={pointerOnlyOpen ? undefined : openLabel}
+          aria-hidden={pointerOnlyOpen || undefined}
+          tabIndex={pointerOnlyOpen ? -1 : undefined}
+          data-resource-card-pointer-action={pointerOnlyOpen ? "" : undefined}
           onClick={onOpen}
           className="absolute inset-0 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
@@ -533,6 +542,7 @@ export function ResourceTemplateBrowseCard({
       description={description}
       descriptionLines={3}
       openLabel={`${actionLabel}: ${title}`}
+      pointerOnlyOpen
       headerAction={
         <ResourceActionButton
           label={`${actionLabel}: ${title}`}

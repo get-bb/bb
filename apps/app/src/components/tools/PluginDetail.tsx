@@ -54,7 +54,7 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginFrontendDiagnostics,
   subscribePluginFrontendDiagnostics,
-  type PluginFrontendFailure,
+  type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
@@ -213,12 +213,15 @@ export function pluginDetailBannerKind(
 
 function pluginHealthBannerState(
   plugin: PluginListItem,
-  frontendFailure: PluginFrontendFailure | null | undefined,
+  frontendDiagnostic: PluginFrontendDiagnostic | undefined,
 ): { plugin: PluginListItem; reloadable?: boolean } | null {
   if (!plugin.enabled) return null;
   if (pluginRuntimeStatusPresentation(plugin) !== null) return { plugin };
 
-  if (frontendFailure !== null && frontendFailure !== undefined) {
+  // An active generation can retain a disposer failure from the generation it
+  // replaced. That cleanup diagnostic does not mean the current frontend
+  // failed to start, so only a presently failed frontend earns this banner.
+  if (pluginFrontendDiagnosticRequiresFailureBanner(frontendDiagnostic)) {
     return {
       plugin: {
         ...plugin,
@@ -230,14 +233,20 @@ function pluginHealthBannerState(
   return null;
 }
 
+export function pluginFrontendDiagnosticRequiresFailureBanner(
+  diagnostic: PluginFrontendDiagnostic | undefined,
+): boolean {
+  return diagnostic?.status === "failed";
+}
+
 export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
   );
-  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
-  const banner = pluginHealthBannerState(plugin, frontendFailure);
+  const frontendDiagnostic = frontendDiagnostics.get(plugin.id);
+  const banner = pluginHealthBannerState(plugin, frontendDiagnostic);
   if (banner === null) return null;
   return (
     <PluginHealthBanner
@@ -301,11 +310,18 @@ export function PluginDetail({
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const canEditSource = pluginIsLocalSource(plugin);
   const canRemove = plugin.provenance !== "builtin";
-  // Only update-managed plugins have an install record; a built-in ships with
-  // bb and a path install is whatever is on disk right now.
-  const installedAt = hasUpdateManagement
-    ? (sourceQuery.data?.installedAt ?? null)
-    : null;
+  // Delivery policy comes from the source itself. Source detail is auxiliary:
+  // a missing or still-loading install date must never make a managed plugin
+  // look as though it ships with bb.
+  const updatesWithBb = plugin.source.startsWith("builtin:");
+  const installedAt = sourceQuery.data?.installedAt ?? null;
+  const installedValue = updatesWithBb
+    ? "Updates with bb"
+    : installedAt !== null
+      ? formatAbsoluteDate(installedAt)
+      : sourceQuery.isPending
+        ? "Loading…"
+        : "Install date unavailable";
   const hasReleaseControl =
     hasUpdateManagement && plugin.updateState.availableVersion !== null;
   const hasReleaseUpdate =
@@ -395,11 +411,9 @@ export function PluginDetail({
         >
           <PluginDetailTable compactLabelColumn>
             <PluginDetailFieldRow
-              label={installedAt === null ? "Delivery" : "Installed"}
+              label={updatesWithBb ? "Delivery" : "Installed"}
             >
-              {installedAt === null
-                ? "Updates with bb"
-                : formatAbsoluteDate(installedAt)}
+              {installedValue}
             </PluginDetailFieldRow>
             <PluginDetailFieldRow label="Version">
               <span className="font-mono text-xs">{plugin.version}</span>

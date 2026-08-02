@@ -56,18 +56,22 @@ export function stripModelBrandPrefix(
  * Reach the composer's output from a raw model id.
  *
  * `formatModelLabel` splits and rejoins on "-", so a raw id survives as
- * "Claude-Opus-5". Converting separators to spaces first gives the formatter
- * the display-name shape it expects, after which the shared rules apply
- * unchanged: "claude-opus-5" -> "Opus 5".
+ * "Claude-Opus-5". Strip the provider prefix while that delimiter is still
+ * present, then turn the remaining id separators into spaces. Doing this in
+ * the opposite order prevents the composer's `GPT-` rule from matching.
  */
 export function formatAutomationModelLabel(
   model: string,
   providerId: string,
 ): string {
-  return stripModelBrandPrefix(
-    formatModelLabel(model).split("-").join(" "),
-    providerId,
-  );
+  const formatted = formatModelLabel(model);
+  const withoutBrand = providerId.startsWith("claude")
+    ? formatted.replace(/^Claude-/i, "")
+    : stripModelBrandPrefix(formatted, providerId);
+  const withVersion = providerId.startsWith("claude")
+    ? withoutBrand.replace(/-(\d+)-(\d+)(?=-|$)/, "-$1.$2")
+    : withoutBrand;
+  return withVersion.split("-").join(" ");
 }
 
 /** Providers read as names in the composer, never as raw ids. */

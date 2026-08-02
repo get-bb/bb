@@ -248,7 +248,8 @@ export function PluginDetailReleaseStatus({
           {blockedReasons[0] === undefined
             ? `${blockedVersion} isn’t compatible with this bb.`
             : sentence(blockedReasons[0])}{" "}
-          {plugin.version} remains installed. Update bb, then return here.
+          {plugin.version} remains installed. Keep using it and check again when
+          a compatible plugin version is available.
         </p>
         {blockedReasons.length > 1 ? (
           <div className="mt-1.5">

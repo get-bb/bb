@@ -105,6 +105,12 @@ describe("UpdatePluginDialog", () => {
     ).toContain("text-warning");
     expect(screen.getByText("needs bb >= 0.15 — you have 0.14.1")).toBeTruthy();
     expect(
+      screen.getByText(
+        "Keep using 1.6.2 and check again when a compatible plugin version is available.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/once this bb meets/i)).toBeNull();
+    expect(
       (screen.getByRole("button", { name: "Update" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);

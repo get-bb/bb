@@ -121,6 +121,10 @@ describe("PluginDetailReleaseControl", () => {
     expect(screen.queryByText("Update blocked")).toBeNull();
     expect(blockedStatus.textContent).toContain("Requires bb >= 0.15.");
     expect(blockedStatus.textContent).toContain("1.6.2 remains installed");
+    expect(blockedStatus.textContent).toContain(
+      "check again when a compatible plugin version is available",
+    );
+    expect(blockedStatus.textContent).not.toContain("Update bb");
     expect(
       blockedStatus
         .querySelector('[data-icon="AlertTriangle"]')
@@ -128,6 +132,28 @@ describe("PluginDetailReleaseControl", () => {
     ).toContain("text-warning");
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not prescribe a bb upgrade for a candidate requiring an older bb", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseStatus
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            blockedVersion: "1.9.0",
+            blockedReasons: ["requires bb < 0.20, running bb is 0.21.0"],
+          },
+        })}
+      />,
+      { wrapper },
+    );
+
+    const blockedStatus = screen.getByRole("status", {
+      name: "Update blocked",
+    });
+    expect(blockedStatus.textContent).toContain("Requires bb < 0.20");
+    expect(blockedStatus.textContent).not.toContain("Update bb");
   });
 
   it("retries a failed update from the release action without opening a modal", async () => {

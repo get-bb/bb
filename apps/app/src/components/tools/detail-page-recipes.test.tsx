@@ -443,7 +443,7 @@ describe("Skill detail recipe", () => {
 
 const AUTOMATION: AutomationResponse = {
   id: "auto_1",
-  projectId: "proj_1",
+  projectId: "proj_personal",
   name: "Nightly digest",
   enabled: true,
   trigger: { triggerType: "schedule", cron: "0 9 * * *", timezone: "UTC" },
@@ -570,6 +570,9 @@ describe("Automation detail recipe", () => {
       '[data-disabled-automation-selector="Permission mode"]',
     ) as HTMLButtonElement;
     expect(accessSelector.disabled).toBe(true);
+    expect(accessSelector.getAttribute("aria-label")).toBe(
+      "Permission mode: Approve for me. Read only",
+    );
     expect(
       accessSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
@@ -586,6 +589,9 @@ describe("Automation detail recipe", () => {
       '[data-disabled-automation-selector="Provider and model"]',
     ) as HTMLButtonElement;
     expect(modelSelector.disabled).toBe(true);
+    expect(modelSelector.getAttribute("aria-label")).toBe(
+      "Provider and model: Claude, Opus 5. Read only",
+    );
     expect(
       modelSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
@@ -661,6 +667,68 @@ describe("Automation detail recipe", () => {
         "[data-disabled-automation-selector]:disabled",
       ),
     ).toHaveLength(2);
+  });
+
+  it("does not treat a project named Local as the personal project", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={{
+            ...AUTOMATION,
+            projectId: "proj_local_named",
+            execution: {
+              mode: "agent",
+              prompt: "Summarize yesterday's commits.",
+              providerId: "codex",
+              model: "gpt-5",
+              permissionMode: "auto",
+              environment: {
+                type: "host",
+                hostId: "host_local",
+                workspace: {
+                  type: "unmanaged",
+                  path: "/Users/you/Code/local-project",
+                },
+              },
+            },
+          }}
+          projectLabel="Local"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      container.querySelector('[aria-label="Project"] [data-icon="Folder"]'),
+    ).toBeTruthy();
+    const promptFooter = container.querySelector(
+      '[data-automation-prompt-footer=""]',
+    ) as HTMLElement;
+    expect(promptFooter.textContent).toContain("Local");
+    expect(
+      promptFooter.querySelectorAll('[data-option-display=""]'),
+    ).toHaveLength(2);
+    expect(
+      container
+        .querySelector(
+          '[data-disabled-automation-selector="Provider and model"]',
+        )
+        ?.getAttribute("aria-label"),
+    ).toBe("Provider and model: Codex, 5. Read only");
   });
 
   it("shows the stored script with capped overflow and no environment values", () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
 import type { AutomationsOverviewResponse } from "bb-plugin-automations/rpc-types";
 
@@ -61,28 +61,39 @@ describe("AutomationOverviewView", () => {
   });
 
   it("renders template actions as icon-only controls with specific labels", () => {
-    render(
+    const onCreateViaChat = vi.fn();
+    const { container } = render(
       <AutomationOverviewView
         entries={[]}
         error={null}
         onRetry={() => {}}
         onOpenDetail={() => {}}
         onEnabledChange={async () => {}}
-        onCreateViaChat={() => {}}
+        onCreateViaChat={onCreateViaChat}
         activeMode="browse"
         onModeChange={() => {}}
       />,
     );
 
-    const ciTemplateButtons = screen.getAllByRole("button", {
+    const ciTemplateButton = screen.getByRole("button", {
       name: "Use template: CI failure triage",
     });
-    const iconAction = ciTemplateButtons.find((button) =>
-      button.querySelector('[data-icon="MessageCirclePlus"]'),
-    );
+    expect(
+      ciTemplateButton.querySelector('[data-icon="MessageCirclePlus"]'),
+    ).toBeTruthy();
+    expect(ciTemplateButton.textContent).toBe("");
+    expect(
+      screen.getAllByRole("button", {
+        name: "Use template: CI failure triage",
+      }),
+    ).toHaveLength(1);
 
-    expect(iconAction).toBeTruthy();
-    expect(iconAction?.textContent).toBe("");
+    fireEvent.click(
+      container.querySelector(
+        '[data-resource-card-pointer-action=""]',
+      ) as HTMLElement,
+    );
+    expect(onCreateViaChat).toHaveBeenCalledOnce();
   });
 
   it("uses labelled metadata icons for project, schedule, and next run", async () => {
@@ -113,5 +124,33 @@ describe("AutomationOverviewView", () => {
 
     fireEvent.pointerMove(nextRunIcon);
     expect((await screen.findByRole("tooltip")).textContent).toBe("Next run");
+  });
+
+  it("does not treat a project named Local as the personal project", () => {
+    const namedLocalEntry = {
+      ...INSTALLED_AUTOMATIONS[0]!,
+      project: { id: "proj_named_local", name: "Local" },
+    };
+    const { container } = render(
+      <AutomationOverviewView
+        entries={[namedLocalEntry]}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    expect(
+      container.querySelector('[aria-label="Project"] [data-icon="Folder"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector(
+        '[aria-label="Local project"] [data-icon="Laptop"]',
+      ),
+    ).toBeNull();
   });
 });

@@ -112,8 +112,17 @@ export function getToolsRoutePath(): string {
   return TOOLS_ROUTE_PATH;
 }
 
-/** True on the Tools hub and every route nested under it. */
+/** True on Extensions and every canonical route nested under it. */
 export function isToolsRoutePath(pathname: string): boolean {
+  // Automations moved out of Extensions and into its plugin-owned panel. Keep
+  // the old /tools/automations URLs routable for redirects, but do not remember
+  // them as the user's last Extensions destination.
+  if (
+    pathname === LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH ||
+    matchPath(`${LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}/*`, pathname) !== null
+  ) {
+    return false;
+  }
   return (
     pathname === TOOLS_ROUTE_PATH ||
     matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null

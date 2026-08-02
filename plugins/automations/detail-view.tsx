@@ -75,6 +75,8 @@ export interface AutomationDetailViewProps {
   footer?: ReactNode;
 }
 
+const PERSONAL_PROJECT_ID = "proj_personal";
+
 interface AutomationLifecycleControlProps {
   checked: boolean;
   disabled?: boolean;
@@ -277,6 +279,7 @@ function AutomationEnvironmentVariables({
 interface DisabledAutomationSelectorProps {
   label: string;
   value: string;
+  accessibleValue?: string;
   compactValue?: string;
   leading?: ReactNode;
   title?: string;
@@ -286,6 +289,7 @@ interface DisabledAutomationSelectorProps {
 function DisabledAutomationSelector({
   label,
   value,
+  accessibleValue,
   compactValue,
   leading,
   title,
@@ -296,7 +300,7 @@ function DisabledAutomationSelector({
       type="button"
       variant="ghost"
       size="sm"
-      aria-label={label}
+      aria-label={`${label}: ${accessibleValue ?? value}. Read only`}
       disabled
       data-disabled-automation-selector={label}
       className={cn(
@@ -599,7 +603,7 @@ export function AutomationDetailView({
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
   const projectContextLabel = projectLabel;
-  const localProject = projectLabel === "Local";
+  const personalProject = automation.projectId === PERSONAL_PROJECT_ID;
 
   return (
     <ResourceDetailPage
@@ -615,8 +619,8 @@ export function AutomationDetailView({
         <ResourceMeta
           items={[
             <AutomationMetadataItem
-              icon={localProject ? "Laptop" : "Folder"}
-              iconLabel={localProject ? "Local project" : "Project"}
+              icon={personalProject ? "Laptop" : "Folder"}
+              iconLabel={personalProject ? "Local project" : "Project"}
               title={projectContextLabel}
             >
               {projectContextLabel}
@@ -698,6 +702,7 @@ export function AutomationDetailView({
                           execution.model,
                           execution.providerId,
                         )}
+                        accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
                         compactValue={formatAutomationModelLabel(
                           execution.model,
                           execution.providerId,
@@ -720,7 +725,7 @@ export function AutomationDetailView({
                 className="mt-1 flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                  {!localProject ? (
+                  {!personalProject ? (
                     <OptionDisplay
                       label="Project"
                       value={projectContextLabel}

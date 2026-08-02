@@ -27,8 +27,13 @@ import {
   PluginDetailBanners,
   PluginProvenancePill,
   pluginDetailBannerKind,
+  pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
-import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  pluginSourceQueryKey,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 
 const GITHUB_PLUGIN = {
   id: "github",
@@ -318,6 +323,39 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(releaseSection?.querySelector("col")?.className).toContain("w-28");
     expect(update.className).toContain("border");
     expect(update.className).toContain("h-6");
+  });
+
+  it("never describes a managed plugin with an unknown install date as bundled", () => {
+    const plugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "npm:@example/github@^1.0.0",
+      provenance: "direct",
+      catalogEntryId: null,
+    };
+    const { queryClient, wrapper: QueryClientWrapper } =
+      createQueryClientTestHarness();
+    queryClient.setQueryData(pluginSourceQueryKey(plugin.id), null);
+
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("rowheader", { name: "Installed" })).toBeTruthy();
+    expect(screen.getByText("Install date unavailable")).toBeTruthy();
+    expect(screen.queryByText("Updates with bb")).toBeNull();
   });
 
   it.each([
@@ -612,6 +650,36 @@ describe("PluginDetail banner precedence", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  });
+
+  it("does not treat a cleanup failure from an active frontend as a startup failure", () => {
+    const activeWithCleanupFailure = {
+      pluginId: "github",
+      status: "active",
+      active: { generation: 2, hash: "v2", contentScriptIds: ["sync"] },
+      lastFailure: {
+        phase: "dispose",
+        message: "old generation cleanup failed",
+        scriptId: "sync",
+      },
+    } satisfies PluginFrontendDiagnostic;
+    const failedToLoad = {
+      pluginId: "github",
+      status: "failed",
+      active: null,
+      lastFailure: {
+        phase: "load",
+        message: "bundle import failed",
+        scriptId: null,
+      },
+    } satisfies PluginFrontendDiagnostic;
+
+    expect(
+      pluginFrontendDiagnosticRequiresFailureBanner(activeWithCleanupFailure),
+    ).toBe(false);
+    expect(pluginFrontendDiagnosticRequiresFailureBanner(failedToLoad)).toBe(
+      true,
+    );
   });
 });
 

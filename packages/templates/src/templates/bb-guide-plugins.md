@@ -23,7 +23,7 @@ agent task instructions; blank text contributes nothing.
 
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
-Tools → Plugins or run `bb plugin enable workflows` before using:
+Extensions → Plugins or run `bb plugin enable workflows` before using:
 
   bb workflows validate (--script '<javascript>'|--source '<javascript>'|
                         --file <path>|--name <name>)
@@ -195,7 +195,7 @@ added/updated/unchanged counts.
 BB Official plugins
 
 BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
-the app itself. They appear in Tools → Plugins → Browse and install with
+the app itself. They appear in Extensions → Plugins → Browse and install with
 one click from the local bundled copy: no network, no download, no separate
 release. Install from the CLI by bare name (`bb plugin install github`,
 `bb plugin install docs`, `bb plugin install memory`, or
@@ -284,7 +284,7 @@ bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
-(same data as `bb plugin config`) also appear under Tools → Plugins.
+(same data as `bb plugin config`) also appear under Extensions → Plugins.
 
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed

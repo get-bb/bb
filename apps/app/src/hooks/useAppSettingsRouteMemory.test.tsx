@@ -103,4 +103,24 @@ describe("useAppSettingsRouteMemory", () => {
       "/tools/plugins/ui-patterns?tab=settings#source",
     );
   });
+
+  it.each([
+    "/tools/automations",
+    "/tools/automations?view=browse",
+    "/tools/automations/browse",
+    "/tools/automations/proj_one/auto_one",
+    "/tools/automations/proj_one/auto_one/edit",
+  ])(
+    "does not remember the legacy automation location %s as Extensions",
+    (legacyAutomationPath) => {
+      render(
+        <MemoryRouter initialEntries={[legacyAutomationPath]}>
+          <RouteMemoryTestSurface />
+        </MemoryRouter>,
+      );
+
+      fireEvent.click(screen.getByRole("link", { name: "Tools" }));
+      expect(screen.getByTestId("location").textContent).toBe("/tools/skills");
+    },
+  );
 });

@@ -189,6 +189,7 @@ function OverviewRow({
     lastRunStatus: automation.lastRunStatus,
   });
   const projectLabel = automationProjectLabel(entry.project);
+  const personalProject = entry.project.id === PERSONAL_PROJECT_ID;
 
   return (
     <ResourceRow
@@ -198,8 +199,8 @@ function OverviewRow({
         <ResourceMeta
           items={[
             <AutomationMetadataItem
-              icon={projectLabel === "Local" ? "Laptop" : "Folder"}
-              iconLabel={projectLabel === "Local" ? "Local project" : "Project"}
+              icon={personalProject ? "Laptop" : "Folder"}
+              iconLabel={personalProject ? "Local project" : "Project"}
               title={projectLabel}
             >
               {projectLabel}

@@ -492,7 +492,7 @@ Plugin state lives under the data dir:
 
 BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside the
 app and install from the local bundled copy — no network, no remote catalog.
-Discover them with `bb plugin search` or Tools → Plugins → Browse; users
+Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
 cannot add, remove, or configure the official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
@@ -513,8 +513,8 @@ the plugin so it can be surfaced as needing attention.
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
-under Tools → Plugins or with `bb plugin enable workflows`. Its six
-settings accept base-10 integer strings through Tools → Plugins or
+under Extensions → Plugins or with `bb plugin enable workflows`. Its six
+settings accept base-10 integer strings through Extensions → Plugins or
 `bb plugin config workflows set <key> <value>`:
 
 | Key                    |    Default |       Allowed range | Behavior                                               |

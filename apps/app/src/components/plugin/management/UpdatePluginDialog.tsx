@@ -293,7 +293,8 @@ function UpdatePluginDialogContent({
             </div>
           </DetailsDisclosure>
           <p className="text-xs text-subtle-foreground">
-            You can update to {blocked} once this bb meets its requirements.
+            Keep using {plugin.version} and check again when a compatible plugin
+            version is available.
           </p>
         </div>
         <DialogFooter>
