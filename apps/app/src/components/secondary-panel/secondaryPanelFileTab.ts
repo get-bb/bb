@@ -20,8 +20,8 @@ export interface SecondaryPanelFileTab {
   isPinned?: boolean;
   leadingVisual: ReactNode;
   statusLabel: string | null;
-  /** Reveals controls associated with the tab when its title is hovered/focused. */
-  onReveal?: () => void;
+  /** Holds associated controls open while the tab is hovered or focused. */
+  onRevealHoldChange?: (isHeld: boolean) => void;
   onSelect: () => void;
   onClose: () => void;
 }

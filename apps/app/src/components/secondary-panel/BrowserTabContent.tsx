@@ -284,17 +284,16 @@ function BrowserChrome({
       className={cn(
         "relative shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
         SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
-        "transition-[height] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         visibility.isExpanded ? "h-11 max-md:pointer-coarse:h-[52px]" : "h-1",
       )}
     >
       <div
         data-testid="browser-tab-nav-controls"
         className={cn(
-          "absolute inset-x-0 top-0 flex h-11 items-center gap-1 px-2 py-1.5 transition-opacity duration-120 motion-reduce:transition-none max-md:pointer-coarse:h-[52px]",
+          "absolute inset-x-0 top-0 flex h-11 items-center gap-1 px-2 py-1.5 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none max-md:pointer-coarse:h-[52px]",
           visibility.isExpanded
-            ? "opacity-100"
-            : "pointer-events-none opacity-0",
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-1 opacity-0",
         )}
       >
         <NavButton
@@ -589,13 +588,24 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const [isTabRevealHeld, setIsTabRevealHeld] = useState(false);
   const browserChromeVisibility = useBrowserChromeAutoCollapse({
-    holdExpanded: isEditing || (state?.isLoading ?? false),
+    holdExpanded:
+      isEditing || isTabRevealHeld || (state?.isLoading ?? false),
   });
   const noteBrowserChromeActivity = browserChromeVisibility.onActivity;
+  const handleTabRevealHoldChange = useCallback(
+    (isHeld: boolean) => {
+      if (isHeld) {
+        noteBrowserChromeActivity();
+      }
+      setIsTabRevealHeld(isHeld);
+    },
+    [noteBrowserChromeActivity],
+  );
   useEffect(
-    () => subscribeBrowserChromeReveal(tabId, noteBrowserChromeActivity),
-    [noteBrowserChromeActivity, tabId],
+    () => subscribeBrowserChromeReveal(tabId, handleTabRevealHoldChange),
+    [handleTabRevealHoldChange, tabId],
   );
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.

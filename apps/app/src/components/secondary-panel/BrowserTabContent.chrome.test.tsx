@@ -20,7 +20,7 @@ import {
   BROWSER_CHROME_IDLE_COLLAPSE_MS,
   BrowserTabContent,
 } from "./BrowserTabContent";
-import { requestBrowserChromeReveal } from "./browserChromeReveal";
+import { setBrowserChromeRevealHeld } from "./browserChromeReveal";
 
 const desktopInfo = {
   lastCheckedAt: null,
@@ -215,8 +215,9 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     const chrome = expectChromeState("expanded");
     const controls = screen.getByTestId("browser-tab-nav-controls");
 
-    expect(chrome.classList).toContain("motion-reduce:transition-none");
+    expect(chrome.classList).not.toContain("transition-[height]");
     expect(controls.classList).toContain("motion-reduce:transition-none");
+    expect(controls.classList).toContain("transition-[opacity,transform]");
 
     act(() => harness.emitState(browserState({ canGoBack: true })));
     fireEvent.pointerEnter(chrome);
@@ -228,14 +229,22 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     expectChromeState("collapsed");
   });
 
-  it("reveals navigation when the active browser tab requests it", () => {
+  it("holds navigation open while the active browser tab is hovered or focused", () => {
     const harness = createBrowserChromeHarness();
     renderBrowserChrome(harness, "https://example.com/docs");
 
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
     expectChromeState("collapsed");
 
-    act(() => requestBrowserChromeReveal("browser:test"));
+    act(() => setBrowserChromeRevealHeld("browser:test", true));
     expectChromeState("expanded");
+    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS * 2);
+    expectChromeState("expanded");
+
+    act(() => setBrowserChromeRevealHeld("browser:test", false));
+    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS - 1);
+    expectChromeState("expanded");
+    advanceIdleTimer(1);
+    expectChromeState("collapsed");
   });
 });

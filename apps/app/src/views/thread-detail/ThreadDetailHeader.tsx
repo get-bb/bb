@@ -47,7 +47,11 @@ interface ThreadHeaderGitAction {
 }
 
 interface ThreadDetailHeaderProps {
-  actionsMenu: ReactNode;
+  /**
+   * Renders the thread menu. Responsive header actions belong in the menu only
+   * while a narrow split hides their inline controls.
+   */
+  actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
   isSecondaryPanelOpen: boolean;
   /** Closes this pane; only provided when the layout is split (>1 pane). */
   onClosePane?: () => void;
@@ -178,7 +182,7 @@ export function ThreadDetailHeader({
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
         >
-          {actionsMenu}
+          {actionsMenu(usesResponsiveActionOverflow)}
         </span>
       )}
     </>

@@ -558,7 +558,7 @@ function FileTab({
       title={title}
       isActive={tab.isActive}
       activeTreatment={activeTreatment}
-      onReveal={tab.onReveal}
+      onRevealHoldChange={tab.onRevealHoldChange}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
       closeAction={

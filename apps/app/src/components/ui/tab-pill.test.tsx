@@ -46,14 +46,14 @@ describe("TabPill", () => {
     expect(shell?.classList).not.toContain("bg-muted");
   });
 
-  it("reveals associated controls from pointer or keyboard intent", () => {
-    const onReveal = vi.fn();
+  it("holds associated controls until overlapping pointer and keyboard intent both end", () => {
+    const onRevealHoldChange = vi.fn();
     render(
       <TabPill
         label="Example Docs"
         title="Example Docs"
         isActive
-        onReveal={onReveal}
+        onRevealHoldChange={onRevealHoldChange}
         onSelect={vi.fn()}
         closeAction={null}
       />,
@@ -63,7 +63,12 @@ describe("TabPill", () => {
     if (tab.parentElement === null) throw new Error("Tab shell missing");
     fireEvent.pointerEnter(tab.parentElement);
     fireEvent.focus(tab);
+    fireEvent.pointerLeave(tab.parentElement);
 
-    expect(onReveal).toHaveBeenCalledTimes(2);
+    expect(onRevealHoldChange.mock.calls).toEqual([[true]]);
+
+    fireEvent.blur(tab);
+
+    expect(onRevealHoldChange.mock.calls).toEqual([[true], [false]]);
   });
 });

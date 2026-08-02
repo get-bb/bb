@@ -91,7 +91,14 @@ describe("ThreadDetailHeader", () => {
     render(
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
-          actionsMenu={<span>Thread menu</span>}
+          actionsMenu={(includeResponsiveActions) => (
+            <>
+              <span>Thread menu</span>
+              {includeResponsiveActions ? (
+                <span>Responsive menu actions</span>
+              ) : null}
+            </>
+          )}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -108,11 +115,61 @@ describe("ThreadDetailHeader", () => {
     expect(screen.queryByText("Open workspace")).toBeNull();
     expect(screen.queryByText("Commit")).toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
+    expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
     expect(closePane.classList).toContain("header-reduced-glyph-button");
     expect(
       closePane.querySelector('[data-icon="CloseThreadPane"]'),
     ).not.toBeNull();
+  });
+
+  it("keeps responsive controls inline and out of the menu for wide split panes", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      bottom: 40,
+      height: 40,
+      left: 0,
+      right: 720,
+      top: 0,
+      width: 720,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const splitContext: PaneContextValue = {
+      ...PANE_CONTEXT,
+      isFocused: true,
+      isSplitPane: true,
+      beginPaneDrag: vi.fn(),
+    };
+
+    render(
+      <PaneContext.Provider value={splitContext}>
+        <ThreadDetailHeader
+          actionsMenu={(includeResponsiveActions) => (
+            <>
+              <span>Thread menu</span>
+              {includeResponsiveActions ? (
+                <span>Responsive menu actions</span>
+              ) : null}
+            </>
+          )}
+          isSecondaryPanelOpen={false}
+          onClosePane={vi.fn()}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[
+            { label: "Commit", target: { kind: "commit" } },
+          ]}
+          threadTitle="Wide split"
+          workspaceOpenButton={<button>Open workspace</button>}
+        />
+      </PaneContext.Provider>,
+    );
+
+    expect(screen.getByText("Open workspace")).not.toBeNull();
+    expect(screen.getByText("Commit")).not.toBeNull();
+    expect(screen.getByText("Thread menu")).not.toBeNull();
+    expect(screen.queryByText("Responsive menu actions")).toBeNull();
   });
 
   it("renders serialized mentions in the thread title as pills", () => {

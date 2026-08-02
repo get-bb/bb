@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  getSecondaryPanelChromeStackClassName,
   getReservedInlinePanelToggleClassName,
   resolveCollapsedPanelTrafficLightReserveClassName,
 } from "./ThreadSecondaryPanel";
-import { MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS } from "@/lib/bb-desktop";
+import {
+  CHROME_ROW_CLASS,
+  CHROME_ROW_HEIGHT_CLASS,
+  MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
+} from "@/lib/bb-desktop";
+
+describe("getSecondaryPanelChromeStackClassName", () => {
+  it("reserves the combined navigation and active Diff toolbar height", () => {
+    const className = getSecondaryPanelChromeStackClassName(true);
+
+    expect(className).toContain("flex");
+    expect(className).toContain("flex-col");
+    expect(className).toContain("shrink-0");
+    expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
+    expect(CHROME_ROW_CLASS).toContain(CHROME_ROW_HEIGHT_CLASS);
+  });
+});
 
 // The reserved inline-toggle slot sits under root compose's pinned right-panel
 // toggle. On macOS desktop the top chrome is an [app-region:drag] window-drag

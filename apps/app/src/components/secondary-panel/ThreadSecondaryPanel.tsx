@@ -59,7 +59,6 @@ import {
 } from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
-  CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
@@ -117,6 +116,21 @@ export function getReservedInlinePanelToggleClassName(
   return cn(
     SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
     usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
+  );
+}
+
+/**
+ * Keeps the navigation row and optional Diff toolbar in normal document flow.
+ * The stack must reserve the combined height of both rows before the flexible
+ * panel body begins; only the navigation row owns the fixed chrome-row height.
+ */
+export function getSecondaryPanelChromeStackClassName(
+  hasGitDiffToolbar: boolean,
+): string {
+  return cn(
+    "shrink-0",
+    hasGitDiffToolbar && "flex flex-col",
+    SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
 
@@ -409,6 +423,7 @@ export function ThreadSecondaryPanel({
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
+  const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
   // Inline, the panel slides out at a fixed width (clipped by the panel), so the
   // body content must stay mounted through the close animation (and across
@@ -565,10 +580,7 @@ export function ThreadSecondaryPanel({
     >
       <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
       <div
-        className={cn(
-          CHROME_ROW_HEIGHT_CLASS,
-          SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
-        )}
+        className={getSecondaryPanelChromeStackClassName(showsGitDiffToolbar)}
       >
         <div
           data-testid="thread-secondary-panel-top-chrome"
@@ -719,7 +731,7 @@ export function ThreadSecondaryPanel({
             ) : null}
           </div>
         </div>
-        {isDiffPanelActive && !hasActiveFileTab ? (
+        {showsGitDiffToolbar ? (
           <GitDiffToolbar
             selectionValue={gitDiffSelectValue}
             selectionOptions={gitDiffSelectOptions}

@@ -139,7 +139,7 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
-import { requestBrowserChromeReveal } from "@/components/secondary-panel/browserChromeReveal";
+import { setBrowserChromeRevealHeld } from "@/components/secondary-panel/browserChromeReveal";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import {
   canStartNativeSideChat,
@@ -1464,7 +1464,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
                 />
               ),
               statusLabel: null,
-              onReveal: () => requestBrowserChromeReveal(tab.id),
+              onRevealHoldChange: (isHeld) =>
+                setBrowserChromeRevealHeld(tab.id, isHeld),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -2424,14 +2425,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ) : undefined;
   const timelineHeader = (
     <ThreadDetailHeader
-      actionsMenu={
+      actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
           thread={thread}
           triggerClassName={HEADER_ICON_BUTTON_CLASS}
           align="end"
-          responsiveActions={responsiveHeaderActions}
+          responsiveActions={
+            includeResponsiveActions ? responsiveHeaderActions : undefined
+          }
         />
-      }
+      )}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
