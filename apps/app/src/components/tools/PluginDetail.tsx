@@ -5,6 +5,7 @@ import {
   ResourceDetailIncludesSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
+  ResourceDetailReleaseSection,
   ResourceDetailStack,
   ResourceInstallControl,
   ResourceListState,
@@ -24,6 +25,7 @@ import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginDetailReleaseControl,
+  PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
@@ -37,6 +39,11 @@ import {
   PluginSchedules,
   PluginServices,
 } from "@/components/tools/PluginCapabilities";
+import {
+  PluginDetailFieldRow,
+  PluginDetailTable,
+} from "@/components/tools/plugin-detail-table";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -137,18 +144,6 @@ export function CatalogPluginDetail({
       title={entry.displayName}
       titleMeta={<ProvenancePill label="BB Official" />}
       metadata={<span>{entry.category}</span>}
-      description={
-        entry.incompatibleReason === null ? undefined : (
-          <span className="inline-flex items-start gap-1.5" role="status">
-            <Icon
-              name="AlertTriangle"
-              className="mt-0.5 size-3.5 shrink-0 text-warning"
-              aria-hidden
-            />
-            <span>{entry.incompatibleReason}</span>
-          </span>
-        )
-      }
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
@@ -170,13 +165,30 @@ export function CatalogPluginDetail({
   );
 }
 
+/** Acquisition compatibility shown in the same page-level notice system. */
+export function CatalogPluginDetailBanner({
+  entry,
+}: {
+  entry: PluginCatalogSearchEntry;
+}) {
+  if (entry.incompatibleReason === null) return null;
+  return (
+    <PluginBannerBar
+      tone="warning"
+      icon="AlertTriangle"
+      title="Update bb to install this plugin"
+      detail={entry.incompatibleReason}
+    />
+  );
+}
+
 /**
- * The plugin page's highest-priority condition, as one full-width bar above
- * the page itself.
+ * The installed plugin page's highest-priority runtime condition.
  *
  * These render outside ToolsScrollPage rather than inside the detail column.
- * Only present-tense operational health belongs here; release opportunities
- * and history stay with the version controls in the detail header.
+ * Only present-tense operational health belongs in this selector; acquisition
+ * compatibility uses CatalogPluginDetailBanner, while release opportunities
+ * and history stay with the version controls in the detail page.
  */
 export type PluginDetailBannerKind =
   | "failed"
@@ -294,6 +306,13 @@ export function PluginDetail({
   const installedAt = hasUpdateManagement
     ? (sourceQuery.data?.installedAt ?? null)
     : null;
+  const hasReleaseControl =
+    hasUpdateManagement && plugin.updateState.availableVersion !== null;
+  const hasReleaseUpdate =
+    hasUpdateManagement &&
+    (plugin.updateState.availableVersion !== null ||
+      plugin.updateState.blockedVersion !== null ||
+      plugin.updateState.lastFailure !== null);
 
   const pluginName = plugin.name ?? plugin.id;
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
@@ -342,26 +361,7 @@ export function PluginDetail({
       // button that swapped to a red Uninstall on hover — a status that
       // deleted on click, at the same weight as the enable toggle.
       titleMeta={<PluginProvenancePill plugin={plugin} />}
-      // Version and install date are identity, so they sit with the identity.
-      // They had been a two-row bordered table inside About, carrying the same
-      // weight as Capabilities and the activity collections for two trivial
-      // facts, and
-      // floated hard right with a void between them and the description.
-      metadata={
-        <>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
-            <span className="font-mono">{plugin.version}</span>
-            <span aria-hidden>·</span>
-            {installedAt === null ? (
-              <span>Updates with bb</span>
-            ) : (
-              <span>Installed {formatAbsoluteDate(installedAt)}</span>
-            )}
-          </span>
-          <PluginPath path={plugin.rootDir} />
-        </>
-      }
-      actions={<PluginDetailReleaseControl plugin={plugin} />}
+      metadata={<PluginPath path={plugin.rootDir} />}
       lifecycleControl={
         <Switch
           checked={plugin.enabled}
@@ -380,17 +380,41 @@ export function PluginDetail({
       }
     >
       <ResourceDetailStack>
-        {/*
-          About is prose, nothing else. Release used to be a second headed
-          section, then a fact table beside this paragraph; both gave a rank-1
-          surface to two facts and out-competed Capabilities, which is what the
-          page is for. The facts now sit in the header, with the identity.
-        */}
         <ResourceDetailOverviewSection label="About">
           <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
             {plugin.description ?? "This plugin does not describe itself."}
           </p>
         </ResourceDetailOverviewSection>
+        <ResourceDetailReleaseSection
+          label="Release"
+          actions={
+            hasReleaseControl ? (
+              <PluginDetailReleaseControl plugin={plugin} />
+            ) : undefined
+          }
+        >
+          <PluginDetailTable compactLabelColumn>
+            <PluginDetailFieldRow
+              label={installedAt === null ? "Delivery" : "Installed"}
+            >
+              {installedAt === null
+                ? "Updates with bb"
+                : formatAbsoluteDate(installedAt)}
+            </PluginDetailFieldRow>
+            <PluginDetailFieldRow label="Version">
+              <span className="font-mono text-xs">{plugin.version}</span>
+            </PluginDetailFieldRow>
+            {hasReleaseUpdate ? (
+              <PluginDetailFieldRow
+                label="Update"
+                stackOnNarrow
+                compactLabelColumn
+              >
+                <PluginDetailReleaseStatus plugin={plugin} />
+              </PluginDetailFieldRow>
+            ) : null}
+          </PluginDetailTable>
+        </ResourceDetailReleaseSection>
         <ResourceDetailIncludesSection label="Capabilities">
           <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
         </ResourceDetailIncludesSection>

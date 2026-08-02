@@ -96,11 +96,12 @@ function renderPlugin(plugin: PluginListItem) {
 }
 
 describe("Plugin detail recipe", () => {
-  it("folds Release into About, so Capabilities is the second section", () => {
+  it("places quiet release facts between About and Capabilities", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["release", "Release"],
       ["includes", "Capabilities"],
     ]);
   });
@@ -124,6 +125,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["release", "Release"],
       ["includes", "Capabilities"],
       ["configuration", "Settings"],
       ["activity", "Background services"],
@@ -139,6 +141,7 @@ describe("Plugin detail recipe", () => {
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
+      ["release", "Release"],
       ["includes", "Capabilities"],
       ["activity", "Background services"],
     ]);

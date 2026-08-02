@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -9,6 +15,7 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import {
   PluginDetailReleaseControl,
+  PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
 
@@ -73,7 +80,7 @@ describe("pluginHasUpdateSurfaces", () => {
 });
 
 describe("PluginDetailReleaseControl", () => {
-  it("offers a compatible update as a compact header action", () => {
+  it("offers a compatible update as a compact release action", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
       <PluginDetailReleaseControl
@@ -93,10 +100,10 @@ describe("PluginDetailReleaseControl", () => {
     expect(screen.queryByText("Compatible with your bb.")).toBeNull();
   });
 
-  it("opens compatibility details from the blocked header action", () => {
+  it("shows a blocked update inline without a modal or disabled action", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginDetailReleaseControl
+      <PluginDetailReleaseStatus
         plugin={plugin({
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -108,59 +115,100 @@ describe("PluginDetailReleaseControl", () => {
       { wrapper },
     );
 
-    const blockedAction = screen.getByRole("button", {
-      name: "View why update 1.9.0 is blocked",
+    const blockedStatus = screen.getByRole("status", {
+      name: "Update blocked",
     });
-    expect(blockedAction.className).not.toContain("text-warning");
+    expect(screen.queryByText("Update blocked")).toBeNull();
+    expect(blockedStatus.textContent).toContain("Requires bb >= 0.15.");
+    expect(blockedStatus.textContent).toContain("1.6.2 remains installed");
     expect(
-      blockedAction
+      blockedStatus
         .querySelector('[data-icon="AlertTriangle"]')
         ?.getAttribute("class"),
     ).toContain("text-warning");
-
-    fireEvent.click(blockedAction);
-    expect(
-      screen.getByRole("heading", { name: "Update Linear to 1.9.0?" }),
-    ).toBeTruthy();
-    expect(screen.getByText("requires bb >= 0.15")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("opens persisted rollback details from the failed-update action", () => {
+  it("retries a failed update from the release action without opening a modal", async () => {
+    let completeUpdate: (() => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          completeUpdate = () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  applied: true,
+                  from: { version: "1.6.2", display: "1.6.2" },
+                  to: { version: "1.9.0", display: "1.9.0" },
+                  outcome: "updated",
+                }),
+                {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                },
+              ),
+            );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginDetailReleaseControl
-        plugin={plugin({
-          updateState: {
-            ...EMPTY_PLUGIN_UPDATE_STATE,
-            availableVersion: "1.9.0",
-            lastFailure: {
-              version: "1.9.0",
-              at: null,
-              detail: "The plugin failed to load.",
+      <>
+        <PluginDetailReleaseControl
+          plugin={plugin({
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              availableVersion: "1.9.0",
+              lastFailure: {
+                version: "1.9.0",
+                at: null,
+                detail: "The plugin failed to load.",
+              },
             },
-          },
-        })}
-      />,
+          })}
+        />
+        <PluginDetailReleaseStatus
+          plugin={plugin({
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              availableVersion: "1.9.0",
+              lastFailure: {
+                version: "1.9.0",
+                at: null,
+                detail: "The plugin failed to load.",
+              },
+            },
+          })}
+        />
+      </>,
       { wrapper },
     );
 
-    const failedAction = screen.getByRole("button", {
-      name: "View failed update to 1.9.0",
-    });
-    expect(failedAction.className).not.toContain("text-destructive");
+    const failedStatus = screen.getByRole("status", { name: "Update failed" });
+    expect(screen.queryByText("Update failed")).toBeNull();
+    expect(failedStatus.textContent).toContain(
+      "bb couldn’t activate 1.9.0. It restored 1.6.2 and its data.",
+    );
     expect(
-      failedAction
+      failedStatus
         .querySelector('[data-icon="CircleX"]')
         ?.getAttribute("class"),
     ).toContain("text-destructive");
-
-    fireEvent.click(failedAction);
-
-    expect(screen.getByRole("heading", { name: "Update failed" })).toBeTruthy();
-    expect(screen.getByText("The plugin failed to load.")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Retry update to 1.9.0" }),
-    ).toBeTruthy();
+    expect(screen.queryByText("Technical details")).toBeNull();
+    expect(screen.queryByText("The plugin failed to load.")).toBeNull();
+    expect(failedStatus.querySelector("button")).toBeNull();
+    const retry = screen.getByRole("button", {
+      name: "Retry update to 1.9.0",
+    });
+    fireEvent.click(retry);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(retry.getAttribute("aria-busy")).toBe("true");
+    expect(retry).toHaveProperty("disabled", true);
+    completeUpdate?.();
+    await waitFor(() => expect(retry.getAttribute("aria-busy")).toBe("false"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("renders nothing for builtins (their update channel is the bb release)", () => {

@@ -16,12 +16,20 @@ import { cn } from "@bb/shared-ui/lib/utils";
  * easy to scan. Background services use their own labelled Status/Service table
  * because status is a distinct attribute rather than descriptive copy.
  */
-export function PluginDetailTable({ children }: { children: ReactNode }) {
+export function PluginDetailTable({
+  children,
+  compactLabelColumn = false,
+}: {
+  children: ReactNode;
+  compactLabelColumn?: boolean;
+}) {
   return (
     <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
       <table className="w-full max-w-full table-fixed border-collapse text-left">
         <colgroup>
-          <col className="w-40 md:w-48" />
+          <col
+            className={compactLabelColumn ? "w-28 sm:w-32" : "w-40 md:w-48"}
+          />
           <col />
         </colgroup>
         <tbody className="divide-y divide-border">{children}</tbody>
@@ -38,6 +46,70 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 // made these rows stand 10px taller than every other row in the app.
 //
 const CELL = "py-1.5 align-top text-sm leading-snug";
+
+/** Label/value rows that use the same connected grid as plugin collections. */
+export function PluginDetailFieldRow({
+  label,
+  children,
+  stackOnNarrow = false,
+  compactLabelColumn = false,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  stackOnNarrow?: boolean;
+  compactLabelColumn?: boolean;
+}) {
+  if (stackOnNarrow) {
+    return (
+      <tr>
+        <th
+          scope="row"
+          colSpan={2}
+          aria-label={typeof label === "string" ? label : undefined}
+          className="p-0 text-left font-normal"
+        >
+          <div
+            className={cn(
+              "sm:grid",
+              compactLabelColumn
+                ? "sm:grid-cols-[8rem_minmax(0,1fr)]"
+                : "sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]",
+            )}
+          >
+            <span
+              className={cn(
+                CELL,
+                "block border-b border-border px-4 text-xs text-muted-foreground sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
+              )}
+            >
+              {label}
+            </span>
+            <div className="px-4 py-3 text-foreground sm:py-1.5 sm:pl-2 sm:pr-4">
+              {children}
+            </div>
+          </div>
+        </th>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <th
+        scope="row"
+        className={cn(
+          CELL,
+          "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
+        )}
+      >
+        {label}
+      </th>
+      <td className={cn(CELL, "pl-2 pr-4 text-left text-foreground")}>
+        {children}
+      </td>
+    </tr>
+  );
+}
 
 /**
  * A glyph whose tooltip names what it stands for.

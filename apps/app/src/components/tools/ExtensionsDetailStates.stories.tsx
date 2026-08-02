@@ -32,11 +32,15 @@ import {
 } from "@/lib/plugin-slots";
 import {
   CatalogPluginDetail,
+  CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
   PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
-import { ProviderLogo } from "@/components/tools/SkillsCollection";
+import {
+  ProviderLogo,
+  SkillProvenanceTooltip,
+} from "@/components/tools/SkillsCollection";
 import {
   SkillDetailView,
   SkillOwnershipBadge,
@@ -300,7 +304,13 @@ export function SkillDetailStates() {
         <Skill
           titleBadge={{
             label: "Included",
-            tooltip: "Included with GitHub (bb plugin)",
+            tooltip: (
+              <SkillProvenanceTooltip
+                prefix="Included with"
+                providerId={null}
+                name="GitHub plugin"
+              />
+            ),
           }}
         />
       </State>
@@ -313,7 +323,13 @@ export function SkillDetailStates() {
           provider="claude-code"
           titleBadge={{
             label: "Imported",
-            tooltip: "Discovered in Claude Code",
+            tooltip: (
+              <SkillProvenanceTooltip
+                prefix="Discovered from"
+                providerId="claude-code"
+                name="Claude Code"
+              />
+            ),
           }}
         />
       </State>
@@ -503,9 +519,9 @@ const AWKWARD_PLUGIN: PluginListItem = {
 };
 
 /**
- * Release is not always two quiet facts. An offered update, a rolled-back
- * update, and an update held back by compatibility each add a surface around
- * those facts. They are built on the minimal plugin so the state under review
+ * Release is not always two passive values. An offered update, a rolled-back
+ * update, and an update held back by compatibility each add a Release-section
+ * state. They are built on the minimal plugin so the state under review
  * is Release itself, and each carries its own id so the seeded source query
  * covers it without a backend request.
  */
@@ -571,6 +587,60 @@ const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
   },
 };
 
+/**
+ * Runs the real persisted-failure Retry path long enough to inspect its pending
+ * state. Success clears the failure and advances the rendered version before
+ * the production success toast appears, matching the list refresh that follows
+ * a real update.
+ */
+function FailedReleaseLifecycle() {
+  const [plugin, setPlugin] = useState(UPDATE_FAILED_PLUGIN);
+
+  useEffect(() => {
+    const originalFetch = globalThis.fetch;
+    let cancelled = false;
+    globalThis.fetch = async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (!url.endsWith(`/plugins/${UPDATE_FAILED_PLUGIN.id}/update`)) {
+        return originalFetch.call(globalThis, input, init);
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 8_000));
+      if (!cancelled) {
+        setPlugin((current) => ({
+          ...current,
+          version: "1.5.0",
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            outcome: "current",
+            lastCheckAt: Date.now(),
+          },
+        }));
+      }
+      return new Response(
+        JSON.stringify({
+          applied: true,
+          from: { version: "1.4.0", display: "1.4.0" },
+          to: { version: "1.5.0", display: "1.5.0" },
+          outcome: "updated",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    return () => {
+      cancelled = true;
+      globalThis.fetch = originalFetch;
+    };
+  }, []);
+
+  return <Plugin plugin={plugin} />;
+}
+
 function Plugin({
   plugin,
   isLoading = false,
@@ -612,6 +682,9 @@ function CatalogPlugin({
   const [installOpen, setInstallOpen] = useState(false);
   return (
     <>
+      <div className="-mx-4 md:-mx-5">
+        <CatalogPluginDetailBanner entry={entry} />
+      </div>
       <div className="pt-3 md:pt-4">
         <CatalogPluginDetail
           entry={entry}
@@ -683,7 +756,7 @@ export function PluginDetailStates() {
 
         <State
           name="Before ownership · incompatible"
-          note="The same page keeps Install visible but disabled and explains the compatibility requirement beside the identity. The neutral copy uses an amber warning icon because no installation failed."
+          note="The same page keeps Install visible but disabled. Its acquisition blocker uses the same full-width notice alignment as installed-plugin conditions, while the copy keeps the taxonomy clear."
         >
           <CatalogPlugin
             entry={{
@@ -771,21 +844,21 @@ export function PluginDetailStates() {
 
         <State
           name="Update available"
-          note="A compatible release adds a compact Update action beside the lifecycle controls. It is release metadata, not plugin health."
+          note="Identity and path use the standard detail header. Installed date and current version remain passive table facts; the compact Update action sits in the Release section header, separate from activation and ownership."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>
 
         <State
           name="Update failed"
-          note="The current version is still running after rollback. Update failed is a header action, not a banner; it opens the attempted release, restored version, technical detail, and Retry."
+          note="The current version is still running after rollback. A dedicated Update row explains what was restored; Retry remains the primary Release action above the table."
         >
           <Plugin plugin={UPDATE_FAILED_PLUGIN} />
         </State>
 
         <State
           name="Compatibility blocked"
-          note="A newer release requires a newer bb. The compact header action opens the compatibility details without implying the current plugin is unhealthy."
+          note="A newer release requires a newer bb. A dedicated Update row explains the requirement and preserved version; there is no unavailable action or modal."
         >
           <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
@@ -925,27 +998,34 @@ export function PluginReleaseStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin release states"
-        description="Release opportunities and history are not runtime-health banners. Each state appears beside the installed version in the real plugin detail header."
+        description="Release actions stay beside the section label. A dedicated Update row appears only when a release is available, failed, or blocked; successful updates return to the normal release state after a transient confirmation."
         renderedLabel="Rendered detail page"
-        renderedNote="The real release control in the plugin header"
+        renderedNote="The real Release section below plugin identity"
       >
         <State
+          name="Release · normal"
+          note="No update action or outcome is present. Release contains only the installed date and current version."
+        >
+          <Plugin plugin={PLUGIN} />
+        </State>
+
+        <State
           name="Release · update available"
-          note="Not a banner. A compatible release is an optional maintenance action beside the installed version; Update opens confirmation before changing anything."
+          note="The Update row names the available version while the optional action stays in the Release section header and opens confirmation before changing anything."
         >
           <Plugin plugin={UPDATE_AVAILABLE_PLUGIN} />
         </State>
 
         <State
-          name="Release · update failed"
-          note="Not a runtime failure banner. The restored version remains installed; the header action opens persisted failure details and offers Retry because a compatible update remains available."
+          name="Release · failed / retry / updating / completed"
+          note="The Update row explains the rollback while Retry stays beside Release. Click Retry to inspect the real pending action for 8 seconds; success advances Version to 1.5.0, removes the stale Update row, and shows the production completion toast."
         >
-          <Plugin plugin={UPDATE_FAILED_PLUGIN} />
+          <FailedReleaseLifecycle />
         </State>
 
         <State
           name="Release · update blocked"
-          note="Not a banner and not a failed attempt. No compatible update is available; the header control opens the specific bb-version requirement, and the dialog cannot run the update."
+          note="Not a banner and not a failed attempt. The Update row names the bb-version requirement and preserved installed version; there is no unavailable action or dialog to dismiss."
         >
           <Plugin plugin={COMPATIBILITY_BLOCKED_PLUGIN} />
         </State>
@@ -1173,7 +1253,13 @@ export function ResourceControlStates() {
             control={
               <SkillOwnershipBadge
                 label="Included"
-                tooltip="Included with GitHub (Claude Code plugin)"
+                tooltip={
+                  <SkillProvenanceTooltip
+                    prefix="Included with"
+                    providerId="claude-code"
+                    name="GitHub plugin"
+                  />
+                }
               />
             }
             meaning="A skill bundled inside another plugin."
@@ -1183,7 +1269,13 @@ export function ResourceControlStates() {
             control={
               <SkillOwnershipBadge
                 label="Imported"
-                tooltip="Discovered from Claude Code"
+                tooltip={
+                  <SkillProvenanceTooltip
+                    prefix="Discovered from"
+                    providerId="claude-code"
+                    name="Claude Code"
+                  />
+                }
               />
             }
             meaning="A skill discovered from another provider."
@@ -1257,7 +1349,7 @@ export function ResourceControlStates() {
 
         <ControlTable
           title="Plugin release actions"
-          description="Release actions share a neutral outline and label. Semantic color stays on the icon: red for a failed attempt, amber for an incompatible candidate."
+          description="Update and Retry are primary Release actions. Their context stays with Version; a blocked update has no unavailable action. The complete flow is demonstrated in Plugin release states."
         >
           <ControlRow
             state="Update available"
@@ -1267,20 +1359,11 @@ export function ResourceControlStates() {
             meaning="A compatible release is available; no warning or failure has occurred."
           />
           <ControlRow
-            state="Update failed"
+            state="Retry update"
             control={
               <PluginDetailReleaseControl plugin={UPDATE_FAILED_PLUGIN} />
             }
-            meaning="An activation attempt failed and bb restored the installed version. The red failure icon opens recovery details."
-          />
-          <ControlRow
-            state="Update blocked"
-            control={
-              <PluginDetailReleaseControl
-                plugin={COMPATIBILITY_BLOCKED_PLUGIN}
-              />
-            }
-            meaning="No update attempt failed. The amber warning icon opens the unmet compatibility requirement."
+            meaning="The last attempt rolled back; the compatible update remains available to retry."
           />
         </ControlTable>
 

@@ -22,7 +22,7 @@ import { ProvenancePill } from "@/components/tools/ProvenancePill";
 
 export type SkillDetailTitleBadge = {
   label: string;
-  tooltip: string;
+  tooltip: ReactNode;
   accessibleLabel?: string;
 };
 
@@ -55,7 +55,7 @@ export function SkillOwnershipBadge({
   accessibleLabel,
 }: {
   label: string;
-  tooltip: string;
+  tooltip: ReactNode;
   accessibleLabel?: string;
 }) {
   return (

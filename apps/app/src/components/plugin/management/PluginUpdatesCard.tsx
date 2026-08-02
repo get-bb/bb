@@ -1,10 +1,15 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
+import { applyPluginUpdate } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
-import { formatAbsoluteDate } from "./plugin-ui";
+import { DetailsDisclosure, formatAbsoluteDate } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
@@ -85,12 +90,19 @@ export function pluginCompatibilityBlockedVersion(
     : null;
 }
 
+function sentence(value: string): string {
+  const trimmed = value.trim();
+  const capitalized = `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+  return /[.!?]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
+}
+
 /**
- * Release state beside the version and lifecycle controls on plugin detail.
+ * Release action for the plugin detail section header.
  *
  * Updates describe the installed artifact, not the plugin's current ability
- * to operate. Keeping them in the header prevents routine update availability
- * and historical rollbacks from competing with present-tense health banners.
+ * to operate. Keeping them in the Release section prevents routine update
+ * availability and historical rollbacks from competing with activation or
+ * present-tense health banners.
  */
 export function PluginDetailReleaseControl({
   plugin,
@@ -98,81 +110,73 @@ export function PluginDetailReleaseControl({
   plugin: PluginListItem;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const name = plugin.name ?? plugin.id;
   const availableVersion = plugin.updateState.availableVersion;
-  const blockedVersion = pluginCompatibilityBlockedVersion(plugin);
   const failure = plugin.updateState.lastFailure;
+  const retry = useMutation({
+    mutationFn: () => applyPluginUpdate(fetch, plugin.id),
+    onSuccess: (result) => {
+      invalidatePluginList({ queryClient });
+      if (result.outcome === "rolled-back") {
+        appToast.error(`Updating ${name} failed`, {
+          description: result.detail ?? `${plugin.version} was restored.`,
+        });
+      } else if (result.applied) {
+        appToast.success(`${name} updated`, {
+          description:
+            result.to === null
+              ? undefined
+              : `Now running ${result.to.display}.`,
+        });
+      } else {
+        appToast.message(`${name} is already up to date`);
+      }
+    },
+    onError: (error) => {
+      appToast.error(`Updating ${name} failed`, {
+        description: pluginAdminErrorMessage(error),
+      });
+    },
+  });
 
   if (!pluginHasUpdateSurfaces(plugin)) return null;
+  if (availableVersion === null) return null;
 
   if (failure !== null) {
     return (
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          aria-label={`View failed update to ${failure.version}`}
-          onClick={() => setDetailsOpen(true)}
-        >
-          <Icon
-            name="CircleX"
-            className="size-3.5 text-destructive"
-            aria-hidden
-          />
-          Update failed
-        </Button>
-        <UpdatePluginDialog
-          failureStateLabel="Update failed"
-          plugin={plugin}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-        />
-      </>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-6 px-2 text-xs"
+        disabled={retry.isPending}
+        aria-busy={retry.isPending}
+        aria-label={`Retry update to ${availableVersion}`}
+        onClick={() => retry.mutate()}
+      >
+        {retry.isPending ? (
+          <Icon name="Spinner" className="size-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Icon name="RotateCcw" className="size-3.5" aria-hidden />
+        )}
+        Retry
+      </Button>
     );
   }
 
-  if (availableVersion !== null) {
-    return (
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
-          onClick={() => setDetailsOpen(true)}
-        >
-          <Icon name="PackageReceive" className="size-3.5" aria-hidden />
-          Update
-        </Button>
-        <UpdatePluginDialog
-          failureStateLabel="Update failed"
-          plugin={plugin}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-        />
-      </>
-    );
-  }
-
-  if (blockedVersion === null) return null;
   return (
     <>
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="h-7 px-2.5 text-xs"
-        aria-label={`View why update ${blockedVersion} is blocked`}
+        className="h-6 px-2 text-xs"
+        aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
         onClick={() => setDetailsOpen(true)}
       >
-        <Icon
-          name="AlertTriangle"
-          className="size-3.5 text-warning"
-          aria-hidden
-        />
-        Update blocked
+        <Icon name="PackageReceive" className="size-3.5" aria-hidden />
+        Update
       </Button>
       <UpdatePluginDialog
         failureStateLabel="Update failed"
@@ -181,5 +185,83 @@ export function PluginDetailReleaseControl({
         onOpenChange={setDetailsOpen}
       />
     </>
+  );
+}
+
+/** Passive update context shown in the Release table. */
+export function PluginDetailReleaseStatus({
+  plugin,
+}: {
+  plugin: PluginListItem;
+}) {
+  const failure = plugin.updateState.lastFailure;
+  const blockedVersion = pluginCompatibilityBlockedVersion(plugin);
+  const blockedReasons = plugin.updateState.blockedReasons;
+
+  if (!pluginHasUpdateSurfaces(plugin)) return null;
+
+  if (failure !== null) {
+    return (
+      <div
+        role="status"
+        aria-label="Update failed"
+        className="flex min-w-0 items-start gap-2.5"
+      >
+        <Icon
+          name="CircleX"
+          className="mt-0.5 size-4 shrink-0 text-destructive"
+          aria-hidden
+        />
+        <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+          bb couldn&rsquo;t activate {failure.version}. It restored{" "}
+          {plugin.version} and its data.
+        </p>
+      </div>
+    );
+  }
+
+  if (plugin.updateState.availableVersion !== null) {
+    return (
+      <div role="status" className="flex min-w-0 items-baseline gap-2">
+        <span className="font-mono text-xs text-foreground">
+          {plugin.updateState.availableVersion}
+        </span>
+        <span className="text-xs text-muted-foreground">Available</span>
+      </div>
+    );
+  }
+
+  if (blockedVersion === null) return null;
+  return (
+    <div
+      role="status"
+      aria-label="Update blocked"
+      className="flex min-w-0 items-start gap-2.5"
+    >
+      <Icon
+        name="AlertTriangle"
+        className="mt-0.5 size-4 shrink-0 text-warning"
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {blockedReasons[0] === undefined
+            ? `${blockedVersion} isn’t compatible with this bb.`
+            : sentence(blockedReasons[0])}{" "}
+          {plugin.version} remains installed. Update bb, then return here.
+        </p>
+        {blockedReasons.length > 1 ? (
+          <div className="mt-1.5">
+            <DetailsDisclosure summary="Other requirements">
+              <ul className="space-y-1 text-foreground">
+                {blockedReasons.slice(1).map((reason) => (
+                  <li key={reason}>{sentence(reason)}</li>
+                ))}
+              </ul>
+            </DetailsDisclosure>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

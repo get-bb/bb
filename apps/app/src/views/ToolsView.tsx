@@ -24,6 +24,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import {
   CatalogPluginDetail,
+  CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
   pluginIsLocalSource,
@@ -325,14 +326,15 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   }
 
   return (
-    // The priority banner sits outside the scroll page so it spans the pane and
-    // pins to the top: a broken runtime is a condition on the whole page, not
-    // a block of its content, and it should not scroll away from the controls
-    // that resolve it.
+    // The priority notice sits outside the scroll page so runtime conditions
+    // and acquisition blockers share the pane-wide alignment and stay with the
+    // controls that resolve them.
     <div className="flex h-full min-h-0 flex-col">
-      {selectedPlugin === null ? null : (
+      {selectedPlugin !== null ? (
         <PluginDetailBanners plugin={selectedPlugin} />
-      )}
+      ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
+        <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
+      ) : null}
       <div className="min-h-0 flex-1">
         <ToolsScrollPage>
           {detailContent}

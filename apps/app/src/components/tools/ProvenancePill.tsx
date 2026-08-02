@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
 import {
   Tooltip,
@@ -13,7 +14,7 @@ export function ProvenancePill({
   accessibleLabel,
 }: {
   label: string;
-  tooltip?: string;
+  tooltip?: ReactNode;
   accessibleLabel?: string;
 }) {
   const badge = (

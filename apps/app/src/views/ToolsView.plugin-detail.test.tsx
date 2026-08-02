@@ -23,6 +23,7 @@ import {
 import { PluginDetail, ToolsScrollPage, ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
+  CatalogPluginDetailBanner,
   PluginDetailBanners,
   PluginProvenancePill,
   pluginDetailBannerKind,
@@ -130,19 +131,27 @@ describe("PluginDetail official catalog lifecycle", () => {
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {
+    const incompatibleEntry = {
+      ...GITHUB_CATALOG_ENTRY,
+      compatible: false,
+      incompatibleReason: "Requires bb 0.20 or newer.",
+    };
     render(
-      <CatalogPluginDetail
-        entry={{
-          ...GITHUB_CATALOG_ENTRY,
-          compatible: false,
-          incompatibleReason: "Requires bb 0.20 or newer.",
-        }}
-        onInstall={() => {}}
-      />,
+      <>
+        <CatalogPluginDetailBanner entry={incompatibleEntry} />
+        <CatalogPluginDetail entry={incompatibleEntry} onInstall={() => {}} />
+      </>,
     );
 
-    const compatibilityStatus = screen.getByRole("status");
-    expect(compatibilityStatus.textContent).toBe("Requires bb 0.20 or newer.");
+    const compatibilityStatus = screen.getByRole("alert");
+    expect(compatibilityStatus.textContent).toContain(
+      "Update bb to install this plugin",
+    );
+    expect(compatibilityStatus.textContent).toContain(
+      "Requires bb 0.20 or newer.",
+    );
+    expect(compatibilityStatus.className).toContain("bg-surface-recessed/55");
+    expect(compatibilityStatus.className).toContain("border-b");
     expect(compatibilityStatus.className).not.toContain("text-warning");
     expect(
       compatibilityStatus
@@ -209,18 +218,20 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    // About is prose only. Release is gone as a section, and its two facts sit
-    // in the header meta line with the identity rather than in a bordered
-    // table carrying the same weight as Capabilities.
+    // About remains prose only. Release uses the same connected label/value
+    // table treatment as the other structured plugin detail sections.
     expect(screen.getByText("About")).toBeTruthy();
-    expect(screen.queryByText("Release")).toBeNull();
+    expect(screen.getByText("Release")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
     ).toBeTruthy();
     const meta = screen.getByText("0.1.0");
     expect(meta.className).toContain("font-mono");
-    expect(meta.parentElement?.className).toContain("text-muted-foreground");
-    expect(meta.closest("[data-resource-detail-section]")).toBeNull();
+    expect(
+      meta
+        .closest("[data-resource-detail-section]")
+        ?.getAttribute("data-resource-detail-section"),
+    ).toBe("release");
     const rootPath = screen.getByText("~/.bb/plugins/github");
     expect(rootPath.className).toContain("truncate");
     expect(rootPath.className).not.toContain("break-all");
@@ -249,6 +260,134 @@ describe("PluginDetail official catalog lifecycle", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Uninstall" }));
     expect(onDelete).toHaveBeenCalledWith(GITHUB_PLUGIN);
   });
+
+  it("keeps update in the Release section without embedding it in the table", () => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const plugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "npm:@example/github@^1.0.0",
+      provenance: "direct",
+      catalogEntryId: null,
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        availableVersion: "1.5.0",
+      },
+    };
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    const version = screen.getByText(GITHUB_PLUGIN.version);
+    const update = screen.getByRole("button", {
+      name: "Update GitHub to 1.5.0",
+    });
+    const activation = screen.getByRole("switch", { name: "Disable GitHub" });
+    const path = screen.getByText("~/.bb/plugins/github");
+    const releaseSection = document.querySelector(
+      '[data-resource-detail-section="release"]',
+    );
+
+    expect(releaseSection?.contains(version)).toBe(true);
+    expect(releaseSection?.contains(update)).toBe(true);
+    expect(releaseSection?.contains(activation)).toBe(false);
+    expect(releaseSection?.contains(path)).toBe(false);
+    expect(version.closest("td")).not.toBe(update.closest("td"));
+    expect(update.closest("table")).toBeNull();
+    const updateRow = screen
+      .getByRole("rowheader", { name: "Update" })
+      .closest("tr");
+    expect(updateRow?.textContent).toContain("1.5.0");
+    expect(updateRow?.textContent).toContain("Available");
+    expect(updateRow?.contains(update)).toBe(false);
+    const versionLabel = screen.getByRole("rowheader", { name: "Version" });
+    expect(versionLabel.className).toContain("border-r");
+    expect(releaseSection?.contains(versionLabel)).toBe(true);
+    expect(releaseSection?.querySelector("col")?.className).toContain("w-28");
+    expect(update.className).toContain("border");
+    expect(update.className).toContain("h-6");
+  });
+
+  it.each([
+    {
+      state: "failed",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        availableVersion: "1.5.0",
+        lastFailure: {
+          version: "1.5.0",
+          at: null,
+          detail: "The plugin failed to load.",
+        },
+      },
+      expected: "Update failed",
+      actionName: "Retry update to 1.5.0",
+    },
+    {
+      state: "blocked",
+      updateState: {
+        ...EMPTY_PLUGIN_UPDATE_STATE,
+        blockedVersion: "2.0.0",
+        blockedReasons: ["Requires bb 0.20 or newer."],
+      },
+      expected: "Update blocked",
+      actionName: null,
+    },
+  ])(
+    "places $state information in the Update row and keeps its action above the table",
+    ({ updateState, expected, actionName }) => {
+      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+      render(
+        <MemoryRouter>
+          <QueryClientWrapper>
+            <PluginDetail
+              isLoading={false}
+              plugin={{
+                ...GITHUB_PLUGIN,
+                source: "npm:@example/github@^1.0.0",
+                provenance: "direct",
+                catalogEntryId: null,
+                updateState,
+              }}
+              pending={false}
+              openSourceDisabled
+              onToggle={() => {}}
+              onEdit={() => {}}
+              onOpenSource={() => {}}
+              onDelete={() => {}}
+            />
+          </QueryClientWrapper>
+        </MemoryRouter>,
+      );
+
+      const updateLabel = screen.getByRole("rowheader", { name: "Update" });
+      const updateRow = updateLabel.closest("tr");
+      const status = screen.getByRole("status", { name: expected });
+      expect(updateRow?.contains(status)).toBe(true);
+      expect(screen.queryByText(expected)).toBeNull();
+      expect(
+        screen.getByRole("rowheader", { name: "Version" }).closest("tr"),
+      ).not.toBe(updateRow);
+      const action =
+        actionName === null
+          ? null
+          : screen.getByRole("button", { name: actionName });
+      expect(action?.closest("table") ?? null).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
 
   it("uses a plugin-owned canonical icon when no rich logo is declared", () => {
     const compactIconUrl = "/api/v1/plugins/omega/assets/icon?h=abc";
