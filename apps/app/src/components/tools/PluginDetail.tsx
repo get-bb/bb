@@ -409,7 +409,7 @@ export function PluginDetail({
             ) : undefined
           }
         >
-          <PluginDetailTable compactLabelColumn>
+          <PluginDetailTable>
             <PluginDetailFieldRow
               label={updatesWithBb ? "Delivery" : "Installed"}
             >
@@ -419,11 +419,7 @@ export function PluginDetail({
               <span className="font-mono text-xs">{plugin.version}</span>
             </PluginDetailFieldRow>
             {hasReleaseUpdate ? (
-              <PluginDetailFieldRow
-                label="Update"
-                stackOnNarrow
-                compactLabelColumn
-              >
+              <PluginDetailFieldRow label="Update" stackOnNarrow>
                 <PluginDetailReleaseStatus plugin={plugin} />
               </PluginDetailFieldRow>
             ) : null}

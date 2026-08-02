@@ -518,11 +518,11 @@ describe("Automation detail recipe", () => {
       ),
     ).toBeTruthy();
     expect(
-      container.querySelector('[aria-label="Schedule"] [data-icon="Clock"]'),
+      container.querySelector('[aria-label="Schedule"] [data-icon="DateTime"]'),
     ).toBeTruthy();
     expect(
       container.querySelector(
-        '[aria-label="Next run"] [data-icon="CalendarSync"]',
+        '[aria-label="Next run"] [data-icon="CalendarCheckOut02"]',
       ),
     ).toBeTruthy();
     expect(screen.queryByText("Next run:")).toBeNull();

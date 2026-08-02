@@ -14,6 +14,7 @@ import {
   PluginDetailGlyph,
   PluginDetailRow,
   PluginDetailTable,
+  PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS,
 } from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
@@ -572,7 +573,7 @@ export function PluginServices({ plugin }: { plugin: PluginListItem }) {
         className="w-full max-w-full table-fixed border-collapse text-left"
       >
         <colgroup>
-          <col className="w-40" />
+          <col className={PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS} />
           <col />
         </colgroup>
         <thead className="bg-surface-recessed/55 text-xs text-muted-foreground">

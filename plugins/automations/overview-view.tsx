@@ -205,12 +205,14 @@ function OverviewRow({
             >
               {projectLabel}
             </AutomationMetadataItem>,
-            <AutomationMetadataItem icon="Clock" iconLabel="Schedule">
+            <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
               {triggerLabel}
             </AutomationMetadataItem>,
             scheduleMetadata ? (
               <AutomationMetadataItem
-                icon={scheduleMetadata.isNextRun ? "CalendarSync" : undefined}
+                icon={
+                  scheduleMetadata.isNextRun ? "CalendarCheckOut02" : undefined
+                }
                 iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
               >
                 {scheduleMetadata.text}

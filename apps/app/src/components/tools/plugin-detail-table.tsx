@@ -8,6 +8,9 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 
+/** Shared first-column grid for every structured plugin detail table. */
+export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
+
 /**
  * The table treatment for detail-page rows with a name and richer detail.
  *
@@ -16,20 +19,12 @@ import { cn } from "@bb/shared-ui/lib/utils";
  * easy to scan. Background services use their own labelled Status/Service table
  * because status is a distinct attribute rather than descriptive copy.
  */
-export function PluginDetailTable({
-  children,
-  compactLabelColumn = false,
-}: {
-  children: ReactNode;
-  compactLabelColumn?: boolean;
-}) {
+export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
     <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
       <table className="w-full max-w-full table-fixed border-collapse text-left">
         <colgroup>
-          <col
-            className={compactLabelColumn ? "w-28 sm:w-32" : "w-40 md:w-48"}
-          />
+          <col className={PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS} />
           <col />
         </colgroup>
         <tbody className="divide-y divide-border">{children}</tbody>
@@ -52,12 +47,10 @@ export function PluginDetailFieldRow({
   label,
   children,
   stackOnNarrow = false,
-  compactLabelColumn = false,
 }: {
   label: ReactNode;
   children: ReactNode;
   stackOnNarrow?: boolean;
-  compactLabelColumn?: boolean;
 }) {
   if (stackOnNarrow) {
     return (
@@ -68,14 +61,7 @@ export function PluginDetailFieldRow({
           aria-label={typeof label === "string" ? label : undefined}
           className="p-0 text-left font-normal"
         >
-          <div
-            className={cn(
-              "sm:grid",
-              compactLabelColumn
-                ? "sm:grid-cols-[8rem_minmax(0,1fr)]"
-                : "sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]",
-            )}
-          >
+          <div className="sm:grid sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]">
             <span
               className={cn(
                 CELL,

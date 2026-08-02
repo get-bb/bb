@@ -314,13 +314,23 @@ describe("PluginDetail official catalog lifecycle", () => {
     const updateRow = screen
       .getByRole("rowheader", { name: "Update" })
       .closest("tr");
+    const updateGrid = updateRow?.querySelector("th > div");
     expect(updateRow?.textContent).toContain("1.5.0");
     expect(updateRow?.textContent).toContain("Available");
     expect(updateRow?.contains(update)).toBe(false);
+    expect(updateGrid?.className).toContain(
+      "sm:grid-cols-[10rem_minmax(0,1fr)]",
+    );
+    expect(updateGrid?.className).toContain(
+      "md:grid-cols-[12rem_minmax(0,1fr)]",
+    );
     const versionLabel = screen.getByRole("rowheader", { name: "Version" });
     expect(versionLabel.className).toContain("border-r");
     expect(releaseSection?.contains(versionLabel)).toBe(true);
-    expect(releaseSection?.querySelector("col")?.className).toContain("w-28");
+    expect(releaseSection?.querySelector("col")?.className).toContain("w-40");
+    expect(releaseSection?.querySelector("col")?.className).toContain(
+      "md:w-48",
+    );
     expect(update.className).toContain("border");
     expect(update.className).toContain("h-6");
   });
@@ -1143,6 +1153,8 @@ describe("PluginDetail capability inventory", () => {
       name: "Background services",
     });
     const serviceTableQueries = within(serviceTable);
+    expect(serviceTable.querySelector("col")?.className).toContain("w-40");
+    expect(serviceTable.querySelector("col")?.className).toContain("md:w-48");
     expect(
       serviceTableQueries
         .getAllByRole("columnheader")

@@ -114,10 +114,10 @@ describe("AutomationOverviewView", () => {
       container.querySelector('[aria-label="Project"] [data-icon="Folder"]'),
     ).toBeTruthy();
     expect(
-      container.querySelector('[aria-label="Schedule"] [data-icon="Clock"]'),
+      container.querySelector('[aria-label="Schedule"] [data-icon="DateTime"]'),
     ).toBeTruthy();
     const nextRunIcon = container.querySelector(
-      '[aria-label="Next run"] [data-icon="CalendarSync"]',
+      '[aria-label="Next run"] [data-icon="CalendarCheckOut02"]',
     ) as HTMLElement;
     expect(nextRunIcon).toBeTruthy();
     expect(screen.queryByText("Next")).toBeNull();

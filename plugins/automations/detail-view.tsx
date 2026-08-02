@@ -148,7 +148,7 @@ function automationDetailNextRun(
   if (label === null) return null;
   if (!label.startsWith("Next ")) return label;
   return (
-    <AutomationMetadataItem icon="CalendarSync" iconLabel="Next run">
+    <AutomationMetadataItem icon="CalendarCheckOut02" iconLabel="Next run">
       {label.slice("Next ".length)}
     </AutomationMetadataItem>
   );
@@ -625,7 +625,7 @@ export function AutomationDetailView({
             >
               {projectContextLabel}
             </AutomationMetadataItem>,
-            <AutomationMetadataItem icon="Clock" iconLabel="Schedule">
+            <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
               {formatAutomationTrigger(automation.trigger)}
             </AutomationMetadataItem>,
             automationDetailNextRun(automation),
