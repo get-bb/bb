@@ -4,6 +4,8 @@
 // providers do not expose a served logo URL. This mirrors the same boundary
 // treatment used by `official-plugins/tasks/views/activity/provider-icons.tsx`.
 
+import { formatAutomationProviderLabel } from "./model-label";
+
 function ClaudeIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -33,14 +35,75 @@ function OpenAiIcon({ className }: { className?: string }) {
   );
 }
 
+function CursorIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <title>Cursor</title>
+      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23" />
+    </svg>
+  );
+}
+
+function PiIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      fill="currentColor"
+      fillRule="evenodd"
+      viewBox="100 100 600 600"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <title>Pi</title>
+      <path
+        d="
+        M165.29 165.29
+        H517.36
+        V400
+        H400
+        V517.36
+        H282.65
+        V634.72
+        H165.29
+        Z
+        M282.65 282.65
+        V400
+        H400
+        V282.65
+        Z
+      "
+      />
+      <path d="M517.36 400 H634.72 V634.72 H517.36 Z" />
+    </svg>
+  );
+}
+
 export function AutomationProviderIcon({ providerId }: { providerId: string }) {
   const ProviderIcon = providerId.startsWith("claude")
     ? ClaudeIcon
     : providerId.startsWith("codex") || providerId.startsWith("openai")
       ? OpenAiIcon
-      : null;
+      : providerId === "pi"
+        ? PiIcon
+        : providerId === "acp-cursor"
+          ? CursorIcon
+          : null;
 
-  if (ProviderIcon === null) return null;
+  if (ProviderIcon === null) {
+    return (
+      <span
+        data-automation-provider-label={providerId}
+        aria-hidden="true"
+        className="max-w-20 shrink-0 truncate text-xs font-medium text-muted-foreground"
+      >
+        {formatAutomationProviderLabel(providerId)}
+      </span>
+    );
+  }
   return (
     <span
       data-automation-provider-icon={providerId}

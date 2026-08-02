@@ -8,8 +8,11 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-/** Shared first-column grid for every structured plugin detail table. */
+/** Shared first-column width for conventional plugin detail tables. */
 export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
+
+const DETAIL_ROW_GRID =
+  "grid grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
 
 /**
  * The table treatment for detail-page rows with a name and richer detail.
@@ -22,12 +25,8 @@ export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
     <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
-      <table className="w-full max-w-full table-fixed border-collapse text-left">
-        <colgroup>
-          <col className={PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS} />
-          <col />
-        </colgroup>
-        <tbody className="divide-y divide-border">{children}</tbody>
+      <table className="block w-full max-w-full border-collapse text-left">
+        <tbody className="block divide-y divide-border">{children}</tbody>
       </table>
     </div>
   );
@@ -54,33 +53,25 @@ export function PluginDetailFieldRow({
 }) {
   if (stackOnNarrow) {
     return (
-      <tr>
+      <tr className="grid w-full grid-cols-1 sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]">
         <th
           scope="row"
-          colSpan={2}
-          aria-label={typeof label === "string" ? label : undefined}
-          className="p-0 text-left font-normal"
+          className={cn(
+            CELL,
+            "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
+          )}
         >
-          <div className="sm:grid sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]">
-            <span
-              className={cn(
-                CELL,
-                "block border-b border-border px-4 text-xs text-muted-foreground sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
-              )}
-            >
-              {label}
-            </span>
-            <div className="px-4 py-3 text-foreground sm:py-1.5 sm:pl-2 sm:pr-4">
-              {children}
-            </div>
-          </div>
+          {label}
         </th>
+        <td className="block min-w-0 w-full px-4 py-3 align-top text-left text-sm leading-snug text-foreground sm:w-auto sm:py-1.5 sm:pl-2 sm:pr-4">
+          {children}
+        </td>
       </tr>
     );
   }
 
   return (
-    <tr>
+    <tr className={DETAIL_ROW_GRID}>
       <th
         scope="row"
         className={cn(
@@ -154,7 +145,7 @@ export function PluginDetailRow({
   // strip of dead padding off the right edge of the surface.
   const hasDetail = detail !== null && detail !== undefined && detail !== "";
   return (
-    <tr>
+    <tr className={hasDetail ? DETAIL_ROW_GRID : "grid grid-cols-1"}>
       <td
         className={cn(
           CELL,

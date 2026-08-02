@@ -25,8 +25,10 @@ export function AutomationMetadataItem({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
+                role="img"
                 aria-label={iconLabel}
-                className="inline-flex shrink-0 items-center"
+                tabIndex={0}
+                className="inline-flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <Icon name={icon} className="size-3.5" aria-hidden />
               </span>

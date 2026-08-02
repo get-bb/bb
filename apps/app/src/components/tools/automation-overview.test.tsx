@@ -96,8 +96,8 @@ describe("AutomationOverviewView", () => {
     expect(onCreateViaChat).toHaveBeenCalledOnce();
   });
 
-  it("uses labelled metadata icons for project, schedule, and next run", async () => {
-    const { container } = render(
+  it("keeps labelled metadata tooltip triggers outside the row button", async () => {
+    render(
       <AutomationOverviewView
         entries={INSTALLED_AUTOMATIONS}
         error={null}
@@ -110,19 +110,25 @@ describe("AutomationOverviewView", () => {
       />,
     );
 
+    const projectIcon = screen.getByRole("img", { name: "Project" });
+    const scheduleIcon = screen.getByRole("img", { name: "Schedule" });
+    const nextRunIcon = screen.getByRole("img", { name: "Next run" });
+
+    expect(projectIcon.tabIndex).toBe(0);
+    expect(scheduleIcon.tabIndex).toBe(0);
+    expect(nextRunIcon.tabIndex).toBe(0);
+    expect(projectIcon.closest("button")).toBeNull();
+    expect(scheduleIcon.closest("button")).toBeNull();
+    expect(nextRunIcon.closest("button")).toBeNull();
+    expect(projectIcon.querySelector('[data-icon="Folder"]')).toBeTruthy();
+    expect(scheduleIcon.querySelector('[data-icon="DateTime"]')).toBeTruthy();
     expect(
-      container.querySelector('[aria-label="Project"] [data-icon="Folder"]'),
+      nextRunIcon.querySelector('[data-icon="CalendarCheckOut02"]'),
     ).toBeTruthy();
-    expect(
-      container.querySelector('[aria-label="Schedule"] [data-icon="DateTime"]'),
-    ).toBeTruthy();
-    const nextRunIcon = container.querySelector(
-      '[aria-label="Next run"] [data-icon="CalendarCheckOut02"]',
-    ) as HTMLElement;
     expect(nextRunIcon).toBeTruthy();
     expect(screen.queryByText("Next")).toBeNull();
 
-    fireEvent.pointerMove(nextRunIcon);
+    fireEvent.focus(nextRunIcon);
     expect((await screen.findByRole("tooltip")).textContent).toBe("Next run");
   });
 

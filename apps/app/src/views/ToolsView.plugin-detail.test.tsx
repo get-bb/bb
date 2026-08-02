@@ -148,7 +148,12 @@ describe("PluginDetail official catalog lifecycle", () => {
       </>,
     );
 
-    const compatibilityStatus = screen.getByRole("alert");
+    expect(screen.queryByRole("alert")).toBeNull();
+    const compatibilityStatus = screen
+      .getByText("Update bb to install this plugin")
+      .closest("div[class*='bg-surface-recessed']");
+    expect(compatibilityStatus).not.toBeNull();
+    if (compatibilityStatus === null) return;
     expect(compatibilityStatus.textContent).toContain(
       "Update bb to install this plugin",
     );
@@ -314,22 +319,29 @@ describe("PluginDetail official catalog lifecycle", () => {
     const updateRow = screen
       .getByRole("rowheader", { name: "Update" })
       .closest("tr");
-    const updateGrid = updateRow?.querySelector("th > div");
+    const updateLabel = screen.getByRole("rowheader", { name: "Update" });
+    expect(updateRow).not.toBeNull();
+    if (updateRow === null) return;
+    const updateDetails = within(updateRow).getByRole("cell");
     expect(updateRow?.textContent).toContain("1.5.0");
     expect(updateRow?.textContent).toContain("Available");
     expect(updateRow?.contains(update)).toBe(false);
-    expect(updateGrid?.className).toContain(
-      "sm:grid-cols-[10rem_minmax(0,1fr)]",
-    );
-    expect(updateGrid?.className).toContain(
-      "md:grid-cols-[12rem_minmax(0,1fr)]",
-    );
+    expect(updateLabel.tagName).toBe("TH");
+    expect(updateDetails.tagName).toBe("TD");
+    expect(updateLabel).not.toBe(updateDetails);
+    expect(updateLabel.className).toContain("block");
+    expect(updateLabel.className).toContain("sm:border-r");
+    expect(updateDetails.className).toContain("block");
+    expect(updateRow.className).toContain("grid-cols-1");
+    expect(updateRow.className).toContain("sm:grid-cols-[10rem_minmax(0,1fr)]");
+    expect(updateRow.className).toContain("md:grid-cols-[12rem_minmax(0,1fr)]");
     const versionLabel = screen.getByRole("rowheader", { name: "Version" });
     expect(versionLabel.className).toContain("border-r");
     expect(releaseSection?.contains(versionLabel)).toBe(true);
-    expect(releaseSection?.querySelector("col")?.className).toContain("w-40");
-    expect(releaseSection?.querySelector("col")?.className).toContain(
-      "md:w-48",
+    const versionRow = versionLabel.closest("tr");
+    expect(versionRow?.className).toContain("grid-cols-[10rem_minmax(0,1fr)]");
+    expect(versionRow?.className).toContain(
+      "md:grid-cols-[12rem_minmax(0,1fr)]",
     );
     expect(update.className).toContain("border");
     expect(update.className).toContain("h-6");
@@ -1085,16 +1097,19 @@ describe("PluginDetail capability inventory", () => {
     expect(shell.className).not.toContain("px-4");
     expect(shell.className).not.toContain("inline-block");
     expect(table?.className).toContain("w-full");
-    expect(table?.className).toContain("table-fixed");
+    expect(table?.className).toContain("block");
     expect(table?.className).not.toContain("w-auto");
 
     // The name column has room for ordinary capability and schedule names,
     // without absorbing the full-width table's spare space and visually
     // detaching names from descriptions.
-    const columns = table?.querySelectorAll("col");
-    expect(columns).toHaveLength(2);
-    expect(columns?.[0]?.className).toContain("w-40");
-    expect(columns?.[0]?.className).toContain("md:w-48");
+    const firstRow = table?.querySelector("tr");
+    expect(firstRow?.className).toContain(
+      "grid-cols-[10rem_minmax(0,1fr)]",
+    );
+    expect(firstRow?.className).toContain(
+      "md:grid-cols-[12rem_minmax(0,1fr)]",
+    );
 
     // The cells own the content gutter so the row and column borders connect
     // directly to the table's outer edge.

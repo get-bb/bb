@@ -177,7 +177,7 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
     mode: "agent",
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
-    model: "claude-opus-5",
+    model: "claude-opus-5[1m]",
     permissionMode: "auto",
     environment: { type: "host", workspace: { type: "personal" } },
   },
@@ -197,7 +197,7 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     mode: "agent",
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
-    model: "claude-opus-5",
+    model: "claude-opus-5[1m]",
     permissionMode: "auto",
     environment: {
       type: "host",
@@ -210,6 +210,65 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     },
   },
 };
+
+const PROVIDER_AUTOMATIONS = [
+  {
+    label: "Claude",
+    value: PROJECT_AUTOMATION,
+  },
+  {
+    label: "Codex",
+    value: automation("codex-digest", "Codex digest", {
+      execution: {
+        mode: "agent",
+        prompt: "Summarize yesterday's commits and open pull requests.",
+        providerId: "codex",
+        model: "gpt-5",
+        permissionMode: "auto",
+        environment: { type: "host", workspace: { type: "personal" } },
+      },
+    }),
+  },
+  {
+    label: "Pi",
+    value: automation("pi-digest", "Pi digest", {
+      execution: {
+        mode: "agent",
+        prompt: "Summarize yesterday's commits and open pull requests.",
+        providerId: "pi",
+        model: "pi-model",
+        permissionMode: "auto",
+        environment: { type: "host", workspace: { type: "personal" } },
+      },
+    }),
+  },
+  {
+    label: "Cursor",
+    value: automation("cursor-digest", "Cursor digest", {
+      execution: {
+        mode: "agent",
+        prompt: "Summarize yesterday's commits and open pull requests.",
+        providerId: "acp-cursor",
+        model: "cursor-small",
+        permissionMode: "auto",
+        environment: { type: "host", workspace: { type: "personal" } },
+      },
+    }),
+  },
+  {
+    label: "Unknown provider",
+    value: automation("custom-digest", "Custom-provider digest", {
+      execution: {
+        mode: "agent",
+        prompt: "Summarize yesterday's commits and open pull requests.",
+        providerId: "custom-provider",
+        model: "custom-model-v2",
+        permissionMode: "auto",
+        environment: { type: "host", workspace: { type: "personal" } },
+      },
+    }),
+  },
+] as const;
 
 const SCRIPT_AUTOMATION: AutomationResponse = {
   ...DETAIL_AUTOMATION,
@@ -498,6 +557,39 @@ export function DetailStates() {
             onRetry={noop}
           />
         </DetailState>
+      </div>
+    </main>
+  );
+}
+
+export function ProviderIdentities() {
+  return (
+    <main
+      className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
+      style={{ "--story-doc-width": "160px" } as CSSProperties}
+    >
+      <header>
+        <h1 className="text-lg font-semibold text-foreground">
+          Automation provider identities
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Saved prompt metadata uses the configured provider identity and keeps
+          model context visible.
+        </p>
+      </header>
+      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
+        {PROVIDER_AUTOMATIONS.map(({ label, value }) => (
+          <DetailState
+            key={value.id}
+            name={label}
+            note="Production read-only automation detail."
+          >
+            <AutomationDetail
+              value={value}
+              projectLabel={value.projectId === "proj_bb" ? "bb" : "Local"}
+            />
+          </DetailState>
+        ))}
       </div>
     </main>
   );

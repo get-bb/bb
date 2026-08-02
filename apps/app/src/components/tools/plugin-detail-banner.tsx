@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { AriaRole, ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -31,6 +31,7 @@ export function PluginBannerBar({
   action,
   separator = true,
   testId,
+  role,
 }: {
   tone: PluginBannerTone;
   icon: IconName;
@@ -39,10 +40,11 @@ export function PluginBannerBar({
   action?: ReactNode;
   separator?: boolean;
   testId?: string;
+  role?: AriaRole;
 }) {
   return (
     <div
-      role="alert"
+      role={role}
       data-testid={testId}
       className={cn(
         "bg-surface-recessed/55",

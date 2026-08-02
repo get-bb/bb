@@ -512,18 +512,26 @@ describe("Automation detail recipe", () => {
     const recipe = renderedRecipe(container);
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
     expect(recipe.at(-1)?.[1]).toBe("Runs");
+    const projectMetadataIcon = screen.getByRole("img", {
+      name: "Local project",
+    });
+    const scheduleMetadataIcon = screen.getByRole("img", {
+      name: "Schedule",
+    });
+    const nextRunMetadataIcon = screen.getByRole("img", {
+      name: "Next run",
+    });
+    expect(projectMetadataIcon.tabIndex).toBe(0);
+    expect(scheduleMetadataIcon.tabIndex).toBe(0);
+    expect(nextRunMetadataIcon.tabIndex).toBe(0);
     expect(
-      container.querySelector(
-        '[aria-label="Local project"] [data-icon="Laptop"]',
-      ),
+      projectMetadataIcon.querySelector('[data-icon="Laptop"]'),
     ).toBeTruthy();
     expect(
-      container.querySelector('[aria-label="Schedule"] [data-icon="DateTime"]'),
+      scheduleMetadataIcon.querySelector('[data-icon="DateTime"]'),
     ).toBeTruthy();
     expect(
-      container.querySelector(
-        '[aria-label="Next run"] [data-icon="CalendarCheckOut02"]',
-      ),
+      nextRunMetadataIcon.querySelector('[data-icon="CalendarCheckOut02"]'),
     ).toBeTruthy();
     expect(screen.queryByText("Next run:")).toBeNull();
 
@@ -668,6 +676,103 @@ describe("Automation detail recipe", () => {
       ),
     ).toHaveLength(2);
   });
+
+  it.each([
+    {
+      providerId: "claude",
+      model: "claude-opus-5[1m]",
+      providerLabel: "Claude",
+      modelLabel: "Opus 5 (1M)",
+      iconId: "claude",
+    },
+    {
+      providerId: "codex",
+      model: "gpt-5",
+      providerLabel: "Codex",
+      modelLabel: "5",
+      iconId: "codex",
+    },
+    {
+      providerId: "pi",
+      model: "pi-model",
+      providerLabel: "Pi",
+      modelLabel: "Pi Model",
+      iconId: "pi",
+    },
+    {
+      providerId: "acp-cursor",
+      model: "cursor-small",
+      providerLabel: "Cursor",
+      modelLabel: "Cursor Small",
+      iconId: "acp-cursor",
+    },
+    {
+      providerId: "custom-provider",
+      model: "custom-model-v2",
+      providerLabel: "Custom-provider",
+      modelLabel: "Custom Model v2",
+      iconId: null,
+    },
+  ])(
+    "renders the $providerLabel provider identity in saved prompt metadata",
+    ({ providerId, model, providerLabel, modelLabel, iconId }) => {
+      const { container } = render(
+        <MemoryRouter>
+          <AutomationDetailView
+            automation={{
+              ...AUTOMATION,
+              execution: {
+                mode: "agent",
+                prompt: "Summarize yesterday's commits.",
+                providerId,
+                model,
+                permissionMode: "auto",
+                environment: {
+                  type: "host",
+                  workspace: { type: "personal" },
+                },
+              },
+            }}
+            projectLabel="Local"
+            runsState={{
+              runs: [],
+              nextCursor: null,
+              loading: false,
+              loadingMore: false,
+              error: null,
+              loadMore: () => {},
+              retry: () => {},
+            }}
+            actionPending={false}
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onRunNow={() => {}}
+            onDelete={() => {}}
+            onOpenThread={() => {}}
+          />
+        </MemoryRouter>,
+      );
+
+      const selector = container.querySelector(
+        '[data-disabled-automation-selector="Provider and model"]',
+      ) as HTMLButtonElement;
+      expect(selector.getAttribute("aria-label")).toBe(
+        `Provider and model: ${providerLabel}, ${modelLabel}. Read only`,
+      );
+      if (iconId) {
+        expect(
+          selector.querySelector(
+            `[data-automation-provider-icon="${iconId}"] svg`,
+          ),
+        ).not.toBeNull();
+      } else {
+        const fallback = selector.querySelector(
+          `[data-automation-provider-label="${providerId}"]`,
+        );
+        expect(fallback?.textContent).toBe(providerLabel);
+      }
+    },
+  );
 
   it("does not treat a project named Local as the personal project", () => {
     const { container } = render(

@@ -64,14 +64,18 @@ export function formatAutomationModelLabel(
   model: string,
   providerId: string,
 ): string {
-  const formatted = formatModelLabel(model);
+  const contextMatch = model.match(/^(.*)\[(\d+(?:\.\d+)?[km])\]$/i);
+  const modelId = contextMatch?.[1] ?? model;
+  const context = contextMatch?.[2]?.toUpperCase();
+  const formatted = formatModelLabel(modelId);
   const withoutBrand = providerId.startsWith("claude")
     ? formatted.replace(/^Claude-/i, "")
     : stripModelBrandPrefix(formatted, providerId);
   const withVersion = providerId.startsWith("claude")
     ? withoutBrand.replace(/-(\d+)-(\d+)(?=-|$)/, "-$1.$2")
     : withoutBrand;
-  return withVersion.split("-").join(" ");
+  const label = withVersion.split("-").join(" ");
+  return context ? `${label} (${context})` : label;
 }
 
 /** Providers read as names in the composer, never as raw ids. */
@@ -79,5 +83,7 @@ export function formatAutomationProviderLabel(providerId: string): string {
   if (providerId.startsWith("claude")) return "Claude";
   if (providerId.startsWith("codex")) return "Codex";
   if (providerId.startsWith("openai")) return "OpenAI";
+  if (providerId === "pi") return "Pi";
+  if (providerId === "acp-cursor") return "Cursor";
   return providerId.charAt(0).toUpperCase() + providerId.slice(1);
 }
