@@ -32,7 +32,6 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
-  getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPluginSchedules,
@@ -63,8 +62,6 @@ import {
   type PluginHttpRouteRecord,
   type PluginMentionTrigger,
   type PluginRpcHandler,
-  type PluginThreadActionRecord,
-  type PluginThreadActionToast,
 } from "./plugin-api.js";
 import {
   syncPluginCommandsSkill,
@@ -102,8 +99,6 @@ import type {
   PluginMentionSearchItem,
   PluginServiceDeps,
   PluginSourceView,
-  PluginThreadActionContribution,
-  PluginThreadActionRunResult,
   PluginThreadEventEmitter,
   PluginUpdateCheckEntry,
   PluginWireLookup,
@@ -127,8 +122,6 @@ export type {
   PluginServiceEntry,
   PluginServiceState,
   PluginSourceView,
-  PluginThreadActionContribution,
-  PluginThreadActionRunResult,
   PluginThreadEventEmitter,
   PluginUpdateCheckEntry,
   PluginWireLookup,
@@ -320,28 +313,6 @@ export interface PluginService {
     input: unknown;
     ctx: PluginAgentToolContext;
   }): Promise<ToolCallResponse>;
-  /**
-   * Thread actions of running plugins (bb.ui.registerThreadAction), ordered
-   * by plugin id then registration order, for GET /plugins/contributions.
-   * No plugin code runs.
-   */
-  listThreadActionContributions(): PluginThreadActionContribution[];
-  /** Live thread-action lookup for POST /plugins/:id/actions/:actionId. */
-  getThreadAction(
-    id: string,
-    actionId: string,
-  ): PluginWireLookup<PluginThreadActionRecord>;
-  /**
-   * Run a thread action (design §4.9): resolves the thread (its projectId
-   * rides into the handler context), runs `run` through invokeWrapped, and
-   * validates the returned toast. A throwing or malformed-result handler
-   * maps to the "error" outcome — the app shows it as an error toast.
-   */
-  runThreadAction(
-    id: string,
-    record: PluginThreadActionRecord,
-    threadId: string,
-  ): Promise<PluginThreadActionRunResult>;
   /**
    * Mention providers of running plugins (bb.ui.registerMentionProvider),
    * ordered by plugin id then registration order, for
@@ -650,38 +621,7 @@ function normalizeAgentToolResult(
   );
 }
 
-const THREAD_ACTION_TOAST_KINDS = new Set(["success", "error", "info"]);
 
-/**
- * Validate a thread action's return value (void | { toast? }). Malformed
- * results throw — the caller runs this inside invokeWrapped so they count
- * as handler errors, not broken wire responses.
- */
-function normalizeThreadActionResult(
-  actionId: string,
-  result: unknown,
-): PluginThreadActionToast | null {
-  if (result === undefined || result === null) return null;
-  if (typeof result !== "object") {
-    throw new Error(
-      `thread action "${actionId}" run() must return void or { toast? }`,
-    );
-  }
-  const toast = (result as { toast?: unknown }).toast;
-  if (toast === undefined || toast === null) return null;
-  const { kind, message } = toast as { kind?: unknown; message?: unknown };
-  if (
-    typeof kind !== "string" ||
-    !THREAD_ACTION_TOAST_KINDS.has(kind) ||
-    typeof message !== "string" ||
-    message.length === 0
-  ) {
-    throw new Error(
-      `thread action "${actionId}" toast must be { kind: "success" | "error" | "info", message: string }`,
-    );
-  }
-  return { kind: kind as PluginThreadActionToast["kind"], message };
-}
 
 /**
  * Validate a mention provider's search() result and namespace item ids for
@@ -1270,14 +1210,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         id: tool.name,
         label: tool.name,
         detail: tool.description,
-      });
-    }
-    for (const action of exposedPlugin?.handle.threadActions ?? []) {
-      capabilities.push({
-        kind: "thread-integration",
-        id: `thread-action:${action.id}`,
-        label: action.title,
-        detail: "Thread action",
       });
     }
     for (const provider of exposedPlugin?.handle.mentionProviders ?? []) {
@@ -2037,49 +1969,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           },
         ],
       };
-    },
-
-    listThreadActionContributions() {
-      const contributions: PluginThreadActionContribution[] = [];
-      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
-        a.localeCompare(b),
-      )) {
-        for (const record of plugin.handle.threadActions) {
-          contributions.push({
-            pluginId: id,
-            id: record.id,
-            title: record.title,
-            icon: record.icon,
-            confirm: record.confirm,
-          });
-        }
-      }
-      return contributions;
-    },
-
-    getThreadAction(id, actionId) {
-      if (!shouldExposePluginId(id)) return { outcome: "unknown-plugin" };
-      return wireLookup(id, (plugin) =>
-        plugin.handle.threadActions.find((record) => record.id === actionId),
-      );
-    },
-
-    async runThreadAction(id, record, threadId) {
-      const thread = getThread(deps.db, threadId);
-      if (!thread) return { outcome: "unknown-thread" };
-      const outcome = await invokeWrapped(
-        id,
-        `thread action ${record.id}`,
-        async () => {
-          const result = await record.run({
-            threadId: thread.id,
-            projectId: thread.projectId,
-          });
-          return normalizeThreadActionResult(record.id, result);
-        },
-      );
-      if (outcome.ok) return { outcome: "ok", toast: outcome.value };
-      return { outcome: "error", error: outcome.error };
     },
 
     listMentionProviderContributions() {

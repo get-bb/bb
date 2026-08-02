@@ -9,6 +9,7 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
+import { Pill } from "@bb/shared-ui/pill";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
@@ -52,6 +53,8 @@ interface ThreadDetailHeaderProps {
    * while a narrow split hides their inline controls.
    */
   actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
+  /** Pill shown beside the title for side chats and hierarchical child threads. */
+  childPillLabel: "child" | "side chat" | null;
   isSecondaryPanelOpen: boolean;
   /** Closes this pane; only provided when the layout is split (>1 pane). */
   onClosePane?: () => void;
@@ -66,6 +69,7 @@ interface ThreadDetailHeaderProps {
 
 export function ThreadDetailHeader({
   actionsMenu,
+  childPillLabel,
   isSecondaryPanelOpen,
   onClosePane,
   onOpenThreadGitAction,
@@ -166,6 +170,11 @@ export function ThreadDetailHeader({
           <ThreadTitleMentions title={threadTitle} />
         </p>
       </div>
+      {childPillLabel ? (
+        <Pill variant="outline" size="sm">
+          {childPillLabel}
+        </Pill>
+      ) : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region
         (AppPageHeader only exempts the actions slot), so the interactive

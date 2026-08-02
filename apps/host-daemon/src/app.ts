@@ -137,6 +137,7 @@ export interface CreateHostDaemonAppOptions {
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
   closeMachineAuthProxy?: () => Promise<void>;
+  forceExit?: (code: number) => void;
 }
 
 export interface HostDaemonApp {
@@ -889,6 +890,7 @@ export async function createHostDaemonApp(
     },
     logger: options.logger,
     releaseLock: options.releaseLock,
+    ...(options.forceExit ? { forceExit: options.forceExit } : {}),
     flushEvents: async () => {
       await eventSink.flush();
     },

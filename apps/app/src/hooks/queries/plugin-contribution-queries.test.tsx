@@ -11,7 +11,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  runPluginThreadAction,
   usePluginContributions,
   usePluginMentionSearch,
 } from "./plugin-contribution-queries";
@@ -62,23 +61,6 @@ describe("usePluginContributions", () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
-      threadActions: [
-        {
-          pluginId: "linear",
-          id: "run-tests",
-          title: "Run tests",
-          icon: "beaker",
-          confirm: null,
-        },
-        { pluginId: "broken" }, // malformed: dropped at the boundary
-        {
-          pluginId: "linear",
-          id: "sync",
-          title: "Sync issues",
-          icon: null,
-          confirm: "Sync now?",
-        },
-      ],
       mentionProviders: [
         { pluginId: "linear", id: "issues", label: "Linear issues" },
         {
@@ -114,22 +96,6 @@ describe("usePluginContributions", () => {
 
     await waitFor(() => {
       expect(result.current.data).toEqual({
-        threadActions: [
-          {
-            pluginId: "linear",
-            id: "run-tests",
-            title: "Run tests",
-            icon: "beaker",
-            confirm: null,
-          },
-          {
-            pluginId: "linear",
-            id: "sync",
-            title: "Sync issues",
-            icon: null,
-            confirm: "Sync now?",
-          },
-        ],
         mentionProviders: [
           {
             pluginId: "linear",
@@ -161,7 +127,6 @@ describe("usePluginContributions", () => {
 
     await waitFor(() => {
       expect(result.current.data).toEqual({
-        threadActions: [],
         mentionProviders: [],
       });
     });
@@ -228,50 +193,3 @@ describe("usePluginMentionSearch", () => {
   });
 });
 
-describe("runPluginThreadAction", () => {
-  it("resolves with the returned toast on success", async () => {
-    const fetchMock = mockFetchJsonOnce({
-      ok: true,
-      toast: { kind: "success", message: "Tests requested" },
-    });
-
-    await expect(
-      runPluginThreadAction({
-        pluginId: "linear",
-        actionId: "run-tests",
-        threadId: "thr_1",
-      }),
-    ).resolves.toEqual({ kind: "success", message: "Tests requested" });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/linear/actions/run-tests",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ threadId: "thr_1" }),
-      }),
-    );
-  });
-
-  it("resolves with null when the action returns no toast", async () => {
-    mockFetchJsonOnce({ ok: true });
-    await expect(
-      runPluginThreadAction({
-        pluginId: "linear",
-        actionId: "quiet",
-        threadId: "thr_1",
-      }),
-    ).resolves.toBeNull();
-  });
-
-  it("throws the server's error message for handler failures", async () => {
-    mockFetchJsonOnce({ ok: false, error: "action boom" }, { status: 500 });
-    await expect(
-      runPluginThreadAction({
-        pluginId: "linear",
-        actionId: "boom",
-        threadId: "thr_1",
-      }),
-    ).rejects.toThrow("action boom");
-  });
-});

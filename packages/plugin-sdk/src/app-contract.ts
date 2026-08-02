@@ -88,6 +88,51 @@ export interface PluginPendingInteractionProps {
 export interface PluginSidebarFooterActionProps {}
 
 /**
+ * Props passed to an `experimental_threadList` component — the sidebar's
+ * scrolling thread area, replaced wholesale by one plugin.
+ */
+export interface PluginThreadListProps {
+  /** The thread the route currently shows; null on non-thread routes. */
+  activeThreadId: string | null;
+  /** The project the route currently shows; null when none is selected. */
+  activeProjectId: string | null;
+  /** True on phone-width viewports and coarse pointers. */
+  isCompactViewport: boolean;
+  /**
+   * Call after the user opens a thread. Closes the mobile sidebar drawer and
+   * is a no-op on desktop, so always call it.
+   */
+  onNavigate: () => void;
+  /**
+   * The host search field's current text, or "" when the field is closed.
+   * The host owns that field, so a plugin list filters by this rather than
+   * shipping a second search box.
+   */
+  searchQuery: string;
+}
+
+/**
+ * Props passed to an `experimental_threadHeaderAction` component, rendered in
+ * the thread header's action row.
+ */
+export interface PluginThreadHeaderActionProps {
+  /**
+   * The thread this header belongs to. Never null: the slot is not rendered
+   * on the compose screen or other non-thread routes. A split layout renders
+   * one header per pane, so the component mounts once per visible thread,
+   * each with its own id — keep per-thread state in the component, never in a
+   * module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /**
+   * True on phone-width viewports and coarse pointers. Collapse to an
+   * icon-sized control when it is true — the row is short.
+   */
+  isCompactViewport: boolean;
+}
+
+/**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
  * thread-storage paths are relative to the thread's storage root, host paths
@@ -263,6 +308,282 @@ export interface PluginSidebarFooterActionRegistration {
   run(context: PluginSidebarFooterActionContext): void | Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Sidebar thread data (the `experimental_useSidebarThreads` contract).
+// ---------------------------------------------------------------------------
+
+/**
+ * The one status bb would paint for a thread, already resolved through the
+ * host's precedence (attention before work; plan and goal before the generic
+ * spinner). Draw your own glyph for it — the SDK ships no status component.
+ *
+ * Treat an unrecognized value as "none": bb adds kinds over time, and an
+ * older plugin must degrade to drawing nothing rather than throwing.
+ *
+ * "draft" and "working-draft" are never reported here: an unsubmitted composer
+ * draft is per-client state the host reads per row, which an array-wide view
+ * cannot. A thread holding a draft reports whatever it would report without
+ * one.
+ */
+export type PluginSidebarThreadIndicator =
+  | "unread-error"
+  | "waiting-for-input"
+  | "working-draft"
+  | "workflow"
+  | "background-agent"
+  | "background-command"
+  | "plan-mode"
+  | "goal"
+  | "runtime"
+  | "draft"
+  | "unread-success"
+  | "none";
+
+/**
+ * How a thread's environment presents its workspace: a worktree bb manages,
+ * a worktree the user manages, or anything else (a plain checkout).
+ */
+export type PluginSidebarWorkspaceKind =
+  | "managed-worktree"
+  | "unmanaged-worktree"
+  | "other";
+
+/** Live work counts on a thread. All zero means nothing is running. */
+export interface PluginSidebarThreadActivity {
+  workflows: number;
+  backgroundAgents: number;
+  backgroundCommands: number;
+  planMode: number;
+  goals: number;
+}
+
+/**
+ * One thread in the sidebar's live view.
+ *
+ * A deliberate copy of the fields a sidebar needs — not a re-export of the
+ * host's internal thread row type, which changes whenever the app needs a
+ * field. Timestamps are epoch milliseconds.
+ */
+export interface PluginSidebarThread {
+  id: string;
+  projectId: string;
+  /** Null while a thread is still unnamed; pair with `titleFallback`. */
+  title: string | null;
+  titleFallback: string | null;
+  /** The thread this one was forked from or spawned under; null at the root. */
+  parentThreadId: string | null;
+  sectionId: string | null;
+  /** How this thread came to exist under its parent; null for root threads. */
+  originKind: "fork" | "side-chat" | null;
+  /** The plugin that spawned it, or null for non-plugin origins. */
+  originPluginId: string | null;
+  /** The agent provider this thread runs on, e.g. "codex", "claude-code". */
+  providerId: string;
+
+  /** The agent is blocked on the user: an approval or a question. */
+  hasPendingInteraction: boolean;
+  activity: PluginSidebarThreadActivity;
+  indicator: PluginSidebarThreadIndicator;
+  /**
+   * The host's accessible label for `indicator`, e.g. "Thread needs user
+   * input"; null when the indicator is "none". Use it for `aria-label` so
+   * screen-reader text stays consistent across sidebars.
+   */
+  indicatorLabel: string | null;
+
+  isUnread: boolean;
+  isPinned: boolean;
+  isArchived: boolean;
+
+  environment: {
+    id: string | null;
+    name: string | null;
+    branchName: string | null;
+    workspaceDisplayKind: PluginSidebarWorkspaceKind;
+  } | null;
+  /**
+   * The machine this thread's work runs on, with the name resolved for you.
+   * Null when the thread has no environment yet, or when its host is not in
+   * the known-hosts list. Useful where a thread has no branch to show — a
+   * personal-project thread has a machine but no worktree.
+   */
+  host: { id: string; name: string } | null;
+
+  createdAt: number;
+  updatedAt: number;
+  lastReadAt: number | null;
+  latestAttentionAt: number;
+}
+
+/**
+ * The pull request for a thread's branch, narrowed to what a sidebar row
+ * needs. `attention` is bb's rolled-up "does this need you" signal, so a row
+ * can colour a badge without reading checks, review, and mergeability itself.
+ */
+export interface PluginSidebarPullRequest {
+  number: number;
+  title: string;
+  url: string;
+  state: "draft" | "open" | "merged" | "closed";
+  attention:
+    | "checks_failed"
+    | "checks_pending"
+    | "changes_requested"
+    | "review_requested"
+    | "conflicts"
+    | "blocked"
+    | "draft"
+    | "ready_to_merge"
+    | "merged"
+    | "closed"
+    | "none";
+}
+
+export interface PluginSidebarThreadPullRequestState {
+  /** True while the first lookup for this thread's environment is in flight. */
+  isLoading: boolean;
+  /**
+   * The pull request, or null when the branch has none, the thread has no
+   * environment, or the lookup could not run (a git-host hiccup). A row should
+   * treat null as "nothing to show", never as an error.
+   */
+  pullRequest: PluginSidebarPullRequest | null;
+}
+
+/** One project in the sidebar's live view. */
+export interface PluginSidebarProject {
+  id: string;
+  name: string;
+  /** True for the implicit personal project. */
+  isPersonal: boolean;
+}
+
+export interface PluginSidebarThreadsState {
+  status: "loading" | "ready" | "error";
+  threads: readonly PluginSidebarThread[];
+  projects: readonly PluginSidebarProject[];
+}
+
+/**
+ * Act on threads from a plugin surface. Every method routes to the host's own
+ * flow, so optimistic updates, toasts, dialogs, pane closing, and route repair
+ * behave exactly as they do in the built-in sidebar. Unknown thread ids are
+ * ignored by `open` and rejected by the rest.
+ */
+export interface PluginSidebarThreadActions {
+  /**
+   * Navigate to a thread. `split: true` applies bb's split placement rules —
+   * a right split by default, focus when the thread is already open, replace
+   * at the pane cap — and falls back to plain navigation where splits are off.
+   */
+  open(threadId: string, options?: { split?: boolean }): void;
+  /**
+   * Go to the new-thread screen. Passing `projectId` also makes that project
+   * the composer's selection, so the thread is created where you asked.
+   */
+  openNewThread(options?: { projectId?: string; focusPrompt?: boolean }): void;
+  setPinned(threadId: string, pinned: boolean): Promise<void>;
+  setRead(threadId: string, read: boolean): Promise<void>;
+  /** Silent rename — no dialog. For inline editing in your own row. */
+  rename(threadId: string, title: string): Promise<void>;
+  /** Archives the thread AND its children, closing any panes showing them. */
+  archive(threadId: string): void;
+  /**
+   * Opens bb's delete confirmation, which counts child threads first. Deletion
+   * is destructive and recursive, so the host owns the confirmation: there is
+   * deliberately no silent `delete`.
+   */
+  requestDelete(threadId: string): void;
+}
+
+/**
+ * Render a plugin component in the thread header's action row.
+ *
+ * The frontend sibling of the backend `bb.ui.registerThreadAction`, which
+ * renders a host-owned button and runs server-side. Use that one for "do a
+ * thing"; use this one when the control must draw live state.
+ *
+ * The host places it at the left end of the action row, before the workspace
+ * button, git actions, the panel toggle, maximize, and close. That row is a
+ * 48px chrome row with 28px controls: render one inline control that fits, and
+ * put anything taller in a portalled popover.
+ */
+export interface PluginThreadHeaderActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Names the region the host wraps around your component (a labelled group).
+   * It does NOT label your control: an icon-only button still needs its own
+   * accessible name.
+   */
+  title: string;
+  component: ComponentType<PluginThreadHeaderActionProps>;
+}
+
+/** One pane's place in the split layout, as fractions of the split area. */
+export interface PluginSidebarSplitPane {
+  paneId: string;
+  rect: { x: number; y: number; width: number; height: number };
+  /** This pane holds the thread the row represents. */
+  isMe: boolean;
+  isFocused: boolean;
+}
+
+/**
+ * Drag-to-split support for one row, plus where that thread currently sits in
+ * the split layout.
+ */
+export interface PluginSidebarThreadSplit {
+  /**
+   * Spread onto the row's interactive element. Carries the pointer handler
+   * that starts a split drag; empty when splits are unavailable, so spreading
+   * it is always safe.
+   *
+   * The host owns every rule: the gesture engages only once the pointer leaves
+   * the sidebar toward the main area (so a list with its own drag-to-reorder
+   * keeps working), an edge drop splits, a center drop replaces, an
+   * already-open thread focuses its pane, and the pane cap coerces a split
+   * into a replace.
+   */
+  splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+  /**
+   * False on compact viewports, when the user disabled splits, and for an
+   * unknown thread id. Gate any "open in split" affordance you draw on it.
+   */
+  isAvailable: boolean;
+  /**
+   * Where this thread sits in the split layout, or null when it is not open in
+   * one (including single-pane layouts). Draw a mini-map, a tint, or nothing.
+   */
+  layout: { panes: readonly PluginSidebarSplitPane[] } | null;
+}
+
+/**
+ * Replace the sidebar's thread list with a plugin component.
+ *
+ * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
+ * scroll area. The built-in list stays the default; the user picks a provider
+ * in Settings → Appearance, stored per client. A provider that is uninstalled,
+ * disabled, or crashing falls back to the built-in list rather than leaving
+ * the user with no sidebar.
+ *
+ * The plugin gets the scrolling list and nothing else. The New-thread button,
+ * the search field, the plugin nav rows, and the footer stay host-rendered in
+ * every sidebar — they are shared surfaces (other plugins live in two of
+ * them), and a replaced list must not be able to remove them.
+ */
+export interface PluginThreadListRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label in the Settings → Appearance → Sidebar picker. */
+  title: string;
+  /** Optional one-line description under the title in that picker. */
+  description?: string;
+  component: ComponentType<PluginThreadListProps>;
+}
+
 /**
  * Register this plugin as a viewer/editor for file extensions. The user
  * picks (and can set as default) an opener per extension via the file tab's
@@ -368,6 +689,20 @@ export interface PluginAppSlots {
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
+  ): void;
+  /**
+   * Replace the sidebar's thread list (see
+   * {@link PluginThreadListRegistration}). Experimental: see
+   * docs/api_to_audit.md for what to audit before the prefix drops.
+   */
+  experimental_threadList(registration: PluginThreadListRegistration): void;
+  /**
+   * Render a component in the thread header's action row (see
+   * {@link PluginThreadHeaderActionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadHeaderAction(
+    registration: PluginThreadHeaderActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
@@ -943,6 +1278,41 @@ export interface PluginSdkApp {
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
   useComposer(): PluginComposerApi;
+  /**
+   * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
+   * Reads the host's own cache and realtime subscriptions, so it costs no
+   * extra request and updates exactly when the built-in sidebar does.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarThreads(): PluginSidebarThreadsState;
+  /**
+   * Thread actions bound to the host's mutations (see
+   * {@link PluginSidebarThreadActions}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
+  /**
+   * The pull request for one thread's branch (see
+   * {@link PluginSidebarThreadPullRequestState}).
+   *
+   * Per row and opt-in, because it costs a git-host lookup: it is NOT on the
+   * thread payload every sidebar loads. Threads sharing an environment share
+   * one query, and the host owns the polling and staleness rules — an open PR
+   * with pending checks refreshes, a merged one does not.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarThreadPullRequest(
+    threadId: string,
+  ): PluginSidebarThreadPullRequestState;
+  /**
+   * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
+   * Call it once per rendered row, like the built-in sidebar does.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useSidebarThreadSplit(
+    threadId: string,
+  ): PluginSidebarThreadSplit;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

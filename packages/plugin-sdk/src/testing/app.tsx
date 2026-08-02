@@ -37,6 +37,13 @@ import {
   type PluginSettingsSectionRegistration,
   type PluginSettingsState,
   type PluginSidebarFooterActionRegistration,
+  type PluginSidebarPullRequest,
+  type PluginSidebarThreadActions,
+  type PluginSidebarThreadPullRequestState,
+  type PluginSidebarThreadSplit,
+  type PluginSidebarThreadsState,
+  type PluginThreadHeaderActionRegistration,
+  type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
   type PluginRpcContract,
   type PluginRpcResult,
@@ -148,6 +155,20 @@ interface SlotEnv {
   navigateCalls: NavigateCall[];
   composer: TestComposerStore;
   composerLog: ComposerLog;
+  sidebarThreads: PluginSidebarThreadsState;
+  sidebarActions: PluginSidebarThreadActions;
+  sidebarActionCalls: SidebarActionCall[];
+  sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+}
+
+/** One recorded `experimental_useSidebarThreadActions()` call. */
+export interface SidebarActionCall {
+  method: keyof PluginSidebarThreadActions;
+  threadId?: string;
+  options?: Record<string, unknown>;
+  title?: string;
+  pinned?: boolean;
+  read?: boolean;
 }
 
 function SlotLifecycleGuard({
@@ -412,6 +433,39 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_useSidebarThreads(): PluginSidebarThreadsState {
+    return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
+  },
+  experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
+    return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
+  },
+  experimental_useSidebarThreadSplit(threadId): PluginSidebarThreadSplit {
+    const env = useSlotEnv("experimental_useSidebarThreadSplit");
+    return useMemo(
+      () => ({
+        splitProps: {
+          onPointerDown: () => {
+            env.sidebarActionCalls.push({ method: "open", threadId });
+          },
+        },
+        isAvailable: true,
+        layout: null,
+      }),
+      [env, threadId],
+    );
+  },
+  experimental_useSidebarThreadPullRequest(
+    threadId,
+  ): PluginSidebarThreadPullRequestState {
+    const env = useSlotEnv("experimental_useSidebarThreadPullRequest");
+    return useMemo(
+      () => ({
+        isLoading: false,
+        pullRequest: env.sidebarPullRequests.get(threadId) ?? null,
+      }),
+      [env, threadId],
+    );
+  },
   useComposerView(): ComposerView {
     const composer = useSlotEnv("useComposerView").composer;
     const version = useSyncExternalStore(
@@ -465,6 +519,8 @@ export interface CapturedPluginApp {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  threadLists: PluginThreadListRegistration[];
+  threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
@@ -493,6 +549,8 @@ function collectRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    threadLists: [],
+    threadHeaderActions: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -506,6 +564,8 @@ function collectRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    threadList: new Set<string>(),
+    threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -621,6 +681,32 @@ function collectRegistrations(
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           run: registration.run,
+        });
+      },
+      experimental_threadList(registration) {
+        const kind = "slots.experimental_threadList";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadList, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        captured.threadLists.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadHeaderAction(registration) {
+        const kind = "slots.experimental_threadHeaderAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderAction, id);
+        captured.threadHeaderActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
         });
       },
       fileOpener(registration) {
@@ -895,6 +981,16 @@ export interface RenderSlotOptions<
     scope?: PluginComposerScope;
     attachmentCount?: number;
   };
+  /**
+   * Threads and projects `experimental_useSidebarThreads()` reports. Omitted →
+   * a ready, empty list. Pass `{ status: "loading" }` to test that branch.
+   */
+  sidebarThreads?: Partial<PluginSidebarThreadsState>;
+  /**
+   * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
+   * by thread id. Omitted → every thread reports none.
+   */
+  sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
   /** Host acceptance for `useBbNavigate().openThreadPanel`. */
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
@@ -924,6 +1020,8 @@ export interface RenderedSlotInspectionState {
   readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
   readonly navigateCalls: NavigateCall[];
+  /** Every `experimental_useSidebarThreadActions()` call, in order. */
+  readonly sidebarActionCalls: SidebarActionCall[];
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -1043,6 +1141,45 @@ export function renderSlot<
   };
 
   const navigateCalls: NavigateCall[] = [];
+  const sidebarActionCalls: SidebarActionCall[] = [];
+  const sidebarPullRequests = new Map(
+    Object.entries(options.sidebarPullRequests ?? {}),
+  );
+  const sidebarThreads: PluginSidebarThreadsState = {
+    status: options.sidebarThreads?.status ?? "ready",
+    threads: options.sidebarThreads?.threads ?? [],
+    projects: options.sidebarThreads?.projects ?? [],
+  };
+  const sidebarActions: PluginSidebarThreadActions = {
+    open(threadId, openOptions) {
+      sidebarActionCalls.push({
+        method: "open",
+        threadId,
+        ...(openOptions ? { options: { ...openOptions } } : {}),
+      });
+    },
+    openNewThread(newThreadOptions) {
+      sidebarActionCalls.push({
+        method: "openNewThread",
+        ...(newThreadOptions ? { options: { ...newThreadOptions } } : {}),
+      });
+    },
+    async setPinned(threadId, pinned) {
+      sidebarActionCalls.push({ method: "setPinned", threadId, pinned });
+    },
+    async setRead(threadId, read) {
+      sidebarActionCalls.push({ method: "setRead", threadId, read });
+    },
+    async rename(threadId, title) {
+      sidebarActionCalls.push({ method: "rename", threadId, title });
+    },
+    archive(threadId) {
+      sidebarActionCalls.push({ method: "archive", threadId });
+    },
+    requestDelete(threadId) {
+      sidebarActionCalls.push({ method: "requestDelete", threadId });
+    },
+  };
   const navigate: BbNavigate = {
     toThread(threadId) {
       navigateCalls.push({ method: "toThread", threadId });
@@ -1180,6 +1317,10 @@ export function renderSlot<
     navigateCalls,
     composer,
     composerLog,
+    sidebarThreads,
+    sidebarActions,
+    sidebarActionCalls,
+    sidebarPullRequests,
   };
 
   const releaseComposerOwnership = (): void => {
@@ -1248,6 +1389,7 @@ export function renderSlot<
     setComposerText,
     setComposerScope,
     navigateCalls,
+    sidebarActionCalls,
     composer: composerLog,
     behavior: {
       emitRealtime,
@@ -1255,7 +1397,12 @@ export function renderSlot<
       setComposerText,
       setComposerScope,
     },
-    inspection: { rpcCalls, navigateCalls, composer: composerLog },
+    inspection: {
+      rpcCalls,
+      navigateCalls,
+      sidebarActionCalls,
+      composer: composerLog,
+    },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
   };
 }

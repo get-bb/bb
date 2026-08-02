@@ -55,6 +55,7 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
+          childPillLabel={null}
           isSecondaryPanelOpen
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -99,6 +100,7 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
+          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -153,6 +155,7 @@ describe("ThreadDetailHeader", () => {
               ) : null}
             </>
           )}
+          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onClosePane={vi.fn()}
           onOpenThreadGitAction={vi.fn()}
@@ -177,6 +180,7 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
           actionsMenu={null}
+          childPillLabel={null}
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -205,6 +209,7 @@ describe("ThreadDetailHeader", () => {
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
           actionsMenu={null}
+          childPillLabel="child"
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}
@@ -224,11 +229,13 @@ describe("ThreadDetailHeader", () => {
     const activeTitle = screen.getByText("Focused thread");
     expect(activeTitle.classList).toContain("font-normal");
     expect(activeTitle.classList).not.toContain("font-medium");
+    expect(screen.getByText("child")).not.toBeNull();
 
     rerender(
       <PaneContext.Provider value={{ ...splitContext, isFocused: false }}>
         <ThreadDetailHeader
           actionsMenu={null}
+          childPillLabel="child"
           isSecondaryPanelOpen={false}
           onOpenThreadGitAction={vi.fn()}
           onToggleSecondaryPanel={vi.fn()}

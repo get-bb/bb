@@ -519,39 +519,6 @@ export interface PluginAgents {
 // Host-rendered UI contributions (design §4.9).
 // ---------------------------------------------------------------------------
 
-export interface PluginThreadActionContext {
-  threadId: string;
-  projectId: string;
-}
-
-export interface PluginThreadActionToast {
-  kind: "success" | "error" | "info";
-  message: string;
-}
-
-export type PluginThreadActionResult = void | {
-  toast?: PluginThreadActionToast;
-};
-
-export interface PluginThreadActionRegistration {
-  /** Unique within this plugin: [a-zA-Z0-9_-]+ (becomes a URL segment). */
-  id: string;
-  /** Button label rendered in the thread header. */
-  title: string;
-  /** Optional icon name; the host falls back to a generic icon. */
-  icon?: string;
-  /** Optional confirmation prompt the host shows before running. */
-  confirm?: string;
-  /**
-   * Runs server-side when the user clicks the action. The host shows a
-   * pending state while in flight, the returned toast on completion, and an
-   * automatic error toast when this throws.
-   */
-  run(
-    ctx: PluginThreadActionContext,
-  ): PluginThreadActionResult | Promise<PluginThreadActionResult>;
-}
-
 export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
 
 /** Search context handed to a mention provider (design §4.9). `projectId`/
@@ -607,12 +574,6 @@ export interface PluginUi {
     request: PluginInteractionRequest,
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
-  /**
-   * Register a thread action rendered in the shipped app's thread header
-   * (design §4.9). Multiple actions per plugin; ids must be unique within
-   * the plugin. Invoked via POST /plugins/:id/actions/:actionId.
-   */
-  registerThreadAction(action: PluginThreadActionRegistration): void;
   /**
    * Register a mention provider for the shipped app's composer (design §4.9).
    * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or

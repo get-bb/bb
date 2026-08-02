@@ -215,6 +215,7 @@ describe("builtin plugin reconciliation", () => {
       ["inline-vis", "AppWindow"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
+      ["t3sidebar", "PanelLeft"],
       ["workflows", "Workflow"],
     ]);
 
@@ -563,13 +564,6 @@ describe("builtin plugin reconciliation", () => {
         pluginId: "builtin-fixture",
         name: "builtin-fixture",
         summary: "Builtin fixture command",
-      },
-    ]);
-    expect(service.listThreadActionContributions()).toMatchObject([
-      {
-        pluginId: "builtin-fixture",
-        id: "ping",
-        title: "Ping",
       },
     ]);
     await expect(

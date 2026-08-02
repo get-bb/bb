@@ -369,7 +369,7 @@ stdout/stderr ceiling and atomic structured over-limit errors); bb.agents.regist
 bb.agents.configure (one synchronous per-resolution callback selecting this
 plugin's own tool/skill ids and optional dynamic instructions; tools apply on
 the next provider session start/resume, while busy skill runtimes defer catalog
-changes); bb.ui.registerThreadAction /
+changes); bb.ui
 registerMentionProvider (host-rendered UI — no
 frontend bundle needed); bb.status.needsConfiguration (report
 "unconfigured" instead of crashing); bb.onDispose (LIFO cleanup on
@@ -398,5 +398,5 @@ path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `official-plugins/` directory contains the BB Official GitHub, Docs,
 Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins
-cover slack-bot (webhook bot), agent-enrichment (agent surfaces), small-ux-pack
-(host-rendered UI), and composer-customization (all composer regions).
+cover slack-bot (webhook bot), agent-enrichment (agent surfaces), and
+composer-customization (all composer regions).

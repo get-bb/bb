@@ -26,7 +26,6 @@ export {
   type FakeRealtimeSignal,
   type FakeScheduleRecord,
   type FakeServiceRecord,
-  type FakeThreadActionRecord,
 } from "./fake-plugin-host.js";
 export {
   createFakeSdk,

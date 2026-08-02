@@ -20,6 +20,12 @@ export interface CreateDaemonOptions {
   shutdownRuntimes?: () => Promise<void>;
   onStart?: () => Promise<void>;
   signalSource?: SignalSource;
+  /**
+   * Ends the process when a shutdown does not. Only the real process
+   * entrypoint supplies this; in-process callers such as tests leave it unset.
+   */
+  forceExit?: (code: number) => void;
+  shutdownExitGraceMs?: number;
 }
 
 export interface HostDaemon {
@@ -30,6 +36,22 @@ export interface HostDaemon {
 }
 
 const TERMINATION_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+
+/**
+ * How long a shutdown may take before the process is ended by force. A restart
+ * after a self-update only happens once the process really exits, so a hung
+ * shutdown step or an undrained event loop must not keep the daemon alive.
+ */
+export const DEFAULT_SHUTDOWN_EXIT_GRACE_MS = 15_000;
+
+function listActiveResources(): string[] {
+  const getActiveResourcesInfo = (
+    process as NodeJS.Process & {
+      getActiveResourcesInfo?: () => string[];
+    }
+  ).getActiveResourcesInfo;
+  return getActiveResourcesInfo ? getActiveResourcesInfo() : [];
+}
 
 export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let started = false;
@@ -51,10 +73,32 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     listeners.clear();
   }
 
+  // Unref'd so a drained event loop still ends the process on its own; the
+  // timer only fires when something is still holding the loop open.
+  function armShutdownExitWatchdog(reason: string): void {
+    const forceExit = options.forceExit;
+    if (!forceExit) {
+      return;
+    }
+
+    const graceMs =
+      options.shutdownExitGraceMs ?? DEFAULT_SHUTDOWN_EXIT_GRACE_MS;
+    const timer = setTimeout(() => {
+      options.logger.error(
+        { reason, graceMs, activeResources: listActiveResources() },
+        "Host daemon shutdown did not end the process; forcing exit so the service manager can restart it.",
+      );
+      forceExit(0);
+    }, graceMs);
+    timer.unref?.();
+  }
+
   async function stop(reason: string): Promise<void> {
     if (stopPromise) {
       return stopPromise;
     }
+
+    armShutdownExitWatchdog(reason);
 
     stopPromise = (async () => {
       unregisterSignalHandlers();

@@ -277,6 +277,9 @@ export async function startHostDaemon(
       fetchFn: options.fetchFn,
       createWebSocket: options.createWebSocket,
       closeMachineAuthProxy: machineAuthProxy?.close,
+      // This function owns the daemon process, so it arms the shutdown
+      // force-exit. A self-update restart depends on the process exiting.
+      forceExit: (code) => process.exit(code),
     });
     const startedApp = app;
     handleDaemonLockLost = () => {

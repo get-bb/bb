@@ -47,8 +47,6 @@ import type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
-  PluginThreadActionContext,
-  PluginThreadActionResult,
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginUi,
@@ -107,10 +105,6 @@ export type {
   PluginSettingsValues,
   PluginStatusApi,
   PluginStorage,
-  PluginThreadActionContext,
-  PluginThreadActionRegistration,
-  PluginThreadActionResult,
-  PluginThreadActionToast,
   PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
@@ -284,16 +278,6 @@ export interface PluginMentionProviderRecord {
   ) => { context: string } | Promise<{ context: string }>;
 }
 
-/** Runtime record of a registered thread action. */
-export interface PluginThreadActionRecord {
-  id: string;
-  title: string;
-  icon: string | null;
-  confirm: string | null;
-  run: (
-    ctx: PluginThreadActionContext,
-  ) => PluginThreadActionResult | Promise<PluginThreadActionResult>;
-}
 
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
@@ -345,7 +329,6 @@ const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 
 // Thread action ids become URL path segments.
-const THREAD_ACTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 // Mention provider ids prefix wire item ids ("<providerId>:<itemId>"), so
 // ":" is excluded to keep the split unambiguous.
@@ -441,8 +424,6 @@ export interface PluginApiHandle {
    * `bb.agents.contributeInstructions` (at most one; null when none).
    */
   instructionProvider: PluginInstructionProvider | null;
-  /** Thread actions recorded by `bb.ui.registerThreadAction`. */
-  threadActions: PluginThreadActionRecord[];
   /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
   mentionProviders: PluginMentionProviderRecord[];
   /** Publish factory-time host declarations and status only after commit. */
@@ -1141,52 +1122,9 @@ export function createPluginApi(options: {
     },
   };
 
-  const threadActions: PluginThreadActionRecord[] = [];
   const mentionProviders: PluginMentionProviderRecord[] = [];
   const ui: PluginUi = {
     requestInput,
-    registerThreadAction(action) {
-      assertLive();
-      const id = action?.id;
-      if (typeof id !== "string" || !THREAD_ACTION_ID_PATTERN.test(id)) {
-        throw new Error(
-          `invalid thread action id ${JSON.stringify(id)} — use letters, digits, "-" and "_"`,
-        );
-      }
-      if (threadActions.some((record) => record.id === id)) {
-        throw new Error(`thread action "${id}" is already registered`);
-      }
-      if (
-        typeof action.title !== "string" ||
-        action.title.trim().length === 0
-      ) {
-        throw new Error(`thread action "${id}" must provide a title`);
-      }
-      if (action.icon !== undefined && typeof action.icon !== "string") {
-        throw new Error(`thread action "${id}" icon must be a string`);
-      }
-      if (action.confirm !== undefined && typeof action.confirm !== "string") {
-        throw new Error(`thread action "${id}" confirm must be a string`);
-      }
-      if (typeof action.run !== "function") {
-        throw new Error(
-          `thread action "${id}" must provide a run({ threadId, projectId }) function`,
-        );
-      }
-      threadActions.push({
-        id,
-        title: action.title,
-        icon:
-          action.icon !== undefined && action.icon.trim().length > 0
-            ? action.icon
-            : null,
-        confirm:
-          action.confirm !== undefined && action.confirm.trim().length > 0
-            ? action.confirm
-            : null,
-        run: action.run.bind(action),
-      });
-    },
     registerMentionProvider(provider) {
       assertLive();
       const id = provider?.id;
@@ -1394,7 +1332,6 @@ export function createPluginApi(options: {
     get instructionProvider() {
       return instructionProvider;
     },
-    threadActions,
     mentionProviders,
     activate() {
       if (activated) return;

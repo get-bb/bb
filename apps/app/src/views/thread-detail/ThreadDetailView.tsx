@@ -72,7 +72,7 @@ import {
   ThreadActionsMenu,
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
-import { PluginThreadActions } from "@/components/thread/PluginThreadActions";
+import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
@@ -2435,11 +2435,23 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }
         />
       )}
+      childPillLabel={
+        threadOriginKind === "side-chat"
+          ? "side chat"
+          : parentThreadId
+            ? "child"
+            : null
+      }
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
-      pluginActions={<PluginThreadActions threadId={thread.id} />}
+      pluginActions={
+        <PluginThreadHeaderActions
+          threadId={thread.id}
+          projectId={thread.projectId}
+        />
+      }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}

@@ -11,16 +11,6 @@ import {
  * locally. One query covers every contribution kind; later kinds extend
  * {@link PluginContributions}.
  */
-export interface PluginThreadActionContribution {
-  pluginId: string;
-  id: string;
-  title: string;
-  /** Icon hint from the plugin; the app falls back to a generic icon. */
-  icon: string | null;
-  /** Confirmation prompt to show before running; null runs immediately. */
-  confirm: string | null;
-}
-
 /** One mention provider contributed by a plugin (design §4.9). */
 export interface PluginMentionProviderContribution {
   pluginId: string;
@@ -30,17 +20,11 @@ export interface PluginMentionProviderContribution {
 }
 
 export interface PluginContributions {
-  threadActions: PluginThreadActionContribution[];
   mentionProviders: PluginMentionProviderContribution[];
 }
 
-export interface PluginThreadActionToast {
-  kind: "success" | "error" | "info";
-  message: string;
-}
 
 const EMPTY_CONTRIBUTIONS: PluginContributions = {
-  threadActions: [],
   mentionProviders: [],
 };
 
@@ -66,20 +50,6 @@ function toMentionProviderContribution(
   };
 }
 
-function isThreadActionContribution(
-  value: unknown,
-): value is PluginThreadActionContribution {
-  if (typeof value !== "object" || value === null) return false;
-  const action = value as Record<string, unknown>;
-  return (
-    typeof action.pluginId === "string" &&
-    typeof action.id === "string" &&
-    typeof action.title === "string" &&
-    (action.icon === null || typeof action.icon === "string") &&
-    (action.confirm === null || typeof action.confirm === "string")
-  );
-}
-
 async function fetchPluginContributions(
   signal: AbortSignal,
 ): Promise<PluginContributions> {
@@ -88,13 +58,9 @@ async function fetchPluginContributions(
   // routes) or a disabled experiment both mean "no contributions".
   if (!response.ok) return EMPTY_CONTRIBUTIONS;
   const body = (await response.json()) as {
-    threadActions?: unknown;
     mentionProviders?: unknown;
   };
   return {
-    threadActions: Array.isArray(body.threadActions)
-      ? body.threadActions.filter(isThreadActionContribution)
-      : [],
     mentionProviders: Array.isArray(body.mentionProviders)
       ? body.mentionProviders
           .map(toMentionProviderContribution)
@@ -131,49 +97,6 @@ export function usePluginContributions() {
     staleTime: 30_000,
   });
 }
-/**
- * Invoke one plugin thread action server-side. Resolves with the returned
- * toast (or null); throws with the server's error message for handler
- * failures so mutation callers surface it as an error toast.
- */
-export async function runPluginThreadAction(args: {
-  pluginId: string;
-  actionId: string;
-  threadId: string;
-}): Promise<PluginThreadActionToast | null> {
-  const response = await fetch(
-    `/api/v1/plugins/${encodeURIComponent(args.pluginId)}/actions/${encodeURIComponent(args.actionId)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ threadId: args.threadId }),
-    },
-  );
-  const body = (await response.json().catch(() => null)) as {
-    ok?: unknown;
-    toast?: unknown;
-    error?: unknown;
-  } | null;
-  if (!response.ok || body?.ok !== true) {
-    throw new Error(
-      typeof body?.error === "string"
-        ? body.error
-        : `thread action failed (HTTP ${response.status})`,
-    );
-  }
-  const toast = body.toast;
-  if (typeof toast !== "object" || toast === null) return null;
-  const { kind, message } = toast as { kind?: unknown; message?: unknown };
-  if (
-    (kind === "success" || kind === "error" || kind === "info") &&
-    typeof message === "string"
-  ) {
-    return { kind, message };
-  }
-  return null;
-}
-
-/** One row from GET /plugins/mentions/search (plugin design §4.9). */
 export interface PluginMentionSearchItem {
   /** Opaque server-composed item reference; rides the mention resource. */
   itemId: string;

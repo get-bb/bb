@@ -163,7 +163,7 @@ reports the reload failure in its detail. `bb.pluginId` is the plugin's own id.
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
-instruction providers, thread actions, or mention providers are rejected.
+instruction providers or mention providers are rejected.
 Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
 are additive, so registering multiple listeners is supported.
 
@@ -666,16 +666,6 @@ safety policy such as permission escalation is unchanged. The legacy
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
 ```ts
-bb.ui.registerThreadAction({
-  id: "summarize",
-  title: "Summarize thread",
-  icon: "ListChecks",
-  confirm: "Ask the agent for a summary?", // optional confirm dialog
-  async run({ threadId, projectId }) {
-    return { toast: { kind: "success", message: "Requested." } }; // throw → automatic error toast
-  },
-});
-
 bb.ui.registerMentionProvider({
   id: "issue",
   label: "Issues",
@@ -813,7 +803,136 @@ export default definePluginApp((app) => {
     run: ({ openSettings }) => openSettings(),
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
+  app.slots.experimental_threadList({
+    id: "inbox",
+    title: "Inbox",
+    description: "One flat list, newest thread on top.",
+    component: InboxList,
+  });
 });
+```
+
+### A control in the thread header
+
+`app.slots.experimental_threadHeaderAction` renders a component in the thread
+header's action row. It replaced the older backend-only
+`bb.ui.registerThreadAction`, so a control that needs to draw live state (a
+count, a cluster, a status) is now the only shape:
+
+```tsx
+app.slots.experimental_threadHeaderAction({
+  id: "subagents",
+  title: "Subagents",
+  component: ({ threadId, projectId, isCompactViewport }) => { ... },
+});
+```
+
+The row is a 48px chrome row with 28px controls: render ONE inline control, and
+put anything taller in a portalled popover. The host clamps your footprint, so
+an oversized control is clipped rather than allowed to break the header. `title`
+names the host's wrapper region — your icon-only button still needs its own
+accessible name. A split layout renders one header
+per pane, so your component mounts once per visible thread — keep per-thread
+state in the component, never in a module-level singleton.
+
+A common pairing with a replaced sidebar: hide child threads from the list and
+surface them here instead, filtering `experimental_useSidebarThreads()` by
+`parentThreadId === threadId`.
+
+### Replacing the sidebar thread list
+
+`app.slots.experimental_threadList` is the one **exclusive** slot: only one
+list fills the sidebar's scroll area. Registering it does not take the sidebar
+— the built-in list stays the default, and the user picks a provider in
+**Settings → Appearance → Sidebar**. The choice is per client.
+
+Your component gets the scrolling list and nothing else. The New-thread button,
+the search field, the plugin nav rows, and the footer stay host-rendered —
+other plugins live in two of those, so a replaced list must not remove them.
+Put your own controls at the top of your scroll area instead.
+
+If the chosen plugin is disabled, uninstalled, or its component throws, bb
+renders its own list again (plus a toast on a crash), so the sidebar is never
+empty.
+
+The component receives:
+
+```ts
+interface PluginThreadListProps {
+  activeThreadId: string | null;
+  activeProjectId: string | null;
+  isCompactViewport: boolean;
+  /** Closes the mobile drawer; no-op on desktop. Always call it after opening
+      a thread. */
+  onNavigate: () => void;
+  /** The host search field's text; "" when the field is closed. The host owns
+      that field — filter by this rather than shipping a second one. */
+  searchQuery: string;
+}
+```
+
+**Reading and acting on threads.** Two hooks back a replaced list:
+
+```tsx
+const { status, threads, projects } = experimental_useSidebarThreads();
+const actions = experimental_useSidebarThreadActions();
+
+// threads: PluginSidebarThread[] — id, title, parentThreadId, originKind,
+// providerId, activity counts, isUnread/isPinned, environment.branchName,
+// host ({ id, name } — the machine, useful when a thread has no branch),
+// timestamps, and
+// `indicator` (bb's resolved status kind) + `indicatorLabel` (its a11y string).
+// Draw your own glyph for `indicator`; the SDK ships no status component.
+// Treat an unknown indicator value as "none" — bb adds kinds over time.
+
+// Pull requests are per row and opt-in — a lookup hits the git host, so it is
+// deliberately NOT on the thread payload every sidebar loads:
+const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
+// → { number, title, url, state, attention } | null
+
+actions.open(id, { split: true }); // bb's split placement rules
+actions.openNewThread({ projectId }); // also sets the composer's project
+actions.setPinned(id, true);
+actions.setRead(id, false);
+actions.rename(id, "New title"); // silent; for inline editing
+actions.archive(id); // archives children too, closes their panes
+actions.requestDelete(id); // opens bb's delete confirmation
+```
+
+Destructive actions deliberately route through the host's own flow, so there
+is no silent `delete`: deletion is recursive, and only bb can show the
+confirmation that counts the child threads.
+
+Unit-test a list with `renderSlot(...)` from `@bb/plugin-sdk/testing/app`:
+seed rows with the `sidebarThreads` option and assert against
+`inspection.sidebarActionCalls`.
+
+**Splits.** Rows can drag out to the split area:
+
+```tsx
+const { splitProps, isAvailable, layout } =
+  experimental_useSidebarThreadSplit(thread.id);
+
+<a {...splitProps} onClick={...}>
+  {title}
+  {/* layout is data: draw a mini-map, a tint, or nothing */}
+</a>;
+```
+
+The host owns the gesture rules, including the one that matters if your list
+has its own drag-to-reorder: a split drag engages only once the pointer leaves
+the sidebar.
+
+**Your row, your menu.** This API ships no components. Build your own context
+menu from `experimental_useSidebarThreadActions` — it exposes everything bb's
+own menu does, including `requestDelete`, which opens bb's confirmation.
+
+**Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
+query selector, not by React state. Put both attributes on each row's anchor or
+`Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` silently stop working:
+
+```tsx
+<a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
 ```
 
 ### Trusted frontend content scripts
@@ -1320,7 +1439,7 @@ Inspect: `harness.inspection.sdk.calls` /
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
 `harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
-agent tools/configure provider, thread actions, mention providers). Pass
+agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
 
@@ -1424,8 +1543,6 @@ Remaining reference examples in `examples/plugins/`:
   needsConfiguration.
 - `agent-enrichment` — agent surfaces: CLI command, zod-schema native tool,
   docs mention provider, boolean setting, bundled `skills/` directory.
-- `small-ux-pack` — dependency-free host-rendered UI: two thread actions
-  (confirm + toast, and the automatic error-toast path).
 - `cascade` — the big host-component example: a scrollable-tiling strip where
   every column is a `ThreadChat` and the draft column is
   `experimental_NewThreadComposer`, plus a thin index backend (kv layout

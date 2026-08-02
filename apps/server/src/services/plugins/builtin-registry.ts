@@ -59,6 +59,9 @@ export const BUILTIN_PLUGINS = [
     experiment: "sideChatPlugin" as const,
   },
   { name: "workflows", pluginId: "workflows", defaultEnabled: false },
+  // Ships with the app but stays off: it replaces the sidebar, which is a
+  // choice the user makes in Settings, never something an install does.
+  { name: "t3sidebar", pluginId: "t3sidebar", defaultEnabled: false },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,

@@ -11,6 +11,8 @@ import {
   type PluginPendingInteractionRegistration,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
+  type PluginThreadListRegistration,
+  type PluginThreadHeaderActionRegistration,
   type PluginThreadPanelActionRegistration,
 } from "@bb/plugin-sdk";
 import {
@@ -75,6 +77,8 @@ export function collectPluginAppRegistrations(
   const composerCustomizations: ComposerCustomization[] = [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
+  const threadLists: PluginThreadListRegistration[] = [];
+  const threadHeaderActions: PluginThreadHeaderActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
@@ -87,6 +91,8 @@ export function collectPluginAppRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    threadList: new Set<string>(),
+    threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -206,6 +212,32 @@ export function collectPluginAppRegistrations(
           run: registration.run,
         });
       },
+      experimental_threadList(registration) {
+        const kind = "slots.experimental_threadList";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadList, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        threadLists.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadHeaderAction(registration) {
+        const kind = "slots.experimental_threadHeaderAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadHeaderAction, id);
+        threadHeaderActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       fileOpener(registration) {
         const kind = "slots.fileOpener";
         const id = requireSlotId(kind, registration?.id);
@@ -292,6 +324,8 @@ export function collectPluginAppRegistrations(
     composerCustomizations,
     pendingInteractions,
     sidebarFooterActions,
+    threadLists,
+    threadHeaderActions,
     fileOpeners,
     messageDirectives,
     messageActions,

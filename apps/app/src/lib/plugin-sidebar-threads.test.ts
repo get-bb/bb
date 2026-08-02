@@ -1,0 +1,197 @@
+import type { ThreadListEntry } from "@bb/domain";
+import { describe, expect, it } from "vitest";
+import { toPluginSidebarThread } from "./plugin-sidebar-threads";
+
+function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
+  return {
+    id: "thr_1",
+    projectId: "proj_1",
+    environmentId: null,
+    providerId: "codex",
+    title: "A thread",
+    titleFallback: "A thread",
+    sectionId: null,
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    childOrigin: null,
+    archivedAt: null,
+    pinnedAt: null,
+    pinSortKey: null,
+    deletedAt: null,
+    lastReadAt: 10,
+    latestAttentionAt: 5,
+    createdAt: 1,
+    updatedAt: 2,
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    ...overrides,
+  };
+}
+
+describe("toPluginSidebarThread", () => {
+  it("maps activity counts onto the plugin-facing names", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({
+        activity: {
+          activeWorkflowCount: 2,
+          activeBackgroundAgentCount: 3,
+          activeBackgroundCommandCount: 4,
+          activePlanModeCount: 5,
+          activeGoalCount: 6,
+        },
+      }),
+    );
+    expect(mapped.activity).toEqual({
+      workflows: 2,
+      backgroundAgents: 3,
+      backgroundCommands: 4,
+      planMode: 5,
+      goals: 6,
+    });
+  });
+
+  // The contract's whole promise: plugins inherit bb's precedence instead of
+  // reimplementing it. Attention outranks the spinner even while running.
+  it("resolves the indicator with the host's precedence", () => {
+    expect(
+      toPluginSidebarThread(
+        makeThread({
+          hasPendingInteraction: true,
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+        }),
+      ).indicator,
+    ).toBe("waiting-for-input");
+
+    expect(
+      toPluginSidebarThread(
+        makeThread({
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+        }),
+      ).indicator,
+    ).toBe("runtime");
+
+    expect(
+      toPluginSidebarThread(
+        makeThread({
+          activity: {
+            activeWorkflowCount: 1,
+            activeBackgroundAgentCount: 0,
+            activeBackgroundCommandCount: 0,
+            activePlanModeCount: 0,
+            activeGoalCount: 0,
+          },
+        }),
+      ).indicator,
+    ).toBe("workflow");
+  });
+
+  it("carries the host's accessible label, and null for none", () => {
+    expect(
+      toPluginSidebarThread(makeThread({ hasPendingInteraction: true }))
+        .indicatorLabel,
+    ).toBe("Thread needs user input");
+    const idle = toPluginSidebarThread(makeThread());
+    expect(idle.indicator).toBe("none");
+    expect(idle.indicatorLabel).toBeNull();
+  });
+
+  it("reports an unread failure as an error indicator", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({ status: "error", lastReadAt: 1, latestAttentionAt: 9 }),
+    );
+    expect(mapped.indicator).toBe("unread-error");
+    expect(mapped.isUnread).toBe(true);
+  });
+
+  // `isUnreadDoneThread` deliberately excludes child threads, but a plugin
+  // list may show them, so plain read state drives `isUnread`.
+  it("reports unread child threads as unread", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({
+        parentThreadId: "thr_parent",
+        lastReadAt: 1,
+        latestAttentionAt: 9,
+      }),
+    );
+    expect(mapped.isUnread).toBe(true);
+    expect(mapped.indicator).toBe("none");
+  });
+
+  it("treats a never-read thread as unread", () => {
+    expect(
+      toPluginSidebarThread(makeThread({ lastReadAt: null })).isUnread,
+    ).toBe(true);
+  });
+
+  it("maps pin, archive, and environment fields", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({
+        pinnedAt: 12,
+        archivedAt: 13,
+        environmentId: "env_1",
+        environmentName: "Worktree",
+        environmentBranchName: "bb/feature",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+      }),
+    );
+    expect(mapped.isPinned).toBe(true);
+    expect(mapped.isArchived).toBe(true);
+    expect(mapped.environment).toEqual({
+      id: "env_1",
+      name: "Worktree",
+      branchName: "bb/feature",
+      workspaceDisplayKind: "managed-worktree",
+    });
+  });
+
+  it("reports no environment when the thread has none", () => {
+    expect(toPluginSidebarThread(makeThread()).environment).toBeNull();
+  });
+
+  it("carries the provider so a row can draw an agent glyph", () => {
+    expect(toPluginSidebarThread(makeThread()).providerId).toBe("codex");
+  });
+
+  // A personal-project thread has a machine but no worktree, so the machine
+  // is the only place-of-work a row can show.
+  it("resolves the machine name for the thread's host", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({ environmentHostId: "host_1" }),
+      new Map([["host_1", "Sawyer's MacBook"]]),
+    );
+    expect(mapped.host).toEqual({ id: "host_1", name: "Sawyer's MacBook" });
+  });
+
+  it("falls back to the host id when the machine is unknown", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({ environmentHostId: "host_gone" }),
+      new Map(),
+    );
+    expect(mapped.host).toEqual({ id: "host_gone", name: "host_gone" });
+  });
+
+  it("reports no host when the thread has none", () => {
+    expect(toPluginSidebarThread(makeThread()).host).toBeNull();
+  });
+});

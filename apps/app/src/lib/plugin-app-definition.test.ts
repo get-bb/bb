@@ -28,6 +28,135 @@ describe("definePluginApp", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
+  it("collects a header action", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadHeaderAction({
+        id: "subagents",
+        title: "Subagents",
+        component: Component,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).threadHeaderActions,
+    ).toEqual([{ id: "subagents", title: "Subagents", component: Component }]);
+  });
+
+  it("rejects two header actions with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadHeaderAction({
+        id: "subagents",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_threadHeaderAction({
+        id: "subagents",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(
+      /subagents/,
+    );
+  });
+
+  // Ids from different slot kinds must not collide: a plugin can reasonably
+  // name its list and its header control the same thing.
+  it("keeps ids independent from the thread-list slot", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+        component: Component,
+      });
+      app.slots.experimental_threadHeaderAction({
+        id: "inbox",
+        title: "Inbox",
+        component: Component,
+      });
+    });
+    const collected = collectPluginAppRegistrations(definition);
+    expect(collected.threadLists).toHaveLength(1);
+    expect(collected.threadHeaderActions).toHaveLength(1);
+  });
+
+  it("rejects a missing title", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadHeaderAction({
+        id: "subagents",
+        component: Component,
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/title/);
+  });
+});
+
+describe("collectPluginAppRegistrations — experimental_threadList", () => {
+  it("collects a thread list with its optional fields", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+        description: "One flat list.",
+        component: Component,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(definition).threadLists).toEqual([
+      {
+        id: "inbox",
+        title: "Inbox",
+        description: "One flat list.",
+        component: Component,
+      },
+    ]);
+  });
+
+  it("omits absent optionals rather than storing undefined", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+        component: Component,
+      });
+    });
+
+    const [collected] = collectPluginAppRegistrations(definition).threadLists!;
+    expect(collected).toEqual({
+      id: "inbox",
+      title: "Inbox",
+      component: Component,
+    });
+    expect("description" in collected!).toBe(false);
+  });
+
+  it("rejects two lists with the same id", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/inbox/);
+  });
+
+  it("rejects a missing component", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadList({
+        id: "inbox",
+        title: "Inbox",
+      } as never);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow();
+  });
+});
+
 describe("collectPluginAppRegistrations", () => {
   it("collects every slot kind as plain data", () => {
     const run = () => {};
