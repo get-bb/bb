@@ -22,6 +22,7 @@ import {
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +42,7 @@ import {
   formatAutomationModelLabel,
   formatAutomationProviderLabel,
 } from "./lib/model-label";
+import { AutomationProviderIcon } from "./lib/provider-icon";
 
 export interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -467,22 +469,24 @@ export function AutomationDetailView({
         >
           {execution.mode === "agent" ? (
             <ResourcePromptPreview
-              // The composer's footer leads with the model and keeps the
-              // provider as supporting text, with no decorative glyph per item.
-              // Environment and permission carry no composer analogue, so they
-              // lose their icons and read as plain trailing metadata.
+              className="bg-surface-raised shadow-sm"
               context={[
                 {
                   label: (
-                    <span className="inline-flex min-w-0 items-baseline gap-1.5">
-                      <span className="min-w-0 truncate text-foreground">
-                        {formatAutomationModelLabel(
-                          execution.model,
-                          execution.providerId,
-                        )}
-                      </span>
-                      <span className="min-w-0 truncate">
-                        {formatAutomationProviderLabel(execution.providerId)}
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <AutomationProviderIcon
+                        providerId={execution.providerId}
+                      />
+                      <span className="inline-flex min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-0 truncate text-foreground">
+                          {formatAutomationModelLabel(
+                            execution.model,
+                            execution.providerId,
+                          )}
+                        </span>
+                        <span className="min-w-0 truncate">
+                          {formatAutomationProviderLabel(execution.providerId)}
+                        </span>
                       </span>
                     </span>
                   ),
@@ -501,14 +505,7 @@ export function AutomationDetailView({
               {execution.prompt}
             </ResourcePromptPreview>
           ) : (
-            // Same container as ResourcePromptPreview and the Runs collection:
-            // a script definition is the same kind of object as a prompt
-            // definition, so it should not sit on a recessed surface while its
-            // sibling sits on a flat bordered one.
-            <ResourceDetailPanel
-              surface="flat"
-              className="rounded-md border border-border bg-background"
-            >
+            <ResourceDetailPanel surface="raised">
               <div
                 className={cn(
                   "px-3 py-3",
@@ -572,9 +569,13 @@ export function AutomationDetailView({
             <ResourceDetailCollection>
               <div
                 data-automation-runs-state="loading"
-                className="px-2 py-3 text-left text-sm text-muted-foreground"
+                role="status"
+                aria-label="Loading runs"
+                className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
               >
-                Loading…
+                <Skeleton className="size-3.5 shrink-0 rounded-full" />
+                <Skeleton className="h-3 w-28 rounded-sm" />
+                <Skeleton className="h-3 w-10 rounded-sm" />
               </div>
             </ResourceDetailCollection>
           ) : runsState.runs.length === 0 ? (

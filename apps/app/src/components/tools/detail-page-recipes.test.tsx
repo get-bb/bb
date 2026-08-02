@@ -523,6 +523,14 @@ describe("Automation detail recipe", () => {
     expect(runsTable.className).toContain("border");
     expect(runsTable.className).toContain("border-border");
     expect(runsTable.className).not.toContain("inline-block");
+
+    const promptPanel = screen.getByText("Summarize yesterday's commits.")
+      .parentElement as HTMLElement;
+    expect(promptPanel.className).toContain("bg-surface-raised");
+    expect(promptPanel.className).toContain("shadow-sm");
+    expect(
+      container.querySelector('[data-automation-provider-icon="claude"] svg'),
+    ).not.toBeNull();
   });
 
   it("compacts a home-relative script path without changing the definition", () => {
@@ -558,10 +566,45 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("~/.bb/automations/nightly.sh")).toBeTruthy();
+    const scriptPath = screen.getByText("~/.bb/automations/nightly.sh");
+    expect(scriptPath).toBeTruthy();
     expect(
       screen.queryByText("/Users/you/.bb/automations/nightly.sh"),
     ).toBeNull();
+    const scriptPanel = scriptPath.parentElement?.parentElement as HTMLElement;
+    expect(scriptPanel.className).toContain("bg-surface-raised");
+    expect(scriptPanel.className).toContain("shadow-sm");
+  });
+
+  it("uses the shared shimmer treatment while runs are loading", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={AUTOMATION}
+          projectLabel="Local"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: true,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const loading = screen.getByRole("status", { name: "Loading runs" });
+    expect(loading.textContent).toBe("");
+    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(3);
+    expect(container.textContent).not.toContain("Loading…");
   });
 
   it("keeps run-load failure copy neutral and puts severity on the icon", () => {
