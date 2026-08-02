@@ -506,7 +506,6 @@ function LoadedSidebarWithPluginPages() {
     <Provider store={store}>
       <StoryPluginPageRegistrations />
       <SidebarFrame>
-        <PluginNavSidebarSection />
         <LoadedSidebar />
       </SidebarFrame>
     </Provider>

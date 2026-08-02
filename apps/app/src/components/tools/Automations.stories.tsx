@@ -135,10 +135,6 @@ export function OverviewPage() {
   return <Overview />;
 }
 
-export function BrowseTemplates() {
-  return <Overview initialMode="browse" />;
-}
-
 export function OverviewStates() {
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-5 py-6">
@@ -165,6 +161,10 @@ export function OverviewStates() {
       ))}
     </main>
   );
+}
+
+export function BrowseTemplates() {
+  return <Overview initialMode="browse" />;
 }
 
 const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
@@ -357,43 +357,6 @@ function DetailState({
       </div>
       <div className="min-w-0 px-5 py-5">{children}</div>
     </section>
-  );
-}
-
-export function PromptAndScript() {
-  return (
-    <main
-      className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
-      style={{ "--story-doc-width": "232px" } as CSSProperties}
-    >
-      <header>
-        <h1 className="text-lg font-semibold text-foreground">
-          Automation definition types
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Automations run either an agent prompt or a script. These are the two
-          valid production detail pages.
-        </p>
-      </header>
-      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
-        <DetailState
-          name="Prompt automation"
-          note="An agent automation stores a prompt, model, location, and access mode."
-        >
-          <AutomationDetail
-            value={PROJECT_AUTOMATION}
-            projectLabel="bb"
-            runs={RUNS.slice(0, 1)}
-          />
-        </DetailState>
-        <DetailState
-          name="Script automation"
-          note="A script automation stores the exact script content, interpreter, timeout, and environment-variable names."
-        >
-          <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
-        </DetailState>
-      </div>
-    </main>
   );
 }
 

@@ -58,47 +58,14 @@ import {
   havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
   reorderPluginNavPanels,
-  seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 
-/**
- * Reserved plugin id for rows the host owns rather than a plugin. Real plugin
- * ids come from a plugin manifest name, so they never take this shape.
- */
-const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
-
-/** Order/hidden preference key of the built-in Tools row. */
-export const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
-  pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
-  id: "tools",
-});
+type SidebarNavRow = PluginNavPanelSlot;
 
 /**
- * One sidebar nav row. Plugin rows come from `navPanel` slots; the Tools row is
- * host chrome that shares the list so both obey the same order and hide
- * preferences.
- */
-type SidebarNavRow =
-  | {
-      kind: "tools";
-      pluginId: string;
-      id: string;
-      title: string;
-      /** Last visited Tools route, so the row returns where the user was. */
-      routePath: string;
-    }
-  | {
-      kind: "plugin";
-      pluginId: string;
-      id: string;
-      title: string;
-      panel: PluginNavPanelSlot;
-    };
-
-/**
- * Sidebar entries for plugin `navPanel` slots (plugin design §5.2) plus the
- * built-in Tools row: one row per entry, styled like primary sidebar actions.
+ * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row per
+ * entry, styled like primary sidebar actions.
  * Plugin rows navigate to the panel's own route under
  * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. Only host
  * chrome renders here — a plugin's component mounts on the route
@@ -115,21 +82,10 @@ export function PluginNavSidebarItems({
   splitEnabled?: boolean;
 }) {
   const { navPanels } = usePluginSlots();
-  const rows = useMemo<SidebarNavRow[]>(
-    () =>
-      navPanels.map((panel) => ({
-        kind: "plugin",
-        pluginId: panel.pluginId,
-        id: panel.id,
-        title: panel.title,
-        panel,
-      })),
-    [navPanels],
-  );
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
-  if (rows.length === 0) return null;
-  return <PluginNavSidebarItemList {...props} rows={rows} />;
+  if (navPanels.length === 0) return null;
+  return <PluginNavSidebarItemList {...props} rows={navPanels} />;
 }
 
 function PluginNavSidebarItemList({
@@ -146,19 +102,15 @@ function PluginNavSidebarItemList({
   const [hiddenKeys, setHiddenKeys] = useAtom(hiddenPluginNavPanelsAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
-  const { visible, hidden, normalizedOrder } = useMemo(() => {
-    // Users who customized their plugin order before the Tools row joined the
-    // list keep Tools on top instead of finding it at the bottom. Seed only
-    // while the row exists, so a build without it saves no key for it.
-    const leadingKeys = rows.some((row) => row.kind === "tools")
-      ? [TOOLS_NAV_ROW_KEY]
-      : [];
-    return arrangePluginNavPanels({
-      panels: rows,
-      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
-      hiddenKeys,
-    });
-  }, [hiddenKeys, rows, storedOrder]);
+  const { visible, hidden, normalizedOrder } = useMemo(
+    () =>
+      arrangePluginNavPanels({
+        panels: rows,
+        storedOrder,
+        hiddenKeys,
+      }),
+    [hiddenKeys, rows, storedOrder],
+  );
 
   // Give newly installed panels a slot in the persisted order. This only ever
   // adds keys: a plugin frontend that has not registered yet keeps its slot, so
@@ -336,16 +288,8 @@ interface SidebarNavRowItemProps {
   rowStyle?: CSSProperties;
 }
 
-function SidebarNavRowItem({
-  row,
-  splitEnabled,
-  ...props
-}: SidebarNavRowItemProps) {
-  return row.kind === "tools" ? (
-    <ToolsNavSidebarItem {...props} row={row} />
-  ) : (
-    <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
-  );
+function SidebarNavRowItem({ row, ...props }: SidebarNavRowItemProps) {
+  return <PluginNavSidebarItem {...props} row={row} />;
 }
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
@@ -372,61 +316,28 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
-/**
- * The Tools row. It has no split-pane content kind, so it navigates in place
- * and draws no mini-map; everything else matches a plugin row.
- */
-function ToolsNavSidebarItem({
-  row,
-  pathname: _pathname,
-  onNavigate,
-  ...props
-}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
-  row: Extract<SidebarNavRow, { kind: "tools" }>;
-}) {
-  const navigate = useNavigate();
-  return (
-    <SidebarNavRowChrome
-      {...props}
-      rowKey={getPluginNavPanelKey(row)}
-      title={row.title}
-      icon={<Icon name="Toolbox" />}
-      // Never active: AppLayout swaps AppSidebar out for ToolsSidebar on every
-      // Tools route, so this row is only on screen while Tools is closed.
-      isActive={false}
-      onSelect={() => {
-        onNavigate?.();
-        void navigate(row.routePath);
-      }}
-    />
-  );
-}
-
 function PluginNavSidebarItem({
   row,
   pathname,
   onNavigate,
   splitEnabled,
   ...props
-}: Omit<SidebarNavRowItemProps, "row"> & {
-  row: Extract<SidebarNavRow, { kind: "plugin" }>;
-}) {
-  const { panel } = row;
+}: SidebarNavRowItemProps) {
   const navigate = useNavigate();
   const path = getPluginPanelRoutePath({
-    pluginId: panel.pluginId,
-    path: panel.path,
+    pluginId: row.pluginId,
+    path: row.path,
   });
   const content = {
     kind: "plugin-panel",
-    pluginId: panel.pluginId,
-    panelPath: panel.path,
+    pluginId: row.pluginId,
+    panelPath: row.path,
     subPath: "",
   } as const;
   const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
     content,
     enabled: splitEnabled,
-    label: panel.title,
+    label: row.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
 
@@ -434,8 +345,8 @@ function PluginNavSidebarItem({
     <SidebarNavRowChrome
       {...props}
       rowKey={getPluginNavPanelKey(row)}
-      title={panel.title}
-      icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
+      title={row.title}
+      icon={<PluginIcon pluginId={row.pluginId} icon={row.icon} />}
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
       // Split-drag initiator; engages only when the pointer leaves the

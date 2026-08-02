@@ -15,7 +15,6 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 
@@ -53,7 +52,6 @@ function registerPanel(pluginId: string, title: string) {
 
 function renderSidebarItems(
   options: {
-    toolsRoutePath?: string;
     storedOrder?: string[];
   } = {},
 ) {
@@ -66,17 +64,15 @@ function renderSidebarItems(
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={["/"]}>
-        <ToolsHubExperimentProvider enabled={false}>
-          <SidebarProvider>
-            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
-          </SidebarProvider>
-        </ToolsHubExperimentProvider>
+        <SidebarProvider>
+          <PluginNavSidebarItems />
+        </SidebarProvider>
       </MemoryRouter>
     </Provider>,
   );
 }
 
-const ROW_LABELS = new Set(["Tools", "Docs", "GitHub"]);
+const ROW_LABELS = new Set(["Docs", "GitHub"]);
 
 function panelRowNames(): string[] {
   return screen
@@ -169,75 +165,29 @@ describe("PluginNavSidebarItems", () => {
     });
   });
 
-  it("hides the built-in Tools row like a plugin row", async () => {
-    registerPanel("docs", "Docs");
-
-    renderSidebarItems({ toolsRoutePath: "/tools/skills" });
-
-    // Tools leads the list, above the plugin rows.
-    expect(panelRowNames()).toEqual(["Tools", "Docs"]);
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Tools panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
-    });
-    expect(
-      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-    ).toContain("More (1)");
-    expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("__builtin__/tools");
-  });
-
-  it("keeps Tools on top for users who already reordered their plugin rows", () => {
+  it("keeps a saved plugin row order", () => {
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     renderSidebarItems({
-      toolsRoutePath: "/tools/skills",
       storedOrder: ["github/main", "docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["Tools", "GitHub", "Docs"]);
+    expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
   });
 
   it("keeps a saved order when plugin frontends register after the first render", async () => {
-    // The Tools row makes this list mount before any plugin has registered.
-    // The order effect must not save that empty snapshot over the user's rows.
     renderSidebarItems({
-      toolsRoutePath: "/tools/skills",
-      storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
+      storedOrder: ["github/main", "docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["Tools"]);
+    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
 
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Tools", "Docs"]);
+      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
     });
-  });
-
-  it("saves no Tools key while the row is absent", async () => {
-    registerPanel("docs", "Docs");
-
-    // Tools is off, so nothing should reserve a slot for a row that never
-    // renders here.
-    renderSidebarItems({ storedOrder: ["docs/main"] });
-
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["Docs"]);
-    });
-    expect(
-      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
-    ).not.toContain("__builtin__/tools");
   });
 });

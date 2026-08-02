@@ -124,22 +124,6 @@ export function reorderPluginNavPanels({
   );
 }
 
-/**
- * Puts `leadingKeys` at the front of a customized order when it does not name
- * them yet. Rows that nobody has ordered normally land last, which is right for
- * a newly installed plugin but wrong for a built-in row that always sat above
- * the plugin rows. An empty order means "registry order" and stays empty.
- */
-export function seedLeadingNavPanelKeys(
-  order: readonly string[],
-  leadingKeys: readonly string[],
-): string[] {
-  const next = [...order];
-  if (next.length === 0) return next;
-  const missing = leadingKeys.filter((key) => !next.includes(key));
-  return missing.length === 0 ? next : [...missing, ...next];
-}
-
 export function hidePluginNavPanel(
   hiddenKeys: readonly string[],
   key: string,
