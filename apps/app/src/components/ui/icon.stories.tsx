@@ -151,13 +151,13 @@ export function ExpandCollapse() {
         </StoryRow>
         <StoryRow
           label="Close thread pane"
-          hint="conversation-specific cancel glyph; used only by split panes containing threads"
+          hint="Hugeicons multiplication-square glyph; optically reduced in split headers"
         >
           <ExpandCollapseControl icon="CloseThreadPane" label="Close pane" />
         </StoryRow>
         <StoryRow
           label="Close plugin pane"
-          hint="bounded pane cancel glyph; does not imply uninstalling the plugin"
+          hint="Hugeicons multiplication-square glyph; optically reduced in split headers"
         >
           <ExpandCollapseControl icon="ClosePluginPane" label="Close pane" />
         </StoryRow>

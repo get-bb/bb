@@ -29,5 +29,7 @@ describe("SidebarTrigger", () => {
 
     expect(markup).toContain('data-icon="PanelLeft"');
     expect(markup).not.toContain('data-icon="AlignLeft"');
+    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).not.toContain('aria-pressed="');
   });
 });

@@ -948,8 +948,11 @@ describe("SplitThreadArea", () => {
       "thr-a",
     );
     expect(screen.queryByTestId("hosted-panel-thr-b")).toBeNull();
-    expect(toggle.querySelector("button")?.getAttribute("aria-pressed")).toBe(
+    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
       "true",
+    );
+    expect(toggle.querySelector("button")?.hasAttribute("aria-pressed")).toBe(
+      false,
     );
 
     // thr-b's own persisted panel state is closed, but refocusing must swap
@@ -964,7 +967,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("true");
 
     // An explicit toggle closes it, and the closed state also survives
@@ -974,7 +977,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
@@ -983,7 +986,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
   });
 
@@ -997,7 +1000,7 @@ describe("SplitThreadArea", () => {
     });
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.querySelector("button")?.getAttribute("aria-pressed")).toBe(
+    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
       "true",
     );
     expect(
@@ -1009,7 +1012,7 @@ describe("SplitThreadArea", () => {
     }
 
     // Focusing the plugin pane keeps the panel open, swapping its content for
-    // the empty state; the toggle stays put and stays pressed.
+    // the empty state; the neutral disclosure toggle stays put and expanded.
     fireEvent.pointerDown(pluginPane);
     await screen.findByTestId("split-workspace-empty-panel-state");
     const emptyPanelHandle = document.getElementById(
@@ -1022,7 +1025,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("true");
 
     // The toggle closes the window panel from the plugin pane, and the closed
@@ -1033,13 +1036,13 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     const restoredClosedToggle = await screen.findByRole("button", {
       name: "Show right panel",
     });
-    expect(restoredClosedToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(restoredClosedToggle.getAttribute("aria-expanded")).toBe("false");
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();

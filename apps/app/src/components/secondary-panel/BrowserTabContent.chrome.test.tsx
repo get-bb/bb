@@ -20,6 +20,7 @@ import {
   BROWSER_CHROME_IDLE_COLLAPSE_MS,
   BrowserTabContent,
 } from "./BrowserTabContent";
+import { requestBrowserChromeReveal } from "./browserChromeReveal";
 
 const desktopInfo = {
   lastCheckedAt: null,
@@ -95,7 +96,7 @@ function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
   );
 }
 
-function expectChromeState(expected: "compact" | "expanded"): HTMLElement {
+function expectChromeState(expected: "collapsed" | "expanded"): HTMLElement {
   const chrome = screen.getByTestId("browser-tab-nav-bar");
   expect(chrome.dataset.state).toBe(expected);
   expect(chrome.getAttribute("aria-expanded")).toBe(
@@ -123,7 +124,7 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     delete window.bbDesktop;
   });
 
-  it("collapses at the five-second idle boundary and retains a compact host strip", () => {
+  it("collapses after the short idle delay without a duplicate URL footer", () => {
     const harness = createBrowserChromeHarness();
     renderBrowserChrome(harness, "https://example.com/docs");
 
@@ -131,8 +132,9 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS - 1);
     expectChromeState("expanded");
     advanceIdleTimer(1);
-    expectChromeState("compact");
-    expect(screen.getByText("example.com")).toBeTruthy();
+    const collapsedChrome = expectChromeState("collapsed");
+    expect(collapsedChrome.classList).toContain("h-1");
+    expect(screen.queryByText("example.com")).toBeNull();
   });
 
   it("expands from the top strip on pointer entry and stays open while hovered", () => {
@@ -141,7 +143,7 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     const chrome = expectChromeState("expanded");
 
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
-    expectChromeState("compact");
+    expectChromeState("collapsed");
 
     fireEvent.pointerEnter(chrome);
     expectChromeState("expanded");
@@ -149,10 +151,11 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     expectChromeState("expanded");
 
     fireEvent.pointerLeave(chrome);
+    expectChromeState("expanded");
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS - 1);
     expectChromeState("expanded");
     advanceIdleTimer(1);
-    expectChromeState("compact");
+    expectChromeState("collapsed");
   });
 
   it("does not flicker closed while keyboard focus moves among navigation controls", () => {
@@ -160,8 +163,10 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     renderBrowserChrome(harness);
     const chrome = expectChromeState("expanded");
 
-    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
-    expectChromeState("compact");
+    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS - 1);
+    expectChromeState("expanded");
+    advanceIdleTimer(1);
+    expectChromeState("collapsed");
 
     act(() => chrome.focus());
     expectChromeState("expanded");
@@ -172,7 +177,7 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
 
     act(() => screen.getByRole("button", { name: "Outside browser" }).focus());
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
-    expectChromeState("compact");
+    expectChromeState("collapsed");
 
     act(() => screen.getByLabelText("Address and search bar").focus());
     expectChromeState("expanded");
@@ -183,7 +188,7 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     renderBrowserChrome(harness, "https://example.com/docs");
 
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
-    expectChromeState("compact");
+    expectChromeState("collapsed");
 
     act(() => harness.emitState(browserState({ isLoading: true })));
     expectChromeState("expanded");
@@ -201,7 +206,7 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
 
     act(() => screen.getByRole("button", { name: "Outside browser" }).focus());
     advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
-    expectChromeState("compact");
+    expectChromeState("collapsed");
   });
 
   it("resets the idle timer for active navigation and disables motion when requested", () => {
@@ -219,9 +224,18 @@ describe("BrowserTabContent auto-collapsing navigation", () => {
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
     fireEvent.pointerLeave(chrome);
 
-    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS - 1);
+    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
+    expectChromeState("collapsed");
+  });
+
+  it("reveals navigation when the active browser tab requests it", () => {
+    const harness = createBrowserChromeHarness();
+    renderBrowserChrome(harness, "https://example.com/docs");
+
+    advanceIdleTimer(BROWSER_CHROME_IDLE_COLLAPSE_MS);
+    expectChromeState("collapsed");
+
+    act(() => requestBrowserChromeReveal("browser:test"));
     expectChromeState("expanded");
-    advanceIdleTimer(1);
-    expectChromeState("compact");
   });
 });

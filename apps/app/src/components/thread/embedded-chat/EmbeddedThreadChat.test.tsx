@@ -61,11 +61,16 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   BottomAnchoredScrollBody: ({
     children,
     footer,
+    scrollAreaClassName,
   }: {
     children: ReactNode;
     footer: ReactNode;
+    scrollAreaClassName: string;
   }) => (
-    <div>
+    <div
+      data-testid="embedded-chat-scroll-area"
+      className={scrollAreaClassName}
+    >
       {children}
       {footer}
     </div>
@@ -73,7 +78,9 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 }));
 
 vi.mock("@/components/ui/overflow-fade", () => ({
-  OverflowFade: () => <div />,
+  OverflowFade: ({ tone }: { tone: string }) => (
+    <div data-testid="embedded-chat-overflow-fade" data-tone={tone} />
+  ),
 }));
 
 vi.mock("@/components/thread/timeline", () => ({
@@ -236,10 +243,16 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 function renderEmbeddedChat({
   threadId = "thr_child",
   isActive = true,
-}: { threadId?: string | null; isActive?: boolean } = {}) {
+  surfaceTone = "background",
+}: {
+  threadId?: string | null;
+  isActive?: boolean;
+  surfaceTone?: "background" | "sidebar";
+} = {}) {
   return render(
     <EmbeddedThreadChat
       variant="compact"
+      surfaceTone={surfaceTone}
       threadId={threadId}
       surfaceFallbackKey="tab-1"
       projectId="proj-1"
@@ -274,6 +287,25 @@ describe("EmbeddedThreadChat", () => {
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
     mocks.timelineProjectIds = [];
+  });
+
+  it("applies the requested surface tone to the timeline and footer", () => {
+    renderEmbeddedChat({ surfaceTone: "sidebar" });
+
+    expect(
+      document.querySelector(
+        '[data-thread-window][data-surface-tone="sidebar"]',
+      ),
+    ).not.toBeNull();
+    expect(screen.getByTestId("embedded-chat-scroll-area").classList).toContain(
+      "bg-sidebar",
+    );
+    expect(screen.getByTestId("embedded-chat-overflow-fade").dataset.tone).toBe(
+      "sidebar",
+    );
+    expect(
+      screen.getByTestId("embedded-chat-composer").closest(".bg-sidebar"),
+    ).not.toBeNull();
   });
   afterEach(() => {
     cleanup();

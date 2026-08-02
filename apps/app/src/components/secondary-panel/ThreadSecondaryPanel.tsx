@@ -870,26 +870,31 @@ function PinnedIconTab({
   usesDesktopChrome,
 }: PinnedIconTabProps) {
   return (
-    <div
-      data-testid={label === "Info" ? "thread-info-tab" : undefined}
-      className={cn(
-        "shrink-0",
-        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-      )}
-    >
-      <TabPill
-        label={label}
-        ariaLabel={ariaLabel}
-        ariaKeyshortcuts={ariaKeyshortcuts}
-        iconOnly
-        leadingVisual={leadingVisual}
-        title={title}
-        isActive={isActive}
-        activeTreatment={activeTreatment}
-        onSelect={onClick}
-        closeAction={null}
-      />
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          data-testid={label === "Info" ? "thread-info-tab" : undefined}
+          className={cn(
+            "shrink-0",
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+          )}
+        >
+          <TabPill
+            label={label}
+            ariaLabel={ariaLabel}
+            ariaKeyshortcuts={ariaKeyshortcuts}
+            iconOnly
+            leadingVisual={leadingVisual}
+            title={title}
+            isActive={isActive}
+            activeTreatment={activeTreatment}
+            onSelect={onClick}
+            closeAction={null}
+          />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   );
 }
 

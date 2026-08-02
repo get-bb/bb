@@ -7,7 +7,13 @@ import {
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
+import { Icon } from "@bb/shared-ui/icon";
 import { BrowserTabDeck } from "./BrowserTabDeck";
+import { requestBrowserChromeReveal } from "./browserChromeReveal";
+import {
+  ThreadSecondaryPanel,
+  type SecondaryPanelFileTab,
+} from "./ThreadSecondaryPanel";
 
 export default {
   title: "right-panel/Browser tab",
@@ -114,15 +120,51 @@ interface BrowserTabStageProps {
 }
 
 function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
+  const label = tab.title ?? "Browser";
+  const fileTabs: SecondaryPanelFileTab[] = [
+    {
+      id: tab.id,
+      filename: label,
+      isActive: true,
+      leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
+      statusLabel: null,
+      onReveal: () => requestBrowserChromeReveal(tab.id),
+      onSelect: noop,
+      onClose: noop,
+    },
+  ];
+
   return (
     <PanelStage width={width}>
-      <BrowserTabDeck
-        browserTabs={[tab]}
-        activeBrowserTabId={tab.id}
-        canShowNativeBrowserView
-        threadId={threadId}
-        environmentId={null}
-        onUpdate={noop}
+      <ThreadSecondaryPanel
+        activeTab={tab}
+        canUseGitUi={false}
+        defaultMergeBaseBranch="main"
+        environmentId={undefined}
+        fileTabs={fileTabs}
+        fileTabContent={
+          <BrowserTabDeck
+            browserTabs={[tab]}
+            activeBrowserTabId={tab.id}
+            canShowNativeBrowserView
+            threadId={threadId}
+            environmentId={null}
+            onUpdate={noop}
+          />
+        }
+        isBrowserTabActive
+        isConversationCollapsed={false}
+        isOpen
+        metadataContent={null}
+        onClose={noop}
+        onCollapse={noop}
+        onFileTabReorder={noop}
+        onOpenNewTab={noop}
+        onPanelChange={noop}
+        onPanelFocus={noop}
+        onToggleConversationCollapse={noop}
+        renderAsDrawer
+        showGitDiffTab={false}
       />
     </PanelStage>
   );
@@ -143,7 +185,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="narrow panel"
-          hint="360px browser panel; hover the compact host strip to recover the full controls"
+          hint="360px browser panel; hover the active tab or top content edge to recover the full controls"
         >
           <BrowserTabStage
             tab={NARROW_TAB}

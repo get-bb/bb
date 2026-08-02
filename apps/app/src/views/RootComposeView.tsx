@@ -63,6 +63,7 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
+import { requestBrowserChromeReveal } from "@/components/secondary-panel/browserChromeReveal";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -293,7 +294,6 @@ export function mergeMissingPromptDraftAttachments(
   return [...currentAttachments, ...missingAttachments];
 }
 
-
 export function restorePromptDraftAfterOptionChange({
   currentDraft,
   preservedDraft,
@@ -481,7 +481,7 @@ function RootComposeRightPanelToggle({
         shortcut ? `${rightPanelLabel} (${shortcut.label})` : rightPanelLabel
       }
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-      aria-pressed={isOpen}
+      aria-expanded={isOpen}
       onClick={onToggle}
     >
       <Icon name={rightPanelIconName} />
@@ -614,7 +614,6 @@ export function shouldReplaceInitialPromptFromLocationState(
     state.replaceInitialPrompt === true
   );
 }
-
 
 export function buildMobileRecentThreads({
   sidebarNavigation,
@@ -2554,6 +2553,7 @@ export function RootComposeView() {
                 />
               ),
               statusLabel: null,
+              onReveal: () => requestBrowserChromeReveal(tab.id),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };

@@ -30,11 +30,14 @@ export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 /**
  * Header icon button whose glyph is painted one optical step smaller than
  * {@link HEADER_ICON_BUTTON_CLASS} while keeping the same button box (and hit
- * target). Used for glyphs that otherwise read oversized next to the compact
- * close/panel controls — currently the pane maximize/restore double-arrows.
+ * target). Used for visually dense glyphs that otherwise read oversized next
+ * to compact header controls.
  */
-export const HEADER_MAXIMIZE_ICON_BUTTON_CLASS =
+export const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
+
+export const HEADER_MAXIMIZE_ICON_BUTTON_CLASS =
+  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
 interface AppPageHeaderProps {
   center?: ReactNode;

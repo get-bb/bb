@@ -8,6 +8,7 @@ import { PaneContext, type PaneContextValue } from "./PaneContext";
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
   HEADER_ICON_BUTTON_CLASS: "header-icon-button",
+  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS: "header-reduced-glyph-button",
   AppPageHeader: ({
     actions,
     center,
@@ -49,6 +50,25 @@ afterEach(() => {
 });
 
 describe("ThreadDetailHeader", () => {
+  it("uses a neutral disclosure state for the right-panel toggle", () => {
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          isSecondaryPanelOpen
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadTitle="Panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Hide right panel" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.hasAttribute("aria-pressed")).toBe(false);
+  });
+
   it("moves secondary controls into overflow for narrow split panes", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       bottom: 40,
@@ -89,6 +109,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.queryByText("Commit")).toBeNull();
     expect(screen.getByText("Thread menu")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
+    expect(closePane.classList).toContain("header-reduced-glyph-button");
     expect(
       closePane.querySelector('[data-icon="CloseThreadPane"]'),
     ).not.toBeNull();

@@ -722,6 +722,16 @@ describe("SideChatTabContent", () => {
     expect(screen.queryByText("Provisioning side chat...")).toBeNull();
   });
 
+  it("uses the containing panel's sidebar surface tone", () => {
+    renderDraftSideChat();
+
+    expect(
+      document.querySelector(
+        '[data-thread-window][data-surface-tone="sidebar"]',
+      ),
+    ).not.toBeNull();
+  });
+
   it("does not autofocus when a side-chat tab becomes active", () => {
     const onSetThreadId = vi.fn();
     const { rerender } = render(

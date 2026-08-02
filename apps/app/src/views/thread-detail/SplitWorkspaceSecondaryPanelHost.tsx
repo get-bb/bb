@@ -213,7 +213,7 @@ export function SplitWorkspaceSecondaryPanelHost({
               shortcut ? `${toggleLabel} (${shortcut.label})` : toggleLabel
             }
             aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-            aria-pressed={isOpen}
+            aria-expanded={isOpen}
             onClick={toggleWindowPanel}
           >
             <Icon name="PanelRight" />

@@ -38,6 +38,7 @@ import {
   registerBrowserView,
   type BrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
+import { subscribeBrowserChromeReveal } from "./browserChromeReveal";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 import {
@@ -47,7 +48,7 @@ import {
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 
-export const BROWSER_CHROME_IDLE_COLLAPSE_MS = 5_000;
+export const BROWSER_CHROME_IDLE_COLLAPSE_MS = 250;
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -266,16 +267,14 @@ function BrowserChrome({
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
   const addressValue = isEditing ? addressDraft : currentUrl;
-  const compactLabel = getBrowserUrlHost(currentUrl) || "New tab";
-
   return (
     <div
       data-testid="browser-tab-nav-bar"
-      data-state={visibility.isExpanded ? "expanded" : "compact"}
+      data-state={visibility.isExpanded ? "expanded" : "collapsed"}
       role="region"
       aria-label="Browser navigation"
       aria-expanded={visibility.isExpanded}
-      tabIndex={visibility.isExpanded ? -1 : 0}
+      tabIndex={-1}
       onBlurCapture={visibility.onBlurCapture}
       onFocusCapture={visibility.onFocusCapture}
       onKeyDownCapture={visibility.onActivity}
@@ -286,21 +285,9 @@ function BrowserChrome({
         "relative shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
         SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
         "transition-[height] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-        visibility.isExpanded
-          ? "h-11 max-md:pointer-coarse:h-[52px]"
-          : "h-6 max-md:pointer-coarse:h-9",
+        visibility.isExpanded ? "h-11 max-md:pointer-coarse:h-[52px]" : "h-1",
       )}
     >
-      <div
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 px-3 text-2xs text-subtle-foreground transition-opacity duration-120 motion-reduce:transition-none",
-          visibility.isExpanded ? "opacity-0" : "opacity-100",
-        )}
-      >
-        <Icon name="Globe" className="size-3 shrink-0 opacity-70" />
-        <span className="min-w-0 truncate">{compactLabel}</span>
-      </div>
       <div
         data-testid="browser-tab-nav-controls"
         className={cn(
@@ -606,6 +593,10 @@ export function BrowserTabContent({
     holdExpanded: isEditing || (state?.isLoading ?? false),
   });
   const noteBrowserChromeActivity = browserChromeVisibility.onActivity;
+  useEffect(
+    () => subscribeBrowserChromeReveal(tabId, noteBrowserChromeActivity),
+    [noteBrowserChromeActivity, tabId],
+  );
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(

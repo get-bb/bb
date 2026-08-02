@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TabPill } from "./tab-pill";
 
@@ -44,5 +44,26 @@ describe("TabPill", () => {
     const shell = screen.getByRole("button", { name: "Browser" }).parentElement;
     expect(shell?.classList).toContain("after:h-0.5");
     expect(shell?.classList).not.toContain("bg-muted");
+  });
+
+  it("reveals associated controls from pointer or keyboard intent", () => {
+    const onReveal = vi.fn();
+    render(
+      <TabPill
+        label="Example Docs"
+        title="Example Docs"
+        isActive
+        onReveal={onReveal}
+        onSelect={vi.fn()}
+        closeAction={null}
+      />,
+    );
+
+    const tab = screen.getByRole("button", { name: "Example Docs" });
+    if (tab.parentElement === null) throw new Error("Tab shell missing");
+    fireEvent.pointerEnter(tab.parentElement);
+    fireEvent.focus(tab);
+
+    expect(onReveal).toHaveBeenCalledTimes(2);
   });
 });

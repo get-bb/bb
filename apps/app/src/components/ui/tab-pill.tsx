@@ -42,6 +42,7 @@ export interface TabPillProps {
    * whole canvas; the filled selection surface is reserved for sibling panes.
    */
   activeTreatment?: "fill" | "underline";
+  onReveal?: () => void;
   onSelect: () => void;
   labelMaxWidthClass?: string;
   closeAction: TabPillCloseAction | null;
@@ -58,12 +59,15 @@ export function TabPill({
   title,
   isActive,
   activeTreatment = "fill",
+  onReveal,
   onSelect,
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
 }: TabPillProps) {
   return (
     <div
+      onPointerEnter={onReveal}
+      onFocusCapture={onReveal}
       className={cn(
         `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
@@ -80,7 +84,6 @@ export function TabPill({
         aria-label={ariaLabel}
         aria-keyshortcuts={ariaKeyshortcuts}
         aria-pressed={isActive}
-        title={iconOnly ? title : undefined}
         className={cn(
           "flex h-full min-w-0 items-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           iconOnly ? "px-1.5" : "pl-1.5 pr-2",

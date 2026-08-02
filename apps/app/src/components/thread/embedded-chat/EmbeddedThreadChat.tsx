@@ -216,6 +216,8 @@ interface EmbeddedThreadChatSharedProps {
 
 export interface EmbeddedThreadChatComposerModeProps extends EmbeddedThreadChatSharedProps {
   variant: "compact";
+  /** Background shared by the timeline, footer, and its overflow fade. */
+  surfaceTone?: "background" | "sidebar";
   composer: EmbeddedThreadChatComposerProps;
   footer?: never;
 }
@@ -299,6 +301,7 @@ function EmbeddedThreadChatWithComposer({
   onSendToMainMessage,
   layout = "contained",
   measure = "panel",
+  surfaceTone = "background",
   composer,
 }: EmbeddedThreadChatComposerModeProps) {
   const labels = { ...DEFAULT_LABELS, ...labelOverrides };
@@ -1258,9 +1261,11 @@ function EmbeddedThreadChatWithComposer({
     ],
   );
 
+  const surfaceClassName =
+    surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
   const footer = (
-    <div className="relative bg-background">
-      <OverflowFade placement="above" tone="background" />
+    <div className={cn("relative", surfaceClassName)}>
+      <OverflowFade placement="above" tone={surfaceTone} />
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
           attachments={bottomAttachmentsConfig}
@@ -1336,7 +1341,8 @@ function EmbeddedThreadChatWithComposer({
       <div
         key={surfaceKey}
         data-thread-window=""
-        className="flex min-w-0 flex-col bg-background"
+        data-surface-tone={surfaceTone}
+        className={cn("flex min-w-0 flex-col", surfaceClassName)}
       >
         <div
           className={cn(
@@ -1353,10 +1359,14 @@ function EmbeddedThreadChatWithComposer({
   }
 
   return (
-    <div data-thread-window="" className="flex min-h-0 flex-1 flex-col">
+    <div
+      data-thread-window=""
+      data-surface-tone={surfaceTone}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <BottomAnchoredScrollBody
         key={surfaceKey}
-        scrollAreaClassName="bg-background"
+        scrollAreaClassName={surfaceClassName}
         contentClassName={
           measure === "page" ? "!pb-3 !pt-3" : "!px-2 !pb-3 !pt-3"
         }

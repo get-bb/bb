@@ -68,9 +68,11 @@ import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
+  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   PluginPanelHeaderActions,
@@ -990,7 +992,10 @@ function NonThreadPaneContent({
           type="button"
           variant="ghost"
           size="icon"
-          className={HEADER_ICON_BUTTON_CLASS}
+          className={cn(
+            HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+            CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+          )}
           aria-label="Close pane"
           onClick={onRequestClose}
         >

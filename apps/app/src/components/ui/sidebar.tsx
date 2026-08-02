@@ -678,8 +678,8 @@ Sidebar.displayName = "Sidebar";
 const SidebarTrigger = React.forwardRef<
   React.ComponentRef<typeof Button>,
   React.ComponentProps<typeof Button>
->(({ className, onClick, ...props }, ref) => {
-  const { toggleSidebar } = useSidebar();
+>(({ className, onClick, "aria-expanded": ariaExpanded, ...props }, ref) => {
+  const { isCompactViewport, open, openMobile, toggleSidebar } = useSidebar();
 
   return (
     <Button
@@ -688,6 +688,7 @@ const SidebarTrigger = React.forwardRef<
       variant="ghost"
       size="icon"
       className={cn(COARSE_POINTER_HEADER_ICON_BUTTON_CLASS, className)}
+      aria-expanded={ariaExpanded ?? (isCompactViewport ? openMobile : open)}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
