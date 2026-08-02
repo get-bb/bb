@@ -578,31 +578,37 @@
   }
 
   /*
-   * Keep thread timelines visually quiet at rest while preserving the native
-   * scroll container, its hit area, and its layout geometry. The timeline
-   * scroll owner briefly sets `data-scrollbar-scrolling` for real scroll
-   * events, matching the transient scrollbar behavior users expect from the
-   * platform without making pane content reflow as the thumb appears.
+   * Keep reading surfaces visually quiet at rest while preserving the native
+   * scroll container, its hit area, and its layout geometry. The scroll owner
+   * briefly sets `data-scrollbar-scrolling` for real scroll events, matching
+   * the platform's transient scrollbar behavior without making content reflow
+   * as the thumb appears.
    */
-  .thread-scrollbar {
+  .thread-scrollbar,
+  .transient-scrollbar {
     scrollbar-color: transparent transparent;
   }
 
   .thread-scrollbar::-webkit-scrollbar-thumb,
-  .thread-scrollbar::-webkit-scrollbar-thumb:hover {
+  .thread-scrollbar::-webkit-scrollbar-thumb:hover,
+  .transient-scrollbar::-webkit-scrollbar-thumb,
+  .transient-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: transparent;
   }
 
-  .thread-scrollbar[data-scrollbar-scrolling="true"] {
+  .thread-scrollbar[data-scrollbar-scrolling="true"],
+  .transient-scrollbar[data-scrollbar-scrolling="true"] {
     scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
       transparent;
   }
 
-  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb {
+  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb,
+  .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb {
     background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
   }
 
-  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
+  .thread-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover,
+  .transient-scrollbar[data-scrollbar-scrolling="true"]::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
   }
 

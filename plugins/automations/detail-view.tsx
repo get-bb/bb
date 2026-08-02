@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode, UIEvent } from "react";
 import type {
   AutomationExecution,
   AutomationResponse,
@@ -16,13 +17,19 @@ import {
   ResourceDetailPanel,
   ResourcePromptPreview,
   ResourceDetailStack,
-  ResourceLocationMeta,
   ResourceMeta,
   ResourceOverflowMenu,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import {
+  OptionDisplay,
+  OPTION_BASE_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OPTION_TRIGGER_CONTENT_CLASS_NAME,
+} from "@bb/shared-ui/option-display";
 import {
   Tooltip,
   TooltipContent,
@@ -43,6 +50,7 @@ import {
   formatAutomationProviderLabel,
 } from "./lib/model-label";
 import { AutomationProviderIcon } from "./lib/provider-icon";
+import { AutomationMetadataItem } from "./metadata";
 
 export interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -131,14 +139,6 @@ export function automationScheduleLabel(
   });
 }
 
-/**
- * The upcoming run, labelled in full.
- *
- * No icon: the row already carries the project and cadence glyphs, and a third
- * time-shaped icon beside the cadence clock would read as a second clock
- * meaning something else. The whole meta row now sits a tone below the title,
- * which is what keeps this from competing.
- */
 function automationDetailNextRun(
   automation: AutomationResponse,
 ): ReactNode | null {
@@ -146,10 +146,9 @@ function automationDetailNextRun(
   if (label === null) return null;
   if (!label.startsWith("Next ")) return label;
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1">
-      <span>Next run:</span>
-      <span className="min-w-0 truncate">{label.slice("Next ".length)}</span>
-    </span>
+    <AutomationMetadataItem icon="CalendarSync" iconLabel="Next run">
+      {label.slice("Next ".length)}
+    </AutomationMetadataItem>
   );
 }
 
@@ -167,21 +166,216 @@ function automationDetailScheduleLabel(
 
 function automationBodyLabel(execution: AutomationExecution): string {
   if (execution.mode === "agent") return "Prompt";
-  return execution.scriptFile !== undefined && execution.script === undefined
-    ? "Script file"
-    : "Script";
+  return "Script";
+}
+
+const SCRIPT_SCROLLBAR_IDLE_DELAY_MS = 600;
+
+function AutomationScriptContent({ content }: { content: string }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollbarIdleTimeoutRef = useRef<number | null>(null);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollRef.current;
+    if (!scrollArea) return;
+
+    const updateOverflow = () => {
+      setHasMoreBelow(
+        scrollArea.scrollTop + scrollArea.clientHeight <
+          scrollArea.scrollHeight - 1,
+      );
+    };
+    updateOverflow();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateOverflow);
+    resizeObserver?.observe(scrollArea);
+
+    return () => {
+      resizeObserver?.disconnect();
+      if (scrollbarIdleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollbarIdleTimeoutRef.current);
+      }
+    };
+  }, [content]);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const scrollArea = event.currentTarget;
+    setHasMoreBelow(
+      scrollArea.scrollTop + scrollArea.clientHeight <
+        scrollArea.scrollHeight - 1,
+    );
+    scrollArea.dataset.scrollbarScrolling = "true";
+    if (scrollbarIdleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollbarIdleTimeoutRef.current);
+    }
+    scrollbarIdleTimeoutRef.current = window.setTimeout(() => {
+      scrollbarIdleTimeoutRef.current = null;
+      scrollArea.removeAttribute("data-scrollbar-scrolling");
+    }, SCRIPT_SCROLLBAR_IDLE_DELAY_MS);
+  };
+
+  return (
+    <div className="relative isolate min-w-0">
+      <div
+        ref={scrollRef}
+        role="region"
+        aria-label="Script contents"
+        tabIndex={0}
+        data-automation-script-scroll=""
+        onScroll={handleScroll}
+        className="transient-scrollbar max-h-64 min-w-0 overflow-auto px-3 py-3"
+      >
+        <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+          {content}
+        </pre>
+      </div>
+      {hasMoreBelow ? (
+        <div
+          aria-hidden
+          data-automation-script-fade="below"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-b from-transparent to-background"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AutomationEnvironmentVariables({
+  environment,
+}: {
+  environment: Record<string, string>;
+}) {
+  const names = Object.keys(environment).sort();
+  if (names.length === 0) return null;
+  const label = `${names.length} env ${names.length === 1 ? "var" : "vars"}`;
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="inline-flex items-center gap-1.5"
+            tabIndex={0}
+            aria-label={`${names.length} environment ${names.length === 1 ? "variable" : "variables"}: ${names.join(", ")}`}
+          >
+            <Icon name="Code" className="size-3.5" aria-hidden />
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-80">
+          {names.join(", ")}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+interface DisabledAutomationSelectorProps {
+  label: string;
+  value: string;
+  compactValue?: string;
+  leading?: ReactNode;
+  title?: string;
+  className?: string;
+}
+
+function DisabledAutomationSelector({
+  label,
+  value,
+  compactValue,
+  leading,
+  title,
+  className,
+}: DisabledAutomationSelectorProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={label}
+      disabled
+      data-disabled-automation-selector={label}
+      className={cn(
+        OPTION_BASE_CLASS_NAME,
+        OPTION_INTERACTIVE_CLASS_NAME,
+        OPTION_MUTED_CLASS_NAME,
+        "cursor-default disabled:opacity-100",
+        className,
+      )}
+    >
+      <span
+        className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+        title={title ?? `${label}: ${value}`}
+      >
+        {leading}
+        <span className="min-w-0 truncate" data-promptbox-full-label="">
+          {value}
+        </span>
+        {compactValue ? (
+          <span className="min-w-0 truncate" data-promptbox-compact-label="">
+            {compactValue}
+          </span>
+        ) : null}
+      </span>
+      <Icon
+        name="ChevronDown"
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+    </Button>
+  );
 }
 
 function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (execution.mode !== "agent") return "Host";
   const environment = execution.environment;
-  if (environment.type === "reuse") return "Existing environment";
+  if (environment.type === "reuse") return "Reuse worktree";
   if (environment.type === "project-default") return "Project default";
-  if (environment.workspace.type === "managed-worktree") return "Worktree";
+  if (environment.workspace.type === "managed-worktree") return "New worktree";
   if (environment.workspace.type === "personal") return "Local";
   return environment.workspace.path == null
-    ? "Local workspace"
+    ? "Workspace"
     : formatHomePathForDisplay(environment.workspace.path);
+}
+
+function automationEnvironmentCompactLabel(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): string {
+  if (execution.targetThreadId !== undefined) return "Thread";
+  const environment = execution.environment;
+  if (environment.type === "reuse") return "Reuse";
+  if (environment.type === "project-default") return "Default";
+  if (environment.workspace.type === "managed-worktree") return "Worktree";
+  if (environment.workspace.type === "personal") return "Local";
+  return environment.workspace.path === null
+    ? "Workspace"
+    : formatHomePathForDisplay(environment.workspace.path);
+}
+
+function automationEnvironmentIcon(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): IconName {
+  if (execution.targetThreadId !== undefined) return "MessageSquare";
+  const environment = execution.environment;
+  if (
+    environment.type === "reuse" ||
+    (environment.type === "host" &&
+      environment.workspace.type === "managed-worktree")
+  ) {
+    return "FolderGit";
+  }
+  if (
+    environment.type === "host" &&
+    (environment.workspace.type === "personal" ||
+      environment.workspace.type === "unmanaged")
+  ) {
+    return "Laptop";
+  }
+  return "Folder";
 }
 
 function formatPermissionMode(
@@ -193,6 +387,17 @@ function formatPermissionMode(
   if (permissionMode === "accept-edits") return "Accept Edits";
   if (permissionMode === "auto") return "Approve for me";
   return "Full Access";
+}
+
+function formatPermissionModeCompact(
+  permissionMode: Extract<
+    AutomationExecution,
+    { mode: "agent" }
+  >["permissionMode"],
+): string {
+  if (permissionMode === "accept-edits") return "Edits";
+  if (permissionMode === "auto") return "Auto";
+  return "Full";
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -409,14 +614,16 @@ export function AutomationDetailView({
       metadata={
         <ResourceMeta
           items={[
-            <ResourceLocationMeta
-              label={projectContextLabel}
+            <AutomationMetadataItem
               icon={localProject ? "Laptop" : "Folder"}
-            />,
-            <span className="inline-flex items-center gap-1.5">
-              <Icon name="Clock" className="size-3.5" aria-hidden />
+              iconLabel={localProject ? "Local project" : "Project"}
+              title={projectContextLabel}
+            >
+              {projectContextLabel}
+            </AutomationMetadataItem>,
+            <AutomationMetadataItem icon="Clock" iconLabel="Schedule">
               {formatAutomationTrigger(automation.trigger)}
-            </span>,
+            </AutomationMetadataItem>,
             automationDetailNextRun(automation),
           ]}
         />
@@ -459,70 +666,117 @@ export function AutomationDetailView({
         <ResourceDefinitionSection
           label={bodyLabel}
           actions={
-            <ResourceActionButton
-              label="Edit with chat"
-              tooltipLabel="Edit with chat"
-              icon="MessageCirclePlus"
-              onClick={onEdit}
-            />
+            <>
+              {execution.mode === "agent" ? (
+                <span
+                  data-automation-read-only-label=""
+                  className="mr-1 inline-flex items-center gap-1 text-xs text-muted-foreground"
+                >
+                  <Icon name="Lock" className="size-3.5" aria-hidden />
+                  Read only
+                </span>
+              ) : null}
+              <ResourceActionButton
+                label="Edit with chat"
+                tooltipLabel="Edit with chat"
+                icon="MessageCirclePlus"
+                onClick={onEdit}
+              />
+            </>
           }
         >
           {execution.mode === "agent" ? (
-            <ResourcePromptPreview
-              className="bg-surface-raised shadow-sm"
-              context={[
-                {
-                  label: (
-                    <span className="inline-flex min-w-0 items-center gap-1.5">
-                      <AutomationProviderIcon
-                        providerId={execution.providerId}
+            <div data-promptbox-shell="" className="min-w-0">
+              <ResourcePromptPreview
+                className="bg-background"
+                context={[
+                  {
+                    label: (
+                      <DisabledAutomationSelector
+                        label="Provider and model"
+                        value={formatAutomationModelLabel(
+                          execution.model,
+                          execution.providerId,
+                        )}
+                        compactValue={formatAutomationModelLabel(
+                          execution.model,
+                          execution.providerId,
+                        )}
+                        leading={
+                          <AutomationProviderIcon
+                            providerId={execution.providerId}
+                          />
+                        }
+                        title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
                       />
-                      <span className="inline-flex min-w-0 items-baseline gap-1.5">
-                        <span className="min-w-0 truncate text-foreground">
-                          {formatAutomationModelLabel(
-                            execution.model,
-                            execution.providerId,
-                          )}
-                        </span>
-                        <span className="min-w-0 truncate">
-                          {formatAutomationProviderLabel(execution.providerId)}
-                        </span>
-                      </span>
-                    </span>
-                  ),
-                },
-                {
-                  icon:
-                    execution.environment.type === "host" &&
-                    execution.environment.workspace.type === "personal"
-                      ? "Laptop"
-                      : "Folder",
-                  label: automationEnvironmentLabel(execution),
-                },
-                { label: formatPermissionMode(execution.permissionMode) },
-              ]}
-            >
-              {execution.prompt}
-            </ResourcePromptPreview>
-          ) : (
-            <ResourceDetailPanel surface="raised">
-              <div
-                className={cn(
-                  "px-3 py-3",
-                  execution.script && "max-h-[42dvh] overflow-auto",
-                )}
+                    ),
+                  },
+                ]}
               >
-                {execution.script ? (
-                  <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                    {execution.script}
-                  </pre>
-                ) : execution.scriptFile ? (
-                  <span className="font-mono text-xs">
-                    {formatHomePathForDisplay(execution.scriptFile)}
-                  </span>
-                ) : null}
+                {execution.prompt}
+              </ResourcePromptPreview>
+              <div
+                data-automation-prompt-footer=""
+                className="mt-1 flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {!localProject ? (
+                    <OptionDisplay
+                      label="Project"
+                      value={projectContextLabel}
+                      compactValue={projectContextLabel}
+                      leading={
+                        <Icon
+                          name="Folder"
+                          className="size-3.5 shrink-0"
+                          aria-hidden
+                        />
+                      }
+                      className="shrink-0"
+                      muted
+                    />
+                  ) : null}
+                  <OptionDisplay
+                    label="Environment"
+                    value={
+                      execution.targetThreadId !== undefined
+                        ? "Existing thread"
+                        : automationEnvironmentLabel(execution)
+                    }
+                    compactValue={automationEnvironmentCompactLabel(execution)}
+                    leading={
+                      <Icon
+                        name={automationEnvironmentIcon(execution)}
+                        className="size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                    }
+                    muted
+                  />
+                </div>
+                <DisabledAutomationSelector
+                  label="Permission mode"
+                  value={formatPermissionMode(execution.permissionMode)}
+                  compactValue={formatPermissionModeCompact(
+                    execution.permissionMode,
+                  )}
+                  className="h-6 shrink-0"
+                />
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            </div>
+          ) : (
+            <ResourceDetailPanel
+              surface="flat"
+              className="rounded-md border border-border bg-background"
+            >
+              {execution.script ? (
+                <AutomationScriptContent content={execution.script} />
+              ) : (
+                <div className="px-3 py-3 text-xs text-muted-foreground">
+                  Script content unavailable.
+                </div>
+              )}
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Icon
                     name="ComputerTerminal01"
@@ -535,6 +789,9 @@ export function AutomationDetailView({
                   <Icon name="Clock" className="size-3.5" aria-hidden />
                   {Math.round(execution.timeoutMs / 1000)}s timeout
                 </span>
+                {execution.env ? (
+                  <AutomationEnvironmentVariables environment={execution.env} />
+                ) : null}
               </div>
             </ResourceDetailPanel>
           )}
@@ -545,15 +802,10 @@ export function AutomationDetailView({
             <ResourceDetailCollection>
               <div
                 data-automation-runs-state="error"
-                className="flex min-w-0 items-start justify-between gap-3 px-2 py-1.5 text-left text-sm"
+                className="flex min-w-0 items-center justify-between gap-3 px-2 py-1.5 text-left text-sm"
               >
-                <span className="inline-flex items-center gap-2 py-1.5 text-foreground">
-                  <Icon
-                    name="CircleX"
-                    className="size-4 shrink-0 text-destructive"
-                    aria-hidden
-                  />
-                  <span>Failed to load runs.</span>
+                <span className="py-1.5 text-muted-foreground">
+                  Runs unavailable.
                 </span>
                 <Button
                   type="button"
@@ -582,11 +834,9 @@ export function AutomationDetailView({
             <ResourceDetailCollection>
               <div
                 data-automation-runs-state="empty"
-                className="flex min-w-0 items-start justify-between gap-3 px-2 py-1.5 text-left text-sm"
+                className="flex min-w-0 flex-col items-center gap-2 px-2 py-3 text-center text-sm"
               >
-                <span className="py-1.5 text-muted-foreground">
-                  No runs yet.
-                </span>
+                <span className="text-muted-foreground">No runs yet.</span>
                 <Button
                   type="button"
                   variant="outline"

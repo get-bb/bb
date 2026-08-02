@@ -187,28 +187,69 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
   lastRunStatus: null,
 });
 
-const SCRIPT_AUTOMATION: AutomationResponse = {
+const PROJECT_AUTOMATION: AutomationResponse = {
   ...DETAIL_AUTOMATION,
-  id: "prune-caches",
-  name: "Prune caches",
-  trigger: { triggerType: "once", runAt: now },
+  projectId: "proj_bb",
   execution: {
-    mode: "script",
-    script: "rm -rf ./node_modules/.cache",
-    interpreter: "bash",
-    timeoutMs: 60_000,
+    mode: "agent",
+    prompt: "Summarize yesterday's commits and open pull requests.",
+    providerId: "claude",
+    model: "claude-opus-5",
+    permissionMode: "auto",
+    environment: {
+      type: "host",
+      hostId: "host_local",
+      workspace: {
+        type: "unmanaged",
+        path: "/Users/you/Code/bb",
+        branch: { kind: "existing", name: "agent/tools-hub-schedules" },
+      },
+    },
   },
 };
 
-const SCRIPT_FILE_AUTOMATION: AutomationResponse = {
-  ...SCRIPT_AUTOMATION,
+const SCRIPT_AUTOMATION: AutomationResponse = {
+  ...DETAIL_AUTOMATION,
   id: "sync-reports",
   name: "Sync reports",
+  trigger: { triggerType: "once", runAt: now },
   execution: {
     mode: "script",
-    scriptFile: "/Users/you/.bb/automations/sync-reports.sh",
+    script: `#!/usr/bin/env bash
+set -euo pipefail
+
+report_date="$(date -u +%F)"
+output_dir="\${REPORT_OUTPUT:-./reports}"
+
+mkdir -p "$output_dir"
+
+for repository in api app docs integrations; do
+  echo "Collecting $repository activity for $report_date"
+  gh pr list \\
+    --repo "bb/$repository" \\
+    --state all \\
+    --json number,title,state,updatedAt \\
+    > "$output_dir/$repository-$report_date.json"
+
+  gh issue list \\
+    --repo "bb/$repository" \\
+    --state all \\
+    --json number,title,state,updatedAt \\
+    > "$output_dir/$repository-issues-$report_date.json"
+
+  echo "Collected $repository"
+done
+
+echo "Validating report files"
+find "$output_dir" -type f -name "*$report_date.json" -print
+
+echo "Reports written to $output_dir"`,
     interpreter: "bash",
     timeoutMs: 60_000,
+    env: {
+      REPORT_OUTPUT: "/tmp/bb-reports",
+      GH_HOST: "github.com",
+    },
   },
 };
 
@@ -261,11 +302,13 @@ const RUNS: AutomationRunResponse[] = (
 
 function AutomationDetail({
   value = DETAIL_AUTOMATION,
+  projectLabel = "Local",
   runs = [],
   loading = false,
   error = null,
 }: {
   value?: AutomationResponse;
+  projectLabel?: string;
   runs?: readonly AutomationRunResponse[];
   loading?: boolean;
   error?: string | null;
@@ -273,7 +316,7 @@ function AutomationDetail({
   return (
     <AutomationDetailView
       automation={value}
-      projectLabel="Local"
+      projectLabel={projectLabel}
       runsState={{
         runs,
         nextCursor: null,
@@ -317,6 +360,43 @@ function DetailState({
   );
 }
 
+export function PromptAndScript() {
+  return (
+    <main
+      className="mx-auto w-full max-w-[72rem] space-y-4 px-5 py-6"
+      style={{ "--story-doc-width": "232px" } as CSSProperties}
+    >
+      <header>
+        <h1 className="text-lg font-semibold text-foreground">
+          Automation definition types
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Automations run either an agent prompt or a script. These are the two
+          valid production detail pages.
+        </p>
+      </header>
+      <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
+        <DetailState
+          name="Prompt automation"
+          note="An agent automation stores a prompt, model, location, and access mode."
+        >
+          <AutomationDetail
+            value={PROJECT_AUTOMATION}
+            projectLabel="bb"
+            runs={RUNS.slice(0, 1)}
+          />
+        </DetailState>
+        <DetailState
+          name="Script automation"
+          note="A script automation stores the exact script content, interpreter, timeout, and environment-variable names."
+        >
+          <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
+        </DetailState>
+      </div>
+    </main>
+  );
+}
+
 export function DetailStates() {
   return (
     <main
@@ -335,24 +415,19 @@ export function DetailStates() {
       <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
         <DetailState
           name="Agent automation"
-          note="A recurring prompt, with every persisted run status in its history. This is the default owned state, so the detail header carries no provenance badge."
+          note="A recurring prompt with disabled model and access selectors plus its exact configured project location."
         >
-          <AutomationDetail runs={RUNS} />
+          <AutomationDetail
+            value={PROJECT_AUTOMATION}
+            projectLabel="bb"
+            runs={RUNS}
+          />
         </DetailState>
         <DetailState
           name="Script automation"
-          note="A one-time script. Same two sections, different definition content."
+          note="The exact stored script that will run, capped with a bottom fade and transient scrollbar. Environment-variable names are available without exposing values."
         >
           <AutomationDetail value={SCRIPT_AUTOMATION} runs={RUNS.slice(0, 1)} />
-        </DetailState>
-        <DetailState
-          name="Script file"
-          note="An automation backed by a file under the user's home. The visible path is compact; execution still retains the absolute path."
-        >
-          <AutomationDetail
-            value={SCRIPT_FILE_AUTOMATION}
-            runs={RUNS.slice(0, 1)}
-          />
         </DetailState>
         <DetailState
           name="No next run"
@@ -385,8 +460,8 @@ export function DetailStates() {
           <AutomationDetail loading />
         </DetailState>
         <DetailState
-          name="Runs failed"
-          note="Only the section that failed shows an error; the definition is unaffected. The copy stays neutral while the red icon carries failure severity."
+          name="Runs unavailable"
+          note="Only the run history is unavailable; the definition remains usable, and Retry stays with the affected section."
         >
           <AutomationDetail error="Request timed out" />
         </DetailState>

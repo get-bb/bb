@@ -142,7 +142,7 @@ describe("one-shot automation lifecycle", () => {
       },
       now: NOW,
     });
-    expect(next?.emphasis).toBe("Next");
+    expect(next?.isNextRun).toBe(true);
     expect(next?.text).not.toContain("Next");
   });
 

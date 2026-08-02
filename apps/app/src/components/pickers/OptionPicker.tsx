@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -11,20 +11,27 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  OPTION_BASE_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OPTION_TRIGGER_CONTENT_CLASS_NAME,
+} from "@bb/shared-ui/option-display";
+export {
+  OptionDisplay,
+  OPTION_BASE_CLASS_NAME,
+  OPTION_CONTENT_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MENU_CONTENT_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OPTION_TRIGGER_CONTENT_CLASS_NAME,
+} from "@bb/shared-ui/option-display";
 
-export const OPTION_BASE_CLASS_NAME =
-  "h-8 w-fit max-w-full min-w-0 items-center justify-start gap-1 px-1 text-xs leading-tight";
 // Inline picker triggers keep flat resting chrome (no border/background/shadow
 // so they sit inline with surrounding text) but use the ghost button variant's
 // natural state backgrounds — bg-state-hover on hover and bg-state-active while
 // the menu is open — so they read as interactive affordances.
-export const OPTION_INTERACTIVE_CLASS_NAME =
-  "border-none bg-transparent shadow-none";
-export const OPTION_CONTENT_CLASS_NAME = "flex min-w-0 items-center gap-1.5";
-export const OPTION_TRIGGER_CONTENT_CLASS_NAME = "contents";
-export const OPTION_MENU_CONTENT_CLASS_NAME = "w-max min-w-0 max-w-96";
-export const OPTION_MUTED_CLASS_NAME =
-  "text-muted-foreground hover:text-foreground";
 const OPTION_WARNING_TEXT_CLASS_NAME = "text-warning-text";
 const OPTION_WARNING_INTERACTIVE_CLASS_NAME =
   "hover:text-warning-text data-[state=open]:text-warning-text";
@@ -37,21 +44,6 @@ export interface PickerOption<T extends string> {
   description?: string;
   tone?: "default" | "warning";
   icon?: ComponentType<{ className?: string }>;
-}
-
-interface OptionDisplayProps {
-  label: string;
-  value: ReactNode;
-  tone?: "default" | "warning";
-  icon?: ComponentType<{ className?: string }>;
-  /** Pre-rendered leading element (e.g. an Icon). Takes precedence over `icon`. */
-  leading?: ReactNode;
-  compactValue?: ReactNode;
-  compactValueHiddenWhenTiny?: boolean;
-  className?: string;
-  title?: string;
-  /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
-  muted?: boolean;
 }
 
 interface OptionPickerProps<T extends string> {
@@ -89,55 +81,6 @@ interface OptionPickerProps<T extends string> {
   disabled?: boolean;
   /** Keep the chevron visible even when disabled, for effective modes that explain why the menu is locked. */
   showChevronWhenDisabled?: boolean;
-}
-
-export function OptionDisplay({
-  label,
-  value,
-  tone = "default",
-  icon: BrandIcon,
-  leading,
-  compactValue,
-  compactValueHiddenWhenTiny,
-  className,
-  title,
-  muted,
-}: OptionDisplayProps) {
-  const defaultTitle =
-    typeof value === "string" ? `${label}: ${value}` : undefined;
-
-  return (
-    <div
-      title={title ?? defaultTitle}
-      className={cn(
-        "inline-flex",
-        OPTION_BASE_CLASS_NAME,
-        muted && OPTION_MUTED_CLASS_NAME,
-        tone === "warning" && OPTION_WARNING_TEXT_CLASS_NAME,
-        className,
-      )}
-    >
-      <span className={OPTION_CONTENT_CLASS_NAME}>
-        {leading ??
-          (BrandIcon ? <BrandIcon className="size-4 shrink-0" /> : null)}
-        <span className="sr-only">{label}: </span>
-        <span className="min-w-0 truncate" data-promptbox-full-label="">
-          {value}
-        </span>
-        {compactValue ? (
-          <span
-            className="min-w-0 truncate"
-            data-promptbox-compact-label=""
-            data-promptbox-hide-tiny={
-              compactValueHiddenWhenTiny ? "" : undefined
-            }
-          >
-            {compactValue}
-          </span>
-        ) : null}
-      </span>
-    </div>
-  );
 }
 
 export function OptionPicker<T extends string>({

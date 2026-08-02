@@ -4,6 +4,7 @@ import { Icon, type IconName } from "../icon";
 import { ScrollArea } from "../scroll-area";
 import { cn } from "../../../lib/utils";
 import { ResourceOverview, ResourceSectionTitle } from "./detail-shell";
+import { ResourceActionButton } from "./row";
 import { ResourceTabDescription, ResourceToolbar } from "./toolbar";
 
 export interface ResourceCollectionMode<Mode extends string> {
@@ -533,16 +534,13 @@ export function ResourceTemplateBrowseCard({
       descriptionLines={3}
       openLabel={`${actionLabel}: ${title}`}
       headerAction={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 bg-surface-recessed-soft-solid px-2 text-xs text-muted-foreground hover:bg-state-active hover:text-foreground focus-visible:bg-state-active focus-visible:text-foreground"
+        <ResourceActionButton
+          label={`${actionLabel}: ${title}`}
+          tooltipLabel={actionLabel}
+          icon="MessageCirclePlus"
+          className="size-7 bg-surface-recessed-soft-solid hover:bg-state-active focus-visible:bg-state-active"
           onClick={onUse}
-        >
-          <Icon name="MessageCirclePlus" className="size-3.5" aria-hidden />
-          {actionLabel}
-        </Button>
+        />
       }
       onOpen={onUse}
     />

@@ -169,6 +169,11 @@
       "types": "./src/components/ui/navigation-menu.tsx",
       "default": "./src/components/ui/navigation-menu.tsx"
     },
+    "./option-display": {
+      "source": "./src/components/ui/option-display.tsx",
+      "types": "./src/components/ui/option-display.tsx",
+      "default": "./src/components/ui/option-display.tsx"
+    },
     "./overlay-trigger": {
       "source": "./src/components/ui/overlay-trigger.ts",
       "types": "./src/components/ui/overlay-trigger.ts",

@@ -54,26 +54,28 @@ export function ResourcePromptPreview({
   context?: readonly ResourcePromptContextItem[];
 }) {
   return (
-    // Matches ResourceDetailCollection's surface so a detail page's prompt and
-    // its run list read as the same kind of container: same radius, same
-    // border, same flat background. The prompt panel was rounded-lg on a raised
-    // fill, which made it a louder object than the list below it.
+    // Match the production follow-up composer's geometry while keeping this
+    // read-only detail surface flat: same rounded-xl card, 68px minimum prompt
+    // area, text inset, and action-row spacing, without the composer's shadow.
     <div
       className={cn(
-        "overflow-hidden rounded-md border border-border bg-background",
+        "overflow-hidden rounded-xl border border-border bg-background",
         className,
       )}
     >
-      <div className="min-w-0 whitespace-pre-wrap px-3 py-3 text-sm leading-relaxed text-foreground">
+      <div
+        data-resource-prompt-content=""
+        role="textbox"
+        aria-label="Saved prompt"
+        aria-readonly="true"
+        className="min-h-[68px] min-w-0 whitespace-pre-wrap px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed text-foreground"
+      >
         {children}
       </div>
       {context.length > 0 ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-1 pb-2 pl-3.5 pr-2 pt-1.5 text-xs text-muted-foreground">
           {context.map((item, index) => (
-            <span
-              key={index}
-              className="inline-flex min-w-0 items-center gap-1.5"
-            >
+            <span key={index} className="contents">
               {item.icon ? (
                 <Icon
                   name={item.icon}
@@ -81,7 +83,7 @@ export function ResourcePromptPreview({
                   aria-hidden
                 />
               ) : null}
-              <span className="min-w-0 truncate">{item.label}</span>
+              <span className="contents">{item.label}</span>
             </span>
           ))}
         </div>

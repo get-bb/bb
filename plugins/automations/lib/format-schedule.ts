@@ -21,7 +21,7 @@ export interface FormatScheduleStatusLabelArgs {
 }
 
 export interface OverviewScheduleMetadata {
-  emphasis: "Next" | null;
+  isNextRun: boolean;
   text: string;
 }
 
@@ -172,8 +172,7 @@ export function formatScheduleStatusLabel({
 
 /**
  * Row metadata removes status already carried by another row control or icon
- * and separates the upcoming-run label so the UI can give "Next" clear
- * hierarchy.
+ * and separates the upcoming-run label so the UI can give it a semantic icon.
  */
 export function formatOverviewScheduleMetadata(
   args: FormatScheduleStatusLabelArgs,
@@ -187,9 +186,9 @@ export function formatOverviewScheduleMetadata(
     return null;
   }
   if (label.startsWith("Next ")) {
-    return { emphasis: "Next", text: label.slice("Next ".length) };
+    return { isNextRun: true, text: label.slice("Next ".length) };
   }
-  return { emphasis: null, text: label };
+  return { isNextRun: false, text: label };
 }
 
 /**

@@ -9,7 +9,7 @@
  * required section fails here rather than silently drifting.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
@@ -512,13 +512,27 @@ describe("Automation detail recipe", () => {
     const recipe = renderedRecipe(container);
     expect(recipe.map(([kind]) => kind)).toEqual(["definition", "activity"]);
     expect(recipe.at(-1)?.[1]).toBe("Runs");
+    expect(
+      container.querySelector(
+        '[aria-label="Local project"] [data-icon="Laptop"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('[aria-label="Schedule"] [data-icon="Clock"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector(
+        '[aria-label="Next run"] [data-icon="CalendarSync"]',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Next run:")).toBeNull();
 
     const emptyRuns = screen
       .getByText("No runs yet.")
       .closest('[data-automation-runs-state="empty"]') as HTMLElement;
     expect(emptyRuns).not.toBeNull();
-    expect(emptyRuns.className).toContain("text-left");
-    expect(emptyRuns.className).not.toContain("text-center");
+    expect(emptyRuns.className).toContain("items-center");
+    expect(emptyRuns.className).toContain("text-center");
     const runsTable = emptyRuns.parentElement as HTMLElement;
     expect(runsTable.className).toContain("border");
     expect(runsTable.className).toContain("border-border");
@@ -526,24 +540,148 @@ describe("Automation detail recipe", () => {
 
     const promptPanel = screen.getByText("Summarize yesterday's commits.")
       .parentElement as HTMLElement;
-    expect(promptPanel.className).toContain("bg-surface-raised");
-    expect(promptPanel.className).toContain("shadow-sm");
+    expect(promptPanel.className).toContain("bg-background");
+    expect(promptPanel.className).toContain("rounded-xl");
+    expect(promptPanel.className).not.toContain("rounded-md");
+    expect(promptPanel.className).not.toContain("shadow-xs");
+    expect(promptPanel.className).not.toContain("shadow-sm");
+    expect(promptPanel.lastElementChild?.className).not.toContain("border-t");
+    const promptContent = promptPanel.querySelector(
+      '[data-resource-prompt-content=""]',
+    ) as HTMLElement;
+    expect(promptContent.getAttribute("role")).toBe("textbox");
+    expect(promptContent.getAttribute("aria-label")).toBe("Saved prompt");
+    expect(promptContent.getAttribute("aria-readonly")).toBe("true");
+    expect(promptContent.className).toContain("min-h-[68px]");
+    expect(promptContent.className).toContain("px-4");
+    expect(promptContent.className).toContain("pt-3");
+    expect(promptContent.className).toContain("pb-1");
+    const promptFooter = container.querySelector(
+      '[data-automation-prompt-footer=""]',
+    ) as HTMLElement;
+    expect(promptFooter.className).toContain("justify-between");
+    expect(promptFooter.className).toContain("px-3.5");
+    expect(promptFooter.textContent).toContain("Local");
+    expect(promptFooter.textContent).toContain("Approve for me");
+    expect(
+      promptFooter.querySelectorAll('[data-option-display=""]'),
+    ).toHaveLength(1);
+    const accessSelector = promptFooter.querySelector(
+      '[data-disabled-automation-selector="Permission mode"]',
+    ) as HTMLButtonElement;
+    expect(accessSelector.disabled).toBe(true);
+    expect(
+      accessSelector.querySelector('[data-icon="ChevronDown"]'),
+    ).not.toBeNull();
+    expect(promptPanel.textContent).toContain("Opus 5");
+    expect(promptPanel.textContent).toContain("Claude");
+    expect(promptPanel.textContent).not.toContain("Reasoning");
+    expect(promptPanel.textContent).not.toContain("Default");
+    const readOnlyLabel = container.querySelector(
+      '[data-automation-read-only-label=""]',
+    ) as HTMLElement;
+    expect(readOnlyLabel.textContent).toContain("Read only");
+    expect(readOnlyLabel.querySelector('[data-icon="Lock"]')).not.toBeNull();
+    const modelSelector = promptPanel.querySelector(
+      '[data-disabled-automation-selector="Provider and model"]',
+    ) as HTMLButtonElement;
+    expect(modelSelector.disabled).toBe(true);
+    expect(
+      modelSelector.querySelector('[data-icon="ChevronDown"]'),
+    ).not.toBeNull();
     expect(
       container.querySelector('[data-automation-provider-icon="claude"] svg'),
     ).not.toBeNull();
   });
 
-  it("compacts a home-relative script path without changing the definition", () => {
-    render(
+  it("uses the composer metadata treatment without inventing reasoning", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={{
+            ...AUTOMATION,
+            projectId: "proj_bb",
+            execution: {
+              mode: "agent",
+              prompt: "Summarize yesterday's commits.",
+              providerId: "claude",
+              model: "claude-opus-5",
+              permissionMode: "auto",
+              environment: {
+                type: "host",
+                hostId: "host_local",
+                workspace: {
+                  type: "unmanaged",
+                  path: "/Users/you/Code/bb",
+                  branch: {
+                    kind: "existing",
+                    name: "agent/tools-hub-schedules",
+                  },
+                },
+              },
+            },
+          }}
+          projectLabel="bb"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const promptShell = container.querySelector(
+      '[data-promptbox-shell=""]',
+    ) as HTMLElement;
+    const promptFooter = promptShell.querySelector(
+      '[data-automation-prompt-footer=""]',
+    ) as HTMLElement;
+    expect(promptShell.textContent).toContain("Claude");
+    expect(promptShell.textContent).toContain("Opus 5");
+    expect(promptFooter.textContent).toContain("bb");
+    expect(promptFooter.textContent).toContain("~/Code/bb");
+    expect(promptFooter.textContent).toContain("Approve for me");
+    expect(promptShell.textContent).not.toContain("Reasoning");
+    expect(
+      promptShell.querySelectorAll('[data-option-display=""]'),
+    ).toHaveLength(2);
+    expect(
+      promptShell.querySelectorAll(
+        "[data-disabled-automation-selector]:disabled",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("shows the stored script with capped overflow and no environment values", () => {
+    const storedScript = Array.from(
+      { length: 20 },
+      (_, index) => `echo "report ${index + 1}"`,
+    ).join("\n");
+    const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
           automation={{
             ...AUTOMATION,
             execution: {
               mode: "script",
-              scriptFile: "/Users/you/.bb/automations/nightly.sh",
+              script: storedScript,
               interpreter: "bash",
               timeoutMs: 60_000,
+              env: {
+                REPORT_OUTPUT: "/private/reports",
+                GH_TOKEN: "secret-token",
+              },
             },
           }}
           projectLabel="Local"
@@ -566,14 +704,46 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    const scriptPath = screen.getByText("~/.bb/automations/nightly.sh");
-    expect(scriptPath).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Script" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Script file" })).toBeNull();
+    expect(container.textContent).toContain("2 env vars");
+    expect(container.textContent).not.toContain("/private/reports");
+    expect(container.textContent).not.toContain("secret-token");
+
+    const scriptScroll = screen.getByRole("region", {
+      name: "Script contents",
+    });
+    expect(scriptScroll.querySelector("pre")?.textContent).toContain(
+      storedScript,
+    );
+    expect(scriptScroll.className).toContain("max-h-64");
+    expect(scriptScroll.className).toContain("transient-scrollbar");
+    expect(scriptScroll.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+    Object.defineProperties(scriptScroll, {
+      clientHeight: { configurable: true, value: 160 },
+      scrollHeight: { configurable: true, value: 320 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+    fireEvent.scroll(scriptScroll);
+    expect(scriptScroll.dataset.scrollbarScrolling).toBe("true");
     expect(
-      screen.queryByText("/Users/you/.bb/automations/nightly.sh"),
+      container.querySelector('[data-automation-script-fade="below"]'),
+    ).not.toBeNull();
+
+    scriptScroll.scrollTop = 160;
+    fireEvent.scroll(scriptScroll);
+    expect(
+      container.querySelector('[data-automation-script-fade="below"]'),
     ).toBeNull();
-    const scriptPanel = scriptPath.parentElement?.parentElement as HTMLElement;
-    expect(scriptPanel.className).toContain("bg-surface-raised");
-    expect(scriptPanel.className).toContain("shadow-sm");
+
+    const scriptPanel = scriptScroll.parentElement
+      ?.parentElement as HTMLElement;
+    expect(scriptPanel.className).toContain("bg-background");
+    expect(scriptPanel.className).not.toContain("shadow-xs");
+    expect(scriptPanel.className).not.toContain("shadow-sm");
+    expect(scriptPanel.lastElementChild?.className).toContain(
+      "bg-surface-recessed/55",
+    );
   });
 
   it("uses the shared shimmer treatment while runs are loading", () => {
@@ -607,7 +777,7 @@ describe("Automation detail recipe", () => {
     expect(container.textContent).not.toContain("Loading…");
   });
 
-  it("keeps run-load failure copy neutral and puts severity on the icon", () => {
+  it("keeps run-load failure quiet and actionable", () => {
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -633,12 +803,11 @@ describe("Automation detail recipe", () => {
     );
 
     const errorState = screen
-      .getByText("Failed to load runs.")
+      .getByText("Runs unavailable.")
       .closest('[data-automation-runs-state="error"]') as HTMLElement;
     expect(errorState.className).not.toContain("text-destructive");
-    expect(
-      container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
-    ).toContain("text-destructive");
+    expect(container.querySelector('[data-icon="CircleX"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("keeps failed script details readable without repeating severity color", () => {

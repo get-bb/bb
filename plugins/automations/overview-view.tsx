@@ -45,6 +45,7 @@ import {
   matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
 } from "./lib/format-schedule.js";
+import { AutomationMetadataItem } from "./metadata.js";
 
 const PERSONAL_PROJECT_ID = "proj_personal";
 
@@ -143,28 +144,6 @@ function automationProjectLabel(
   return project.id === PERSONAL_PROJECT_ID ? "Local" : project.name;
 }
 
-function AutomationOverviewMetaItem({
-  children,
-  icon,
-  title,
-}: {
-  children: ReactNode;
-  icon?: "Clock" | "Folder" | "Laptop";
-  title?: string;
-}) {
-  return (
-    <span
-      className="inline-flex h-4 min-w-0 items-center gap-1.5 whitespace-nowrap leading-4"
-      title={title}
-    >
-      {icon ? (
-        <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />
-      ) : null}
-      <span className="min-w-0 truncate">{children}</span>
-    </span>
-  );
-}
-
 function automationProjectFilterId(
   entry: OverviewEntry,
 ): AutomationProjectFilter {
@@ -218,25 +197,23 @@ function OverviewRow({
       description={
         <ResourceMeta
           items={[
-            <AutomationOverviewMetaItem
+            <AutomationMetadataItem
               icon={projectLabel === "Local" ? "Laptop" : "Folder"}
+              iconLabel={projectLabel === "Local" ? "Local project" : "Project"}
               title={projectLabel}
             >
               {projectLabel}
-            </AutomationOverviewMetaItem>,
-            <AutomationOverviewMetaItem icon="Clock">
+            </AutomationMetadataItem>,
+            <AutomationMetadataItem icon="Clock" iconLabel="Schedule">
               {triggerLabel}
-            </AutomationOverviewMetaItem>,
+            </AutomationMetadataItem>,
             scheduleMetadata ? (
-              <AutomationOverviewMetaItem>
-                {scheduleMetadata.emphasis ? (
-                  <span className="font-medium text-foreground">
-                    {scheduleMetadata.emphasis}
-                  </span>
-                ) : null}
-                {scheduleMetadata.emphasis ? " " : null}
+              <AutomationMetadataItem
+                icon={scheduleMetadata.isNextRun ? "CalendarSync" : undefined}
+                iconLabel={scheduleMetadata.isNextRun ? "Next run" : undefined}
+              >
                 {scheduleMetadata.text}
-              </AutomationOverviewMetaItem>
+              </AutomationMetadataItem>
             ) : null,
           ]}
         />
