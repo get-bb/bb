@@ -36,7 +36,12 @@ export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 export const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
-export const HEADER_MAXIMIZE_ICON_BUTTON_CLASS =
+/**
+ * Shared geometry for the maximize and close controls at the end of a pane
+ * header. Keeping both controls on one class gives their button boxes and
+ * glyphs the same center axis.
+ */
+export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
   HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
 interface AppPageHeaderProps {

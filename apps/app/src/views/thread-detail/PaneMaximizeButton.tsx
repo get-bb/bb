@@ -3,7 +3,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { HEADER_MAXIMIZE_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { useHoverPopover } from "@/components/ui/hooks/use-hover-popover";
 import type { SplitSide } from "@/lib/split-layout";
@@ -53,7 +53,7 @@ export function PaneMaximizeButton({
       variant="ghost"
       size="icon"
       className={cn(
-        HEADER_MAXIMIZE_ICON_BUTTON_CLASS,
+        HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
         CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
       )}
       aria-label={accessibleLabel}

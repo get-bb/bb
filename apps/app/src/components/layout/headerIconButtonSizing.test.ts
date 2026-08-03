@@ -3,7 +3,7 @@ import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { HEADER_MAXIMIZE_ICON_BUTTON_CLASS } from "./AppPageHeader";
+import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "./AppPageHeader";
 
 // Guards the shared header-control geometry that BB-63 depends on: the reduced
 // glyph variant (used by the pane maximize/restore control) must keep the exact
@@ -50,8 +50,8 @@ describe("header icon button sizing contract", () => {
     expect(reduced.has("max-md:pointer-coarse:[&_svg]:size-[20px]")).toBe(false);
   });
 
-  it("wires the pane maximize control to the reduced-glyph geometry", () => {
-    expect(HEADER_MAXIMIZE_ICON_BUTTON_CLASS).toBe(
+  it("keeps pane maximize and close controls on one centered geometry", () => {
+    expect(HEADER_PANE_ACTION_ICON_BUTTON_CLASS).toBe(
       COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
     );
   });

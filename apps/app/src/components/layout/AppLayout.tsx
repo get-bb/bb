@@ -432,7 +432,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         handleResourceRouteLabel,
       );
     };
-  }, [location.pathname]);
+  }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
   const {
     appRoutePath,

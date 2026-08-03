@@ -15,7 +15,7 @@ import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
-  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
@@ -272,7 +272,7 @@ export function ThreadDetailHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+              HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
             )}
             aria-label="Close pane"

@@ -70,7 +70,7 @@ import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
-  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
 import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
@@ -1058,7 +1058,7 @@ function NonThreadPaneContent({
           variant="ghost"
           size="icon"
           className={cn(
-            HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+            HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
             CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
           )}
           aria-label="Close pane"
