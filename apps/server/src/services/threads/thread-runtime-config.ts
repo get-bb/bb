@@ -32,7 +32,6 @@ import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
-import { isSideChatThread } from "./side-chat-thread.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
@@ -114,20 +113,11 @@ interface DynamicToolContribution {
  * The session's dynamic tool set: built-ins first, then native plugin tools
  * (bb.agents.registerTool), resolved live at thread.start/turn.submit — so
  * tool-set changes apply on the next session start, never mid-session.
- * Side-chat threads keep the independent built-in-tool exclusion, while
- * conditionally selected plugin tools follow configure() like any thread.
+ * Conditionally selected plugin tools follow configure() like any thread.
  */
 function resolveDynamicTools(
-  thread: Thread,
   pluginTools: ReturnType<typeof listPluginAgentTools>,
 ): DynamicToolContribution[] {
-  if (isSideChatThread(thread)) {
-    return pluginTools.map((contribution) => ({
-      tool: contribution.tool,
-      instructions: contribution.instructions,
-      pluginId: contribution.pluginId,
-    }));
-  }
   return [
     {
       tool: UPDATE_ENVIRONMENT_DIRECTORY_TOOL,
@@ -201,7 +191,6 @@ export async function resolveThreadRuntimeCommandConfig(
     pluginSkillRoots,
     skillTreeRegistry: deps.skillTreeRegistry,
   });
-  const sideChat = isSideChatThread(args.thread);
   const conditionalConfiguration = await resolvePluginAgentConfiguration({
     context: {
       thread: {
@@ -225,7 +214,6 @@ export async function resolveThreadRuntimeCommandConfig(
       },
       host: { id: host.id, name: host.name },
       provider: { id: args.thread.providerId, model: args.model },
-      sideChat,
       origin: {
         kind: args.thread.originKind ?? args.thread.childOrigin,
         pluginId: args.thread.originPluginId,
@@ -242,7 +230,6 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.config.dataDir,
   );
   const dynamicToolContributions = resolveDynamicTools(
-    args.thread,
     conditionalConfiguration.tools,
   );
   const dynamicTools = dynamicToolContributions.map(
@@ -264,36 +251,33 @@ export async function resolveThreadRuntimeCommandConfig(
     }
   }
   // Legacy plugin-level contributeInstructions providers (after per-tool
-  // snippets, before configure dynamic instructions). Their established
-  // side-chat exclusion remains independent of configure().
-  if (!isSideChatThread(args.thread)) {
-    for (const contribution of listPluginInstructionContributions()) {
-      let text: string | null;
-      try {
-        text = contribution.provider({
+  // snippets, before configure dynamic instructions).
+  for (const contribution of listPluginInstructionContributions()) {
+    let text: string | null;
+    try {
+      text = contribution.provider({
+        threadId: args.thread.id,
+        projectId: args.thread.projectId,
+      });
+    } catch (error) {
+      deps.logger.warn(
+        {
+          err: error,
+          pluginId: contribution.pluginId,
           threadId: args.thread.id,
-          projectId: args.thread.projectId,
-        });
-      } catch (error) {
-        deps.logger.warn(
-          {
-            err: error,
-            pluginId: contribution.pluginId,
-            threadId: args.thread.id,
-          },
-          "Plugin instruction contribution threw; skipping",
-        );
-        continue;
-      }
-      if (text === null || text.trim().length === 0) continue;
-      if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
-        text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
-      }
-      instructionSections.push(
-        `The following instructions come from the BB plugin "${contribution.pluginId}":`,
-        text,
+        },
+        "Plugin instruction contribution threw; skipping",
       );
+      continue;
     }
+    if (text === null || text.trim().length === 0) continue;
+    if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
+      text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
+    }
+    instructionSections.push(
+      `The following instructions come from the BB plugin "${contribution.pluginId}":`,
+      text,
+    );
   }
   // Conditional dynamic instructions follow the legacy/static plugin-level
   // providers on every thread, including side chats. Each configure output

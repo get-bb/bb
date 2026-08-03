@@ -594,7 +594,6 @@ describe("agent tools", () => {
     },
     host: { id: "host-test", name: "Test host" },
     provider: { id: "codex", model: "gpt-5" },
-    sideChat: false,
     origin: { kind: null, pluginId: null },
   } satisfies PluginAgentConfigurationContext;
 
@@ -614,7 +613,9 @@ describe("agent tools", () => {
       type: "object",
       properties: { query: { type: "string" } },
     });
-    expect(harness.registrations.agentTools[0]?.experimentalStatusLabels).toEqual({
+    expect(
+      harness.registrations.agentTools[0]?.experimentalStatusLabels,
+    ).toEqual({
       pending: "Looking up a doc",
       completed: "Looked up a doc",
     });

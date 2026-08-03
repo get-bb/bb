@@ -233,9 +233,6 @@ import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
-const PARENT_THREAD_SELECTOR_FILTERS = {
-  excludeSideChats: true,
-} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
 const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY = "bb.pullRequest.mergeMethod";
@@ -534,6 +531,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isRecoverableLoadingError: isTransientReadError(error),
   });
   const threadOriginKind = thread?.originKind ?? thread?.childOrigin ?? null;
+  // This thread IS one of the side-chat plugin's forks — the plugin-era
+  // successor to `originKind === "side-chat"`. Migration 0084 moved every
+  // legacy side chat onto this shape.
+  const isSideChatThread =
+    threadOriginKind === "fork" &&
+    thread?.originPluginId === SIDE_CHAT_PLUGIN_ID;
   const threadSourceThreadId =
     thread?.sourceThreadId ??
     (thread && threadOriginKind ? thread.parentThreadId : null);
@@ -717,7 +720,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     parentThreadsRequestedForThreadId === thread?.id;
   const parentThreadSubsetQuery = useProjectThreadSubset({
     enabled: shouldLoadParentThreads,
-    filters: PARENT_THREAD_SELECTOR_FILTERS,
+    filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
     projectId,
   });
   const childThreadSubsetFilters = useMemo<ProjectThreadSubsetFilters>(() => {
@@ -904,7 +907,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       (target) => {
         if (
           thread?.id === undefined ||
-          threadOriginKind !== "side-chat" ||
+          !isSideChatThread ||
           threadSourceThreadId === null ||
           createQueuedMessage.isPending
         ) {
@@ -917,10 +920,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           senderThreadId: thread.id,
         });
       },
-      [createQueuedMessage, thread?.id, threadOriginKind, threadSourceThreadId],
+      [createQueuedMessage, isSideChatThread, thread?.id, threadSourceThreadId],
     );
   const handleSendToMainMessage =
-    threadOriginKind === "side-chat" && threadSourceThreadId !== null
+    isSideChatThread && threadSourceThreadId !== null
       ? sendSideChatMessageToMain
       : undefined;
   const canUseGitUi = environment?.isGitRepo === true;
@@ -1641,12 +1644,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         projectId: thread.projectId,
         threadId: relatedThreadId,
       });
-      const relationship =
-        threadOriginKind === "fork"
+      // A side chat is a fork too, so it is tested first.
+      const relationship = isSideChatThread
+        ? "side-chat"
+        : threadOriginKind === "fork"
           ? "fork"
-          : threadOriginKind === "side-chat"
-            ? "side-chat"
-            : "parent";
+          : "parent";
       const relatedThread =
         relationship === "parent" ? parentThread : sourceThread;
       if (relatedThread === undefined) {
@@ -1673,6 +1676,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         relationship,
       };
     }, [
+      isSideChatThread,
       parentThread,
       sourceThread,
       thread,
@@ -2299,11 +2303,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         />
       )}
       childPillLabel={
-        threadOriginKind === "side-chat"
-          ? "side chat"
-          : parentThreadId
-            ? "child"
-            : null
+        isSideChatThread ? "side chat" : parentThreadId ? "child" : null
       }
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}

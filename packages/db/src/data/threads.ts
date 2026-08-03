@@ -331,12 +331,10 @@ export interface ListThreadsOptions {
   hasParent?: boolean;
   /** Restrict to threads spawned from this source thread. */
   sourceThreadId?: string;
-  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  /** Restrict to threads spawned with this origin. */
   originKind?: ThreadOriginKind;
   /** Restrict to threads spawned by this plugin. */
   originPluginId?: string;
-  /** Exclude source-derived side-chat threads. */
-  excludeSideChats?: boolean;
   /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin;
   limit?: number;
@@ -350,7 +348,6 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
-  excludeOriginKind?: ThreadOriginKind;
 }
 
 export interface PinThreadArgs {
@@ -558,10 +555,6 @@ export interface ListUnarchivedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
-export interface ListUnarchivedSourceThreadsArgs {
-  originKind?: ThreadOriginKind;
-  sourceThreadId: string;
-}
 
 export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
@@ -648,18 +641,6 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.originPluginId
       ? eq(threads.originPluginId, options.originPluginId)
       : undefined,
-    options.excludeSideChats
-      ? and(
-          or(
-            isNull(threads.originKind),
-            ne(threads.originKind, "side-chat"),
-          ),
-          or(
-            isNull(threads.childOrigin),
-            ne(threads.childOrigin, "side-chat"),
-          ),
-        )
-      : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
@@ -680,18 +661,6 @@ function buildListThreadsForProjectsFilters(
     inArray(threads.projectId, [...options.projectIds]),
     eq(threads.visibility, "visible"),
     isNull(threads.deletedAt),
-    options.excludeOriginKind
-      ? and(
-          or(
-            isNull(threads.originKind),
-            ne(threads.originKind, options.excludeOriginKind),
-          ),
-          or(
-            isNull(threads.childOrigin),
-            ne(threads.childOrigin, options.excludeOriginKind),
-          ),
-        )
-      : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
@@ -1146,13 +1115,6 @@ export function listThreadsWithPendingInteractionState(
  * this summary for every registered server.
  */
 export function hasActiveThreadAttention(db: DbConnection): boolean {
-  const visibleThread = or(
-    ne(threads.originKind, "side-chat"),
-    and(
-      isNull(threads.originKind),
-      or(isNull(threads.childOrigin), ne(threads.childOrigin, "side-chat")),
-    ),
-  );
   const unreadThread = or(
     isNull(threads.lastReadAt),
     lt(threads.lastReadAt, threads.latestAttentionAt),
@@ -1173,7 +1135,6 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
         eq(threads.visibility, "visible"),
-        visibleThread,
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
     )
@@ -1273,23 +1234,6 @@ export function listUnarchivedAssignedChildThreads(
     .all();
 }
 
-export function listUnarchivedSourceThreads(
-  db: ThreadWriteConnection,
-  args: ListUnarchivedSourceThreadsArgs,
-): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.sourceThreadId, args.sourceThreadId),
-        args.originKind ? eq(threads.originKind, args.originKind) : undefined,
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
-}
 
 export function listNonDeletedChildThreads(
   db: ThreadWriteConnection,

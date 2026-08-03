@@ -62,7 +62,6 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 
 export interface ThreadListArgs {
   archived?: boolean;
-  excludeSideChats?: boolean;
   sectionId?: string;
   hasParent?: boolean;
   includeHidden?: boolean;
@@ -465,9 +464,6 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.unsectioned === undefined
       ? {}
       : { unsectioned: args.unsectioned ? "true" : "false" }),
-    ...(args?.excludeSideChats === undefined
-      ? {}
-      : { excludeSideChats: args.excludeSideChats ? "true" : "false" }),
     ...(args?.includeHidden === undefined
       ? {}
       : { includeHidden: args.includeHidden ? "true" : "false" }),

@@ -60,10 +60,6 @@ interface GeneratedConversationMessageProps {
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
-  /** The source is a legacy native side chat. It reads as a side chat ("Replying
-   * to", markdown body), but the native panel is gone, so its name navigates to
-   * the thread like any other source. */
-  sourceIsSideChat: boolean;
   /** The source is a side-chat plugin hidden fork: its name carries no route
    * link because its title action opens the plugin's panel tab instead. */
   sourceIsPluginSideChat: boolean;
@@ -98,7 +94,6 @@ interface GeneratedConversationTitleArgs {
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
-  sourceIsSideChat: boolean;
   sourceIsPluginSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -225,20 +220,19 @@ export function generatedConversationTitle({
   sourceKind,
   sourceName,
   sourceThreadId,
-  sourceIsSideChat,
   sourceIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
 }: GeneratedConversationTitleArgs): TimelineTitle {
-  // The lead-in names the relationship to the source: a fork branched from it
-  // ("Forked from"), a side chat is replying to it ("Replying to"); any other
-  // agent-initiated message keeps the neutral "Message from".
-  const agentLeadIn =
-    childOrigin === "fork"
+  // The lead-in names the relationship to the source: a side chat is replying
+  // to it ("Replying to"), any other fork branched from it ("Forked from"), and
+  // anything else keeps the neutral "Message from". A side chat is a fork too,
+  // so it is tested first.
+  const agentLeadIn = sourceIsPluginSideChat
+    ? "Replying to"
+    : childOrigin === "fork"
       ? "Forked from"
-      : childOrigin === "side-chat"
-        ? "Replying to"
-        : "Message from";
+      : "Message from";
   // A side-chat source opens in the plugin's panel tab (a title action), so its
   // name carries no route link; other sources navigate to the source thread.
   const sideChatAction =
@@ -335,7 +329,6 @@ function generatedConversationIconName(
 interface GeneratedAgentSourceTitleProps {
   onTitleAction?: TimelineTitleActionResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
-  sourceIsSideChat: boolean;
   sourceIsPluginSideChat: boolean;
   sourceName: string;
   sourceThreadId: string | null;
@@ -345,7 +338,6 @@ interface GeneratedAgentSourceTitleProps {
 function GeneratedAgentSourceTitle({
   onTitleAction,
   resolveSegmentLinkHref,
-  sourceIsSideChat,
   sourceIsPluginSideChat,
   sourceName,
   sourceThreadId,
@@ -354,10 +346,8 @@ function GeneratedAgentSourceTitle({
   const sourceDisplayName = useThreadTitleDisplayText(sourceName);
   const sourceTitleAction =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
-  // A plugin side chat opens in its panel (a title action), so its name carries
-  // no route link. A legacy native side chat has no panel to open any more, so
-  // it falls back to the normal thread link and opens as a full thread —
-  // without it the row would be inert and the thread unreachable.
+  // A side chat opens in the plugin's panel (a title action), so its name
+  // carries no route link; other sources navigate to the source thread.
   const sourceLinkHref =
     sourceThreadId !== null && !sourceIsPluginSideChat && resolveSegmentLinkHref
       ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
@@ -436,7 +426,6 @@ export const GeneratedConversationMessage = memo(
     sourceKind,
     sourceName,
     sourceThreadId,
-    sourceIsSideChat,
     sourceIsPluginSideChat,
     systemMessageKind,
     systemMessageSubject,
@@ -465,7 +454,6 @@ export const GeneratedConversationMessage = memo(
           sourceKind,
           sourceName,
           sourceThreadId,
-          sourceIsSideChat,
           sourceIsPluginSideChat,
           systemMessageKind,
           systemMessageSubject,
@@ -475,7 +463,6 @@ export const GeneratedConversationMessage = memo(
         sourceKind,
         sourceName,
         sourceThreadId,
-        sourceIsSideChat,
         sourceIsPluginSideChat,
         systemMessageKind,
         systemMessageSubject,
@@ -486,7 +473,6 @@ export const GeneratedConversationMessage = memo(
         <GeneratedAgentSourceTitle
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveSegmentLinkHref}
-          sourceIsSideChat={sourceIsSideChat}
           sourceIsPluginSideChat={sourceIsPluginSideChat}
           sourceName={sourceName}
           sourceThreadId={sourceThreadId}
@@ -502,7 +488,7 @@ export const GeneratedConversationMessage = memo(
     // title; suppress the body, the collapsed preview, and expansion entirely.
     const titleOnly = systemMessageIsTitleOnly(sourceKind, systemMessageKind);
     const renderMessageMarkdown =
-      sourceKind === "system" || sourceIsSideChat || sourceIsPluginSideChat;
+      sourceKind === "system" || sourceIsPluginSideChat;
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||

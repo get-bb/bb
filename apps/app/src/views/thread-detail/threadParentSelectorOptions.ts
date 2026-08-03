@@ -8,8 +8,7 @@ export interface ParentSelectorOption {
 interface ThreadAssignmentState {
   id: string;
   parentThreadId: string | null;
-  originKind?: ThreadListEntry["originKind"];
-  childOrigin?: ThreadListEntry["childOrigin"];
+  visibility?: ThreadListEntry["visibility"];
 }
 
 interface CollectDescendantThreadIdsArgs {
@@ -30,14 +29,15 @@ export function isRootThread(
   return (
     thread !== undefined &&
     thread.parentThreadId === null &&
-    !isSideChatThread(thread)
+    !isHiddenThread(thread)
   );
 }
 
-function isSideChatThread(
-  thread: Pick<ThreadAssignmentState, "originKind" | "childOrigin">,
+// A hidden thread (a side chat, say) is not a parent a user can pick.
+function isHiddenThread(
+  thread: Pick<ThreadAssignmentState, "visibility">,
 ): boolean {
-  return (thread.originKind ?? thread.childOrigin) === "side-chat";
+  return thread.visibility === "hidden";
 }
 
 function collectDescendantThreadIds({
@@ -100,7 +100,7 @@ export function buildParentSelectorOptions({
     parentThreadDisplayName ?? "Parent thread",
   );
   for (const parentThread of parentThreads) {
-    if (isSideChatThread(parentThread)) {
+    if (isHiddenThread(parentThread)) {
       continue;
     }
     addOption(

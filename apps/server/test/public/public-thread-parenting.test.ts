@@ -153,45 +153,6 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  it("rejects assigning a side chat as a parent", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const sourceThread = seedThread(harness.deps, {
-        projectId: project.id,
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        originKind: "side-chat",
-        projectId: project.id,
-        sourceThreadId: sourceThread.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${childThread.id}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ parentThreadId: sideChatThread.id }),
-        },
-      );
-
-      expect(response.status).toBe(400);
-      const error = apiErrorSchema.parse(await readJson(response));
-      expect(error).toMatchObject({
-        code: "parent_thread_invalid",
-        details: {
-          reason: "side_chat",
-          subject: "parent",
-        },
-      });
-    });
-  });
-
   it("returns child summary for a parent", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
@@ -354,7 +315,9 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  it("archives source-derived side chats when archiving a source thread and children", async () => {
+  // The side-chat plugin cascades its own forks from `thread.archived`; the
+  // server archives hierarchy children only, and leaves plugin forks alone.
+  it("archives hierarchy children but not a plugin's source-derived forks", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -375,7 +338,9 @@ describe("public thread parenting routes", () => {
       });
       const sideChatThread = seedThread(harness.deps, {
         environmentId: environment.id,
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
         projectId: project.id,
         sourceThreadId: sourceThread.id,
       });
@@ -391,19 +356,19 @@ describe("public thread parenting routes", () => {
       );
       expect(archiveResult.archivedThreadIds).toEqual([
         childThread.id,
-        sideChatThread.id,
         sourceThread.id,
       ]);
       expect(getThread(harness.db, sourceThread.id)?.archivedAt).not.toBeNull();
       expect(getThread(harness.db, childThread.id)?.archivedAt).not.toBeNull();
-      const archivedSideChat = getThread(harness.db, sideChatThread.id);
-      expect(archivedSideChat?.archivedAt).not.toBeNull();
-      expect(archivedSideChat?.sourceThreadId).toBe(sourceThread.id);
-      expect(archivedSideChat?.parentThreadId).toBeNull();
+      const sideChat = getThread(harness.db, sideChatThread.id);
+      expect(sideChat?.archivedAt).toBeNull();
+      expect(sideChat?.sourceThreadId).toBe(sourceThread.id);
     });
   });
 
-  it("excludes side chats from thread list results when requested", async () => {
+  // A side chat is a hidden thread, and the list excludes hidden threads by
+  // default — no dedicated filter needed.
+  it("excludes side chats from thread list results", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -420,14 +385,16 @@ describe("public thread parenting routes", () => {
         title: "Fork",
       });
       const sideChatThread = seedThread(harness.deps, {
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
         projectId: project.id,
         sourceThreadId: sourceThread.id,
         title: "Side chat",
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads?projectId=${project.id}&archived=false&excludeSideChats=true`,
+        `/api/v1/threads?projectId=${project.id}&archived=false`,
       );
 
       expect(response.status).toBe(200);

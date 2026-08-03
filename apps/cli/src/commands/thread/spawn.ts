@@ -219,8 +219,8 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
-    .option("--origin-kind <kind>", "Thread origin: fork or side-chat")
-    .option("--source-thread <id>", "Source thread for a fork or side chat")
+    .option("--origin-kind <kind>", "Thread origin: fork")
+    .option("--source-thread <id>", "Source thread for a fork")
     .option("--source-seq-end <seq>", "Last source event sequence")
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
@@ -276,12 +276,8 @@ export function registerSpawnCommand(
           parentSelf: opts.parentSelf,
           parentThread: opts.parentThread,
         });
-        if (
-          opts.originKind !== undefined &&
-          opts.originKind !== "fork" &&
-          opts.originKind !== "side-chat"
-        ) {
-          throw new Error("--origin-kind must be fork or side-chat.");
+        if (opts.originKind !== undefined && opts.originKind !== "fork") {
+          throw new Error("--origin-kind must be fork.");
         }
         const sourceSeqEnd =
           opts.sourceSeqEnd === undefined
@@ -316,8 +312,8 @@ export function registerSpawnCommand(
             // The typed $post client types this body against the schema's
             // output shape, where startedOnBehalfOf/originKind/childOrigin
             // (`.default(null)`) are required — so a normal spawn passes the
-            // explicit null the server would otherwise fill. (A fork/side-chat
-            // sets these; the CLI never does. z.input would re-optionalize the
+            // explicit null the server would otherwise fill. (A fork sets
+            // these; the CLI never does. z.input would re-optionalize the
             // SDK arg type but the underlying $post still requires them, so the
             // null lives here.)
             startedOnBehalfOf: null,

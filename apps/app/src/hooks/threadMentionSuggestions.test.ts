@@ -8,8 +8,7 @@ interface ThreadFixtureOptions {
   projectId?: string;
   title: string | null;
   titleFallback?: string | null;
-  originKind?: Thread["originKind"];
-  childOrigin?: Thread["childOrigin"];
+  visibility?: Thread["visibility"];
 }
 
 interface BuildSuggestionFixtureArgs {
@@ -32,10 +31,10 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     status: "idle",
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,
-    originKind: options.originKind ?? null,
+    originKind: null,
     originPluginId: null,
-    visibility: "visible",
-    childOrigin: options.childOrigin ?? null,
+    visibility: options.visibility ?? "visible",
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -136,13 +135,8 @@ describe("buildThreadMentionSuggestions", () => {
       }),
       makeThread({
         id: "thr_side_chat",
-        originKind: "side-chat",
+        visibility: "hidden",
         title: "Prompt mention side chat",
-      }),
-      makeThread({
-        id: "thr_legacy_side_chat",
-        childOrigin: "side-chat",
-        title: "Prompt mention legacy side chat",
       }),
     ];
 

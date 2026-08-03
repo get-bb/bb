@@ -593,8 +593,8 @@
     {
       "idx": 84,
       "version": "6",
-      "when": 1785791983610,
-      "tag": "0084_drop_side_chat_plugin_experiment",
+      "when": 1785795448430,
+      "tag": "0084_side_chat_plugin_only",
       "breakpoints": true
     }
   ]

@@ -445,8 +445,7 @@ describe("ProjectRow interactions", () => {
         threads: [
           makeThread({
             id: "thr_side_chat",
-            originKind: "side-chat",
-            childOrigin: "side-chat",
+            visibility: "hidden",
             activity: {
               activeWorkflowCount: 0,
               activeBackgroundAgentCount: 0,

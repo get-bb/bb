@@ -292,9 +292,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
         requestedPermissionMode: "full",
         lastExecutionPermissionMode: "full",
         projectExecutionPermissionMode: "full",
-        thread: makeThread({
-          originKind: "side-chat",
-        }),
+        thread: makeThread({ originKind: "fork" }),
       }),
     ).toBe("full");
   });
@@ -332,17 +330,6 @@ describe("resolveThreadExecutionPermissionMode", () => {
         }),
       }),
     ).toBe("accept-edits");
-  });
-
-  it("resolves an existing legacy readonly side chat from its source", () => {
-    expect(
-      resolveThreadExecutionPermissionMode({
-        lastExecutionPermissionMode: "readonly",
-        projectExecutionPermissionMode: "accept-edits",
-        sourceThreadEffectivePermissionMode: "full",
-        thread: makeThread({ originKind: "side-chat" }),
-      }),
-    ).toBe("full");
   });
 
   it("uses project permission defaults for child threads without parent execution history", () => {

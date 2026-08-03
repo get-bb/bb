@@ -109,13 +109,8 @@ describe("thread parent selector options", () => {
         makeThread({ id: "thr_parent", title: "Parent" }),
         makeThread({
           id: "thr_side_chat",
-          originKind: "side-chat",
+          visibility: "hidden",
           title: "Side chat",
-        }),
-        makeThread({
-          id: "thr_legacy_side_chat",
-          childOrigin: "side-chat",
-          title: "Legacy side chat",
         }),
       ],
     });
@@ -131,6 +126,6 @@ describe("thread parent selector options", () => {
     expect(isRootThread(makeThread({ parentThreadId: "thr_parent" }))).toBe(
       false,
     );
-    expect(isRootThread(makeThread({ originKind: "side-chat" }))).toBe(false);
+    expect(isRootThread(makeThread({ visibility: "hidden" }))).toBe(false);
   });
 });

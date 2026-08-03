@@ -1806,9 +1806,9 @@ function ProjectListComponent({
     if (!selectedThread) {
       return;
     }
-    if (
-      (selectedThread.originKind ?? selectedThread.childOrigin) === "side-chat"
-    ) {
+    // A hidden thread (a side chat, say) has no row to reveal, so there is no
+    // ancestor chain worth expanding.
+    if (selectedThread.visibility === "hidden") {
       return;
     }
 

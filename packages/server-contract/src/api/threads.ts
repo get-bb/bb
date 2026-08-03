@@ -586,12 +586,10 @@ export const threadListQuerySchema = z.object({
   unsectioned: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
-  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  /** Restrict to threads spawned with this origin. */
   originKind: threadOriginKindSchema.optional(),
   /** Restrict to threads spawned by this plugin. */
   originPluginId: z.string().min(1).optional(),
-  /** Exclude source-derived side-chat threads. */
-  excludeSideChats: z.enum(["true", "false"]).optional(),
   /** @deprecated Use originKind. */
   childOrigin: threadChildOriginSchema.optional(),
   /** Include hidden threads; omitted/false keeps the default visible-only list. */

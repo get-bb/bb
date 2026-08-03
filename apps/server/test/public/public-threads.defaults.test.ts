@@ -521,7 +521,9 @@ describe("public thread default routes", () => {
       const sideChatThread = seedThread(harness.deps, {
         projectId: project.id,
         sourceThreadId: parentThread.id,
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
         title: "Side chat",
       });
 

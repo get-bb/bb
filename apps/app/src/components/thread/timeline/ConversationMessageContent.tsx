@@ -419,12 +419,9 @@ function UserConversationMessage({
         onTitleAction={onTitleAction}
         sourceKind="agent"
         sourceName={
-          senderChildOrigin === "side-chat" || senderIsPluginSideChat
-            ? "side chat"
-            : (senderThreadTitle ?? "Agent")
+          senderIsPluginSideChat ? "side chat" : (senderThreadTitle ?? "Agent")
         }
         sourceThreadId={senderThreadId}
-        sourceIsSideChat={senderChildOrigin === "side-chat"}
         sourceIsPluginSideChat={senderIsPluginSideChat}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
@@ -455,7 +452,6 @@ function UserConversationMessage({
         sourceKind="system"
         sourceName="BB"
         sourceThreadId={null}
-        sourceIsSideChat={false}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}

@@ -1099,7 +1099,9 @@ describe("thread runtime config", () => {
       const sideChatThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
         sourceThreadId: rootThread.id,
       });
       const parentThread = seedThread(harness.deps, {
@@ -1195,56 +1197,6 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "update_environment_directory",
       );
-    });
-  });
-
-  it("does not expose mutable dynamic tools for side chat threads", async () => {
-    await withTestHarness(async (harness) => {
-      const hostId = "host-side-chat-runtime";
-      seedHostSession(harness.deps, { id: hostId });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId,
-        path: "/tmp/runtime-project-root",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId,
-        projectId: project.id,
-        path: "/tmp/runtime-project-root",
-      });
-      const mainThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        originKind: "side-chat",
-        sourceThreadId: mainThread.id,
-      });
-
-      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
-        harness.deps,
-        {
-          thread: sideChatThread,
-          model: "test-model",
-          environment: {
-            hostId: environment.hostId,
-            id: environment.id,
-            path: environment.path,
-            status: environment.status,
-            workspaceProvisionType: environment.workspaceProvisionType,
-          },
-        },
-      );
-
-      expect(runtimeConfig.dynamicTools).toEqual([]);
-      expect(runtimeConfig.instructions).not.toContain(
-        "update_environment_directory",
-      );
-      expect(runtimeConfig.instructions).not.toContain(
-        "bb_send_to_main_thread",
-      );
-      expect(runtimeConfig.instructions).not.toContain("Side chat handoff");
     });
   });
 
@@ -1766,63 +1718,6 @@ describe("thread runtime config", () => {
         expect(instructions).not.toContain(longBody);
         expect(instructions).toContain("x".repeat(4096));
         expect(instructions).not.toContain("x".repeat(4097));
-      });
-    });
-
-    it("does not apply plugin instruction contributions to side-chat threads", async () => {
-      await withTestHarness(async (harness) => {
-        const hostId = "host-runtime-plugin-instr-side";
-        seedHostSession(harness.deps, { id: hostId });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId,
-          path: "/tmp/runtime-plugin-instr-side",
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId,
-          projectId: project.id,
-          path: "/tmp/runtime-plugin-instr-side",
-        });
-        const mainThread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-        });
-        const sideChatThread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          originKind: "side-chat",
-          sourceThreadId: mainThread.id,
-        });
-
-        stubContributions({
-          instructions: [
-            {
-              pluginId: "connect",
-              provider: () => "should not reach side chat",
-            },
-          ],
-        });
-
-        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
-          harness.deps,
-          {
-            thread: sideChatThread,
-            model: "test-model",
-            environment: {
-              hostId: environment.hostId,
-              id: environment.id,
-              path: environment.path,
-              status: environment.status,
-              workspaceProvisionType: environment.workspaceProvisionType,
-            },
-          },
-        );
-
-        expect(runtimeConfig.instructions).not.toContain(
-          'The following instructions come from the BB plugin "connect":',
-        );
-        expect(runtimeConfig.instructions).not.toContain(
-          "should not reach side chat",
-        );
       });
     });
   });

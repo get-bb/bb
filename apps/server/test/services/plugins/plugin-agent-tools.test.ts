@@ -608,7 +608,10 @@ describe("plugin tools reach thread runtime config", () => {
           }
           bb.agents.configure((context: any) => {
             configureCount += 1;
-            if (context.origin.kind === "side-chat" && context.sideChat !== true) {
+            if (
+              context.origin.pluginId === "side-chat" &&
+              context.origin.kind !== "fork"
+            ) {
               throw new Error("side-chat context mismatch");
             }
             const alpha = context.host.id === "host-conditional-alpha";
@@ -770,7 +773,6 @@ describe("plugin tools reach thread runtime config", () => {
     expect(alphaCommand.instructions).toContain(
       '"id":"codex","model":"gpt-5.6"',
     );
-    expect(alphaCommand.instructions).toContain('"sideChat":false');
     expect(alphaCommand.instructions).toContain('"kind":null,"pluginId":null');
     expect(alphaCommand.instructions).toContain("factory=1;configure=1");
     expect(betaCommand.instructions).toContain('"name":"Beta Host"');
@@ -801,16 +803,21 @@ describe("plugin tools reach thread runtime config", () => {
       projectId: alpha.project.id,
       environmentId: alpha.environment.id,
       providerId: alpha.providerId,
-      originKind: "side-chat",
+      originKind: "fork",
+      originPluginId: "side-chat",
+      visibility: "hidden",
       sourceThreadId: alpha.thread.id,
     });
     const sideCommand = await build({ ...alpha, thread: sideThread }, 12);
-    // The independent side-chat policy still excludes the built-in mutable
-    // environment tool, while configure() selections apply consistently.
+    // A side chat is an ordinary plugin-owned fork: it keeps the built-in
+    // mutable environment tool, and configure() selections apply as usual.
     expect(sideCommand.dynamicTools.map((tool) => tool.name)).toEqual([
+      "update_environment_directory",
       "alpha_tool",
     ]);
-    expect(sideCommand.instructions).toContain('"sideChat":true');
+    expect(sideCommand.instructions).toContain(
+      '"kind":"fork","pluginId":"side-chat"',
+    );
     expect(sideCommand.instructions).toContain(
       "Static instructions for alpha_tool",
     );
@@ -831,8 +838,8 @@ describe("plugin tools reach thread runtime config", () => {
         ?.handlerStats.errorCount,
     ).toBe(0);
     const betaAgain = await build(beta, 13);
-    // The side-chat resolution applied configure with sideChat=true, so this
-    // remains the fourth callback invocation without rebuilding the factory.
+    // The side-chat resolution applied configure too, so this remains the
+    // fourth callback invocation without rebuilding the factory.
     expect(betaAgain.instructions).toContain("factory=1;configure=4");
 
     const betaExecution = await resolveExecutionOptions(harness.deps, {

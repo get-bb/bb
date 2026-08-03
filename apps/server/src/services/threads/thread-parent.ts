@@ -171,13 +171,6 @@ export function assertValidParentThread(
   if (liveParentThread.deletedAt !== null) {
     throwParentThreadInvalid("deleted");
   }
-  if (
-    (liveParentThread.originKind ?? liveParentThread.childOrigin) ===
-    "side-chat"
-  ) {
-    throwParentThreadInvalid("side_chat");
-  }
-
   const parentDepth = resolveParentDepth(deps, {
     childThreadId: args.childThreadId,
     parentThread: liveParentThread,

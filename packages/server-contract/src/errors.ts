@@ -125,7 +125,6 @@ export const parentThreadInvalidReasonSchema = z.enum([
   "self",
   "cycle",
   "too_deep",
-  "side_chat",
 ]);
 export type ParentThreadInvalidReason = z.infer<
   typeof parentThreadInvalidReasonSchema
@@ -154,11 +153,12 @@ export const threadNotWritableApiErrorSchema = apiErrorSchema.extend({
   details: threadNotWritableErrorDetailsSchema,
 });
 
-export const threadEnvironmentUnavailableApiErrorSchema =
-  apiErrorSchema.extend({
+export const threadEnvironmentUnavailableApiErrorSchema = apiErrorSchema.extend(
+  {
     code: z.literal("thread_environment_unavailable"),
     details: threadEnvironmentUnavailableErrorDetailsSchema,
-  });
+  },
+);
 
 export const hostUnavailableApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("host_unavailable"),

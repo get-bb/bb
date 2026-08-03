@@ -55,6 +55,13 @@ interface MigratedProjectRow {
   sortKey: string;
 }
 
+interface MigratedThreadOriginRow {
+  id: string;
+  originKind: string | null;
+  originPluginId: string | null;
+  visibility: string;
+}
+
 interface MigratedThreadSortKeyRow {
   id: string;
   sortKey: string | null;
@@ -359,6 +366,12 @@ const sideChatVisibilityBackfillMigrationPath = resolve(
   "drizzle",
   "0079_side_chat_plugin.sql",
 );
+const sideChatPluginOnlyMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0084_side_chat_plugin_only.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -392,6 +405,19 @@ function closeConnection(db: DbConnection): void {
 // __drizzle_migrations row must also rewind the schema: ALTER TABLE ADD is
 // not re-appliable against a column that already exists (the backfill UPDATE
 // itself is idempotent).
+// Inverse of dropSideChatPluginExperimentColumn: 0084 DROPs the column, so a
+// scenario that re-applies 0084 must put it back first.
+function restoreSideChatPluginExperimentColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+    .all();
+  if (!columns.some((column) => column.name === "side_chat_plugin")) {
+    db.$client.exec(
+      "ALTER TABLE `system_experiments` ADD `side_chat_plugin` integer DEFAULT false NOT NULL",
+    );
+  }
+}
+
 function dropSideChatPluginExperimentColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
@@ -1153,6 +1179,93 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  // Side chats used to be their own origin kind. 0084 hands every existing one
+  // to the builtin side-chat plugin, so old side chats keep opening in the
+  // plugin's panel instead of stranding on a removed origin kind.
+  it("adopts legacy side chats as the side-chat plugin's hidden forks", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "side-chat-adoption-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "side-chat-adoption-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/side-chat-adoption",
+        },
+      });
+      const source = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const sideChat = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        originKind: "fork",
+        sourceThreadId: source.id,
+      });
+      const orphanSideChat = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const pluginFork = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        originKind: "fork",
+        originPluginId: "workflows",
+        sourceThreadId: source.id,
+      });
+      // Seed the pre-0084 shape: the origin kind is gone from the enum, so it
+      // cannot be written through createThread any more.
+      db.$client
+        .prepare(
+          "UPDATE threads SET origin_kind = 'side-chat' WHERE id IN (?, ?)",
+        )
+        .run(sideChat.id, orphanSideChat.id);
+
+      // The merged 0084 also DROPs the experiment column; restore it so the
+      // ALTER re-applies cleanly and the adoption UPDATEs run on seeded rows.
+      restoreSideChatPluginExperimentColumn(db);
+      runMigrationFile({ db, migrationPath: sideChatPluginOnlyMigrationPath });
+
+      const rows = db.$client
+        .prepare<
+          [],
+          MigratedThreadOriginRow
+        >("SELECT id, origin_kind AS originKind, origin_plugin_id AS originPluginId, visibility FROM threads")
+        .all();
+      const byId = new Map(rows.map((row) => [row.id, row]));
+
+      // The side chat is now the plugin's hidden fork, so its panel reopens it.
+      expect(byId.get(sideChat.id)).toMatchObject({
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
+      });
+      // No source thread means the panel has nothing to open, so the row keeps
+      // its thread but drops the removed origin kind rather than stranding it.
+      expect(byId.get(orphanSideChat.id)).toMatchObject({
+        originKind: null,
+        originPluginId: null,
+      });
+      // Another plugin's fork is untouched.
+      expect(byId.get(pluginFork.id)).toMatchObject({
+        originKind: "fork",
+        originPluginId: "workflows",
+      });
+      expect(rows.filter((row) => row.originKind === "side-chat")).toHaveLength(
+        0,
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("migrates mutable permission state while preserving side-chat source intent", () => {
     const db = createConnection(":memory:");
 
@@ -1181,19 +1294,26 @@ describe("migrate", () => {
         status: "idle",
       });
       const sideChatWithHistory = createThread(db, noopNotifier, {
-        originKind: "side-chat",
+        originKind: "fork",
         projectId: project.id,
         providerId: "codex",
         sourceThreadId: sourceWithHistory.id,
         status: "idle",
       });
       const sideChatWithoutHistory = createThread(db, noopNotifier, {
-        originKind: "side-chat",
+        originKind: "fork",
         projectId: project.id,
         providerId: "codex",
         sourceThreadId: sourceWithoutHistory.id,
         status: "idle",
       });
+      // `side-chat` is no longer a valid origin kind, but these rows predate
+      // migration 0084, so seed the legacy value directly.
+      db.$client
+        .prepare(
+          "UPDATE threads SET origin_kind = 'side-chat' WHERE id IN (?, ?)",
+        )
+        .run(sideChatWithHistory.id, sideChatWithoutHistory.id);
       const regularThread = createThread(db, noopNotifier, {
         projectId: project.id,
         providerId: "codex",
@@ -2116,10 +2236,12 @@ describe("migrate", () => {
           childOrigin: null,
         },
         {
+          // 0038 moves the provenance, then 0084 hands the side chat to the
+          // plugin — the whole chain runs here, so this is the end state.
           id: "thr_side_chat",
           parentThreadId: null,
           sourceThreadId: "thr_source",
-          originKind: "side-chat",
+          originKind: "fork",
           childOrigin: null,
         },
       ]);
@@ -4077,7 +4199,7 @@ describe("migrate", () => {
       const originKindSideChat = createThread(db, noopNotifier, {
         projectId: project.id,
         providerId: "codex",
-        originKind: "side-chat",
+        originKind: "fork",
       });
       const childOriginSideChat = createThread(db, noopNotifier, {
         projectId: project.id,
@@ -4088,6 +4210,9 @@ describe("migrate", () => {
         providerId: "codex",
         originKind: "fork",
       });
+      db.$client
+        .prepare("UPDATE threads SET origin_kind = 'side-chat' WHERE id = ?")
+        .run(originKindSideChat.id);
       db.$client
         .prepare("UPDATE threads SET child_origin = 'side-chat' WHERE id = ?")
         .run(childOriginSideChat.id);

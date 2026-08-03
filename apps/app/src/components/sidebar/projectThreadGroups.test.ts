@@ -204,7 +204,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "thr_sidechat",
         sourceThreadId: "thr_parent",
-        originKind: "side-chat",
+        visibility: "hidden",
         createdAt: 30,
         latestAttentionAt: 40,
       }),
@@ -504,7 +504,7 @@ describe("buildProjectThreadGroups", () => {
         createThread({
           id: "side",
           parentThreadId: "root",
-          originKind: "side-chat",
+          visibility: "hidden",
           createdAt: 20,
         }),
       ]);

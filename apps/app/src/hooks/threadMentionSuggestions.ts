@@ -55,11 +55,8 @@ function canSuggestThread(
   thread: Thread,
   args: BuildThreadMentionSuggestionsArgs,
 ): boolean {
-  return thread.id !== args.currentThreadId && !isSideChatThread(thread);
-}
-
-function isSideChatThread(thread: Thread): boolean {
-  return (thread.originKind ?? thread.childOrigin) === "side-chat";
+  // A hidden thread (a side chat, say) is not a mentionable navigation target.
+  return thread.id !== args.currentThreadId && thread.visibility !== "hidden";
 }
 
 function shouldShowProjectName(

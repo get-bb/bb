@@ -560,14 +560,15 @@ describe("optimisticallyInsertThread", () => {
     });
     queryClient.setQueryData(forkListKey, []);
 
-    // A side chat of the same parent must not contaminate the parent's
+    // A hidden thread (a side chat, say) must not contaminate the parent's
     // fork-filtered list.
     optimisticallyInsertThread(
       queryClient,
       makeThreadWithRuntime({
         id: "side-chat-1",
         sourceThreadId: "source-1",
-        originKind: "side-chat",
+        originKind: "fork",
+        visibility: "hidden",
       }),
     );
     expect(queryClient.getQueryData<ThreadListEntry[]>(forkListKey)).toEqual(
@@ -586,40 +587,6 @@ describe("optimisticallyInsertThread", () => {
     expect(
       queryClient
         .getQueryData<ThreadListEntry[]>(forkListKey)
-        ?.map((entry) => entry.id),
-    ).toEqual(["fork-1"]);
-  });
-
-  it("respects the excludeSideChats filter when inserting source-derived threads", () => {
-    const { queryClient } = createQueryClientTestHarness();
-    const nonSideChatListKey = threadListQueryKey({
-      archived: false,
-      excludeSideChats: true,
-      projectId: "project-1",
-    });
-    queryClient.setQueryData(nonSideChatListKey, []);
-
-    optimisticallyInsertThread(
-      queryClient,
-      makeThreadWithRuntime({
-        id: "side-chat-1",
-        originKind: "side-chat",
-      }),
-    );
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(nonSideChatListKey),
-    ).toEqual([]);
-
-    optimisticallyInsertThread(
-      queryClient,
-      makeThreadWithRuntime({
-        id: "fork-1",
-        originKind: "fork",
-      }),
-    );
-    expect(
-      queryClient
-        .getQueryData<ThreadListEntry[]>(nonSideChatListKey)
         ?.map((entry) => entry.id),
     ).toEqual(["fork-1"]);
   });

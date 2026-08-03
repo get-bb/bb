@@ -569,22 +569,6 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "parent_thread_invalid side chat",
-    body: {
-      code: "parent_thread_invalid",
-      message: "Parent thread is invalid",
-      details: {
-        reason: "side_chat",
-        subject: "parent",
-      },
-    },
-    expected: {
-      title: "Parent thread unavailable",
-      body: "Choose a parent thread that is not a side chat.",
-      severity: "error",
-    },
-  },
-  {
     name: "parent_thread_invalid sender",
     body: {
       code: "parent_thread_invalid",
@@ -633,17 +617,14 @@ describe("parseLifecycleError", () => {
 });
 
 describe("describeLifecycleError", () => {
-  it.each(descriptionCases)(
-    "$name",
-    ({ body, expected, operation }) => {
-      expect(
-        describeLifecycleError({
-          error: httpError(body),
-          operation,
-        }),
-      ).toEqual(expected);
-    },
-  );
+  it.each(descriptionCases)("$name", ({ body, expected, operation }) => {
+    expect(
+      describeLifecycleError({
+        error: httpError(body),
+        operation,
+      }),
+    ).toEqual(expected);
+  });
 
   it("uses operation titles while keeping lifecycle reason text", () => {
     const body: LifecycleApiError = {

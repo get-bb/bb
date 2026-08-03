@@ -413,9 +413,10 @@ export interface PluginAgentConfigurationContext {
     id: string;
     model: string;
   };
-  sideChat: boolean;
+  /** How the thread was spawned. A side chat is the builtin side-chat
+   * plugin's fork: `{ kind: "fork", pluginId: "side-chat" }`. */
   origin: {
-    kind: "fork" | "side-chat" | null;
+    kind: "fork" | null;
     pluginId: string | null;
   };
 }
@@ -460,10 +461,10 @@ export interface PluginAgents {
    * Tools take effect when the provider session is next started or resumed;
    * an already-running session is not hot-mutated. Instructions are resolved
    * for the next turn. Skill changes follow BB's environment runtime policy:
-   * a busy runtime keeps its current catalog until a safe relaunch. Side-chat
-   * threads receive `sideChat: true`, and their returned tool, skill, and
-   * dynamic-instruction selections apply at the same boundaries. Independent
-   * side-chat safety policy (such as permission escalation) is unchanged.
+   * a busy runtime keeps its current catalog until a safe relaunch. Side chats
+   * are ordinary plugin-owned forks here — read `origin` to detect them — and
+   * their returned tool, skill, and dynamic-instruction selections apply at the
+   * same boundaries.
    */
   configure(
     provider: (
@@ -507,8 +508,6 @@ export interface PluginAgents {
    * thread-start path. Output longer than 4096 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.
-   * This legacy contribution is not applied to side-chat threads; use
-   * configure() when sideChat-aware dynamic instructions are required.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,

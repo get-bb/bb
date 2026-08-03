@@ -369,7 +369,7 @@ describe("canThreadSpawnChild", () => {
           },
           input: textInput("Side chat from a max-depth source"),
           origin: "app",
-          originKind: "side-chat",
+          originKind: "fork",
           projectId: project.id,
           providerId: "codex",
           sourceThreadId: level4.id,
@@ -517,7 +517,7 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("Parentless side chat"),
             origin: "app",
-            originKind: "side-chat",
+            originKind: "fork",
             projectId,
             providerId: "codex",
             startedOnBehalfOf: null,
@@ -641,17 +641,22 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
+  // A side chat is a plain fork now: it does NOT snapshot the source thread's
+  // permission mode, so an explicitly requested mode wins and later source
+  // changes never reach it.
   it.each<PermissionMode>(["accept-edits", "auto", "full"])(
-    "snapshots %s from the source thread when forking a side chat",
-    async (permissionMode) => {
+    "keeps the requested permission mode when forking from a %s source",
+    async (sourcePermissionMode) => {
+      const permissionMode: PermissionMode =
+        sourcePermissionMode === "full" ? "accept-edits" : "full";
       await withChildBoundaryHarness(
-        `side-chat-native-fork-${permissionMode}`,
+        `side-chat-native-fork-${sourcePermissionMode}`,
         async ({ harness, hostId, path, projectId, sourceThreadId }) => {
           // Give the source a live provider session so the side chat clones it.
           seedThreadRuntimeState(harness.deps, {
             environmentId:
               getThread(harness.db, sourceThreadId)?.environmentId ?? null,
-            permissionMode,
+            permissionMode: sourcePermissionMode,
             inputText: "Source question",
             model: "gpt-5",
             reasoningLevel: "medium",
@@ -668,18 +673,17 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("What did this code do?"),
             origin: "app",
-            originKind: "side-chat",
+            originKind: "fork",
             projectId,
             providerId: "codex",
-            permissionMode: permissionMode === "full" ? "accept-edits" : "full",
+            permissionMode,
             sourceThreadId,
             startedOnBehalfOf: null,
           });
 
-          // The side chat is provisioned as a native fork: the dispatched
-          // thread.start carries the source provider session id so the side chat
-          // clones the full history, AND it still carries the user's question so
-          // the question turn runs immediately.
+          // The fork's thread.start carries the source provider session id so
+          // it clones the full history, AND it still carries the user's
+          // question so that turn runs immediately.
           const queuedStart = await waitForQueuedCommand(
             harness,
             ({ command }) =>
@@ -695,12 +699,7 @@ describe("thread creation child-thread boundary validation", () => {
           expect(queuedStart.command.options).toMatchObject({
             permissionMode,
             permissionScope: permissionMode === "full" ? "full" : "workspace",
-            approvalReviewer:
-              permissionMode === "full"
-                ? null
-                : permissionMode === "auto"
-                  ? "automatic"
-                  : "user",
+            approvalReviewer: permissionMode === "full" ? null : "user",
             permissionEscalation: permissionMode === "full" ? null : "ask",
           });
           const startInputText = queuedStart.command.input
@@ -712,7 +711,7 @@ describe("thread creation child-thread boundary validation", () => {
           seedThreadRuntimeState(harness.deps, {
             environmentId:
               getThread(harness.db, sourceThreadId)?.environmentId ?? null,
-            permissionMode: permissionMode === "full" ? "auto" : "full",
+            permissionMode: sourcePermissionMode === "full" ? "auto" : "full",
             threadId: sourceThreadId,
             inputText: "Source permission changed",
             model: "gpt-5",
@@ -756,7 +755,7 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: [],
           origin: "app",
-          originKind: "side-chat",
+          originKind: "fork",
           projectId,
           providerId: "codex",
           sourceThreadId,
@@ -785,12 +784,13 @@ describe("thread creation child-thread boundary validation", () => {
 
         const persistedSideChat = getThread(harness.db, sideChat.id);
         expect(persistedSideChat?.status).toBe("idle");
-        expect(persistedSideChat?.originKind).toBe("side-chat");
+        expect(persistedSideChat?.originKind).toBe("fork");
         expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
         expect(persistedSideChat?.parentThreadId).toBeNull();
-        // Side chats default to hidden when the request omits visibility —
-        // the same policy migration 0079 backfilled onto pre-existing rows.
-        expect(persistedSideChat?.visibility).toBe("hidden");
+        // Visibility is the caller's choice now: the side-chat plugin forks
+        // with an explicit `visibility: "hidden"`, and a request that omits it
+        // gets the ordinary visible default.
+        expect(persistedSideChat?.visibility).toBe("visible");
       },
     );
   });
@@ -827,7 +827,7 @@ describe("thread creation child-thread boundary validation", () => {
         },
         input: [],
         origin: "app",
-        originKind: "side-chat",
+        originKind: "fork",
         projectId: PERSONAL_PROJECT_ID,
         providerId: "codex",
         sourceThreadId: sourceThread.id,
@@ -837,7 +837,7 @@ describe("thread creation child-thread boundary validation", () => {
       expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
       expect(getThread(harness.db, sideChat.id)).toMatchObject({
         environmentId: environment.id,
-        originKind: "side-chat",
+        originKind: "fork",
         sourceThreadId: sourceThread.id,
       });
 
@@ -874,7 +874,7 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: [],
           origin: "app",
-          originKind: "side-chat",
+          originKind: "fork",
           projectId,
           providerId: "codex",
           sourceThreadId,
@@ -965,7 +965,7 @@ describe("thread creation child-thread boundary validation", () => {
             },
             input: textInput("Side chat without source session"),
             origin: "app",
-            originKind: "side-chat",
+            originKind: "fork",
             projectId,
             providerId: "codex",
             sourceThreadId,
@@ -999,14 +999,14 @@ describe("thread creation child-thread boundary validation", () => {
           },
           input: textInput("Side chat opener"),
           origin: "app",
-          originKind: "side-chat",
+          originKind: "fork",
           projectId,
           providerId: "codex",
           sourceThreadId,
           startedOnBehalfOf: null,
         });
         const persistedSideChat = getThread(harness.db, sideChat.id);
-        expect(persistedSideChat?.originKind).toBe("side-chat");
+        expect(persistedSideChat?.originKind).toBe("fork");
         expect(persistedSideChat?.sourceThreadId).toBe(sourceThreadId);
         expect(persistedSideChat?.parentThreadId).toBeNull();
       },

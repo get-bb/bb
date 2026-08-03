@@ -431,10 +431,7 @@ export function buildSectionThreadList(
 export function isSidebarProjectThread(
   thread: SidebarProjectThreadShape,
 ): boolean {
-  return (
-    (thread.originKind ?? thread.childOrigin) !== "side-chat" &&
-    thread.visibility !== "hidden"
-  );
+  return thread.visibility !== "hidden";
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group

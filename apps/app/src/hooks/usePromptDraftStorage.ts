@@ -23,7 +23,6 @@ export type PromptDraftScope =
   // A plugin-rendered new-thread composer. `key` keeps its draft out of the
   // root composer's, and lets one plugin run several independent composers.
   | { kind: "plugin-new-thread"; key: string }
-  | { kind: "side-chat"; parentThreadId: string; tabId: string }
   | { kind: "thread"; projectId: string; threadId: string };
 
 interface PromptDraftCacheEntry {
@@ -237,14 +236,6 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
     const normalizedKey = normalizeStorageSegment(scope.key);
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-plugin-draft-${normalizedKey}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
-  if (scope.kind === "side-chat") {
-    const normalizedParentThreadId = normalizeStorageSegment(
-      scope.parentThreadId,
-    );
-    const normalizedTabId = normalizeStorageSegment(scope.tabId);
-    return `${PROMPT_DRAFT_STORAGE_PREFIX}-side-chat-${normalizedParentThreadId}-${normalizedTabId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
-  }
-
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
   const normalizedThreadId = normalizeStorageSegment(scope.threadId);
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;

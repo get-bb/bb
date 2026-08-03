@@ -153,12 +153,11 @@ describe("project execution defaults persistence", () => {
         serviceTier: "default",
       });
 
-      // A side chat snapshots the source thread's effective permission and
-      // inherits a model the user never picked in the composer; creating it
-      // must not reshape the project's stored defaults.
+      // A fork (a side chat, say) inherits a model the user never picked in
+      // the composer; creating it must not reshape the project's defaults.
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        childOrigin: "side-chat",
+        childOrigin: "fork",
         startedOnBehalfOf: null,
         parentThreadId: parentThread.id,
         projectId: project.id,

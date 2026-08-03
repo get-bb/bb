@@ -114,31 +114,10 @@ function resolveStoredThreadPermissionMode(
     thread.parentThreadId !== null
       ? getThread(deps.db, thread.parentThreadId)
       : null;
-  const sourceThread =
-    thread.sourceThreadId !== null
-      ? getThread(deps.db, thread.sourceThreadId)
-      : null;
   const lastExecutionPermissionMode = getLastExecutionOptions(
     deps,
     thread.id,
   )?.permissionMode;
-  const shouldResolveLegacySideChatSource =
-    lastExecutionPermissionMode === "readonly" &&
-    (thread.originKind ?? thread.childOrigin) === "side-chat" &&
-    sourceThread !== null &&
-    !args.resolvingThreadIds.has(sourceThread.id);
-  const resolvingThreadIds = new Set(args.resolvingThreadIds);
-  resolvingThreadIds.add(thread.id);
-  const sourceThreadEffectivePermissionMode =
-    shouldResolveLegacySideChatSource && sourceThread !== null
-      ? resolveStoredThreadPermissionMode(deps, {
-          ...(sourceThread.projectId === thread.projectId
-            ? { projectDefaults }
-            : {}),
-          resolvingThreadIds,
-          threadId: sourceThread.id,
-        })
-      : undefined;
   const permissionMode = clampPermissionModeToHost(deps, {
     hostId:
       args.hostId === undefined
@@ -152,7 +131,6 @@ function resolveStoredThreadPermissionMode(
           ? getLastExecutionOptions(deps, parentThread.id)?.permissionMode
           : undefined,
       projectExecutionPermissionMode: projectExecution?.permissionMode,
-      sourceThreadEffectivePermissionMode,
       thread,
     }),
     ...(thread.providerId ? { providerId: thread.providerId } : {}),
@@ -343,10 +321,6 @@ export async function resolveExistingThreadExecutionPlan(
     parentThread !== null
       ? getLastExecutionOptions(deps, parentThread.id)
       : null;
-  const sourceThread =
-    thread.sourceThreadId !== null
-      ? getThread(deps.db, thread.sourceThreadId)
-      : null;
   const model = resolveRequiredField<string>([
     args.input.model?.value,
     thread.modelOverride ?? undefined,
@@ -357,21 +331,6 @@ export async function resolveExistingThreadExecutionPlan(
     throw createMissingThreadExecutionModelError(args.threadId);
   }
 
-  const shouldResolveLegacySideChatSource =
-    args.input.permissionMode === undefined &&
-    lastExecution?.permissionMode === "readonly" &&
-    (thread.originKind ?? thread.childOrigin) === "side-chat" &&
-    sourceThread !== null;
-  const sourceThreadEffectivePermissionMode =
-    shouldResolveLegacySideChatSource && sourceThread !== null
-      ? resolveStoredThreadPermissionMode(deps, {
-          ...(sourceThread.projectId === thread.projectId
-            ? { projectDefaults: rawProjectExecution }
-            : {}),
-          resolvingThreadIds: new Set([thread.id]),
-          threadId: sourceThread.id,
-        })
-      : undefined;
   // The machine's ceiling wins over every other source, including an explicit
   // request, so a capped machine cannot be talked into privileged work.
   const permissionMode = clampPermissionModeToHost(deps, {
@@ -385,7 +344,6 @@ export async function resolveExistingThreadExecutionPlan(
       parentThread,
       parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
       projectExecutionPermissionMode: projectExecution?.permissionMode,
-      sourceThreadEffectivePermissionMode,
       thread,
     }),
     ...(thread.providerId ? { providerId: thread.providerId } : {}),

@@ -31,10 +31,7 @@ describe("shouldShowFaviconAttentionDot", () => {
     expect(
       shouldShowFaviconAttentionDot({
         ...BASE_ARGS,
-        sidebarThreads: [
-          makeSidebarThread({ originKind: "side-chat" }),
-          makeSidebarThread({ childOrigin: "side-chat" }),
-        ],
+        sidebarThreads: [makeSidebarThread({ visibility: "hidden" })],
       }),
     ).toBe(false);
   });
@@ -46,7 +43,7 @@ describe("shouldShowFaviconAttentionDot", () => {
         sidebarThreads: [
           makeSidebarThread(),
           makeSidebarThread({ lastReadAt: 30 }),
-          makeSidebarThread({ originKind: "side-chat" }),
+          makeSidebarThread({ visibility: "hidden" }),
         ],
       }),
     ).toBe(true);
@@ -135,7 +132,7 @@ describe("shouldShowFaviconAttentionDot", () => {
         ...BASE_ARGS,
         sidebarThreads: [
           makeSidebarThread({
-            originKind: "side-chat",
+            visibility: "hidden",
             lastReadAt: 30,
             latestAttentionAt: 20,
             hasPendingInteraction: true,

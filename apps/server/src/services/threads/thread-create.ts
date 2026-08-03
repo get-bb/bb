@@ -22,7 +22,6 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { resolveExistingThreadPermissionMode } from "./thread-execution-plan.js";
 import {
   getLastProviderThreadId,
   getProviderThreadIdAtOrBeforeSequence,
@@ -165,14 +164,6 @@ function childHostIdForResolvedEnvironment(
   }
 }
 
-function sourceThreadDisplayTitle(sourceThread: Thread): string {
-  const title = sourceThread.title?.trim();
-  if (title) return title;
-  const titleFallback = sourceThread.titleFallback?.trim();
-  if (titleFallback) return titleFallback;
-  return `Thread ${sourceThread.id.slice(0, 8)}`;
-}
-
 function deriveThreadCreateTitleFallback({
   input,
   originKind,
@@ -182,11 +173,7 @@ function deriveThreadCreateTitleFallback({
   if (inputFallback !== null) {
     return inputFallback;
   }
-  if (originKind !== "side-chat" || sourceThread === null) {
-    return null;
-  }
-
-  return `Side chat of ${sourceThreadDisplayTitle(sourceThread)}`;
+  return null;
 }
 
 interface EnsureCreateHostOnlineArgs {
@@ -482,8 +469,7 @@ async function createProvisioningThread(
 }
 
 interface ResolveCreateThreadVisibilityArgs {
-  originKind: ThreadOriginKind | null;
-  /** Resolved hierarchy parent; null for roots, forks, and side chats. */
+  /** Resolved hierarchy parent; null for roots and forks. */
   parentThread: Pick<Thread, "visibility"> | null;
   requestedVisibility: ThreadVisibility | undefined;
 }
@@ -491,17 +477,14 @@ interface ResolveCreateThreadVisibilityArgs {
 /**
  * Visibility default for a new thread. An explicit request always wins. A
  * hierarchy child otherwise inherits its parent, so sub-agents delegated by a
- * hidden thread stay out of navigation with it. Side chats stay hidden; the
- * 0079 backfill applied the same default to pre-existing rows.
+ * hidden thread stay out of navigation with it. A side chat is forked with an
+ * explicit `hidden` by the plugin that owns it.
  */
 function resolveCreateThreadVisibility(
   args: ResolveCreateThreadVisibilityArgs,
 ): ThreadVisibility {
   if (args.requestedVisibility !== undefined) {
     return args.requestedVisibility;
-  }
-  if (args.originKind === "side-chat") {
-    return "hidden";
   }
   return args.parentThread?.visibility ?? "visible";
 }
@@ -588,10 +571,6 @@ export async function createThreadFromRequest(
         sourceThreadId,
       })
     : null;
-  const sideChatPermissionMode =
-    originKind === "side-chat" && sourceThread !== null
-      ? resolveExistingThreadPermissionMode(deps, sourceThread.id)
-      : undefined;
   if (originKind !== null && sourceThread !== null) {
     // Forks and side chats are not hierarchy children, but they still consume
     // the same spawn allowance exposed as ThreadResponse.canSpawnChild.
@@ -661,19 +640,6 @@ export async function createThreadFromRequest(
   } = requestInput;
   const request: ThreadCreateServiceRequest = {
     ...requestRest,
-    ...(sideChatPermissionMode !== undefined
-      ? {
-          permissionMode: sideChatPermissionMode,
-          ...(requestRest.executionInputSources !== undefined
-            ? {
-                executionInputSources: {
-                  ...requestRest.executionInputSources,
-                  permissionMode: "explicit" as const,
-                },
-              }
-            : {}),
-        }
-      : {}),
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
       : {}),
@@ -681,7 +647,6 @@ export async function createThreadFromRequest(
     originKind,
     childOrigin: originKind,
     visibility: resolveCreateThreadVisibility({
-      originKind,
       parentThread,
       requestedVisibility: requestInput.visibility,
     }),

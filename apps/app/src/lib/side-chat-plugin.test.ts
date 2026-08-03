@@ -21,7 +21,7 @@ describe("isPluginSideChatSenderThread", () => {
       isPluginSideChatSenderThread({ ...pluginFork, originPluginId: "other" }),
     ).toBe(false);
     expect(
-      isPluginSideChatSenderThread({ ...pluginFork, originKind: "side-chat" }),
+      isPluginSideChatSenderThread({ ...pluginFork, originKind: null }),
     ).toBe(false);
   });
 

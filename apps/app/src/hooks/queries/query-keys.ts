@@ -72,7 +72,6 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   sourceThreadId?: string;
   originKind?: ThreadListFilters["originKind"];
-  excludeSideChats?: ThreadListFilters["excludeSideChats"];
   childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;
@@ -1131,10 +1130,7 @@ export function skillContentQueryKey(
   return [SKILL_CONTENT_QUERY_KEY, projectId, skillId, path] as const;
 }
 
-export function skillContentQueryKeyPrefix(
-  projectId: string,
-  skillId: string,
-) {
+export function skillContentQueryKeyPrefix(projectId: string, skillId: string) {
   return [SKILL_CONTENT_QUERY_KEY, projectId, skillId] as const;
 }
 

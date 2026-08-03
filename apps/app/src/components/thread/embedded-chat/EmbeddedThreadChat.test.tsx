@@ -213,14 +213,26 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     isPending: false,
     variables: undefined,
   }),
-  useDeleteThreadQueuedMessage: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useReorderThreadQueuedMessage: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useSendThreadQueuedMessage: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteThreadQueuedMessage: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useReorderThreadQueuedMessage: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useSendThreadQueuedMessage: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useSetThreadQueuedMessageGroupBoundary: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
-  useUpdateThreadQueuedMessage: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateThreadQueuedMessage: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
@@ -262,9 +274,9 @@ function renderEmbeddedChat({
       resolveMentionLink={() => null}
       composer={{
         draftScope: {
-          kind: "side-chat",
-          parentThreadId: "thr_parent",
-          tabId: "tab-1",
+          kind: "thread",
+          projectId: "proj-1",
+          threadId: threadId ?? "thr_parent",
         },
         executionDefaultsThreadId: threadId ?? "thr_parent",
         executionResetKey: "thr_parent",

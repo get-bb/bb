@@ -61,7 +61,6 @@ export interface ResolveThreadExecutionPermissionModeArgs {
   parentThreadExecutionPermissionMode?: RecordedPermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
-  sourceThreadEffectivePermissionMode?: PermissionMode;
   thread: Pick<
     Thread,
     "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
@@ -276,13 +275,6 @@ export function resolveThreadExecutionPermissionMode(
     return args.requestedPermissionMode;
   }
   if (args.lastExecutionPermissionMode) {
-    if (
-      args.lastExecutionPermissionMode === "readonly" &&
-      (args.thread.originKind ?? args.thread.childOrigin) === "side-chat" &&
-      args.sourceThreadEffectivePermissionMode !== undefined
-    ) {
-      return args.sourceThreadEffectivePermissionMode;
-    }
     return normalizeRecordedPermissionMode(args.lastExecutionPermissionMode);
   }
 

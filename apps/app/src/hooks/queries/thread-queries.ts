@@ -131,7 +131,6 @@ export interface UseThreadsFilters extends Omit<
 export interface ProjectThreadSubsetFilters {
   hasParent?: ThreadListFilters["hasParent"];
   parentThreadId?: string;
-  excludeSideChats?: ThreadListFilters["excludeSideChats"];
 }
 
 export interface UseProjectThreadSubsetArgs {
@@ -189,7 +188,6 @@ interface GetThreadMentionCandidatePlaceholderArgs {
 
 const THREAD_MENTION_CANDIDATE_FILTERS = {
   archived: false,
-  excludeSideChats: true,
   limit: THREAD_MENTION_CANDIDATE_LIMIT,
 } satisfies UseThreadsFilters;
 
@@ -214,9 +212,6 @@ function buildThreadSubsetListFilters({
   if (filters.hasParent !== undefined) {
     listFilters.hasParent = filters.hasParent;
   }
-  if (filters.excludeSideChats !== undefined) {
-    listFilters.excludeSideChats = filters.excludeSideChats;
-  }
 
   return listFilters;
 }
@@ -234,12 +229,6 @@ function threadMatchesProjectThreadSubset(
   if (
     filters.hasParent !== undefined &&
     (thread.parentThreadId !== null) !== filters.hasParent
-  ) {
-    return false;
-  }
-  if (
-    filters.excludeSideChats &&
-    (thread.originKind ?? thread.childOrigin) === "side-chat"
   ) {
     return false;
   }
@@ -267,7 +256,7 @@ function addThreadMentionCandidate(
   if (thread.archivedAt !== null || thread.deletedAt !== null) {
     return;
   }
-  if ((thread.originKind ?? thread.childOrigin) === "side-chat") {
+  if (thread.visibility === "hidden") {
     return;
   }
   if (!candidatesById.has(thread.id)) {
@@ -383,7 +372,7 @@ export function useProjectThreadSubset({
   const enabled = (enabledOption ?? true) && Boolean(projectId);
   useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
-  const canDeriveFromActiveProjectThreads = !filters.excludeSideChats;
+  const canDeriveFromActiveProjectThreads = true;
   const activeProjectThreadListQueryKey =
     enabled && projectId
       ? threadListQueryKey({ archived: false, projectId })
