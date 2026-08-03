@@ -229,6 +229,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadListQuerySchema.includeHidden",
       "threadListQuerySchema.offset",
       "threadListQuerySchema.originKind",
+      "threadListQuerySchema.originPluginId",
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",

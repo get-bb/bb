@@ -69,6 +69,7 @@ export interface ThreadListArgs {
   limit?: number;
   offset?: number;
   originKind?: ThreadListQuery["originKind"];
+  originPluginId?: string;
   parentThreadId?: string;
   projectId?: string;
   signal?: AbortSignal;
@@ -457,6 +458,7 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.sourceThreadId ? { sourceThreadId: args.sourceThreadId } : {}),
     ...(args?.sectionId ? { sectionId: args.sectionId } : {}),
     ...(args?.originKind ? { originKind: args.originKind } : {}),
+    ...(args?.originPluginId ? { originPluginId: args.originPluginId } : {}),
     ...(args?.archived === undefined
       ? {}
       : { archived: args.archived ? "true" : "false" }),

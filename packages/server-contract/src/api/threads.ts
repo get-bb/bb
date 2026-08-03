@@ -588,6 +588,8 @@ export const threadListQuerySchema = z.object({
   hasParent: z.enum(["true", "false"]).optional(),
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind: threadOriginKindSchema.optional(),
+  /** Restrict to threads spawned by this plugin. */
+  originPluginId: z.string().min(1).optional(),
   /** Exclude source-derived side-chat threads. */
   excludeSideChats: z.enum(["true", "false"]).optional(),
   /** @deprecated Use originKind. */

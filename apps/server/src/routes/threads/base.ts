@@ -224,6 +224,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(query.sectionId ? { sectionId: query.sectionId } : {}),
       ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
       ...(query.originKind ? { originKind: query.originKind } : {}),
+      ...(query.originPluginId ? { originPluginId: query.originPluginId } : {}),
       ...(query.excludeSideChats === "true" ? { excludeSideChats: true } : {}),
       ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
       includeHidden: query.includeHidden === "true",

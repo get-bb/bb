@@ -1644,4 +1644,36 @@ describe("thread originKind compatibility", () => {
       [parent.id, fork.id].sort(),
     );
   });
+
+  // A plugin sweeping its own spawned threads must not read another plugin's
+  // rows, so this narrowing belongs in the query.
+  it("filters listings by originPluginId", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const ownFork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      originKind: "fork",
+      originPluginId: "side-chat",
+    });
+    createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      originKind: "fork",
+      originPluginId: "some-other-plugin",
+    });
+
+    const own = listThreads(db, {
+      projectId: project.id,
+      originKind: "fork",
+      originPluginId: "side-chat",
+    });
+
+    expect(own.map((thread) => thread.id)).toEqual([ownFork.id]);
+  });
 });

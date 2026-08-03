@@ -333,6 +333,8 @@ export interface ListThreadsOptions {
   sourceThreadId?: string;
   /** Restrict to threads spawned with this origin (fork or side-chat). */
   originKind?: ThreadOriginKind;
+  /** Restrict to threads spawned by this plugin. */
+  originPluginId?: string;
   /** Exclude source-derived side-chat threads. */
   excludeSideChats?: boolean;
   /** @deprecated Use originKind. */
@@ -642,6 +644,9 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
       : undefined,
     originKind
       ? eq(threads.originKind, originKind)
+      : undefined,
+    options.originPluginId
+      ? eq(threads.originPluginId, options.originPluginId)
       : undefined,
     options.excludeSideChats
       ? and(

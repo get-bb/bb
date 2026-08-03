@@ -6,6 +6,7 @@ import {
 } from "@bb/plugin-sdk/testing";
 import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
+  EMPTY_FORK_SWEEP_PAGE_SIZE,
   REPLY_SEED_PREFIX,
   lastConversationMessageText,
   resolveReplySeedText,
@@ -54,7 +55,10 @@ describe("lastConversationMessageText", () => {
 });
 
 describe("resolveReplySeedText", () => {
-  const rows = [conversationRow("earlier answer"), conversationRow("latest answer")];
+  const rows = [
+    conversationRow("earlier answer"),
+    conversationRow("latest answer"),
+  ];
 
   it("returns null when the anchor IS the source's last conversation message", () => {
     expect(
@@ -155,9 +159,7 @@ describe("createSideChat rpc", () => {
   });
 
   it("rethrows point-fork failures that are not missing-session errors", async () => {
-    const fork = vi
-      .fn()
-      .mockRejectedValue(new Error("HTTP 403: forbidden"));
+    const fork = vi.fn().mockRejectedValue(new Error("HTTP 403: forbidden"));
     const { harness } = await loadPlugin({
       timeline: async () => timelineResult([conversationRow("latest answer")]),
       fork,
@@ -301,8 +303,13 @@ describe("archive cascade", () => {
     });
 
     expect(errors).toEqual([]);
+    // The narrowing filters run in the query, not in JavaScript: the sweep
+    // must never read another plugin's forks or already-archived rows.
     expect(list).toHaveBeenCalledWith({
       sourceThreadId: "thr_src",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      archived: false,
       includeHidden: true,
     });
     expect(archive.mock.calls.map(([args]) => args)).toEqual([
@@ -380,6 +387,10 @@ describe("empty-fork sweep", () => {
     expect(list).toHaveBeenCalledWith({
       includeHidden: true,
       originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      archived: false,
+      limit: EMPTY_FORK_SWEEP_PAGE_SIZE,
+      offset: 0,
     });
     expect(archive.mock.calls.map(([args]) => args)).toEqual([
       { threadId: "thr_empty_old" },
@@ -389,6 +400,43 @@ describe("empty-fork sweep", () => {
       "thr_empty_old",
       "thr_replied_old",
     ]);
+  });
+
+  // Archiving removes rows from the `archived: false` set the sweep pages
+  // through, so a full-page offset step would skip that many unswept forks.
+  it("advances the page offset by the forks it left behind", async () => {
+    const now = Date.now();
+    const old = now - EMPTY_FORK_MAX_AGE_MS - 60_000;
+    // One full page: every fork is archived except the one that has a reply.
+    const firstPage = Array.from(
+      { length: EMPTY_FORK_SWEEP_PAGE_SIZE },
+      (_unused, index) =>
+        makeThreadResponse({
+          id: index === 0 ? "thr_replied" : `thr_empty_${index}`,
+          originKind: "fork",
+          originPluginId: PLUGIN_ID,
+          visibility: "hidden",
+          createdAt: old,
+        }),
+    );
+    const list = vi.fn(async ({ offset }: { offset?: number }) =>
+      offset === 0 ? firstPage : [],
+    );
+    const { harness } = await loadPlugin({
+      list,
+      timeline: async ({ threadId }: { threadId: string }) =>
+        threadId === "thr_replied"
+          ? timelineResult([turnRow([conversationRow("a reply", "user")])])
+          : timelineResult([]),
+      archive: async (_args: { threadId: string }) => ({ ok: true }),
+      queuedMessages: { list: async () => [] },
+    });
+
+    await harness.runSchedule("empty-fork-cleanup");
+
+    // The single retained fork is the only row still in the set, so the next
+    // page starts at 1 — not at a full page past it.
+    expect(list.mock.calls.map(([args]) => args.offset)).toEqual([0, 1]);
   });
 
   it("keeps an old empty-timeline fork that has queued-but-unsent input", async () => {

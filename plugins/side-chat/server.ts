@@ -15,6 +15,9 @@ export const REPLY_SEED_PREFIX =
 /** Archive-eligible age for an empty (never-replied-to) hidden fork. */
 export const EMPTY_FORK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+/** Rows the cleanup sweep reads per query, so its memory stays flat. */
+export const EMPTY_FORK_SWEEP_PAGE_SIZE = 100;
+
 /**
  * Structural view of the timeline rows the seed policy and sweep walk —
  * conversation rows carry `text`/`role`, turn rows nest `children`. The SDK's
@@ -229,6 +232,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.archived", async ({ thread }) => {
     const candidates = await bb.sdk.threads.list({
       sourceThreadId: thread.id,
+      originKind: "fork",
+      originPluginId: bb.pluginId,
+      archived: false,
       includeHidden: true,
     });
     for (const candidate of candidates) {
@@ -255,53 +261,86 @@ export default async function plugin(bb: BbPluginApi) {
   // when either fails the fork is skipped rather than risked.
   bb.background.schedule("empty-fork-cleanup", "13 * * * *", async () => {
     const now = Date.now();
-    const threads = await bb.sdk.threads.list({
-      includeHidden: true,
-      originKind: "fork",
-    });
-    for (const thread of threads) {
-      if (!isOwnLiveHiddenFork(thread, bb.pluginId)) continue;
-      if (now - thread.createdAt <= EMPTY_FORK_MAX_AGE_MS) continue;
-      try {
-        const timeline = await bb.sdk.threads.timeline({
-          threadId: thread.id,
-          includeNestedRows: "true",
-        });
-        if (timelineRowsContainUserMessage(timeline.rows)) continue;
-      } catch (error) {
-        bb.log.warn(
-          `empty-fork sweep skipped ${thread.id} (timeline read failed: ${
-            error instanceof Error ? error.message : String(error)
-          })`,
-        );
-        continue;
+    let offset = 0;
+    for (;;) {
+      const page = await bb.sdk.threads.list({
+        includeHidden: true,
+        originKind: "fork",
+        originPluginId: bb.pluginId,
+        archived: false,
+        limit: EMPTY_FORK_SWEEP_PAGE_SIZE,
+        offset,
+      });
+      if (page.length === 0) break;
+      // Archiving removes a row from this `archived: false` result set, so the
+      // next page starts after the rows this one left behind — advancing by a
+      // full page instead would skip that many unswept forks.
+      let retained = 0;
+      for (const thread of page) {
+        if (!isOwnLiveHiddenFork(thread, bb.pluginId)) {
+          retained += 1;
+          continue;
+        }
+        if (now - thread.createdAt <= EMPTY_FORK_MAX_AGE_MS) {
+          retained += 1;
+          continue;
+        }
+        if (await sweepEmptyFork(thread.id, thread.createdAt)) continue;
+        retained += 1;
       }
-      try {
-        const queued = await bb.sdk.threads.queuedMessages.list({
-          threadId: thread.id,
-        });
-        if (queued.length > 0) continue;
-      } catch (error) {
-        bb.log.warn(
-          `empty-fork sweep skipped ${thread.id} (queued-message read failed: ${
-            error instanceof Error ? error.message : String(error)
-          })`,
-        );
-        continue;
-      }
-      try {
-        await bb.sdk.threads.archive({ threadId: thread.id });
-        bb.log.info(
-          `empty-fork sweep archived ${thread.id} (no user messages, ` +
-            `created ${new Date(thread.createdAt).toISOString()})`,
-        );
-      } catch (error) {
-        bb.log.warn(
-          `empty-fork sweep failed to archive ${thread.id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+      if (page.length < EMPTY_FORK_SWEEP_PAGE_SIZE) break;
+      offset += retained;
     }
   });
+
+  /**
+   * Archive one candidate fork when it holds no user work. Returns whether the
+   * fork left the unarchived set. Both reads fail closed: when either fails the
+   * fork is skipped rather than risked.
+   */
+  async function sweepEmptyFork(
+    threadId: string,
+    createdAt: number,
+  ): Promise<boolean> {
+    try {
+      const timeline = await bb.sdk.threads.timeline({
+        threadId,
+        includeNestedRows: "true",
+      });
+      if (timelineRowsContainUserMessage(timeline.rows)) return false;
+    } catch (error) {
+      bb.log.warn(
+        `empty-fork sweep skipped ${threadId} (timeline read failed: ${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
+      return false;
+    }
+    try {
+      const queued = await bb.sdk.threads.queuedMessages.list({ threadId });
+      if (queued.length > 0) return false;
+    } catch (error) {
+      bb.log.warn(
+        `empty-fork sweep skipped ${threadId} (queued-message read failed: ${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
+      return false;
+    }
+    try {
+      await bb.sdk.threads.archive({ threadId });
+      bb.log.info(
+        `empty-fork sweep archived ${threadId} (no user messages, ` +
+          `created ${new Date(createdAt).toISOString()})`,
+      );
+      return true;
+    } catch (error) {
+      bb.log.warn(
+        `empty-fork sweep failed to archive ${threadId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
+  }
 }

@@ -9218,6 +9218,7 @@ declare const threadListQuerySchema: z$1.ZodObject<{
         "side-chat": "side-chat";
         fork: "fork";
     }>>;
+    originPluginId: z$1.ZodOptional<z$1.ZodString>;
     excludeSideChats: z$1.ZodOptional<z$1.ZodEnum<{
         true: "true";
         false: "false";
@@ -11852,6 +11853,7 @@ interface ThreadListArgs {
     limit?: number;
     offset?: number;
     originKind?: ThreadListQuery["originKind"];
+    originPluginId?: string;
     parentThreadId?: string;
     projectId?: string;
     signal?: AbortSignal;
