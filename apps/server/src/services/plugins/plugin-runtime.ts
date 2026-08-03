@@ -6,23 +6,16 @@ import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
-import {
-  PLUGIN_SDK_MAJOR,
-  PLUGIN_SDK_VERSION,
-  type Experiments,
-  type Thread,
-} from "@bb/domain";
+import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
 import { buildPluginApp } from "@bb/plugin-build";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
-  getExperiments,
   getInstalledPlugin,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
-import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
@@ -810,58 +803,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return null;
   }
 
-  /**
-   * Per-plugin experiment gate declared in the bundled registry (e.g. the
-   * side-chat builtin behind `sideChatPlugin`). Open for every plugin whose
-   * registry entry names no experiment.
-   */
-  function pluginExperimentGate(pluginId: string): keyof Experiments | null {
-    const bundled = deps.bundledPlugins ?? BUNDLED_PLUGINS;
-    return (
-      bundled.find((plugin) => plugin.pluginId === pluginId)?.experiment ?? null
-    );
-  }
-
-  function pluginExperimentGateOpen(pluginId: string): boolean {
-    const experiment = pluginExperimentGate(pluginId);
-    if (experiment === null) return true;
-    return getExperiments(deps.db)[experiment];
-  }
-
   function isBuiltinPluginId(id: string): boolean {
     const row = getInstalledPlugin(deps.db, id);
     return row !== undefined && row.provenance === "builtin";
-  }
-
-  function experimentGateDisabledDetail(
-    row: InstalledPluginRow,
-  ): string | null {
-    if (!pluginExperimentGateOpen(row.id)) {
-      return `disabled by the "${pluginExperimentGate(row.id)}" experiment`;
-    }
-    return null;
-  }
-
-  function shouldLoadRow(row: InstalledPluginRow): boolean {
-    return pluginExperimentGateOpen(row.id);
-  }
-
-  function shouldExposeLoadedPlugin(plugin: LoadedPlugin): boolean {
-    return pluginExperimentGateOpen(plugin.manifest.id);
-  }
-
-  function shouldExposePluginId(id: string): boolean {
-    const plugin = loaded.get(id);
-    if (plugin !== undefined) return shouldExposeLoadedPlugin(plugin);
-    const row = getInstalledPlugin(deps.db, id);
-    if (row === undefined) return true;
-    return shouldLoadRow(row);
-  }
-
-  function exposedLoadedEntries(): Array<[string, LoadedPlugin]> {
-    return [...loaded.entries()].filter(([, plugin]) =>
-      shouldExposeLoadedPlugin(plugin),
-    );
   }
 
   function isPrebuiltServerSdkCompatible(
@@ -1331,32 +1275,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     agentToolProblems.delete(id);
   }
 
-  async function unloadOneForExperimentGate(
-    row: InstalledPluginRow,
-  ): Promise<void> {
-    await disposeOne(row.id);
-    clearRuntimeState(row.id);
-    // clearRuntimeState drops runtime branding; keep static identity so a
-    // gated/disabled row still shows its name, icon, and logo.
-    await populateIdentity(row);
-    if (row.enabled) {
-      setStatus(row.id, "disabled", experimentGateDisabledDetail(row));
-    } else {
-      setStatus(row.id, "disabled");
-    }
-  }
-
   async function loadAll(): Promise<void> {
     const rows = listInstalledPlugins(deps.db).sort((a, b) =>
       a.id.localeCompare(b.id),
     );
     for (const row of rows) {
-      if (shouldLoadRow(row)) {
-        if (loaded.has(row.id)) continue;
-        await withLifecycleLock(row.id, () => loadOne(row));
-      } else {
-        await withLifecycleLock(row.id, () => unloadOneForExperimentGate(row));
-      }
+      if (loaded.has(row.id)) continue;
+      await withLifecycleLock(row.id, () => loadOne(row));
     }
   }
 
@@ -1369,16 +1294,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     id: string,
     find: (plugin: LoadedPlugin) => T | undefined,
   ): PluginWireLookup<T> {
-    if (!shouldExposePluginId(id)) {
-      const row = getInstalledPlugin(deps.db, id);
-      if (!row) return { outcome: "unknown-plugin" };
-      const runtime = statuses.get(id);
-      return {
-        outcome: "not-running",
-        status: runtime?.status ?? "disabled",
-        detail: runtime?.detail ?? experimentGateDisabledDetail(row),
-      };
-    }
     const plugin = loaded.get(id);
     if (!plugin) {
       const row = getInstalledPlugin(deps.db, id);
@@ -1413,8 +1328,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     disposeAll,
     disposeOne,
     emitThreadEvent,
-    experimentGateDisabledDetail,
-    exposedLoadedEntries,
     handlerStats,
     hungServices,
     invokeWrapped,
@@ -1428,14 +1341,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     needsConfiguration,
     setDevBuildProblem,
     setStatus,
-    shouldExposeLoadedPlugin,
-    shouldExposePluginId,
-    shouldLoadRow,
     sourceKind,
     stabilizingPluginIds,
     statuses,
     statusListeners,
-    unloadOneForExperimentGate,
     wireLookup,
     withArtifactLock,
     withLifecycleLock,

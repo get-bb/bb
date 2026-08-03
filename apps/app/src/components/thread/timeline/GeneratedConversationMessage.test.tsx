@@ -235,11 +235,8 @@ describe("GeneratedConversationMessage markdown body", () => {
   });
 
   it("renders side-chat handoffs as markdown", () => {
-    const openSideChat = vi.fn();
     renderAgentMessage("**Ready** to merge.\n\n- checks passed", {
       senderChildOrigin: "side-chat",
-      onTitleAction: (action) =>
-        action.kind === "open-side-chat" ? openSideChat : null,
     });
 
     expect(screen.getByText("Ready").tagName).toBe("STRONG");
@@ -248,8 +245,6 @@ describe("GeneratedConversationMessage markdown body", () => {
     const toggle = screen.getByRole("button", {
       name: /Message from side chat/u,
     });
-    fireEvent.click(screen.getByRole("link", { name: "side chat" }));
-    expect(openSideChat).toHaveBeenCalledOnce();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
 
     fireEvent.click(toggle);

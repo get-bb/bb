@@ -32,11 +32,8 @@ export {
 export type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineAddToChatHandler,
-  ThreadTimelineSideChatMessageHandler,
-  ThreadTimelineSideChatMessageTarget,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineSendToMainMessageTarget,
-  ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
   ThreadTimelineImageViewSrcResolver,

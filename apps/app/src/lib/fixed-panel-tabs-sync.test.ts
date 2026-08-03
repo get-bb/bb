@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
-  createSideChatFixedPanelTab,
   createThreadInfoFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
@@ -94,9 +93,9 @@ describe("fixed panel tab server sync", () => {
     const threadId = "sync-remote-tabs";
     const localTab = createThreadInfoFixedPanelTab();
     const lastUsedAt = Date.now();
-    const remoteTab = createSideChatFixedPanelTab({
-      sourceMessageText: "Remote message",
-      title: "Remote chat",
+    const remoteTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://remote.example.com",
     });
     window.localStorage.setItem(
       getFixedPanelTabsStateStorageKey({ threadId }),
@@ -176,9 +175,9 @@ describe("fixed panel tab server sync", () => {
       environmentId: null,
       url: "https://local.example.com",
     });
-    const serverTab = createSideChatFixedPanelTab({
-      sourceMessageText: "Saved elsewhere",
-      title: "Server chat",
+    const serverTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://server.example.com",
     });
     window.localStorage.setItem(
       getFixedPanelTabsStateStorageKey({ threadId }),
@@ -276,9 +275,9 @@ describe("fixed panel tab server sync", () => {
       environmentId: null,
       url: "https://local.example.com",
     });
-    const concurrentTab = createSideChatFixedPanelTab({
-      sourceMessageText: "Concurrent message",
-      title: "Concurrent chat",
+    const concurrentTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://concurrent.example.com",
     });
     apiMocks.getThreadTabs
       .mockResolvedValueOnce({ revision: 1, tabs: [originalTab] })

@@ -134,16 +134,6 @@ const pluginPanelFixedPanelTabSchema = z
     title: z.string().min(1),
   })
   .strict();
-const sideChatFixedPanelTabSchema = z
-  .object({
-    id: z.string().min(1),
-    kind: z.literal("side-chat"),
-    sourceMessageText: z.string(),
-    sourceSeqEnd: z.number().int().nonnegative().nullable().default(null),
-    threadId: z.string().min(1).nullable(),
-    title: z.string().min(1),
-  })
-  .strict();
 const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
@@ -153,12 +143,30 @@ const secondaryFixedPanelTabSchema = z.union([
   threadStorageFilePreviewFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
-  sideChatFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
 ]);
+/**
+ * The native side chat is gone, but persisted panel state can still hold its
+ * tabs. Drop them at the parse boundary so old state loads and the removed
+ * tabs simply disappear from the strip.
+ */
+const secondaryFixedPanelTabsSchema = z.preprocess(
+  (value) =>
+    Array.isArray(value)
+      ? value.filter(
+          (tab) =>
+            !(
+              typeof tab === "object" &&
+              tab !== null &&
+              (tab as { kind?: unknown }).kind === "side-chat"
+            ),
+        )
+      : value,
+  z.array(secondaryFixedPanelTabSchema),
+);
 const secondaryFixedPanelTabGroupStateSchema = z
   .object({
-    tabs: z.array(secondaryFixedPanelTabSchema),
+    tabs: secondaryFixedPanelTabsSchema,
     activeTabId: z.string().min(1).nullable(),
     isOpen: z.boolean(),
   })
@@ -183,7 +191,7 @@ export interface GitDiffFixedPanelTab {
 
 /**
  * A panel tab opened by a plugin `threadPanelAction` (plugin design §5.2) —
- * a closable file-strip tab like terminal/side-chat, not a fixed view.
+ * a closable file-strip tab like a terminal, not a fixed view.
  * `paramsJson` is the JSON-serialized `openPanel` params (null = none); it
  * is part of the tab identity, so the same action can hold several tabs
  * with different params while identical re-opens focus the existing one.
@@ -256,26 +264,6 @@ export interface TerminalFixedPanelTab {
   terminalId: string;
 }
 
-/**
- * A message-anchored side chat hosted in the secondary panel. The child thread
- * is created by the first user message, so `threadId` starts null and is filled
- * once the child thread exists. `title` is the truncated pill
- * label derived from the source agent message at open time (and could later
- * mirror the child thread's title); `sourceMessageText` is the full, untruncated
- * source message used to anchor the context snapshot on the exact spawning
- * message (the truncated title would fail the exact-match anchor). Like a
- * browser tab, the live conversation/streaming state lives in a kept-mounted
- * deck so it survives switching to another panel tab.
- */
-export interface SideChatFixedPanelTab {
-  id: string;
-  kind: "side-chat";
-  sourceMessageText: string;
-  sourceSeqEnd: number | null;
-  threadId: string | null;
-  title: string;
-}
-
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
@@ -285,7 +273,6 @@ export type SecondaryFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
-  | SideChatFixedPanelTab
   | TerminalFixedPanelTab;
 
 /**
@@ -299,7 +286,6 @@ export type SecondaryFileFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
-  | SideChatFixedPanelTab
   | TerminalFixedPanelTab
   | PluginPanelFixedPanelTab;
 
@@ -383,12 +369,6 @@ interface CreateBrowserFixedPanelTabArgs {
   url: string;
 }
 
-interface CreateSideChatFixedPanelTabArgs {
-  sourceMessageText: string;
-  sourceSeqEnd?: number | null;
-  title: string;
-}
-
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
   environmentId: string | null;
   projectId: string | null;
@@ -461,7 +441,9 @@ export function buildFixedPanelTabId({
   return [
     kind,
     encodeURIComponent(path),
-    encodeURIComponent(environmentId ?? SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE),
+    encodeURIComponent(
+      environmentId ?? SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE,
+    ),
   ].join(":");
 }
 
@@ -634,27 +616,6 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   };
 }
 
-/**
- * Side-chat tabs get a fresh unique id per instance — the source agent message
- * is not a stable identity (the same message can spawn multiple side chats, and
- * the thread does not exist yet), so it cannot key the tab the way a file path
- * or application id does. `threadId` starts null and is set after first send.
- */
-export function createSideChatFixedPanelTab({
-  sourceMessageText,
-  sourceSeqEnd = null,
-  title,
-}: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
-  return {
-    id: `side-chat:${nanoid()}`,
-    kind: "side-chat",
-    sourceMessageText,
-    sourceSeqEnd,
-    threadId: null,
-    title,
-  };
-}
-
 export function createTerminalFixedPanelTab({
   terminalId,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
@@ -745,10 +706,6 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       });
       return tab.id === id ? tab : { ...tab, id };
     }
-    case "side-chat":
-      // Side-chat tab ids are random UUIDs minted at creation, not derived
-      // from content, so there is nothing to normalize.
-      return tab;
   }
 }
 
@@ -814,7 +771,6 @@ function stripTransientFixedPanelTabForStorage(
     case "browser":
     case "new-tab":
     case "terminal":
-    case "side-chat":
       return tab;
   }
 }
@@ -1029,14 +985,6 @@ export function areFixedPanelTabsEquivalent(
         b.kind === "browser" &&
         a.environmentId === b.environmentId &&
         a.url === b.url &&
-        a.title === b.title
-      );
-    case "side-chat":
-      return (
-        b.kind === "side-chat" &&
-        a.sourceMessageText === b.sourceMessageText &&
-        a.sourceSeqEnd === b.sourceSeqEnd &&
-        a.threadId === b.threadId &&
         a.title === b.title
       );
     case "thread-storage-file-preview":

@@ -56,11 +56,10 @@ interface MessageActionBarProps {
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
   onFork?: () => void;
-  onSideChat?: () => void;
   /**
    * Hand this message back to the main thread. Supplied only inside a side chat
    * (the main timeline has no main thread to send to). Not gated by `disabled`,
-   * which only greys the child-spawning fork/side-chat actions.
+   * which only greys the child-spawning fork action.
    */
   onSendToMain?: () => void;
   disabled?: boolean;
@@ -69,12 +68,7 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon:
-    | "Copy"
-    | "MessageSquarePlus"
-    | "Fork"
-    | "SideChat"
-    | "ArrowTurnBackward";
+  icon: "Copy" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
   /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
   plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
@@ -181,8 +175,8 @@ function MobileMessageOverflowPopover({
 // Shared hover-reveal classes for every action in the bar: hidden until the
 // surrounding named `group/message` row is hovered or a child control takes
 // keyboard focus (`group-focus-within`, matching disclosure.tsx so tabbing onto
-// an action button reveals the bar). The fork/side-chat buttons mirror
-// CopyButton's own classes so all three read as one consistent affordance.
+// an action button reveals the bar). The fork button mirrors CopyButton's own
+// classes so they read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
 const HOVER_REVEAL_CLASS =
@@ -207,9 +201,8 @@ export function findMessageActionTooltipCollisionBoundary(
 /**
  * Hover-revealed footer of per-message actions. Renders an action only when it
  * is meaningful: copy when there is text, add-to-chat when a composer owns the
- * draft, and fork/side-chat when their handlers are supplied. `disabled` greys
- * the fork/side-chat buttons (e.g. at the depth cap) while leaving copy and
- * add-to-chat usable.
+ * draft, and fork when its handler is supplied. `disabled` greys the fork
+ * button (e.g. at the depth cap) while leaving copy and add-to-chat usable.
  */
 export function MessageActionBar({
   messageText,
@@ -218,7 +211,6 @@ export function MessageActionBar({
   addToChatAttachments = [],
   onAddToChat,
   onFork,
-  onSideChat,
   onSendToMain,
   disabled,
   pluginActions = [],
@@ -246,10 +238,6 @@ export function MessageActionBar({
     }
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
-  const handleSideChat = useCallback(() => {
-    if (!onSideChat) return;
-    onSideChat();
-  }, [onSideChat]);
   const overflowActions: MessageOverflowAction[] = [
     ...(hasCopy
       ? [
@@ -284,16 +272,6 @@ export function MessageActionBar({
           },
         ]
       : []),
-    ...(onSideChat
-      ? [
-          {
-            icon: "SideChat" as const,
-            label: "Reply in side chat",
-            onSelect: handleSideChat,
-            disabled,
-          },
-        ]
-      : []),
     ...(onFork
       ? [
           {
@@ -319,7 +297,6 @@ export function MessageActionBar({
     !hasCopy &&
     !hasAddToChat &&
     !onFork &&
-    !onSideChat &&
     !onSendToMain &&
     pluginActions.length === 0
   ) {
@@ -397,31 +374,6 @@ export function MessageActionBar({
               collisionBoundary={collisionBoundary}
             >
               Send to main thread
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {onSideChat ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  ACTION_BUTTON_CLASS,
-                  HOVER_REVEAL_CLASS,
-                  mobileDirectActionClass,
-                )}
-                onClick={handleSideChat}
-                disabled={disabled}
-                aria-label="Reply in side chat"
-              >
-                <Icon name="SideChat" className="size-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              side={ACTION_TOOLTIP_SIDE}
-              collisionBoundary={collisionBoundary}
-            >
-              Reply in side chat
             </TooltipContent>
           </Tooltip>
         ) : null}

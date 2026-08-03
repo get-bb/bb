@@ -6,7 +6,6 @@ import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
-  createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -17,7 +16,6 @@ import {
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
-  type SideChatFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 
 const NOW = 1_700_000_000_000;
@@ -54,11 +52,7 @@ describe("fixed-panel-tabs-state", () => {
     const storedState = {
       version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
       secondary: {
-        tabs: [
-          createThreadInfoFixedPanelTab(),
-          workspaceTab,
-          terminalTab,
-        ],
+        tabs: [createThreadInfoFixedPanelTab(), workspaceTab, terminalTab],
         activeTabId: workspaceTab.id,
         isOpen: true,
       },
@@ -192,9 +186,9 @@ describe("workspace file preview fixed panel tabs", () => {
     });
 
     expect(firstProjectTab.id).not.toBe(secondProjectTab.id);
-    expect(
-      areFixedPanelTabsEquivalent(firstProjectTab, secondProjectTab),
-    ).toBe(false);
+    expect(areFixedPanelTabsEquivalent(firstProjectTab, secondProjectTab)).toBe(
+      false,
+    );
   });
 });
 
@@ -274,10 +268,12 @@ describe("thread-owned file preview fixed panel tabs", () => {
 
     expect(firstHostTab.id).not.toBe(secondHostTab.id);
     expect(firstStorageTab.id).not.toBe(secondStorageTab.id);
-    expect(areFixedPanelTabsEquivalent(firstHostTab, secondHostTab)).toBe(false);
-    expect(
-      areFixedPanelTabsEquivalent(firstStorageTab, secondStorageTab),
-    ).toBe(false);
+    expect(areFixedPanelTabsEquivalent(firstHostTab, secondHostTab)).toBe(
+      false,
+    );
+    expect(areFixedPanelTabsEquivalent(firstStorageTab, secondStorageTab)).toBe(
+      false,
+    );
   });
 
   it("keeps legacy ownerless host and storage preview tabs parseable", () => {
@@ -326,7 +322,7 @@ describe("thread-owned file preview fixed panel tabs", () => {
   });
 });
 
-describe("side-chat fixed panel tabs", () => {
+describe("legacy side-chat tabs", () => {
   it("does not require crypto.randomUUID for generated tab ids", () => {
     const originalCrypto = globalThis.crypto;
     vi.stubGlobal("crypto", {
@@ -336,89 +332,50 @@ describe("side-chat fixed panel tabs", () => {
     });
 
     try {
-      const sideChatTab = createSideChatFixedPanelTab({
-        sourceMessageText: "",
-        title: "Side chat",
-      });
       const browserTab = createBrowserFixedPanelTab({
         environmentId: null,
         url: "",
       });
 
-      expect(sideChatTab.id).toMatch(/^side-chat:/);
       expect(browserTab.id).toMatch(/^browser:.+:none$/);
     } finally {
       vi.stubGlobal("crypto", originalCrypto);
     }
   });
 
-  it("round-trips side-chat tabs (threadId null and set)", () => {
-    const pendingTab = createSideChatFixedPanelTab({
-      sourceMessageText: "Why this index? Full source agent message text.",
-      sourceSeqEnd: 12,
-      title: "Why this index?",
+  // The native side chat is gone, but its tabs can still sit in stored panel
+  // state. They must not fail the parse — they simply disappear.
+  it("drops tabs persisted before the native side chat was removed", () => {
+    const browserTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://example.com",
     });
-    const createdTab: SideChatFixedPanelTab = {
-      ...createSideChatFixedPanelTab({
-        sourceMessageText: "Created side chat source message.",
-        sourceSeqEnd: 18,
-        title: "Created side chat",
-      }),
-      threadId: "thr_side_child",
-    };
-    const state = createEmptyFixedPanelTabsState({
-      secondary: {
-        tabs: [pendingTab, createdTab],
-        activeTabId: pendingTab.id,
-        isOpen: true,
-      },
+    const stored = JSON.stringify({
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
       lastUsedAt: NOW,
-    });
-
-    expect(
-      parseFixedPanelTabsState({
-        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
-        now: NOW,
-        storedValue: serializeFixedPanelTabsState({ state }),
-      }),
-    ).toEqual(state);
-  });
-
-  it("round-trips a side-chat tab opened from the thread tip", () => {
-    const tab = createSideChatFixedPanelTab({
-      sourceMessageText: "",
-      sourceSeqEnd: null,
-      title: "Side chat",
-    });
-    const state = createEmptyFixedPanelTabsState({
       secondary: {
-        tabs: [tab],
-        activeTabId: tab.id,
+        activeTabId: "side-chat:legacy",
         isOpen: true,
+        tabs: [
+          browserTab,
+          {
+            id: "side-chat:legacy",
+            kind: "side-chat",
+            sourceMessageText: "anchor",
+            sourceSeqEnd: null,
+            threadId: "thr_legacy",
+            title: "Side chat",
+          },
+        ],
       },
-      lastUsedAt: NOW,
     });
 
-    expect(
-      parseFixedPanelTabsState({
-        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
-        now: NOW,
-        storedValue: serializeFixedPanelTabsState({ state }),
-      }),
-    ).toEqual(state);
-  });
-
-  it("treats a side-chat threadId change as a non-equivalent update", () => {
-    const pendingTab = createSideChatFixedPanelTab({
-      sourceMessageText: "Side chat source message.",
-      title: "Side chat",
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: stored,
     });
-    const createdTab: SideChatFixedPanelTab = {
-      ...pendingTab,
-      threadId: "thr_side_child",
-    };
-    expect(areFixedPanelTabsEquivalent(pendingTab, pendingTab)).toBe(true);
-    expect(areFixedPanelTabsEquivalent(pendingTab, createdTab)).toBe(false);
-  });
 
+    expect(parsed.secondary.tabs).toEqual([browserTab]);
+  });
 });

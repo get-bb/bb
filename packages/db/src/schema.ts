@@ -153,9 +153,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
     mode: "boolean",
   }).notNull(),
   toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
-  sideChatPlugin: integer("side_chat_plugin", { mode: "boolean" })
-    .notNull()
-    .default(false),
   updatedAt: integer("updated_at").notNull(),
 });
 

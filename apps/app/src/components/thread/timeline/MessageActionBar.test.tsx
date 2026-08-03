@@ -70,14 +70,13 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
-  it("orders agent actions as copy, add, reply, then fork", () => {
+  it("orders agent actions as copy, add, then fork", () => {
     const { container } = render(
       <MessageActionBar
         messageText="An answer."
         alignment="start"
         mobileActionDisplay="inline"
         onAddToChat={vi.fn()}
-        onSideChat={vi.fn()}
         onFork={vi.fn()}
       />,
     );
@@ -86,12 +85,7 @@ describe("MessageActionBar", () => {
       [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
         .map((button) => button.getAttribute("aria-label"))
         .filter((label) => label !== "Message actions"),
-    ).toEqual([
-      "Copy message",
-      "Add to chat",
-      "Reply in side chat",
-      "Fork into new thread",
-    ]);
+    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
   });
 
   it("keeps the same agent action order in the mobile overflow", () => {
@@ -102,7 +96,6 @@ describe("MessageActionBar", () => {
         alignment="start"
         mobileActionDisplay="overflow"
         onAddToChat={vi.fn()}
-        onSideChat={vi.fn()}
         onFork={vi.fn()}
       />,
     );
@@ -115,12 +108,7 @@ describe("MessageActionBar", () => {
       within(content)
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual([
-      "Copy message",
-      "Add to chat",
-      "Reply in side chat",
-      "Fork into new thread",
-    ]);
+    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
   });
 
   it("renders plugin actions after the native ones and fires their handlers", () => {
@@ -308,11 +296,11 @@ describe("MessageActionBar", () => {
         messageText="An answer."
         alignment="start"
         mobileActionDisplay="overflow"
-        onSideChat={vi.fn()}
+        onFork={vi.fn()}
       />,
     );
 
-    const button = screen.getByRole("button", { name: "Reply in side chat" });
+    const button = screen.getByRole("button", { name: "Fork into new thread" });
     expect(button.className).toContain("max-md:pointer-coarse:hidden");
 
     const overflowTrigger = screen.getByRole("button", {
@@ -383,20 +371,22 @@ describe("MessageActionBar", () => {
     expect(trigger.querySelector('[data-icon="Check"]')).not.toBeNull();
   });
 
-  it("opens a side chat from the inline mobile action", () => {
-    const onSideChat = vi.fn();
+  it("forks from the inline mobile action", () => {
+    const onFork = vi.fn();
     render(
       <MessageActionBar
         messageText="The latest answer."
         alignment="start"
         mobileActionDisplay="inline"
-        onSideChat={onSideChat}
+        onFork={onFork}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fork into new thread" }),
+    );
 
-    expect(onSideChat).toHaveBeenCalledTimes(1);
+    expect(onFork).toHaveBeenCalledTimes(1);
   });
 
   it("shows compact inline mobile actions without an overflow menu when requested", () => {
@@ -406,15 +396,10 @@ describe("MessageActionBar", () => {
         alignment="start"
         mobileActionDisplay="inline"
         onFork={vi.fn()}
-        onSideChat={vi.fn()}
       />,
     );
 
-    for (const name of [
-      "Copy message",
-      "Fork into new thread",
-      "Reply in side chat",
-    ]) {
+    for (const name of ["Copy message", "Fork into new thread"]) {
       const button = screen.getByRole("button", { name });
       expect(button.className).toContain("max-md:pointer-coarse:size-7");
       expect(button.className).toContain("max-md:pointer-coarse:opacity-100");

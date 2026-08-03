@@ -33,22 +33,6 @@ export type ThreadTimelineForkMessageHandler = (
   target: ThreadTimelineForkMessageTarget,
 ) => void;
 
-export interface ThreadTimelineSideChatMessageTarget {
-  /** Visible text of the agent message the side chat is anchored to. */
-  messageText: string;
-  /** Last source event sequence included in the provider-history fork. */
-  sourceSeqEnd?: number;
-}
-
-/**
- * Open a message-anchored side chat off the active thread. Supplied by the
- * timeline host (which owns the source thread + the secondary panel); the
- * per-message action bar invokes it with the row's anchor text.
- */
-export type ThreadTimelineSideChatMessageHandler = (
-  target: ThreadTimelineSideChatMessageTarget,
-) => void;
-
 export interface ThreadTimelineSendToMainMessageTarget {
   /** Visible text of the side-chat agent message to hand back to the main thread. */
   messageText: string;
@@ -74,24 +58,6 @@ export type ThreadTimelineSendToMainMessageHandler = (
 export type ThreadTimelineAddToChatHandler = (
   text: string,
   attachments?: readonly PromptDraftAttachment[],
-) => void;
-
-export interface ThreadTimelineSelectionReplyInSideChatTarget {
-  /** Visible selected text the side chat is anchored to. */
-  messageText: string;
-  /** Last source event sequence included in the provider-history fork. */
-  sourceSeqEnd?: number;
-}
-
-/**
- * Open a side chat anchored on the selected agent-message text ("Reply in side
- * chat"). Distinct from the per-message Reply handler only in that the anchor is
- * the *selection*, not the whole message; both ultimately open a side chat off
- * the active thread. Supplied by the timeline host; absent when side chats are
- * unavailable.
- */
-export type ThreadTimelineSelectionReplyInSideChatHandler = (
-  target: ThreadTimelineSelectionReplyInSideChatTarget,
 ) => void;
 
 /**

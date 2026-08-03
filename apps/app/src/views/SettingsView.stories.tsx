@@ -352,13 +352,6 @@ function ExperimentsStory() {
         }))
       }
       toolsHubEnabled={state.experiments.toolsHub}
-      onSideChatPluginEnabledChange={(enabled) =>
-        state.setExperiments((current) => ({
-          ...current,
-          sideChatPlugin: enabled,
-        }))
-      }
-      sideChatPluginEnabled={state.experiments.sideChatPlugin}
     />
   );
 }

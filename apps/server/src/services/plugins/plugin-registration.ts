@@ -46,8 +46,6 @@ export interface PluginRegistrationContext {
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   disposeOne: (id: string) => Promise<void>;
   loadOne: (row: InstalledPluginRow) => Promise<void>;
-  shouldLoadRow: (row: InstalledPluginRow) => boolean;
-  unloadOneForExperimentGate: (row: InstalledPluginRow) => Promise<void>;
   validateInstallDir: (args: RegisterInstalledArgs) => Promise<PluginManifest>;
   syncCliSkill: () => Promise<void>;
   notifyPluginsChanged: () => void;
@@ -61,8 +59,6 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     withLifecycleLock,
     disposeOne,
     loadOne,
-    shouldLoadRow,
-    unloadOneForExperimentGate,
     validateInstallDir,
     syncCliSkill,
     notifyPluginsChanged,
@@ -215,7 +211,10 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       args,
       initialManifest.id,
     );
-    if (args.provenance.kind !== "builtin" && args.sourceIntent.kind !== "builtin") {
+    if (
+      args.provenance.kind !== "builtin" &&
+      args.sourceIntent.kind !== "builtin"
+    ) {
       refuseBuiltinShadow(initialManifest.id);
     }
     const manifest = args.validated
@@ -240,17 +239,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           enabled: existing?.enabled ?? true,
         });
         const row = getInstalledPlugin(deps.db, manifest.id);
-        if (row && shouldLoadRow(row)) {
+        if (row) {
           await loadOne(row);
-        } else if (row) {
-          await unloadOneForExperimentGate(row);
         }
       } catch (error) {
         const previous = getInstalledPlugin(deps.db, manifest.id);
-        if (previous && shouldLoadRow(previous)) {
+        if (previous) {
           await loadOne(previous);
-        } else if (previous) {
-          await unloadOneForExperimentGate(previous);
         }
         throw error;
       }

@@ -49,9 +49,7 @@ import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js"
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineForkMessageHandler,
-  ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
-  ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
@@ -137,7 +135,6 @@ export interface ThreadTimelineRowsProps {
   /** Add a complete agent message to the composer draft. */
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   /** Open a side chat anchored on a specific agent message. */
-  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   /** Hand a specific side-chat agent message back to the main thread. */
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   /**
@@ -150,7 +147,6 @@ export interface ThreadTimelineRowsProps {
    * Open a side chat anchored on the active text selection. When omitted the
    * floating selection menu's "Reply in side chat" action is unavailable.
    */
-  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   /**
    * Consumer-supplied per-message actions scoped to this surface (the
    * `ThreadChat` `messageActions` prop), rendered in the per-message action
@@ -202,7 +198,6 @@ interface TimelineRendererStaticContextValue {
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
-  onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
   /**
@@ -843,7 +838,8 @@ function buildRowConsumerMessageActions(args: {
   const { actions, message } = args;
   return actions
     .filter(
-      (action) => action.roles === undefined || action.roles.includes(message.role),
+      (action) =>
+        action.roles === undefined || action.roles.includes(message.role),
     )
     .map((action) => ({
       key: `consumer/${action.id}`,
@@ -884,7 +880,6 @@ function ConversationRow({
     canSpawnChild,
     onForkMessage,
     onMessageAddToChat,
-    onSideChatMessage,
     onSendToMainMessage,
     onSelectionAddToChat,
     pluginMessageActions,
@@ -977,16 +972,6 @@ function ConversationRow({
     onForkMessage === undefined
       ? undefined
       : () => onForkMessage({ sourceSeqEnd: row.sourceSeqEnd });
-  // Side chat anchors on the same agent row text; both actions share the
-  // canSpawnChild depth guard (both spawn a child thread off the active thread).
-  const onSideChat =
-    onSideChatMessage === undefined
-      ? undefined
-      : () =>
-          onSideChatMessage({
-            messageText: row.text,
-            sourceSeqEnd: row.sourceSeqEnd,
-          });
   // Side chats supply this so each agent message can be handed back to the main
   // thread; omitted on the main timeline, which keeps the action out of the bar.
   const onSendToMain =
@@ -1010,7 +995,6 @@ function ConversationRow({
       id={row.id}
       onAddToChat={onMessageAddToChat}
       onFork={onFork}
-      onSideChat={onSideChat}
       onSendToMain={onSendToMain}
       forkDisabled={!canSpawnChild}
       onSelectProse={onSelectProse}
@@ -1925,14 +1909,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   // reports a non-null selection replaces it (single open menu), and a report of
   // `null` (only emitted by a message that previously had a selection) clears it.
   const onSelectionAddToChat = props.onSelectionAddToChat;
-  const onSelectionReplyInSideChat = props.onSelectionReplyInSideChat;
   const timelineThreadId = props.threadId;
   const hasPluginSelectionActions =
     timelineThreadId !== undefined && messageActionSlots.length > 0;
   const hasSelectionActions =
-    onSelectionAddToChat !== undefined ||
-    onSelectionReplyInSideChat !== undefined ||
-    hasPluginSelectionActions;
+    onSelectionAddToChat !== undefined || hasPluginSelectionActions;
   const [activeSelection, setActiveSelection] = useState<{
     rowId: string;
     selection: MessageProseSelection;
@@ -1964,9 +1945,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const dismissSelection = useCallback(() => {
     setActiveSelection(null);
   }, []);
-  // "Add to chat" quotes the SELECTION text; "Reply in side chat" anchors the
-  // side chat on the SELECTION (not the whole message), so the reply's context
-  // is exactly what the user highlighted.
+  // "Add to chat" quotes the SELECTION text, not the whole message, so the
+  // quoted context is exactly what the user highlighted.
   const handleSelectionAddToChat = useCallback(
     (
       text: string,
@@ -1983,16 +1963,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
-  const handleSelectionReplyInSideChat = useCallback(
-    (selection: MessageProseSelection) => {
-      onSelectionReplyInSideChat?.({
-        messageText: selection.text,
-        sourceSeqEnd: selection.sourceSeqEnd,
-      });
-      setActiveSelection(null);
-    },
-    [onSelectionReplyInSideChat],
-  );
   // Plugin actions for the CURRENT selection: `selectedText` is exactly what
   // the user highlighted; the message reference travels with the selection.
   const onOpenPluginPanel = props.onOpenPluginPanel;
@@ -2032,7 +2002,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       onForkMessage: props.onForkMessage,
       onMessageAddToChat: props.onMessageAddToChat,
-      onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
       pluginMessageActions:
@@ -2063,7 +2032,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       props.onForkMessage,
       props.onMessageAddToChat,
-      props.onSideChatMessage,
       props.onSendToMainMessage,
       selectionAddToChatHandler,
       messageActionSlots,
@@ -2130,11 +2098,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                 <TimelineSelectionMenu
                   selection={activeSelection?.selection ?? null}
                   onAddToChat={selectionAddToChatHandler}
-                  onReplyInSideChat={
-                    onSelectionReplyInSideChat === undefined
-                      ? undefined
-                      : handleSelectionReplyInSideChat
-                  }
                   pluginActions={selectionPluginActions}
                   onDismiss={dismissSelection}
                 />

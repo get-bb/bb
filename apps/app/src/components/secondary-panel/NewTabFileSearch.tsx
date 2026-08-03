@@ -67,11 +67,9 @@ export interface NewTabFileSearchProps {
 
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
-export type StartSideChatHandler = () => void;
 
 export interface NewTabActionsProps {
   /** Open a session-based side chat of the current thread in its own tab. */
-  onStartSideChat?: StartSideChatHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
@@ -178,7 +176,6 @@ const FILE_SEARCH_SOURCE_LABELS = {
   "thread-storage": "Thread storage",
 } satisfies Record<FileSearchSource, string>;
 
-const START_SIDE_CHAT_ENTRY_ID = "file-search-result-start-side-chat";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
@@ -523,15 +520,20 @@ export function NewTabFileSearch({
   const recentItems = useThreadRecentItems(recentItemsStorageThreadId);
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
-  const { suggestions, isLoading, fileSearchError, isDebouncing, isUnavailable } =
-    useFileSearchSuggestions({
-      projectId,
-      query,
-      limit: FILE_SEARCH_LIMIT,
-      environmentId,
-      hostId,
-      currentThreadId,
-    });
+  const {
+    suggestions,
+    isLoading,
+    fileSearchError,
+    isDebouncing,
+    isUnavailable,
+  } = useFileSearchSuggestions({
+    projectId,
+    query,
+    limit: FILE_SEARCH_LIMIT,
+    environmentId,
+    hostId,
+    currentThreadId,
+  });
   const searchSuggestions = useMemo(
     () => (hasQuery ? suggestions : []),
     [hasQuery, suggestions],
@@ -594,12 +596,9 @@ export function NewTabFileSearch({
     setActiveIndex(navigableEntries.length > 0 ? 0 : -1);
   }, [navigableEntries]);
 
-  const handleQueryChange = useCallback(
-    (nextQuery: string) => {
-      setQuery(nextQuery);
-    },
-    [],
-  );
+  const handleQueryChange = useCallback((nextQuery: string) => {
+    setQuery(nextQuery);
+  }, []);
 
   const handleFileSelect = useCallback(
     (suggestion: FilePathSearchSuggestion) => {
@@ -764,21 +763,14 @@ export function NewTabFileSearch({
 }
 
 export function NewTabActions({
-  onStartSideChat,
   onOpenBrowser,
   onStartTerminal,
   pluginActions,
 }: NewTabActionsProps) {
   const terminalShortcut = useAppCommandShortcut("terminal.open");
-  const showStartSideChatEntry = onStartSideChat !== undefined;
   const showOpenBrowserEntry =
-    onOpenBrowser !== undefined &&
-    isDesktopBrowserAvailable();
+    onOpenBrowser !== undefined && isDesktopBrowserAvailable();
   const showStartTerminalEntry = onStartTerminal !== undefined;
-
-  const handleStartSideChat = useCallback(() => {
-    onStartSideChat?.();
-  }, [onStartSideChat]);
 
   const handleOpenBrowser = useCallback(() => {
     onOpenBrowser?.();
@@ -789,7 +781,6 @@ export function NewTabActions({
   }, [onStartTerminal]);
 
   const hasOpenActions =
-    showStartSideChatEntry ||
     showOpenBrowserEntry ||
     showStartTerminalEntry ||
     (pluginActions !== undefined && pluginActions.length > 0);
@@ -806,16 +797,6 @@ export function NewTabActions({
           className="pb-1"
         />
         <div className="flex flex-col gap-px">
-          {showStartSideChatEntry ? (
-            <NewTabActionTile
-              id={START_SIDE_CHAT_ENTRY_ID}
-              iconName="SideChat"
-              label="Start side chat"
-              isActive={false}
-              onActivate={() => undefined}
-              onSelect={handleStartSideChat}
-            />
-          ) : null}
           {showOpenBrowserEntry ? (
             <NewTabActionTile
               id={OPEN_BROWSER_ENTRY_ID}
@@ -920,17 +901,14 @@ function NewTabResults({
   // element. It renders only when a group has option rows; the loading/error
   // message, the empty-recent card, and the show-more toggle are not options
   // and stay outside the listbox.
-  const showListbox =
-    showFilesSection || recentSection !== undefined;
+  const showListbox = showFilesSection || recentSection !== undefined;
 
   if (showEmptyMessage) {
     return (
       <FileSearchMessage
         iconName={hasQuery ? "FileQuestion" : "File"}
         message={
-          hasQuery
-            ? "No results match your search."
-            : "Type to search files."
+          hasQuery ? "No results match your search." : "Type to search files."
         }
       />
     );
@@ -957,11 +935,7 @@ function NewTabResults({
       ) : null}
 
       {showListbox ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          aria-label="File search results"
-        >
+        <div id={listboxId} role="listbox" aria-label="File search results">
           {showFilesSection && filesSection ? (
             <section role="group" aria-label={FILE_SEARCH_SECTION_LABELS.files}>
               <LauncherSectionHeader

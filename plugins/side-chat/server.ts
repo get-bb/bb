@@ -1,13 +1,11 @@
-// bb-plugin-side-chat — the plugin-owned side chat (BB-70 phase 5, behind the
-// `sideChatPlugin` experiment). Side chats are plain hidden thread forks
+// bb-plugin-side-chat — the plugin-owned side chat (BB-70 phase 5). Side chats
+// are plain hidden thread forks
 // (`originKind: "fork"`, `originPluginId: "side-chat"`, `visibility:
 // "hidden"`) created idle at panel-open time; the frontend renders them with
 // the host-owned `ThreadChat` component.
 //
-// Server-owned policy lives here: the reply-anchor seed rule (replicating the
-// legacy `resolveSideChatReplyReference` semantics from
-// apps/app/src/lib/side-chat-create-request.ts), the archive cascade for this
-// plugin's forks, and the empty-fork cleanup sweep.
+// Server-owned policy lives here: the reply-anchor seed rule, the archive
+// cascade for this plugin's forks, and the empty-fork cleanup sweep.
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import { z } from "zod";
 
@@ -32,8 +30,7 @@ export interface SideChatTimelineRowLike {
 /**
  * Last conversation message's trimmed text in the timeline, or null when
  * there is none. Recurses into the turn tree because conversation rows hang
- * off turn rows; work and system rows are ignored. Mirrors the legacy
- * side-chat-create-request implementation.
+ * off turn rows; work and system rows are ignored.
  */
 export function lastConversationMessageText(
   rows: readonly SideChatTimelineRowLike[],
@@ -60,7 +57,7 @@ export function lastConversationMessageText(
 }
 
 /**
- * The reply-anchor seed policy (legacy `resolveSideChatReplyReference`):
+ * The reply-anchor seed policy:
  * null when the anchor is empty or IS the source's last conversation message
  * (the most recent exchange is the obvious referent — the fork already
  * carries full history); the trimmed anchor otherwise, where an explicit

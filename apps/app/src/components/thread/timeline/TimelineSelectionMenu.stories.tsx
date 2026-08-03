@@ -13,15 +13,10 @@ export default {
 const AGENT_TEXT =
   "The migration runs in three phases. First we backfill the new column with a default value at the server boundary, then flip reads over once every row is populated. Only after that do we drop the legacy field, so a rollback at any point keeps the table readable.";
 
-type Handlers = Pick<
-  TimelineSelectionMenuProps,
-  "onAddToChat" | "onReplyInSideChat" | "onDismiss"
->;
+type Handlers = Pick<TimelineSelectionMenuProps, "onAddToChat" | "onDismiss">;
 
 const logHandlers: Handlers = {
   onAddToChat: (text) => console.log("onAddToChat", text),
-  onReplyInSideChat: (selection) =>
-    console.log("onReplyInSideChat", selection.text),
   onDismiss: () => console.log("onDismiss"),
 };
 
@@ -41,7 +36,9 @@ function AgentMessageWithMenu({
   handlers?: Handlers;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
-  const [selection, setSelection] = useState<MessageProseSelection | null>(null);
+  const [selection, setSelection] = useState<MessageProseSelection | null>(
+    null,
+  );
 
   useLayoutEffect(() => {
     const el = spanRef.current;
@@ -142,8 +139,6 @@ export function Interactive() {
             selected="flip reads over once every row is populated"
             handlers={{
               onAddToChat: (text) => push(`Add to chat: "${text}"`),
-              onReplyInSideChat: (selection) =>
-                push(`Reply in side chat: "${selection.text}"`),
               onDismiss: () => push("Dismissed"),
             }}
           />

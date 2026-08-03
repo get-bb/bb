@@ -15,14 +15,9 @@ import {
   createConnection,
   getInstalledPluginRegistration,
   migrate,
-  setExperiments,
   type DbConnection,
 } from "@bb/db";
-import {
-  defaultExperiments,
-  PLUGIN_SDK_MAJOR,
-  PLUGIN_SDK_VERSION,
-} from "@bb/domain";
+import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -144,7 +139,6 @@ function createService(args: {
   builtinName?: string;
   autoInstall?: boolean;
   defaultEnabled?: boolean;
-  experiment?: "sideChatPlugin";
   includeBuiltin?: boolean;
   pluginId?: string;
   rootDir?: string;
@@ -174,9 +168,6 @@ function createService(args: {
                   : ("plugins" as const),
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
-              ...(args.experiment !== undefined
-                ? { experiment: args.experiment }
-                : {}),
             },
           ],
     watchBuiltinPluginSources: args.watchBuiltinPluginSources,
@@ -264,46 +255,6 @@ describe("builtin plugin reconciliation", () => {
         normalizationVersion: 1,
       },
     );
-  });
-
-  it("gates an experiment-flagged builtin on its declared experiment", async () => {
-    service = createService({
-      db,
-      dataDir: join(workDir, "data"),
-      pluginId: "builtin-fixture",
-      experiment: "sideChatPlugin",
-    });
-
-    // Off (the default): installed but not loaded, with a clear detail.
-    await service.start();
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        enabled: true,
-        status: "disabled",
-        statusDetail: 'disabled by the "sideChatPlugin" experiment',
-      },
-    ]);
-    expect(loadCount()).toBe(0);
-
-    // Live toggle on: the reconcile pass loads it.
-    setExperiments(db, { ...defaultExperiments, sideChatPlugin: true });
-    await service.onExperimentsChanged();
-    expect(service.list()).toMatchObject([
-      { id: "builtin-fixture", status: "running" },
-    ]);
-    expect(loadCount()).toBe(1);
-
-    // Live toggle off again: contributions are suppressed.
-    setExperiments(db, { ...defaultExperiments });
-    await service.onExperimentsChanged();
-    expect(service.list()).toMatchObject([
-      {
-        id: "builtin-fixture",
-        status: "disabled",
-        statusDetail: 'disabled by the "sideChatPlugin" experiment',
-      },
-    ]);
   });
 
   it("marks a persisted builtin as orphaned after it leaves the registry", async () => {
@@ -470,14 +421,12 @@ describe("builtin plugin reconciliation", () => {
     expect(loadCount()).toBe(1);
   });
 
-  it("loads the real side-chat builtin source once its experiment is on", async () => {
-    setExperiments(db, { ...defaultExperiments, sideChatPlugin: true });
+  it("loads the real side-chat builtin source", async () => {
     service = createService({
       db,
       dataDir: join(workDir, "data"),
       builtinName: "side-chat",
       pluginId: "side-chat",
-      experiment: "sideChatPlugin",
       rootDir: resolveBuiltinPluginRootPath("side-chat"),
     });
 

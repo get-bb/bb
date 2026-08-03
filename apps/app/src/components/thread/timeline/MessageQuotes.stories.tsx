@@ -45,7 +45,7 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-// Mirrors the side-chat "Replying to" anchor card in SideChatTabContent.
+// Mirrors the side-chat plugin's "Replying to" anchor card.
 function ReplyingToCard({ text }: { text: string }) {
   return (
     <div className="mx-1 flex flex-col items-start gap-1">

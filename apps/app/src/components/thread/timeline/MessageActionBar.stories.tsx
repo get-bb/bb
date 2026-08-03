@@ -23,14 +23,13 @@ export function Overview() {
   return (
     <>
       <StoryCard>
-        <StoryRow label="main timeline" hint="Fork + Reply (side chat)">
+        <StoryRow label="main timeline" hint="Copy + Fork">
           <HoverRevealStage>
             <MessageActionBar
               messageText="An agent message you can fork or reply to."
               alignment="end"
               mobileActionDisplay="inline"
               onFork={noop}
-              onSideChat={noop}
             />
           </HoverRevealStage>
         </StoryRow>
@@ -51,7 +50,6 @@ export function Overview() {
               alignment="end"
               mobileActionDisplay="inline"
               onFork={noop}
-              onSideChat={noop}
               disabled
             />
           </HoverRevealStage>

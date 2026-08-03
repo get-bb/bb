@@ -95,7 +95,6 @@ export function isSecondaryFileTab(
     case "browser":
     case "terminal":
     case "new-tab":
-    case "side-chat":
     case "plugin-panel":
       return true;
     case "thread-info":
@@ -159,7 +158,9 @@ export function upsertSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
   tab: FixedPanelTab,
 ): readonly FixedPanelTab[] {
-  const existingTabIndex = tabs.findIndex((currentTab) => currentTab.id === tab.id);
+  const existingTabIndex = tabs.findIndex(
+    (currentTab) => currentTab.id === tab.id,
+  );
   if (existingTabIndex === -1) {
     return [...tabs, tab];
   }
@@ -169,7 +170,9 @@ export function upsertSecondaryPanelTab(
     return tabs;
   }
 
-  return tabs.map((currentTab) => (currentTab.id === tab.id ? tab : currentTab));
+  return tabs.map((currentTab) =>
+    currentTab.id === tab.id ? tab : currentTab,
+  );
 }
 
 export function removeSecondaryPanelTab(
@@ -414,7 +417,6 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "browser":
       case "terminal":
       case "new-tab":
-      case "side-chat":
       case "thread-storage-file-preview":
       case "plugin-panel":
         displayable.push(tab);

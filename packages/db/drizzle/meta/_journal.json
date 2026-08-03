@@ -589,6 +589,13 @@
       "when": 1785607816930,
       "tag": "0083_host_max_permission_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "6",
+      "when": 1785791983610,
+      "tag": "0084_drop_side_chat_plugin_experiment",
+      "breakpoints": true
     }
   ]
 }

@@ -1,36 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { SenderThreadMetadata } from "@/hooks/useSenderThreadMetadataById";
 import {
-  canStartNativeSideChat,
   isPluginSideChatSenderThread,
   SIDE_CHAT_PLUGIN_ID,
 } from "./side-chat-plugin";
-
-describe("canStartNativeSideChat", () => {
-  it("goes inert while the sideChatPlugin experiment is on", () => {
-    expect(
-      canStartNativeSideChat({
-        canSpawnChild: true,
-        sideChatPluginEnabled: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("preserves the spawn-depth policy while the experiment is off", () => {
-    expect(
-      canStartNativeSideChat({
-        canSpawnChild: true,
-        sideChatPluginEnabled: false,
-      }),
-    ).toBe(true);
-    expect(
-      canStartNativeSideChat({
-        canSpawnChild: false,
-        sideChatPluginEnabled: false,
-      }),
-    ).toBe(false);
-  });
-});
 
 describe("isPluginSideChatSenderThread", () => {
   const pluginFork: SenderThreadMetadata = {

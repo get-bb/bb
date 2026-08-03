@@ -147,7 +147,6 @@ export interface ConversationMessageContentAssistantProps
    * Open a side chat anchored on this agent message. Omitted when side chats are
    * unavailable (no host secondary panel) — the bar then renders without it.
    */
-  onSideChat?: () => void;
   /**
    * Hand this agent message back to the main thread. Supplied only inside a side
    * chat; omitted on the main timeline (a main message has no main thread).
@@ -214,7 +213,6 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
-  onSideChat?: () => void;
   onSendToMain?: () => void;
   forkDisabled?: boolean;
   onSelectProse?: (selection: MessageProseSelection | null) => void;
@@ -528,7 +526,6 @@ function AssistantConversationMessage({
   id,
   onAddToChat,
   onFork,
-  onSideChat,
   onSendToMain,
   forkDisabled,
   onSelectProse,
@@ -679,7 +676,6 @@ function AssistantConversationMessage({
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
               onFork={onFork}
-              onSideChat={onSideChat}
               onSendToMain={onSendToMain}
               disabled={forkDisabled}
               pluginActions={pluginActions}
@@ -753,7 +749,6 @@ export function ConversationMessageContent(
       pluginActions={props.pluginActions}
       onAddToChat={props.onAddToChat}
       onFork={props.onFork}
-      onSideChat={props.onSideChat}
       onSendToMain={props.onSendToMain}
       forkDisabled={props.forkDisabled}
       onSelectProse={props.onSelectProse}

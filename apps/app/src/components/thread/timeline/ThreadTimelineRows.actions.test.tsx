@@ -254,7 +254,6 @@ describe("ThreadTimelineRows actions", () => {
         canSpawnChild
         onForkMessage={vi.fn()}
         onMessageAddToChat={vi.fn()}
-        onSideChatMessage={vi.fn()}
         threadRuntimeDisplayStatus="idle"
         workspaceRootPath={undefined}
       />,
@@ -278,10 +277,6 @@ describe("ThreadTimelineRows actions", () => {
     ).toContain("max-md:pointer-coarse:opacity-100");
     expect(
       latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
-    expect(
-      latestMessage?.querySelector('[aria-label="Reply in side chat"]')
-        ?.className,
     ).toContain("max-md:pointer-coarse:size-7");
   });
 
@@ -714,52 +709,8 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).not.toContain('aria-label="Add to chat"');
   });
 
-  it("passes the selected assistant row branch point to side-chat replies", async () => {
-    const onSelectionReplyInSideChat = vi.fn();
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      callback(performance.now());
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-
-    renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Select this earlier answer.",
-            sourceSeqEnd: 42,
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionReplyInSideChat={onSelectionReplyInSideChat}
-        workspaceRootPath={undefined}
-      />,
-    );
-    const textNode = screen.getByText("Select this earlier answer.").firstChild;
-    expect(textNode).not.toBeNull();
-    mockWindowSelection({
-      node: textNode!,
-      text: "this earlier answer",
-    });
-
-    fireEvent(document, new Event("selectionchange"));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Reply in side chat" }),
-      ).toBeTruthy(),
-    );
-    expect(screen.queryByRole("button", { name: "Add to chat" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
-
-    expect(onSelectionReplyInSideChat).toHaveBeenCalledWith({
-      messageText: "this earlier answer",
-      sourceSeqEnd: 42,
-    });
-  });
-
   it("does not let the previously selected row clear a new row selection", async () => {
-    const onSelectionReplyInSideChat = vi.fn();
+    const onSelectionAddToChat = vi.fn();
     const frameCallbacks: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frameCallbacks.push(callback);
@@ -791,7 +742,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        onSelectionReplyInSideChat={onSelectionReplyInSideChat}
+        onSelectionAddToChat={onSelectionAddToChat}
         workspaceRootPath={undefined}
       />,
     );
@@ -803,7 +754,7 @@ describe("ThreadTimelineRows actions", () => {
     mockWindowSelection({ node: laterTextNode!, text: "later answer" });
     fireEvent(document, new Event("selectionchange"));
     await flushSelectionFrames();
-    await screen.findByRole("button", { name: "Reply in side chat" });
+    await screen.findByRole("button", { name: "Add to chat" });
 
     const earlierTextNode = screen.getByText(
       "Select this earlier answer.",
@@ -812,14 +763,9 @@ describe("ThreadTimelineRows actions", () => {
     mockWindowSelection({ node: earlierTextNode!, text: "earlier answer" });
     fireEvent(document, new Event("selectionchange"));
     await flushSelectionFrames();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Reply in side chat" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Add to chat" }));
 
-    expect(onSelectionReplyInSideChat).toHaveBeenLastCalledWith({
-      messageText: "earlier answer",
-      sourceSeqEnd: 20,
-    });
+    expect(onSelectionAddToChat).toHaveBeenLastCalledWith("earlier answer");
   });
 
   it("shows the floating selection menu on coarse pointers", async () => {

@@ -25,7 +25,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       experiments: {
         claudeCodeMockCliTraffic: false,
         toolsHub: true,
-        sideChatPlugin: false,
       },
     },
   }),

@@ -146,8 +146,6 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
-  /** React to experiments that affect plugin loading being toggled at runtime. */
-  onExperimentsChanged(): Promise<void>;
   list(): PluginListEntry[];
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
@@ -621,8 +619,6 @@ function normalizeAgentToolResult(
   );
 }
 
-
-
 /**
  * Validate a mention provider's search() result and namespace item ids for
  * the wire ("<providerId>:<item id>"). Malformed results throw — the caller
@@ -926,7 +922,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeAll,
     disposeOne,
     emitThreadEvent,
-    exposedLoadedEntries,
     handlerStats,
     hungServices,
     identities,
@@ -939,14 +934,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     brandingAssets,
     setDevBuildProblem,
     setStatus,
-    shouldExposeLoadedPlugin,
-    shouldExposePluginId,
-    shouldLoadRow,
     sourceKind,
     stabilizingPluginIds,
     statuses,
     statusListeners,
-    unloadOneForExperimentGate,
     wireLookup,
     withArtifactLock,
     withLifecycleLock,
@@ -977,8 +968,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
-    shouldLoadRow,
-    unloadOneForExperimentGate,
     validateInstallDir: (args) => managedValidateInstallDir(args),
     syncCliSkill,
     notifyPluginsChanged,
@@ -1002,8 +991,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
-    shouldLoadRow,
-    unloadOneForExperimentGate,
     restoreRegistration,
     provenanceForRow,
     registrationMatchesForActivation,
@@ -1051,7 +1038,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }> {
     const seen = new Set<string>(RESERVED_AGENT_TOOL_NAMES);
     const out: Array<{ pluginId: string; record: PluginAgentToolRecord }> = [];
-    for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+    for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
       a.localeCompare(b),
     )) {
       for (const record of plugin.handle.agentTools) {
@@ -1065,7 +1052,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function cliContributions(): PluginCliContribution[] {
     const contributions: PluginCliContribution[] = [];
-    for (const [id, plugin] of exposedLoadedEntries()) {
+    for (const [id, plugin] of [...loaded.entries()]) {
       const registration = plugin.handle.cli.registration;
       if (!registration) continue;
       contributions.push({
@@ -1183,7 +1170,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
    */
   function capabilitySummary(
     manifest: PluginManifest | undefined,
-    exposedPlugin: LoadedPlugin | undefined,
+    loadedPlugin: LoadedPlugin | undefined,
   ): PluginCapabilitySummary {
     const capabilities: PluginCapabilitySummary = [];
     if (manifest !== undefined) {
@@ -1204,7 +1191,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         });
       }
     }
-    for (const tool of exposedPlugin?.handle.agentTools ?? []) {
+    for (const tool of loadedPlugin?.handle.agentTools ?? []) {
       capabilities.push({
         kind: "agent-tool",
         id: tool.name,
@@ -1212,7 +1199,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         detail: tool.description,
       });
     }
-    for (const provider of exposedPlugin?.handle.mentionProviders ?? []) {
+    for (const provider of loadedPlugin?.handle.mentionProviders ?? []) {
       capabilities.push({
         kind: "thread-integration",
         id: `mention:${provider.id}`,
@@ -1231,16 +1218,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const runtime = statuses.get(row.id);
         const stats = handlerStats.get(row.id);
         const loadedPlugin = loaded.get(row.id);
-        const exposedPlugin =
-          loadedPlugin !== undefined && shouldExposeLoadedPlugin(loadedPlugin)
-            ? loadedPlugin
-            : undefined;
-        const cliRegistration = exposedPlugin?.handle.cli.registration;
-        // A non-exposed (disabled/incompatible/errored) plugin keeps its
+        const cliRegistration = loadedPlugin?.handle.cli.registration;
+        // An unloaded (disabled/incompatible/errored) plugin keeps its
         // identity via the static-manifest cache, so it still shows its real
         // name, icon, and logo instead of falling back to the raw id + glyph.
         const identity =
-          exposedPlugin === undefined ? identities.get(row.id) : undefined;
+          loadedPlugin === undefined ? identities.get(row.id) : undefined;
         return {
           id: row.id,
           source: row.source,
@@ -1259,16 +1242,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           updateState: updateStateForRow(row),
           enabled: row.enabled,
           description:
-            exposedPlugin?.manifest.description ??
+            loadedPlugin?.manifest.description ??
             identity?.manifest.description ??
             null,
-          name: exposedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
           icon:
-            exposedPlugin?.manifest.branding.icon ??
+            loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??
             null,
           iconUrl:
-            (exposedPlugin !== undefined
+            (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.compactIcon?.url
               : identity?.brandingAssets.compactIcon?.url) ?? null,
           status: runtime?.status ?? (row.enabled ? "error" : "disabled"),
@@ -1282,7 +1265,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           handlerStats: stats
             ? { ...stats }
             : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-          services: (exposedPlugin?.services ?? []).map((service) => ({
+          services: (loadedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,
           })),
@@ -1300,21 +1283,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             ? { name: cliRegistration.name, summary: cliRegistration.summary }
             : null,
           capabilities: capabilitySummary(
-            exposedPlugin?.manifest ?? identity?.manifest,
-            exposedPlugin,
+            loadedPlugin?.manifest ?? identity?.manifest,
+            loadedPlugin,
           ),
           hasSettings:
-            exposedPlugin !== undefined &&
-            Object.keys(exposedPlugin.handle.settings.descriptors).length > 0,
+            loadedPlugin !== undefined &&
+            Object.keys(loadedPlugin.handle.settings.descriptors).length > 0,
           app: appBundles.get(row.id)?.state ?? { hasApp: false, bundle: null },
           // Rich logos come from the live runtime for an exposed plugin, else
           // from the static-identity cache.
           logoUrl:
-            (exposedPlugin !== undefined
+            (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logo?.url
               : identity?.brandingAssets.logo?.url) ?? null,
           logoDarkUrl:
-            (exposedPlugin !== undefined
+            (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logoDark?.url
               : identity?.brandingAssets.logoDark?.url) ?? null,
         };
@@ -1428,7 +1411,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             reloadPlugin: async () => {
               await withLifecycleLock(row.id, async () => {
                 const current = getInstalledPlugin(deps.db, row.id);
-                if (current === undefined || !shouldLoadRow(current)) return;
+                if (current === undefined) return;
                 await disposeOne(row.id);
                 await loadOne(current);
               });
@@ -1457,12 +1440,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async stop() {
       for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
       await disposeAll();
-      await syncCliSkill();
-      notifyPluginsChanged();
-    },
-
-    async onExperimentsChanged() {
-      await loadAll();
       await syncCliSkill();
       notifyPluginsChanged();
     },
@@ -1561,10 +1538,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
         if (enabled) {
           const row = getInstalledPlugin(deps.db, id);
-          if (row && shouldLoadRow(row)) {
+          if (row) {
             await withLifecycleLock(id, () => loadOne(row));
-          } else if (row) {
-            await withLifecycleLock(id, () => unloadOneForExperimentGate(row));
           }
         } else {
           await withLifecycleLock(id, async () => {
@@ -1584,7 +1559,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async reload(id) {
       const rows = listInstalledPlugins(deps.db).filter(
-        (row) => (id === undefined || row.id === id) && shouldLoadRow(row),
+        (row) => id === undefined || row.id === id,
       );
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
         await withLifecycleLock(row.id, () => loadOne(row));
@@ -1594,7 +1569,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getApi(id) {
-      if (!shouldExposePluginId(id)) return undefined;
       return loaded.get(id)?.handle.api;
     },
 
@@ -1602,7 +1576,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       // Honest gate: assets are only downloadable while the plugin runtime
       // is live. A disabled/errored/removed plugin's recorded snapshot may
       // still ride the inventory for display, but its bytes are not served.
-      if (!shouldExposePluginId(id)) return undefined;
       if (!loaded.has(id)) return undefined;
       const assets = appBundles.get(id)?.assets;
       if (!assets) return undefined;
@@ -1613,9 +1586,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     getBrandingAsset(id, variant) {
       // Branding is identity, not runtime: serve it for a disabled or
-      // incompatible plugin too, matching the inventory. Still gated by
-      // shouldExposePluginId (experiment gate / not-removed).
-      if (!shouldExposePluginId(id)) return undefined;
+      // incompatible plugin too, matching the inventory.
       const set = loaded.has(id)
         ? brandingAssets.get(id)
         : identities.get(id)?.brandingAssets;
@@ -1634,7 +1605,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async getSettings(id) {
-      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       return buildPluginSettingsView({
@@ -1646,7 +1616,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async updateSettings(id, values) {
-      if (!shouldExposePluginId(id)) return undefined;
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
       const storeArgs = {
@@ -1781,11 +1750,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           argv.includes("--json"),
         );
       const plugin = loaded.get(id);
-      if (!shouldExposePluginId(id)) {
-        return fail(
-          `plugin "${id}" is turned off by an experiment in Settings → Experiments.`,
-        );
-      }
       if (!plugin) {
         const row = getInstalledPlugin(deps.db, id);
         if (!row) return fail(`unknown plugin "${id}"`);
@@ -1825,7 +1789,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     listSkillRootContributions() {
-      return exposedLoadedEntries()
+      return [...loaded.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .flatMap(([pluginId, plugin]) =>
           plugin.manifest.skillsRootPaths.map((rootPath) => ({
@@ -1853,7 +1817,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const selectedSkillIdsByPlugin = new Map<string, ReadonlySet<string>>();
       const dynamicInstructions: Array<{ pluginId: string; text: string }> = [];
 
-      for (const [pluginId, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+      for (const [pluginId, plugin] of [...loaded.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         const pluginTools = allTools.filter(
@@ -1922,7 +1886,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listInstructionContributions() {
       const out: PluginInstructionContribution[] = [];
-      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         const provider = plugin.handle.instructionProvider;
@@ -1973,7 +1937,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listMentionProviderContributions() {
       const contributions: PluginMentionProviderContribution[] = [];
-      for (const [id, plugin] of exposedLoadedEntries().sort(([a], [b]) =>
+      for (const [id, plugin] of [...loaded.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         for (const record of plugin.handle.mentionProviders) {
@@ -1989,7 +1953,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async searchMentions(args) {
-      const entries = exposedLoadedEntries().sort(([a], [b]) =>
+      const entries = [...loaded.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
       );
       if (entries.length === 0) return [];
@@ -2054,12 +2018,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async resolveMention({ pluginId, itemId }) {
-      if (!shouldExposePluginId(pluginId)) {
-        return {
-          ok: false,
-          error: `plugin "${pluginId}" is turned off by an experiment in Settings → Experiments.`,
-        };
-      }
       const separatorIndex = itemId.indexOf(":");
       const providerId =
         separatorIndex > 0 ? itemId.slice(0, separatorIndex) : "";

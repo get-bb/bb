@@ -148,19 +148,11 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    const previous = getExperiments(deps.db);
     setExperiments(deps.db, payload);
     // The same kind a config reload broadcasts: every window re-reads
     // /system/config and re-gates its experiment-flagged surfaces.
     deps.hub.notifySystem(["config-changed"]);
-    const next = getExperiments(deps.db);
-    if (previous.sideChatPlugin !== next.sideChatPlugin) {
-      // Live toggle: plugin-affecting experiments load/unload matching rows.
-      void pluginService.onExperimentsChanged().catch((error) => {
-        deps.logger.error({ err: error }, "Plugin experiment toggle failed");
-      });
-    }
-    return context.json(next);
+    return context.json(getExperiments(deps.db));
   });
 
   put(routes.appearance, async (context, payload) => {

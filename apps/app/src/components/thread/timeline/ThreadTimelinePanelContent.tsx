@@ -24,10 +24,8 @@ export interface ThreadTimelinePanelContentProps {
   missingThreadLabel?: string;
   onForkMessage?: ThreadTimelineSurfaceProps["onForkMessage"];
   onMessageAddToChat?: ThreadTimelineSurfaceProps["onMessageAddToChat"];
-  onSideChatMessage?: ThreadTimelineSurfaceProps["onSideChatMessage"];
   onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
-  onSelectionReplyInSideChat?: ThreadTimelineSurfaceProps["onSelectionReplyInSideChat"];
   consumerMessageActions?: ThreadTimelineSurfaceProps["consumerMessageActions"];
   includePluginMessageActions?: ThreadTimelineSurfaceProps["includePluginMessageActions"];
   onOpenLink?: ThreadTimelineSurfaceProps["onOpenLink"];
@@ -54,10 +52,8 @@ export function ThreadTimelinePanelContent({
   missingThreadLabel = "This thread is no longer available.",
   onForkMessage,
   onMessageAddToChat,
-  onSideChatMessage,
   onSendToMainMessage,
   onSelectionAddToChat,
-  onSelectionReplyInSideChat,
   consumerMessageActions,
   includePluginMessageActions,
   onOpenLink,
@@ -144,10 +140,8 @@ export function ThreadTimelinePanelContent({
       leadingContent={leadingContent}
       onForkMessage={onForkMessage}
       onMessageAddToChat={onMessageAddToChat}
-      onSideChatMessage={onSideChatMessage}
       onSendToMainMessage={onSendToMainMessage}
       onSelectionAddToChat={onSelectionAddToChat}
-      onSelectionReplyInSideChat={onSelectionReplyInSideChat}
       consumerMessageActions={consumerMessageActions}
       includePluginMessageActions={includePluginMessageActions}
       onLoadOlderRows={

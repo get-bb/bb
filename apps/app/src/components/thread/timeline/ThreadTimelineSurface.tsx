@@ -21,9 +21,7 @@ import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineAddToChatHandler,
-  ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
-  ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -49,10 +47,8 @@ export interface ThreadTimelineSurfaceProps {
   leadingContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
-  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
-  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   /** Surface-scoped consumer actions for the per-message action bar. */
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   /** Forwarded to ThreadTimelineRows; see its doc. */
@@ -152,10 +148,8 @@ export function ThreadTimelineSurface({
   leadingContent,
   onForkMessage,
   onMessageAddToChat,
-  onSideChatMessage,
   onSendToMainMessage,
   onSelectionAddToChat,
-  onSelectionReplyInSideChat,
   consumerMessageActions,
   includePluginMessageActions,
   onLoadOlderRows,
@@ -225,10 +219,8 @@ export function ThreadTimelineSurface({
           threadChildOrigin={threadChildOrigin}
           onForkMessage={onForkMessage}
           onMessageAddToChat={onMessageAddToChat}
-          onSideChatMessage={onSideChatMessage}
           onSendToMainMessage={onSendToMainMessage}
           onSelectionAddToChat={onSelectionAddToChat}
-          onSelectionReplyInSideChat={onSelectionReplyInSideChat}
           consumerMessageActions={consumerMessageActions}
           includePluginMessageActions={includePluginMessageActions}
           onOpenLink={onOpenLink}

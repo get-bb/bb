@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -66,9 +61,6 @@ describe("TimelineSelectionMenu", () => {
     );
 
     expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Reply in side chat" }),
-    ).toBeNull();
     expect(
       screen
         .getByRole("button", { name: "Add to chat" })
@@ -194,26 +186,6 @@ describe("TimelineSelectionMenu", () => {
 
     expect(document.activeElement).toBe(
       screen.getByRole("textbox", { name: "Chat composer" }),
-    );
-  });
-
-  it("passes the selection branch point to side-chat replies", () => {
-    const onReplyInSideChat = vi.fn();
-    render(
-      <TimelineSelectionMenu
-        selection={makeSelection()}
-        onDismiss={vi.fn()}
-        onReplyInSideChat={onReplyInSideChat}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Reply in side chat" }));
-
-    expect(onReplyInSideChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "selected text",
-        sourceSeqEnd: 12,
-      }),
     );
   });
 });

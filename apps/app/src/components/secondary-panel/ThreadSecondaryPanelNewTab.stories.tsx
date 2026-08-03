@@ -368,12 +368,7 @@ function useStoryQueryClient({
       makeThreadStoragePathResponse(threadStoragePaths),
     );
     return queryClient;
-  }, [
-    currentThreadId,
-    initialQuery,
-    threadStoragePaths,
-    workspacePaths,
-  ]);
+  }, [currentThreadId, initialQuery, threadStoragePaths, workspacePaths]);
 }
 
 function SeededNewTabPage({
@@ -396,7 +391,6 @@ function SeededNewTabPage({
       focusRequest={0}
       initialQuery={initialQuery}
       onSelect={onSelect}
-      onStartSideChat={() => undefined}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
     />
@@ -471,12 +465,13 @@ function NewTabPanelStory({
     return [
       {
         id: `${selection.source}:${selection.path}`,
-        filename:
-          getFileNameFromPath({ path: selection.path }),
+        filename: getFileNameFromPath({ path: selection.path }),
         isActive: true,
         leadingVisual: (
           <Icon
-            name={resolveRightPanelFileVisual({ path: selection.path }).iconName}
+            name={
+              resolveRightPanelFileVisual({ path: selection.path }).iconName
+            }
             className="size-3.5"
             aria-hidden
           />
@@ -520,8 +515,8 @@ function NewTabPanelStory({
         <p className="font-medium text-foreground">
           Selected{" "}
           {outcome.selection.source === "workspace"
-              ? "workspace file"
-              : "thread storage file"}
+            ? "workspace file"
+            : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
           {outcome.selection.path}
@@ -601,10 +596,7 @@ export function NewTab() {
             workspacePaths={[]}
           />
         </StoryRow>
-        <StoryRow
-          label="search results"
-          hint="typed search shows file results"
-        >
+        <StoryRow label="search results" hint="typed search shows file results">
           <NewTabPanelStory
             currentThreadId={SEARCH_THREAD_ID}
             initialQuery="review"

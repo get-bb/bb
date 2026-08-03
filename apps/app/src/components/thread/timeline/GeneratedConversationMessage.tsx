@@ -238,14 +238,12 @@ export function generatedConversationTitle({
       : childOrigin === "side-chat"
         ? "Replying to"
         : "Message from";
-  // A side-chat source opens as a tab in this thread (a title action), so its
+  // A side-chat source opens in the plugin's panel tab (a title action), so its
   // name carries no route link; other sources navigate to the source thread.
   const sideChatAction =
-    sourceIsSideChat && sourceThreadId !== null
-      ? ({ kind: "open-side-chat", threadId: sourceThreadId } as const)
-      : sourceIsPluginSideChat && sourceThreadId !== null
-        ? ({ kind: "open-plugin-side-chat", threadId: sourceThreadId } as const)
-        : null;
+    sourceIsPluginSideChat && sourceThreadId !== null
+      ? ({ kind: "open-plugin-side-chat", threadId: sourceThreadId } as const)
+      : null;
   const sourceLink =
     sourceThreadId === null || sideChatAction !== null
       ? null

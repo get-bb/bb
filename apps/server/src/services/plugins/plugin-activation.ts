@@ -56,8 +56,6 @@ export interface PluginActivationContext {
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   disposeOne: (id: string) => Promise<void>;
   loadOne: (row: InstalledPluginRow) => Promise<void>;
-  shouldLoadRow: (row: InstalledPluginRow) => boolean;
-  unloadOneForExperimentGate: (row: InstalledPluginRow) => Promise<void>;
   restoreRegistration: (row: InstalledPluginRow) => void;
   provenanceForRow: (row: InstalledPluginRow) => PluginProvenance;
   registrationMatchesForActivation: (
@@ -89,8 +87,6 @@ export function createPluginActivation(context: PluginActivationContext) {
     withLifecycleLock,
     disposeOne,
     loadOne,
-    shouldLoadRow,
-    unloadOneForExperimentGate,
     restoreRegistration,
     provenanceForRow,
     registrationMatchesForActivation,
@@ -165,8 +161,7 @@ export function createPluginActivation(context: PluginActivationContext) {
       );
     }
     const previous = getInstalledPlugin(deps.db, snapshot.pluginId);
-    if (previous && shouldLoadRow(previous)) await loadOne(previous);
-    else if (previous) await unloadOneForExperimentGate(previous);
+    if (previous) await loadOne(previous);
     const runtime = statuses.get(snapshot.pluginId);
     if (runtime?.status === "error") {
       throw new Error(
@@ -238,8 +233,7 @@ export function createPluginActivation(context: PluginActivationContext) {
         });
       } catch (error) {
         const previous = getInstalledPlugin(deps.db, args.row.id);
-        if (previous && shouldLoadRow(previous)) await loadOne(previous);
-        else if (previous) await unloadOneForExperimentGate(previous);
+        if (previous) await loadOne(previous);
         throw error;
       }
       let pointerWritten = false;
@@ -269,8 +263,7 @@ export function createPluginActivation(context: PluginActivationContext) {
         pointerWritten = true;
         const current = getInstalledPlugin(deps.db, args.row.id);
         stabilizingPluginIds.add(args.row.id);
-        if (current && shouldLoadRow(current)) await loadOne(current);
-        else if (current) await unloadOneForExperimentGate(current);
+        if (current) await loadOne(current);
         const immediate = statuses.get(args.row.id);
         if (immediate?.status === "error") {
           throw new Error(immediate.detail ?? "plugin failed to load");
@@ -315,8 +308,7 @@ export function createPluginActivation(context: PluginActivationContext) {
       } catch (error) {
         if (!pointerWritten) {
           const previous = getInstalledPlugin(deps.db, args.row.id);
-          if (previous && shouldLoadRow(previous)) await loadOne(previous);
-          else if (previous) await unloadOneForExperimentGate(previous);
+          if (previous) await loadOne(previous);
           throw error;
         }
         const detail = error instanceof Error ? error.message : String(error);

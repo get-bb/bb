@@ -5,7 +5,6 @@ import {
   createGitDiffFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
-  createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
@@ -213,23 +212,21 @@ describe("secondaryPanelTabState", () => {
     ]);
   });
 
-  it("replaces the transient new tab when starting a side chat", () => {
+  it("replaces the transient new tab when opening a browser tab", () => {
     const newTab = createNewTabFixedPanelTab();
-    const sideChatTab = createSideChatFixedPanelTab({
-      sourceMessageText: "",
-      title: "Side chat",
+    const browserTab = createBrowserFixedPanelTab({
+      environmentId: null,
+      url: "https://example.com",
     });
     let state = createEmptyFixedPanelTabsState();
 
     state = openSecondaryPanelTabInState({ state, tab: newTab });
     state = replaceNewTabWithSecondaryPanelTabInState({
       state,
-      tab: sideChatTab,
+      tab: browserTab,
     });
 
-    expect(state.secondary.activeTabId).toBe(sideChatTab.id);
-    expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([
-      sideChatTab.id,
-    ]);
+    expect(state.secondary.activeTabId).toBe(browserTab.id);
+    expect(state.secondary.tabs.map((tab) => tab.id)).toEqual([browserTab.id]);
   });
 });

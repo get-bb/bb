@@ -83,7 +83,6 @@ function updateExperiment(
   switch (key) {
     case "claudeCodeMockCliTraffic":
     case "toolsHub":
-    case "sideChatPlugin":
       return experimentsSchema.parse({ ...experiments, [key]: enabled });
     default:
       throw new Error(`Unknown experiment '${key}'.`);

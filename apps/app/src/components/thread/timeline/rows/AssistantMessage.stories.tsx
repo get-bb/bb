@@ -191,7 +191,7 @@ const mobileReviewRows: TimelineRow[] = [
     sourceSeqStart: 20,
     sourceSeqEnd: 20,
     role: "assistant",
-    text: "The mobile footer is ready. Earlier agent messages keep their actions in the overflow menu, while this final response exposes Copy, Fork, and Reply in side chat inline.",
+    text: "The mobile footer is ready. Earlier agent messages keep their actions in the overflow menu, while this final response exposes Copy and Fork inline.",
   }),
 ];
 
@@ -258,7 +258,6 @@ export function MobileActionsAndSelection() {
         [aria-label="Fork into new thread"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_earlier_agent_message"]
-        [aria-label="Reply in side chat"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_earlier_user_message"]
         [aria-label="Add to chat"] {
@@ -285,7 +284,6 @@ export function MobileActionsAndSelection() {
         [aria-label="Fork into new thread"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Reply in side chat"],
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_user_message"]
         [aria-label="Add to chat"] {
@@ -305,7 +303,6 @@ export function MobileActionsAndSelection() {
         [aria-label="Fork into new thread"] svg,
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Reply in side chat"] svg,
       .mobile-agent-actions-review
         [data-timeline-row-id="mobile_actions_latest_user_message"]
         [aria-label="Add to chat"] svg {
@@ -322,8 +319,6 @@ export function MobileActionsAndSelection() {
         canSpawnChild
         onForkMessage={noop}
         onSelectionAddToChat={noop}
-        onSelectionReplyInSideChat={noop}
-        onSideChatMessage={noop}
         threadId={MOBILE_REVIEW_THREAD_ID}
         threadRuntimeDisplayStatus="idle"
         timelineRows={mobileReviewRows}

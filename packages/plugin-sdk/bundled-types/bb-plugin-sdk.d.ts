@@ -242,7 +242,6 @@ type Environment = z$1.infer<typeof environmentSchema>;
 declare const experimentsSchema: z$1.ZodObject<{
     claudeCodeMockCliTraffic: z$1.ZodBoolean;
     toolsHub: z$1.ZodBoolean;
-    sideChatPlugin: z$1.ZodBoolean;
 }, z$1.core.$strip>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
 
@@ -6691,7 +6690,6 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     experiments: z$1.ZodObject<{
         claudeCodeMockCliTraffic: z$1.ZodBoolean;
         toolsHub: z$1.ZodBoolean;
-        sideChatPlugin: z$1.ZodBoolean;
     }, z$1.core.$strip>;
     appearance: z$1.ZodObject<{
         themeId: z$1.ZodString;

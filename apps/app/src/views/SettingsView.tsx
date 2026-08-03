@@ -212,8 +212,6 @@ export interface ExperimentsSettingsSectionProps {
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onToolsHubEnabledChange: (enabled: boolean) => void;
   toolsHubEnabled: boolean;
-  onSideChatPluginEnabledChange: (enabled: boolean) => void;
-  sideChatPluginEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -922,16 +920,12 @@ export function ProviderSettingsSection({
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
-const SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL = "Side chat plugin";
-
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onToolsHubEnabledChange,
   toolsHubEnabled,
-  onSideChatPluginEnabledChange,
-  sideChatPluginEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -961,18 +955,6 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onToolsHubEnabledChange}
             aria-label={EXTENSIONS_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
-          description="Replace the native side chat with the builtin side-chat plugin. Hides the native Reply in side chat entry points while on."
-        >
-          <Switch
-            checked={sideChatPluginEnabled}
-            disabled={disabled}
-            onCheckedChange={onSideChatPluginEnabledChange}
-            aria-label={SIDE_CHAT_PLUGIN_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
       </div>
@@ -1139,13 +1121,6 @@ export function SettingsView() {
           })
         }
         toolsHubEnabled={experiments.toolsHub}
-        onSideChatPluginEnabledChange={(enabled) =>
-          updateExperimentsMutation.mutate({
-            ...experiments,
-            sideChatPlugin: enabled,
-          })
-        }
-        sideChatPluginEnabled={experiments.sideChatPlugin}
       />
     );
   } else if (activeSection === "plugins") {

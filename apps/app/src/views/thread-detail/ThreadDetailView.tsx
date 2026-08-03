@@ -1,17 +1,10 @@
-import {
-  startTransition,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
-  type ThreadTimelineSideChatMessageHandler,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
@@ -140,9 +133,7 @@ import {
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import { setBrowserChromeRevealHeld } from "@/components/secondary-panel/browserChromeReveal";
-import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import {
-  canStartNativeSideChat,
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
@@ -471,21 +462,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
-  // While the sideChatPlugin experiment is ON, every legacy side-chat surface
-  // (tab entries, deck, active routing, reopen actions) is suppressed without
-  // touching the persisted tab state — turning it OFF restores them unchanged.
-  const sideChatPluginEnabled =
-    systemConfigQuery.data?.experiments.sideChatPlugin === true;
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
-  const persistedActiveFixedSecondaryTab = getActiveFixedSecondaryTab({
+  const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
-  const activeFixedSecondaryTab =
-    sideChatPluginEnabled &&
-    persistedActiveFixedSecondaryTab?.kind === "side-chat"
-      ? null
-      : persistedActiveFixedSecondaryTab;
   const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
     isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
@@ -604,23 +585,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
     activePluginPanelTab,
-    activeSideChatTabId,
-    activateSideChatTab,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
     closeTab,
-    closeSideChatTab,
     isNewTabActive,
     openTab,
     openPluginPanel,
-    openSideChat,
-    openExistingSideChatTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
-    setSideChatThreadId,
-    sideChatTabs,
     updateBrowserTab,
   } = useThreadFileTabs({
     panelStateId: threadId,
@@ -628,7 +602,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environmentId: thread?.environmentId,
     retainedTerminalId,
     storageFiles: threadStorageFiles?.files,
-    suppressSideChatTabs: sideChatPluginEnabled,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
   const pluginPanelActions = usePluginPanelActions({
@@ -883,10 +856,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     [forkThreadFromMessage],
   );
   const isForkAvailable = isThreadForkable(thread ?? null);
-  const canStartSideChat = canStartNativeSideChat({
-    canSpawnChild: thread?.canSpawnChild ?? false,
-    sideChatPluginEnabled,
-  });
   const dismissCompactKeyboard = useCallback(() => {
     if (!renderSecondaryPanelAsDrawer) {
       return;
@@ -1046,80 +1015,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       },
       [openCompactDrawer, openPluginPanel, pluginThreadPanelActions],
     );
-  const handleSideChatMessage =
-    useCallback<ThreadTimelineSideChatMessageHandler>(
-      (target) => {
-        if (!canStartSideChat || !threadId) return;
-        dismissCompactKeyboard();
-        // Compact panels are drawer-local rather than persisted-open. Creating
-        // the tab alone therefore leaves the main timeline visible. Open that
-        // lightweight shell immediately, then let the side-chat's model and
-        // provider setup render as non-urgent work.
-        if (renderSecondaryPanelAsDrawer) {
-          openCompactDrawer();
-          startTransition(() => {
-            openSideChat({
-              sourceThreadId: threadId,
-              sourceMessageText: target.messageText,
-              sourceSeqEnd: target.sourceSeqEnd,
-            });
-          });
-          return;
-        }
-        openSideChat({
-          sourceThreadId: threadId,
-          sourceMessageText: target.messageText,
-          sourceSeqEnd: target.sourceSeqEnd,
-        });
-      },
-      [
-        canStartSideChat,
-        dismissCompactKeyboard,
-        openCompactDrawer,
-        openSideChat,
-        renderSecondaryPanelAsDrawer,
-        threadId,
-      ],
-    );
-  // A side chat started from the new-tab page has no anchor message, so it forks
-  // from the thread's tip (empty source text ⇒ no "replying to" reference).
-  const handleStartSideChat = useCallback(() => {
-    if (!canStartSideChat || !threadId) return;
-    dismissCompactKeyboard();
-    if (renderSecondaryPanelAsDrawer) {
-      openCompactDrawer();
-      startTransition(() => {
-        openSideChat({
-          replaceNewTab: true,
-          sourceThreadId: threadId,
-          sourceMessageText: "",
-        });
-      });
-      return;
-    }
-    openSideChat({
-      replaceNewTab: true,
-      sourceThreadId: threadId,
-      sourceMessageText: "",
-    });
-  }, [
-    canStartSideChat,
-    dismissCompactKeyboard,
-    openCompactDrawer,
-    openSideChat,
-    renderSecondaryPanelAsDrawer,
-    threadId,
-  ]);
-  // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
-  // as the side-chat source text), so the reply's visible anchor and the
-  // context handed to the agent are exactly the highlighted text — unlike the
-  // per-message Reply button, which anchors on the whole message.
-  const handleSelectionReplyInSideChat = useCallback(
-    (target: { messageText: string; sourceSeqEnd?: number }) => {
-      handleSideChatMessage(target);
-    },
-    [handleSideChatMessage],
-  );
   const openBrowserTabAndReveal = useCallback(
     (url?: string) => {
       openBrowserTab(url);
@@ -1369,8 +1264,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ) {
       if (activeFixedSecondaryTab.kind === "terminal") {
         handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
-      } else if (activeFixedSecondaryTab.kind === "side-chat") {
-        closeSideChatTab(activeFixedSecondaryTab.id);
       } else {
         closeTab(activeFixedSecondaryTab.id);
       }
@@ -1383,7 +1276,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   }, [
     activeFixedSecondaryTab,
     closeSecondaryPanel,
-    closeSideChatTab,
     closeTab,
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
@@ -1538,18 +1430,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
-          case "side-chat":
-            return {
-              id: tab.id,
-              filename: tab.title,
-              isActive: tab.id === activeSideChatTabId,
-              leadingVisual: (
-                <Icon name="SideChat" className="size-3.5" aria-hidden />
-              ),
-              statusLabel: null,
-              onSelect: () => activateSideChatTab(tab.id),
-              onClose: () => closeSideChatTab(tab.id),
-            };
           case "plugin-panel": {
             const actionIcon =
               pluginThreadPanelActions.find(
@@ -1578,11 +1458,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     );
     return tabs.length > 0 ? tabs : undefined;
   }, [
-    activateSideChatTab,
     activeFixedSecondaryTabId,
-    activeSideChatTabId,
     closeTab,
-    closeSideChatTab,
     handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
@@ -1990,14 +1867,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           return () => {
             openSecondaryPanelDiffFile(action.path);
           };
-        case "open-side-chat":
-          // The plugin owns side chats while its experiment is ON: the legacy
-          // reopen affordance goes inert (plain text) instead of opening a
-          // suppressed tab.
-          if (sideChatPluginEnabled) return null;
-          return () => {
-            openExistingSideChatTab(action.threadId);
-          };
         case "open-plugin-side-chat":
           return () => {
             handleOpenTimelinePluginPanel({
@@ -2016,13 +1885,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           return assertNever(action);
       }
     },
-    [
-      openSecondaryPanelDiffFile,
-      openExistingSideChatTab,
-      handleOpenTimelinePluginPanel,
-      sideChatPluginEnabled,
-      threadId,
-    ],
+    [openSecondaryPanelDiffFile, handleOpenTimelinePluginPanel, threadId],
   );
   const metadataStorage = useMemo(
     () => ({
@@ -2543,7 +2406,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={handleSelectFileSearchResult}
-      onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
       pluginActions={pluginPanelActions}
@@ -2586,26 +2448,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
-  // Side-chat tabs, like browser tabs, keep a live conversation surface mounted
-  // across tab switches so streaming + composer state survive deactivation; the
-  // deck self-collapses when no side-chat tab is active, and suppresses the
-  // normal file-content slot when one is.
-  const isSideChatTabActive = activeSideChatTabId !== null;
-  // While the sideChatPlugin experiment is ON the legacy deck never renders
-  // (its tab list and active id are already suppressed at the hook, so this
-  // also drops the keep-mounted per-tab conversation surfaces).
-  const sideChatDeck = sideChatPluginEnabled ? null : (
-    <SideChatTabDeck
-      sideChatTabs={sideChatTabs}
-      activeSideChatTabId={activeSideChatTabId}
-      sourceThread={thread}
-      sourceEnvironment={environment ?? null}
-      sourceTimelineRows={timelineRows}
-      resolveMentionLink={resolveMentionLink}
-      onSetThreadId={setSideChatThreadId}
-    />
-  );
-
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -2688,8 +2530,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               )?.layout === "flush",
             renderBrowserDeck,
             isBrowserTabActive,
-            sideChatDeck,
-            isSideChatTabActive,
             isOpen: isSecondaryPanelOpen,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
@@ -2713,14 +2553,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             timelineError: Boolean(timelineError),
             onForkMessage: isForkAvailable ? handleForkMessage : undefined,
             onMessageAddToChat: handleSelectionAddToChat,
-            onSideChatMessage: canStartSideChat
-              ? handleSideChatMessage
-              : undefined,
             onSendToMainMessage: handleSendToMainMessage,
             onSelectionAddToChat: handleSelectionAddToChat,
-            onSelectionReplyInSideChat: canStartSideChat
-              ? handleSelectionReplyInSideChat
-              : undefined,
             onLoadOlderRows: loadOlderTimelineRows,
             onOpenLink: handleOpenTimelineLink,
             onOpenLocalFileLink: handleOpenTimelineLocalFileLink,

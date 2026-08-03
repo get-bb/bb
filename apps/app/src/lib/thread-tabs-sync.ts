@@ -13,6 +13,7 @@ import {
 import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
+  type FixedPanelTab,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
 
@@ -33,14 +34,30 @@ const writeQueues = new WeakMap<QueryClient, Map<string, Promise<void>>>();
 const pendingWriteCounts = new WeakMap<QueryClient, Map<string, number>>();
 const attemptedLocalMigrations = new WeakMap<QueryClient, Set<string>>();
 
+/**
+ * The native side chat is gone, but the thread-tabs contract still carries its
+ * kind for rows persisted before the removal. Drop those tabs on read so old
+ * threads load with the rest of their strip intact.
+ */
+function withoutLegacySideChatTabs(
+  tabs: readonly ThreadTab[],
+): readonly FixedPanelTab[] {
+  return tabs.filter(
+    (tab): tab is Exclude<ThreadTab, { kind: "side-chat" }> =>
+      tab.kind !== "side-chat",
+  );
+}
+
 export function areThreadTabListsEquivalent(
   left: readonly ThreadTab[],
   right: readonly ThreadTab[],
 ): boolean {
+  const leftTabs = withoutLegacySideChatTabs(left);
+  const rightTabs = withoutLegacySideChatTabs(right);
   return (
-    left.length === right.length &&
-    left.every((tab, index) => {
-      const other = right[index];
+    leftTabs.length === rightTabs.length &&
+    leftTabs.every((tab, index) => {
+      const other = rightTabs[index];
       return other !== undefined && areFixedPanelTabsEquivalent(tab, other);
     })
   );
@@ -53,7 +70,8 @@ export function reconcileFixedPanelTabsState(
   if (areThreadTabListsEquivalent(current.secondary.tabs, serverTabs)) {
     return current;
   }
-  const activeTabId = serverTabs.some(
+  const tabs = withoutLegacySideChatTabs(serverTabs);
+  const activeTabId = tabs.some(
     (tab) => tab.id === current.secondary.activeTabId,
   )
     ? current.secondary.activeTabId
@@ -63,7 +81,7 @@ export function reconcileFixedPanelTabsState(
     secondary: {
       ...current.secondary,
       activeTabId,
-      tabs: serverTabs,
+      tabs,
     },
   };
 }

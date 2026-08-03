@@ -20,18 +20,10 @@ export const experimentsSchema = z.object({
    * gate only; it does not load or unload extensions.
    */
   toolsHub: z.boolean(),
-  /**
-   * Side chat plugin: replaces the native side-chat implementation with the
-   * builtin `side-chat` plugin. ON hides the native "Reply in side chat"
-   * entry points and loads the plugin; OFF suppresses the plugin and keeps
-   * the legacy path fully functional.
-   */
-  sideChatPlugin: z.boolean(),
 });
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
   toolsHub: false,
-  sideChatPlugin: false,
 };
