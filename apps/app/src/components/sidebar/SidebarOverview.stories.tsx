@@ -43,7 +43,7 @@ import {
 } from "@/hooks/queries/query-keys";
 import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
+import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -54,11 +54,11 @@ import {
 import {
   AUTOMATIONS_PLUGIN_ID,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
+  getSkillsRoutePath,
 } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
-  pluginNavSidebarCollapsedAtom,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -350,12 +350,11 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 px-2 py-2">
-            <ProjectListActionButtons onNewChat={noop} onOpenTools={noop} />
+            <ProjectListActionButtons onNewChat={noop} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <PluginNavSidebarSection />
-            {children}
-          </div>
+          {/* Extensions rides in the nav list, exactly as AppSidebar mounts it. */}
+          <PluginNavSidebarItems toolsRoutePath={getSkillsRoutePath()} />
+          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
               type="button"
@@ -497,11 +496,7 @@ function StoryPluginPageRegistrations() {
 }
 
 function LoadedSidebarWithPluginPages() {
-  const [store] = useState(() => {
-    const storyStore = createStore();
-    storyStore.set(pluginNavSidebarCollapsedAtom, false);
-    return storyStore;
-  });
+  const [store] = useState(() => createStore());
   return (
     <Provider store={store}>
       <StoryPluginPageRegistrations />
@@ -838,7 +833,7 @@ export function SplitPageLabels() {
                 onNewChat={noop}
               />
             </div>
-            <PluginNavSidebarSection splitEnabled />
+            <PluginNavSidebarItems splitEnabled />
           </div>
         </StoryRow>
       </StoryCard>

@@ -58,14 +58,52 @@ import {
   havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
   reorderPluginNavPanels,
+  seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 
-type SidebarNavRow = PluginNavPanelSlot;
+/**
+ * Reserved plugin id for rows the host owns rather than a plugin. Real plugin
+ * ids come from a plugin manifest name, so they never take this shape.
+ */
+const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
 
 /**
- * Sidebar entries for plugin `navPanel` slots (plugin design §5.2): one row per
- * entry, styled like primary sidebar actions.
+ * Order/hidden preference key of the built-in Extensions row. The id stays
+ * "tools" so an order or hidden list saved under the row's old name keeps
+ * naming the same row.
+ */
+export const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
+  pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+  id: "tools",
+});
+
+/**
+ * One sidebar nav row. Plugin rows come from `navPanel` slots; the Extensions
+ * row is host chrome that shares the list so both obey the same order and hide
+ * preferences.
+ */
+type SidebarNavRow =
+  | {
+      kind: "tools";
+      pluginId: string;
+      id: string;
+      title: string;
+      /** Last visited Extensions route, so the row returns where the user was. */
+      routePath: string;
+    }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      id: string;
+      title: string;
+      panel: PluginNavPanelSlot;
+    };
+
+/**
+ * Sidebar entries for plugin `navPanel` slots (plugin design §5.2) plus the
+ * built-in Extensions row: one row per entry, styled like primary sidebar
+ * actions.
  * Plugin rows navigate to the panel's own route under
  * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. Only host
  * chrome renders here — a plugin's component mounts on the route
@@ -76,16 +114,39 @@ type SidebarNavRow = PluginNavPanelSlot;
  * preferences live in `pluginNavSidebarAtoms`.
  */
 export function PluginNavSidebarItems({
+  toolsRoutePath,
   ...props
 }: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
+  /** Omit to drop the built-in Extensions row, e.g. when its experiment is off. */
+  toolsRoutePath?: string;
 }) {
   const { navPanels } = usePluginSlots();
+  const rows = useMemo<SidebarNavRow[]>(() => {
+    const pluginRows = navPanels.map<SidebarNavRow>((panel) => ({
+      kind: "plugin",
+      pluginId: panel.pluginId,
+      id: panel.id,
+      title: panel.title,
+      panel,
+    }));
+    if (toolsRoutePath === undefined) return pluginRows;
+    return [
+      {
+        kind: "tools",
+        pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
+        id: "tools",
+        title: "Extensions",
+        routePath: toolsRoutePath,
+      },
+      ...pluginRows,
+    ];
+  }, [navPanels, toolsRoutePath]);
   // Router hooks live in the inner component so hosts without a Router
   // (isolated sidebar tests/stories) can render the empty state.
-  if (navPanels.length === 0) return null;
-  return <PluginNavSidebarItemList {...props} rows={navPanels} />;
+  if (rows.length === 0) return null;
+  return <PluginNavSidebarItemList {...props} rows={rows} />;
 }
 
 function PluginNavSidebarItemList({
@@ -102,15 +163,19 @@ function PluginNavSidebarItemList({
   const [hiddenKeys, setHiddenKeys] = useAtom(hiddenPluginNavPanelsAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
-  const { visible, hidden, normalizedOrder } = useMemo(
-    () =>
-      arrangePluginNavPanels({
-        panels: rows,
-        storedOrder,
-        hiddenKeys,
-      }),
-    [hiddenKeys, rows, storedOrder],
-  );
+  const { visible, hidden, normalizedOrder } = useMemo(() => {
+    // Users who customized their plugin order before the Extensions row joined
+    // the list keep it on top instead of finding it at the bottom. Seed only
+    // while the row exists, so a build without it saves no key for it.
+    const leadingKeys = rows.some((row) => row.kind === "tools")
+      ? [TOOLS_NAV_ROW_KEY]
+      : [];
+    return arrangePluginNavPanels({
+      panels: rows,
+      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
+      hiddenKeys,
+    });
+  }, [hiddenKeys, rows, storedOrder]);
 
   // Give newly installed panels a slot in the persisted order. This only ever
   // adds keys: a plugin frontend that has not registered yet keeps its slot, so
@@ -288,8 +353,16 @@ interface SidebarNavRowItemProps {
   rowStyle?: CSSProperties;
 }
 
-function SidebarNavRowItem({ row, ...props }: SidebarNavRowItemProps) {
-  return <PluginNavSidebarItem {...props} row={row} />;
+function SidebarNavRowItem({
+  row,
+  splitEnabled,
+  ...props
+}: SidebarNavRowItemProps) {
+  return row.kind === "tools" ? (
+    <ToolsNavSidebarItem {...props} row={row} />
+  ) : (
+    <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
+  );
 }
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
@@ -316,28 +389,62 @@ function PluginNavRowVisibilityMenuItem({
   );
 }
 
+/**
+ * The Extensions row. It has no split-pane content kind, so it navigates in
+ * place and draws no mini-map; everything else matches a plugin row.
+ */
+function ToolsNavSidebarItem({
+  row,
+  pathname: _pathname,
+  onNavigate,
+  ...props
+}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
+  row: Extract<SidebarNavRow, { kind: "tools" }>;
+}) {
+  const navigate = useNavigate();
+  return (
+    <SidebarNavRowChrome
+      {...props}
+      rowKey={getPluginNavPanelKey(row)}
+      title={row.title}
+      icon={<Icon name="Toolbox" />}
+      // Never active: AppLayout swaps AppSidebar out for ToolsSidebar on every
+      // Extensions route, so this row is only on screen while Extensions is
+      // closed.
+      isActive={false}
+      onSelect={() => {
+        onNavigate?.();
+        void navigate(row.routePath);
+      }}
+    />
+  );
+}
+
 function PluginNavSidebarItem({
   row,
   pathname,
   onNavigate,
   splitEnabled,
   ...props
-}: SidebarNavRowItemProps) {
+}: Omit<SidebarNavRowItemProps, "row"> & {
+  row: Extract<SidebarNavRow, { kind: "plugin" }>;
+}) {
+  const { panel } = row;
   const navigate = useNavigate();
   const path = getPluginPanelRoutePath({
-    pluginId: row.pluginId,
-    path: row.path,
+    pluginId: panel.pluginId,
+    path: panel.path,
   });
   const content = {
     kind: "plugin-panel",
-    pluginId: row.pluginId,
-    panelPath: row.path,
+    pluginId: panel.pluginId,
+    panelPath: panel.path,
     subPath: "",
   } as const;
   const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
     content,
     enabled: splitEnabled,
-    label: row.title,
+    label: panel.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
 
@@ -345,8 +452,8 @@ function PluginNavSidebarItem({
     <SidebarNavRowChrome
       {...props}
       rowKey={getPluginNavPanelKey(row)}
-      title={row.title}
-      icon={<PluginIcon pluginId={row.pluginId} icon={row.icon} />}
+      title={panel.title}
+      icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
       // Split-drag initiator; engages only when the pointer leaves the

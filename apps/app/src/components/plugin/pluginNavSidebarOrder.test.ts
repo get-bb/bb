@@ -3,6 +3,7 @@ import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   reorderPluginNavPanels,
+  seedLeadingNavPanelKeys,
 } from "./pluginNavSidebarOrder";
 
 function panel(pluginId: string, id: string) {
@@ -155,5 +156,29 @@ describe("reorderPluginNavPanels", () => {
         visibleKeys: ["github/pulls"],
       }),
     ).toBeNull();
+  });
+});
+
+describe("seedLeadingNavPanelKeys", () => {
+  it("leaves an untouched order empty so registry order still wins", () => {
+    expect(seedLeadingNavPanelKeys([], ["__builtin__/tools"])).toEqual([]);
+  });
+
+  it("prepends a built-in key that a customized order predates", () => {
+    expect(
+      seedLeadingNavPanelKeys(
+        ["github/pulls", "docs/vault"],
+        ["__builtin__/tools"],
+      ),
+    ).toEqual(["__builtin__/tools", "github/pulls", "docs/vault"]);
+  });
+
+  it("keeps the user's slot for a built-in key they already moved", () => {
+    expect(
+      seedLeadingNavPanelKeys(
+        ["github/pulls", "__builtin__/tools"],
+        ["__builtin__/tools"],
+      ),
+    ).toEqual(["github/pulls", "__builtin__/tools"]);
   });
 });

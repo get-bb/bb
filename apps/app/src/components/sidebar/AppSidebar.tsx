@@ -25,7 +25,7 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
-import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
+import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
@@ -209,12 +209,6 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
-
-  const handleOpenTools = useCallback(() => {
-    if (toolsRoutePath === undefined) return;
-    closeOnMobile();
-    void navigate(toolsRoutePath);
-  }, [closeOnMobile, navigate, toolsRoutePath]);
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
@@ -416,9 +410,6 @@ export function AppSidebar({
             splitEnabled={threadSplitsEnabled}
             newThreadSplit={newThreadSplit}
             onNewChat={handleNewChat}
-            onOpenTools={
-              toolsRoutePath === undefined ? undefined : handleOpenTools
-            }
             threadSearch={{
               activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
@@ -430,11 +421,12 @@ export function AppSidebar({
             }}
           />
         </div>
+        <PluginNavSidebarItems
+          onNavigate={closeOnMobile}
+          splitEnabled={threadSplitsEnabled}
+          toolsRoutePath={toolsRoutePath}
+        />
         <SidebarContent>
-          <PluginNavSidebarSection
-            onNavigate={closeOnMobile}
-            splitEnabled={threadSplitsEnabled}
-          />
           {threadListProvider ? (
             <PluginThreadList
               slot={threadListProvider}

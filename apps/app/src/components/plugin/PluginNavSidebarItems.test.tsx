@@ -52,6 +52,7 @@ function registerPanel(pluginId: string, title: string) {
 
 function renderSidebarItems(
   options: {
+    toolsRoutePath?: string;
     storedOrder?: string[];
   } = {},
 ) {
@@ -65,14 +66,14 @@ function renderSidebarItems(
     <Provider store={store}>
       <MemoryRouter initialEntries={["/"]}>
         <SidebarProvider>
-          <PluginNavSidebarItems />
+          <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
         </SidebarProvider>
       </MemoryRouter>
     </Provider>,
   );
 }
 
-const ROW_LABELS = new Set(["Docs", "GitHub"]);
+const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
 
 function panelRowNames(): string[] {
   return screen
@@ -165,29 +166,75 @@ describe("PluginNavSidebarItems", () => {
     });
   });
 
-  it("keeps a saved plugin row order", () => {
+  it("hides the built-in Extensions row like a plugin row", async () => {
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems({ toolsRoutePath: "/tools/skills" });
+
+    // Extensions leads the list, above the plugin rows.
+    expect(panelRowNames()).toEqual(["Extensions", "Docs"]);
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Extensions panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    );
+
+    await waitFor(() => {
+      expect(panelRowNames()).toEqual(["Docs"]);
+    });
+    expect(
+      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+    ).toContain("More (1)");
+    expect(
+      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
+    ).toContain("__builtin__/tools");
+  });
+
+  it("keeps Extensions on top for users who already reordered their plugin rows", () => {
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     renderSidebarItems({
+      toolsRoutePath: "/tools/skills",
       storedOrder: ["github/main", "docs/main"],
     });
 
-    expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
+    expect(panelRowNames()).toEqual(["Extensions", "GitHub", "Docs"]);
   });
 
   it("keeps a saved order when plugin frontends register after the first render", async () => {
+    // The Extensions row makes this list mount before any plugin has registered.
+    // The order effect must not save that empty snapshot over the user's rows.
     renderSidebarItems({
-      storedOrder: ["github/main", "docs/main"],
+      toolsRoutePath: "/tools/skills",
+      storedOrder: ["github/main", "__builtin__/tools", "docs/main"],
     });
 
-    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
+    expect(panelRowNames()).toEqual(["Extensions"]);
 
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
 
     await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
+      expect(panelRowNames()).toEqual(["GitHub", "Extensions", "Docs"]);
     });
+  });
+
+  it("saves no Extensions key while the row is absent", async () => {
+    registerPanel("docs", "Docs");
+
+    // Extensions is off, so nothing should reserve a slot for a row that never
+    // renders here.
+    renderSidebarItems({ storedOrder: ["docs/main"] });
+
+    await waitFor(() => {
+      expect(panelRowNames()).toEqual(["Docs"]);
+    });
+    expect(
+      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
+    ).not.toContain("__builtin__/tools");
   });
 });

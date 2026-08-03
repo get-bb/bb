@@ -8,8 +8,6 @@ const COLLAPSED_PROJECTS_STORAGE_KEY = "bb.sidebar.collapsedProjects";
 const COLLAPSED_THREADS_STORAGE_KEY = "bb.sidebar.collapsedThreads";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
-const PLUGIN_NAV_SIDEBAR_COLLAPSED_STORAGE_KEY =
-  "bb.sidebar.pluginNavCollapsed";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 const SIDEBAR_MANUAL_SECTION_ORDER_STORAGE_KEY =
   "bb.sidebar.manualSectionOrder";
@@ -137,13 +135,6 @@ export const collapsedSidebarSectionIdsAtom = atomWithStorage<
   COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY,
   [],
   createJsonLocalStorage<CollapsibleSidebarSectionId[]>(),
-  { getOnInit: true },
-);
-
-export const pluginNavSidebarCollapsedAtom = atomWithStorage<boolean>(
-  PLUGIN_NAV_SIDEBAR_COLLAPSED_STORAGE_KEY,
-  false,
-  createJsonLocalStorage<boolean>(),
   { getOnInit: true },
 );
 
