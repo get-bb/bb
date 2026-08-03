@@ -251,6 +251,23 @@ describe("GeneratedConversationMessage markdown body", () => {
 
     expect(screen.getByRole("list").textContent).toContain("checks passed");
   });
+
+  // The native side chat is gone, so this row no longer opens a panel tab.
+  // Legacy side chats are excluded from the project listings, which makes this
+  // link the only way back to the thread — an inert pill would strand it.
+  it("links a legacy side-chat sender to its thread", () => {
+    const { container } = renderAgentMessage("Handed back.", {
+      senderChildOrigin: "side-chat",
+    });
+
+    const sourcePill = container.querySelector(
+      '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
+    );
+    expect(sourcePill?.tagName).toBe("A");
+    expect(sourcePill?.getAttribute("href")).toBe(
+      "/projects/proj_demo/threads/thr_agent",
+    );
+  });
 });
 
 describe("GeneratedConversationMessage markdown body (system)", () => {

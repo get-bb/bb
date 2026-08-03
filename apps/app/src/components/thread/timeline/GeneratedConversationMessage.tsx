@@ -60,11 +60,12 @@ interface GeneratedConversationMessageProps {
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
-  /** The source is a side chat: the linked name opens it as a tab in this
-   * thread (a title action) rather than navigating to it as a standalone thread. */
+  /** The source is a legacy native side chat. It reads as a side chat ("Replying
+   * to", markdown body), but the native panel is gone, so its name navigates to
+   * the thread like any other source. */
   sourceIsSideChat: boolean;
-  /** The source is a side-chat plugin hidden fork: same affordance as a
-   * legacy side chat, but its title action opens the plugin's panel tab. */
+  /** The source is a side-chat plugin hidden fork: its name carries no route
+   * link because its title action opens the plugin's panel tab instead. */
   sourceIsPluginSideChat: boolean;
   systemMessageKind: SystemMessageKind;
   systemMessageSubject: SystemMessageSubject | null;
@@ -353,11 +354,12 @@ function GeneratedAgentSourceTitle({
   const sourceDisplayName = useThreadTitleDisplayText(sourceName);
   const sourceTitleAction =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
+  // A plugin side chat opens in its panel (a title action), so its name carries
+  // no route link. A legacy native side chat has no panel to open any more, so
+  // it falls back to the normal thread link and opens as a full thread —
+  // without it the row would be inert and the thread unreachable.
   const sourceLinkHref =
-    sourceThreadId !== null &&
-    !sourceIsSideChat &&
-    !sourceIsPluginSideChat &&
-    resolveSegmentLinkHref
+    sourceThreadId !== null && !sourceIsPluginSideChat && resolveSegmentLinkHref
       ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";
