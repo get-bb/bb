@@ -39,7 +39,6 @@ function configurationContext(
     },
     host: { id: "host-test", name: "local" },
     provider: { id: providerId, model: "test-model" },
-    sideChat: false,
     origin: { kind: null, pluginId: null },
   };
 }

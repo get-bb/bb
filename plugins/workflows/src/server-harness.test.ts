@@ -234,7 +234,6 @@ describe("workflows plugin", () => {
       },
       host: { id: "host-1", name: "host" },
       provider: { id: "codex", model: "gpt-test" },
-      sideChat: false,
       origin: { kind: null, pluginId: "workflows" },
     });
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
@@ -275,7 +274,6 @@ describe("workflows plugin", () => {
       },
       host: { id: "host-1", name: "host" },
       provider: { id: "codex", model: "gpt-test" },
-      sideChat: false,
       origin: { kind: null, pluginId: null },
     });
     expect(authorConfig.tools.map((tool) => tool.name)).toEqual([

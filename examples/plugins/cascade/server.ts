@@ -167,10 +167,10 @@ export default async function plugin(bb: BbPluginApi) {
         bb.sdk.threadSections.list(),
         bb.sdk.projects.list({ includePersonal: true }),
         bb.sdk.hosts.list().catch(() => []),
-        // Filter server-side: archived and side-chat threads are not columns.
+        // Filter server-side: archived threads are not columns, and the
+        // default list already excludes hidden threads such as side chats.
         bb.sdk.threads.list({
           archived: false,
-          excludeSideChats: true,
           limit: THREAD_LIMIT,
         }),
       ]);
