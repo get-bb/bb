@@ -801,7 +801,8 @@ describe("ThreadRow", () => {
     });
 
     const shortcut = screen.getByText("⌘3");
-    expect(shortcut.className).toContain("p-1.5");
+    expect(shortcut.className).toContain("px-1.5");
+    expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
     expect(
       screen

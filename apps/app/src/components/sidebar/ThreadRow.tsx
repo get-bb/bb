@@ -69,7 +69,7 @@ import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
-import { APP_COMMAND_SHORTCUT_HINT_CLASS } from "@/components/commands/AppCommandShortcutHint";
+import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
@@ -658,9 +658,7 @@ function ThreadRowComponent({
         trailingIndicatorKind === "none" &&
         pluginThreadRowStatus === null &&
         splitIndicator.miniMap === null ? (
-          <kbd aria-hidden="true" className={APP_COMMAND_SHORTCUT_HINT_CLASS}>
-            {shortcut.label}
-          </kbd>
+          <AppCommandShortcutPill shortcut={shortcut} />
         ) : (
           <span
             className={cn(

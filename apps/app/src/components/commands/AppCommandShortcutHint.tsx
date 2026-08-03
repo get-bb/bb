@@ -7,16 +7,18 @@ interface AppCommandShortcutHintProps {
   className?: string;
 }
 
-export const APP_COMMAND_SHORTCUT_HINT_CLASS =
-  "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover p-1.5 text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60 [word-spacing:-0.15em]";
+interface AppCommandShortcutPillProps {
+  shortcut: AppShortcutPresentation;
+  className?: string;
+}
 
-export function AppCommandShortcutHint({
+export const APP_COMMAND_SHORTCUT_HINT_CLASS =
+  "pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground opacity-60";
+
+export function AppCommandShortcutPill({
   shortcut,
   className,
-}: AppCommandShortcutHintProps) {
-  const isPrimaryModifierHeld = useIsAppCommandModifierHeld();
-  if (!isPrimaryModifierHeld || !shortcut) return null;
-
+}: AppCommandShortcutPillProps) {
   return (
     <kbd
       aria-hidden="true"
@@ -25,4 +27,14 @@ export function AppCommandShortcutHint({
       {shortcut.label}
     </kbd>
   );
+}
+
+export function AppCommandShortcutHint({
+  shortcut,
+  className,
+}: AppCommandShortcutHintProps) {
+  const isPrimaryModifierHeld = useIsAppCommandModifierHeld();
+  if (!isPrimaryModifierHeld || !shortcut) return null;
+
+  return <AppCommandShortcutPill shortcut={shortcut} className={className} />;
 }
