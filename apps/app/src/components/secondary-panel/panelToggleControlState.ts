@@ -35,8 +35,8 @@ interface PanelToggleActionPresentation {
  *                          expand glyph. Lives in the panel header.
  *   restore-conversation → conversation collapsed: restore it. Renders the
  *                          matching four-arrow collapse glyph. Lives in the
- *                          collapsed-conversation rail, where the missing pane
- *                          is represented.
+ *                          panel header, in the same slot the expand action
+ *                          occupies, so the pair toggles in place.
  */
 const PANEL_TOGGLE_ACTION_PRESENTATION = {
   "show-panel": {
@@ -89,9 +89,9 @@ export interface ResolveConversationCollapseControlArgs {
 }
 
 /**
- * Resolves the paired conversation disclosure states. The panel header uses the
- * close state while the conversation is visible; the collapsed rail uses the
- * matching open state while the panel owns the full canvas.
+ * Resolves the paired conversation disclosure states. One control in the panel
+ * header renders both: it expands the panel while the conversation is visible,
+ * and restores the conversation while the panel owns the full canvas.
  */
 export function resolveConversationCollapseControl({
   isConversationCollapsed,

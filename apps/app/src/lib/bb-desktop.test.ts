@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
-  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
-  MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   shouldReserveMacosTrafficLights,
 } from "./bb-desktop";
@@ -42,14 +41,12 @@ describe("desktop chrome geometry", () => {
     ).toBe(false);
   });
 
-  // The traffic-light reserves are paired px geometry, not typography. Both the
-  // page header and the collapsed split-workspace panel must land their leading
-  // content at the SAME absolute x (just right of the pinned sidebar trigger)
-  // despite starting from different base insets — the header from its `px-4`
-  // (16px) and the panel from behind the 36px conversation rail plus its own
-  // `px-4` (52px). A silent drift here reintroduces BB-46's overlap, so lock the
-  // shared target.
-  it("lands both collapsed reserves at the same traffic-light-clearing target", () => {
+  // The traffic-light reserve is px geometry, not typography. Both the page
+  // header and the collapsed split-workspace panel land their leading content
+  // at the same absolute x (just right of the pinned sidebar trigger) from the
+  // same `px-4` base inset. A silent drift here reintroduces BB-46's overlap,
+  // so lock the target.
+  it("lands the collapsed reserve at the traffic-light-clearing target", () => {
     const px = (className: string): number => {
       const match = /\[(\d+)px\]/.exec(className);
       if (match === null) {
@@ -64,15 +61,13 @@ describe("desktop chrome geometry", () => {
     // Where the pinned sidebar trigger ends: leading content must clear it.
     const TARGET = TRIGGER_OFFSET + TRIGGER_BUTTON + TRIGGER_GAP; // 120
 
-    const HEADER_BASE_INSET = 16; // header px-4
-    const RAIL_WIDTH = 36; // ConversationCollapsedRail (w-9)
-    const PANEL_BASE_INSET = RAIL_WIDTH + 16; // rail + panel top-chrome px-4
+    // Both surfaces are flush at the window top-left and inset their content
+    // with `px-4`: the page header content row and the collapsed
+    // split-workspace panel's top chrome.
+    const BASE_INSET = 16;
 
-    expect(HEADER_BASE_INSET + px(MACOS_COLLAPSED_HEADER_RESERVE_CLASS)).toBe(
+    expect(BASE_INSET + px(MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS)).toBe(
       TARGET,
     );
-    expect(
-      PANEL_BASE_INSET + px(MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS),
-    ).toBe(TARGET);
   });
 });

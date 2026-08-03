@@ -219,7 +219,6 @@ export function SplitWorkspaceSecondaryPanelHost({
             <Icon name="PanelRight" />
           </Button>
         </div>
-        {model?.collapsedRail}
         <PanelGroup
           ref={panelGroupRef}
           direction="horizontal"

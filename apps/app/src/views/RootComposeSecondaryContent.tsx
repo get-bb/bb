@@ -258,7 +258,6 @@ export function RootComposeSecondaryContent({
   ) : null;
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
-      collapsedRail: null,
       composerHost,
       contentKey: "new-thread",
       isMainCollapsed: false,

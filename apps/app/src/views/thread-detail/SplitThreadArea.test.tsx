@@ -172,7 +172,6 @@ vi.mock("./ThreadDetailView", () => ({
     }, [threadId]);
     const panelModel = useMemo(
       () => ({
-        collapsedRail: null,
         composerHost,
         contentKey: threadId,
         isMainCollapsed: false,

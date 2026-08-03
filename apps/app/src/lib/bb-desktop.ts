@@ -14,23 +14,19 @@ import type {
 // trigger (84px + a 28px button + an 8px gap = the strip ends at 120px) is the
 // last thing on the title-bar row, so a surface that owns the window's
 // top-left must land its leading content at x = 120px — just right of the
-// trigger, not merely past the lights. Two reserves reach that same 120px from
-// different base insets, each folded into a single left padding (rather than
-// padding + a spacer element) so it can transition in lockstep with the sidebar
-// slide instead of snapping on/off while the inset animates:
-//  - COLLAPSED_HEADER_RESERVE (`padding-left: 104px`): the page header content
-//    starts at its own `px-4` (16px); 16 + 104 = 120.
-//  - COLLAPSED_PANEL_RESERVE (`padding-left: 68px`): the split-workspace
-//    secondary panel, while the conversation is collapsed, is flush at the
-//    window top-left behind the 36px conversation rail, and its top chrome adds
-//    `px-4` (16px), so its leading toolbar starts at 36 + 16 = 52px; 52 + 68 =
-//    120. (This is the only surface where the panel itself owns the window's
-//    top-left — inline non-split thread detail keeps a full-width header on the
-//    lights' row above the panel, and root compose keeps the panel on the right
-//    of the main content.)
+// trigger, not merely past the lights. Both such surfaces start from the same
+// `px-4` (16px) base inset, so one reserve serves both; 16 + 104 = 120. It is
+// folded into a single left padding (rather than padding + a spacer element) so
+// it can transition in lockstep with the sidebar slide instead of snapping
+// on/off while the inset animates. The two surfaces are:
+//  - the page header content row.
+//  - the split-workspace secondary panel's top chrome, while the conversation
+//    is collapsed and the panel is flush at the window top-left. (This is the
+//    only surface where the panel itself owns the top-left — inline non-split
+//    thread detail keeps a full-width header on the lights' row above the
+//    panel, and root compose keeps the panel on the right of the main content.)
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
-export const MACOS_COLLAPSED_HEADER_RESERVE_CLASS = "pl-[104px]";
-export const MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS = "pl-[68px]";
+export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
 
 // Browser-chrome analogs of the macOS reserve above. The web build has no
 // traffic lights, so it pins the sidebar toggle flush at the app's top-left with

@@ -28,9 +28,7 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { useThreads } from "@/hooks/queries/thread-queries";
-import { isRunningThreadRuntimeDisplayStatus } from "@/components/thread/timeline";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
-import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import {
@@ -38,12 +36,6 @@ import {
   usePaneSecondaryPanelRegistration,
   type PaneSecondaryPanelViewModel,
 } from "./PaneContext";
-import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
-import {
-  getBbDesktopInfo,
-  shouldReserveMacosTrafficLights,
-} from "@/lib/bb-desktop";
-import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   PluginComposerHostScopeProvider,
   usePluginComposerHost,
@@ -125,33 +117,11 @@ function ThreadDetailSecondaryContentBody({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
-  // The hosted (split-workspace) collapsed rail is the window's top-left-most
-  // surface while the main sidebar is collapsed on macOS desktop: it must
-  // reserve a title-bar-height strip so the traffic lights sit on clean window
-  // chrome instead of on the rail's glyph/working indicator. When the sidebar
-  // is open it hosts the lights itself and the rail sits to its right; the
-  // inline (non-host) rail always sits below a full-width header on the lights'
-  // row, so neither needs the reserve there.
-  // `null` (no sidebar context, e.g. tests) is treated as showing, so no
-  // reserve is applied.
-  const isSidebarShowing = useOptionalIsSidebarShowing();
-  const [desktopInfo] = useState(getBbDesktopInfo);
-  const desktopWindowState = useDesktopWindowState();
-  const hostedRailReservesTrafficLights =
-    isSidebarShowing === false &&
-    shouldReserveMacosTrafficLights({
-      desktopInfo,
-      windowState: desktopWindowState,
-    });
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
   const isConversationCollapsedActive =
     canCollapseConversation && isConversationCollapsed;
-  // Real, in-scope activity signal for the collapsed rail: the agent is running.
-  const isConversationWorking = isRunningThreadRuntimeDisplayStatus(
-    stableTimeline.threadRuntimeDisplayStatus,
-  );
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
@@ -352,25 +322,8 @@ function ThreadDetailSecondaryContentBody({
       metadataContent={metadataContent}
     />
   ) : null;
-  const hostedCollapsedRail = useMemo(
-    () => (
-      <ConversationCollapsedRail
-        collapsed={isConversationCollapsedActive}
-        isWorking={isConversationWorking}
-        reserveTopForDesktopTrafficLights={hostedRailReservesTrafficLights}
-        onExpand={onToggleConversationCollapse}
-      />
-    ),
-    [
-      hostedRailReservesTrafficLights,
-      isConversationCollapsedActive,
-      isConversationWorking,
-      onToggleConversationCollapse,
-    ],
-  );
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
-      collapsedRail: hostedCollapsedRail,
       composerHost,
       contentKey: stableTimeline.threadId,
       isMainCollapsed: isConversationCollapsedActive,
@@ -380,7 +333,6 @@ function ThreadDetailSecondaryContentBody({
     }),
     [
       composerHost,
-      hostedCollapsedRail,
       inlineSecondaryPanelContent,
       isConversationCollapsedActive,
       isSecondaryPanelOpen,
@@ -424,24 +376,16 @@ function ThreadDetailSecondaryContentBody({
       */}
       {header}
       {/*
-        When collapsed we keep the resizable PanelGroup mounted (the timeline
-        lifts to 0% and the panel to 100% via the layout effect) and slot the
-        36px rail in beside it as a plain flex sibling. This sidesteps the
-        "fixed px in a percentage engine" problem the same way a layout swap
-        would, but without unmounting the PanelGroup — so the secondary
-        panel's content (live iframes, parsed diffs, scroll position) is
-        never torn down and re-created when toggling collapse.
+        When collapsed we keep the resizable PanelGroup mounted: the timeline
+        lifts to 0% and the panel to 100% via the layout effect. Nothing
+        unmounts, so the secondary panel's content (live iframes, parsed diffs,
+        scroll position) is never torn down and re-created when toggling
+        collapse. The panel header's own toggle restores the conversation.
       */}
+      {/* PanelGroup sets an inline `height: 100%`, so it needs this flex-sized
+          row to resolve against rather than the column that also holds the
+          header. */}
       <div className="flex min-h-0 w-full min-w-0 flex-1">
-        <ConversationCollapsedRail
-          collapsed={isConversationCollapsedActive}
-          isWorking={isConversationWorking}
-          // The inline (non-split) surface keeps a full-width thread header on
-          // the traffic-light row above this rail, so the lights never reach the
-          // rail's glyph — only the hosted split rail owns the window top-left.
-          reserveTopForDesktopTrafficLights={false}
-          onExpand={onToggleConversationCollapse}
-        />
         <PanelGroup
           // Thread-scoped panel state should mount at its saved size instead of
           // animating from the previously selected thread's layout.
@@ -449,10 +393,8 @@ function ThreadDetailSecondaryContentBody({
           ref={horizontalPanelGroupRef}
           direction="horizontal"
           // Query container so the secondary panel can hold its content at the
-          // panel's open width in cqw and clip it into view instead of reflowing
-          // (see ThreadSecondaryPanel swipe mode). Scoping it to the group — not
-          // the rail+group row — keeps cqw equal to the panel's own width even
-          // when the conversation-collapsed rail is present.
+          // panel's open width in cqw and clip it into view instead of
+          // reflowing (see ThreadSecondaryPanel swipe mode).
           className="@container h-full min-w-0 flex-1"
           // react-resizable-panels sets an INLINE `overflow: hidden` on the group
           // root, which is still programmatically scrollable. A `scrollIntoView`

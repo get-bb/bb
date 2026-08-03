@@ -153,17 +153,6 @@ vi.mock(
   },
 );
 
-vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
-  const React = await import("react");
-
-  const ConversationCollapsedRail = () =>
-    React.createElement("div", {
-      "data-testid": "conversation-collapsed-rail",
-    });
-
-  return { ConversationCollapsedRail };
-});
-
 vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
   const actual = await importOriginal<typeof import("./ThreadTimelinePane")>();

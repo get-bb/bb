@@ -62,7 +62,7 @@ import {
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
-  MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
@@ -166,7 +166,7 @@ interface CollapsedPanelTrafficLightReserveArgs {
  * needed. The reserve applies only when the panel is the window's flush
  * top-left surface (split host, conversation collapsed) while the main sidebar
  * is collapsed and the lights are visible — the collapsed-left / expanded-right
- * case from BB-46. See {@link MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS}
+ * case from BB-46. See {@link MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS}
  * for the geometry.
  */
 export function resolveCollapsedPanelTrafficLightReserveClassName({
@@ -182,7 +182,7 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
     isInSplitHost &&
     isSidebarShowing === false &&
     reserveMacosTrafficLights;
-  return reserves && MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS;
+  return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
 interface ResolveActiveFixedPanelArgs {
@@ -273,10 +273,10 @@ export interface ThreadSecondaryPanelProps {
   isConversationCollapsed: boolean;
   /**
    * Toggles {@link isConversationCollapsed}. On a wide viewport the panel header
-   * renders the expand/restore-conversation control (immediately left of the
-   * hide-panel button); the collapsed conversation rail surfaces the same
-   * action. Unused in the drawer/compact layout, which cannot collapse the
-   * conversation.
+   * renders the expand/restore-conversation control in one slot (immediately
+   * left of the hide-panel button), so the collapsed conversation is restored
+   * from the same place it was collapsed. Unused in the drawer/compact layout,
+   * which cannot collapse the conversation.
    */
   onToggleConversationCollapse: () => void;
   /**
@@ -358,9 +358,7 @@ export function ThreadSecondaryPanel({
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
-    renderAsDrawer ||
-    !showConversationCollapseControl ||
-    isConversationCollapsed
+    renderAsDrawer || !showConversationCollapseControl
       ? null
       : resolveConversationCollapseControl({
           isConversationCollapsed,
@@ -572,7 +570,17 @@ export function ThreadSecondaryPanel({
           // Inside the split-workspace host, the hairline resize handle is the
           // visible seam; elsewhere the panel carries its own hairline border
           // (it slides with the panel through the open/close animation).
-          hostLayout === null && "border-l border-border-seam",
+          // Collapsing the conversation drops the timeline and the resize
+          // handle to zero width, so this border would land directly on the app
+          // sidebar's own `border-r` and read as one thick double seam. The
+          // sidebar owns that boundary, so give the border up while collapsed.
+          // Collapsing the conversation drops the timeline and the resize
+          // handle to zero width, so this border would land directly on the app
+          // sidebar's own `border-r` and read as one thick 2px seam. The
+          // sidebar owns that boundary, so give the border up while collapsed.
+          hostLayout === null &&
+            !isConversationCollapsed &&
+            "border-l border-border-seam",
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
         ],
@@ -958,7 +966,7 @@ function SecondaryPanelResizeHandle({
     <PanelResizeHandle
       id="thread-detail-secondary-panel-handle"
       // Dragging is meaningless while collapsed (the conversation is at zero
-      // width); the collapsed rail's expand chevron is the only affordance in
+      // width); the panel header's restore control is the only affordance in
       // that state.
       disabled={!isOpen || isConversationCollapsed}
       onDragging={onDragging}

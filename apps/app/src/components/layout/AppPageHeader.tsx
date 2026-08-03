@@ -11,7 +11,7 @@ import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_AXIS_CLASS,
-  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
@@ -108,7 +108,7 @@ export function AppPageHeader({
           "transition-[padding] duration-200 ease-linear",
           shouldReserveSidebarTrigger &&
             (reserveMacosTrafficLights
-              ? MACOS_COLLAPSED_HEADER_RESERVE_CLASS
+              ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
               : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),
         )}
       >

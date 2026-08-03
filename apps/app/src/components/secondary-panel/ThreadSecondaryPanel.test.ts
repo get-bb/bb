@@ -7,7 +7,7 @@ import {
 import {
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
-  MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
 
 describe("getSecondaryPanelChromeStackClassName", () => {
@@ -62,7 +62,7 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
 
   it("reserves the safe area for the collapsed-left / expanded-right split host case", () => {
     expect(resolveCollapsedPanelTrafficLightReserveClassName(base)).toBe(
-      MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
+      MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
     );
   });
 

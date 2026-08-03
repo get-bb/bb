@@ -73,7 +73,6 @@ export interface PaneContextValue {
 }
 
 export interface PaneSecondaryPanelViewModel {
-  collapsedRail: ReactNode | null;
   /** Composer owned by this pane, restored where the hosted panel renders. */
   composerHost: PluginComposerHost | null;
   /**
