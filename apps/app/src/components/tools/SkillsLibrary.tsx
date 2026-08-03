@@ -201,7 +201,11 @@ export function SkillsLibrary() {
           return value === undefined ? [] : ([[repositoryKey, value]] as const);
         }),
       ),
-      isPending: results.some((result) => result.isPending),
+      pendingRepositoryKeys: new Set(
+        registryRepositorySources.flatMap(({ repositoryKey }, index) =>
+          results[index]?.isPending ? [repositoryKey] : [],
+        ),
+      ),
     }),
   });
   const registryDescriptionSkills = useMemo(
@@ -228,7 +232,11 @@ export function SkillsLibrary() {
           return entry === undefined ? [] : ([[skill.id, entry]] as const);
         }),
       ),
-      isPending: results.some((result) => result.isPending),
+      pendingSkillIds: new Set(
+        registryDescriptionSkills.flatMap((skill, index) =>
+          results[index]?.isPending ? [skill.id] : [],
+        ),
+      ),
     }),
   });
   const registrySkills = useMemo(
@@ -251,6 +259,24 @@ export function SkillsLibrary() {
       registryQuery.data?.skills,
       registryDescriptions.values,
       registryRepositoryStars.values,
+    ],
+  );
+  const pendingRegistrySkillIds = useMemo(
+    () =>
+      new Set(
+        (registryQuery.data?.skills ?? []).flatMap((skill) =>
+          registryDescriptions.pendingSkillIds.has(skill.id) ||
+          registryRepositoryStars.pendingRepositoryKeys.has(
+            registryRepositoryKey(skill.source),
+          )
+            ? [skill.id]
+            : [],
+        ),
+      ),
+    [
+      registryDescriptions.pendingSkillIds,
+      registryQuery.data?.skills,
+      registryRepositoryStars.pendingRepositoryKeys,
     ],
   );
   const selectedSkill = useMemo(() => {
@@ -464,6 +490,7 @@ export function SkillsLibrary() {
           browseContent={
             <RegistrySkillsBrowsePage
               skills={registrySkills}
+              pendingSkillIds={pendingRegistrySkillIds}
               pagination={
                 registryQuery.data?.pagination ?? {
                   ...EMPTY_REGISTRY_PAGINATION,
@@ -471,9 +498,7 @@ export function SkillsLibrary() {
                 }
               }
               isLoading={
-                (registryQuery.isFetching && registryQuery.data === undefined) ||
-                registryDescriptions.isPending ||
-                registryRepositoryStars.isPending
+                registryQuery.isFetching && registryQuery.data === undefined
               }
               hasError={registryQuery.isError}
               query={registrySearch}

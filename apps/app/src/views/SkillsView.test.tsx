@@ -154,6 +154,7 @@ function renderRegistryBrowse(
   return renderDom(
     <RegistrySkillsBrowsePage
       skills={[makeRegistrySkill()]}
+      pendingSkillIds={new Set()}
       pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
       isLoading={false}
       hasError={false}
@@ -279,6 +280,7 @@ describe("SkillsOverview", () => {
         browseContent={
           <RegistrySkillsBrowsePage
             skills={[registrySkill]}
+            pendingSkillIds={new Set()}
             pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
             isLoading={false}
             hasError={false}
@@ -626,6 +628,12 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     });
     expect(screen.queryByText("First skill")).toBeNull();
     expect(screen.queryByText("Second skill")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading First skill" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("status", { name: "Loading Second skill" }),
+    ).toBeTruthy();
 
     resolveStars?.(Response.json({ stars: 27_053 }));
 
@@ -634,32 +642,50 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
   });
 
-  it("reveals registry cards only after their descriptions finish loading", async () => {
-    const registrySkill = makeRegistrySkill({ summary: null });
-    let resolveEntry: ((response: Response) => void) | undefined;
-    const entryResponse = new Promise<Response>((resolve) => {
-      resolveEntry = resolve;
+  it("reveals each registry card as soon as that card is complete", async () => {
+    const firstSkill = makeRegistrySkill({
+      id: "owner/repo/first-skill",
+      skillId: "first-skill",
+      name: "First skill",
+      summary: null,
     });
+    const secondSkill = makeRegistrySkill({
+      id: "owner/repo/second-skill",
+      skillId: "second-skill",
+      name: "Second skill",
+      summary: null,
+    });
+    const entryResolvers = new Map<string, (response: Response) => void>();
+    const entryResponses = new Map(
+      [firstSkill, secondSkill].map((skill) => [
+        skill.id,
+        new Promise<Response>((resolve) => {
+          entryResolvers.set(skill.id, resolve);
+        }),
+      ]),
+    );
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = requestPath(input);
       if (url.startsWith("/api/v1/skills-registry?")) {
         return Promise.resolve(
           Response.json({
-            skills: [registrySkill],
+            skills: [firstSkill, secondSkill],
             pagination: {
               page: 0,
               perPage: 24,
-              total: 1,
+              total: 2,
               hasMore: false,
             },
           }),
         );
       }
-      if (
-        url === "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill"
-      ) {
-        return entryResponse;
+      const entryId = new URL(url, "http://localhost").searchParams.get("id");
+      if (url.startsWith("/api/v1/skills-registry/entry?") && entryId) {
+        return (
+          entryResponses.get(entryId) ??
+          Promise.resolve(new Response(null, { status: 404 }))
+        );
       }
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -677,25 +703,37 @@ describe("SkillsLibrary registry detail lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.filter(
-          ([input]) =>
-            requestPath(input) ===
-            "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
+        fetchMock.mock.calls.filter(([input]) =>
+          requestPath(input).startsWith("/api/v1/skills-registry/entry?"),
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
-    expect(screen.queryByText("Useful skill")).toBeNull();
-    expect(screen.queryByText("Loaded after the card")).toBeNull();
+    expect(screen.queryByText("First skill")).toBeNull();
+    expect(screen.queryByText("Second skill")).toBeNull();
 
-    resolveEntry?.(
+    entryResolvers.get(firstSkill.id)?.(
       Response.json({
-        ...registrySkill,
-        summary: "Loaded after the card",
+        ...firstSkill,
+        summary: "First description",
       }),
     );
 
-    expect(await screen.findByText("Useful skill")).toBeTruthy();
-    expect(screen.getByText("Loaded after the card")).toBeTruthy();
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("First description")).toBeTruthy();
+    expect(screen.queryByText("Second skill")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading Second skill" }),
+    ).toBeTruthy();
+
+    entryResolvers.get(secondSkill.id)?.(
+      Response.json({
+        ...secondSkill,
+        summary: "Second description",
+      }),
+    );
+
+    expect(await screen.findByText("Second skill")).toBeTruthy();
+    expect(screen.getByText("Second description")).toBeTruthy();
   });
 });
 

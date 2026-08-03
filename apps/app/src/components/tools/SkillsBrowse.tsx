@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SkillSummary } from "@bb/server-contract";
 import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
@@ -100,6 +101,26 @@ function RegistrySkillSourceItem({
   );
 }
 
+function RegistrySkillSourceItemSkeleton({ skillName }: { skillName: string }) {
+  return (
+    <div
+      role="status"
+      aria-label={`Loading ${skillName}`}
+      className="grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr_auto] gap-2 rounded-lg border border-border bg-card p-3"
+    >
+      <span className="sr-only">Loading {skillName}</span>
+      <Skeleton className="h-3.5 w-32 max-w-full self-center" />
+      <Skeleton className="size-7 rounded-md" />
+      <span className="col-span-2 row-start-2 space-y-1.5 self-center">
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-4/5" />
+      </span>
+      <Skeleton className="h-3 w-28 max-w-full self-end" />
+      <Skeleton className="h-3 w-20 self-end justify-self-end" />
+    </div>
+  );
+}
+
 function SkillsShAttributionLink() {
   return (
     <a
@@ -116,6 +137,7 @@ function SkillsShAttributionLink() {
 
 export function RegistrySkillsBrowsePage({
   skills,
+  pendingSkillIds,
   pagination,
   isLoading,
   hasError,
@@ -127,6 +149,7 @@ export function RegistrySkillsBrowsePage({
   onSelect,
 }: {
   skills: readonly RegistrySkill[];
+  pendingSkillIds: ReadonlySet<string>;
   pagination: RegistryPagination;
   isLoading: boolean;
   hasError: boolean;
@@ -188,14 +211,21 @@ export function RegistrySkillsBrowsePage({
         />
       ) : (
         <ResourceBrowseGrid>
-          {skills.map((skill) => (
-            <RegistrySkillSourceItem
-              key={skill.id}
-              skill={skill}
-              onFork={onFork}
-              onSelect={onSelect}
-            />
-          ))}
+          {skills.map((skill) =>
+            pendingSkillIds.has(skill.id) ? (
+              <RegistrySkillSourceItemSkeleton
+                key={skill.id}
+                skillName={skill.name}
+              />
+            ) : (
+              <RegistrySkillSourceItem
+                key={skill.id}
+                skill={skill}
+                onFork={onFork}
+                onSelect={onSelect}
+              />
+            ),
+          )}
         </ResourceBrowseGrid>
       )}
     </ResourceCollectionViewport>
