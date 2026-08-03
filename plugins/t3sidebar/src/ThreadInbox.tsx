@@ -7,6 +7,13 @@ import {
 } from "@bb/plugin-sdk/app";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@bb/shared-ui/select";
 import { ThreadCard } from "./ThreadCard";
 import { SlimRow } from "./SlimRow";
 import { useLifecycle } from "./useLifecycle";
@@ -101,23 +108,30 @@ export function ThreadInbox({
       {/* The one control the host has no equivalent for. Everything else in
           the chrome above — New thread, search — is bb's and stays bb's. */}
       <div className="flex shrink-0 items-center gap-1 px-2 pb-1">
-        <label className="sr-only" htmlFor="t3sidebar-scope">
-          Project scope
-        </label>
-        <select
-          id="t3sidebar-scope"
-          value={scope}
-          onChange={(event) => setScope(event.target.value)}
-          className="min-w-0 flex-1 truncate rounded-md bg-transparent px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent focus:outline-none"
-          aria-label={`Project scope: ${scopeLabel}`}
-        >
-          <option value={ALL_PROJECTS}>All projects</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
+        <Select value={scope} onValueChange={setScope}>
+          {/* Ghost trigger: no border, no filled track — it reads as a label
+              until you hover it. */}
+          <SelectTrigger
+            className="h-7 min-w-0 flex-1 border-0 px-1.5 py-1 text-xs font-medium text-muted-foreground shadow-none hover:bg-sidebar-accent focus:ring-0"
+            aria-label={`Project scope: ${scopeLabel}`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_PROJECTS} className="text-xs">
+              All projects
+            </SelectItem>
+            {projects.map((project) => (
+              <SelectItem
+                key={project.id}
+                value={project.id}
+                className="text-xs"
+              >
+                {project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">

@@ -180,9 +180,10 @@ describe("ThreadInbox", () => {
         { id: "proj_2", name: "other", isPersonal: false },
       ],
     );
-    fireEvent.change(screen.getByLabelText(/Project scope/), {
-      target: { value: "proj_2" },
-    });
+    // Radix opens on keyboard too, which jsdom can drive without pointer
+    // capture. Enter opens the list; the option click picks the scope.
+    fireEvent.keyDown(screen.getByLabelText(/Project scope/), { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "other" }));
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getByText("In other")).toBeDefined();
   });
