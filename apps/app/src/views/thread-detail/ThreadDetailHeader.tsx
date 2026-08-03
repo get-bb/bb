@@ -300,7 +300,10 @@ export function ThreadDetailHeader({
       actions={actions}
       isWindowDragRegion={isTopRow}
       ownsWindowTopLeft={ownsWindowTopLeft}
-      className={cn(beginPaneDrag && "z-[21]")}
+      className={cn(
+        "border-b border-border-seam-vertical/60",
+        beginPaneDrag && "z-[21]",
+      )}
     />
   );
 }
