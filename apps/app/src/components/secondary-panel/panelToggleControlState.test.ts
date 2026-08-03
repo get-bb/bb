@@ -11,7 +11,7 @@ describe("resolveShowPanelControl", () => {
 
     expect(state.action).toBe("show-panel");
     expect(state.label).toBe("Show right panel");
-    expect(state.isExpanded).toBe(false);
+    expect(state.isFullScreen).toBe(false);
     // The recognizable panel icon reads as "open the right side panel".
     expect(state.iconName).toBe("PanelRight");
 
@@ -28,10 +28,9 @@ describe("resolveConversationCollapseControl", () => {
       onToggleConversationCollapse,
     });
 
-    expect(state.action).toBe("expand-panel");
-    expect(state.label).toBe("Expand right panel");
-    // The conversation is currently expanded; clicking collapses it.
-    expect(state.isExpanded).toBe(true);
+    expect(state.action).toBe("enter-full-screen");
+    expect(state.label).toBe("Full Screen");
+    expect(state.isFullScreen).toBe(false);
     // The shared four-arrow glyph clearly expands the panel to fill the canvas.
     expect(state.iconName).toBe("Maximize2");
 
@@ -46,9 +45,9 @@ describe("resolveConversationCollapseControl", () => {
       onToggleConversationCollapse,
     });
 
-    expect(state.action).toBe("restore-conversation");
-    expect(state.label).toBe("Restore conversation");
-    expect(state.isExpanded).toBe(false);
+    expect(state.action).toBe("exit-full-screen");
+    expect(state.label).toBe("Exit Full Screen");
+    expect(state.isFullScreen).toBe(true);
     // The matching four-arrow collapse glyph restores the split layout.
     expect(state.iconName).toBe("Minimize2");
 

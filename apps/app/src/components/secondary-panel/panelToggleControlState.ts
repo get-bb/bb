@@ -1,7 +1,7 @@
 export type PanelToggleAction =
   | "show-panel"
-  | "expand-panel"
-  | "restore-conversation";
+  | "enter-full-screen"
+  | "exit-full-screen";
 
 /**
  * Icon names the toggle can render. A subset of the Icon component's `IconName`
@@ -13,11 +13,10 @@ interface PanelToggleActionPresentation {
   label: string;
   iconName: PanelToggleIconName;
   /**
-   * `aria-expanded` reflects whether the conversation pane is currently
-   * expanded (shown). The collapse toggle flips it; the "show panel" button is
-   * never an expanded disclosure.
+   * Whether the action is currently presenting the panel in full-screen mode.
+   * This drives the toggle button's `aria-pressed` state.
    */
-  isExpanded: boolean;
+  isFullScreen: boolean;
 }
 
 /**
@@ -30,36 +29,32 @@ interface PanelToggleActionPresentation {
  *                          reads as "open the right side panel" — matching the
  *                          in-panel hide button. Lives in the conversation
  *                          header, only while the panel is closed.
- *   expand-panel         → conversation shown: expand the right panel so it
- *                          fills the content area. Renders the shared four-arrow
- *                          expand glyph. Lives in the panel header.
- *   restore-conversation → conversation collapsed: restore it. Renders the
- *                          matching four-arrow collapse glyph. Lives in the
- *                          panel header, in the same slot the expand action
- *                          occupies, so the pair toggles in place.
+ *   enter-full-screen    → expand the right panel to fill the content area.
+ *   exit-full-screen     → restore the previous thread-and-panel layout.
+ * Both actions stay in the panel header so the control transforms in place.
  */
 const PANEL_TOGGLE_ACTION_PRESENTATION = {
   "show-panel": {
     label: "Show right panel",
     iconName: "PanelRight",
-    isExpanded: false,
+    isFullScreen: false,
   },
-  "expand-panel": {
-    label: "Expand right panel",
+  "enter-full-screen": {
+    label: "Full Screen",
     iconName: "Maximize2",
-    isExpanded: true,
+    isFullScreen: false,
   },
-  "restore-conversation": {
-    label: "Restore conversation",
+  "exit-full-screen": {
+    label: "Exit Full Screen",
     iconName: "Minimize2",
-    isExpanded: false,
+    isFullScreen: true,
   },
 } as const satisfies Record<PanelToggleAction, PanelToggleActionPresentation>;
 
 export interface PanelToggleControlState {
   action: PanelToggleAction;
   label: string;
-  isExpanded: boolean;
+  isFullScreen: boolean;
   iconName: PanelToggleIconName;
   onClick: () => void;
 }
@@ -98,8 +93,8 @@ export function resolveConversationCollapseControl({
   onToggleConversationCollapse,
 }: ResolveConversationCollapseControlArgs): PanelToggleControlState {
   const action: PanelToggleAction = isConversationCollapsed
-    ? "restore-conversation"
-    : "expand-panel";
+    ? "exit-full-screen"
+    : "enter-full-screen";
   return {
     action,
     ...PANEL_TOGGLE_ACTION_PRESENTATION[action],

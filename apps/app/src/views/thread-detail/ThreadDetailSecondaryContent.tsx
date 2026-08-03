@@ -120,6 +120,12 @@ function ThreadDetailSecondaryContentBody({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
+  const isSecondaryPanelResizing = useAtomValue(
+    threadSecondaryPanelResizingAtom,
+  );
+  const [liveSecondaryWidthPercent, setLiveSecondaryWidthPercent] = useState(
+    persistedSecondaryWidthPercent,
+  );
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;

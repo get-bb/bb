@@ -124,11 +124,15 @@ export function SplitWorkspaceSecondaryPanelHost({
     // Both panels register with the group asynchronously on mount; until they
     // have, setLayout throws and defaultSize already encodes this state.
     if (group.getLayout().length !== 2) return;
+    if (isPaneMaximized) {
+      group.setLayout([MAIN_PANEL_OPEN_SIZE_PERCENT, 0]);
+      return;
+    }
     if (!isOpen) {
       group.setLayout([MAIN_PANEL_OPEN_SIZE_PERCENT, 0]);
       return;
     }
-    if (model?.isMainCollapsed && !isPaneMaximized) {
+    if (model?.isMainCollapsed) {
       group.setLayout([0, MAIN_PANEL_OPEN_SIZE_PERCENT]);
       return;
     }
@@ -179,8 +183,8 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
-    () => ({ isOpen }),
-    [isOpen],
+    () => ({ isOpen, isSuppressed: isPaneMaximized }),
+    [isOpen, isPaneMaximized],
   );
 
   return (
@@ -196,6 +200,7 @@ export function SplitWorkspaceSecondaryPanelHost({
           data-testid="split-workspace-panel-toggle"
           className={cn(
             "absolute right-2.5 top-2.5 z-40",
+            isPaneMaximized && "hidden",
             // This overlay already owns positioning and stacking. Use only the
             // raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds `relative
             // z-50`, which tailwind-merge would resolve against `absolute` and
@@ -238,11 +243,13 @@ export function SplitWorkspaceSecondaryPanelHost({
             collapsible
             collapsedSize={0}
             defaultSize={
-              model?.isMainCollapsed && !isPaneMaximized
-                ? 0
-                : isOpen
-                  ? MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent
-                  : MAIN_PANEL_OPEN_SIZE_PERCENT
+              isPaneMaximized
+                ? MAIN_PANEL_OPEN_SIZE_PERCENT
+                : model?.isMainCollapsed
+                  ? 0
+                  : isOpen
+                    ? MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent
+                    : MAIN_PANEL_OPEN_SIZE_PERCENT
             }
             minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
             order={1}
@@ -252,10 +259,7 @@ export function SplitWorkspaceSecondaryPanelHost({
             )}
           >
             {/* Panel renders a plain block; the split tree sizes itself with
-              flex-1, so restore a full-height flex context for it. `relative`
-              makes this the containing block for a maximized pane's
-              `absolute inset-0`, so fullscreening a pane fills the main panel
-              without covering the open secondary panel to its right. */}
+              flex-1, so restore a full-height flex context for it. */}
             <div className="relative flex h-full min-h-0 min-w-0">
               {children}
             </div>

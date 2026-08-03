@@ -142,9 +142,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
     expect(closePane.classList).toContain("header-pane-action-button");
-    const closeIcon = closePane.querySelector(
-      '[data-icon="CloseThreadPane"]',
-    );
+    const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');
     expect(closeIcon).not.toBeNull();
     expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);
     expect(closeIcon?.querySelector("path")?.getAttribute("d")).toContain(
@@ -250,7 +248,7 @@ describe("ThreadDetailHeader", () => {
       "[data-pane-header-focus-tab]",
     );
     expect(focusedTab).not.toBeNull();
-    expect(focusedTab?.classList).toContain("bg-muted");
+    expect(focusedTab?.classList).toContain("bg-state-active");
     expect(focusedTab?.classList).not.toContain("shadow-sm");
     expect(container.querySelector("[data-app-page-header-dim]")).toBeNull();
     const activeTitle = screen.getByText("Focused thread");

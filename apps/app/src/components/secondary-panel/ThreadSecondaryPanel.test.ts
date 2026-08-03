@@ -62,7 +62,7 @@ describe("getReservedInlinePanelToggleClassName", () => {
   });
 });
 
-// BB-46: while the conversation is collapsed inside the split-workspace host and
+// BB-46: while the panel is full screen inside the split-workspace host and
 // the main sidebar is collapsed, the panel is the window's flush top-left
 // surface, so its leading toolbar shares the title-bar row with the macOS
 // traffic lights and the pinned sidebar trigger. Without the reserve the
@@ -77,7 +77,7 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
     reserveMacosTrafficLights: true,
   };
 
-  it("reserves the safe area for the collapsed-left / expanded-right split host case", () => {
+  it("reserves the safe area for the panel full-screen split-host case", () => {
     expect(resolveCollapsedPanelTrafficLightReserveClassName(base)).toBe(
       MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
     );

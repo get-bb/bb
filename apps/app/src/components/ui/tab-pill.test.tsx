@@ -46,7 +46,7 @@ describe("TabPill", () => {
       name: "Show thread info panel",
     });
     expect(tab.getAttribute("aria-pressed")).toBe("true");
-    expect(tab.parentElement?.classList).toContain("bg-muted");
+    expect(tab.parentElement?.classList).toContain("bg-state-active");
     expect(screen.getByText("Info").classList).toContain("sr-only");
   });
 
@@ -64,7 +64,7 @@ describe("TabPill", () => {
 
     const shell = screen.getByRole("button", { name: "Browser" }).parentElement;
     expect(shell?.classList).toContain("after:h-0.5");
-    expect(shell?.classList).not.toContain("bg-muted");
+    expect(shell?.classList).not.toContain("bg-state-active");
   });
 
   it("holds associated controls until overlapping pointer and keyboard intent both end", () => {

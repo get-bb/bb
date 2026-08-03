@@ -14,6 +14,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
+import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -282,9 +283,8 @@ export interface ThreadSecondaryPanelProps {
   isConversationCollapsed: boolean;
   /**
    * Toggles {@link isConversationCollapsed}. On a wide viewport the panel header
-   * renders the expand/restore-conversation control in one slot (immediately
-   * left of the hide-panel button), so the collapsed conversation is restored
-   * from the same place it was collapsed. Unused in the drawer/compact layout,
+   * renders the full-screen/exit-full-screen control (immediately left of the
+   * hide-panel button) in both states. Unused in the drawer/compact layout,
    * which cannot collapse the conversation.
    */
   onToggleConversationCollapse: () => void;
@@ -416,19 +416,23 @@ export function ThreadSecondaryPanel({
     },
     [handleSecondaryPanelResize, onPanelResize],
   );
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
+    if (hostLayout?.isSuppressed) {
+      return;
+    }
     if (!hasPanelExpandedRef.current) {
       return;
     }
     hasPanelExpandedRef.current = false;
     onCollapse();
-  }, [onCollapse]);
+  }, [hostLayout?.isSuppressed, onCollapse]);
   // Inside a window-level host, the Panel's mount size must follow the
   // window's panel visibility: this pane's own persisted state can lag one
   // commit behind the host's alignment, and the group re-applies defaultSize
   // after mount — a stale-closed value would collapse the just-opened panel.
-  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
-  const isLayoutOpen = hostLayout?.isOpen ?? isOpen;
+  const isLayoutOpen =
+    (hostLayout?.isOpen ?? isOpen) && !hostLayout?.isSuppressed;
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
@@ -647,7 +651,7 @@ export function ThreadSecondaryPanel({
                 onClick={() => onPanelChange("thread-info")}
                 title="Thread info"
                 usesDesktopChrome={usesDesktopChrome}
-                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+                activeTreatment="fill"
               />
             ) : null}
             {shouldShowGitDiffTab ? (
@@ -664,7 +668,7 @@ export function ThreadSecondaryPanel({
                 onClick={() => onPanelChange("git-diff")}
                 title="Diff"
                 usesDesktopChrome={usesDesktopChrome}
-                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+                activeTreatment="fill"
               />
             ) : null}
             {visibleFileTabs && visibleFileTabs.length > 0 ? (
@@ -672,7 +676,7 @@ export function ThreadSecondaryPanel({
                 fileTabs={visibleFileTabs}
                 onReorderTab={onFileTabReorder}
                 usesDesktopChrome={usesDesktopChrome}
-                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+                activeTreatment="fill"
               />
             ) : null}
             {showNewTabButton ? (
@@ -692,13 +696,14 @@ export function ThreadSecondaryPanel({
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                      HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+                      CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
                       "shrink-0",
                       usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                     )}
                     onClick={conversationCollapseControl.onClick}
                     aria-label={conversationCollapseControl.label}
-                    aria-expanded={conversationCollapseControl.isExpanded}
+                    aria-pressed={conversationCollapseControl.isFullScreen}
                   >
                     <Icon name={conversationCollapseControl.iconName} />
                   </Button>

@@ -12,9 +12,14 @@ import { createContext } from "react";
  * - The right-edge pane headers reserve the window toggle's corner footprint
  *   only while the panel is closed; open, the toggle overlays the panel's own
  *   chrome and the pane actions sit flush at the pane edge.
+ * - A maximized thread temporarily suppresses the logically open panel without
+ *   mutating its persisted visibility, so restoring the thread restores the
+ *   previous panel layout.
  */
 export interface SecondaryPanelHostLayout {
   isOpen: boolean;
+  /** The panel remains logically open but is hidden while a thread is full screen. */
+  isSuppressed: boolean;
 }
 
 export const SecondaryPanelHostLayoutContext =
