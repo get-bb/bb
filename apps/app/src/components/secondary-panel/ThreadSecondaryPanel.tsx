@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type FocusEvent,
   type ReactNode,
+  type TransitionEvent,
   useCallback,
   useContext,
   useMemo,
@@ -78,6 +79,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -88,6 +90,12 @@ export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 // within the same bounds as the real panel it stands in for.
 export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
 export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
+
+export function isSecondaryPanelLayoutTransition(
+  propertyName: string,
+): boolean {
+  return propertyName === "flex-grow" || propertyName === "flex-basis";
+}
 // While the conversation is collapsed the panel fills the content area, so its
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
@@ -427,6 +435,23 @@ export function ThreadSecondaryPanel({
     hasPanelExpandedRef.current = false;
     onCollapse();
   }, [hostLayout?.isSuppressed, onCollapse]);
+  const handlePanelTransitionEnd = useCallback(
+    (event: TransitionEvent<HTMLElement>) => {
+      if (
+        event.target !== event.currentTarget ||
+        !isSecondaryPanelLayoutTransition(event.propertyName)
+      ) {
+        return;
+      }
+
+      // ResizeObserver catches the panel's changing width, but the restored
+      // right-aligned panel continues translating after its final size tick.
+      // Re-measure once the flex transition settles so a native browser view
+      // cannot keep the full-screen x-position over the thread workspace.
+      dispatchBrowserViewBoundsSync();
+    },
+    [],
+  );
   // Inside a window-level host, the Panel's mount size must follow the
   // window's panel visibility: this pane's own persisted state can lag one
   // commit behind the host's alignment, and the group re-applies defaultSize
@@ -849,6 +874,7 @@ export function ThreadSecondaryPanel({
         }
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}
+        onTransitionEnd={handlePanelTransitionEnd}
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(

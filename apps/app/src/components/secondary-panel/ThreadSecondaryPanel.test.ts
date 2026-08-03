@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSecondaryPanelChromeStackClassName,
   getReservedInlinePanelToggleClassName,
+  isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
   resolveSecondaryPanelHideControl,
 } from "./ThreadSecondaryPanel";
@@ -24,6 +25,14 @@ describe("secondary panel hide control", () => {
       iconName: "PanelRight",
       label: "Hide right panel",
     });
+  });
+});
+
+describe("secondary panel native browser bounds settling", () => {
+  it("recognizes the flex transitions that move the panel back to its restored position", () => {
+    expect(isSecondaryPanelLayoutTransition("flex-grow")).toBe(true);
+    expect(isSecondaryPanelLayoutTransition("flex-basis")).toBe(true);
+    expect(isSecondaryPanelLayoutTransition("opacity")).toBe(false);
   });
 });
 
