@@ -80,7 +80,7 @@ describe("useAppSettingsRouteMemory", () => {
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-    expect(screen.getByTestId("location").textContent).toBe("/tools/skills");
+    expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
 
     fireEvent.click(screen.getByRole("link", { name: "Plugin detail" }));
     expect(screen.getByTestId("location").textContent).toBe(
@@ -120,7 +120,9 @@ describe("useAppSettingsRouteMemory", () => {
       );
 
       fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-      expect(screen.getByTestId("location").textContent).toBe("/tools/skills");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/tools/plugins",
+      );
     },
   );
 });
