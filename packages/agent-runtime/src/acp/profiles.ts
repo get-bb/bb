@@ -54,11 +54,14 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
     modelCli: {
       listArgs: ["--list-models"],
       selectFlag: "--model",
+      // Family ids (the default variant's raw id), not raw variant ids: the
+      // catalog folds effort and the `-fast` tail into one entry per family.
       primaryModels: [
         "auto",
+        "cursor-grok-4.5-medium",
+        "gpt-5.6-sol-medium",
+        "claude-opus-5-thinking-medium",
         "claude-fable-5-thinking-medium",
-        "claude-opus-4-8-thinking-medium",
-        "gpt-5.5-medium",
         // Composer is one family now; its `-fast` twin is the Fast-mode tier.
         "composer-2.5",
       ],
