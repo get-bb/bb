@@ -505,9 +505,9 @@ declare const serviceTierSchema: z$1.ZodEnum<{
 }>;
 type ServiceTier = z$1.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z$1.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z$1.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -610,9 +610,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -639,9 +639,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -1754,9 +1754,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         permissionMode: z$1.ZodEnum<{
             readonly: "readonly";
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
             "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
@@ -1959,9 +1959,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsUserQuestion: z$1.ZodBoolean;
         supportsFork: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2142,9 +2142,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -6519,6 +6519,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
                 questionOpen: "questionOpen";
                 promptAvailable: "promptAvailable";
                 splitActive: "splitActive";
+                webSurface: "webSurface";
+                macPlatform: "macPlatform";
             }>>;
             none: z$1.ZodArray<z$1.ZodEnum<{
                 mainSurface: "mainSurface";
@@ -6530,6 +6532,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
                 questionOpen: "questionOpen";
                 promptAvailable: "promptAvailable";
                 splitActive: "splitActive";
+                webSurface: "webSurface";
+                macPlatform: "macPlatform";
             }>>;
         }, z$1.core.$strict>;
     }, z$1.core.$strict>>;
@@ -6605,6 +6609,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
                 questionOpen: "questionOpen";
                 promptAvailable: "promptAvailable";
                 splitActive: "splitActive";
+                webSurface: "webSurface";
+                macPlatform: "macPlatform";
             }>>;
             none: z$1.ZodArray<z$1.ZodEnum<{
                 mainSurface: "mainSurface";
@@ -6616,6 +6622,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
                 questionOpen: "questionOpen";
                 promptAvailable: "promptAvailable";
                 splitActive: "splitActive";
+                webSurface: "webSurface";
+                macPlatform: "macPlatform";
             }>>;
         }, z$1.core.$strict>;
     }, z$1.core.$strict>>;
