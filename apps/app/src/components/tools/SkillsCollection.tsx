@@ -226,15 +226,10 @@ export function SkillsOverview({
     return RESOURCE_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider),
-      disabled: !providerCounts.has(provider),
+      disabled:
+        !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
-  }, [providerCounts]);
-  useEffect(() => {
-    if (isLoading || hasError) return;
-    setProviderFilters((current) =>
-      current.filter((provider) => providerCounts.has(provider)),
-    );
-  }, [hasError, isLoading, providerCounts]);
+  }, [providerCounts, providerFilters]);
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");

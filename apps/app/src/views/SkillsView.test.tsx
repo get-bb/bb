@@ -314,7 +314,9 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
 
     await waitFor(() => {
       expect(
@@ -328,6 +330,47 @@ describe("SkillsOverview", () => {
         .getByRole("menuitemcheckbox", { name: "Codex" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "bb" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
+  });
+
+  it("keeps the default BB filter selected when only provider skills exist", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "codex-skill",
+            provider: "codex",
+            scope: "codex-user",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Agent: 1 selected" }),
+      ).toBeTruthy();
+      expect(screen.queryByText("codex-skill")).toBeNull();
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
+    const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
+    expect(bbFilter.getAttribute("aria-checked")).toBe("true");
+    expect(bbFilter.getAttribute("aria-disabled")).toBeNull();
+
+    fireEvent.click(bbFilter);
+
+    expect(await screen.findByText("codex-skill")).toBeTruthy();
   });
 
   it("preserves a user-selected provider filter across library refreshes", async () => {
