@@ -1513,7 +1513,12 @@ describe("SplitThreadArea", () => {
       name: "Toggle docs sidebar",
     });
     const close = screen.getByRole("button", { name: "Close pane" });
-    expect(close.querySelector('[data-icon="ClosePluginPane"]')).not.toBeNull();
+    const closeIcon = close.querySelector('[data-icon="ClosePluginPane"]');
+    expect(closeIcon).not.toBeNull();
+    expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);
+    expect(closeIcon?.querySelector("path")?.getAttribute("d")).toContain(
+      "M18 6L6.00081 17.9992",
+    );
     expect(
       toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);

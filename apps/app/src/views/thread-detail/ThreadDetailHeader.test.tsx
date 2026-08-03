@@ -142,9 +142,14 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
     expect(closePane.classList).toContain("header-reduced-glyph-button");
-    expect(
-      closePane.querySelector('[data-icon="CloseThreadPane"]'),
-    ).not.toBeNull();
+    const closeIcon = closePane.querySelector(
+      '[data-icon="CloseThreadPane"]',
+    );
+    expect(closeIcon).not.toBeNull();
+    expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);
+    expect(closeIcon?.querySelector("path")?.getAttribute("d")).toContain(
+      "M18 6L6.00081 17.9992",
+    );
   });
 
   it("keeps responsive controls inline and out of the menu for wide split panes", () => {
