@@ -97,11 +97,12 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     systemConfig.data?.generalSettings?.showKeyboardHints ??
     defaultAppSettings.showKeyboardHints;
   const isDesktop = getBbDesktopInfo() !== null;
-  const [isPrimaryModifierHeld, setIsPrimaryModifierHeld] = useState(false);
+  const [isShortcutHintModifierHeld, setIsShortcutHintModifierHeld] =
+    useState(false);
   const modifierHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const primaryModifierHeldRef = useRef(false);
+  const shortcutHintModifierHeldRef = useRef(false);
   const keybindingsRef = useRef(keybindings);
   const handlersRef = useRef(
     new Map<AppCommandId, Map<symbol, AppCommandHandlerRegistration>>(),
@@ -113,22 +114,22 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!showKeyboardHints) return;
-    const primaryModifier = isMacKeyboardPlatform(browserPlatform())
-      ? "Meta"
-      : "Control";
+    const isMac = isMacKeyboardPlatform(browserPlatform());
+    const isShortcutHintModifier = (key: string) =>
+      key === "Control" || (isMac && key === "Meta");
     const clearModifierHold = () => {
       if (modifierHoldTimerRef.current !== null) {
         clearTimeout(modifierHoldTimerRef.current);
         modifierHoldTimerRef.current = null;
       }
-      primaryModifierHeldRef.current = false;
-      setIsPrimaryModifierHeld(false);
+      shortcutHintModifierHeldRef.current = false;
+      setIsShortcutHintModifierHeld(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== primaryModifier) {
+      if (!isShortcutHintModifier(event.key)) {
         if (
           modifierHoldTimerRef.current !== null ||
-          primaryModifierHeldRef.current
+          shortcutHintModifierHeldRef.current
         ) {
           clearModifierHold();
         }
@@ -136,26 +137,26 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       }
       if (
         modifierHoldTimerRef.current !== null ||
-        primaryModifierHeldRef.current
+        shortcutHintModifierHeldRef.current
       ) {
         return;
       }
-      const nonPrimaryModifierHeld =
+      const otherModifierHeld =
         event.shiftKey ||
         event.altKey ||
-        (primaryModifier === "Meta" ? event.ctrlKey : event.metaKey);
-      if (nonPrimaryModifierHeld) {
+        (event.key === "Meta" ? event.ctrlKey : event.metaKey);
+      if (otherModifierHeld) {
         clearModifierHold();
         return;
       }
       modifierHoldTimerRef.current = setTimeout(() => {
         modifierHoldTimerRef.current = null;
-        primaryModifierHeldRef.current = true;
-        setIsPrimaryModifierHeld(true);
+        shortcutHintModifierHeldRef.current = true;
+        setIsShortcutHintModifierHeld(true);
       }, SHORTCUT_HINT_HOLD_DELAY_MS);
     };
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === primaryModifier) clearModifierHold();
+      if (isShortcutHintModifier(event.key)) clearModifierHold();
     };
     const handleBlur = () => clearModifierHold();
 
@@ -315,7 +316,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppCommandContextValue.Provider value={value}>
-      <AppCommandModifierHeldContext.Provider value={isPrimaryModifierHeld}>
+      <AppCommandModifierHeldContext.Provider
+        value={isShortcutHintModifierHeld}
+      >
         {children}
       </AppCommandModifierHeldContext.Provider>
     </AppCommandContextValue.Provider>

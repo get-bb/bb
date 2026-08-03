@@ -272,7 +272,7 @@ afterEach(() => {
 });
 
 describe("AppCommandProvider", () => {
-  it("shares primary-modifier hold state after 700ms and clears it on release or blur", () => {
+  it("shares shortcut-hint modifier state after 700ms and clears it on release or blur", () => {
     vi.useFakeTimers();
     renderProvider(<ModifierState />);
 
@@ -288,6 +288,25 @@ describe("AppCommandProvider", () => {
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.blur(window);
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("shows keyboard hints for either Command or Control on macOS", () => {
+    vi.useFakeTimers();
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(<ModifierState />);
+
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Meta" });
+    expect(screen.getByText("released")).toBeDefined();
+
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Control" });
     expect(screen.getByText("released")).toBeDefined();
     vi.useRealTimers();
   });
@@ -331,7 +350,7 @@ describe("AppCommandProvider", () => {
     vi.useRealTimers();
   });
 
-  it("does not share primary-modifier hold state when keyboard hints are disabled", () => {
+  it("does not share shortcut-hint modifier state when keyboard hints are disabled", () => {
     vi.useFakeTimers();
     testState.showKeyboardHints = false;
     renderProvider(<ModifierState />);

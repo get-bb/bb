@@ -46,8 +46,9 @@ sleeps the Mac. This setting is only shown when the connected primary host
 daemon reports macOS.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
-Turn it off to hide the delayed shortcut badges shown while holding Command on
-macOS or Control on Windows/Linux. Shortcut commands continue to work.
+Turn it off to hide the delayed shortcut badges shown while holding Command or
+Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
+work.
 
 Settings → General includes `showUnhandledProviderEvents`, which defaults to
 false in packaged builds. Turn it on to show raw provider events bb does not yet
