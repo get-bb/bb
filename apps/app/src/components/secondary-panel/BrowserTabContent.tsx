@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FocusEvent as ReactFocusEvent,
   type FormEvent,
   type RefObject,
 } from "react";
@@ -38,7 +37,6 @@ import {
   registerBrowserView,
   type BrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
-import { subscribeBrowserChromeReveal } from "./browserChromeReveal";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 import {
@@ -47,8 +45,6 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
-
-export const BROWSER_CHROME_IDLE_COLLAPSE_MS = 250;
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -94,16 +90,6 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
-  visibility: BrowserChromeVisibility;
-}
-
-interface BrowserChromeVisibility {
-  isExpanded: boolean;
-  onActivity: () => void;
-  onBlurCapture: (event: ReactFocusEvent<HTMLDivElement>) => void;
-  onFocusCapture: () => void;
-  onPointerEnter: () => void;
-  onPointerLeave: () => void;
 }
 
 interface NavButtonProps {
@@ -262,7 +248,6 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
-  visibility,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -270,30 +255,20 @@ function BrowserChrome({
   return (
     <div
       data-testid="browser-tab-nav-bar"
-      data-state={visibility.isExpanded ? "expanded" : "collapsed"}
+      data-state="expanded"
       role="region"
       aria-label="Browser navigation"
-      aria-expanded={visibility.isExpanded}
+      aria-expanded="true"
       tabIndex={-1}
-      onBlurCapture={visibility.onBlurCapture}
-      onFocusCapture={visibility.onFocusCapture}
-      onKeyDownCapture={visibility.onActivity}
-      onPointerDownCapture={visibility.onActivity}
-      onPointerEnter={visibility.onPointerEnter}
-      onPointerLeave={visibility.onPointerLeave}
       className={cn(
-        "relative shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+        "relative h-11 shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring max-md:pointer-coarse:h-[52px]",
         SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
-        visibility.isExpanded ? "h-11 max-md:pointer-coarse:h-[52px]" : "h-1",
       )}
     >
       <div
         data-testid="browser-tab-nav-controls"
         className={cn(
-          "absolute inset-x-0 top-0 flex h-11 items-center gap-1 px-2 py-1.5 transition-[opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none max-md:pointer-coarse:h-[52px]",
-          visibility.isExpanded
-            ? "translate-y-0 opacity-100"
-            : "pointer-events-none -translate-y-1 opacity-0",
+          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 px-2 py-1.5 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}
       >
         <NavButton
@@ -381,104 +356,6 @@ function BrowserChrome({
       </div>
     </div>
   );
-}
-
-function useBrowserChromeAutoCollapse(args: {
-  holdExpanded: boolean;
-}): BrowserChromeVisibility {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const timeoutRef = useRef<number | null>(null);
-  const pointerInsideRef = useRef(false);
-  const focusInsideRef = useRef(false);
-  const holdExpandedRef = useRef(args.holdExpanded);
-
-  const clearCollapseTimer = useCallback(() => {
-    if (timeoutRef.current === null) {
-      return;
-    }
-    window.clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-  }, []);
-
-  const shouldHoldExpanded = useCallback(
-    () =>
-      pointerInsideRef.current ||
-      focusInsideRef.current ||
-      holdExpandedRef.current,
-    [],
-  );
-
-  const scheduleCollapse = useCallback(() => {
-    clearCollapseTimer();
-    if (shouldHoldExpanded()) {
-      return;
-    }
-    timeoutRef.current = window.setTimeout(() => {
-      timeoutRef.current = null;
-      if (!shouldHoldExpanded()) {
-        setIsExpanded(false);
-      }
-    }, BROWSER_CHROME_IDLE_COLLAPSE_MS);
-  }, [clearCollapseTimer, shouldHoldExpanded]);
-
-  const onActivity = useCallback(() => {
-    clearCollapseTimer();
-    setIsExpanded(true);
-    if (!shouldHoldExpanded()) {
-      scheduleCollapse();
-    }
-  }, [clearCollapseTimer, scheduleCollapse, shouldHoldExpanded]);
-
-  const onPointerEnter = useCallback(() => {
-    pointerInsideRef.current = true;
-    clearCollapseTimer();
-    setIsExpanded(true);
-  }, [clearCollapseTimer]);
-
-  const onPointerLeave = useCallback(() => {
-    pointerInsideRef.current = false;
-    scheduleCollapse();
-  }, [scheduleCollapse]);
-
-  const onFocusCapture = useCallback(() => {
-    focusInsideRef.current = true;
-    clearCollapseTimer();
-    setIsExpanded(true);
-  }, [clearCollapseTimer]);
-
-  const onBlurCapture = useCallback(
-    (event: ReactFocusEvent<HTMLDivElement>) => {
-      if (
-        event.relatedTarget instanceof Node &&
-        event.currentTarget.contains(event.relatedTarget)
-      ) {
-        return;
-      }
-      focusInsideRef.current = false;
-      scheduleCollapse();
-    },
-    [scheduleCollapse],
-  );
-
-  useEffect(() => {
-    holdExpandedRef.current = args.holdExpanded;
-    if (args.holdExpanded) {
-      clearCollapseTimer();
-      return;
-    }
-    scheduleCollapse();
-  }, [args.holdExpanded, clearCollapseTimer, scheduleCollapse]);
-
-  useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
-
-  return {
-    isExpanded,
-    onActivity,
-    onBlurCapture,
-    onFocusCapture,
-    onPointerEnter,
-    onPointerLeave,
-  };
 }
 
 function BrowserUnavailable() {
@@ -588,25 +465,6 @@ export function BrowserTabContent({
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
-  const [isTabRevealHeld, setIsTabRevealHeld] = useState(false);
-  const browserChromeVisibility = useBrowserChromeAutoCollapse({
-    holdExpanded:
-      isEditing || isTabRevealHeld || (state?.isLoading ?? false),
-  });
-  const noteBrowserChromeActivity = browserChromeVisibility.onActivity;
-  const handleTabRevealHoldChange = useCallback(
-    (isHeld: boolean) => {
-      if (isHeld) {
-        noteBrowserChromeActivity();
-      }
-      setIsTabRevealHeld(isHeld);
-    },
-    [noteBrowserChromeActivity],
-  );
-  useEffect(
-    () => subscribeBrowserChromeReveal(tabId, handleTabRevealHoldChange),
-    [handleTabRevealHoldChange, tabId],
-  );
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
@@ -727,7 +585,6 @@ export function BrowserTabContent({
       if (nextState.tabId !== tabId) {
         return;
       }
-      noteBrowserChromeActivity();
       setState(nextState);
       setCurrentUrl(nextState.url);
       onUpdateRef.current({
@@ -763,7 +620,6 @@ export function BrowserTabContent({
   }, [
     desktopBrowser,
     environmentId,
-    noteBrowserChromeActivity,
     syncInitialBounds,
     visibilityCoordinator,
     tabId,
@@ -857,7 +713,6 @@ export function BrowserTabContent({
       return;
     }
 
-    noteBrowserChromeActivity();
     setAddressDraft(currentUrl);
     setIsEditing(true);
     addressInputRef.current?.focus({ preventScroll: true });
@@ -870,7 +725,6 @@ export function BrowserTabContent({
     addressFocusRequest,
     currentUrl,
     isPointerCoarse,
-    noteBrowserChromeActivity,
     onAddressFocusRequestConsumed,
     tabId,
   ]);
@@ -881,12 +735,11 @@ export function BrowserTabContent({
       if (url === null) {
         return;
       }
-      noteBrowserChromeActivity();
       setCurrentUrl(url);
       setIsEditing(false);
       desktopBrowser?.navigate({ tabId, url });
     },
-    [desktopBrowser, noteBrowserChromeActivity, tabId],
+    [desktopBrowser, tabId],
   );
 
   const handleAddressSubmit = useCallback(
@@ -903,17 +756,15 @@ export function BrowserTabContent({
   }, [currentUrl]);
 
   const handleReloadOrStop = useCallback(() => {
-    noteBrowserChromeActivity();
     if (state?.isLoading ?? false) {
       desktopBrowser?.stop(tabId);
       return;
     }
     desktopBrowser?.reload(tabId);
-  }, [desktopBrowser, noteBrowserChromeActivity, state?.isLoading, tabId]);
+  }, [desktopBrowser, state?.isLoading, tabId]);
 
   const handleFocusLocation = useCallback((): boolean => {
     if (!canShowNativeBrowserView || desktopBrowser === null) return false;
-    noteBrowserChromeActivity();
     setAddressDraft(currentUrl);
     setIsEditing(true);
     addressInputRef.current?.focus({ preventScroll: true });
@@ -922,12 +773,7 @@ export function BrowserTabContent({
       addressInputRef.current?.select();
     });
     return true;
-  }, [
-    canShowNativeBrowserView,
-    currentUrl,
-    desktopBrowser,
-    noteBrowserChromeActivity,
-  ]);
+  }, [canShowNativeBrowserView, currentUrl, desktopBrowser]);
 
   useAppCommandHandler("browser.focusLocation", handleFocusLocation, 100);
   useAppCommandHandler(
@@ -936,7 +782,6 @@ export function BrowserTabContent({
       if (!canShowNativeBrowserView || desktopBrowser === null || !hasPage) {
         return false;
       }
-      noteBrowserChromeActivity();
       desktopBrowser.reload(tabId);
       return true;
     },
@@ -944,9 +789,8 @@ export function BrowserTabContent({
   );
 
   const handleOpenExternal = useCallback(() => {
-    noteBrowserChromeActivity();
     getBbDesktopInfo()?.openExternalUrl(currentUrl);
-  }, [currentUrl, noteBrowserChromeActivity]);
+  }, [currentUrl]);
 
   if (desktopBrowser === null) {
     return <BrowserUnavailable />;
@@ -965,18 +809,15 @@ export function BrowserTabContent({
         onAddressBlur={() => setIsEditing(false)}
         onSubmit={handleAddressSubmit}
         onBack={() => {
-          noteBrowserChromeActivity();
           desktopBrowser.goBack(tabId);
         }}
         onForward={() => {
-          noteBrowserChromeActivity();
           desktopBrowser.goForward(tabId);
         }}
         onReloadOrStop={handleReloadOrStop}
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
-        visibility={browserChromeVisibility}
       />
       <div ref={contentRef} className="relative min-h-0 flex-1">
         {hasPageLoadError ? (

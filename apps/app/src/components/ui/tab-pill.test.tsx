@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TabPill } from "./tab-pill";
 
@@ -65,31 +65,5 @@ describe("TabPill", () => {
     const shell = screen.getByRole("button", { name: "Browser" }).parentElement;
     expect(shell?.classList).toContain("after:h-0.5");
     expect(shell?.classList).not.toContain("bg-state-active");
-  });
-
-  it("holds associated controls until overlapping pointer and keyboard intent both end", () => {
-    const onRevealHoldChange = vi.fn();
-    render(
-      <TabPill
-        label="Example Docs"
-        title="Example Docs"
-        isActive
-        onRevealHoldChange={onRevealHoldChange}
-        onSelect={vi.fn()}
-        closeAction={null}
-      />,
-    );
-
-    const tab = screen.getByRole("button", { name: "Example Docs" });
-    if (tab.parentElement === null) throw new Error("Tab shell missing");
-    fireEvent.pointerEnter(tab.parentElement);
-    fireEvent.focus(tab);
-    fireEvent.pointerLeave(tab.parentElement);
-
-    expect(onRevealHoldChange.mock.calls).toEqual([[true]]);
-
-    fireEvent.blur(tab);
-
-    expect(onRevealHoldChange.mock.calls).toEqual([[true], [false]]);
   });
 });

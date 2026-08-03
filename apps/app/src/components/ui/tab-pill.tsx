@@ -2,7 +2,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
@@ -42,7 +42,6 @@ export interface TabPillProps {
    * whole canvas; the filled selection surface is reserved for sibling panes.
    */
   activeTreatment?: "fill" | "underline";
-  onRevealHoldChange?: (isHeld: boolean) => void;
   onSelect: () => void;
   labelMaxWidthClass?: string;
   closeAction: TabPillCloseAction | null;
@@ -59,62 +58,12 @@ export function TabPill({
   title,
   isActive,
   activeTreatment = "fill",
-  onRevealHoldChange,
   onSelect,
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
 }: TabPillProps) {
-  const revealHoldCallbackRef = useRef(onRevealHoldChange);
-  const pointerInsideRef = useRef(false);
-  const focusInsideRef = useRef(false);
-  const isRevealHeldRef = useRef(false);
-
-  useEffect(() => {
-    revealHoldCallbackRef.current = onRevealHoldChange;
-  }, [onRevealHoldChange]);
-
-  const updateRevealHold = () => {
-    const isHeld = pointerInsideRef.current || focusInsideRef.current;
-    if (isHeld === isRevealHeldRef.current) {
-      return;
-    }
-    isRevealHeldRef.current = isHeld;
-    revealHoldCallbackRef.current?.(isHeld);
-  };
-
-  useEffect(
-    () => () => {
-      if (isRevealHeldRef.current) {
-        revealHoldCallbackRef.current?.(false);
-      }
-    },
-    [],
-  );
-
   return (
     <div
-      onPointerEnter={() => {
-        pointerInsideRef.current = true;
-        updateRevealHold();
-      }}
-      onPointerLeave={() => {
-        pointerInsideRef.current = false;
-        updateRevealHold();
-      }}
-      onFocusCapture={() => {
-        focusInsideRef.current = true;
-        updateRevealHold();
-      }}
-      onBlurCapture={(event) => {
-        if (
-          event.relatedTarget instanceof Node &&
-          event.currentTarget.contains(event.relatedTarget)
-        ) {
-          return;
-        }
-        focusInsideRef.current = false;
-        updateRevealHold();
-      }}
       className={cn(
         `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,

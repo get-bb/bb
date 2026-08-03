@@ -1,5 +1,5 @@
 import { Button } from "@bb/shared-ui/button";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -11,18 +11,41 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { usePaneContext } from "./PaneContext";
 
 const ARRANGEMENT_ACTIONS: ReadonlyArray<{
-  icon: IconName;
   label: string;
   side: SplitSide;
 }> = [
-  { icon: "ChevronLeft", label: "Move left", side: "left" },
-  { icon: "ChevronRight", label: "Move right", side: "right" },
-  { icon: "ChevronUp", label: "Move top", side: "top" },
-  { icon: "ChevronDown", label: "Move bottom", side: "bottom" },
+  { label: "Move left", side: "left" },
+  { label: "Move right", side: "right" },
+  { label: "Move top", side: "top" },
+  { label: "Move bottom", side: "bottom" },
 ];
 
 const MENU_ITEM_CLASS =
   "flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0";
+
+const ARRANGEMENT_REGION_CLASS: Record<SplitSide, string> = {
+  left: "inset-y-[3px] left-[3px] w-2.5",
+  right: "inset-y-[3px] right-[3px] w-2.5",
+  top: "inset-x-[3px] top-[3px] h-1.5",
+  bottom: "inset-x-[3px] bottom-[3px] h-1.5",
+};
+
+function ArrangementGlyph({ side }: { side: SplitSide }) {
+  return (
+    <span
+      data-pane-arrangement-glyph={side}
+      aria-hidden
+      className="relative block h-5 w-8 rounded-[5px] border-2 border-current"
+    >
+      <span
+        className={cn(
+          "absolute rounded-[2px] bg-current",
+          ARRANGEMENT_REGION_CLASS[side],
+        )}
+      />
+    </span>
+  );
+}
 
 export function PaneMaximizeButton({
   defaultMenuOpen = false,
@@ -93,7 +116,7 @@ export function PaneMaximizeButton({
         side="bottom"
         align="end"
         sideOffset={6}
-        className="w-44 space-y-1 rounded-lg p-1.5"
+        className="w-52 space-y-1 rounded-lg p-1.5"
         {...contentHoverProps}
       >
         <button
@@ -112,21 +135,28 @@ export function PaneMaximizeButton({
           ) : null}
         </button>
         {onMoveToSide ? (
-          <div className="border-t border-border-hairline pt-1">
+          <div
+            className="grid grid-cols-4 gap-1 border-t border-border-hairline pt-1.5"
+            aria-label="Move pane"
+          >
             {ARRANGEMENT_ACTIONS.map((action) => (
-              <button
-                key={action.side}
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM_CLASS}
-                onClick={() => {
-                  handleOpenChange(false);
-                  onMoveToSide(action.side);
-                }}
-              >
-                <Icon name={action.icon} />
-                {action.label}
-              </button>
+              <Tooltip key={action.side}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-label={action.label}
+                    className="flex h-11 cursor-default items-center justify-center rounded-md text-subtle-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none"
+                    onClick={() => {
+                      handleOpenChange(false);
+                      onMoveToSide(action.side);
+                    }}
+                  >
+                    <ArrangementGlyph side={action.side} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{action.label}</TooltipContent>
+              </Tooltip>
             ))}
           </div>
         ) : null}

@@ -139,7 +139,6 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
-import { setBrowserChromeRevealHeld } from "@/components/secondary-panel/browserChromeReveal";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import {
   canStartNativeSideChat,
@@ -1464,8 +1463,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
                 />
               ),
               statusLabel: null,
-              onRevealHoldChange: (isHeld) =>
-                setBrowserChromeRevealHeld(tab.id, isHeld),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };

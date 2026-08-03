@@ -9,7 +9,6 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
 import { Icon } from "@bb/shared-ui/icon";
 import { BrowserTabDeck } from "./BrowserTabDeck";
-import { setBrowserChromeRevealHeld } from "./browserChromeReveal";
 import {
   ThreadSecondaryPanel,
   type SecondaryPanelFileTab,
@@ -128,8 +127,6 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
       isActive: true,
       leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
       statusLabel: null,
-      onRevealHoldChange: (isHeld) =>
-        setBrowserChromeRevealHeld(tab.id, isHeld),
       onSelect: noop,
       onClose: noop,
     },

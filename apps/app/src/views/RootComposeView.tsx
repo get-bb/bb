@@ -63,7 +63,6 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
-import { setBrowserChromeRevealHeld } from "@/components/secondary-panel/browserChromeReveal";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -445,6 +444,22 @@ interface BuildRootComposeTerminalSessionsArgs {
 interface RootComposeRightPanelToggleProps {
   isOpen: boolean;
   onToggle: () => void;
+}
+
+export function resolveRootComposePanelTogglePlacement(args: {
+  isHosted: boolean;
+  isOpen: boolean;
+}): {
+  inlinePanelToggle: "button" | "reserved";
+  showPinnedToggle: boolean;
+} {
+  if (args.isHosted) {
+    return { inlinePanelToggle: "reserved", showPinnedToggle: false };
+  }
+  return {
+    inlinePanelToggle: "button",
+    showPinnedToggle: !args.isOpen,
+  };
 }
 
 interface RightPanelFileTabIconProps {
@@ -2553,8 +2568,6 @@ export function RootComposeView() {
                 />
               ),
               statusLabel: null,
-              onRevealHoldChange: (isHeld) =>
-                setBrowserChromeRevealHeld(tab.id, isHeld),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -3033,16 +3046,18 @@ export function RootComposeView() {
   // (see RootComposeSecondaryContent).
   const panelTogglePositionClassName =
     ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
-  const rootPanelToggle =
-    (paneContext?.secondaryPanelHost ?? null) === null &&
-    (!renderSecondaryPanelAsDrawer || !isSecondaryPanelOpen) ? (
-      <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
-        <RootComposeRightPanelToggle
-          isOpen={isSecondaryPanelOpen}
-          onToggle={handleToggleSecondaryPanel}
-        />
-      </div>
-    ) : null;
+  const panelTogglePlacement = resolveRootComposePanelTogglePlacement({
+    isHosted: (paneContext?.secondaryPanelHost ?? null) !== null,
+    isOpen: isSecondaryPanelOpen,
+  });
+  const rootPanelToggle = panelTogglePlacement.showPinnedToggle ? (
+    <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
+      <RootComposeRightPanelToggle
+        isOpen={isSecondaryPanelOpen}
+        onToggle={handleToggleSecondaryPanel}
+      />
+    </div>
+  ) : null;
   const attachmentsConfig = useMemo(
     () => ({
       items: promptDraft.attachments,
@@ -3470,7 +3485,7 @@ export function RootComposeView() {
             showGitDiffTab: false,
             showInfoTab: false,
             showNewTabButton: true,
-            inlinePanelToggle: "reserved",
+            inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
             onOpenFileInEditor: handleOpenWorkspaceFileInEditor,

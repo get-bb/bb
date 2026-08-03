@@ -96,13 +96,15 @@ describe("PaneMaximizeButton", () => {
     expect(menu.textContent).toContain("Full Screen");
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual([
-      "Full Screen⌘⇧E",
-      "Move left",
-      "Move right",
-      "Move top",
-      "Move bottom",
-    ]);
+    ).toEqual(["Full Screen⌘⇧E", "", "", "", ""]);
+    for (const side of ["left", "right", "top", "bottom"]) {
+      const action = screen.getByRole("menuitem", {
+        name: `Move ${side}`,
+      });
+      expect(
+        action.querySelector(`[data-pane-arrangement-glyph="${side}"]`),
+      ).not.toBeNull();
+    }
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Move left" }));
     expect(onMoveToSide).toHaveBeenCalledWith("left");
