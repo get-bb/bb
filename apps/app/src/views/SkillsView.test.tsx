@@ -560,7 +560,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     ).toBe(false);
   });
 
-  it("loads repository stars once and progressively updates every matching card", async () => {
+  it("reveals registry cards only after repository stars finish loading", async () => {
     const firstSkill = makeRegistrySkill({
       id: "owner/shared-repo/first-skill",
       source: "owner/shared-repo",
@@ -615,9 +615,6 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("First skill")).toBeTruthy();
-    expect(screen.getByText("Second skill")).toBeTruthy();
-    expect(screen.queryByLabelText(/stars$/u)).toBeNull();
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
@@ -627,13 +624,17 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         ),
       ).toHaveLength(1);
     });
+    expect(screen.queryByText("First skill")).toBeNull();
+    expect(screen.queryByText("Second skill")).toBeNull();
 
     resolveStars?.(Response.json({ stars: 27_053 }));
 
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("Second skill")).toBeTruthy();
     expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
   });
 
-  it("renders registry cards before progressively loading their descriptions", async () => {
+  it("reveals registry cards only after their descriptions finish loading", async () => {
     const registrySkill = makeRegistrySkill({ summary: null });
     let resolveEntry: ((response: Response) => void) | undefined;
     const entryResponse = new Promise<Response>((resolve) => {
@@ -674,8 +675,6 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Useful skill")).toBeTruthy();
-    expect(screen.queryByText("Loaded after the card")).toBeNull();
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
@@ -685,6 +684,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         ),
       ).toHaveLength(1);
     });
+    expect(screen.queryByText("Useful skill")).toBeNull();
+    expect(screen.queryByText("Loaded after the card")).toBeNull();
 
     resolveEntry?.(
       Response.json({
@@ -693,7 +694,8 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       }),
     );
 
-    expect(await screen.findByText("Loaded after the card")).toBeTruthy();
+    expect(await screen.findByText("Useful skill")).toBeTruthy();
+    expect(screen.getByText("Loaded after the card")).toBeTruthy();
   });
 });
 
@@ -747,6 +749,9 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
+    for (const byline of screen.getAllByText("by owner/repo")) {
+      expect(byline.className).toContain("text-xs");
+    }
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",

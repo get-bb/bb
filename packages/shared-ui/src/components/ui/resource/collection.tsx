@@ -504,7 +504,7 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {byline ? (
-        <span className="pointer-events-none relative col-start-1 row-start-3 block truncate text-left text-2xs text-subtle-foreground">
+        <span className="pointer-events-none relative col-start-1 row-start-3 block truncate text-left text-xs text-subtle-foreground">
           {byline}
         </span>
       ) : null}
