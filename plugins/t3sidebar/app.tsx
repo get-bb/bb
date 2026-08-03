@@ -6,6 +6,7 @@
 // each card, not by position, so the sidebar only moves when you act.
 import { definePluginApp } from "@bb/plugin-sdk/app";
 import { ThreadInbox } from "./src/ThreadInbox";
+import { ParentChip } from "./src/ParentChip";
 import { SubagentsChip } from "./src/SubagentsChip";
 
 export default definePluginApp((app) => {
@@ -14,6 +15,17 @@ export default definePluginApp((app) => {
     title: "t3sidebar (inbox)",
     description: "One flat list of cards, newest first, that never re-orders.",
     component: ThreadInbox,
+  });
+
+  // Registered first, so it renders on the left of the children chip: the
+  // header then reads up (parent) then down (children).
+  //
+  // The hidden child is otherwise a dead end — it is not in the list, so this
+  // chip is its only route back to the parent.
+  app.slots.experimental_threadHeaderAction({
+    id: "parent",
+    title: "Parent thread",
+    component: ParentChip,
   });
 
   // A flat inbox has nowhere to nest child threads, so the list hides them

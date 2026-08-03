@@ -5,8 +5,8 @@ import {
   type PluginSidebarThread,
   type PluginThreadHeaderActionProps,
 } from "@bb/plugin-sdk/app";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Disc } from "./Disc";
 import { StatusGlyph } from "./StatusGlyph";
 import { childrenOf, threadDisplayTitle } from "./inbox";
 
@@ -122,32 +122,4 @@ function DiscCluster({ threads }: { threads: readonly PluginSidebarThread[] }) {
       ) : null}
     </span>
   );
-}
-
-/**
- * A per-child dot. Colour comes from the child's id so the same thread keeps
- * the same colour, and every hue is a rotation of one accent, so a custom
- * palette still applies.
- */
-function Disc({ thread }: { thread: PluginSidebarThread | null }) {
-  const hue = thread === null ? 0 : hashHue(thread.id);
-  return (
-    <span
-      className="inline-block size-3.5 shrink-0 rounded-full border border-background"
-      style={{
-        backgroundColor:
-          thread === null
-            ? "var(--muted-foreground)"
-            : `oklch(0.72 0.13 ${hue})`,
-      }}
-    />
-  );
-}
-
-function hashHue(id: string): number {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) {
-    hash = (hash * 31 + id.charCodeAt(index)) % 360;
-  }
-  return hash;
 }

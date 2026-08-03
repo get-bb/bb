@@ -4,6 +4,7 @@ import {
   childrenOf,
   filterByProject,
   hideChildrenOfVisibleParents,
+  parentOf,
   partitionPinned,
   searchThreadsByTitle,
   sortByCreatedAtDescending,
@@ -178,5 +179,29 @@ describe("child threads", () => {
       "parent",
     );
     expect(children.map((t) => t.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("parentOf", () => {
+  // The list hides an archived parent, but the child's header must still get
+  // it back — otherwise the child is a dead end.
+  it("finds a parent the inbox filters out", () => {
+    const parent = parentOf(
+      [
+        thread({ id: "parent", isArchived: true, projectId: "other" }),
+        thread({ id: "child", parentThreadId: "parent" }),
+      ],
+      "child",
+    );
+    expect(parent?.id).toBe("parent");
+  });
+
+  it("returns null for a root thread", () => {
+    expect(parentOf([thread({ id: "root" })], "root")).toBeNull();
+  });
+
+  it("returns null when the parent row is gone", () => {
+    const threads = [thread({ id: "child", parentThreadId: "deleted" })];
+    expect(parentOf(threads, "child")).toBeNull();
   });
 });

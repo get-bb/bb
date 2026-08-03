@@ -35,11 +35,31 @@ Three shelves:
   back early if it starts working or asks you something.
 - **Settled** — work you are done with, collapsed to one line each.
 
+## Child threads live in the header
+
+A flat inbox has nowhere to nest a child thread, so the list hides a child
+while its parent is on screen. Two chips in the thread header carry that
+relation instead:
+
+- On a parent: a chip with one coloured disc per child. It opens the list of
+  children.
+- On a child: a chip that names the parent and opens it. Without it the child
+  is a dead end, because it is not in the list.
+
+The parent chip sits on the left of the children chip, so the header reads up
+then down. A child that has children of its own shows both. Each disc takes
+its colour from the thread id, so the same thread keeps one colour in the list
+and in both chips.
+
+An orphan — a child whose parent is deleted — stays in the list, and its
+header shows no parent chip.
+
 ## What it demonstrates
 
 | Plugin API | Used for |
 | --- | --- |
 | `experimental_threadList` | the sidebar's scrolling list (bb keeps the New-thread button, search, nav rows, and footer) |
+| `experimental_threadHeaderAction` | the two header chips: children on a parent, and the way back on a child |
 | `experimental_useSidebarThreads` | live threads and projects, from the host's own cache |
 | `experimental_useSidebarThreadActions` | open, open-in-split, new thread |
 | `experimental_useSidebarThreadSplit` | dragging a card out to a split pane |
