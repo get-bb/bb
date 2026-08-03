@@ -551,6 +551,10 @@ export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
+export interface ListUnarchivedHiddenSourceThreadsArgs {
+  sourceThreadId: string;
+}
+
 export interface ListUnarchivedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
@@ -1234,6 +1238,29 @@ export function listUnarchivedAssignedChildThreads(
     .all();
 }
 
+
+/**
+ * Live hidden threads forked from this source. A hidden fork has no navigable
+ * row of its own, so it retires with the thread it was derived from — the
+ * cascade is structural rather than owned by whichever plugin created it.
+ */
+export function listUnarchivedHiddenSourceThreads(
+  db: ThreadWriteConnection,
+  args: ListUnarchivedHiddenSourceThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select()
+    .from(threads)
+    .where(
+      and(
+        eq(threads.sourceThreadId, args.sourceThreadId),
+        eq(threads.visibility, "hidden"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+}
 
 export function listNonDeletedChildThreads(
   db: ThreadWriteConnection,

@@ -1,6 +1,7 @@
 import {
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
+  listUnarchivedHiddenSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -115,10 +116,16 @@ export function archiveThreadAndChildren(
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
-  // Side chats cascade through their owning plugin's `thread.archived`
-  // listener, so only hierarchy children are collected here.
-  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] =
-    childThreads.filter((thread) => thread.id !== args.parentThread.id);
+  // A hidden fork (a side chat, say) has no row of its own to reach, so it
+  // retires with its source. Structural rather than plugin-owned: archiving
+  // must not depend on whichever plugin created the fork still being enabled.
+  const hiddenSourceThreads = listUnarchivedHiddenSourceThreads(deps.db, {
+    sourceThreadId: args.parentThread.id,
+  });
+  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] = [
+    ...childThreads,
+    ...hiddenSourceThreads,
+  ].filter((thread) => thread.id !== args.parentThread.id);
   if (args.parentThread.archivedAt === null) {
     threads.push(args.parentThread);
   }

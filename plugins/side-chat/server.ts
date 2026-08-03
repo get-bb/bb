@@ -4,8 +4,9 @@
 // "hidden"`) created idle at panel-open time; the frontend renders them with
 // the host-owned `ThreadChat` component.
 //
-// Server-owned policy lives here: the reply-anchor seed rule, the archive
-// cascade for this plugin's forks, and the empty-fork cleanup sweep.
+// Server-owned policy lives here: the reply-anchor seed rule and the
+// empty-fork cleanup sweep. The archive cascade is BB's own: a hidden fork
+// retires with its source thread whether or not this plugin is enabled.
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import { z } from "zod";
 
@@ -224,34 +225,6 @@ export default async function plugin(bb: BbPluginApi) {
       });
       return { ok: true as const };
     },
-  });
-
-  // Archive cascade: archiving a source thread archives this plugin's hidden
-  // forks of it. Plugin-owned by design (BB-70 decisions log) — the core
-  // `originKind: "side-chat"` cascade stays server-side for legacy rows only.
-  bb.events.on("thread.archived", async ({ thread }) => {
-    const candidates = await bb.sdk.threads.list({
-      sourceThreadId: thread.id,
-      originKind: "fork",
-      originPluginId: bb.pluginId,
-      archived: false,
-      includeHidden: true,
-    });
-    for (const candidate of candidates) {
-      if (!isOwnLiveHiddenFork(candidate, bb.pluginId)) continue;
-      try {
-        await bb.sdk.threads.archive({ threadId: candidate.id });
-        bb.log.info(
-          `archived side-chat fork ${candidate.id} (source ${thread.id} archived)`,
-        );
-      } catch (error) {
-        bb.log.warn(
-          `failed to archive side-chat fork ${candidate.id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
   });
 
   // Empty-fork cleanup: hourly sweep archiving this plugin's hidden forks

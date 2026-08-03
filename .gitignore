@@ -69,3 +69,6 @@ output.txt
 # turborepo
 .turbo
 .claude/
+
+# Temp roots from the CLI packaged-plugin build test (mkdtemp under apps/cli)
+apps/cli/.packaged-plugin-build-*

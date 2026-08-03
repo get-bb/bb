@@ -256,68 +256,6 @@ describe("sendToMain rpc", () => {
   });
 });
 
-describe("archive cascade", () => {
-  it("archives only this plugin's live hidden forks of the archived source", async () => {
-    const ownFork = makeThreadResponse({
-      id: "thr_own",
-      sourceThreadId: "thr_src",
-      originKind: "fork",
-      originPluginId: PLUGIN_ID,
-      visibility: "hidden",
-    });
-    const otherPluginFork = makeThreadResponse({
-      id: "thr_other",
-      sourceThreadId: "thr_src",
-      originKind: "fork",
-      originPluginId: "some-other-plugin",
-      visibility: "hidden",
-    });
-    const promotedFork = makeThreadResponse({
-      id: "thr_promoted",
-      sourceThreadId: "thr_src",
-      originKind: "fork",
-      originPluginId: PLUGIN_ID,
-      visibility: "visible",
-    });
-    const alreadyArchived = makeThreadResponse({
-      id: "thr_archived",
-      sourceThreadId: "thr_src",
-      originKind: "fork",
-      originPluginId: PLUGIN_ID,
-      visibility: "hidden",
-      archivedAt: 123,
-    });
-    const list = vi.fn(async () => [
-      ownFork,
-      otherPluginFork,
-      promotedFork,
-      alreadyArchived,
-    ]);
-    const archive = vi.fn(async (_args: { threadId: string }) => ({
-      ok: true,
-    }));
-    const { harness } = await loadPlugin({ list, archive });
-
-    const { errors } = await harness.emitThreadEvent("thread.archived", {
-      thread: makeThreadResponse({ id: "thr_src", archivedAt: 456 }),
-    });
-
-    expect(errors).toEqual([]);
-    // The narrowing filters run in the query, not in JavaScript: the sweep
-    // must never read another plugin's forks or already-archived rows.
-    expect(list).toHaveBeenCalledWith({
-      sourceThreadId: "thr_src",
-      originKind: "fork",
-      originPluginId: PLUGIN_ID,
-      archived: false,
-      includeHidden: true,
-    });
-    expect(archive.mock.calls.map(([args]) => args)).toEqual([
-      { threadId: "thr_own" },
-    ]);
-  });
-});
-
 describe("empty-fork sweep", () => {
   it("timelineRowsContainUserMessage finds nested user rows", () => {
     expect(

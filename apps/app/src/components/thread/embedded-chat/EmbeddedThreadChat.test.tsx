@@ -9,6 +9,11 @@ import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
   markThreadReadMutate: vi.fn(),
+  pendingInteractions: [] as Array<{
+    id: string;
+    createdAt: number;
+    payload: { kind: string };
+  }>,
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
   sendThreadMessageMutateAsync: vi.fn(),
@@ -174,7 +179,20 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
         : undefined,
   }),
   useThreadQueuedMessages: () => ({ data: mocks.queuedMessages }),
+  useThreadPendingInteractions: () => ({ data: mocks.pendingInteractions }),
+  getLatestPendingInteraction: (
+    interactions: readonly { createdAt: number }[] | undefined,
+  ) => (interactions && interactions.length > 0 ? interactions[0] : null),
 }));
+
+vi.mock(
+  "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
+  () => ({
+    ThreadPendingInteractionBanner: ({ threadId }: { threadId: string }) => (
+      <div data-testid="pending-interaction-banner">{threadId}</div>
+    ),
+  }),
+);
 
 vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
   useThreadDefaultExecutionOptions: () => ({
@@ -293,6 +311,7 @@ describe("EmbeddedThreadChat", () => {
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.markThreadReadMutate.mockReset();
+    mocks.pendingInteractions = [];
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.threadRuntimeDisplayStatus = "idle";
@@ -428,5 +447,32 @@ describe("EmbeddedThreadChat", () => {
     renderEmbeddedChat({ isActive: false });
 
     expect(screen.getByTestId("queued-count").textContent).toBe("1");
+  });
+
+  // Only the main thread view used to render approvals, so a side chat in a
+  // plugin panel would sit on an approval the user could not answer.
+  it("swaps the composer for a pending approval so it can be answered", () => {
+    mocks.pendingInteractions = [
+      { id: "int_1", createdAt: 1, payload: { kind: "approval" } },
+    ];
+
+    renderEmbeddedChat({ threadId: "thr_side_chat" });
+
+    expect(screen.getByTestId("pending-interaction-banner").textContent).toBe(
+      "thr_side_chat",
+    );
+    expect(screen.queryByTestId("embedded-chat-composer")).toBeNull();
+  });
+
+  // A plugin-owned interaction has its own composer, so the draft must stay.
+  it("keeps the composer for a plugin-owned interaction", () => {
+    mocks.pendingInteractions = [
+      { id: "int_2", createdAt: 1, payload: { kind: "plugin" } },
+    ];
+
+    renderEmbeddedChat({ threadId: "thr_side_chat" });
+
+    expect(screen.queryByTestId("pending-interaction-banner")).toBeNull();
+    expect(screen.getByTestId("embedded-chat-composer")).toBeTruthy();
   });
 });

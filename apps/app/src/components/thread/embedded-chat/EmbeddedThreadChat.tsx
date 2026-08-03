@@ -29,6 +29,7 @@ import {
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
@@ -50,7 +51,9 @@ import {
 } from "@/components/thread/timeline";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
+  getLatestPendingInteraction,
   useThread,
+  useThreadPendingInteractions,
   useThreadQueuedMessages,
 } from "@/hooks/queries/thread-queries";
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
@@ -317,6 +320,15 @@ function EmbeddedThreadChatWithComposer({
   const threadQuery = useThread(threadId ?? "", {
     enabled: threadId !== null,
   });
+  const pendingInteractionsQuery = useThreadPendingInteractions(
+    threadId ?? "",
+    {
+      enabled: threadId !== null,
+    },
+  );
+  const activePendingInteraction = getLatestPendingInteraction(
+    pendingInteractionsQuery.data,
+  );
   useThreadReadTracking({
     markThreadRead,
     thread: isActive ? threadQuery.data : undefined,
@@ -1263,37 +1275,51 @@ function EmbeddedThreadChatWithComposer({
 
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
+  // An approval or question blocks the turn until it is answered, so this
+  // surface swaps the composer for it exactly like the main thread view. A
+  // plugin-owned interaction renders in its own composer instead, so the
+  // banner ignores it and the draft stays.
+  const pendingInteractionBanner =
+    activePendingInteraction === null ||
+    activePendingInteraction.payload.kind === "plugin" ? null : (
+      <ThreadPendingInteractionBanner
+        interaction={activePendingInteraction}
+        threadId={threadId ?? ""}
+      />
+    );
   const footer = (
     <div className={cn("relative", surfaceClassName)}>
       <OverflowFade placement="above" tone={surfaceTone} />
       <div className="px-4 pb-4 pt-2">
-        <FollowUpPromptBox
-          attachments={bottomAttachmentsConfig}
-          stack={queuedMessagesStack}
-          composer={bottomComposerConfig}
-          pluginComposerHost={activeBottomPluginComposerHost}
-          pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
-          textEffects={bottomComposerTextEffects}
-          environmentSummary={composer.environmentSummary}
-          contextWindowUsage={null}
-          execution={bottomExecutionConfig}
-          permission={bottomPermissionConfig}
-          permissionReadOnly={composer.permissionPolicy === "snapshot"}
-          typeahead={typeaheadConfig}
-          promptActions={promptActions}
-          suppressPluginComposerCustomizations={!isActive}
-          zenModeResetKey={surfaceKey}
-          focusEndKey={
-            // Composite only when an external nonce is supplied, so existing
-            // consumers keep the plain internal-nonce key.
-            composer.focusRequestKey === undefined
-              ? composerFocusNonce
-              : `${composerFocusNonce}:${composer.focusRequestKey}`
-          }
-          // Embedded surfaces never own the global composer shortcuts; the
-          // thread-detail composer does.
-          isPrimaryComposer={false}
-        />
+        {pendingInteractionBanner ?? (
+          <FollowUpPromptBox
+            attachments={bottomAttachmentsConfig}
+            stack={queuedMessagesStack}
+            composer={bottomComposerConfig}
+            pluginComposerHost={activeBottomPluginComposerHost}
+            pluginComposerScope={activeBottomPluginComposerHost?.scope ?? null}
+            textEffects={bottomComposerTextEffects}
+            environmentSummary={composer.environmentSummary}
+            contextWindowUsage={null}
+            execution={bottomExecutionConfig}
+            permission={bottomPermissionConfig}
+            permissionReadOnly={composer.permissionPolicy === "snapshot"}
+            typeahead={typeaheadConfig}
+            promptActions={promptActions}
+            suppressPluginComposerCustomizations={!isActive}
+            zenModeResetKey={surfaceKey}
+            focusEndKey={
+              // Composite only when an external nonce is supplied, so existing
+              // consumers keep the plain internal-nonce key.
+              composer.focusRequestKey === undefined
+                ? composerFocusNonce
+                : `${composerFocusNonce}:${composer.focusRequestKey}`
+            }
+            // Embedded surfaces never own the global composer shortcuts; the
+            // thread-detail composer does.
+            isPrimaryComposer={false}
+          />
+        )}
       </div>
     </div>
   );

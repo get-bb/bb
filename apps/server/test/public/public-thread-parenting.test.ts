@@ -315,9 +315,9 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  // The side-chat plugin cascades its own forks from `thread.archived`; the
-  // server archives hierarchy children only, and leaves plugin forks alone.
-  it("archives hierarchy children but not a plugin's source-derived forks", async () => {
+  // The cascade is BB's own, not the plugin's: a hidden fork retires with its
+  // source whether or not the plugin that created it is enabled.
+  it("archives hierarchy children and hidden source-derived forks", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -356,13 +356,15 @@ describe("public thread parenting routes", () => {
       );
       expect(archiveResult.archivedThreadIds).toEqual([
         childThread.id,
+        sideChatThread.id,
         sourceThread.id,
       ]);
       expect(getThread(harness.db, sourceThread.id)?.archivedAt).not.toBeNull();
       expect(getThread(harness.db, childThread.id)?.archivedAt).not.toBeNull();
       const sideChat = getThread(harness.db, sideChatThread.id);
-      expect(sideChat?.archivedAt).toBeNull();
+      expect(sideChat?.archivedAt).not.toBeNull();
       expect(sideChat?.sourceThreadId).toBe(sourceThread.id);
+      expect(sideChat?.parentThreadId).toBeNull();
     });
   });
 
