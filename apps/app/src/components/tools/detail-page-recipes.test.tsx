@@ -484,7 +484,7 @@ const FAILED_SCRIPT_RUN: AutomationRunResponse = {
 };
 
 describe("Automation detail recipe", () => {
-  it("keeps Definition ahead of Runs, including with no runs yet", () => {
+  it("keeps Definition ahead of Runs, including with no runs yet", async () => {
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -588,11 +588,9 @@ describe("Automation detail recipe", () => {
     expect(promptPanel.textContent).toContain("Claude");
     expect(promptPanel.textContent).not.toContain("Reasoning");
     expect(promptPanel.textContent).not.toContain("Default");
-    const readOnlyLabel = container.querySelector(
-      '[data-automation-read-only-label=""]',
-    ) as HTMLElement;
-    expect(readOnlyLabel.textContent).toContain("Read only");
-    expect(readOnlyLabel.querySelector('[data-icon="Lock"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-automation-read-only-label=""]'),
+    ).toBeNull();
     const modelSelector = promptPanel.querySelector(
       '[data-disabled-automation-selector="Provider and model"]',
     ) as HTMLButtonElement;
@@ -606,6 +604,24 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-provider-icon="claude"] svg'),
     ).not.toBeNull();
+    const modelDisabledTrigger = screen.getByLabelText(
+      "Provider and model. Use Edit with chat to change the provider and model.",
+    );
+    expect(modelDisabledTrigger.className).toContain("cursor-not-allowed");
+    fireEvent.focus(modelDisabledTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Use Edit with chat to change the provider and model.",
+    );
+    fireEvent.blur(modelDisabledTrigger);
+
+    const permissionDisabledTrigger = screen.getByLabelText(
+      "Permission mode. Use Edit with chat to change permissions.",
+    );
+    expect(permissionDisabledTrigger.className).toContain("cursor-not-allowed");
+    fireEvent.focus(permissionDisabledTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Use Edit with chat to change permissions.",
+    );
   });
 
   it("uses the composer metadata treatment without inventing reasoning", () => {
@@ -687,9 +703,9 @@ describe("Automation detail recipe", () => {
     },
     {
       providerId: "codex",
-      model: "gpt-5",
+      model: "gpt-5.5-sol",
       providerLabel: "Codex",
-      modelLabel: "5",
+      modelLabel: "5.5 Sol",
       iconId: "codex",
     },
     {
@@ -759,6 +775,10 @@ describe("Automation detail recipe", () => {
       expect(selector.getAttribute("aria-label")).toBe(
         `Provider and model: ${providerLabel}, ${modelLabel}. Read only`,
       );
+      expect(selector.textContent).toContain(modelLabel);
+      expect(
+        selector.querySelector('[data-promptbox-compact-label=""]'),
+      ).toBeNull();
       if (iconId) {
         expect(
           selector.querySelector(

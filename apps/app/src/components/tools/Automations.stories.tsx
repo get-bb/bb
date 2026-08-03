@@ -69,6 +69,14 @@ const OVERVIEW_ENTRIES: AutomationsOverviewResponse["automations"] = [
     project: { id: "proj_bb", name: "bb" },
   },
   {
+    automation: automation("pending-reminder", "A pending launch reminder", {
+      projectId: "proj_bb",
+      trigger: { triggerType: "once", runAt: now + 86_400_000 },
+      nextRunAt: now + 86_400_000,
+    }),
+    project: { id: "proj_bb", name: "bb" },
+  },
+  {
     automation: automation("dependencies", "Dependency drift", {
       projectId: "proj_bb",
       enabled: false,
@@ -223,7 +231,7 @@ const PROVIDER_AUTOMATIONS = [
         mode: "agent",
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "codex",
-        model: "gpt-5",
+        model: "gpt-5.5-sol",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },

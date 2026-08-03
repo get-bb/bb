@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
 import type { AutomationsOverviewResponse } from "bb-plugin-automations/rpc-types";
 
@@ -40,7 +40,67 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
   },
 ];
 
+afterEach(cleanup);
+
 describe("AutomationOverviewView", () => {
+  it("keeps lifecycle groups stable around the selected sort", () => {
+    const baseEntry = INSTALLED_AUTOMATIONS[0]!;
+    const entry = (
+      name: string,
+      overrides: Partial<(typeof baseEntry)["automation"]> = {},
+    ) => ({
+      ...baseEntry,
+      automation: {
+        ...baseEntry.automation,
+        id: `auto_${name.toLowerCase().replaceAll(" ", "_")}`,
+        name,
+        ...overrides,
+      },
+    });
+    const entries = [
+      entry("Aardvark completed", {
+        enabled: false,
+        trigger: { triggerType: "once", runAt: Date.now() - 1_000 },
+        nextRunAt: null,
+        runCount: 1,
+        lastRunStatus: "succeeded",
+      }),
+      entry("Zulu inactive", { enabled: false, nextRunAt: null }),
+      entry("Aardvark pending", {
+        trigger: { triggerType: "once", runAt: Date.now() + 60_000 },
+        nextRunAt: Date.now() + 60_000,
+      }),
+      entry("Zulu active"),
+      entry("Alpha inactive", { enabled: false, nextRunAt: null }),
+      entry("Alpha active"),
+    ];
+    const { container } = render(
+      <AutomationOverviewView
+        entries={entries}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    const rowTitles = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-resource-row]"),
+      (row) => row.querySelector("button")?.textContent,
+    );
+    expect(rowTitles).toEqual([
+      "Alpha active",
+      "Zulu active",
+      "Aardvark pending",
+      "Alpha inactive",
+      "Zulu inactive",
+      "Aardvark completed",
+    ]);
+  });
+
   it("renders the production collection shell for an empty library", () => {
     render(
       <AutomationOverviewView

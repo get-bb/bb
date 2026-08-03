@@ -72,7 +72,7 @@ describe("automation list and detail states", () => {
         },
         ["paused"],
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       matchesAutomationStatusFilters(
         {

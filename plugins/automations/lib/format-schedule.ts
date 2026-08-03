@@ -224,6 +224,8 @@ export function matchesAutomationStatusFilters(
     now: automation.now,
   });
   if (lifecycle === "running") return filters.includes("active");
-  if (lifecycle === "paused") return filters.includes("paused");
+  if (lifecycle === "paused" || lifecycle === "completed") {
+    return filters.includes("paused");
+  }
   return false;
 }

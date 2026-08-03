@@ -158,6 +158,19 @@ function applyAutomationSortDirection(
   return direction === "asc" ? result : -result;
 }
 
+function automationLifecycleSortRank(automation: AutomationResponse): number {
+  const oneShotLifecycle = getOneShotLifecycle({
+    enabled: automation.enabled,
+    trigger: automation.trigger,
+    runCount: automation.runCount,
+    lastRunStatus: automation.lastRunStatus,
+  });
+  if (oneShotLifecycle === "completed") return 3;
+  if (!automation.enabled && oneShotLifecycle !== "running") return 2;
+  if (oneShotLifecycle === "scheduled") return 1;
+  return 0;
+}
+
 function OverviewRow({
   entry,
   onNavigate,
@@ -336,6 +349,10 @@ export function AutomationOverviewView({
   }, [entries, normalizedQuery, projectFilters, statusFilters]);
   const visibleEntries = useMemo(() => {
     return [...filteredEntries].sort((left, right) => {
+      const lifecycleOrder =
+        automationLifecycleSortRank(left.automation) -
+        automationLifecycleSortRank(right.automation);
+      if (lifecycleOrder !== 0) return lifecycleOrder;
       const base =
         sortMode === "project"
           ? automationProjectLabel(left.project).localeCompare(

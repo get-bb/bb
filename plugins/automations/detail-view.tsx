@@ -279,6 +279,7 @@ function AutomationEnvironmentVariables({
 interface DisabledAutomationSelectorProps {
   label: string;
   value: string;
+  disabledReason: string;
   accessibleValue?: string;
   compactValue?: string;
   leading?: ReactNode;
@@ -289,13 +290,14 @@ interface DisabledAutomationSelectorProps {
 function DisabledAutomationSelector({
   label,
   value,
+  disabledReason,
   accessibleValue,
   compactValue,
   leading,
   title,
   className,
 }: DisabledAutomationSelectorProps) {
-  return (
+  const control = (
     <Button
       type="button"
       variant="ghost"
@@ -307,7 +309,7 @@ function DisabledAutomationSelector({
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
         OPTION_MUTED_CLASS_NAME,
-        "cursor-default disabled:opacity-100",
+        "cursor-not-allowed disabled:cursor-not-allowed disabled:opacity-100",
         className,
       )}
     >
@@ -331,6 +333,25 @@ function DisabledAutomationSelector({
         aria-hidden
       />
     </Button>
+  );
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="inline-flex shrink-0 cursor-not-allowed rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            tabIndex={0}
+            aria-label={`${label}. ${disabledReason}`}
+          >
+            {control}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-64">
+          {disabledReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -670,23 +691,12 @@ export function AutomationDetailView({
         <ResourceDefinitionSection
           label={bodyLabel}
           actions={
-            <>
-              {execution.mode === "agent" ? (
-                <span
-                  data-automation-read-only-label=""
-                  className="mr-1 inline-flex items-center gap-1 text-xs text-muted-foreground"
-                >
-                  <Icon name="Lock" className="size-3.5" aria-hidden />
-                  Read only
-                </span>
-              ) : null}
-              <ResourceActionButton
-                label="Edit with chat"
-                tooltipLabel="Edit with chat"
-                icon="MessageCirclePlus"
-                onClick={onEdit}
-              />
-            </>
+            <ResourceActionButton
+              label="Edit with chat"
+              tooltipLabel="Edit with chat"
+              icon="MessageCirclePlus"
+              onClick={onEdit}
+            />
           }
         >
           {execution.mode === "agent" ? (
@@ -698,15 +708,12 @@ export function AutomationDetailView({
                     label: (
                       <DisabledAutomationSelector
                         label="Provider and model"
+                        disabledReason="Use Edit with chat to change the provider and model."
                         value={formatAutomationModelLabel(
                           execution.model,
                           execution.providerId,
                         )}
                         accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
-                        compactValue={formatAutomationModelLabel(
-                          execution.model,
-                          execution.providerId,
-                        )}
                         leading={
                           <AutomationProviderIcon
                             providerId={execution.providerId}
@@ -761,6 +768,7 @@ export function AutomationDetailView({
                 </div>
                 <DisabledAutomationSelector
                   label="Permission mode"
+                  disabledReason="Use Edit with chat to change permissions."
                   value={formatPermissionMode(execution.permissionMode)}
                   compactValue={formatPermissionModeCompact(
                     execution.permissionMode,

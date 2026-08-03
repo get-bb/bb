@@ -7,6 +7,7 @@ import {
 describe("automation model labels", () => {
   it.each([
     ["codex", "gpt-5", "5"],
+    ["codex", "gpt-5.5-sol", "5.5 Sol"],
     ["codex", "gpt-5.4-mini", "5.4 Mini"],
     ["claude-code", "claude-sonnet-4-6", "Sonnet 4.6"],
     ["claude-code", "claude-opus-5[1m]", "Opus 5 (1M)"],
