@@ -1022,7 +1022,11 @@ function NonThreadPaneContent({
     <div
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-        content.kind === "plugin-panel" && !isBoundedPane && "-m-4 md:-m-5",
+        // Single-pane surfaces own their own padding (the compose page and
+        // plugin panels both re-apply it inside), so cancel the app layout's
+        // page padding here. Otherwise the right panel floats 20px off the
+        // window edges instead of sitting flush like it does on a thread.
+        !isBoundedPane && "-m-4 md:-m-5",
       )}
     >
       {isBoundedPane || panel ? (
