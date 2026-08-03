@@ -315,6 +315,44 @@ describe("public thread parenting routes", () => {
     });
   });
 
+  // Archiving one thread cascades too, not just archive-all: the plugin's
+  // `thread.archived` listener used to cover this route.
+  it("archives hidden source-derived forks when archiving a single thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const sideChatThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${sourceThread.id}/archive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, sourceThread.id)?.archivedAt).not.toBeNull();
+      expect(
+        getThread(harness.db, sideChatThread.id)?.archivedAt,
+      ).not.toBeNull();
+    });
+  });
+
   // The cascade is BB's own, not the plugin's: a hidden fork retires with its
   // source whether or not the plugin that created it is enabled.
   it("archives hierarchy children and hidden source-derived forks", async () => {

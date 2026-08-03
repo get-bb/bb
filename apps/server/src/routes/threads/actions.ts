@@ -62,7 +62,7 @@ import {
 } from "../../services/threads/thread-runtime-display.js";
 import {
   archiveThreadAndChildren,
-  archiveThreadWithLifecycleEffects,
+  archiveThreadAndHiddenSourceForks,
 } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
@@ -595,7 +595,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       db: deps.db,
       thread,
     });
-    const archiveResult = archiveThreadWithLifecycleEffects(deps, {
+    const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
       environment,
       thread,
     });

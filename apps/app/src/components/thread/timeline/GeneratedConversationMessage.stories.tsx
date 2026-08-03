@@ -60,8 +60,9 @@ const CHILD_COMPLETED_BODY = [
 ].join("\n");
 
 const CHILD_COMPLETED_TOKEN = "@thread:thr_child2";
-const CHILD_COMPLETED_TOKEN_START =
-  CHILD_COMPLETED_BODY.indexOf(CHILD_COMPLETED_TOKEN);
+const CHILD_COMPLETED_TOKEN_START = CHILD_COMPLETED_BODY.indexOf(
+  CHILD_COMPLETED_TOKEN,
+);
 const CHILD_COMPLETED_MENTIONS: readonly PromptTextMention[] = [
   {
     start: CHILD_COMPLETED_TOKEN_START,
@@ -166,8 +167,7 @@ export function Overview() {
               childOrigin={null}
               senderThreadId={null}
               senderThreadTitle={null}
-              senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+              senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind={row.systemMessageKind}
               systemMessageSubject={row.systemMessageSubject}
@@ -191,8 +191,7 @@ export function Overview() {
             childOrigin={null}
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -215,8 +214,7 @@ export function Overview() {
             childOrigin={null}
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -246,8 +244,7 @@ export function ClippedAgentMessage() {
             childOrigin={null}
             senderThreadId="thr_host_hermes"
             senderThreadTitle="Host Hermes on Flue"
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             resolveSegmentLinkHref={resolveThreadLink}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}

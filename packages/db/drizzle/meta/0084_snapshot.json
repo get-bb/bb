@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cd5c43dc-da7d-4b3a-b252-37549ad8aa0d",
+  "id": "4a85a5d2-b234-4bb5-865b-900649d2d63b",
   "prevId": "e49914f1-ac22-48b1-8550-89bce4ed7582",
   "tables": {
     "app_settings": {
@@ -3272,6 +3272,14 @@
           "columns": [
             "source_thread_id",
             "origin_kind"
+          ],
+          "isUnique": false
+        },
+        "threads_origin_plugin_archived_idx": {
+          "name": "threads_origin_plugin_archived_idx",
+          "columns": [
+            "origin_plugin_id",
+            "archived_at"
           ],
           "isUnique": false
         },

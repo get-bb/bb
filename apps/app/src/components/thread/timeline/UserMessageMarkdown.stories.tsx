@@ -77,7 +77,6 @@ function UserMessage({
         childOrigin={null}
         senderThreadId={null}
         senderThreadTitle={null}
-        senderChildOrigin={null}
         senderIsPluginSideChat={false}
         resolveSegmentLinkHref={resolveThreadLink}
         resolveMentionLink={resolveMentionLink}

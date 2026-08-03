@@ -41,7 +41,6 @@ function renderChildCompleted() {
           childOrigin={null}
           senderThreadId={null}
           senderThreadTitle={null}
-          senderChildOrigin={null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
@@ -125,7 +124,6 @@ function renderAgentMessage(
           childOrigin={null}
           senderThreadId="thr_agent"
           senderThreadTitle={senderThreadTitle}
-          senderChildOrigin={null}
           senderIsPluginSideChat={senderIsPluginSideChat}
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveThreadLink}

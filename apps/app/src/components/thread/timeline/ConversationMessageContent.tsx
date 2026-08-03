@@ -92,12 +92,8 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
-  /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
-   * so a message handed back from a side chat reads "Message from side chat". */
-  senderChildOrigin: ThreadChildOrigin | null;
-  /** The sender thread is a side-chat plugin hidden fork — the plugin-era
-   * side chat. Renders the same "Message from side chat" affordance, opening
-   * the plugin's panel instead of a legacy tab. */
+  /** The sender thread is one of the side-chat plugin's hidden forks, so the
+   * row reads "Replying to side chat" and its name opens the plugin panel. */
   senderIsPluginSideChat: boolean;
   // Family-B taxonomy fields off the row, required and always supplied (legacy
   // rows carry `unlabeled` + `null`). They drive the `system`-initiated message
@@ -199,7 +195,6 @@ interface UserConversationMessageProps {
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
-  senderChildOrigin: ThreadChildOrigin | null;
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
@@ -392,7 +387,6 @@ function UserConversationMessage({
   onTitleAction,
   senderThreadId,
   senderThreadTitle,
-  senderChildOrigin,
   senderIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
@@ -727,7 +721,6 @@ export function ConversationMessageContent(
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
-        senderChildOrigin={props.senderChildOrigin}
         senderIsPluginSideChat={props.senderIsPluginSideChat}
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}

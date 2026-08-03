@@ -297,7 +297,9 @@ function dropRewindAddedTables(db: DbConnection): void {
   // Thread visibility was added after the legacy checkpoints these tests
   // replay, so remove it before applying the forward migration chain again.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
-  // threads.origin_plugin_id was added by 0051; rewind it the same way.
+  // threads.origin_plugin_id was added by 0051; rewind it the same way. Its
+  // 0084 index has to go first — SQLite refuses to drop an indexed column.
+  db.$client.exec("DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`");
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
   dropProjectGitRemoteUrlColumn(db);
 }
@@ -1228,8 +1230,12 @@ describe("migrate", () => {
         )
         .run(sideChat.id, orphanSideChat.id);
 
-      // The merged 0084 also DROPs the experiment column; restore it so the
-      // ALTER re-applies cleanly and the adoption UPDATEs run on seeded rows.
+      // The merged 0084 also CREATEs an index and DROPs the experiment column;
+      // undo both so it re-applies cleanly and the adoption UPDATEs run on the
+      // seeded rows.
+      db.$client.exec(
+        "DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`",
+      );
       restoreSideChatPluginExperimentColumn(db);
       runMigrationFile({ db, migrationPath: sideChatPluginOnlyMigrationPath });
 
@@ -1247,11 +1253,13 @@ describe("migrate", () => {
         originPluginId: "side-chat",
         visibility: "hidden",
       });
-      // No source thread means the panel has nothing to open, so the row keeps
-      // its thread but drops the removed origin kind rather than stranding it.
+      // No source thread means the panel has nothing to open, so the row drops
+      // the removed origin kind AND becomes visible — it is nobody's fork now,
+      // so its own row is the only way back to it.
       expect(byId.get(orphanSideChat.id)).toMatchObject({
         originKind: null,
         originPluginId: null,
+        visibility: "visible",
       });
       // Another plugin's fork is untouched.
       expect(byId.get(pluginFork.id)).toMatchObject({

@@ -953,7 +953,6 @@ function ConversationRow({
         onTitleAction={onTitleAction}
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
-        senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}
         senderIsPluginSideChat={isPluginSideChatSenderThread(
           senderThreadMetadata,
         )}

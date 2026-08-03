@@ -1,3 +1,4 @@
+CREATE INDEX IF NOT EXISTS `threads_origin_plugin_archived_idx` ON `threads` (`origin_plugin_id`,`archived_at`);--> statement-breakpoint
 ALTER TABLE `system_experiments` DROP COLUMN `side_chat_plugin`;--> statement-breakpoint
 -- The builtin side-chat plugin owns every side chat, so the native
 -- `origin_kind = 'side-chat'` rows become the plugin's hidden forks. Migration
@@ -12,9 +13,11 @@ WHERE `origin_kind` = 'side-chat'
   AND `source_thread_id` IS NOT NULL;--> statement-breakpoint
 -- A side chat without a source thread cannot be reopened as a fork (the panel
 -- needs both ids), and `side-chat` is no longer a valid origin kind. Drop the
--- origin rather than strand an unreadable value; the thread itself is kept.
+-- origin rather than strand an unreadable value, and make the thread visible:
+-- it is nobody's fork now, so its own row is the only way back to it.
 UPDATE `threads`
-SET `origin_kind` = NULL
+SET `origin_kind` = NULL,
+    `visibility` = 'visible'
 WHERE `origin_kind` = 'side-chat';--> statement-breakpoint
 -- Pre-0038 rows are already backfilled, but clear the deprecated column too so
 -- no row carries the removed value.

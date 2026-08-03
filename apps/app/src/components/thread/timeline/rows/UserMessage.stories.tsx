@@ -531,7 +531,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -551,7 +550,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -574,7 +572,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -598,7 +595,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -621,7 +617,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -644,7 +639,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -664,7 +658,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -688,7 +681,6 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -720,7 +712,6 @@ export function Overview() {
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -745,7 +736,6 @@ export function Overview() {
             onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
-            senderChildOrigin={null}
             senderIsPluginSideChat
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -769,7 +759,6 @@ export function Overview() {
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -785,7 +774,6 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -808,7 +796,6 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -831,7 +818,6 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -854,7 +840,6 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
@@ -882,7 +867,6 @@ export function ParentChildSystemMessages() {
               senderThreadId={null}
               senderThreadTitle={null}
               childOrigin={null}
-              senderChildOrigin={null}
               senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"

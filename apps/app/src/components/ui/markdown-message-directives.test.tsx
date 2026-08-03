@@ -596,7 +596,6 @@ describe("ConversationMessageContent assistant directives", () => {
               mentions={[]}
               senderThreadId={null}
               senderThreadTitle={null}
-              senderChildOrigin={null}
               senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}

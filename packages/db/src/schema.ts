@@ -533,6 +533,11 @@ export const threads = sqliteTable(
       table.sourceThreadId,
       table.originKind,
     ),
+    // The side-chat plugin's hourly sweep pages through its own live forks.
+    index("threads_origin_plugin_archived_idx").on(
+      table.originPluginId,
+      table.archivedAt,
+    ),
     index("threads_section_archived_deleted_idx").on(
       table.sectionId,
       table.archivedAt,
