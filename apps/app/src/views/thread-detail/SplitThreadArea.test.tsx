@@ -283,11 +283,14 @@ function stackingLayer(element: HTMLElement): number {
   return 0;
 }
 
-function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
+function twoPaneLayout(
+  focusedPaneId: "pane-1" | "pane-2",
+  dir: "row" | "col" = "row",
+): SplitLayout {
   return {
     root: {
       type: "split",
-      dir: "row",
+      dir,
       sizes: [0.5, 0.5],
       children: [
         { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
@@ -829,7 +832,7 @@ describe("SplitThreadArea", () => {
     expect(separator.classList).toContain("w-px");
     expect(separator.classList).toContain("bg-border-seam");
     expect(separator.classList).not.toContain("w-1.5");
-    expect(separator.firstElementChild?.classList).toContain("-inset-x-1.5");
+    expect(separator.firstElementChild?.classList).toContain("w-3");
   });
 
   it("keeps the divider above pane headers so stacked splits stay resizable", () => {
@@ -854,7 +857,8 @@ describe("SplitThreadArea", () => {
     // the divider swallows its grab target and blocks vertical resizing.
     const separator = screen.getByRole("separator");
     expect(separator.classList).toContain("h-px");
-    expect(separator.firstElementChild?.classList).toContain("-inset-y-1.5");
+    expect(separator.firstElementChild?.classList).toContain("h-3");
+    expect(separator.firstElementChild?.classList).toContain("w-full");
     const dividerLayer = stackingLayer(separator);
     const lowerHeader = document
       .querySelector<HTMLElement>('[data-split-pane-id="pane-2"]')
@@ -943,7 +947,13 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected adjacent split flex items");
     }
 
-    Object.defineProperty(separator, "setPointerCapture", {
+    const hitTarget = separator.querySelector<HTMLElement>(
+      "[data-split-divider-hit-target]",
+    );
+    if (hitTarget === null) {
+      throw new Error("Expected split divider hit target");
+    }
+    Object.defineProperty(hitTarget, "setPointerCapture", {
       configurable: true,
       value: vi.fn(),
     });
@@ -1011,8 +1021,8 @@ describe("SplitThreadArea", () => {
       return root.sizes;
     };
 
-    fireEvent.pointerDown(separator, { clientX: 403, pointerId: 1 });
-    fireEvent.pointerMove(separator, { clientX: 564.2, pointerId: 1 });
+    fireEvent.pointerDown(hitTarget, { clientX: 403, pointerId: 1 });
+    fireEvent.pointerMove(hitTarget, { clientX: 564.2, pointerId: 1 });
 
     expect(splitSizes()).toEqual([0.5, 0.5]);
     expect(offscreenRow.style.contentVisibility).toBe("hidden");
@@ -1020,12 +1030,86 @@ describe("SplitThreadArea", () => {
     expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
     expect(Number.parseFloat(next.style.flexGrow)).toBeCloseTo(0.3, 5);
 
-    fireEvent.pointerUp(separator, { clientX: 564.2, pointerId: 1 });
+    fireEvent.pointerUp(hitTarget, { clientX: 564.2, pointerId: 1 });
 
     expect(splitSizes()[0]).toBeCloseTo(0.7, 5);
     expect(splitSizes()[1]).toBeCloseTo(0.3, 5);
     expect(offscreenRow.style.contentVisibility).toBe("");
     expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
+  });
+
+  it("gives a top-to-bottom split a full-width drag target without thickening its seam", () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1", "col"),
+    });
+    const separator = screen.getByRole("separator");
+    expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(separator.classList).toContain("h-px");
+    expect(separator.classList).not.toContain("h-3");
+
+    const hitTarget = separator.querySelector<HTMLElement>(
+      "[data-split-divider-hit-target]",
+    );
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      hitTarget === null ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected a divider hit target between split panes");
+    }
+    expect(hitTarget.classList).toContain("h-3");
+    expect(hitTarget.classList).toContain("w-full");
+    expect(hitTarget.classList).toContain("cursor-row-resize");
+
+    Object.defineProperty(hitTarget, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 300,
+      height: 300,
+      left: 0,
+      right: 800,
+      top: 0,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 606,
+      height: 300,
+      left: 0,
+      right: 800,
+      top: 306,
+      width: 800,
+      x: 0,
+      y: 306,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(hitTarget, { clientY: 303, pointerId: 1 });
+    fireEvent.pointerMove(hitTarget, { clientY: 424.2, pointerId: 1 });
+
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(0.7, 5);
+    expect(Number.parseFloat(next.style.flexGrow)).toBeCloseTo(0.3, 5);
+    expect(store.get(splitLayoutAtom)?.root).toMatchObject({
+      dir: "col",
+      sizes: [0.5, 0.5],
+    });
+
+    fireEvent.pointerUp(hitTarget, { clientY: 424.2, pointerId: 1 });
+
+    const resizedRoot = store.get(splitLayoutAtom)?.root;
+    expect(resizedRoot).toMatchObject({ dir: "col" });
+    if (resizedRoot?.type !== "split") {
+      throw new Error("Expected resized split layout");
+    }
+    expect(resizedRoot.sizes[0]).toBeCloseTo(0.7, 5);
+    expect(resizedRoot.sizes[1]).toBeCloseTo(0.3, 5);
   });
 
   it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {

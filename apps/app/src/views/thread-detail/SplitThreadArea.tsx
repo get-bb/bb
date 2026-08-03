@@ -1244,7 +1244,11 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
-      const divider = event.currentTarget;
+      const hitTarget = event.currentTarget;
+      const divider = hitTarget.parentElement;
+      if (!(divider instanceof HTMLDivElement)) {
+        return;
+      }
       const previous = divider.previousElementSibling;
       const next = divider.nextElementSibling;
       if (
@@ -1264,7 +1268,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         return;
       }
 
-      divider.setPointerCapture(event.pointerId);
+      hitTarget.setPointerCapture(event.pointerId);
       divider.dataset.dragging = "true";
 
       const previousGrow = Number.parseFloat(
@@ -1300,9 +1304,9 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         if (finished) return;
         finished = true;
         delete divider.dataset.dragging;
-        divider.removeEventListener("pointermove", onMove);
-        divider.removeEventListener("pointerup", onUp);
-        divider.removeEventListener("pointercancel", onCancel);
+        hitTarget.removeEventListener("pointermove", onMove);
+        hitTarget.removeEventListener("pointerup", onUp);
+        hitTarget.removeEventListener("pointercancel", onCancel);
         restoreTimelineRows();
         if (commit && pendingFraction !== null) {
           // Commit once so the imperative flex values above become the
@@ -1315,9 +1319,9 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       };
       const onUp = () => finish(true);
       const onCancel = () => finish(false);
-      divider.addEventListener("pointermove", onMove);
-      divider.addEventListener("pointerup", onUp);
-      divider.addEventListener("pointercancel", onCancel);
+      hitTarget.addEventListener("pointermove", onMove);
+      hitTarget.addEventListener("pointerup", onUp);
+      hitTarget.addEventListener("pointercancel", onCancel);
     },
     [horizontal, onResize],
   );
@@ -1326,7 +1330,6 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
     <div
       role="separator"
       aria-orientation={horizontal ? "vertical" : "horizontal"}
-      onPointerDown={handlePointerDown}
       className={cn(
         // A one-pixel seam between flush tiles — squared ends, no rounding,
         // only BETWEEN splits (outer edges stay flush). Hover/drag warms it as
@@ -1344,9 +1347,14 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       )}
     >
       <div
+        aria-hidden
+        data-split-divider-hit-target=""
+        onPointerDown={handlePointerDown}
         className={cn(
-          "absolute",
-          horizontal ? "-inset-x-1.5 inset-y-0" : "inset-x-0 -inset-y-1.5",
+          "absolute z-10 touch-none bg-transparent",
+          horizontal
+            ? "-left-1.5 top-0 h-full w-3 cursor-col-resize"
+            : "left-0 -top-1.5 h-3 w-full cursor-row-resize",
         )}
       />
     </div>
