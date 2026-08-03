@@ -239,6 +239,12 @@ function isHostManagementMutation(request: Request, pathname: string): boolean {
   if (request.method === "POST" && pathname === "/api/v1/hosts/join-codes") {
     return true;
   }
+  if (
+    request.method === "PATCH" &&
+    /^\/api\/v1\/hosts\/[^/]+\/permission-ceiling$/u.test(pathname)
+  ) {
+    return true;
+  }
   return (
     (request.method === "PATCH" || request.method === "DELETE") &&
     /^\/api\/v1\/hosts\/[^/]+$/u.test(pathname)

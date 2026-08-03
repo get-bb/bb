@@ -49,11 +49,18 @@ export function SettingsRowList({ children }: SettingsRowListProps) {
 
 export interface SettingsRowProps {
   children: ReactNode;
+  /** Extra classes for rows that need positioning, e.g. a stretched row link. */
+  className?: string;
 }
 
-export function SettingsRow({ children }: SettingsRowProps) {
+export function SettingsRow({ children, className }: SettingsRowProps) {
   return (
-    <div className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0">
+    <div
+      className={cn(
+        "flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -89,9 +96,7 @@ export function SettingsWithControl({
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="min-w-0 text-sm font-normal text-foreground">
-            {label}
-          </p>
+          <p className="min-w-0 text-sm font-normal text-foreground">{label}</p>
           {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
         </div>
         {description ? (

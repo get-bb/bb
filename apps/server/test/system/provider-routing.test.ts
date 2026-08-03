@@ -1,3 +1,4 @@
+import { updateHost } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import {
@@ -136,6 +137,47 @@ describe("system provider host routing", () => {
       expect(environmentModels.models.map((model) => model.model)).toEqual([
         "remote-model",
       ]);
+    });
+  });
+
+  it("reports the routed machine's permission ceiling", async () => {
+    await withTestHarness({}, async (harness) => {
+      const primary = seedHostSession(harness.deps, {
+        id: "host-ceiling-primary",
+      });
+      const capped = seedHostSession(harness.deps, {
+        id: "host-ceiling-capped",
+      });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      updateHost(harness.db, harness.hub, capped.host.id, {
+        maxPermissionMode: "accept-edits",
+      });
+      for (const target of [primary, capped]) {
+        registerHostRpcResponder(harness, {
+          hostId: target.host.id,
+          sessionId: target.session.id,
+          handle: (request) =>
+            providerHostResponse(request, "acp-opencode", "model"),
+        });
+      }
+
+      const uncapped = systemExecutionOptionsResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/system/execution-options?providerId=codex",
+          ),
+        ),
+      );
+      expect(uncapped.permissionCeiling).toBe("full");
+
+      const cappedOptions = systemExecutionOptionsResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            `/api/v1/system/execution-options?hostId=${capped.host.id}&providerId=codex`,
+          ),
+        ),
+      );
+      expect(cappedOptions.permissionCeiling).toBe("accept-edits");
     });
   });
 

@@ -401,6 +401,17 @@ function existingUnmanagedEnvironmentIntentByHostPath(
   };
 }
 
+/** Machine a provisioning intent lands on, for the permission ceiling. */
+function intentHostId(
+  deps: ThreadCreateDeps,
+  intent: ThreadProvisionEnvironmentIntent,
+): string | null {
+  if (intent.type === "reuse") {
+    return getEnvironment(deps.db, intent.environmentId)?.hostId ?? null;
+  }
+  return intent.hostId;
+}
+
 async function createProvisioningThread(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
@@ -422,6 +433,9 @@ async function createProvisioningThread(
         ...(args.executionDefaults
           ? { projectDefaults: args.executionDefaults }
           : {}),
+        // The environment usually does not exist yet, so the machine's
+        // permission ceiling comes from the provisioning intent.
+        hostId: intentHostId(deps, args.environmentIntent),
         threadId: thread.id,
       },
       "client/turn/requested",

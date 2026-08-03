@@ -63,6 +63,7 @@ function host(
     type: "persistent",
     status,
     lastSeenAt: null,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,

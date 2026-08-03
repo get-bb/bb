@@ -166,6 +166,16 @@ describe("public host management", () => {
           method: "POST",
           headers: { "x-bb-gate-auth": "machine" },
         }),
+        // The permission ceiling is the control that stops one machine from
+        // running privileged work on another, so a machine must never set it.
+        harness.app.request(`${API}/hosts/${host.id}/permission-ceiling`, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "machine",
+          },
+          body: JSON.stringify({ maxPermissionMode: "full" }),
+        }),
       ];
       for (const response of await Promise.all(requests)) {
         expect(response.status).toBe(403);
@@ -175,8 +185,37 @@ describe("public host management", () => {
       }
       expect(getHost(harness.db, host.id)).toMatchObject({
         destroyedAt: null,
+        maxPermissionMode: "full",
         name: host.name,
       });
+    });
+  });
+
+  it("stores a permission ceiling for a session-gated request", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, { id: "host_ceiling" });
+      expect(getHost(harness.db, host.id)?.maxPermissionMode).toBe("full");
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/permission-ceiling`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-gate-auth": "session",
+          },
+          body: JSON.stringify({ maxPermissionMode: "accept-edits" }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toMatchObject({
+        id: host.id,
+        maxPermissionMode: "accept-edits",
+      });
+      expect(getHost(harness.db, host.id)?.maxPermissionMode).toBe(
+        "accept-edits",
+      );
     });
   });
 

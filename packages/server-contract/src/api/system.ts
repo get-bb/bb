@@ -7,6 +7,7 @@ import {
   availableModelSchema,
   experimentsSchema,
   featureFlagsSchema,
+  permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
@@ -32,6 +33,13 @@ export type SystemExecutionOptionsModelLoadError = z.infer<
 
 export const systemExecutionOptionsResponseSchema = z.object({
   providers: z.array(providerInfoSchema),
+  /**
+   * Highest permission mode the routed machine allows (Settings → Machines →
+   * Permission limit). Pickers disable anything above it, and the server
+   * resolves any higher request down to it. "full" when the machine is
+   * uncapped or no machine could be routed.
+   */
+  permissionCeiling: permissionModeSchema,
   /** Active models offered as fresh picker choices. */
   models: z.array(availableModelSchema),
   /**

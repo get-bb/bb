@@ -83,6 +83,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
       },
     ],
     selectedOnlyModels: [],
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }
@@ -133,6 +134,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
       },
     ],
     selectedOnlyModels: [],
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }
@@ -244,6 +246,47 @@ describe("useThreadCreationOptions", () => {
         hostId: "project-host",
       });
     });
+  });
+
+  it("disables permission modes above the machine's permission limit", async () => {
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...executionOptionsResponse(),
+      permissionCeiling: "auto",
+    });
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialPermissionMode: "full",
+          initialEnvironmentSelectionValue: "host:capped-host:local",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.permissionModeOptions.map((option) => [
+          option.value,
+          option.disabled ?? false,
+        ]),
+      ).toEqual([
+        ["accept-edits", false],
+        ["auto", false],
+        ["full", true],
+      ]);
+      // A stored Full Access preference shows as the mode that will run.
+      expect(result.current.permissionMode).toBe("auto");
+    });
+    expect(
+      result.current.permissionModeOptions.find(
+        (option) => option.value === "full",
+      )?.disabledReason,
+    ).toContain("permission limit");
   });
 
   it("persists new-thread environment selection under the project key", () => {

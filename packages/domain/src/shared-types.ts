@@ -37,9 +37,44 @@ export const instructionModeValues = ["append", "replace"] as const;
 export const instructionModeSchema = z.enum(instructionModeValues);
 export type InstructionMode = z.infer<typeof instructionModeSchema>;
 
+/**
+ * Order is load-bearing: the index is the privilege rank that
+ * {@link clampPermissionModeToCeiling} compares. "accept-edits" grants the
+ * least and "full" the most.
+ */
 export const permissionModeValues = ["accept-edits", "auto", "full"] as const;
 export const permissionModeSchema = z.enum(permissionModeValues);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
+
+export function permissionModeRank(permissionMode: PermissionMode): number {
+  return permissionModeValues.indexOf(permissionMode);
+}
+
+/**
+ * Lower a mode to the machine's ceiling. A mode already at or below the ceiling
+ * passes through untouched — including one the provider does not support, which
+ * stays a provider-capability error rather than becoming a silent upgrade.
+ * Above the ceiling, the result is the highest mode the provider supports that
+ * still fits. Returns null when the provider supports nothing that low: a
+ * machine capped below what the provider needs cannot run it at all.
+ */
+export function clampPermissionModeToCeiling(args: {
+  ceiling: PermissionMode;
+  permissionMode: PermissionMode;
+  supportedPermissionModes?: readonly PermissionMode[];
+}): PermissionMode | null {
+  const ceilingRank = permissionModeRank(args.ceiling);
+  if (permissionModeRank(args.permissionMode) <= ceilingRank) {
+    return args.permissionMode;
+  }
+  const supported = args.supportedPermissionModes ?? permissionModeValues;
+  const allowed = supported
+    .filter((mode) => permissionModeRank(mode) <= ceilingRank)
+    .sort(
+      (left, right) => permissionModeRank(right) - permissionModeRank(left),
+    );
+  return allowed[0] ?? null;
+}
 
 /**
  * Deprecated public input accepted for one compatibility window. Stored

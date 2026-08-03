@@ -37,6 +37,14 @@ export interface PickerOption<T extends string> {
   description?: string;
   tone?: "default" | "warning";
   icon?: ComponentType<{ className?: string }>;
+  /**
+   * Block selection while still listing the option, so the user sees the
+   * choice exists and why it is unavailable (e.g. a permission mode above the
+   * machine's permission limit).
+   */
+  disabled?: boolean;
+  /** Shown in place of the description while the option is disabled. */
+  disabledReason?: string;
 }
 
 interface OptionDisplayProps {
@@ -244,6 +252,7 @@ export function OptionPicker<T extends string>({
           return (
             <DropdownMenuItem
               key={option.value}
+              disabled={option.disabled}
               onSelect={() => onChange(option.value)}
               className={cn(
                 "flex items-start justify-between gap-3 whitespace-normal",
@@ -268,7 +277,11 @@ export function OptionPicker<T extends string>({
                   >
                     {option.label}
                   </span>
-                  {option.description ? (
+                  {option.disabled && option.disabledReason ? (
+                    <span className="mt-0.5 block whitespace-normal break-words text-xs leading-snug text-muted-foreground">
+                      {option.disabledReason}
+                    </span>
+                  ) : option.description ? (
                     <span className="mt-0.5 block whitespace-normal break-words text-xs leading-snug text-muted-foreground">
                       {option.description}
                     </span>

@@ -195,6 +195,7 @@ import type {
   UpdateThreadSectionRequest,
   UpdateTerminalRequest,
   UpdateHostRequest,
+  UpdateHostPermissionCeilingRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
@@ -290,6 +291,7 @@ import {
   timelineTurnSummaryDetailsQuerySchema,
   updateEnvironmentRequestSchema,
   updateHostRequestSchema,
+  updateHostPermissionCeilingRequestSchema,
   updateThreadSectionRequestSchema,
   updateTerminalRequestSchema,
   updateProjectRequestSchema,
@@ -600,6 +602,14 @@ export const publicApiRoutes = {
       path: "/hosts/:id",
       method: "patch",
       request: jsonRequest<PathId, UpdateHostRequest>(updateHostRequestSchema),
+      response: jsonResponse<Host>(),
+    }),
+    updatePermissionCeiling: defineRoute({
+      path: "/hosts/:id/permission-ceiling",
+      method: "patch",
+      request: jsonRequest<PathId, UpdateHostPermissionCeilingRequest>(
+        updateHostPermissionCeilingRequestSchema,
+      ),
       response: jsonResponse<Host>(),
     }),
     retryUpdate: defineRoute({

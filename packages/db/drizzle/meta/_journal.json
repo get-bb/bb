@@ -582,6 +582,13 @@
       "when": 1785434970796,
       "tag": "0082_black_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "6",
+      "when": 1785607816930,
+      "tag": "0083_host_max_permission_mode",
+      "breakpoints": true
     }
   ]
 }

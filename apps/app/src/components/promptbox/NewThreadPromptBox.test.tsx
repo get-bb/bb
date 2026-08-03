@@ -11,6 +11,7 @@ const host: Host = {
   type: "persistent",
   status: "connected",
   lastSeenAt: null,
+  maxPermissionMode: "full",
   lastRejectedProtocolVersion: null,
   createdAt: 0,
   updatedAt: 0,
@@ -137,7 +138,11 @@ describe("ProjectlessMachineSlot", () => {
   }
 
   it("renders no chip without multi-machine host data", () => {
-    render(<ProjectlessMachineSlot environment={makeEnvironment({ machines: null })} />);
+    render(
+      <ProjectlessMachineSlot
+        environment={makeEnvironment({ machines: null })}
+      />,
+    );
 
     expect(screen.queryByRole("button", { name: "Machine" })).toBeNull();
   });
@@ -160,7 +165,9 @@ describe("ProjectlessMachineSlot", () => {
 
   it("encodes a machine pick as that host's personal-local environment value", () => {
     const onChange = vi.fn();
-    render(<ProjectlessMachineSlot environment={makeEnvironment({ onChange })} />);
+    render(
+      <ProjectlessMachineSlot environment={makeEnvironment({ onChange })} />,
+    );
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Machine" }), {
       button: 0,

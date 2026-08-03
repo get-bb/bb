@@ -111,6 +111,7 @@ function makeExecutionOptions(
     providers: STORY_PROVIDER_INFOS,
     models,
     selectedOnlyModels,
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }

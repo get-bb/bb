@@ -25,6 +25,7 @@ import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -74,8 +75,10 @@ interface ListSystemProviderInfosResult {
   providers: ProviderInfo[];
 }
 
-interface ResolveSystemProviderInfosPlanResult
-  extends Omit<ListSystemProviderInfosResult, "providers"> {
+interface ResolveSystemProviderInfosPlanResult extends Omit<
+  ListSystemProviderInfosResult,
+  "providers"
+> {
   providersPromise: Promise<ProviderInfo[]>;
 }
 
@@ -370,9 +373,12 @@ export async function resolveSystemExecutionOptions(
       ? configuredRequestedProvider
       : (requestedProvider ?? providers[0]);
 
+  const permissionCeiling = getHostPermissionCeiling(deps, hostId);
+
   if (!modelsProvider) {
     return {
       providers,
+      permissionCeiling,
       models: [],
       selectedOnlyModels: [],
       modelLoadError: null,
@@ -388,6 +394,7 @@ export async function resolveSystemExecutionOptions(
     });
     return {
       providers,
+      permissionCeiling,
       models,
       selectedOnlyModels,
       modelLoadError:
@@ -417,6 +424,7 @@ export async function resolveSystemExecutionOptions(
 
   return {
     providers,
+    permissionCeiling,
     models,
     selectedOnlyModels,
     modelLoadError: modelResult.modelLoadError,
@@ -452,8 +460,7 @@ async function loadSystemProviderModels(
           providerId: provider.id,
           ...(customAcpAgent !== undefined
             ? {
-                acpLaunchSpec:
-                  normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
+                acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
               }
             : knownAcpAgent !== undefined
               ? {

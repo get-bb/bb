@@ -28,6 +28,7 @@ function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: 1_700_000_000_000,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,

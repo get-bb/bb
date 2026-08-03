@@ -173,6 +173,14 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   workspace, or combine it with `--new-environment worktree`. Do not combine a
   machine selector with an existing environment ID, which already owns its
   machine.
+- Each machine carries a permission limit (`maxPermissionMode`, default
+  `full`): the highest permission mode a thread on that machine may run with.
+  The server resolves any higher request down to it, and refuses a provider
+  that supports no mode under it. Only the owner can change it, on the machine
+  page at Settings → Machines → the machine — there is no CLI, SDK, or API
+  surface that sets it, and machine credentials are refused — so read it from
+  `bb machine list --json` or `bb machine show` and ask the user to change it
+  in the app.
 - `bb machine show`, `join-code`, `rename`, `retry-update`, and `remove` cover
   the Settings → Machines lifecycle. Use `bb machine provider-cli
 status|install` to inspect or install provider CLIs on a selected machine.

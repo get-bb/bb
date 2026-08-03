@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import type { HostChangeKind, HostType } from "@bb/domain";
+import type { HostChangeKind, HostType, PermissionMode } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { hosts } from "../schema.js";
@@ -18,6 +18,7 @@ export interface UpsertHostInput {
 export interface UpdateHostInput {
   destroyedAt?: number | null;
   lastRejectedProtocolVersion?: number | null;
+  maxPermissionMode?: PermissionMode;
   name?: string;
 }
 
@@ -188,6 +189,9 @@ export function updateHost(
         ? { destroyedAt: input.destroyedAt }
         : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.maxPermissionMode !== undefined
+        ? { maxPermissionMode: input.maxPermissionMode }
+        : {}),
       ...(input.lastRejectedProtocolVersion !== undefined
         ? { lastRejectedProtocolVersion: input.lastRejectedProtocolVersion }
         : {}),

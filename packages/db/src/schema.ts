@@ -94,6 +94,10 @@ export const hosts = sqliteTable(
     name: text("name").notNull(),
     type: text("type").$type<HostType>().notNull(),
     connectMachineId: text("connect_machine_id"),
+    maxPermissionMode: text("max_permission_mode")
+      .$type<PermissionMode>()
+      .notNull()
+      .default("full"),
     destroyedAt: integer("destroyed_at"),
     lastSeenAt: integer("last_seen_at"),
     lastRejectedProtocolVersion: integer("last_rejected_protocol_version"),

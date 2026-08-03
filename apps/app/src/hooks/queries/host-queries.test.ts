@@ -8,6 +8,7 @@ function host(overrides: Partial<Host> & Pick<Host, "id">): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: null,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,

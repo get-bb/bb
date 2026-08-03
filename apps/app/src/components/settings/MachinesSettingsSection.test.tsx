@@ -15,6 +15,7 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -43,6 +44,7 @@ function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: NOW,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,
@@ -108,7 +110,12 @@ function stubSidebarBootstrapFetch(): void {
 
 function renderSection() {
   const { wrapper } = createQueryClientTestHarness();
-  return render(<MachinesSettingsSection />, { wrapper });
+  return render(
+    <MemoryRouter>
+      <MachinesSettingsSection />
+    </MemoryRouter>,
+    { wrapper },
+  );
 }
 
 async function openHostMenu(hostName: string): Promise<void> {
@@ -161,7 +168,11 @@ describe("MachinesSettingsSection", () => {
         `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION} · 1 project`,
       ),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Retry update" })).toBeDefined();
+    // The action lives in the row menu so the rows keep one shape.
+    await openHostMenu("dev-vm");
+    expect(
+      await screen.findByRole("menuitem", { name: "Retry update" }),
+    ).toBeDefined();
   });
 
   it("requests an immediate daemon update retry", async () => {
@@ -178,8 +189,10 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
+    await screen.findByText("dev-vm");
+    await openHostMenu("dev-vm");
     fireEvent.click(
-      await screen.findByRole("button", { name: "Retry update" }),
+      await screen.findByRole("menuitem", { name: "Retry update" }),
     );
 
     await waitFor(() => {
@@ -187,6 +200,28 @@ describe("MachinesSettingsSection", () => {
         hostId: "host_remote",
       });
     });
+  });
+
+  it("shows each machine's limit read-only and links the row to its page", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      { ...offlineHost, maxPermissionMode: "accept-edits" },
+    ]);
+    stubSidebarBootstrapFetch();
+
+    renderSection();
+
+    // Readable without opening anything, so a capped machine is obvious.
+    expect(await screen.findByText("Accept Edits")).toBeDefined();
+    expect(screen.getByText("Full Access")).toBeDefined();
+    // The control itself lives on the machine page.
+    expect(
+      screen.queryByRole("button", { name: /Permission limit for/ }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Open dev-vm" }).getAttribute("href"),
+    ).toBe("/settings/machines/host_remote");
   });
 
   it("renames a machine through the row menu", async () => {

@@ -54,6 +54,7 @@ import {
   resolveExistingThreadExecutionPlan,
   type ExistingThreadExecutionInputRequest,
 } from "./thread-execution-plan.js";
+import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
 import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
 
@@ -104,6 +105,7 @@ interface PreparedTurnSubmitCommandBuildArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<AppDeps, "config" | "db">;
   environmentId: string;
+  hostId: string;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
   input: PromptInput[];
@@ -137,7 +139,9 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 
 interface RuntimeExecutionOptionsArgs {
   claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
+  deps: Pick<AppDeps, "db">;
   execution: ResolvedThreadExecutionOptions;
+  hostId: string;
   input: PromptInput[];
   permissionEscalation: PermissionEscalation;
   providerId: string;
@@ -147,6 +151,8 @@ interface RuntimeExecutionOptionsArgs {
 }
 
 interface BuildExecutionOptionsArgs {
+  /** Machine the work lands on; omit to read it from the thread's environment. */
+  hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
 }
@@ -264,9 +270,19 @@ function resolveProviderWorkflowsEnabled(
   return !getAppSettings(deps.db).claudeCodeWorkflowsDisabled;
 }
 
+/**
+ * Last-mile clamp before the daemon runs the turn. The execution plan already
+ * clamps, but a queued message carries the mode it was enqueued with, so the
+ * machine's current ceiling is re-applied here.
+ */
 function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
 ): RuntimeThreadExecutionOptions {
+  const permissionMode = clampPermissionModeToHost(args.deps, {
+    hostId: args.hostId,
+    permissionMode: args.execution.permissionMode,
+    providerId: args.providerId,
+  });
   const claudeCodePermissionMode: "plan" | undefined =
     args.providerId === "claude-code" &&
     promptInputHasCommandMention(args.input, { trigger: "/", name: "plan" })
@@ -284,16 +300,16 @@ function toRuntimeExecutionOptions(
     memoryEnabled: args.memoryEnabled,
     providerSubagentsEnabled: args.providerSubagentsEnabled,
   };
-  if (args.execution.permissionMode === "full") {
+  if (permissionMode === "full") {
     return {
       ...base,
-      permissionMode: args.execution.permissionMode,
+      permissionMode,
       permissionScope: "full",
       approvalReviewer: null,
       permissionEscalation: null,
     };
   }
-  if (args.execution.permissionMode === "auto") {
+  if (permissionMode === "auto") {
     return {
       ...base,
       permissionMode: "auto",
@@ -321,6 +337,7 @@ export async function buildExecutionOptions(
     ...(args.projectDefaults !== undefined
       ? { projectDefaults: args.projectDefaults }
       : {}),
+    ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
     executionSource: source,
     input: buildExistingThreadExecutionInput(request),
     threadId: args.threadId,
@@ -356,6 +373,8 @@ export async function buildThreadStartCommand(
       : {}),
     options: toRuntimeExecutionOptions({
       ...args,
+      deps,
+      hostId: args.environment.hostId,
       claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
       memoryEnabled: resolveProviderMemoryEnabled(deps, args.providerId),
       providerSubagentsEnabled: resolveProviderSubagentsEnabled(
@@ -457,6 +476,7 @@ export async function prepareTurnSubmitCommandPayload(
     claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     deps,
     environmentId: args.environment.id,
+    hostId: args.environment.hostId,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,
     input: args.input,

@@ -31,6 +31,7 @@ function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: null,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,
@@ -76,9 +77,7 @@ describe("AddMachineDialog", () => {
     expect(command.textContent).toContain(
       "curl -fsSL https://example.getbb.app/install.sh",
     );
-    expect(command.textContent).toContain(
-      "--server https://example.getbb.app",
-    );
+    expect(command.textContent).toContain("--server https://example.getbb.app");
     expect(command.textContent).toContain("--machine-code mc_test456");
     expect(command.textContent).not.toContain(window.location.origin);
     expect(screen.getByText(/Code expires in \d+:\d{2}/)).toBeDefined();

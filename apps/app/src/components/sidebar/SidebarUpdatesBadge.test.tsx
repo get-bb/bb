@@ -59,6 +59,7 @@ function host(id: string): Host {
     type: "persistent",
     status: "connected",
     lastSeenAt: null,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 0,
     updatedAt: 0,

@@ -36,6 +36,16 @@ unless you pass `--auto-update` explicitly.
   bb machine provider-cli install <machine> <claudeCode|codex|cursor>
     --action <install|update>
 
+Each machine has a permission limit: the highest permission mode any thread on
+that machine can run with. The default is Full Access. A thread that asks for
+more resolves down to the limit, and a provider that supports no mode under the
+limit cannot run there. Set it in Settings → Machines → the machine → Permission
+limit; that page also shows the machine's projects, provider CLIs, update state,
+and rename/remove. There is no CLI or SDK command to set it, and a paired
+machine cannot set it for any machine, so a sandbox machine can stay at Full
+Access while your laptop stays lower. `bb machine list --json` and `bb machine
+show` report the current limit.
+
 Updates commands
 
 One consolidated view of bb and provider CLI updates across machines — the

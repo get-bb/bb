@@ -1,4 +1,5 @@
-import { upsertProjectExecutionDefaults } from "@bb/db";
+import { updateHost, upsertProjectExecutionDefaults } from "@bb/db";
+import type { PermissionMode } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   buildExistingThreadExecutionInput,
@@ -14,7 +15,10 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../../helpers/seed.js";
-import { withTestHarness } from "../../helpers/test-app.js";
+import {
+  withTestHarness,
+  type TestAppHarness,
+} from "../../helpers/test-app.js";
 
 describe("thread execution plan input sources", () => {
   it("treats supplied execution fields as explicit when legacy callers omit sources", () => {
@@ -245,6 +249,117 @@ describe("legacy readonly side-chat permission resolution", () => {
         input: {},
         threadId: sideChat.id,
       });
+      expect(plan.resolvedExecution.permissionMode).toBe("full");
+    });
+  });
+});
+
+describe("machine permission ceiling", () => {
+  async function seedCappedThread(
+    harness: TestAppHarness,
+    args: { maxPermissionMode: PermissionMode; providerId: string; id: string },
+  ) {
+    const { host } = seedHostSession(harness.deps, { id: args.id });
+    updateHost(harness.db, harness.hub, host.id, {
+      maxPermissionMode: args.maxPermissionMode,
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+    });
+    const thread = seedThread(harness.deps, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: args.providerId,
+    });
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      permissionMode: "full",
+      providerThreadId: `provider-${args.id}`,
+      threadId: thread.id,
+    });
+    return thread;
+  }
+
+  it("clamps an explicitly requested mode down to the machine's ceiling", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-ceiling-explicit",
+        maxPermissionMode: "auto",
+        providerId: "codex",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: { permissionMode: { source: "explicit", value: "full" } },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.permissionMode).toBe("auto");
+      // The stored history said "full"; the ceiling wins for display too.
+      expect(resolveExistingThreadPermissionMode(harness.deps, thread.id)).toBe(
+        "auto",
+      );
+    });
+  });
+
+  it("falls back to the highest supported mode under the ceiling", async () => {
+    await withTestHarness(async (harness) => {
+      // ACP supports accept-edits and full but not auto, so an "auto" ceiling
+      // has to resolve down to accept-edits rather than fail.
+      const thread = await seedCappedThread(harness, {
+        id: "host-ceiling-acp",
+        maxPermissionMode: "auto",
+        providerId: "acp-gemini",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: { permissionMode: { source: "explicit", value: "full" } },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.permissionMode).toBe("accept-edits");
+    });
+  });
+
+  it("refuses a provider that cannot run under the ceiling", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-ceiling-pi",
+        maxPermissionMode: "accept-edits",
+        providerId: "pi",
+      });
+
+      await expect(
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input: {},
+          threadId: thread.id,
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "host_permission_ceiling_conflict" },
+      });
+    });
+  });
+
+  it("leaves work alone on an uncapped machine", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-ceiling-none",
+        maxPermissionMode: "full",
+        providerId: "codex",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {},
+        threadId: thread.id,
+      });
+
       expect(plan.resolvedExecution.permissionMode).toBe("full");
     });
   });

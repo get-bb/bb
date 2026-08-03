@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { permissionModeSchema } from "@bb/domain";
 import {
   pathsExistRequestSchema,
   pathsExistResponseSchema,
@@ -78,6 +79,21 @@ export const updateHostRequestSchema = z
   })
   .strict();
 export type UpdateHostRequest = z.infer<typeof updateHostRequestSchema>;
+
+/**
+ * Body for `PATCH /hosts/:id/permission-ceiling`. Deliberately its own route
+ * rather than a field on `updateHostRequestSchema`: the ceiling is the control
+ * that stops one machine from running privileged work on another, so it is
+ * owner-session-only and is not part of the SDK or the `bb` CLI surface.
+ */
+export const updateHostPermissionCeilingRequestSchema = z
+  .object({
+    maxPermissionMode: permissionModeSchema,
+  })
+  .strict();
+export type UpdateHostPermissionCeilingRequest = z.infer<
+  typeof updateHostPermissionCeilingRequestSchema
+>;
 
 export const hostRetryUpdateResponseSchema = z
   .object({ ok: z.literal(true) })

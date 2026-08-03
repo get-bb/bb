@@ -1,4 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Host, PermissionMode } from "@bb/domain";
+import { apiClient } from "@/lib/api-server";
+import { request } from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { invalidateHostListQueries } from "../cache-owners/mutation-cache-effects";
 
@@ -38,6 +41,41 @@ export function useRemoveHost() {
     mutationFn: async (hostId: string) => {
       await sdk.hosts.delete({ hostId });
     },
+    onSuccess: () => {
+      invalidateHostListQueries({ queryClient });
+    },
+  });
+}
+
+interface UpdateHostPermissionCeilingRequest {
+  hostId: string;
+  maxPermissionMode: PermissionMode;
+}
+
+/**
+ * Sets a machine's permission ceiling. This calls the API client directly
+ * instead of `sdk.hosts.*` on purpose: the ceiling is the control that stops
+ * one paired machine from running privileged work on another, so it stays out
+ * of the agent-facing SDK and the `bb` CLI. The server also refuses the route
+ * for machine credentials.
+ */
+export function useUpdateHostPermissionCeiling() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      showErrorToast: false,
+    },
+    mutationFn: ({
+      hostId,
+      maxPermissionMode,
+    }: UpdateHostPermissionCeilingRequest) =>
+      request<Host>(
+        apiClient.hosts[":id"]["permission-ceiling"].$patch({
+          param: { id: hostId },
+          json: { maxPermissionMode },
+        }),
+      ),
     onSuccess: () => {
       invalidateHostListQueries({ queryClient });
     },

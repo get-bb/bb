@@ -135,6 +135,23 @@ export function registerHostRoutes(
     return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
   });
 
+  // Owner-session only, and deliberately absent from the SDK and the `bb` CLI:
+  // this ceiling is what stops one paired machine from running privileged work
+  // on another, so an agent on any machine must not be able to raise it.
+  patch(routes.updatePermissionCeiling, (context, payload) => {
+    assertHostManagementAllowed(context);
+    const hostId = context.req.param("id");
+    requireMutableHost(deps, hostId);
+    const updated = updateHost(deps.db, deps.hub, hostId, {
+      maxPermissionMode: payload.maxPermissionMode,
+    });
+    if (!updated) {
+      throw new ApiError(404, "host_not_found", "Host not found");
+    }
+    deps.hub.notifyHost(hostId, ["host-connected"]);
+    return context.json(requireNonDestroyedHostWithStatus(deps, updated.id));
+  });
+
   post(routes.retryUpdate, (context) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");

@@ -11,6 +11,9 @@ export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
 export const SETTINGS_PLUGIN_ROUTE_PATH = "/settings/plugins/:pluginId";
 export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
+// Per-machine detail page. The static "machines" segment sits above the
+// :section route, which has no splat and so never matches this two-segment path.
+export const SETTINGS_MACHINE_ROUTE_PATH = "/settings/machines/:hostId";
 export const TOOLS_ROUTE_PATH = "/tools";
 export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
 export const TOOLS_SKILL_DETAIL_ROUTE_PATH = "/tools/skills/library/:skillId";
@@ -100,6 +103,10 @@ export function getSettingsPluginRoutePath(pluginId: string): string {
 
 export function getSettingsProviderRoutePath(providerId: string): string {
   return `/settings/providers/${encodeURIComponent(providerId)}`;
+}
+
+export function getSettingsMachineRoutePath(hostId: string): string {
+  return `/settings/machines/${encodeURIComponent(hostId)}`;
 }
 
 export function getToolsRoutePath(): string {

@@ -36,6 +36,7 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   providers: [],
   models: [],
   selectedOnlyModels: [],
+  permissionCeiling: "full",
   modelLoadError: null,
 };
 

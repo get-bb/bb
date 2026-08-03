@@ -70,6 +70,7 @@ function claudeCodePlaceholderExecutionOptions(
     providers: listBuiltInAgentProviderInfos(),
     models: cached?.models ?? listClaudeCodeFallbackModels(),
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }

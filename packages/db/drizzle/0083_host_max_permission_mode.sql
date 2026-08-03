@@ -1,0 +1,1 @@
+ALTER TABLE `hosts` ADD `max_permission_mode` text DEFAULT 'full' NOT NULL;

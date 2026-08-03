@@ -1,11 +1,4 @@
-import {
-  type ComponentType,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AvailableModel,
   PermissionMode,
@@ -20,11 +13,13 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
 } from "@bb/server-contract";
+import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
+import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
-import { reconcileReasoningLevel } from "@bb/domain";
+import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
 import { useSystemExecutionOptions } from "./queries/system-queries";
 import {
   usePromptBoxEnvironmentPreference,
@@ -56,37 +51,10 @@ const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 
 const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 
-const PERMISSION_MODE_OPTIONS: PickerOption<PermissionMode>[] = [
-  {
-    value: "accept-edits",
-    label: "Accept Edits",
-    description:
-      "Applies edits inside the workspace automatically. Anything beyond the workspace asks you first.",
-  },
-  {
-    value: "auto",
-    label: "Approve for me",
-    description:
-      "Same workspace sandbox, with requests reviewed automatically. High-risk actions can still come back to you.",
-  },
-  {
-    value: "full",
-    label: "Full Access",
-    tone: "warning",
-    description:
-      "No sandbox and no approvals — the agent can run anything on your machine.",
-  },
-];
-
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
-interface PickerOption<T extends string> {
-  value: T;
-  label: string;
-  description?: string;
-  tone?: "default" | "warning";
-  icon?: ComponentType<{ className?: string }>;
-}
+const PERMISSION_CEILING_REASON =
+  "Above this machine's permission limit. Change it in Settings → Machines.";
 
 type StringSelectionSetter = (value: string) => void;
 type ServiceTierSelectionSetter = (value: ServiceTier | undefined) => void;
@@ -354,12 +322,33 @@ export function useThreadCreationOptions(
     activeProviderCapabilities?.supportedPermissionModes ??
     DEFAULT_SUPPORTED_PERMISSION_MODES;
   const supportsPermissionModeSelection = supportedPermissionModes.length > 1;
+  // The machine's permission limit (Settings → Machines). Modes above it stay
+  // listed but unselectable, so the picker never offers a mode the server
+  // would resolve back down.
+  const permissionCeiling =
+    executionOptionsQuery.data?.permissionCeiling ?? "full";
+  const allowedPermissionModes = useMemo(
+    () =>
+      supportedPermissionModes.filter(
+        (mode) =>
+          permissionModeRank(mode) <= permissionModeRank(permissionCeiling),
+      ),
+    [permissionCeiling, supportedPermissionModes],
+  );
   const permissionModeOptions = useMemo(
     () =>
       PERMISSION_MODE_OPTIONS.filter((option) =>
         supportedPermissionModes.includes(option.value),
+      ).map((option) =>
+        permissionModeRank(option.value) > permissionModeRank(permissionCeiling)
+          ? {
+              ...option,
+              disabled: true,
+              disabledReason: PERMISSION_CEILING_REASON,
+            }
+          : option,
       ),
-    [supportedPermissionModes],
+    [permissionCeiling, supportedPermissionModes],
   );
 
   const serviceTierSupportByProvider = useMemo(() => {
@@ -493,7 +482,12 @@ export function useThreadCreationOptions(
 
   const permissionMode = resolvePermissionModeSelection({
     rawPermissionMode,
-    supportedPermissionModes,
+    // A stored preference above the machine's limit shows as the mode that
+    // will actually run, not the one that would be resolved away.
+    supportedPermissionModes:
+      allowedPermissionModes.length > 0
+        ? allowedPermissionModes
+        : supportedPermissionModes,
   });
   const environmentSelectionValue = rawEnvironmentSelectionValue;
   // A resetKey change clears touched fields in a layout effect, which runs

@@ -56,6 +56,7 @@ function createHost(
     type: "persistent",
     status: "connected",
     lastSeenAt: null,
+    maxPermissionMode: "full",
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 1,

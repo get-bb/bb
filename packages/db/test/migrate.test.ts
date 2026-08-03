@@ -252,6 +252,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
     .run();
+  dropHostMaxPermissionModeColumn(db);
   dropThreadSectionSchema(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound. Later migrations add plugins, bb_connect, multi_machine, and
@@ -427,6 +428,19 @@ function dropToolsHubExperimentColumn(db: DbConnection): void {
   if (columns.some((column) => column.name === "tools_hub")) {
     db.$client
       .prepare("ALTER TABLE system_experiments DROP COLUMN tools_hub")
+      .run();
+  }
+}
+
+// Migration 0083 adds the machine permission ceiling. Rewind scenarios that
+// clear its migration row must drop the column before replay.
+function dropHostMaxPermissionModeColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
+    .all();
+  if (columns.some((column) => column.name === "max_permission_mode")) {
+    db.$client
+      .prepare("ALTER TABLE hosts DROP COLUMN max_permission_mode")
       .run();
   }
 }
@@ -1275,6 +1289,7 @@ describe("migrate", () => {
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
+      dropHostMaxPermissionModeColumn(db);
 
       migrate(db);
 
@@ -1669,6 +1684,7 @@ describe("migrate", () => {
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
+      dropHostMaxPermissionModeColumn(db);
 
       expect(
         db.$client
@@ -1760,6 +1776,7 @@ describe("migrate", () => {
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
+      dropHostMaxPermissionModeColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

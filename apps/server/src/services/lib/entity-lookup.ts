@@ -72,6 +72,7 @@ function toHostRecord(row: HostRow, status: Host["status"]): Host {
     name: row.name,
     type: row.type,
     status,
+    maxPermissionMode: row.maxPermissionMode,
     lastSeenAt: row.lastSeenAt,
     lastRejectedProtocolVersion: row.lastRejectedProtocolVersion,
     createdAt: row.createdAt,
@@ -93,9 +94,7 @@ export function listPublicHostsWithStatus(deps: HostLookupDeps): Host[] {
   return rows.map((row) =>
     toHostRecord(
       row,
-      getOpenDaemonSessionForHost(deps, row.id)
-        ? "connected"
-        : "disconnected",
+      getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
     ),
   );
 }
@@ -156,7 +155,10 @@ export function requireConnectedHostSession(
   return session;
 }
 
-export function requireProject(db: DbConnection, projectId: string): ProjectRow {
+export function requireProject(
+  db: DbConnection,
+  projectId: string,
+): ProjectRow {
   const project = getProject(db, projectId);
   if (!project) {
     throw new ApiError(404, "project_not_found", "Project not found");

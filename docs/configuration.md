@@ -360,6 +360,18 @@ installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
 
+Each machine has a permission ceiling (`maxPermissionMode`, default `full`).
+The server resolves every thread on that machine down to the ceiling, so a
+paired sandbox machine can keep Full Access while a personal machine stays at
+Approve for me or Accept Edits. A provider that supports no mode under the
+ceiling is refused on that machine. Only an owner session sets it, on the machine
+page (Settings → Machines → the machine, which also carries that machine's
+projects, provider CLIs, update state, and rename/remove); it is deliberately
+absent from the SDK and the `bb` CLI,
+and machine credentials are rejected at both the bb connect gate and the
+server. The current value is readable through the host API and
+`bb machine list --json`.
+
 Machine installation and daemon protocol repair use the owning server as the
 distribution source: `/install/version` reports the server package/protocol and
 `/install/bb-app.tgz` serves its exact installable package. The installer falls

@@ -9,6 +9,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
+  SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
@@ -57,6 +58,8 @@ export function isSettingsSectionId(value: string): value is SettingsSectionId {
 }
 
 export interface SettingsNavState {
+  /** Host id from /settings/machines/:hostId, else null. */
+  activeMachineId: string | null;
   /** Plugin id from /settings/plugins/:pluginId, else null. */
   activePluginId: string | null;
   /** Provider id from /settings/providers/:providerId, else null. */
@@ -97,6 +100,12 @@ export function useSettingsNavState(): SettingsNavState {
     SETTINGS_SECTION_ROUTE_PATH,
     location.pathname,
   );
+  // A machine page keeps the Machines bucket selected in the sidebar.
+  const machineMatch = matchPath(
+    SETTINGS_MACHINE_ROUTE_PATH,
+    location.pathname,
+  );
+  const activeMachineId = machineMatch?.params.hostId ?? null;
   const activePluginId = pluginMatch?.params.pluginId ?? null;
   const providerParam = providerMatch?.params.providerId;
   const activeProviderId =
@@ -111,11 +120,13 @@ export function useSettingsNavState(): SettingsNavState {
     (sectionParam !== undefined && !isSettingsSectionId(sectionParam)) ||
     (providerParam !== undefined && !isSettingsProviderId(providerParam));
   const activeSection: SettingsSectionId | null =
-    activePluginId !== null || providerMatch !== null
-      ? null
-      : sectionParam !== undefined && isSettingsSectionId(sectionParam)
-        ? sectionParam
-        : "general";
+    activeMachineId !== null
+      ? "machines"
+      : activePluginId !== null || providerMatch !== null
+        ? null
+        : sectionParam !== undefined && isSettingsSectionId(sectionParam)
+          ? sectionParam
+          : "general";
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
@@ -134,6 +145,7 @@ export function useSettingsNavState(): SettingsNavState {
           (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
       );
   return {
+    activeMachineId,
     activePluginId,
     activeProviderId,
     activeSection,

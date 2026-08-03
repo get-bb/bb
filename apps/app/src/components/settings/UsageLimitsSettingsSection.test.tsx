@@ -13,6 +13,7 @@ const primaryHost: Host = {
   type: "persistent",
   status: "connected",
   lastSeenAt: 1,
+  maxPermissionMode: "full",
   lastRejectedProtocolVersion: null,
   createdAt: 1,
   updatedAt: 1,

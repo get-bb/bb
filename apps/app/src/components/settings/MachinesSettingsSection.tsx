@@ -1,10 +1,9 @@
-import { useMemo, useState, type FormEvent } from "react";
-import type { Host } from "@bb/domain";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import type { Host, PermissionMode } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
-  Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -17,12 +16,12 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
-import { Input } from "@bb/shared-ui/input";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
-import { useRenameDialogAutoFocus } from "@/components/dialogs/useRenameDialogAutoFocus.js";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { MachineRenameDialog } from "@/components/settings/MachineRenameDialog";
 import {
   SettingsBadge,
   SettingsRow,
@@ -38,6 +37,8 @@ import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { PersistentHostIconName } from "@/lib/host-display";
+import { getSettingsMachineRoutePath } from "@/lib/route-paths";
+import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
@@ -45,14 +46,19 @@ import {
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
 
+/** Fixed column so every machine's limit lands on the same vertical line. */
+const MACHINE_LIMIT_COLUMN = "w-36 shrink-0 truncate";
+
+const PERMISSION_MODE_LABELS: Record<PermissionMode, string> =
+  Object.fromEntries(
+    PERMISSION_MODE_OPTIONS.map((option) => [option.value, option.label]),
+  ) as Record<PermissionMode, string>;
+
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
 
 const PRIMARY_REMOVE_DISABLED_REASON =
   "This machine runs bb and can't be removed.";
-
-/** Server-side limit from `updateHostRequestSchema`. */
-const HOST_NAME_MAX_LENGTH = 100;
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -116,7 +122,14 @@ function MachineRow({
   retryUpdatePending,
 }: MachineRowProps) {
   return (
-    <SettingsRow>
+    <SettingsRow className="group relative">
+      {/* Stretched link: the whole row opens the machine page, while the
+          controls above it keep their own click targets. */}
+      <Link
+        to={getSettingsMachineRoutePath(host.id)}
+        aria-label={`Open ${host.name}`}
+        className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
       <Icon
         name={PersistentHostIconName}
         className="size-4 shrink-0 text-muted-foreground"
@@ -129,27 +142,21 @@ function MachineRow({
           </span>
           {isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
         </div>
-        <p className="text-xs text-subtle-foreground/75">
+        <p className="min-w-0 text-xs text-subtle-foreground/75">
           {machineMetaLine({ host, platformLabel, projectCount, now })}
         </p>
       </div>
-      {hostCanRetryUpdate(host) ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={retryUpdatePending}
-          onClick={onRetryUpdate}
-        >
-          {retryUpdatePending ? "Retrying…" : "Retry update"}
-        </Button>
-      ) : null}
+      {/* Read-only here on purpose: the machine page owns the control, but the
+          list still has to answer "which machines are capped?" at a glance. */}
+      <span className={cn(MACHINE_LIMIT_COLUMN, "text-sm text-foreground")}>
+        {PERMISSION_MODE_LABELS[host.maxPermissionMode]}
+      </span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            className="relative -mr-1 h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
             aria-label={`${host.name} actions`}
           >
             <Icon name="MoreHorizontal" className="size-4" />
@@ -157,6 +164,14 @@ function MachineRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
+          {hostCanRetryUpdate(host) ? (
+            <DropdownMenuItem
+              disabled={retryUpdatePending}
+              onSelect={onRetryUpdate}
+            >
+              {retryUpdatePending ? "Retrying update…" : "Retry update"}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             disabled={isPrimary}
@@ -175,100 +190,6 @@ function MachineRow({
         </DropdownMenuContent>
       </DropdownMenu>
     </SettingsRow>
-  );
-}
-
-interface MachineRenameDialogProps {
-  target: Host | null;
-  pending: boolean;
-  errorMessage: string | null;
-  onOpenChange: (open: boolean) => void;
-  onRename: (host: Host, name: string) => void;
-}
-
-function MachineRenameDialog({
-  target,
-  pending,
-  errorMessage,
-  onOpenChange,
-  onRename,
-}: MachineRenameDialogProps) {
-  const { inputRef, handleOpenAutoFocus } = useRenameDialogAutoFocus();
-  return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent onOpenAutoFocus={handleOpenAutoFocus}>
-        {target ? (
-          <MachineRenameDialogContent
-            key={target.id}
-            target={target}
-            pending={pending}
-            errorMessage={errorMessage}
-            onRename={onRename}
-            inputRef={inputRef}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MachineRenameDialogContent({
-  target,
-  pending,
-  errorMessage,
-  onRename,
-  inputRef,
-}: {
-  target: Host;
-  pending: boolean;
-  errorMessage: string | null;
-  onRename: (host: Host, name: string) => void;
-  inputRef: ReturnType<typeof useRenameDialogAutoFocus>["inputRef"];
-}) {
-  const [nextName, setNextName] = useState(target.name);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (pending) return;
-    const trimmed = nextName.trim();
-    if (trimmed.length === 0) return;
-    onRename(target, trimmed);
-  };
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Rename machine</DialogTitle>
-        <DialogDescription>
-          Choose a new name for {target.name}.
-        </DialogDescription>
-      </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="space-y-2">
-          <Input
-            ref={inputRef}
-            aria-label="Machine name"
-            value={nextName}
-            maxLength={HOST_NAME_MAX_LENGTH}
-            autoCorrect="off"
-            spellCheck={false}
-            disabled={pending}
-            onChange={(event) => setNextName(event.target.value)}
-          />
-          {errorMessage !== null ? (
-            <p className="text-sm text-destructive">{errorMessage}</p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button
-            type="submit"
-            disabled={pending || nextName.trim().length === 0}
-          >
-            Rename machine
-          </Button>
-        </DialogFooter>
-      </form>
-    </>
   );
 }
 
@@ -329,43 +250,53 @@ export function MachinesSettingsSection() {
         ) : hosts.length === 0 ? (
           <p className="text-sm text-subtle-foreground">No machines yet.</p>
         ) : (
-          <SettingsRowList>
-            {hosts.map((host) => (
-              <MachineRow
-                key={host.id}
-                host={host}
-                isPrimary={host.id === primaryHostId}
-                platformLabel={
-                  host.id === primaryHostId && primaryHostPlatform !== null
-                    ? PLATFORM_LABELS[primaryHostPlatform]
-                    : null
-                }
-                projectCount={projectCountByHostId.get(host.id) ?? 0}
-                now={now}
-                onRename={() => {
-                  renameHost.reset();
-                  setRenameTarget(host);
-                }}
-                onRemove={() => {
-                  removeHost.reset();
-                  setRemoveTarget(host);
-                }}
-                onRetryUpdate={() =>
-                  retryHostUpdate.mutate(host.id, {
-                    onSuccess: () => {
-                      appToast.success(
-                        `Update retry requested for ${host.name}`,
-                      );
-                    },
-                  })
-                }
-                retryUpdatePending={
-                  retryHostUpdate.isPending &&
-                  retryHostUpdate.variables === host.id
-                }
-              />
-            ))}
-          </SettingsRowList>
+          <>
+            <div className="flex items-center gap-3 border-b border-border pb-2.5 text-2xs uppercase tracking-wide text-subtle-foreground">
+              <span className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1">Machine</span>
+              <span className={MACHINE_LIMIT_COLUMN}>Permission limit</span>
+              <span className="w-6 shrink-0" aria-hidden />
+            </div>
+            <div className="pt-2.5">
+              <SettingsRowList>
+                {hosts.map((host) => (
+                  <MachineRow
+                    key={host.id}
+                    host={host}
+                    isPrimary={host.id === primaryHostId}
+                    platformLabel={
+                      host.id === primaryHostId && primaryHostPlatform !== null
+                        ? PLATFORM_LABELS[primaryHostPlatform]
+                        : null
+                    }
+                    projectCount={projectCountByHostId.get(host.id) ?? 0}
+                    now={now}
+                    onRename={() => {
+                      renameHost.reset();
+                      setRenameTarget(host);
+                    }}
+                    onRemove={() => {
+                      removeHost.reset();
+                      setRemoveTarget(host);
+                    }}
+                    onRetryUpdate={() =>
+                      retryHostUpdate.mutate(host.id, {
+                        onSuccess: () => {
+                          appToast.success(
+                            `Update retry requested for ${host.name}`,
+                          );
+                        },
+                      })
+                    }
+                    retryUpdatePending={
+                      retryHostUpdate.isPending &&
+                      retryHostUpdate.variables === host.id
+                    }
+                  />
+                ))}
+              </SettingsRowList>
+            </div>
+          </>
         )}
       </SettingsSection>
 

@@ -77,6 +77,7 @@ function executionOptions({
     providers: [],
     models,
     selectedOnlyModels,
+    permissionCeiling: "full",
     modelLoadError: null,
   };
 }
@@ -147,10 +148,7 @@ afterEach(() => {
 describe("ModelReasoningPicker", () => {
   it("stays open while changing both the model and reasoning effort", () => {
     const { onModelChange, onReasoningChange } = renderPicker({
-      modelOptions: [
-        ...codexModels,
-        { value: "gpt-5.2", label: "GPT-5.2" },
-      ],
+      modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],
     });
 
     fireEvent.click(

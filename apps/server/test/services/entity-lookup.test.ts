@@ -53,6 +53,7 @@ function setup(): SetupResult {
     name: hostRow.name,
     type: hostRow.type,
     status: "disconnected",
+    maxPermissionMode: hostRow.maxPermissionMode,
     lastSeenAt: hostRow.lastSeenAt,
     lastRejectedProtocolVersion: null,
     createdAt: hostRow.createdAt,
