@@ -84,9 +84,20 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
-  ...THREAD_JUMP_APP_COMMAND_IDS.map((command, index) =>
-    binding(command, String(index + 1), { mod: true }, mainWithoutModal),
-  ),
+  // Browsers reserve Mod+1…9 for native tab switching. Keep that chord on
+  // desktop and add Shift to the web-capable alias.
+  ...THREAD_JUMP_APP_COMMAND_IDS.flatMap((command, index) => [
+    binding(
+      command,
+      String(index + 1),
+      { mod: true, shift: true },
+      mainWithoutModal,
+    ),
+    binding(command, String(index + 1), { mod: true }, {
+      ...mainWithoutModal,
+      desktopOnly: true,
+    }),
+  ]),
   binding(
     "pane.focus.previous",
     "[",
@@ -99,9 +110,18 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     { mod: true, shift: true },
     splitWithoutModal,
   ),
-  ...PANE_FOCUS_APP_COMMAND_IDS.map((command, index) =>
-    binding(command, String(index + 1), { mod: true }, splitWithoutModal),
-  ),
+  ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
+    binding(
+      command,
+      String(index + 1),
+      { mod: true, shift: true },
+      splitWithoutModal,
+    ),
+    binding(command, String(index + 1), { mod: true }, {
+      ...splitWithoutModal,
+      desktopOnly: true,
+    }),
+  ]),
   binding(
     "pane.maximize.toggle",
     "e",

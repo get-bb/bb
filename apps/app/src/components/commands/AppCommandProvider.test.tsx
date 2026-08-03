@@ -89,6 +89,32 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface" as const], none: [] },
     },
     {
+      command: "thread.jump.1" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
+      command: "thread.jump.1" as const,
+      desktopOnly: true,
+      shortcut: {
+        key: "1",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
       command: "question.select.1" as const,
       desktopOnly: false,
       shortcut: {
@@ -297,11 +323,40 @@ describe("AppCommandProvider", () => {
       <>
         <ShortcutLabel command="thread.new" />
         <ShortcutLabel command="thread.previous" />
+        <ShortcutLabel command="thread.jump.1" />
       </>,
     );
 
     expect(screen.getByText("Ctrl + Shift + O")).toBeDefined();
     expect(screen.getByText("Ctrl + Shift + ArrowUp")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + 1")).toBeDefined();
+  });
+
+  it("preserves native Mod+number behavior and dispatches the shifted web chat alias", () => {
+    renderProvider(
+      <Handler command="thread.jump.1" name="thread" result={true} />,
+    );
+
+    const nativeTabShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "1",
+    });
+    window.dispatchEvent(nativeTabShortcut);
+    expect(nativeTabShortcut.defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
+
+    const webChatShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "!",
+      shiftKey: true,
+    });
+    window.dispatchEvent(webChatShortcut);
+    expect(webChatShortcut.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["thread"]);
   });
 
   it("falls through declining handlers in priority order", () => {
