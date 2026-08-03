@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
+  listPanes,
   movePane,
   serializeSplitLayout,
   SPLIT_LAYOUT_STORAGE_KEY,
@@ -25,6 +26,7 @@ import {
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -241,6 +243,15 @@ vi.mock("./ThreadDetailView", () => ({
             onClick={pane.onToggleMaximize}
           >
             {pane.isMaximized ? "restore" : "maximize"}
+          </button>
+        ) : null}
+        {pane?.onMoveToSide ? (
+          <button
+            type="button"
+            data-testid={`move-right-${threadId}`}
+            onClick={() => pane.onMoveToSide?.("right")}
+          >
+            move right
           </button>
         ) : null}
       </div>
@@ -593,6 +604,22 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
     expect(commandHandlers.get("pane.maximize.toggle")?.()).toBe(true);
     await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBeNull());
+  });
+
+  it("routes arrangement actions through the existing split move operation", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    fireEvent.click(await screen.findByTestId("move-right-thr-a"));
+
+    expect(
+      listPanes(
+        store.get(splitLayoutAtom)?.root ?? twoPaneLayout("pane-1").root,
+      ).map((pane) => pane.paneId),
+    ).toEqual(["pane-2", "pane-1"]);
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
   });
 
   it("carries maximization through focus, CLI-style open, and pane move", async () => {
@@ -1395,9 +1422,7 @@ describe("SplitThreadArea", () => {
       expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
     }
 
-    fireEvent.click(
-      screen.getAllByRole("button", { name: /Maximize pane/ })[3]!,
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: /Full Screen/ })[3]!);
     await waitFor(() =>
       expect(contentRow("bottom-right")).resolves.toHaveProperty(
         "className",
@@ -1408,7 +1433,7 @@ describe("SplitThreadArea", () => {
       "pl-[104px]",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Restore pane/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Exit Full Screen/ }));
     await waitFor(() =>
       expect(contentRow("top-left")).resolves.toHaveProperty(
         "className",
@@ -1492,6 +1517,58 @@ describe("SplitThreadArea", () => {
     expect(
       toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+  });
+
+  it("uses automation breadcrumbs in the split-owned plugin header", async () => {
+    setPluginSlotRegistrations("automations", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Clock",
+          path: "automations",
+          component: () => <div>Automation detail</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    const content: PaneContent = {
+      kind: "plugin-panel",
+      pluginId: "automations",
+      panelPath: "automations",
+      subPath: "proj_personal/weekly-review",
+    };
+    const store = renderSplitArea({
+      path: "/plugins/automations/automations/proj_personal/weekly-review",
+      layout: {
+        root: { type: "pane", paneId: "pane-automation", content },
+        focusedPaneId: "pane-automation",
+      },
+      routeContent: content,
+    });
+
+    const breadcrumb = await screen.findByRole("navigation", {
+      name: "Breadcrumb",
+    });
+    expect(breadcrumb.textContent).toContain("Automations");
+    expect(breadcrumb.textContent).toContain("Installed");
+    expect(breadcrumb.textContent).toContain("weekly-review");
+
+    store.set(resourceRouteLabelAtom, "Weekly review");
+    await waitFor(() =>
+      expect(breadcrumb.textContent).toContain("Weekly review"),
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Installed" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/plugins/automations/automations",
+    );
   });
 
   it("ignores a layout written by another tab (issue #873)", async () => {

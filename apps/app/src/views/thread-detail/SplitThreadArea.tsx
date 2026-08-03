@@ -1,7 +1,7 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
-import { useAtom, useStore } from "jotai";
+import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
   useCallback,
@@ -27,6 +27,7 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   clampSplitPairFraction,
+  computePaneRects,
   countPanes,
   findPane,
   listPanes,
@@ -43,6 +44,7 @@ import type {
   PaneNode,
   SplitLayout,
   SplitPath,
+  SplitSide,
 } from "@/lib/split-layout";
 import {
   beginSplitDrag,
@@ -70,6 +72,9 @@ import {
   HEADER_ICON_BUTTON_CLASS,
   HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
+import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
+import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
+import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigation";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
@@ -410,6 +415,44 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     [navigate, setMaximizedPaneId, store],
   );
 
+  const movePaneToSide = useCallback(
+    (paneId: string, side: SplitSide) => {
+      const current = store.get(splitLayoutAtom);
+      if (current === null || countPanes(current.root) < 2) return;
+
+      const rects = computePaneRects(current.root);
+      const candidates = listPanes(current.root).filter(
+        (pane) => pane.paneId !== paneId,
+      );
+      const edgePosition = (candidateId: string) => {
+        const rect = rects.get(candidateId);
+        if (rect === undefined) return 0;
+        switch (side) {
+          case "left":
+            return rect.x;
+          case "right":
+            return -(rect.x + rect.w);
+          case "top":
+            return rect.y;
+          case "bottom":
+            return -(rect.y + rect.h);
+        }
+      };
+      const target = candidates.sort(
+        (first, second) =>
+          edgePosition(first.paneId) - edgePosition(second.paneId),
+      )[0];
+      if (target === undefined) return;
+
+      const next = movePane(current, paneId, target.paneId, side);
+      if (next === current) return;
+      store.set(splitLayoutAtom, next);
+      const route = focusedPaneRoute(next);
+      if (route !== null) navigate(route, { replace: true });
+    },
+    [navigate, store],
+  );
+
   const resize = useCallback(
     (splitPath: SplitPath, childIndex: number, fraction: number) => {
       setLayout((previous) =>
@@ -607,6 +650,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             onFocusPane={focusPane}
             onClosePane={closePane}
             onToggleMaximizePane={toggleMaximizePane}
+            onMovePaneToSide={movePaneToSide}
             onResize={resize}
             onNavigateInPane={navigateInPane}
             onBeginPaneDrag={beginPaneDrag}
@@ -685,6 +729,7 @@ interface SplitTreeProps {
   onFocusPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onToggleMaximizePane: (paneId: string) => void;
+  onMovePaneToSide: (paneId: string, side: SplitSide) => void;
   onResize: (
     splitPath: SplitPath,
     childIndex: number,
@@ -742,6 +787,7 @@ function SplitTree(props: SplitTreeProps) {
           onRequestClose={() => props.onClosePane(node.paneId)}
           isMaximized={isMaximized}
           onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
+          onMoveToSide={(side) => props.onMovePaneToSide(node.paneId, side)}
           isBoundedPane
           isTopRow={isMaximized || isTopRow}
           ownsWindowTopLeft={
@@ -820,6 +866,7 @@ interface WorkspacePaneContentProps {
   onRequestClose: (() => void) | null;
   isMaximized: boolean;
   onToggleMaximize: (() => void) | null;
+  onMoveToSide?: (side: SplitSide) => void;
   // True inside multi-pane split cards; suppresses the page-bleed margins so
   // content fills the card exactly (see PaneContextValue.isBoundedPane).
   isBoundedPane: boolean;
@@ -840,6 +887,7 @@ function WorkspacePaneContent({
   onRequestClose,
   isMaximized,
   onToggleMaximize,
+  onMoveToSide,
   isBoundedPane,
   isTopRow,
   ownsWindowTopLeft,
@@ -878,6 +926,7 @@ function WorkspacePaneContent({
       onRequestClose,
       isMaximized,
       onToggleMaximize,
+      onMoveToSide,
       isBoundedPane,
       isTopRow,
       ownsWindowTopLeft,
@@ -895,6 +944,7 @@ function WorkspacePaneContent({
       onRequestClose,
       isMaximized,
       onToggleMaximize,
+      onMoveToSide,
       paneId,
       reservesWindowPanelToggle,
       secondaryPanelHost,
@@ -959,6 +1009,7 @@ function NonThreadPaneContent({
   ownsWindowTopLeft: boolean;
 }) {
   const { navPanels } = usePluginSlots();
+  const resourceRouteLabel = useAtomValue(resourceRouteLabelAtom);
   const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
     reservesWindowPanelToggle: false,
     isFocused: true,
@@ -975,8 +1026,21 @@ function NonThreadPaneContent({
             candidate.path === content.panelPath,
         )
       : undefined;
+  const automationBreadcrumbs =
+    content.kind === "plugin-panel"
+      ? resolveAutomationBreadcrumbs(
+          paneContentRoute(content),
+          isFocused ? resourceRouteLabel : null,
+        )
+      : null;
   const label = panel?.title ?? "New thread";
   const handlePointerDown = (event: ReactPointerEvent) => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("a, button") !== null
+    ) {
+      return;
+    }
     if (event.button === 0) beginPaneDrag?.(event, label);
   };
   const actions = (
@@ -1056,7 +1120,12 @@ function NonThreadPaneContent({
               )}
               onPointerDown={beginPaneDrag ? handlePointerDown : undefined}
             >
-              {panel ? (
+              {automationBreadcrumbs ? (
+                <AppBreadcrumbs
+                  breadcrumbs={automationBreadcrumbs}
+                  usesDesktopChrome={usesDesktopChrome}
+                />
+              ) : panel ? (
                 <PluginPanelHeaderCenter panel={panel} />
               ) : (
                 <p

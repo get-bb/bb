@@ -14,6 +14,7 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import type { SplitSide } from "@/lib/split-layout";
 
 export interface PaneContextValue {
   paneId: string;
@@ -42,6 +43,8 @@ export interface PaneContextValue {
   isMaximized: boolean;
   /** Toggles this pane between its split position and full-workspace display. */
   onToggleMaximize: (() => void) | null;
+  /** Moves this pane to one of the split workspace's supported edges. */
+  onMoveToSide?: (side: SplitSide) => void;
   /**
    * True when this pane renders inside a bounded split card (multi-pane
    * layouts). Bounded panes suppress the page-bleed negative margins in

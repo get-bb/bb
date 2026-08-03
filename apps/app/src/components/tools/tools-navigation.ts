@@ -10,6 +10,10 @@ import {
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  AUTOMATIONS_BROWSE_ROUTE_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTOMATION_DETAIL_ROUTE_PATH,
+  AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 export type ToolsSectionId = "skills" | "plugins";
@@ -51,6 +55,36 @@ export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills];
 export interface ToolsBreadcrumbSegment {
   label: string;
   to?: string;
+}
+
+export function resolveAutomationBreadcrumbs(
+  pathname: string,
+  resourceLabel?: string | null,
+): ToolsBreadcrumbSegment[] | null {
+  const root = { label: "Automations", to: AUTOMATIONS_ROUTE_PATH };
+  if (pathname === AUTOMATIONS_BROWSE_ROUTE_PATH) {
+    return [root, { label: "Browse" }];
+  }
+  for (const pattern of [
+    AUTOMATION_DETAIL_ROUTE_PATH,
+    AUTOMATION_EDIT_ROUTE_PATH,
+  ]) {
+    const match = matchPath(pattern, pathname);
+    if (!match) continue;
+    return [
+      root,
+      { label: "Installed", to: AUTOMATIONS_ROUTE_PATH },
+      {
+        label:
+          resourceLabel ??
+          routeResourceLabel(match.params.automationId, "Automation"),
+      },
+    ];
+  }
+  if (pathname === AUTOMATIONS_ROUTE_PATH) {
+    return [root, { label: "Installed" }];
+  }
+  return null;
 }
 
 function belongsToRoute(pathname: string, route: string): boolean {

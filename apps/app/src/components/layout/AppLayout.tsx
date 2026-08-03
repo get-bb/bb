@@ -22,7 +22,12 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
-import { resolveToolsBreadcrumbs } from "@/components/tools/tools-navigation";
+import {
+  resolveAutomationBreadcrumbs,
+  resolveToolsBreadcrumbs,
+} from "@/components/tools/tools-navigation";
+import { AppBreadcrumbs } from "./AppBreadcrumbs";
+import { resourceRouteLabelAtom } from "./resourceRouteLabelAtom";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -55,7 +60,6 @@ import {
   MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -331,54 +335,17 @@ function AppHeader({
     Boolean(headerTitle) ||
     Boolean(meta.subtitle);
 
-  const center = pluginPanel ? (
+  const center = headerBreadcrumbs ? (
+    <div className="min-w-0 flex-1">
+      <AppBreadcrumbs
+        breadcrumbs={headerBreadcrumbs}
+        usesDesktopChrome={usesDesktopChrome}
+      />
+    </div>
+  ) : pluginPanel ? (
     <PluginPanelHeaderCenter panel={pluginPanel} />
   ) : hasCenterContent ? (
     <div className="min-w-0 flex-1">
-      {headerBreadcrumbs ? (
-        <nav aria-label="Breadcrumb" className="min-w-0">
-          <ol className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
-            {headerBreadcrumbs.map((segment, index) => {
-              const isLast = index === headerBreadcrumbs.length - 1;
-              return (
-                <li
-                  key={`${segment.label}-${index}`}
-                  className="flex min-w-0 items-center gap-1.5"
-                >
-                  {index > 0 ? (
-                    <Icon
-                      name="ChevronRight"
-                      className="size-3.5 shrink-0 text-subtle-foreground"
-                    />
-                  ) : null}
-                  {!isLast && segment.to ? (
-                    <Link
-                      to={segment.to}
-                      className={cn(
-                        "-mx-2 inline-flex min-h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                      )}
-                    >
-                      {segment.label}
-                    </Link>
-                  ) : (
-                    <span
-                      aria-current={isLast ? "page" : undefined}
-                      className={
-                        isLast
-                          ? "min-w-0 truncate"
-                          : "shrink-0 text-muted-foreground"
-                      }
-                    >
-                      {segment.label}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
-      ) : null}
       {headerTitle ? (
         <p className="truncate text-sm font-semibold">{headerTitle}</p>
       ) : null}
@@ -437,8 +404,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const contentShellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
   const location = useLocation();
-  const [resourceRouteLabel, setResourceRouteLabel] = useState<string | null>(
-    null,
+  const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
+    resourceRouteLabelAtom,
   );
   useEffect(() => {
     setResourceRouteLabel(null);
@@ -647,16 +614,21 @@ export function AppLayout({ children }: AppLayoutProps) {
         resourceRouteLabel,
       )
     : null;
+  const automationBreadcrumbs = resolveAutomationBreadcrumbs(
+    location.pathname,
+    resourceRouteLabel,
+  );
+  const routeBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : toolsBreadcrumbs
+    : routeBreadcrumbs
       ? {
           title: "",
           subtitle: undefined,
-          breadcrumbs: toolsBreadcrumbs,
+          breadcrumbs: routeBreadcrumbs,
         }
       : isArchivedView && projectId
         ? isProjectlessProjectId(projectId)
@@ -708,9 +680,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
-    if (toolsBreadcrumbs) {
-      const sectionLabel = toolsBreadcrumbs[0]?.label ?? "BB";
-      const pageLabel = toolsBreadcrumbs.at(-1)?.label ?? sectionLabel;
+    if (routeBreadcrumbs) {
+      const sectionLabel = routeBreadcrumbs[0]?.label ?? "BB";
+      const pageLabel = routeBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
         : `${pageLabel} · ${sectionLabel}`;

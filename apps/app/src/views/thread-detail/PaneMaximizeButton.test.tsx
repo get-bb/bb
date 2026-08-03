@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HEADER_MAXIMIZE_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -19,6 +25,7 @@ const noop = () => {};
 function renderButton(
   isMaximized: boolean,
   onToggleMaximize: () => void = noop,
+  onMoveToSide: PaneContextValue["onMoveToSide"] = noop,
 ) {
   const value: PaneContextValue = {
     paneId: "pane-1",
@@ -29,13 +36,14 @@ function renderButton(
     onRequestClose: noop,
     isMaximized,
     onToggleMaximize,
+    onMoveToSide,
     isBoundedPane: true,
     isTopRow: true,
     ownsWindowTopLeft: true,
     navigateInPane: noop,
   };
   return render(
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <PaneContext.Provider value={value}>
         <PaneMaximizeButton />
       </PaneContext.Provider>
@@ -46,10 +54,10 @@ function renderButton(
 afterEach(cleanup);
 
 describe("PaneMaximizeButton", () => {
-  it("exposes the maximize action, shortcut, and pressed state", () => {
+  it("enters full screen immediately on the default click", () => {
     const onToggle = vi.fn();
     renderButton(false, onToggle);
-    const button = screen.getByRole("button", { name: "Maximize pane (⌘⇧E)" });
+    const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
 
     expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+E");
     expect(button.getAttribute("aria-pressed")).toBe("false");
@@ -57,15 +65,52 @@ describe("PaneMaximizeButton", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it("changes to restore while maximized", () => {
-    renderButton(true);
-    const button = screen.getByRole("button", { name: "Restore pane (⌘⇧E)" });
+  it("exits full screen on click and uses the clear tooltip copy", async () => {
+    const onToggle = vi.fn();
+    renderButton(true, onToggle);
+    const button = screen.getByRole("button", {
+      name: "Exit Full Screen (⌘⇧E)",
+    });
     expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.focus(button);
+    await waitFor(() => {
+      expect(
+        screen
+          .getAllByRole("tooltip")
+          .some((tooltip) => tooltip.textContent?.includes("Exit Full Screen")),
+      ).toBe(true);
+    });
+
+    fireEvent.click(button);
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("shows only BB's supported split arrangement actions on hover", async () => {
+    const onMoveToSide = vi.fn();
+    renderButton(false, noop, onMoveToSide);
+    const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
+
+    fireEvent.pointerEnter(button);
+    const menu = await screen.findByRole("menu", { name: "Pane arrangement" });
+    expect(menu.textContent).toContain("Full Screen");
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "Full Screen⌘⇧E",
+      "Move left",
+      "Move right",
+      "Move top",
+      "Move bottom",
+    ]);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move left" }));
+    expect(onMoveToSide).toHaveBeenCalledWith("left");
   });
 
   it("uses the reduced-glyph header geometry so the arrows do not outsize the close/panel controls", () => {
     renderButton(false);
-    const button = screen.getByRole("button", { name: "Maximize pane (⌘⇧E)" });
+    const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
     // The maximize/restore double-arrows paint larger than the compact close X,
     // so they render one optical step down while keeping the shared hit target.
     for (const token of HEADER_MAXIMIZE_ICON_BUTTON_CLASS.split(/\s+/)) {

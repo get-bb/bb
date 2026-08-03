@@ -390,7 +390,7 @@ const ICON_MAP = {
   Settings: Settings01Icon,
   SideChat: MessageAdd02Icon,
   ClosePluginPane: MultiplicationSignSquareIcon,
-  CloseThreadPane: MultiplicationSignSquareIcon,
+  CloseThreadPane: Cancel01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
   Smartphone: SmartPhone01Icon,
   Sort: Sorting01Icon,
