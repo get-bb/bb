@@ -4,10 +4,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  probeBbServer,
-  type ServerProbeFetch,
-} from "../src/server-probe.js";
+import { probeBbServer, type ServerProbeFetch } from "../src/server-probe.js";
 
 interface TestServer {
   close(): Promise<void>;
@@ -86,6 +83,7 @@ describe("probeBbServer", () => {
         timeoutMs: 1_000,
       }),
     ).resolves.toEqual({
+      dataDir: null,
       kind: "compatible",
       serverUrl: "https://studio.example",
     });
@@ -118,8 +116,34 @@ describe("probeBbServer", () => {
     await expect(
       probeBbServer({ serverUrl: testServer.url, timeoutMs: 500 }),
     ).resolves.toEqual({
+      dataDir: null,
       kind: "compatible",
       serverUrl: testServer.url,
+    });
+  });
+
+  it("reports the data directory the probed server declares", async () => {
+    const fetchImpl = vi
+      .fn<ServerProbeFetch>()
+      .mockResolvedValueOnce(Response.json({ ok: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          dataDir: "/Users/example/.bb",
+          hostDaemonPort: 4_242,
+          voiceTranscriptionEnabled: false,
+        }),
+      );
+
+    await expect(
+      probeBbServer({
+        fetchImpl,
+        serverUrl: "https://studio.example",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      dataDir: "/Users/example/.bb",
+      kind: "compatible",
+      serverUrl: "https://studio.example",
     });
   });
 
@@ -174,6 +198,7 @@ describe("probeBbServer", () => {
     await expect(
       probeBbServer({ serverUrl: testServer.url, timeoutMs: 500 }),
     ).resolves.toEqual({
+      dataDir: null,
       kind: "compatible",
       serverUrl: testServer.url,
     });

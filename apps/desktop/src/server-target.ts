@@ -185,8 +185,7 @@ export function createServerTargetStore(
       if (
         connectServer === null ||
         connectServer.handle !== server.handle ||
-        (connectServer.name === server.name &&
-          connectServer.url === server.url)
+        (connectServer.name === server.name && connectServer.url === server.url)
       ) {
         return false;
       }

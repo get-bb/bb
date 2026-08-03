@@ -43,6 +43,11 @@ import {
   type BbAppProcessExit,
   startBbAppProcess,
 } from "./bb-process.js";
+import { openExistingServerDialog } from "./existing-server-dialog.js";
+import {
+  readForeignRuntimeDetails,
+  stopForeignRuntime,
+} from "./foreign-runtime.js";
 import { createLocalViewUrl } from "./local-view.js";
 import { installApplicationMenu } from "./menu.js";
 import {
@@ -57,6 +62,7 @@ import {
 import {
   probeBbServer,
   waitForCompatibleServer,
+  type CompatibleServerProbeResult,
   type ServerProbeResult,
 } from "./server-probe.js";
 import {
@@ -155,6 +161,7 @@ import {
 
 const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
+const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
@@ -279,6 +286,7 @@ let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let serverUrlDialogPreloadPath: string | null = null;
+let existingServerDialogPreloadPath: string | null = null;
 
 function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
   const rawPort = args.env.BB_SERVER_PORT?.trim();
@@ -1524,6 +1532,96 @@ interface InitializeRuntimeArgs {
   userDataPath: string;
 }
 
+/**
+ * Attaching to a bb this app did not start is invisible to the person using it,
+ * so ask first. Local development stays silent, because attaching to a
+ * `pnpm dev` server is the whole point there.
+ */
+function shouldAskBeforeAttaching(): boolean {
+  if (!app.isPackaged || existingServerDialogPreloadPath === null) {
+    return false;
+  }
+  return (process.env.BB_DESKTOP_APP_URL ?? "").trim().length === 0;
+}
+
+/**
+ * Wait for the port to close after the other copy was told to stop. A new
+ * server cannot bind a port that the old process still holds.
+ */
+async function waitForServerToStop(serverUrl: string): Promise<boolean> {
+  const deadline = Date.now() + FOREIGN_RUNTIME_STOP_TIMEOUT_MS;
+  while (Date.now() <= deadline) {
+    const probe = await probeBbServer({
+      serverUrl,
+      timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
+    });
+    if (probe.kind === "unavailable") {
+      return true;
+    }
+    await new Promise<void>((resolvePromise) => {
+      setTimeout(resolvePromise, STARTUP_POLL_INTERVAL_MS);
+    });
+  }
+  return false;
+}
+
+type ExistingServerDecision = "attach" | "quit" | "start-fresh";
+
+async function decideOnExistingServer(
+  probe: CompatibleServerProbeResult,
+): Promise<ExistingServerDecision> {
+  if (!shouldAskBeforeAttaching()) {
+    return "attach";
+  }
+
+  const preloadPath = existingServerDialogPreloadPath;
+  if (preloadPath === null) {
+    return "attach";
+  }
+
+  const details = await readForeignRuntimeDetails({
+    dataDir: probe.dataDir,
+    serverUrl: probe.serverUrl,
+  });
+  const choice = await openExistingServerDialog({
+    details,
+    parentWindow: getFocusedApplicationWindow(),
+    preloadPath,
+    serverUrl: probe.serverUrl,
+  });
+
+  if (choice === "quit") {
+    return "quit";
+  }
+  if (choice === "connect" || details === null) {
+    return "attach";
+  }
+
+  const stopResult = await stopForeignRuntime({
+    dataDir: details.dataDir,
+    timeoutMs: FOREIGN_RUNTIME_STOP_TIMEOUT_MS,
+  });
+  if (stopResult.kind === "unverified") {
+    await loadStartupError({
+      details:
+        `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
+        "process does not look like bb. bb did not stop it. Stop it yourself, then open bb again.",
+      logs: "",
+      title: "Could not stop the running bb",
+    });
+    return "quit";
+  }
+  if (!(await waitForServerToStop(probe.serverUrl))) {
+    await loadStartupError({
+      details: `The bb at ${probe.serverUrl} stopped, but the address is still in use.`,
+      logs: "",
+      title: "Could not stop the running bb",
+    });
+    return "quit";
+  }
+  return "start-fresh";
+}
+
 async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   const existingProbe = await probeBbServer({
     serverUrl: args.serverUrl,
@@ -1531,6 +1629,26 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
 
   if (existingProbe.kind === "compatible") {
+    const decision = await decideOnExistingServer(existingProbe);
+    if (decision === "quit") {
+      app.quit();
+      return;
+    }
+    if (decision === "start-fresh") {
+      await loadLoadingView();
+      const freshRuntime = await startOwnedRuntime({
+        bridgePath: args.bridgePath,
+        serverUrl: args.serverUrl,
+        userDataPath: args.userDataPath,
+      });
+      if (freshRuntime !== null) {
+        await loadBbApp(freshRuntime.serverUrl);
+        startSystemConfigSync(freshRuntime.serverUrl);
+        refreshApplicationMenu();
+      }
+      return;
+    }
+
     setCurrentRuntime({
       bbProcess: null,
       ownership: "attached",
@@ -1656,6 +1774,11 @@ async function runDesktopApp(): Promise<void> {
     "log-viewer-preload.cjs",
   );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
+  const resolvedExistingServerDialogPreloadPath = join(
+    paths.appPath,
+    "dist",
+    "existing-server-dialog-preload.cjs",
+  );
   const resolvedServerUrlDialogPreloadPath = join(
     paths.appPath,
     "dist",
@@ -1672,6 +1795,10 @@ async function runDesktopApp(): Promise<void> {
   desktopUserDataPath = userDataPath;
 
   assertPathExists({ label: "bb-app bridge", path: bridgePath });
+  assertPathExists({
+    label: "existing server dialog preload script",
+    path: resolvedExistingServerDialogPreloadPath,
+  });
   assertPathExists({
     label: "log viewer preload script",
     path: resolvedLogViewerPreloadPath,
@@ -1785,6 +1912,7 @@ async function runDesktopApp(): Promise<void> {
   };
   logViewerPreloadPath = resolvedLogViewerPreloadPath;
   serverUrlDialogPreloadPath = resolvedServerUrlDialogPreloadPath;
+  existingServerDialogPreloadPath = resolvedExistingServerDialogPreloadPath;
   desktopWindowFactory = createDesktopWindowFactory({
     browserWindowCreator,
     createWindowStateKey() {

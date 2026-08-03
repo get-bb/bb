@@ -76,6 +76,22 @@ right file and refresh the right server.
 Startup settings such as data directory and ports still apply when the process
 starts.
 
+## Stopping A Running bb
+
+A running `bb-app start` writes `<dataDir>/bb-app-runtime.json` and removes the
+file when it exits. The file records the launcher process id, the server URL,
+the version, the start time, and how bb was started. Do not edit it.
+
+Two things read that file:
+
+- `npx bb-app stop` stops the bb that owns the data directory. Pass the same
+  `--data-dir` you started with when it is not the default `~/.bb/`.
+- The macOS desktop app asks before it uses a bb it did not start, and offers to
+  stop that copy for you.
+
+Both confirm that the recorded process really is a bb launcher before they
+signal it, so a stale file left by a crash cannot stop an unrelated process.
+
 ## Common Keys
 
 | Key                | Command         | When to set             | Used for                                                                                                                                       |

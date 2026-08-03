@@ -76,6 +76,16 @@ local host daemon, and serves the web app. It stores bb-managed state under
 launcher restarts that child without stopping the other one. Press `Ctrl+C` in
 the terminal to stop both processes and exit with status `0`.
 
+To stop a bb that runs in another terminal or in the background:
+
+```bash
+npx bb-app stop
+```
+
+`stop` reads `bb-app-runtime.json` from the data directory, confirms that the
+recorded process really is that launcher, then stops it. Pass `--data-dir` when
+the bb you want to stop does not use the default `~/.bb/`.
+
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.
 
@@ -118,14 +128,14 @@ targets. Scripts launched by bb already receive `BB_SERVER_URL` and
 
 bb uses whichever providers you have configured. Common providers:
 
-| Provider      | Setup                                                                                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `codex`       | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                  |
-| `claude-code` | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                   |
-| `cursor`      | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                     |
-| `pi`          | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup. |
-| `opencode`    | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                |
-| `grok`        | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                           |
+| Provider       | Setup                                                                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                  |
+| `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                   |
+| `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                                                     |
+| `pi`           | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). Run `pi` and then `/login` for interactive setup.                                |
+| `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                |
+| `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                            |
 | `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`. |
 
 Custom ACP agents can be configured through `customAcpAgents` in

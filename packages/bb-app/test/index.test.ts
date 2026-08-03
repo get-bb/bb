@@ -525,6 +525,14 @@ describe("bb-app launcher", () => {
     expect(resolveBbAppCommand(["start"])).toEqual({ kind: "start" });
   });
 
+  it("stops bb on the explicit stop command only", () => {
+    expect(resolveBbAppCommand(["stop"])).toEqual({ kind: "stop" });
+    expect(resolveBbAppCommand(["stop", "now"])).toEqual({
+      command: "stop",
+      kind: "invalid",
+    });
+  });
+
   it("keeps CLI commands on the bb binary", () => {
     expect(resolveBbAppCommand(["status"])).toEqual({
       command: "status",
