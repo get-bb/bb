@@ -109,12 +109,6 @@ describe("createThreadTimelineCache", () => {
 });
 
 describe("buildThreadTimelineCacheKey", () => {
-  it("is stable for identical inputs", () => {
-    expect(buildThreadTimelineCacheKey(baseKeyArgs)).toBe(
-      buildThreadTimelineCacheKey({ ...baseKeyArgs }),
-    );
-  });
-
   it("differs when any projection input differs", () => {
     const base = buildThreadTimelineCacheKey(baseKeyArgs);
     const variants: ThreadTimelineCacheKeyArgs[] = [

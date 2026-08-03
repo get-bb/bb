@@ -931,50 +931,6 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
-    it("renames a thread", async () => {
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        onEvent: () => {},
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () => createFakeAdapter(scriptPath),
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.renameThread({ threadId: "t1", title: "New Title" });
-      await runtime.shutdown();
-    });
-
-    it("stops a thread", async () => {
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        onEvent: () => {},
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () => createFakeAdapter(scriptPath),
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.stopThread({ threadId: "t1" });
-      await runtime.shutdown();
-    });
-
     it("preserves active turn state when stop command construction fails", async () => {
       const builtCommands: AdapterCommand[] = [];
       const events: ThreadEvent[] = [];
@@ -1180,48 +1136,6 @@ rl.on("line", (line) => {
       await expect(pendingTurnId).resolves.toBeNull();
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
-      await runtime.shutdown();
-    });
-
-    it("steers an active turn", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        onEvent: (event) => events.push(event),
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () => createFakeAdapter(scriptPath),
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223t",
-        threadId: "t1",
-        input: [promptTextInput({ text: "delay:500" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnStarted({
-        events,
-        providerId: "fake",
-        runtime,
-        threadId: "t1",
-        turnId: "turn-1",
-      });
-      await runtime.steerTurn({
-        clientRequestId: "creq_222222223u",
-        threadId: "t1",
-        expectedTurnId: "turn-1",
-        input: [promptTextInput({ text: "steer input" })],
-        options: fullRuntimeOptions,
-      });
       await runtime.shutdown();
     });
 

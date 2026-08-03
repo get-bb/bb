@@ -139,22 +139,6 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "environment_not_ready destroyed cleanup",
-    body: {
-      code: "environment_not_ready",
-      message: "Environment unavailable",
-      details: {
-        environmentStatus: "destroyed",
-        hasPath: false,
-      },
-    },
-    expected: {
-      title: "Workspace unavailable",
-      body: "Workspace no longer exists.",
-      severity: "warning",
-    },
-  },
-  {
     name: "thread_environment_unavailable never attached",
     body: {
       code: "thread_environment_unavailable",

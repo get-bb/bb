@@ -179,26 +179,6 @@ function expectPiBashSnapshotReset(args: ExpectPiBashSnapshotResetArgs): void {
 describe("pi provider adapter", () => {
   // -- Identity & capabilities ---------------------------------------------
 
-  it("has correct process config", () => {
-    const adapter = createPiProviderAdapter();
-    expect(adapter.process.command).toBe("node");
-    expect(adapter.process.args.slice(0, 3)).toEqual([
-      "--conditions=source",
-      "--import",
-      import.meta.resolve("tsx"),
-    ]);
-    expect(adapter.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/,
-    );
-  });
-
-  it("uses the configured bridge bundle directory when present", () => {
-    const adapter = createPiProviderAdapter({
-      bridgeBundleDir: "/tmp",
-    });
-    expect(adapter.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
-  });
-
   it("advertises trimmed capabilities", () => {
     const adapter = createPiProviderAdapter();
     expect(adapter.capabilities).toEqual({

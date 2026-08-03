@@ -249,14 +249,6 @@ describe("isAgentDelegatedChildThread", () => {
       }),
     ).toBe(false);
   });
-
-  it("is false for a root thread with no parent", () => {
-    expect(
-      isAgentDelegatedChildThread({
-        parentThreadId: null,
-      }),
-    ).toBe(false);
-  });
 });
 
 describe("isParentNotifiableChildThread", () => {

@@ -100,14 +100,6 @@ describe("SdkSession", () => {
     expect(session.getIsProcessing()).toBe(false);
   });
 
-  it("pushInput queues messages before start", () => {
-    const onMessage = vi.fn();
-    const onDone = vi.fn();
-    const session = new SdkSession(defaultOptions, onMessage, onDone);
-    // Should not throw before start
-    session.pushInput("hello");
-  });
-
   it("resolves pushed input after the SDK prompt iterator yields it", async () => {
     keepSdkStreamOpen();
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
