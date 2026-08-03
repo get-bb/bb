@@ -1222,6 +1222,45 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("defers stale provider maintenance runtime shutdown until active maintenance work finishes", async () => {
+    const dataDir = await makeTempDir("bb-provider-maintenance-lease-");
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    const activeWork = createDeferred<void>();
+    const createRuntime = vi
+      .fn()
+      .mockReturnValueOnce(firstRuntime)
+      .mockReturnValueOnce(secondRuntime);
+    const manager = new RuntimeManager({ createRuntime });
+    let leasedRuntime: AgentRuntime | null = null;
+
+    const workPromise = manager.withProviderMaintenanceRuntime(
+      { dataDir },
+      async (runtime) => {
+        leasedRuntime = runtime;
+        await activeWork.promise;
+        return "done";
+      },
+    );
+
+    await vi.waitFor(() => {
+      expect(leasedRuntime).toBe(firstRuntime);
+    });
+
+    await manager.invalidateProviderMaintenanceRuntime();
+    expect(firstRuntime.shutdown).not.toHaveBeenCalled();
+    await expect(
+      manager.ensureProviderMaintenanceRuntime({ dataDir }),
+    ).resolves.toBe(secondRuntime);
+
+    activeWork.resolve(undefined);
+    await expect(workPromise).resolves.toBe("done");
+    await vi.waitFor(() => {
+      expect(firstRuntime.shutdown).toHaveBeenCalledTimes(1);
+    });
+    expect(secondRuntime.shutdown).not.toHaveBeenCalled();
+  });
+
   it("does not let stale provider maintenance creation replace a newer runtime", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-race-");
     const staleRuntime = createFakeRuntime();

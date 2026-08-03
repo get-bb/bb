@@ -10,7 +10,10 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
-import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
+import {
+  allSystemExecutionOptionsQueryKeyPrefix,
+  hostProviderCliStatusQueryKey,
+} from "@/hooks/queries/query-keys";
 import type { ProviderCliActionableIssue } from "./provider-cli-install";
 import { useProviderCliInstallRunner } from "./provider-cli-install";
 import {
@@ -202,6 +205,10 @@ describe("useProviderCliInstallRunner", () => {
 
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: hostProviderCliStatusQueryKey("host_1"),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+      predicate: expect.any(Function),
     });
     expect(appToastMock.success).not.toHaveBeenCalled();
   });

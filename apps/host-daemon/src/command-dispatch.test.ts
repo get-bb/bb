@@ -4,11 +4,15 @@ import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
 import type {
   HostDaemonInjectedSkillSource,
+  ProviderCliInstallEvent,
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import { dispatchCommand } from "./command-dispatch.js";
+import {
+  dispatchCommand,
+  dispatchOnlineRpcCommand,
+} from "./command-dispatch.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
@@ -213,6 +217,20 @@ function createRuntime(): FakeDispatchRuntime {
       activeTurnsByThreadId.delete(threadId);
     },
   };
+}
+
+function createProviderCliInstallEventStream(
+  events: readonly ProviderCliInstallEvent[],
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const event of events) {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      }
+      controller.close();
+    },
+  });
 }
 
 describe("dispatchCommand", () => {
@@ -593,6 +611,149 @@ describe("dispatchCommand", () => {
     expect(result).toEqual({ providerThreadId: "provider-thread-1" });
     expect(getProviderCliStatusForProvider).not.toHaveBeenCalled();
     expect(runtime.startThread).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates the provider maintenance runtime after a successful Codex CLI update", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    const staleRuntime = createRuntime();
+    const freshRuntime = createRuntime();
+    const createRuntimeSpy = vi.fn(() => staleRuntime);
+    createRuntimeSpy.mockReturnValueOnce(staleRuntime);
+    createRuntimeSpy.mockReturnValueOnce(freshRuntime);
+    const manager = new RuntimeManager({
+      createRuntime: createRuntimeSpy,
+      dataDir,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureProviderMaintenanceRuntime({ dataDir });
+
+    const events: ProviderCliInstallEvent[] = [
+      {
+        type: "started",
+        provider: "codex",
+        command: "codex update",
+      },
+      {
+        type: "completed",
+        provider: "codex",
+        exitCode: 0,
+        signal: null,
+        success: true,
+      },
+    ];
+    const streamProviderCliInstall = vi.fn(() =>
+      createProviderCliInstallEventStream(events),
+    );
+    const command: CommandOf<"provider_cli.install"> = {
+      type: "provider_cli.install",
+      provider: "codex",
+      actionKind: "update",
+    };
+
+    const result = await dispatchOnlineRpcCommand(command, {
+      dataDir,
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      streamProviderCliInstall,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ events });
+    expect(streamProviderCliInstall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKind: "update",
+        provider: "codex",
+      }),
+    );
+    expect(staleRuntime.shutdown).toHaveBeenCalledOnce();
+
+    await manager.ensureProviderMaintenanceRuntime({ dataDir });
+    expect(createRuntimeSpy).toHaveBeenCalledTimes(2);
+    expect(freshRuntime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("keeps the provider maintenance runtime after failed or non-Codex CLI installs", async () => {
+    const cases: Array<{
+      actionKind: CommandOf<"provider_cli.install">["actionKind"];
+      events: ProviderCliInstallEvent[];
+      provider: CommandOf<"provider_cli.install">["provider"];
+    }> = [
+      {
+        actionKind: "update",
+        provider: "codex",
+        events: [
+          {
+            type: "completed",
+            provider: "codex",
+            exitCode: 1,
+            signal: null,
+            success: false,
+          },
+        ],
+      },
+      {
+        actionKind: "update",
+        provider: "claudeCode",
+        events: [
+          {
+            type: "completed",
+            provider: "claudeCode",
+            exitCode: 0,
+            signal: null,
+            success: true,
+          },
+        ],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+      const runtime = createRuntime();
+      const createRuntimeSpy = vi.fn(() => runtime);
+      const manager = new RuntimeManager({
+        createRuntime: createRuntimeSpy,
+        dataDir,
+        provisionWorkspace: async () => createWorkspace(),
+      });
+      await manager.ensureProviderMaintenanceRuntime({ dataDir });
+      const streamProviderCliInstall = vi.fn(() =>
+        createProviderCliInstallEventStream(testCase.events),
+      );
+
+      const result = await dispatchOnlineRpcCommand(
+        {
+          type: "provider_cli.install",
+          provider: testCase.provider,
+          actionKind: testCase.actionKind,
+        },
+        {
+          dataDir,
+          eventSink: {
+            emit: vi.fn(),
+            flush: vi.fn(async () => undefined),
+          },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          runtimeManager: manager,
+          streamProviderCliInstall,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+        },
+      );
+
+      expect(result).toEqual({ events: testCase.events });
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+      await expect(
+        manager.ensureProviderMaintenanceRuntime({ dataDir }),
+      ).resolves.toBe(runtime);
+      expect(createRuntimeSpy).toHaveBeenCalledTimes(1);
+    }
   });
 
   // Regression: a thread.start whose freshly staged skill catalog differed

@@ -737,10 +737,10 @@ export async function createHostDaemonApp(
     terminalManager,
     listModels: async (args) => {
       await refreshRuntimeShellEnv();
-      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
-        dataDir: options.dataDir,
-      });
-      return runtime.listModels(args);
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.listModels(args),
+      );
     },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);

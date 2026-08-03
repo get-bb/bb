@@ -176,15 +176,24 @@ async function installProviderCliOnHost(
     const env = providerCliEnvFromShellEnv(
       options.runtimeManager.getShellEnv(),
     );
-    return {
-      events: await readProviderCliInstallEvents(
-        streamProviderCliInstall({
-          provider: command.provider,
-          actionKind: command.actionKind,
-          env,
-        }),
-      ),
-    };
+    const streamInstall =
+      options.streamProviderCliInstall ?? streamProviderCliInstall;
+    const events = await readProviderCliInstallEvents(
+      streamInstall({
+        provider: command.provider,
+        actionKind: command.actionKind,
+        env,
+      }),
+    );
+    if (
+      shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall({
+        command,
+        events,
+      })
+    ) {
+      await options.runtimeManager.invalidateProviderMaintenanceRuntime();
+    }
+    return { events };
   } catch (error) {
     if (error instanceof ProviderCliInstallInProgressError) {
       return {
@@ -199,6 +208,23 @@ async function installProviderCliOnHost(
     }
     throw error;
   }
+}
+
+function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args: {
+  command: CommandOf<"provider_cli.install">;
+  events: readonly ProviderCliInstallEvent[];
+}): boolean {
+  return (
+    // Codex model listing goes through the resident provider-maintenance
+    // app-server, so a Codex CLI update can leave a stale model catalog alive.
+    args.command.provider === "codex" &&
+    args.events.some(
+      (event) =>
+        event.type === "completed" &&
+        event.provider === args.command.provider &&
+        event.success,
+    )
+  );
 }
 
 const commandHandlers: CommandHandlerMap = {
@@ -302,15 +328,17 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "thread.unarchive": async (command, options) => {
-    const runtime =
-      await options.runtimeManager.ensureProviderMaintenanceRuntime({
+    await options.runtimeManager.withProviderMaintenanceRuntime(
+      {
         dataDir: options.dataDir,
-      });
-    await runtime.unarchiveThread({
-      threadId: command.threadId,
-      providerId: command.providerId,
-      providerThreadId: command.providerThreadId,
-    });
+      },
+      (runtime) =>
+        runtime.unarchiveThread({
+          threadId: command.threadId,
+          providerId: command.providerId,
+          providerThreadId: command.providerThreadId,
+        }),
+    );
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,

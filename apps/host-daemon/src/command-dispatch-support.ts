@@ -12,6 +12,7 @@ import type {
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
+  ProviderCliInstallRequest,
   ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
@@ -57,6 +58,9 @@ export interface CommandDispatchOptions {
   getProviderCliStatusForProvider?: (
     providerId: string,
   ) => Promise<ProviderCliStatus | null>;
+  streamProviderCliInstall?: (
+    args: ProviderCliInstallRequest & { env?: NodeJS.ProcessEnv },
+  ) => ReadableStream<Uint8Array>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;

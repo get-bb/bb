@@ -8,6 +8,7 @@ import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/Prov
 import type { ProviderCliActionableIssue } from "@/components/provider-cli/provider-cli-install";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
+import { invalidateSystemExecutionOptions } from "@/hooks/cache-owners/system-cache-effects";
 import { sdk } from "@/lib/sdk";
 
 type ProviderCliInstallCompletedEvent = Extract<
@@ -202,6 +203,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       if (completedEvent?.success) {
         if (queryClient !== null) {
           void invalidateHostProviderCliStatus({ queryClient, hostId });
+          void invalidateSystemExecutionOptions({ queryClient, hostId });
         }
         return;
       }

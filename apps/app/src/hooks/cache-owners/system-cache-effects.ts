@@ -49,6 +49,10 @@ interface SystemExecutionOptionsCacheArgs extends QueryClientArg {
   providerId: string | null;
 }
 
+interface SystemExecutionOptionsInvalidationArgs extends QueryClientArg {
+  hostId: string;
+}
+
 export function seedSystemExecutionOptionsCache({
   environmentId,
   executionOptions,
@@ -132,6 +136,18 @@ export function invalidateRealtimeQueriesFetchedBeforeInitialConnect({
  */
 export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
+}
+
+/** Refresh provider/model catalogs after a provider CLI install or update. */
+export function invalidateSystemExecutionOptions({
+  hostId,
+  queryClient,
+}: SystemExecutionOptionsInvalidationArgs): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+    predicate: (query) =>
+      query.queryKey[2] === hostId || query.queryKey[2] === null,
+  });
 }
 
 /** Refresh settings and timeline projections after a General settings write. */
