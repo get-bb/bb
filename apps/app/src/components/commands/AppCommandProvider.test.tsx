@@ -93,13 +93,36 @@ const testState = vi.hoisted(() => ({
       desktopOnly: false,
       shortcut: {
         key: "1",
-        mod: true,
+        mod: false,
         meta: false,
-        control: false,
+        control: true,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: [
+          "mainSurface" as const,
+          "webSurface" as const,
+          "macPlatform" as const,
+        ],
+        none: [],
+      },
+    },
+    {
+      command: "thread.jump.1" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: true,
         alt: false,
         shift: true,
       },
-      when: { all: ["mainSurface" as const], none: [] },
+      when: {
+        all: ["mainSurface" as const, "webSurface" as const],
+        none: ["macPlatform" as const],
+      },
     },
     {
       command: "thread.jump.1" as const,
@@ -243,6 +266,7 @@ function dispatchShortcut(): KeyboardEvent {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   testState.calls.length = 0;
   testState.showKeyboardHints = true;
 });
@@ -357,6 +381,36 @@ describe("AppCommandProvider", () => {
     window.dispatchEvent(webChatShortcut);
     expect(webChatShortcut.defaultPrevented).toBe(true);
     expect(testState.calls).toEqual(["thread"]);
+  });
+
+  it("uses the Slack-style Control+number web alias on macOS", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(
+      <>
+        <ShortcutLabel command="thread.jump.1" />
+        <Handler command="thread.jump.1" name="thread" result={true} />
+      </>,
+    );
+
+    expect(screen.getByText("⌃ 1")).toBeDefined();
+    const webChatShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "1",
+    });
+    window.dispatchEvent(webChatShortcut);
+    expect(webChatShortcut.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["thread"]);
+
+    const nativeTabShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "1",
+      metaKey: true,
+    });
+    window.dispatchEvent(nativeTabShortcut);
+    expect(nativeTabShortcut.defaultPrevented).toBe(false);
   });
 
   it("falls through declining handlers in priority order", () => {

@@ -77,6 +77,8 @@ export const APP_COMMAND_CONTEXT_KEYS = [
   "questionOpen",
   "promptAvailable",
   "splitActive",
+  "webSurface",
+  "macPlatform",
 ] as const;
 
 export const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);
@@ -176,6 +178,19 @@ export const appKeybindingSchema = z
   })
   .strict();
 export type AppKeybinding = z.infer<typeof appKeybindingSchema>;
+
+export function isAppKeybindingAvailableForClient(
+  binding: AppKeybinding,
+  client: { isDesktop: boolean; isMac: boolean },
+): boolean {
+  if (binding.desktopOnly && !client.isDesktop) return false;
+  if (binding.when.all.includes("webSurface") && client.isDesktop) return false;
+  if (binding.when.none.includes("webSurface") && !client.isDesktop)
+    return false;
+  if (binding.when.all.includes("macPlatform") && !client.isMac) return false;
+  if (binding.when.none.includes("macPlatform") && client.isMac) return false;
+  return true;
+}
 
 export const appKeybindingsSchema = z.array(appKeybindingSchema).max(256);
 export type AppKeybindings = z.infer<typeof appKeybindingsSchema>;

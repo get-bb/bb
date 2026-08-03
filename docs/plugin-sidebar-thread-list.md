@@ -477,8 +477,9 @@ bb's thread shortcuts already work by DOM query, not by React state.
 `[data-sidebar-thread-shortcut-target]` elements and reads
 `dataset.sidebarThreadId`.
 
-So a plugin gets `Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` by
-putting two attributes on each row's anchor:
+So a plugin gets bb's surface-specific numbered thread shortcuts,
+`thread.next`, and `thread.previous` by putting two attributes on each row's
+anchor:
 
 ```tsx
 <a
@@ -589,8 +590,8 @@ export default definePluginApp((app) => {
 ```
 
 That is a working sidebar in about eighty lines. It stays live, it draws its
-own status icons, its rows drag out to split panes, they answer `Mod+1`, and
-right-click still opens bb's full menu.
+own status icons, its rows drag out to split panes, they answer the numbered
+thread shortcuts, and right-click still opens bb's full menu.
 
 ---
 
@@ -697,4 +698,3 @@ row, once per visible pane. The frontend sibling of the existing backend
    that a popover opened in one pane cannot leak into another.
 5. **Other headers.** Decide whether the compose screen, plugin panels, and
    the workspace header need the same slot, or stay host-only.
-

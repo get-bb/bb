@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   defaultAppSettings,
+  isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
   matchesAppShortcut,
   type AppCommandContext,
@@ -73,6 +74,8 @@ const EMPTY_CONTEXT: AppCommandContext = {
   questionOpen: false,
   promptAvailable: false,
   splitActive: false,
+  webSurface: false,
+  macPlatform: false,
 };
 
 function browserPlatform(): string {
@@ -233,22 +236,25 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       next.browserFocus =
         target instanceof HTMLElement &&
         target.closest("[data-app-browser]") !== null;
+      next.webSurface = !isDesktop;
+      next.macPlatform = isMacKeyboardPlatform(browserPlatform());
       for (const key of activeContextsRef.current.keys()) {
         next[key] = true;
       }
       return next;
     },
-    [],
+    [isDesktop],
   );
 
   const getShortcut = useCallback(
     (command: AppCommandId): AppShortcut | null => {
+      const isMac = isMacKeyboardPlatform(browserPlatform());
       let binding;
       for (let index = keybindings.length - 1; index >= 0; index -= 1) {
         const candidate = keybindings[index];
         if (
           candidate?.command === command &&
-          (isDesktop || !candidate.desktopOnly)
+          isAppKeybindingAvailableForClient(candidate, { isDesktop, isMac })
         ) {
           binding = candidate;
           break;
@@ -270,7 +276,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       for (let index = bindings.length - 1; index >= 0; index -= 1) {
         const binding = bindings[index];
         if (!binding) continue;
-        if (binding.desktopOnly && !isDesktop) continue;
+        if (!isAppKeybindingAvailableForClient(binding, { isDesktop, isMac })) {
+          continue;
+        }
         if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;
         context ??= currentContext(event.target);
         if (!matchesAppCommandContext(binding, context)) continue;

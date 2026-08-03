@@ -170,14 +170,15 @@ unknown `indicator` value by drawing nothing — bb can add kinds later.
 
 Spread `splitProps` on each card and each slim row, and add the two shortcut
 data attributes. Both are one line each, and both are easy to forget until a
-user reports that drag or `Mod+3` stopped working.
+user reports that drag or a numbered thread shortcut stopped working.
 
 **Why first.** This is the whole visual change. It needs no backend, no
 database, and no new bb data. If it does not feel right, you have lost a day,
 not a week.
 
 **How you know it works.** Your sidebar looks like the mockup, live-updates
-while an agent runs, and `Mod+1` still opens the first thread.
+while an agent runs, and the first numbered shortcut still opens the first
+thread.
 
 **Watch out for.** The static sort is the point, not a shortcut. Activity
 must never move a row. If a row moves while the user reads it, the plugin has
@@ -357,7 +358,8 @@ drop the diff from the card rather than blocking on it.
 - Settings → Appearance → Sidebar lists "bb (built-in)" and "t3sidebar".
 - Picking t3sidebar changes the sidebar without a reload.
 - Disabling the plugin restores bb's sidebar with no error.
-- `Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` work in both.
+- The surface-specific numbered shortcuts, `thread.next`, and
+  `thread.previous` work in both web and desktop.
 - Dragging a card out to a pane edge splits, and to a pane center replaces.
 - Cmd-click and the context menu open a thread in a split.
 - A thread with a running workflow never auto-settles.

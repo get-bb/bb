@@ -929,7 +929,8 @@ own menu does, including `requestDelete`, which opens bb's confirmation.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or
-`Mod+1`…`Mod+9`, `thread.next`, and `thread.previous` silently stop working:
+the surface-specific numbered shortcuts, `thread.next`, and `thread.previous`
+silently stop working:
 
 ```tsx
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>

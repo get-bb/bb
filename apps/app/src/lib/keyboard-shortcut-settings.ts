@@ -1,6 +1,7 @@
 import {
   APP_COMMAND_IDS,
   QUESTION_SELECT_APP_COMMAND_IDS,
+  isAppKeybindingAvailableForClient,
   isMacKeyboardPlatform,
   normalizeAppShortcutInputKey,
   type AppCommandId,
@@ -75,18 +76,24 @@ export function getCommandShortcut(
   defaults: AppKeybindings,
   overrides: AppKeybindingOverrides,
   command: AppCommandId,
+  isDesktop: boolean,
+  platform: string,
 ): AppShortcut | null {
-  const override = overrides.find((candidate) => candidate.command === command);
-  if (override !== undefined) {
-    return override.shortcut;
-  }
+  const isMac = isMacKeyboardPlatform(platform);
+  let defaultShortcut: AppShortcut | null = null;
   for (let index = defaults.length - 1; index >= 0; index -= 1) {
     const binding = defaults[index];
-    if (binding?.command === command) {
-      return binding.shortcut;
+    if (
+      binding?.command === command &&
+      isAppKeybindingAvailableForClient(binding, { isDesktop, isMac })
+    ) {
+      defaultShortcut = binding.shortcut;
+      break;
     }
   }
-  return null;
+  if (defaultShortcut === null) return null;
+  const override = overrides.find((candidate) => candidate.command === command);
+  return override === undefined ? defaultShortcut : override.shortcut;
 }
 
 export function setCommandShortcutOverride(
@@ -94,8 +101,16 @@ export function setCommandShortcutOverride(
   overrides: AppKeybindingOverrides,
   command: AppCommandId,
   shortcut: AppShortcut | null,
+  isDesktop: boolean,
+  platform: string,
 ): AppKeybindingOverrides {
-  const defaultShortcut = getCommandShortcut(defaults, [], command);
+  const defaultShortcut = getCommandShortcut(
+    defaults,
+    [],
+    command,
+    isDesktop,
+    platform,
+  );
   const shouldUseDefault =
     shortcut !== null &&
     defaultShortcut !== null &&
@@ -118,8 +133,16 @@ export function getShortcutConflicts(
   defaults: AppKeybindings,
   overrides: AppKeybindingOverrides,
   command: AppCommandId,
+  isDesktop: boolean,
+  platform: string,
 ): AppCommandId[] {
-  const shortcut = getCommandShortcut(defaults, overrides, command);
+  const shortcut = getCommandShortcut(
+    defaults,
+    overrides,
+    command,
+    isDesktop,
+    platform,
+  );
   if (shortcut === null) return [];
   return APP_COMMAND_IDS.filter((candidate) => {
     if (candidate === command) return false;
@@ -127,6 +150,8 @@ export function getShortcutConflicts(
       defaults,
       overrides,
       candidate,
+      isDesktop,
+      platform,
     );
     return (
       candidateShortcut !== null &&

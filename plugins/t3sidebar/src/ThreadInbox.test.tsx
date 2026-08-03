@@ -86,8 +86,8 @@ describe("ThreadInbox", () => {
     expect(titles[1]).toContain("Older");
   });
 
-  // The DOM contract behind Mod+1..Mod+9 and thread.next/previous. A plugin
-  // that drops these attributes silently breaks nine host shortcuts.
+  // The DOM contract behind numbered thread shortcuts and thread.next/previous.
+  // A plugin that drops these attributes silently breaks nine host shortcuts.
   it("marks every row as a host shortcut target", () => {
     render([thread({ id: "thr_x" })]);
     const row = screen.getByRole("link");

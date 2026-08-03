@@ -22,6 +22,19 @@ const defaults: AppKeybindings = [
     },
     when: { all: ["mainSurface"], none: ["modalOpen"] },
   },
+  {
+    command: "thread.new",
+    desktopOnly: true,
+    shortcut: {
+      key: "n",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    },
+    when: { all: ["mainSurface"], none: ["modalOpen"] },
+  },
 ];
 
 describe("keyboard shortcut settings", () => {
@@ -90,9 +103,13 @@ describe("keyboard shortcut settings", () => {
       [],
       "thread.new",
       null,
+      false,
+      "Win32",
     );
     expect(disabled).toEqual([{ command: "thread.new", shortcut: null }]);
-    expect(getCommandShortcut(defaults, disabled, "thread.new")).toBeNull();
+    expect(
+      getCommandShortcut(defaults, disabled, "thread.new", false, "Win32"),
+    ).toBeNull();
 
     expect(
       setCommandShortcutOverride(
@@ -100,7 +117,59 @@ describe("keyboard shortcut settings", () => {
         disabled,
         "thread.new",
         defaults[0]!.shortcut,
+        false,
+        "Win32",
       ),
     ).toEqual([]);
+  });
+
+  it("selects the active default for the current app surface", () => {
+    expect(
+      getCommandShortcut(defaults, [], "thread.new", false, "Win32"),
+    ).toEqual(defaults[0]!.shortcut);
+    expect(
+      getCommandShortcut(defaults, [], "thread.new", true, "Win32"),
+    ).toEqual(defaults[1]!.shortcut);
+    expect(
+      getCommandShortcut(
+        [defaults[1]!],
+        [{ command: "thread.new", shortcut: defaults[1]!.shortcut }],
+        "thread.new",
+        false,
+        "Win32",
+      ),
+    ).toBeNull();
+  });
+
+  it("selects the platform-specific web default", () => {
+    const platformDefaults: AppKeybindings = [
+      {
+        ...defaults[0]!,
+        shortcut: { ...defaults[0]!.shortcut, control: true, mod: false },
+        when: {
+          all: ["mainSurface", "webSurface", "macPlatform"],
+          none: ["modalOpen"],
+        },
+      },
+      {
+        ...defaults[0]!,
+        shortcut: { ...defaults[0]!.shortcut, shift: true },
+        when: {
+          all: ["mainSurface", "webSurface"],
+          none: ["modalOpen", "macPlatform"],
+        },
+      },
+      defaults[1]!,
+    ];
+
+    expect(
+      getCommandShortcut(platformDefaults, [], "thread.new", false, "MacIntel"),
+    ).toEqual(platformDefaults[0]!.shortcut);
+    expect(
+      getCommandShortcut(platformDefaults, [], "thread.new", false, "Win32"),
+    ).toEqual(platformDefaults[1]!.shortcut);
+    expect(
+      getCommandShortcut(platformDefaults, [], "thread.new", true, "MacIntel"),
+    ).toEqual(platformDefaults[2]!.shortcut);
   });
 });

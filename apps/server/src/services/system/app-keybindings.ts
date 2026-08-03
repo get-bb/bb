@@ -53,6 +53,42 @@ function binding(
   };
 }
 
+function numberedChatBindings(
+  commands: readonly AppCommandId[],
+  options: BindingOptions,
+): AppKeybindings {
+  return commands.flatMap((command, index) => [
+    binding(
+      command,
+      String(index + 1),
+      { control: true },
+      {
+        ...options,
+        all: [...(options.all ?? []), "webSurface", "macPlatform"],
+      },
+    ),
+    binding(
+      command,
+      String(index + 1),
+      { mod: true, shift: true },
+      {
+        ...options,
+        all: [...(options.all ?? []), "webSurface"],
+        none: [...(options.none ?? []), "macPlatform"],
+      },
+    ),
+    binding(
+      command,
+      String(index + 1),
+      { mod: true },
+      {
+        ...options,
+        desktopOnly: true,
+      },
+    ),
+  ]);
+}
+
 const mainWithoutModal = {
   all: ["mainSurface"],
   none: ["modalOpen"],
@@ -84,20 +120,10 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
-  // Browsers reserve Mod+1…9 for native tab switching. Keep that chord on
-  // desktop and add Shift to the web-capable alias.
-  ...THREAD_JUMP_APP_COMMAND_IDS.flatMap((command, index) => [
-    binding(
-      command,
-      String(index + 1),
-      { mod: true, shift: true },
-      mainWithoutModal,
-    ),
-    binding(command, String(index + 1), { mod: true }, {
-      ...mainWithoutModal,
-      desktopOnly: true,
-    }),
-  ]),
+  // Browsers reserve Mod+1…9 for native tab switching. Match Slack's web
+  // navigation convention: Control+N on macOS and Ctrl+Shift+N elsewhere,
+  // while keeping the shorter Mod chord on desktop.
+  ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
   binding(
     "pane.focus.previous",
     "[",
@@ -110,18 +136,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     { mod: true, shift: true },
     splitWithoutModal,
   ),
-  ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
-    binding(
-      command,
-      String(index + 1),
-      { mod: true, shift: true },
-      splitWithoutModal,
-    ),
-    binding(command, String(index + 1), { mod: true }, {
-      ...splitWithoutModal,
-      desktopOnly: true,
-    }),
-  ]),
+  ...numberedChatBindings(PANE_FOCUS_APP_COMMAND_IDS, splitWithoutModal),
   binding(
     "pane.maximize.toggle",
     "e",

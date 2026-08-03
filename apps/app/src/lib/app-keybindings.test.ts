@@ -33,6 +33,8 @@ const CONTEXT: AppCommandContext = {
   questionOpen: false,
   promptAvailable: false,
   splitActive: false,
+  webSurface: false,
+  macPlatform: false,
 };
 
 describe("app keybindings", () => {

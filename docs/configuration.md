@@ -143,7 +143,11 @@ are not editable. Actions supported by both clients use the same resolved
 bindings in the browser and desktop app; browsers may still reserve some chords
 before bb receives them.
 
-`Mod` means Command on macOS and Control on Windows/Linux.
+`Mod` means Command on macOS and Control on Windows/Linux. Numbered thread and
+pane shortcuts follow Slack's browser-safe convention: web uses
+`Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
+uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
+untouched.
 
 The "Show keyboard hints when holding CMD / Control" preference defaults
 to on. Set it with
@@ -155,9 +159,9 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
-| Threads   | Open visible thread 1–9       | `Mod+1` … `Mod+9`                 | All clients              |
+| Threads   | Open visible thread 1–9       | Platform defaults above           | Web / desktop            |
 | Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
-| Layout    | Focus chat pane 1–8           | `Mod+1` … `Mod+8`                 | While split              |
+| Layout    | Focus chat pane 1–8           | Platform defaults above           | Split (web / desktop)    |
 | Layout    | Maximize / restore chat pane  | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
 | Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
