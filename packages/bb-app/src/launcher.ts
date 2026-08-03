@@ -17,9 +17,10 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
   bbAppRuntimeVerifyTokens,
-  clearBbAppRuntimeFile,
+  claimBbAppRuntimeFile,
+  clearOwnBbAppRuntimeFile,
+  formatBbAppRuntimeFilePath,
   readBbAppRuntimeFile,
-  writeBbAppRuntimeFile,
 } from "@bb/config/app-runtime-file";
 import { stopVerifiedProcess } from "@bb/config/verified-process-stop";
 import {
@@ -74,6 +75,7 @@ const MANAGED_PROCESS_RESTART_RETRY_DELAY_MS = 1_000;
 const START_COMMAND = "start";
 const STOP_COMMAND = "stop";
 const STOP_TIMEOUT_MS = 15_000;
+const STOP_KILL_TIMEOUT_MS = 3_000;
 const HOST_DAEMON_COMMAND = "host-daemon";
 const HOST_DAEMON_JOIN_COMMAND = "join";
 const CLIENT_COMMAND = "client";
@@ -593,6 +595,13 @@ function warnExistingDaemonLock(lockDir: string): void {
   log(yellow("!"), "Daemon lock exists - waiting or reclaiming if stale");
   log(" ", dim(`lock: ${lockDir}`));
   log(" ", dim("If startup fails, stop the other bb process or remove it."));
+  process.stdout.write("\n");
+}
+
+function warnExistingRuntimeRecord(dataDir: string): void {
+  log(yellow("!"), "Another bb already runs on this data directory");
+  log(" ", dim(`record: ${formatBbAppRuntimeFilePath(dataDir)}`));
+  log(" ", dim("Run `bb-app stop` to stop it."));
   process.stdout.write("\n");
 }
 
@@ -2809,14 +2818,19 @@ async function runStopCommand(args: { dataDir: string }): Promise<void> {
   }
 
   const result = await stopVerifiedProcess({
+    killTimeoutMs: STOP_KILL_TIMEOUT_MS,
     pid: runtimeFile.pid,
     signal: "SIGTERM",
+    startedAt: runtimeFile.startedAt,
     timeoutMs: STOP_TIMEOUT_MS,
-    verifyTokens: bbAppRuntimeVerifyTokens(runtimeFile),
+    verifyTokens: bbAppRuntimeVerifyTokens(runtimeFile.entryPath),
   });
 
   if (result.kind === "not-running") {
-    await clearBbAppRuntimeFile(args.dataDir);
+    await clearOwnBbAppRuntimeFile({
+      dataDir: args.dataDir,
+      pid: runtimeFile.pid,
+    });
     log(
       dim("●"),
       `bb was not running (removed a stale record of pid ${String(runtimeFile.pid)})`,
@@ -2825,14 +2839,30 @@ async function runStopCommand(args: { dataDir: string }): Promise<void> {
   }
 
   if (result.kind === "unverified") {
+    const detail =
+      result.reason === "start-time"
+        ? "started at a different time than the record"
+        : "does not look like bb";
     process.stderr.write(
-      `Process ${String(runtimeFile.pid)} does not look like bb, so it was left alone.\n`,
+      `Process ${String(runtimeFile.pid)} ${detail}, so it was left alone.\n`,
     );
     process.exitCode = 1;
     return;
   }
 
-  await clearBbAppRuntimeFile(args.dataDir);
+  // Keep the record when the process survived, so a later stop can retry it.
+  if (result.kind === "still-running") {
+    process.stderr.write(
+      `bb (pid ${String(runtimeFile.pid)}) did not stop, even after SIGKILL.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  await clearOwnBbAppRuntimeFile({
+    dataDir: args.dataDir,
+    pid: runtimeFile.pid,
+  });
   log(
     green("✓"),
     `Stopped bb (pid ${String(runtimeFile.pid)})${result.usedKill ? " with SIGKILL" : ""}`,
@@ -2935,8 +2965,10 @@ export async function runBbApp(
   }
 
   // Publish this launcher before the server binds its port, so a desktop app
-  // that probes the port can always describe and stop whatever it finds.
-  await writeBbAppRuntimeFile({
+  // that probes the port can always describe and stop whatever it finds. A live
+  // record from another launcher stays untouched: this start is about to fail on
+  // the port anyway, and overwriting would hide the bb that actually runs.
+  const runtimeRecordOwned = await claimBbAppRuntimeFile({
     dataDir: context.dataDir,
     entryPath: resolveLauncherEntryPath(),
     pid: process.pid,
@@ -2946,6 +2978,9 @@ export async function runBbApp(
       parseAppSurface(runtime.env[APP_SURFACE_ENV_NAME]) ?? DEFAULT_APP_SURFACE,
     version: context.appVersion,
   });
+  if (!runtimeRecordOwned) {
+    warnExistingRuntimeRecord(context.dataDir);
+  }
 
   const processes: ManagedFullStackProcesses = {
     daemonRun: null,
@@ -3056,6 +3091,11 @@ export async function runBbApp(
     throw error;
   } finally {
     removeSignalForwarding();
-    await clearBbAppRuntimeFile(context.dataDir);
+    if (runtimeRecordOwned) {
+      await clearOwnBbAppRuntimeFile({
+        dataDir: context.dataDir,
+        pid: process.pid,
+      });
+    }
   }
 }

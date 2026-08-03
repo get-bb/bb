@@ -162,6 +162,7 @@ import {
 const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
 const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
+const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
 
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
@@ -1598,14 +1599,33 @@ async function decideOnExistingServer(
   }
 
   const stopResult = await stopForeignRuntime({
-    dataDir: details.dataDir,
+    details,
+    killTimeoutMs: FOREIGN_RUNTIME_KILL_TIMEOUT_MS,
     timeoutMs: FOREIGN_RUNTIME_STOP_TIMEOUT_MS,
   });
   if (stopResult.kind === "unverified") {
     await loadStartupError({
       details:
         `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
-        "process does not look like bb. bb did not stop it. Stop it yourself, then open bb again.",
+        "process no longer matches the record. bb did not stop it. Stop it yourself, then open bb again.",
+      logs: "",
+      title: "Could not stop the running bb",
+    });
+    return "quit";
+  }
+  if (stopResult.kind === "still-running") {
+    await loadStartupError({
+      details: `bb could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
+      logs: "",
+      title: "Could not stop the running bb",
+    });
+    return "quit";
+  }
+  if (stopResult.kind === "replaced") {
+    await loadStartupError({
+      details:
+        `Another bb started at ${probe.serverUrl} while the question was open, so bb stopped nothing. ` +
+        "Open bb again to see the copy that runs now.",
       logs: "",
       title: "Could not stop the running bb",
     });

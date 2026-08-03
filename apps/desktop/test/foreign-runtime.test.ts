@@ -1,15 +1,20 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeBbAppRuntimeFile } from "@bb/config/app-runtime-file";
+import {
+  readBbAppRuntimeFile,
+  writeBbAppRuntimeFile,
+} from "@bb/config/app-runtime-file";
 import type { VerifiedProcessOps } from "@bb/config/verified-process-stop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   readForeignRuntimeDetails,
   stopForeignRuntime,
+  type ForeignRuntimeDetails,
 } from "../src/foreign-runtime.js";
 
 const tempDirs: string[] = [];
+const STARTED_AT = new Date(Date.now() - 30 * 60_000).toISOString();
 
 async function createDataDir(): Promise<string> {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-foreign-runtime-"));
@@ -24,6 +29,8 @@ function createProcessOps(
     isRunning: vi.fn(() => true),
     kill: vi.fn(),
     readCommand: vi.fn(async () => "node /opt/bb/bb-app.js start"),
+    // Matches STARTED_AT, so the identity check passes by default.
+    readElapsedSeconds: vi.fn(async () => 30 * 60),
     waitForExit: vi.fn(async () => true),
     ...overrides,
   };
@@ -34,16 +41,28 @@ async function writeRuntimeFile(args: {
   entryPath?: string;
   pid?: number;
   serverUrl?: string;
+  startedAt?: string;
 }): Promise<void> {
   await writeBbAppRuntimeFile({
     dataDir: args.dataDir,
     entryPath: args.entryPath ?? "/opt/bb/bb-app.js",
     pid: args.pid ?? 4_242,
     serverUrl: args.serverUrl ?? "http://127.0.0.1:38886",
-    startedAt: "2026-08-03T10:00:00.000Z",
+    startedAt: args.startedAt ?? STARTED_AT,
     surface: "web",
     version: "0.34.0",
   });
+}
+
+function detailsFor(dataDir: string): ForeignRuntimeDetails {
+  return {
+    dataDir,
+    entryPath: "/opt/bb/bb-app.js",
+    pid: 4_242,
+    startedAt: STARTED_AT,
+    surface: "web",
+    version: "0.34.0",
+  };
 }
 
 afterEach(async () => {
@@ -65,13 +84,7 @@ describe("readForeignRuntimeDetails", () => {
         dataDir,
         serverUrl: "http://127.0.0.1:38886",
       }),
-    ).resolves.toEqual({
-      dataDir,
-      pid: 4_242,
-      startedAt: "2026-08-03T10:00:00.000Z",
-      surface: "web",
-      version: "0.34.0",
-    });
+    ).resolves.toEqual(detailsFor(dataDir));
   });
 
   it("ignores a runtime file left over from a run on a different port", async () => {
@@ -99,24 +112,27 @@ describe("readForeignRuntimeDetails", () => {
 });
 
 describe("stopForeignRuntime", () => {
-  it("signals the recorded process when its command line matches", async () => {
+  it("signals the process the dialog showed, then clears its record", async () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps();
 
     await expect(
-      stopForeignRuntime({ dataDir, processOps, timeoutMs: 1_000 }),
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
     ).resolves.toEqual({ kind: "stopped" });
     expect(processOps.kill).toHaveBeenCalledWith(4_242, "SIGTERM");
+    await expect(readBbAppRuntimeFile(dataDir)).resolves.toBeNull();
   });
 
   it("recognises a launcher that was started with a relative path", async () => {
     const dataDir = await createDataDir();
     // Node resolves argv[1] to an absolute path, but ps reports what was typed.
-    await writeRuntimeFile({
-      dataDir,
-      entryPath: "/Users/example/bb/packages/bb-app/dist/bb-app.js",
-    });
+    await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps({
       readCommand: vi.fn(
         async () => "node packages/bb-app/dist/bb-app.js start",
@@ -124,12 +140,73 @@ describe("stopForeignRuntime", () => {
     });
 
     await expect(
-      stopForeignRuntime({ dataDir, processOps, timeoutMs: 1_000 }),
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
     ).resolves.toEqual({ kind: "stopped" });
     expect(processOps.kill).toHaveBeenCalledWith(4_242, "SIGTERM");
   });
 
+  it("refuses a recycled pid whose start time does not match the record", async () => {
+    const dataDir = await createDataDir();
+    await writeRuntimeFile({ dataDir });
+    // Same command name, but this process started seconds ago, not 30 min ago.
+    const processOps = createProcessOps({
+      readElapsedSeconds: vi.fn(async () => 5),
+    });
+
+    await expect(
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({ kind: "unverified", pid: 4_242 });
+    expect(processOps.kill).not.toHaveBeenCalled();
+  });
+
+  it("refuses to act when another launcher replaced the record during the prompt", async () => {
+    const dataDir = await createDataDir();
+    await writeRuntimeFile({ dataDir, pid: 5_555 });
+    const processOps = createProcessOps();
+
+    await expect(
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({ kind: "replaced" });
+    expect(processOps.kill).not.toHaveBeenCalled();
+  });
+
   it("escalates to SIGKILL when the process outlives SIGTERM", async () => {
+    const dataDir = await createDataDir();
+    await writeRuntimeFile({ dataDir });
+    const waitForExit = vi
+      .fn<VerifiedProcessOps["waitForExit"]>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const processOps = createProcessOps({ waitForExit });
+
+    await expect(
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({ kind: "stopped" });
+    expect(processOps.kill).toHaveBeenNthCalledWith(1, 4_242, "SIGTERM");
+    expect(processOps.kill).toHaveBeenNthCalledWith(2, 4_242, "SIGKILL");
+  });
+
+  it("reports a process that survives SIGKILL and keeps its record", async () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps({
@@ -137,10 +214,14 @@ describe("stopForeignRuntime", () => {
     });
 
     await expect(
-      stopForeignRuntime({ dataDir, processOps, timeoutMs: 1_000 }),
-    ).resolves.toEqual({ kind: "stopped" });
-    expect(processOps.kill).toHaveBeenNthCalledWith(1, 4_242, "SIGTERM");
-    expect(processOps.kill).toHaveBeenNthCalledWith(2, 4_242, "SIGKILL");
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({ kind: "still-running", pid: 4_242 });
+    await expect(readBbAppRuntimeFile(dataDir)).resolves.not.toBeNull();
   });
 
   it("refuses to signal a recycled pid that no longer looks like bb", async () => {
@@ -153,7 +234,12 @@ describe("stopForeignRuntime", () => {
     });
 
     await expect(
-      stopForeignRuntime({ dataDir, processOps, timeoutMs: 1_000 }),
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
     ).resolves.toEqual({ kind: "unverified", pid: 4_242 });
     expect(processOps.kill).not.toHaveBeenCalled();
   });
@@ -164,7 +250,12 @@ describe("stopForeignRuntime", () => {
     const processOps = createProcessOps({ isRunning: vi.fn(() => false) });
 
     await expect(
-      stopForeignRuntime({ dataDir, processOps, timeoutMs: 1_000 }),
+      stopForeignRuntime({
+        details: detailsFor(dataDir),
+        killTimeoutMs: 100,
+        processOps,
+        timeoutMs: 1_000,
+      }),
     ).resolves.toEqual({ kind: "not-running" });
     expect(processOps.kill).not.toHaveBeenCalled();
   });

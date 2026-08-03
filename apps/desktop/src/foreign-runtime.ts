@@ -1,5 +1,6 @@
 import {
   bbAppRuntimeVerifyTokens,
+  clearOwnBbAppRuntimeFile,
   readBbAppRuntimeFile,
   type BbAppRuntimeFile,
 } from "@bb/config/app-runtime-file";
@@ -17,6 +18,7 @@ import type { VerifiedProcessOps } from "@bb/config/verified-process-stop";
  */
 export interface ForeignRuntimeDetails {
   dataDir: string;
+  entryPath: string;
   pid: number;
   startedAt: string;
   surface: string;
@@ -29,14 +31,17 @@ export interface ReadForeignRuntimeDetailsArgs {
 }
 
 export interface StopForeignRuntimeArgs {
-  dataDir: string;
+  /** The record the person saw and approved, not a fresh read. */
+  details: ForeignRuntimeDetails;
+  killTimeoutMs: number;
   processOps?: VerifiedProcessOps;
   timeoutMs: number;
 }
 
 export type StopForeignRuntimeResult =
-  | { kind: "no-runtime-file" }
   | { kind: "not-running" }
+  | { kind: "replaced" }
+  | { kind: "still-running"; pid: number }
   | { kind: "stopped" }
   | { kind: "unverified"; pid: number };
 
@@ -74,6 +79,7 @@ export async function readForeignRuntimeDetails(
 
   return {
     dataDir: args.dataDir,
+    entryPath: runtimeFile.entryPath,
     pid: runtimeFile.pid,
     startedAt: runtimeFile.startedAt,
     surface: runtimeFile.surface,
@@ -81,27 +87,50 @@ export async function readForeignRuntimeDetails(
   };
 }
 
+/**
+ * Stop the exact bb the person approved in the dialog.
+ *
+ * The dialog waits for a person, which can take any amount of time, and another
+ * launcher can replace the record during that wait. So this re-reads the record
+ * and refuses to act when it no longer describes what the dialog showed, rather
+ * than stopping a process nobody was asked about.
+ */
 export async function stopForeignRuntime(
   args: StopForeignRuntimeArgs,
 ): Promise<StopForeignRuntimeResult> {
-  const runtimeFile = await readBbAppRuntimeFile(args.dataDir);
-  if (runtimeFile === null) {
-    return { kind: "no-runtime-file" };
+  const current = await readBbAppRuntimeFile(args.details.dataDir);
+  if (
+    current !== null &&
+    (current.pid !== args.details.pid ||
+      current.startedAt !== args.details.startedAt)
+  ) {
+    return { kind: "replaced" };
   }
 
   const stopResult = await stopVerifiedProcess({
-    pid: runtimeFile.pid,
+    killTimeoutMs: args.killTimeoutMs,
+    pid: args.details.pid,
     processOps: args.processOps,
     signal: "SIGTERM",
+    startedAt: args.details.startedAt,
     timeoutMs: args.timeoutMs,
-    verifyTokens: bbAppRuntimeVerifyTokens(runtimeFile),
+    verifyTokens: bbAppRuntimeVerifyTokens(args.details.entryPath),
   });
 
   if (stopResult.kind === "unverified") {
-    return { kind: "unverified", pid: runtimeFile.pid };
+    return { kind: "unverified", pid: args.details.pid };
+  }
+  if (stopResult.kind === "still-running") {
+    return { kind: "still-running", pid: args.details.pid };
   }
   if (stopResult.kind === "not-running") {
     return { kind: "not-running" };
   }
+  // A SIGKILLed launcher never runs its own cleanup, so clear the record it
+  // left behind, but only while it still names the process that was stopped.
+  await clearOwnBbAppRuntimeFile({
+    dataDir: args.details.dataDir,
+    pid: args.details.pid,
+  });
   return { kind: "stopped" };
 }

@@ -10,6 +10,7 @@ const NOW = new Date("2026-08-03T12:00:00.000Z");
 
 const DETAILS = {
   dataDir: "/Users/example/.bb",
+  entryPath: "/opt/bb/bb-app.js",
   pid: 4_242,
   startedAt: "2026-08-03T11:30:00.000Z",
   surface: "web",

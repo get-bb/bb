@@ -42,6 +42,15 @@ export function formatBbAppRuntimeFilePath(dataDir: string): string {
   return join(dataDir, BB_APP_RUNTIME_FILE_NAME);
 }
 
+function defaultIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function writeBbAppRuntimeFile(
   args: WriteBbAppRuntimeFileArgs,
 ): Promise<void> {
@@ -61,21 +70,67 @@ export async function writeBbAppRuntimeFile(
   );
 }
 
+/**
+ * Write the record unless another launcher already owns it. Returns whether
+ * this process now owns the record; a caller that does not own it must not
+ * remove the file when it exits.
+ *
+ * Ownership is decided by liveness alone. A record whose process is gone is
+ * stale and gets replaced. This is not an exclusive lock: the daemon lock and
+ * the server port are what actually prevent two bb instances on one data
+ * directory. The check only stops a doomed second start from erasing the record
+ * of the bb that is running.
+ */
+export async function claimBbAppRuntimeFile(
+  args: WriteBbAppRuntimeFileArgs & { isRunning?: (pid: number) => boolean },
+): Promise<boolean> {
+  const isRunning = args.isRunning ?? defaultIsRunning;
+  const existing = await readBbAppRuntimeFile(args.dataDir);
+  if (
+    existing !== null &&
+    existing.pid !== args.pid &&
+    isRunning(existing.pid)
+  ) {
+    return false;
+  }
+  await writeBbAppRuntimeFile(args);
+  return true;
+}
+
 export async function clearBbAppRuntimeFile(dataDir: string): Promise<void> {
   await rm(formatBbAppRuntimeFilePath(dataDir), { force: true });
 }
 
 /**
- * Substrings that prove a `ps` command line belongs to the launcher this file
- * describes. Node resolves `argv[1]` to an absolute path before the launcher
- * records it, but `ps` reports the command line as it was typed. A launcher
- * started with a relative path therefore never shows the absolute form, so the
- * file name is offered as a second spelling.
+ * Remove the record only while it still names `pid`. A second launcher that
+ * overwrote the file must not delete the live launcher's record when it exits,
+ * because `bb-app stop` would then be unable to find the bb that is running.
  */
-export function bbAppRuntimeVerifyTokens(
-  runtimeFile: BbAppRuntimeFile,
-): string[] {
-  return [runtimeFile.entryPath, basename(runtimeFile.entryPath)];
+export async function clearOwnBbAppRuntimeFile(args: {
+  dataDir: string;
+  pid: number;
+}): Promise<boolean> {
+  const runtimeFile = await readBbAppRuntimeFile(args.dataDir);
+  if (runtimeFile === null || runtimeFile.pid !== args.pid) {
+    return false;
+  }
+  await clearBbAppRuntimeFile(args.dataDir);
+  return true;
+}
+
+/**
+ * Spellings of the entry path that a `ps` command line may show. Node resolves
+ * `argv[1]` to an absolute path before the launcher records it, but `ps`
+ * reports the command line as it was typed, so a launcher started with a
+ * relative path never shows the absolute form.
+ *
+ * These tokens do not establish identity on their own: every bb launcher on the
+ * machine shares the same file name. The caller must also compare the recorded
+ * start time, which is what separates this launcher from another one and from a
+ * recycled PID.
+ */
+export function bbAppRuntimeVerifyTokens(entryPath: string): string[] {
+  return [entryPath, basename(entryPath)];
 }
 
 export async function readBbAppRuntimeFile(

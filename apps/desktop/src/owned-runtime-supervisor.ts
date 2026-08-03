@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 
 const OWNED_RUNTIME_PID_FILE_NAME = "owned-runtime.json";
+const KILL_TIMEOUT_MS = 3_000;
 
 const ownedRuntimePidFileSchema = z.object({
   bridgePath: z.string().min(1),
@@ -19,6 +20,7 @@ const ownedRuntimePidFileSchema = z.object({
 
 export type ReapStaleOwnedRuntimeResult =
   | ClearedStaleOwnedRuntimePidFileResult
+  | FailedToStopOwnedRuntimeResult
   | NoStaleOwnedRuntimePidFileResult
   | ReapedStaleOwnedRuntimeResult
   | SkippedStaleOwnedRuntimeResult;
@@ -66,6 +68,11 @@ export interface ClearedStaleOwnedRuntimePidFileResult {
 
 export interface ReapedStaleOwnedRuntimeResult {
   kind: "reaped";
+  pid: number;
+}
+
+export interface FailedToStopOwnedRuntimeResult {
+  kind: "failed-to-stop";
   pid: number;
 }
 
@@ -134,9 +141,11 @@ export async function reapStaleOwnedRuntime(
   }
 
   const stopResult = await stopVerifiedProcess({
+    killTimeoutMs: KILL_TIMEOUT_MS,
     pid: pidFile.pid,
     processOps,
     signal: args.signal,
+    startedAt: pidFile.startedAt,
     timeoutMs: args.timeoutMs,
     verifyTokens: [pidFile.bridgePath],
   });
@@ -153,6 +162,14 @@ export async function reapStaleOwnedRuntime(
     return {
       command: stopResult.command,
       kind: "skipped-unverified-process",
+      pid: pidFile.pid,
+    };
+  }
+
+  // Keep the pid file when the process survived, so the next launch retries it.
+  if (stopResult.kind === "still-running") {
+    return {
+      kind: "failed-to-stop",
       pid: pidFile.pid,
     };
   }
