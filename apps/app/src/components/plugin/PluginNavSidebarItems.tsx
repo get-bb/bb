@@ -557,7 +557,10 @@ function SidebarNavRowChrome({
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
-              "absolute inset-y-0 right-1 flex items-center",
+              // right-0 (not right-1): the trigger's own m-1 supplies the inset,
+              // so the glyph centers on the same column as the sidebar search
+              // icon above and the thread-row more menus below.
+              "absolute inset-y-0 right-0 flex items-center",
             )}
           >
             <DropdownMenu onOpenChange={setIsActionsOpen}>
