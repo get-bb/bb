@@ -1,4 +1,4 @@
-// bb connect tunnel wire protocol (spike v0 — see plans/bb-connect-v1.md M0/M2).
+// bb connect tunnel wire protocol.
 //
 // Every binary WebSocket message on a tunnel connection is exactly one frame:
 //

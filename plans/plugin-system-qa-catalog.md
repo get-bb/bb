@@ -7,8 +7,19 @@ for every slice you land. Setup for everything below:
 ```bash
 scripts/bb-dev-app current          # dev server on this branch (isolated data dir)
 eval "$(scripts/bb-dev-app env)"    # point pnpm bb:dev at it
-# Enable: Settings → Experiments → Plugins (or PUT /api/v1/settings/experiments)
+# Enable: Settings → Experiments → Extensions
+# (experiment key `toolsHub`, or PUT /api/v1/settings/experiments)
 ```
+
+**Renames since these sections were written.** The tree moved; the checks did
+not. Read the older sections with these substitutions:
+
+| Written as | Read as |
+| --- | --- |
+| Settings → Experiments → Plugins | Settings → Experiments → Extensions (`toolsHub`) |
+| `marketplace/plugins/github` | [`official-plugins/github`](../official-plugins/github) |
+| `examples/plugins/small-ux-pack` | deleted; use another example for thread actions |
+| `examples/plugins/linear` | deleted (see P3.5 below) |
 
 ## Verified live (2026-07-01 smoke)
 

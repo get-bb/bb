@@ -7,8 +7,8 @@
 //   2. bb-connect product tables (profile/server/connect_code).
 //
 // The cloud stores identity + routing ONLY — never threads, code, or terminal
-// output (see plans/bb-connect-v1.md). If a column here would hold product
-// data, it is in the wrong database.
+// output. If a column here would hold product data, it is in the wrong
+// database.
 
 import { sql } from "drizzle-orm";
 import {

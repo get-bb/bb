@@ -1,6 +1,5 @@
 // bb connect cloud policy constants. Single source of truth — the worker, the
-// dashboard, and migrations reference these rather than scattering literals
-// (see plans/bb-connect-v1.md "Cross-cutting rules").
+// dashboard, and migrations reference these rather than scattering literals.
 
 /**
  * Handle grammar: 3–30 chars, lowercase alphanumeric + internal hyphens, must

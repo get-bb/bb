@@ -12,8 +12,10 @@ Related plans:
 
 - `plans/in-app-browser-open-behavior-improvements.md` covers ordinary link
   opening and default-browser bypass rules.
-- `plans/bb-terminal.md` covers CLI-driven terminal control.
 - `plans/bb-settings.md` covers scriptable settings.
+
+Status (2026-08-03): not started. `apps/cli/src/commands/browser.ts` does not
+exist, and there is no `bb-browser` built-in skill.
 
 ## Current State
 

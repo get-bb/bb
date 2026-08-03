@@ -1,4 +1,4 @@
-// bb connect M0 spike tunnel client (plans/bb-connect-v1.md).
+// bb connect spike tunnel client.
 //
 // Connects out to the TunnelDO and proxies relayed streams to a local origin
 // (a bb server, or scripts/spike-origin.mts for protocol testing). The real

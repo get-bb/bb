@@ -7,8 +7,11 @@ in-app browser by default, while letting users bypass selected URLs to their OS
 default browser with regex rules.
 
 This plan is only about opening links and browser-tab UX. Browser automation and
-CLI-driven app control are split across `plans/bb-browser.md`,
-`plans/bb-terminal.md`, and `plans/bb-settings.md`.
+CLI-driven app control are split across `plans/bb-browser.md` and
+`plans/bb-settings.md`.
+
+Status (2026-08-03): not started. The bypass regex rules do not exist in any
+layer, and `bb.openLinksInAppBrowser` is still a single localStorage boolean.
 
 ## Current State
 

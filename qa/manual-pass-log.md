@@ -640,7 +640,7 @@ Date: 2026-06-12
 Operator: Codex
 Status: passed after fixes
 Standalone workflow: `pnpm qa:standalone:start` / `pnpm qa:standalone:stop`
-Run logs: `qa/logs/2026-06-12-full-qa/`
+Run logs: `qa/logs/2026-06-12-full-qa/` (local run output; never checked in)
 
 Resolved models:
 

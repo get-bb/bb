@@ -12,17 +12,27 @@ Related plans:
 
 - `plans/in-app-browser-open-behavior-improvements.md` defines the browser link
   settings that should become scriptable.
-- `plans/bb-browser.md` and `plans/bb-terminal.md` use settings and visibility
-  conventions that should be inspectable from CLI.
+- `plans/bb-browser.md` uses settings and visibility conventions that should be
+  inspectable from CLI.
 
-## Current State
+## Current State (2026-08-03)
 
-- Several app preferences live in app browser storage/localStorage through
-  Jotai atoms, including `bb.openLinksInAppBrowser`.
+- A `bb settings` command group shipped, but with a different shape than the
+  one below: `show`, `general <key> <value>`, `experiment <key> <value>`,
+  `keyboard ...`, `usage`, `version`, and `reload`. See
+  `apps/cli/src/commands/settings.ts`.
+- Server-backed app preferences live in `packages/domain/src/app-settings.ts`
+  (`appSettingsSchema`) and reach the CLI through `bb settings general`.
+- The browser link preferences are the remaining gap. Client-local preferences
+  still live in app browser storage/localStorage through Jotai atoms, including
+  `bb.openLinksInAppBrowser` (`apps/app/src/lib/in-app-browser-link-preference.ts`).
+- `openLinksInAppBrowserBypassRegexes` does not exist yet in any layer.
 - CLI access to localStorage-only settings is not practical because the CLI
   talks to the server, not the user's renderer process.
-- The settings view is implemented in `apps/app/src/views/AppSettingsView.tsx`.
-- There is no `bb settings ...` command group today.
+- The settings view is implemented in `apps/app/src/views/SettingsView.tsx`.
+
+Read the phases below as the remaining work for the browser link settings, not
+as a greenfield settings model.
 
 ## Recommendation
 

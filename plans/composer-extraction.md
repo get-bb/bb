@@ -1,5 +1,19 @@
 # Shared composer extraction
 
+## Status (2026-08-03): not started, and the premise moved
+
+`useComposerArea` does not exist. Re-scope the plan before you build it:
+
+- The side-chat site no longer hand-rolls the wiring. It now renders
+  `EmbeddedThreadChat` (`components/thread/embedded-chat/`), which already
+  shares composer hooks with `PluginThreadChat`. Two hand-rolled sites remain,
+  not three.
+- The Loops/Skills inline create box — the 4th site that motivated this — never
+  landed as an inline composer. Skills and Loops create through a seeded
+  composer instead, so there is no pending 4th caller.
+
+Confirm the duplication is still worth an extraction before you start.
+
 ## Why
 
 The prompt-composer wiring is hand-rolled **three times** today, and we need a
@@ -11,13 +25,13 @@ merged. Composer-adjacent ones are fixes (#252 add-to-chat race, #247 prompt
 shell breakpoint, #184 project-agnostic defaults) or a *timeline* reuse refactor
 (#236) — none extracts the composer. No shared composer hook exists in the tree.
 
-## The duplication (3 sites)
+## The duplication (3 sites at the time of writing)
 
 | Site | Box | Submit |
 | --- | --- | --- |
 | `views/RootComposeView.tsx` | `NewThreadPromptBox` | create new thread |
 | `views/thread-detail/ThreadDetailPromptArea.tsx` | `FollowUpPromptBox` | steer / follow-up |
-| `components/secondary-panel/SideChatTabContent.tsx` | `FollowUpPromptBox` | create side-chat thread |
+| `components/secondary-panel/SideChatTabContent.tsx` | `FollowUpPromptBox` | create side-chat thread (now `EmbeddedThreadChat`) |
 
 All three assemble the same inputs via: `useThreadCreationOptions`,
 `usePromptDraftStorage`, `usePromptMentions`, `useCommandSuggestions`,

@@ -1,10 +1,10 @@
 # Plugin API: replace the sidebar thread list
 
-Status: **specification**. Nothing here is implemented yet.
+Status: **implemented**. The members below ship in `@bb/plugin-sdk/app`.
 
-This document specifies one new exclusive slot and the data surface it needs.
-A plugin uses them to replace bb's thread list with its own. The plan that
-uses this API is in [t3sidebar-plugin-plan.md](t3sidebar-plugin-plan.md).
+This document specifies one exclusive slot and the data surface it needs.
+A plugin uses them to replace bb's thread list with its own. The reference
+consumer is the `t3sidebar` plugin in [`plugins/t3sidebar`](../plugins/t3sidebar).
 
 Every member below ships with the `experimental_` prefix and an entry in
 [api_to_audit.md](api_to_audit.md), per [AGENTS.md](../AGENTS.md).
