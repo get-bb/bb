@@ -20,10 +20,17 @@ away under your cursor because an agent finished something.
 
 Three shelves:
 
-- **Inbox** — three-line cards: project, status and age on the first line;
-  title on the second; then branch (or the machine, when a thread has no
-  worktree), activity counts, the pull-request number, and the agent glyph.
-  Pinned threads sit above.
+- **Inbox** — three-line cards: project and one fixed-width status slot on the
+  first line; title on the second; then branch (or the machine, when a thread
+  has no worktree), activity counts, the pull-request number, and the agent
+  glyph. Pinned threads sit above.
+
+  One slot, one marker, one width, so the whole column lines up. The slot
+  shows the status glyph while a thread has something to say, and the age
+  ("now", "7m") once it does not. The glyphs are bb's own: the red circle-x
+  for a failure, the circle-question for a raised hand, the spinner for live
+  work, and a blue notification dot for a thread that finished while you were
+  not looking. Both lists sit in the same window, so they speak one language.
 - **Snoozed** — hidden until a wake time you chose. A snoozed thread comes
   back early if it starts working or asks you something.
 - **Settled** — work you are done with, collapsed to one line each.

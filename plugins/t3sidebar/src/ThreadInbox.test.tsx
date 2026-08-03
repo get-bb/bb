@@ -419,6 +419,75 @@ describe("card metadata", () => {
     ]);
     expect(await screen.findByText("3h")).toBeDefined();
   });
+
+  // Status and age share one slot. A row that shows both puts a variable-width
+  // label in the column, and no two rows line up.
+  it("replaces the age label with the status glyph while work runs", async () => {
+    render([
+      thread({
+        id: "thr_run",
+        indicator: "runtime",
+        indicatorLabel: "Agent is working",
+        updatedAt: Date.now() - (3 * 3_600_000 + 60_000),
+      }),
+    ]);
+    expect(await screen.findByLabelText("Agent is working")).toBeDefined();
+    expect(screen.queryByText("3h")).toBeNull();
+  });
+
+  // An indicator this plugin does not know must fall through to the age label
+  // rather than leave the slot blank.
+  it("keeps the age label for an unrecognized indicator", async () => {
+    render([
+      thread({
+        id: "thr_new",
+        indicator: "something-bb-ships-later" as never,
+        updatedAt: Date.now() - (3 * 3_600_000 + 60_000),
+      }),
+    ]);
+    expect(await screen.findByText("3h")).toBeDefined();
+  });
+});
+
+// The three states that want the user take the slot from the age label, and
+// they use bb's own glyphs: the two lists sit in one window, and a user who
+// switches between them should not have to learn a second vocabulary.
+describe("attention states", () => {
+  const states = [
+    ["waiting-for-input", "Thread needs user input"],
+    ["unread-error", "Unread thread failed"],
+    ["unread-success", "Unread thread succeeded"],
+  ] as const;
+
+  for (const [indicator, label] of states) {
+    it(`shows the ${indicator} glyph instead of the age`, async () => {
+      render([
+        thread({
+          id: `thr_${indicator}`,
+          indicator,
+          indicatorLabel: label,
+          updatedAt: Date.now() - (3 * 3_600_000 + 60_000),
+        }),
+      ]);
+      expect(await screen.findByLabelText(label)).toBeDefined();
+      expect(screen.queryByText("3h")).toBeNull();
+    });
+  }
+
+  // Running work is the one state the user does NOT have to act on, so it gets
+  // the neutral spinner and no notification dot.
+  it("shows the spinner, not a dot, while work runs", async () => {
+    render([
+      thread({
+        id: "thr_busy",
+        isUnread: true,
+        indicator: "runtime",
+        indicatorLabel: "Thread working",
+      }),
+    ]);
+    expect(await screen.findByLabelText("Thread working")).toBeDefined();
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+  });
 });
 
 describe("pull request badge", () => {

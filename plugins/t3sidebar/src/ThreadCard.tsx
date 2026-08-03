@@ -8,8 +8,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { RowContextMenu } from "./RowContextMenu";
 import { ProviderGlyph } from "./ProviderGlyph";
-import { StatusGlyph } from "./StatusGlyph";
-import { relativeTimeLabel } from "./relative-time";
+import { STATUS_SLOT_CLASS, StatusOrTime } from "./StatusSlot";
 import { threadDisplayTitle } from "./inbox";
 import { resolveSnoozePresets } from "./lifecycle";
 
@@ -101,17 +100,11 @@ export function ThreadCard({
             ) : null}
             <span
               className={cn(
-                "flex items-center gap-1.5",
+                STATUS_SLOT_CLASS,
                 canPark && "group-hover/card:hidden",
               )}
             >
-              <StatusGlyph
-                indicator={thread.indicator}
-                label={thread.indicatorLabel}
-              />
-              <span className="tabular-nums text-2xs text-muted-foreground">
-                {relativeTimeLabel(thread.updatedAt, now)}
-              </span>
+              <StatusOrTime thread={thread} now={now} />
             </span>
           </div>
           <div

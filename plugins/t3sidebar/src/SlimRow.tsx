@@ -5,6 +5,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { RowContextMenu } from "./RowContextMenu";
+import { STATUS_SLOT_CLASS, StatusOrTime } from "./StatusSlot";
 import { threadDisplayTitle } from "./inbox";
 import { snoozeWakeLabel } from "./lifecycle";
 
@@ -67,19 +68,22 @@ export function SlimRow({
           >
             {title}
           </span>
-          {thread.isUnread ? (
-            <span
-              aria-label="Unread"
-              className="pointer-events-none relative size-[5px] shrink-0 rounded-full bg-muted-foreground/60"
-            />
-          ) : null}
-          {shelf === "snoozed" && wakeAt !== null ? (
-            // A snoozed row shows when it comes BACK, not when it was last
-            // touched: the return ticket is the row's whole story.
-            <span className="pointer-events-none relative shrink-0 tabular-nums text-muted-foreground/60">
-              {snoozeWakeLabel(wakeAt, now)}
-            </span>
-          ) : null}
+          {/* The same slot as a card, so a shelf keeps the card's column. A
+              snoozed row spends it on the wake time: when the thread comes
+              BACK is that shelf's whole question, and it outranks an age the
+              user has already decided to ignore. */}
+          <span
+            className={cn(
+              STATUS_SLOT_CLASS,
+              "pointer-events-none relative tabular-nums text-2xs text-muted-foreground/60",
+            )}
+          >
+            {shelf === "snoozed" && wakeAt !== null ? (
+              snoozeWakeLabel(wakeAt, now)
+            ) : (
+              <StatusOrTime thread={thread} now={now} />
+            )}
+          </span>
           <button
             type="button"
             aria-label={
