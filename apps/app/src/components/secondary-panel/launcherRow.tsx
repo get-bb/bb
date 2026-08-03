@@ -104,7 +104,7 @@ export function LauncherSectionHeader({
       className={cn(
         "flex items-baseline gap-2 px-2 pb-2",
         LAUNCHER_SECTION_LABEL_CLASS,
-        sticky && "sticky top-0 z-10 bg-background",
+        sticky && "sticky top-0 z-10 bg-sidebar",
         className,
       )}
     >
