@@ -539,11 +539,12 @@ describe("internal event append ownership", () => {
       providerThreadId: "provider-side-chat-parent-provider-exit",
       threadId: parentThread.id,
     });
-    // Legacy side-chat rows keep a parent id next to their origin; the origin,
-    // not the hidden visibility, is what excludes them from parent notices.
+    // A side chat keeps a parent id next to its origin; the origin, not the
+    // hidden visibility, is what excludes it from parent notices.
     const childThread = seedThread(harness.deps, {
       environmentId: environment.id,
-      originKind: "side-chat",
+      originKind: "fork",
+      originPluginId: "side-chat",
       parentThreadId: parentThread.id,
       projectId: project.id,
       status: "active",

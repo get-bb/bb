@@ -90,12 +90,12 @@ const OVERFLOWING_ONE_LINE_AGENT_BODY =
 function renderAgentMessage(
   text = AGENT_BODY,
   {
-    senderChildOrigin,
+    senderIsPluginSideChat = false,
     senderThreadTitle = "Worker",
     onTitleAction,
   }: {
     onTitleAction?: TimelineTitleActionResolver;
-    senderChildOrigin?: "side-chat" | null;
+    senderIsPluginSideChat?: boolean;
     senderThreadTitle?: string;
   } = {},
 ) {
@@ -125,8 +125,8 @@ function renderAgentMessage(
           childOrigin={null}
           senderThreadId="thr_agent"
           senderThreadTitle={senderThreadTitle}
-          senderChildOrigin={senderChildOrigin ?? null}
-          senderIsPluginSideChat={false}
+          senderChildOrigin={null}
+          senderIsPluginSideChat={senderIsPluginSideChat}
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"
@@ -236,14 +236,14 @@ describe("GeneratedConversationMessage markdown body", () => {
 
   it("renders side-chat handoffs as markdown", () => {
     renderAgentMessage("**Ready** to merge.\n\n- checks passed", {
-      senderChildOrigin: "side-chat",
+      senderIsPluginSideChat: true,
     });
 
     expect(screen.getByText("Ready").tagName).toBe("STRONG");
     expect(screen.queryByText("**Ready** to merge.")).toBeNull();
 
     const toggle = screen.getByRole("button", {
-      name: /Message from side chat/u,
+      name: /Replying to side chat/u,
     });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
 
@@ -252,21 +252,22 @@ describe("GeneratedConversationMessage markdown body", () => {
     expect(screen.getByRole("list").textContent).toContain("checks passed");
   });
 
-  // The native side chat is gone, so this row no longer opens a panel tab.
-  // Legacy side chats are excluded from the project listings, which makes this
-  // link the only way back to the thread — an inert pill would strand it.
-  it("links a legacy side-chat sender to its thread", () => {
+  // A side chat opens in the plugin's panel, so its name carries the panel
+  // title action rather than a route link to the thread.
+  it("opens a side-chat sender in the plugin panel instead of linking it", () => {
+    const openPanel = vi.fn();
     const { container } = renderAgentMessage("Handed back.", {
-      senderChildOrigin: "side-chat",
+      senderIsPluginSideChat: true,
+      onTitleAction: (action) =>
+        action.kind === "open-plugin-side-chat" ? openPanel : null,
     });
 
     const sourcePill = container.querySelector(
       '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
     );
-    expect(sourcePill?.tagName).toBe("A");
-    expect(sourcePill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_agent",
-    );
+    expect(sourcePill?.tagName).not.toBe("A");
+    fireEvent.click(sourcePill as Element);
+    expect(openPanel).toHaveBeenCalledOnce();
   });
 });
 

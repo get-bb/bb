@@ -759,12 +759,13 @@ describe("internal event and tool-call routes", () => {
         providerThreadId: "provider-side-chat-parent",
         threadId: parentThread.id,
       });
-      // Legacy side-chat rows keep a parent id next to their origin; the
+      // A side chat keeps a parent id next to its origin; the
       // origin, not the hidden visibility, is what excludes them.
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
         parentThreadId: parentThread.id,
         providerId: "codex",
         status: "active",

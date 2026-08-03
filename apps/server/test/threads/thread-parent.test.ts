@@ -287,11 +287,11 @@ describe("isParentNotifiableChildThread", () => {
     ).toBe(false);
   });
 
-  it("is false for a side chat and for a root thread", () => {
+  it("is false for a source-derived fork and for a root thread", () => {
     expect(
       isParentNotifiableChildThread({
         childOrigin: null,
-        originKind: "side-chat",
+        originKind: "fork",
         parentThreadId: "thr_parent",
       }),
     ).toBe(false);
