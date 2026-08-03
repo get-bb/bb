@@ -250,6 +250,19 @@ function threadContent(threadId: string) {
   };
 }
 
+// Tailwind utilities are not compiled in jsdom, so read the layer from the
+// class token rather than from computed styles. `z-auto` and an absent z-index
+// class both mean "paints in DOM order", which is layer 0 here.
+function stackingLayer(element: HTMLElement): number {
+  for (const token of element.classList) {
+    const match = /^z-(?:\[(\d+)\]|(\d+))$/.exec(token);
+    if (match !== null) {
+      return Number(match[1] ?? match[2]);
+    }
+  }
+  return 0;
+}
+
 function twoPaneLayout(focusedPaneId: "pane-1" | "pane-2"): SplitLayout {
   return {
     root: {
@@ -752,6 +765,45 @@ describe("SplitThreadArea", () => {
     expect(separator.classList).toContain("bg-border-seam");
     expect(separator.classList).not.toContain("w-1.5");
     expect(separator.firstElementChild?.classList).toContain("-inset-x-1.5");
+  });
+
+  it("keeps the divider above pane headers so stacked splits stay resizable", () => {
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "col",
+          sizes: [0.5, 0.5],
+          children: [
+            { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
+            { type: "pane", paneId: "pane-2", content: newThreadContent },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+      routeContent: newThreadContent,
+    });
+
+    // The lower pane's header touches the seam, so a header that paints above
+    // the divider swallows its grab target and blocks vertical resizing.
+    const separator = screen.getByRole("separator");
+    expect(separator.classList).toContain("h-px");
+    expect(separator.firstElementChild?.classList).toContain("-inset-y-1.5");
+    const dividerLayer = stackingLayer(separator);
+    const lowerHeader = document
+      .querySelector<HTMLElement>('[data-split-pane-id="pane-2"]')
+      ?.querySelector("header");
+    const scrim = document.querySelector<HTMLElement>(
+      "[data-pane-focus-scrim]",
+    );
+    expect(lowerHeader).toBeInstanceOf(HTMLElement);
+    expect(scrim).toBeInstanceOf(HTMLElement);
+    if (lowerHeader === null || lowerHeader === undefined || scrim === null) {
+      return;
+    }
+    expect(stackingLayer(lowerHeader)).toBeLessThan(dividerLayer);
+    expect(stackingLayer(scrim)).toBeLessThan(dividerLayer);
   });
 
   it("uses one title tab to distinguish the focused new-thread split", async () => {

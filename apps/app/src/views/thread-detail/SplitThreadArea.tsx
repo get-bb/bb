@@ -1258,7 +1258,11 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         // only BETWEEN splits (outer edges stay flush). Hover/drag warms it as
         // the resize affordance. The absolutely-positioned child preserves a
         // generous grab target without consuming layout space.
-        "group relative z-[5] flex-shrink-0 transition-colors",
+        //
+        // Stay above the pane focus scrim (z-20) and the pane headers (z-[21]).
+        // In a column split, the lower pane's header touches the seam, so a
+        // lower divider layer loses the grab target to that header.
+        "group relative z-[25] flex-shrink-0 transition-colors",
         "bg-border-seam",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
