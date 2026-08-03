@@ -30,7 +30,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { OverflowFade } from "@/components/ui/overflow-fade";
+import {
+  OverflowFade,
+  type OverflowFadeTone,
+} from "@/components/ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -51,6 +54,22 @@ const CHEVRON_SCROLL_STEP_PX = 140;
 // Slack so sub-pixel scroll offsets don't leave a fade/chevron stuck on at a
 // hard edge.
 const EDGE_EPSILON_PX = 1;
+
+export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
+
+export function getTabStripChevronGradientClass(
+  direction: "left" | "right",
+): string {
+  return direction === "left"
+    ? "left-0 justify-start bg-gradient-to-l from-transparent to-sidebar"
+    : "right-0 justify-end bg-gradient-to-r from-transparent to-sidebar";
+}
+
+export function getTabStripChevronVisibilityClass(canScroll: boolean): string {
+  return canScroll
+    ? "pointer-events-auto opacity-100"
+    : "pointer-events-none opacity-0";
+}
 
 interface TabStripOverflowState {
   /** Scrolled away from the left edge (content hidden to the left). */
@@ -385,6 +404,7 @@ export function SecondaryPanelTabStrip({
           layout every edge crossing, which at narrow widths is constant. */}
       <OverflowFade
         placement="left"
+        tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
         className={cn(
           "z-10 transition-opacity",
           overflow.canScrollLeft ? "opacity-100" : "opacity-0",
@@ -392,6 +412,7 @@ export function SecondaryPanelTabStrip({
       />
       <OverflowFade
         placement="right"
+        tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
         className={cn(
           "z-10 transition-opacity",
           overflow.canScrollRight ? "opacity-100" : "opacity-0",
@@ -519,18 +540,16 @@ function TabStripScrollChevron({
         // edge of the fade and clears the central tabs — rather than nudging the
         // button itself outward, which a clipping ancestor would cut off.
         "absolute z-50 shrink-0 text-muted-foreground hover:bg-transparent focus-visible:bg-transparent",
-        direction === "left"
-          ? "left-0 justify-start bg-gradient-to-l from-transparent to-background"
-          : "right-0 justify-end bg-gradient-to-r from-transparent to-background",
+        getTabStripChevronGradientClass(direction),
         COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
         // Always mounted (so reaching an edge toggles opacity rather than
-        // committing/removing DOM mid-scroll), revealed only while the strip is
-        // hovered/focused AND there is actually more to scroll in this direction.
-        // `pointer-events` follow visibility so a hidden chevron never intercepts
-        // clicks meant for the tab beneath it.
-        "pointer-events-none opacity-0 transition-opacity",
-        canScroll &&
-          "group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
+        // committing/removing DOM mid-scroll) and always visible whenever there
+        // is more content in that direction. Keeping discovery independent of
+        // browser hover capability also makes the control reliable for pen and
+        // touch users. `pointer-events` follow visibility so an inert chevron
+        // never intercepts clicks meant for the tab beneath it.
+        "transition-opacity",
+        getTabStripChevronVisibilityClass(canScroll),
         className,
       )}
     >

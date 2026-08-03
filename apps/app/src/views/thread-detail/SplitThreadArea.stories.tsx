@@ -185,14 +185,14 @@ function createStoryQueryClient(): QueryClient {
   return queryClient;
 }
 
-function SplitWorkspaceStory() {
+function SplitWorkspaceStory({ maximized = false }: { maximized?: boolean }) {
   const queryClient = useMemo(() => createStoryQueryClient(), []);
   const store = useMemo(() => {
     const nextStore = createStore();
     nextStore.set(splitLayoutAtom, splitLayout);
-    nextStore.set(maximizedPaneIdAtom, null);
+    nextStore.set(maximizedPaneIdAtom, maximized ? "pane-active" : null);
     return nextStore;
-  }, []);
+  }, [maximized]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -215,4 +215,8 @@ function SplitWorkspaceStory() {
 
 export function ActiveAndIdle() {
   return <SplitWorkspaceStory />;
+}
+
+export function MaximizedWithoutRail() {
+  return <SplitWorkspaceStory maximized />;
 }

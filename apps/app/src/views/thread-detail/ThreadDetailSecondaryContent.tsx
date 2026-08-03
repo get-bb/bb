@@ -20,7 +20,10 @@ import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import {
+  secondaryPanelWidthPercentAtom,
+  threadSecondaryPanelResizingAtom,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -282,6 +285,7 @@ function ThreadDetailSecondaryContentBody({
         <ThreadSecondaryPanel
           {...threadSecondaryPanelProps}
           browserDeck={browserDeck}
+          onPanelResize={setLiveSecondaryWidthPercent}
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
@@ -362,6 +366,13 @@ function ThreadDetailSecondaryContentBody({
     );
   }
 
+  const headerSidebarSurfaceWidth =
+    isSecondaryPanelOpen && !renderAsDrawer
+      ? isConversationCollapsedActive
+        ? "100%"
+        : `${liveSecondaryWidthPercent}%`
+      : "0%";
+
   return (
     <div
       className={cn(
@@ -374,7 +385,19 @@ function ThreadDetailSecondaryContentBody({
         actions stay anchored to the window edge instead of riding the timeline
         panel's width as the secondary panel opens and closes.
       */}
-      {header}
+      <div className="relative shrink-0 bg-surface-scrim">
+        <div
+          aria-hidden
+          data-testid="thread-secondary-panel-header-surface"
+          className={cn(
+            "pointer-events-none absolute inset-y-0 right-0 bg-sidebar",
+            !isSecondaryPanelResizing &&
+              `transition-[width] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+          )}
+          style={{ width: headerSidebarSurfaceWidth }}
+        />
+        <div className="relative [&>header]:bg-transparent">{header}</div>
+      </div>
       {/*
         When collapsed we keep the resizable PanelGroup mounted: the timeline
         lifts to 0% and the panel to 100% via the layout effect. Nothing

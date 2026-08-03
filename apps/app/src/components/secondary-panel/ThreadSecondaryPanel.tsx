@@ -190,6 +190,13 @@ interface ResolveActiveFixedPanelArgs {
   canUseGitUi: boolean;
 }
 
+export function resolveSecondaryPanelHideControl() {
+  return {
+    iconName: "PanelRight" as const,
+    label: "Hide right panel",
+  };
+}
+
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
@@ -257,6 +264,8 @@ export interface ThreadSecondaryPanelProps {
    */
   resizablePanelId?: string;
   onPanelFocus: () => void;
+  /** Reports the panel's live percentage while it resizes. */
+  onPanelResize?: (sizePercent: number) => void;
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
@@ -334,6 +343,7 @@ export function ThreadSecondaryPanel({
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
+  onPanelResize,
   onPanelChange,
   onCollapse,
   onClose,
@@ -354,7 +364,7 @@ export function ThreadSecondaryPanel({
   const hasActiveFileTab = activeFileTab !== undefined;
   const isTerminalTabActive =
     activeTab?.kind === "terminal" && hasActiveFileTab;
-  const togglePanelIconName = renderAsDrawer ? "X" : "PanelRight";
+  const hideControl = resolveSecondaryPanelHideControl();
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -400,10 +410,11 @@ export function ThreadSecondaryPanel({
     (size: number) => {
       if (size > 0) {
         hasPanelExpandedRef.current = true;
+        onPanelResize?.(size);
       }
       handleSecondaryPanelResize(size);
     },
-    [handleSecondaryPanelResize],
+    [handleSecondaryPanelResize, onPanelResize],
   );
   const handlePanelCollapse = useCallback(() => {
     if (!hasPanelExpandedRef.current) {
@@ -710,14 +721,12 @@ export function ThreadSecondaryPanel({
                 onClick={onClose}
                 aria-label={
                   togglePanelShortcut
-                    ? `${renderAsDrawer ? "Close right panel" : "Hide right panel"} (${togglePanelShortcut.label})`
-                    : renderAsDrawer
-                      ? "Close right panel"
-                      : "Hide right panel"
+                    ? `${hideControl.label} (${togglePanelShortcut.label})`
+                    : hideControl.label
                 }
                 aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
               >
-                <Icon name={togglePanelIconName} />
+                <Icon name={hideControl.iconName} />
                 <AppCommandShortcutHint
                   shortcut={togglePanelShortcut}
                   className="absolute right-full mr-1"

@@ -8,10 +8,7 @@ import {
   type StartTerminalHandler,
 } from "./NewTabFileSearch";
 
-type NewTabPageFileSearchProps = Omit<
-  NewTabFileSearchProps,
-  "idleActions"
->;
+type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
 
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
   onStartSideChat?: StartSideChatHandler;
@@ -41,7 +38,7 @@ export function NewTabPage({
   showFileSearch,
 }: NewTabPageProps) {
   return (
-    <div className="flex min-h-full flex-col gap-3 px-4 pb-3 pt-1">
+    <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
       <NewTabFileSearch
         projectId={projectId}
         environmentId={environmentId}

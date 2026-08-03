@@ -631,10 +631,10 @@ function FilePreviewHeader({
   const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
   return (
-    // The wrapper carries an opaque `bg-background` base so the translucent
+    // The wrapper carries an opaque panel-surface base so the translucent
     // `bg-surface-recessed` tint on the bar composites to a solid tone — without
     // it, body content scrolling under the sticky header would bleed through.
-    <div className="sticky top-0 z-10 bg-background">
+    <div className="sticky top-0 z-10 bg-sidebar">
       <div className="flex h-9 items-center gap-2 bg-surface-raised px-4">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Icon

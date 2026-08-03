@@ -8,7 +8,10 @@ import {
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import type { TerminalServerMessage, TerminalSession } from "@bb/server-contract";
+import type {
+  TerminalServerMessage,
+  TerminalSession,
+} from "@bb/server-contract";
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
@@ -56,21 +59,16 @@ function readResolvedCssColor(
   return getComputedStyle(probe).color;
 }
 
-function buildTerminalTheme(): ITheme {
-  if (typeof document === "undefined") {
-    return {};
-  }
-  const probe = document.createElement("span");
-  probe.style.position = "absolute";
-  probe.style.visibility = "hidden";
-  probe.style.pointerEvents = "none";
-  document.body.appendChild(probe);
-  const get = (name: string) => readResolvedCssColor(probe, name);
-  const theme: ITheme = {
-    background: get("--background"),
+type TerminalCssColorReader = (name: string) => string | undefined;
+
+export function buildTerminalThemeFromCssColors(
+  get: TerminalCssColorReader,
+): ITheme {
+  return {
+    background: get("--sidebar"),
     foreground: get("--foreground"),
     cursor: get("--foreground"),
-    cursorAccent: get("--background"),
+    cursorAccent: get("--sidebar"),
     selectionBackground: get("--muted"),
     black: get("--ansi-0"),
     red: get("--ansi-1"),
@@ -89,6 +87,19 @@ function buildTerminalTheme(): ITheme {
     brightCyan: get("--ansi-14"),
     brightWhite: get("--ansi-15"),
   };
+}
+
+function buildTerminalTheme(): ITheme {
+  if (typeof document === "undefined") {
+    return {};
+  }
+  const probe = document.createElement("span");
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.pointerEvents = "none";
+  document.body.appendChild(probe);
+  const get = (name: string) => readResolvedCssColor(probe, name);
+  const theme = buildTerminalThemeFromCssColors(get);
   probe.remove();
   return theme;
 }
@@ -251,7 +262,10 @@ function buildTerminalSelection({
   return selection;
 }
 
-function writeTerminalStatus({ terminal, text }: WriteTerminalStatusArgs): void {
+function writeTerminalStatus({
+  terminal,
+  text,
+}: WriteTerminalStatusArgs): void {
   terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
 }
 
@@ -390,14 +404,12 @@ export function ThreadTerminalView({
   // changes too, not just light/dark toggles.
   const appThemeEpoch = useAppThemeEpoch();
   const openUrlByPreference = useOpenUrlByPreference();
-  const handleOpenLinkByPreference =
-    useCallback<MarkdownPreviewLinkHandler>(
-      ({ href }) => openUrlByPreference(href),
-      [openUrlByPreference],
-    );
+  const handleOpenLinkByPreference = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => openUrlByPreference(href),
+    [openUrlByPreference],
+  );
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
-  const onOpenLinkRef =
-    useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
+  const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
   isPanelOpenRef.current = isPanelOpen;
   sessionStatusRef.current = session.status;
@@ -494,16 +506,15 @@ export function ThreadTerminalView({
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
 
-    async function mountTerminal(containerElement: HTMLDivElement): Promise<void> {
-      const [
-        { Terminal },
-        { FitAddon: LoadedFitAddon },
-        { WebLinksAddon },
-      ] = await Promise.all([
-        import("@xterm/xterm"),
-        import("@xterm/addon-fit"),
-        import("@xterm/addon-web-links"),
-      ]);
+    async function mountTerminal(
+      containerElement: HTMLDivElement,
+    ): Promise<void> {
+      const [{ Terminal }, { FitAddon: LoadedFitAddon }, { WebLinksAddon }] =
+        await Promise.all([
+          import("@xterm/xterm"),
+          import("@xterm/addon-fit"),
+          import("@xterm/addon-web-links"),
+        ]);
       if (disposed) {
         return;
       }
@@ -712,7 +723,7 @@ export function ThreadTerminalView({
 
   return (
     <div
-      className="h-full min-h-0 w-full overflow-hidden bg-background p-2"
+      className="h-full min-h-0 w-full overflow-hidden bg-sidebar p-2"
       onPointerDown={handleTerminalPointerDown}
       onPointerUp={handleTerminalPointerRelease}
       onPointerCancel={handleTerminalPointerCancel}

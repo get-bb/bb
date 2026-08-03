@@ -30,9 +30,9 @@ export function ThreadTerminalPanel({
     <section
       aria-label="Terminal"
       data-app-terminal=""
-      className="flex h-full min-h-0 min-w-0 flex-col bg-background"
+      className="flex h-full min-h-0 min-w-0 flex-col bg-sidebar"
     >
-      <div className="min-h-0 flex-1 overflow-hidden bg-background">
+      <div className="min-h-0 flex-1 overflow-hidden bg-sidebar">
         <ThreadTerminalContent
           controller={terminalController}
           onOpenLink={onOpenLink}

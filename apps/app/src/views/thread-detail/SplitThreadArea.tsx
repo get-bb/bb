@@ -592,6 +592,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       >
         <SplitWorkspaceSecondaryPanelHost
           focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
+          isPaneMaximized={effectiveMaximizedPaneId !== null}
           registry={secondaryPanelRegistry}
         >
           <SplitTree

@@ -3,12 +3,29 @@ import {
   getSecondaryPanelChromeStackClassName,
   getReservedInlinePanelToggleClassName,
   resolveCollapsedPanelTrafficLightReserveClassName,
+  resolveSecondaryPanelHideControl,
 } from "./ThreadSecondaryPanel";
 import {
   CHROME_ROW_CLASS,
   CHROME_ROW_HEIGHT_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
+import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+
+describe("secondary panel surface tone", () => {
+  it("uses the same sidebar background token as the primary sidebar", () => {
+    expect(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS).toBe("bg-sidebar");
+  });
+});
+
+describe("secondary panel hide control", () => {
+  it("uses the existing collapse affordance in the compact drawer", () => {
+    expect(resolveSecondaryPanelHideControl()).toEqual({
+      iconName: "PanelRight",
+      label: "Hide right panel",
+    });
+  });
+});
 
 describe("getSecondaryPanelChromeStackClassName", () => {
   it("reserves the combined navigation and active Diff toolbar height", () => {

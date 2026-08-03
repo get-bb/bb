@@ -195,6 +195,7 @@ const LONG_RECENT_ROW_ITEMS: ThreadRecentItem[] = [
 
 interface PanelStageProps {
   children: ReactNode;
+  presentation?: "card" | "sidebar";
 }
 
 interface NewTabPanelStoryProps {
@@ -206,6 +207,7 @@ interface NewTabPanelStoryProps {
   showOpenBrowser: boolean;
   threadStoragePaths: readonly WorkspacePathEntry[];
   workspacePaths: readonly WorkspacePathEntry[];
+  presentation?: "card" | "sidebar";
 }
 
 type NewTabStoryOutcome =
@@ -282,9 +284,15 @@ interface SeededNewTabPageProps {
   recentItems: readonly ThreadRecentItem[];
 }
 
-function PanelStage({ children }: PanelStageProps) {
+function PanelStage({ children, presentation = "card" }: PanelStageProps) {
   return (
-    <div className="flex h-[380px] w-full max-w-[720px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background">
+    <div
+      className={
+        presentation === "sidebar"
+          ? "flex h-screen min-h-[640px] w-full max-w-[480px] min-w-0 flex-col overflow-hidden border-l border-border bg-sidebar"
+          : "flex h-[380px] w-full max-w-[720px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background"
+      }
+    >
       {children}
     </div>
   );
@@ -368,12 +376,7 @@ function useStoryQueryClient({
       makeThreadStoragePathResponse(threadStoragePaths),
     );
     return queryClient;
-  }, [
-    currentThreadId,
-    initialQuery,
-    threadStoragePaths,
-    workspacePaths,
-  ]);
+  }, [currentThreadId, initialQuery, threadStoragePaths, workspacePaths]);
 }
 
 function SeededNewTabPage({
@@ -411,6 +414,7 @@ function NewTabPanelStory({
   showOpenBrowser,
   threadStoragePaths,
   workspacePaths,
+  presentation,
 }: NewTabPanelStoryProps) {
   const [outcome, setOutcome] = useState<NewTabStoryOutcome | null>(null);
   const queryClient = useStoryQueryClient({
@@ -471,12 +475,13 @@ function NewTabPanelStory({
     return [
       {
         id: `${selection.source}:${selection.path}`,
-        filename:
-          getFileNameFromPath({ path: selection.path }),
+        filename: getFileNameFromPath({ path: selection.path }),
         isActive: true,
         leadingVisual: (
           <Icon
-            name={resolveRightPanelFileVisual({ path: selection.path }).iconName}
+            name={
+              resolveRightPanelFileVisual({ path: selection.path }).iconName
+            }
             className="size-3.5"
             aria-hidden
           />
@@ -520,8 +525,8 @@ function NewTabPanelStory({
         <p className="font-medium text-foreground">
           Selected{" "}
           {outcome.selection.source === "workspace"
-              ? "workspace file"
-              : "thread storage file"}
+            ? "workspace file"
+            : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
           {outcome.selection.path}
@@ -530,7 +535,7 @@ function NewTabPanelStory({
     );
 
   return (
-    <PanelStage>
+    <PanelStage presentation={presentation}>
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
@@ -552,6 +557,25 @@ function NewTabPanelStory({
         showGitDiffTab
       />
     </PanelStage>
+  );
+}
+
+export function CollapseControl() {
+  return (
+    <WithDesktopBrowser>
+      <div className="flex min-h-screen w-full justify-end bg-background">
+        <NewTabPanelStory
+          currentThreadId={BLANK_THREAD_ID}
+          initialQuery=""
+          projectId={PROJECT_ID}
+          recentItems={[]}
+          showOpenBrowser
+          threadStoragePaths={[]}
+          workspacePaths={[]}
+          presentation="sidebar"
+        />
+      </div>
+    </WithDesktopBrowser>
   );
 }
 
@@ -601,10 +625,7 @@ export function NewTab() {
             workspacePaths={[]}
           />
         </StoryRow>
-        <StoryRow
-          label="search results"
-          hint="typed search shows file results"
-        >
+        <StoryRow label="search results" hint="typed search shows file results">
           <NewTabPanelStory
             currentThreadId={SEARCH_THREAD_ID}
             initialQuery="review"

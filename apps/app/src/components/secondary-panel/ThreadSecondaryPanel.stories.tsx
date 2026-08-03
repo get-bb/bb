@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { PanelGroup } from "react-resizable-panels";
 import {
   ThreadSecondaryPanel,
   type SecondaryPanelFileTab,
@@ -18,8 +19,19 @@ import {
   type HostFilePreviewFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type { WorkspaceFile } from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import {
+  ThreadMetadataContent,
+  type ThreadMetadataContentProps,
+} from "./ThreadMetadataContent";
+import {
+  baseProps as baseMetadataProps,
+  makePullRequest,
+  makeWorkspaceStatus,
+} from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
+import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -47,19 +59,32 @@ function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
   };
 }
 
-// The right panel renders inside a flex column; give it explicit height so the
-// inner scroll regions get something to fill.
-function PanelStage({ children }: { children: ReactNode }) {
+// The shell is inline, matching the desktop surface without introducing the
+// drawer-only close button or the conversation-collapse affordance.
+function PanelStage({
+  children,
+  height = "compact",
+}: {
+  children: ReactNode;
+  height?: "compact" | "info";
+}) {
   return (
-    <div className="flex h-[160px] w-full max-w-[640px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background">
-      {children}
+    <div
+      className={`flex w-full max-w-[640px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background ${
+        height === "info" ? "h-[520px]" : "h-[160px]"
+      }`}
+    >
+      <PanelGroup direction="horizontal">{children}</PanelGroup>
     </div>
   );
 }
 
 interface PanelHarnessProps {
   initialPanel: ThreadSecondaryPanelTab;
-  children: (panel: ThreadSecondaryPanelTab) => ReactNode;
+  children: (
+    panel: ThreadSecondaryPanelTab,
+    setPanel: (panel: ThreadSecondaryPanelTab) => void,
+  ) => ReactNode;
 }
 
 function PanelHarness({ initialPanel, children }: PanelHarnessProps) {
@@ -67,14 +92,106 @@ function PanelHarness({ initialPanel, children }: PanelHarnessProps) {
   useEffect(() => {
     setPanel(initialPanel);
   }, [initialPanel]);
-  return children(panel);
+  return children(panel, setPanel);
 }
 
-const placeholderInfoContent = (
-  <div className="space-y-2 pt-1 text-sm text-muted-foreground">
-    <p>Info tab content (see "right-panel/Info" story for variants).</p>
-  </div>
-);
+const INFO_STORAGE_FILES: readonly WorkspaceFile[] = [
+  { path: "plans/sidebar-surface-qa.md", name: "sidebar-surface-qa.md" },
+  { path: "reports/visual-regression.md", name: "visual-regression.md" },
+  { path: "screenshots/right-panel-light.png", name: "right-panel-light.png" },
+];
+
+const INFO_COMMITS = [
+  {
+    sha: "48a1bd6700000000000000000000000000000000",
+    shortSha: "48a1bd67",
+    subject: "Match right panel surfaces to the themed sidebar",
+    authorName: "Ada Lovelace",
+    authoredAt: 1_785_733_200_000,
+  },
+  {
+    sha: "e6cf24b100000000000000000000000000000000",
+    shortSha: "e6cf24b1",
+    subject: "Keep tab overflow controls visible",
+    authorName: "Grace Hopper",
+    authoredAt: 1_785_729_600_000,
+  },
+];
+
+const representativeWorkspaceStatus = makeWorkspaceStatus({
+  workingTree: {
+    hasUncommittedChanges: true,
+    state: "dirty_and_committed_unmerged",
+    insertions: 41,
+    deletions: 12,
+    files: [
+      {
+        path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.stories.tsx",
+        status: "M",
+        insertions: 34,
+        deletions: 8,
+      },
+      {
+        path: "apps/app/src/components/secondary-panel/SecondaryPanelTabStrip.tsx",
+        status: "M",
+        insertions: 7,
+        deletions: 4,
+      },
+    ],
+  },
+  mergeBase: {
+    mergeBaseBranch: "main",
+    baseRef: "main",
+    aheadCount: INFO_COMMITS.length,
+    behindCount: 0,
+    hasCommittedUnmergedChanges: true,
+    commits: INFO_COMMITS,
+    insertions: 86,
+    deletions: 19,
+    files: [
+      {
+        path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx",
+        status: "M",
+        insertions: 58,
+        deletions: 11,
+      },
+      {
+        path: "apps/app/src/components/secondary-panel/NewTabPage.tsx",
+        status: "M",
+        insertions: 28,
+        deletions: 8,
+      },
+    ],
+  },
+});
+
+function RepresentativeInfoContent() {
+  const [selectedStoragePath, setSelectedStoragePath] = useState<string | null>(
+    null,
+  );
+  const storageController = useThreadStorageBrowser({
+    files: INFO_STORAGE_FILES,
+    onSelectPath: setSelectedStoragePath,
+    selectedPath: selectedStoragePath,
+  });
+  const props: ThreadMetadataContentProps = {
+    ...baseMetadataProps,
+    pullRequest: makePullRequest({
+      number: 947,
+      title: "Use the sidebar surface throughout the right panel",
+    }),
+    selectedMergeBaseBranch: "main",
+    workspaceStatus: representativeWorkspaceStatus,
+    storage: {
+      controller: storageController,
+      filesError: null,
+      isFilesLoading: false,
+    },
+    onCommitClick: noop,
+  };
+
+  return <ThreadMetadataContent {...props} />;
+}
 
 interface ShellArgs {
   initialPanel: ThreadSecondaryPanelTab;
@@ -89,25 +206,27 @@ function ShellRow({
 }: ShellArgs) {
   return (
     <PanelHarness initialPanel={initialPanel}>
-      {(panel) => (
-        <PanelStage>
+      {(panel, setPanel) => (
+        <PanelStage height="info">
           <ThreadSecondaryPanel
             activeTab={createStoryFixedPanelTab(panel)}
             canUseGitUi={canUseGitUi}
             defaultMergeBaseBranch="main"
             environmentId={undefined}
             isOpen
-            metadataContent={placeholderInfoContent}
+            metadataContent={<RepresentativeInfoContent />}
             showGitDiffTab={showGitDiffTab}
             onPanelFocus={noop}
-            onPanelChange={noop}
+            onPanelChange={setPanel}
             onCollapse={noop}
             onClose={noop}
             onFileTabReorder={noop}
             onOpenNewTab={noop}
             isConversationCollapsed={false}
             onToggleConversationCollapse={noop}
-            renderAsDrawer
+            renderAsDrawer={false}
+            inlinePanelToggle="hidden"
+            showConversationCollapseControl={false}
           />
         </PanelStage>
       )}
@@ -115,9 +234,12 @@ function ShellRow({
   );
 }
 
-const placeholderFileContent = (
-  <div className="space-y-2 px-4 py-2 text-sm text-muted-foreground">
-    <p>File tab content placeholder.</p>
+const representativeFileContent = (
+  <div className="space-y-3 px-4 py-3 font-mono text-xs text-foreground">
+    <p className="text-muted-foreground">ThreadSecondaryPanel.tsx</p>
+    <pre className="whitespace-pre-wrap">{`export function ThreadSecondaryPanel() {
+  return <Panel className="bg-sidebar">…</Panel>;
+}`}</pre>
   </div>
 );
 
@@ -127,7 +249,7 @@ interface TerminalTabFixture {
   statusLabel: string | null;
 }
 
-interface TerminalContentPlaceholderProps {
+interface RepresentativeTerminalContentProps {
   title: string;
 }
 
@@ -140,13 +262,13 @@ const TERMINAL_TABS: TerminalTabFixture[] = [
   },
 ];
 
-function TerminalContentPlaceholder({
+function RepresentativeTerminalContent({
   title,
-}: TerminalContentPlaceholderProps) {
+}: RepresentativeTerminalContentProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-neutral-950 px-3 py-2 font-mono text-xs text-emerald-100">
       <p>$ {title}</p>
-      <p className="pt-1 text-emerald-300">Right panel terminal tab content.</p>
+      <p className="pt-1 text-emerald-300">Tests passed in 1.8s.</p>
     </div>
   );
 }
@@ -213,9 +335,9 @@ function FileTabsShellInner({
         defaultMergeBaseBranch="main"
         environmentId={undefined}
         isOpen
-        metadataContent={placeholderInfoContent}
+        metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
-        fileTabContent={activeFilename ? placeholderFileContent : null}
+        fileTabContent={activeFilename ? representativeFileContent : null}
         showGitDiffTab
         onPanelFocus={noop}
         onPanelChange={(panel) => {
@@ -228,7 +350,9 @@ function FileTabsShellInner({
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
-        renderAsDrawer
+        renderAsDrawer={false}
+        inlinePanelToggle="hidden"
+        showConversationCollapseControl={false}
       />
     </PanelStage>
   );
@@ -318,11 +442,11 @@ function TerminalTabsShellInner({
         defaultMergeBaseBranch="main"
         environmentId={undefined}
         isOpen
-        metadataContent={placeholderInfoContent}
+        metadataContent={<RepresentativeInfoContent />}
         fileTabs={fileTabs}
         fileTabContent={
           activeTerminal ? (
-            <TerminalContentPlaceholder title={activeTerminal.title} />
+            <RepresentativeTerminalContent title={activeTerminal.title} />
           ) : null
         }
         showGitDiffTab
@@ -337,7 +461,9 @@ function TerminalTabsShellInner({
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
-        renderAsDrawer
+        renderAsDrawer={false}
+        inlinePanelToggle="hidden"
+        showConversationCollapseControl={false}
       />
     </PanelStage>
   );

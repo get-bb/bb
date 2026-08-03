@@ -462,7 +462,7 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
   );
 }
 
-function RootComposeRightPanelToggle({
+export function RootComposeRightPanelToggle({
   isOpen,
   onToggle,
 }: RootComposeRightPanelToggleProps) {

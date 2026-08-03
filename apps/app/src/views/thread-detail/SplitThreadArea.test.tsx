@@ -46,6 +46,11 @@ const threadStore = vi.hoisted(
 const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
+const collapsedRailState = vi.hoisted(() => ({
+  enabled: false,
+  isMainCollapsed: false,
+}));
+const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
@@ -113,7 +118,12 @@ vi.mock("react-resizable-panels", async () => {
   >(({ children }, ref) => {
     React.useImperativeHandle(
       ref,
-      () => ({ getLayout: () => [100, 0], setLayout: () => undefined }),
+      () => ({
+        getLayout: () => panelGroupLayoutState.layout,
+        setLayout: (layout: number[]) => {
+          panelGroupLayoutState.layout = layout;
+        },
+      }),
       [],
     );
     return <div data-testid="workspace-panel-group">{children}</div>;
@@ -174,7 +184,7 @@ vi.mock("./ThreadDetailView", () => ({
       () => ({
         composerHost,
         contentKey: threadId,
-        isMainCollapsed: false,
+        isMainCollapsed: collapsedRailState.isMainCollapsed,
         isOpen: isPanelOpen,
         panel: (
           <div data-testid={`hosted-panel-${threadId}`}>
@@ -449,6 +459,9 @@ beforeEach(() => {
   experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
+  collapsedRailState.enabled = false;
+  collapsedRailState.isMainCollapsed = false;
+  panelGroupLayoutState.layout = [100, 0];
   commandHandlers.clear();
   commandPresentationState.isModifierHeld = false;
   commandPresentationState.shortcut = null;
@@ -508,6 +521,32 @@ describe("SplitThreadArea", () => {
     fireEvent.change(screen.getByTestId("draft-thr-b"), {
       target: { value: "" },
     });
+  });
+
+  it("removes the collapsed-thread rail while maximized and keeps the restore control", async () => {
+    collapsedRailState.enabled = true;
+    collapsedRailState.isMainCollapsed = true;
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    expect(
+      await screen.findByTestId("mock-collapsed-thread-rail"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+
+    expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
+    expect(screen.getByTestId("maximize-thr-a").textContent).toBe("restore");
+    await waitFor(() => {
+      expect(panelGroupLayoutState.layout[0]).toBeGreaterThan(0);
+      expect(panelGroupLayoutState.layout[1]).toBeLessThan(100);
+    });
+
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    expect(
+      await screen.findByTestId("mock-collapsed-thread-rail"),
+    ).toBeTruthy();
   });
 
   it("preserves a hidden pane's mounted scroll position through restore", async () => {

@@ -49,12 +49,14 @@ const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 interface SplitWorkspaceSecondaryPanelHostProps {
   children: ReactNode;
   focusedPaneId: string;
+  isPaneMaximized: boolean;
   registry: PaneSecondaryPanelRegistry;
 }
 
 export function SplitWorkspaceSecondaryPanelHost({
   children,
   focusedPaneId,
+  isPaneMaximized,
   registry,
 }: SplitWorkspaceSecondaryPanelHostProps) {
   const model = usePaneSecondaryPanelModel(registry, focusedPaneId);
@@ -126,7 +128,7 @@ export function SplitWorkspaceSecondaryPanelHost({
       group.setLayout([MAIN_PANEL_OPEN_SIZE_PERCENT, 0]);
       return;
     }
-    if (model?.isMainCollapsed) {
+    if (model?.isMainCollapsed && !isPaneMaximized) {
       group.setLayout([0, MAIN_PANEL_OPEN_SIZE_PERCENT]);
       return;
     }
@@ -134,7 +136,13 @@ export function SplitWorkspaceSecondaryPanelHost({
       MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent,
       panelWidthPercent,
     ]);
-  }, [focusedPaneId, isOpen, model?.isMainCollapsed, panelWidthPercent]);
+  }, [
+    focusedPaneId,
+    isOpen,
+    isPaneMaximized,
+    model?.isMainCollapsed,
+    panelWidthPercent,
+  ]);
 
   // Panes without a secondary panel (plugin panes) leave the window panel in
   // place with an empty state; their toggle drives the window visibility
@@ -230,7 +238,7 @@ export function SplitWorkspaceSecondaryPanelHost({
             collapsible
             collapsedSize={0}
             defaultSize={
-              model?.isMainCollapsed
+              model?.isMainCollapsed && !isPaneMaximized
                 ? 0
                 : isOpen
                   ? MAIN_PANEL_OPEN_SIZE_PERCENT - panelWidthPercent

@@ -7,6 +7,27 @@ import { TabPill } from "./tab-pill";
 afterEach(cleanup);
 
 describe("TabPill", () => {
+  it("reveals a tab close action only from tab hover or keyboard focus", () => {
+    render(
+      <TabPill
+        label="release notes"
+        title="release notes"
+        isActive
+        onSelect={vi.fn()}
+        closeAction={{
+          onClose: vi.fn(),
+          closeLabel: "Close release notes",
+          closeTooltip: "Close tab",
+        }}
+      />,
+    );
+
+    const close = screen.getByRole("button", { name: "Close release notes" });
+    expect(close.className).toContain("opacity-0");
+    expect(close.className).toContain("group-hover/tab-pill:opacity-100");
+    expect(close.className).toContain("focus-visible:opacity-100");
+  });
+
   it("uses the shared active shell for an accessible icon-only tab", () => {
     render(
       <TabPill
