@@ -103,8 +103,10 @@ corrective retries after their initial invalid attempt.
 
 Workflow workers use BB's generic hidden-thread visibility. They remain
 out of sidebar organization without contributing unread/pending favicon
-attention or native parent notifications. Ordinary search, prompt history,
-lifecycle, and direct operations remain available. Workflows does not create a
+attention. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workers are root threads,
+so no parent notification applies; a hidden thread that does have a parent
+still reports its turns and blockers to it. Workflows does not create a
 temporary Workflow folder.
 
 Workflows may invoke one child workflow level with

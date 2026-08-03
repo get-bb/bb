@@ -489,8 +489,10 @@ an inline alias for `--script`. Run and validate require exactly one of
 
 Workflow worker threads use hidden visibility and are plugin-attributed. They
 stay out of sidebar organization without contributing unread/pending favicon
-attention or native parent notifications. Ordinary search, prompt history,
-lifecycle, and direct operations remain available. Workflows does not create a
+attention. Ordinary search, prompt history,
+lifecycle, and direct operations remain available. Workers are root threads,
+so no parent notification applies; a hidden thread that does have a parent
+still reports its turns and blockers to it. Workflows does not create a
 temporary Workflow folder.
 
 `maxActiveRuns` is live plugin-global dispatch policy. Shared parent/child agent

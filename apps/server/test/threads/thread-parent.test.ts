@@ -11,6 +11,7 @@ import { ApiError } from "../../src/errors.js";
 import {
   assertValidParentThread,
   isAgentDelegatedChildThread,
+  isParentNotifiableChildThread,
 } from "../../src/services/threads/thread-parent.js";
 
 type ThrowingCallback = () => void;
@@ -252,6 +253,52 @@ describe("isAgentDelegatedChildThread", () => {
   it("is false for a root thread with no parent", () => {
     expect(
       isAgentDelegatedChildThread({
+        parentThreadId: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isParentNotifiableChildThread", () => {
+  it("is true for a hidden delegated child", () => {
+    expect(
+      isParentNotifiableChildThread({
+        childOrigin: null,
+        originKind: null,
+        parentThreadId: "thr_parent",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for a legacy fork that kept a parent id", () => {
+    expect(
+      isParentNotifiableChildThread({
+        childOrigin: "fork",
+        originKind: null,
+        parentThreadId: "thr_parent",
+      }),
+    ).toBe(false);
+    expect(
+      isParentNotifiableChildThread({
+        childOrigin: null,
+        originKind: "fork",
+        parentThreadId: "thr_parent",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a side chat and for a root thread", () => {
+    expect(
+      isParentNotifiableChildThread({
+        childOrigin: null,
+        originKind: "side-chat",
+        parentThreadId: "thr_parent",
+      }),
+    ).toBe(false);
+    expect(
+      isParentNotifiableChildThread({
+        childOrigin: null,
+        originKind: null,
         parentThreadId: null,
       }),
     ).toBe(false);

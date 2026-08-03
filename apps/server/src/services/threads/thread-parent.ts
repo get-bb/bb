@@ -24,8 +24,7 @@ export function isAgentDelegatedChildThread<
  * needs the result.
  */
 export function isParentNotifiableChildThread<
-  T extends Pick<Thread, "parentThreadId"> &
-    Partial<Pick<Thread, "originKind" | "childOrigin">>,
+  T extends Pick<Thread, "parentThreadId" | "originKind" | "childOrigin">,
 >(thread: T): thread is T & { parentThreadId: string } {
   return (
     isAgentDelegatedChildThread(thread) &&

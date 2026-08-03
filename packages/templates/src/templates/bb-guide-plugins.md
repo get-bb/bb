@@ -353,8 +353,9 @@ bb.settings.define (declarative settings incl. secrets, editable via
 bb.storage.database()+migrate (the plugin's own database); bb.sdk (the full
 bb SDK — handlers/services only, not the factory; spawned threads are
 attributed to the plugin; `visibility: "hidden"` creates directly addressable
-background workers omitted from sidebar organization, unread/pending favicon
-attention, and native parent notifications, with other behavior unchanged);
+background workers omitted from sidebar organization and unread/pending
+favicon attention, with other behavior unchanged; a child thread inherits
+its parent's visibility and still notifies that parent);
 bb.events.on (observe thread.created/idle/failed/deleted);
 bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard

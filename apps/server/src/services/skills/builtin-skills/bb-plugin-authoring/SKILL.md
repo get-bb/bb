@@ -286,9 +286,11 @@ queues/steers a running one.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
-attention or native parent notifications. They otherwise retain ordinary
+attention. They otherwise retain ordinary
 list, search, prompt-history, section, lifecycle, parent-operation, direct-open,
-and direct-ID behavior. This is an organization contract, not a security
+and direct-ID behavior. A thread you spawn with a `parentThreadId` inherits the
+parent's visibility when you omit `visibility`, and a hidden child still
+reports its turns and blockers to its parent. This is an organization contract, not a security
 boundary: plugins are full-trust server code.
 
 SDK realtime observation stays separate from plugin lifecycle events:

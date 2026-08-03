@@ -334,10 +334,11 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
           thread.parentThreadId &&
-          thread.parentThreadId === resolveContextThreadId() &&
-          thread.visibility === "visible"
+          thread.parentThreadId === resolveContextThreadId()
         ) {
           console.log("You will be notified when this thread is done.");
         }
