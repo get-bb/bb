@@ -231,7 +231,7 @@ const PROVIDER_AUTOMATIONS = [
         mode: "agent",
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "codex",
-        model: "gpt-5.5-sol",
+        model: "gpt-5.6-sol",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },

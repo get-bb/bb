@@ -703,9 +703,9 @@ describe("Automation detail recipe", () => {
     },
     {
       providerId: "codex",
-      model: "gpt-5.5-sol",
+      model: "gpt-5.6-sol",
       providerLabel: "Codex",
-      modelLabel: "5.5 Sol",
+      modelLabel: "5.6 Sol",
       iconId: "codex",
     },
     {
