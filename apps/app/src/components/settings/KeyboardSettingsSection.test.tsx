@@ -84,6 +84,22 @@ const testState = vi.hoisted(() => ({
       },
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
+    {
+      command: "question.select.1",
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: ["mainSurface", "questionOpen"],
+        none: ["modalOpen", "editableFocus"],
+      },
+    },
   ] as AppKeybindings,
   generalMutate: vi.fn(),
   isDesktop: false,
@@ -141,22 +157,17 @@ describe("KeyboardSettingsSection", () => {
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
     const defaults = screen.getByLabelText("Default shortcuts for New thread");
-    const webDefault = within(defaults).getByText("Ctrl + Shift + O");
+    const webLabel = within(defaults).getByText("Web");
+    const webGroup = webLabel.parentElement;
+    const webDefault = within(webGroup!).getByText("Ctrl + Shift + O");
     expect(webDefault.tagName).toBe("KBD");
     expect(webDefault.className).toContain("font-sans");
     expect(webDefault.getAttribute("aria-hidden")).toBe("false");
-    const webLabel = within(defaults).getByText("Web");
-    const webGroup = webLabel.parentElement;
-    expect(webGroup?.className).toContain("border");
-    expect(webGroup?.className).toContain("overflow-hidden");
-    expect(webLabel.className).not.toContain("rounded");
-    expect(within(webGroup!).getByText("Ctrl + Shift + O")).toBeDefined();
-    const desktopDefault = within(defaults).getByText("Ctrl + N");
-    expect(desktopDefault.tagName).toBe("KBD");
-    expect(desktopDefault.className).toContain("font-sans");
-    const desktopGroup = within(defaults).getByText("Desktop").parentElement;
-    expect(desktopGroup?.className).toContain("border");
+    const desktopLabel = within(defaults).getByText("Desktop");
+    const desktopGroup = desktopLabel.parentElement;
     expect(within(desktopGroup!).getByText("Ctrl + N")).toBeDefined();
+    expect(within(defaults).queryByText("macOS web")).toBeNull();
+    expect(within(defaults).queryByText("Windows/Linux web")).toBeNull();
     const recorder = screen.getByRole("button", {
       name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
     });
@@ -211,20 +222,20 @@ describe("KeyboardSettingsSection", () => {
     );
   });
 
-  it("labels platform-specific web aliases and selects the active macOS default", () => {
+  it("shows web and desktop defaults without OS-specific groups", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     render(<KeyboardSettingsSection />);
 
     const defaults = screen.getByLabelText(
       "Default shortcuts for Open thread 1",
     );
-    const macWebGroup = within(defaults).getByText("macOS web").parentElement;
-    expect(within(macWebGroup!).getByText("⌃ 1")).toBeDefined();
-    const otherWebGroup =
-      within(defaults).getByText("Windows/Linux web").parentElement;
-    expect(within(otherWebGroup!).getByText("Ctrl + Shift + 1")).toBeDefined();
+    const webGroup = within(defaults).getByText("Web").parentElement;
+    expect(within(webGroup!).getByText("⌃ 1")).toBeDefined();
     const desktopGroup = within(defaults).getByText("Desktop").parentElement;
     expect(within(desktopGroup!).getByText("⌘ 1")).toBeDefined();
+    expect(within(defaults).queryByText("macOS web")).toBeNull();
+    expect(within(defaults).queryByText("Windows/Linux web")).toBeNull();
+    expect(within(defaults).queryByText("Ctrl + Shift + 1")).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Record shortcut for Open thread 1, current shortcut ⌃ 1",
@@ -232,15 +243,33 @@ describe("KeyboardSettingsSection", () => {
     ).toBeDefined();
   });
 
-  it("selects the desktop-only alias in the desktop app", () => {
+  it("selects the active desktop shortcut from the displayed surface defaults", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     testState.isDesktop = true;
     render(<KeyboardSettingsSection />);
 
+    const defaults = screen.getByLabelText(
+      "Default shortcuts for Open thread 1",
+    );
+    const webGroup = within(defaults).getByText("Web").parentElement;
+    expect(within(webGroup!).getByText("⌃ 1")).toBeDefined();
+    const desktopGroup = within(defaults).getByText("Desktop").parentElement;
+    expect(within(desktopGroup!).getByText("⌘ 1")).toBeDefined();
     expect(
       screen.getByRole("button", {
         name: "Record shortcut for Open thread 1, current shortcut ⌘ 1",
       }),
     ).toBeDefined();
+  });
+
+  it("shows one unlabeled default when web and desktop match", () => {
+    render(<KeyboardSettingsSection />);
+
+    const defaults = screen.getByLabelText(
+      "Default shortcut for Choose answer 1",
+    );
+    expect(within(defaults).getByText("1")).toBeDefined();
+    expect(within(defaults).queryByText("Web")).toBeNull();
+    expect(within(defaults).queryByText("Desktop")).toBeNull();
   });
 });

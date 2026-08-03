@@ -1,8 +1,6 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   defaultAppSettings,
-  isAppKeybindingAvailableForClient,
-  isMacKeyboardPlatform,
   type AppCommandId,
   type AppKeybindingOverrides,
   type AppKeybindings,
@@ -48,6 +46,8 @@ const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 const SETTINGS_SHORTCUT_PILL_CLASS =
   "rounded-none bg-transparent px-0 py-0 text-foreground opacity-100";
 const SETTINGS_DEFAULT_SHORTCUT_CLASS =
+  "bg-muted/40 px-1.5 py-0.5 text-foreground opacity-100";
+const SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS =
   "rounded-none border-l border-border bg-transparent px-1.5 py-0.5 text-foreground opacity-100";
 
 function browserPlatform(): string {
@@ -62,22 +62,6 @@ function presentShortcut(
     ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
     label: formatAppShortcut(shortcut, platform),
   };
-}
-
-function defaultBindingAvailability(binding: AppKeybindings[number]): string {
-  if (binding.desktopOnly) return "Desktop";
-  if (binding.when.all.includes("macPlatform")) return "macOS web";
-  if (binding.when.none.includes("macPlatform")) return "Windows/Linux web";
-  return "Web";
-}
-
-function defaultBindingPresentationPlatform(
-  binding: AppKeybindings[number],
-  platform: string,
-): string {
-  if (binding.when.all.includes("macPlatform")) return "MacIntel";
-  if (binding.when.none.includes("macPlatform")) return "Win32";
-  return platform;
 }
 
 interface ShortcutRecorderProps {
@@ -209,20 +193,37 @@ function KeyboardCommandRow({
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
-  const availableOnClient = commandBindings.some((binding) =>
-    isAppKeybindingAvailableForClient(binding, {
-      isDesktop,
-      isMac: isMacKeyboardPlatform(platform),
-    }),
+  const webDefaultShortcut = getCommandShortcut(
+    defaults,
+    [],
+    command,
+    false,
+    platform,
   );
-  const defaultShortcutBindings = commandBindings.filter(
-    (binding, index) =>
-      commandBindings.findIndex(
-        (candidate) =>
-          candidate.desktopOnly === binding.desktopOnly &&
-          areAppShortcutsEqual(candidate.shortcut, binding.shortcut),
-      ) === index,
+  const desktopDefaultShortcut = getCommandShortcut(
+    defaults,
+    [],
+    command,
+    true,
+    platform,
   );
+  const activeDefaultShortcut = isDesktop
+    ? desktopDefaultShortcut
+    : webDefaultShortcut;
+  const availableOnClient = activeDefaultShortcut !== null;
+  const splitDefaults =
+    webDefaultShortcut !== null &&
+    desktopDefaultShortcut !== null &&
+    !areAppShortcutsEqual(webDefaultShortcut, desktopDefaultShortcut)
+      ? [
+          { label: "Web", shortcut: webDefaultShortcut },
+          { label: "Desktop", shortcut: desktopDefaultShortcut },
+        ]
+      : null;
+  const sharedDefaultShortcut =
+    splitDefaults === null
+      ? (webDefaultShortcut ?? desktopDefaultShortcut)
+      : null;
   const desktopOnly =
     commandBindings.length > 0 &&
     commandBindings.every((binding) => binding.desktopOnly);
@@ -241,33 +242,37 @@ function KeyboardCommandRow({
         <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
           {metadata.description}
         </p>
-        {defaultShortcutBindings.length > 1 ? (
+        {splitDefaults !== null || sharedDefaultShortcut !== null ? (
           <div
-            aria-label={`Default shortcuts for ${metadata.label}`}
+            aria-label={`${splitDefaults === null ? "Default shortcut" : "Default shortcuts"} for ${metadata.label}`}
             className="mt-1.5 flex flex-wrap items-center gap-1.5"
           >
-            <span className="text-xs text-subtle-foreground/75">Defaults:</span>
-            {defaultShortcutBindings.map((binding, index) => {
-              const presentation = presentShortcut(
-                binding.shortcut,
-                defaultBindingPresentationPlatform(binding, platform),
-              );
-              return (
+            <span className="text-xs text-subtle-foreground/75">
+              {splitDefaults === null ? "Default:" : "Defaults:"}
+            </span>
+            {sharedDefaultShortcut !== null ? (
+              <AppCommandShortcutPill
+                ariaHidden={false}
+                className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
+                shortcut={presentShortcut(sharedDefaultShortcut, platform)}
+              />
+            ) : (
+              splitDefaults?.map((entry) => (
                 <span
                   className="inline-flex items-stretch overflow-hidden rounded border border-border text-foreground"
-                  key={`${binding.shortcut.key}:${index}`}
+                  key={entry.label}
                 >
                   <span className="inline-flex items-center bg-muted/40 px-1.5 text-2xs leading-none text-subtle-foreground">
-                    {defaultBindingAvailability(binding)}
+                    {entry.label}
                   </span>
                   <AppCommandShortcutPill
                     ariaHidden={false}
-                    className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
-                    shortcut={presentation}
+                    className={SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS}
+                    shortcut={presentShortcut(entry.shortcut, platform)}
                   />
                 </span>
-              );
-            })}
+              ))
+            )}
           </div>
         ) : null}
         {conflicts.length > 0 ? (
