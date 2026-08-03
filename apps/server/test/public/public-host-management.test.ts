@@ -458,5 +458,8 @@ describe("public host management", () => {
         await harness.pluginService.stop();
       }
     });
-  });
+    // Starting the plugin service builds and loads the builtin plugins, which
+    // is real work; the other plugin-service suites budget 30s+ for it. The
+    // 5s default is a coin flip on a loaded CI runner.
+  }, 30_000);
 });
