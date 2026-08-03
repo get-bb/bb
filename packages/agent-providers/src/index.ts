@@ -12,6 +12,7 @@ export {
   getAgentProviderServerCapabilities,
   getBuiltInAgentProviderInfo,
   getBuiltInAgentProviderServerCapabilities,
+  getSupportedPermissionModes,
   isAcpAgentProviderId,
   isAcpProviderId,
   isAgentProviderId,

@@ -1,9 +1,6 @@
 import {
-  buildAcpProviderInfo,
   getAgentProviderServerCapabilities,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
+  getSupportedPermissionModes,
 } from "@bb/agent-providers";
 import type {
   PermissionMode,
@@ -141,21 +138,11 @@ function resolveSupportedPermissionMode(
     return args.preferredPermissionMode;
   }
 
-  const provider = isAgentProviderId(args.providerId)
-    ? getBuiltInAgentProviderInfo(args.providerId)
-    : isAcpProviderId(args.providerId)
-      ? buildAcpProviderInfo({
-          id: args.providerId,
-          displayName: args.providerId,
-          logoUrl: null,
-        })
-      : null;
-  if (!provider) {
+  const supportedPermissionModes = getSupportedPermissionModes(args.providerId);
+  if (!supportedPermissionModes) {
     return args.preferredPermissionMode;
   }
 
-  const supportedPermissionModes =
-    provider.capabilities.supportedPermissionModes;
   if (supportedPermissionModes.includes(args.preferredPermissionMode)) {
     return args.preferredPermissionMode;
   }

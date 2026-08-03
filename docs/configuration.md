@@ -369,7 +369,10 @@ page (Settings → Machines → the machine, which also carries that machine's
 projects, provider CLIs, update state, and rename/remove); it is deliberately
 absent from the SDK and the `bb` CLI,
 and machine credentials are rejected at both the bb connect gate and the
-server. The current value is readable through the host API and
+server. The boundary it defends is machine-to-machine: a process already
+running on the server machine has the data directory and the server itself, so
+it is trusted as the owner here exactly as it is for renaming or removing a
+machine. The current value is readable through the host API and
 `bb machine list --json`.
 
 Machine installation and daemon protocol repair use the owning server as the

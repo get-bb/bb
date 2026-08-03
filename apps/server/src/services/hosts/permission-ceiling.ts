@@ -1,11 +1,6 @@
-import { getEnvironment, getHost, getThread } from "@bb/db";
+import { getEnvironment, getHost } from "@bb/db";
 import { clampPermissionModeToCeiling, type PermissionMode } from "@bb/domain";
-import {
-  buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { getSupportedPermissionModes } from "@bb/agent-providers";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 
@@ -15,6 +10,20 @@ export interface ClampPermissionModeToHostArgs {
   hostId: string | null;
   permissionMode: PermissionMode;
   providerId?: string;
+}
+
+/**
+ * No permission mode at or below the machine's limit is one the provider can
+ * run in, so this pairing cannot execute at all. Its own class so read paths
+ * can degrade to "no default execution options" the same way they already do
+ * for a provider capability mismatch, while work requests still fail loudly.
+ */
+export class HostPermissionCeilingConflictError extends ApiError {}
+
+export function isHostPermissionCeilingConflictError(
+  error: unknown,
+): error is HostPermissionCeilingConflictError {
+  return error instanceof HostPermissionCeilingConflictError;
 }
 
 /**
@@ -31,29 +40,12 @@ export function getHostPermissionCeiling(
 }
 
 /** The machine a thread's work lands on, or null before it has an environment. */
-export function resolveThreadHostId(
+export function resolveEnvironmentHostId(
   deps: PermissionCeilingDeps,
-  threadId: string,
+  environmentId: string | null,
 ): string | null {
-  const thread = getThread(deps.db, threadId);
-  if (!thread?.environmentId) return null;
-  return getEnvironment(deps.db, thread.environmentId)?.hostId ?? null;
-}
-
-function supportedPermissionModes(
-  providerId: string | undefined,
-): readonly PermissionMode[] | undefined {
-  if (!providerId) return undefined;
-  const provider = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId)
-    : isAcpProviderId(providerId)
-      ? buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        })
-      : null;
-  return provider?.capabilities.supportedPermissionModes;
+  if (environmentId === null) return null;
+  return getEnvironment(deps.db, environmentId)?.hostId ?? null;
 }
 
 /**
@@ -67,14 +59,16 @@ export function clampPermissionModeToHost(
   args: ClampPermissionModeToHostArgs,
 ): PermissionMode {
   const ceiling = getHostPermissionCeiling(deps, args.hostId);
-  const supported = supportedPermissionModes(args.providerId);
+  const supported = args.providerId
+    ? getSupportedPermissionModes(args.providerId)
+    : null;
   const clamped = clampPermissionModeToCeiling({
     ceiling,
     permissionMode: args.permissionMode,
     ...(supported ? { supportedPermissionModes: supported } : {}),
   });
   if (clamped === null) {
-    throw new ApiError(
+    throw new HostPermissionCeilingConflictError(
       400,
       "host_permission_ceiling_conflict",
       `This machine limits permission mode to ${ceiling}, and provider ${args.providerId} requires a higher mode.`,

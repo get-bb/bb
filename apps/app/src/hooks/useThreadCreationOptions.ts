@@ -20,7 +20,11 @@ import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
-import { useSystemExecutionOptions } from "./queries/system-queries";
+import { selectPrimaryHost, useHosts } from "./queries/host-queries";
+import {
+  useSystemConfig,
+  useSystemExecutionOptions,
+} from "./queries/system-queries";
 import {
   usePromptBoxEnvironmentPreference,
   usePromptBoxModelPreference,
@@ -270,6 +274,8 @@ export function useThreadCreationOptions(
     ...executionOptionsRouting,
     providerId: executionOptionsProviderId,
   });
+  const hostsQuery = useHosts();
+  const systemConfig = useSystemConfig();
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
   const isLoadingModels =
     executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
@@ -324,9 +330,30 @@ export function useThreadCreationOptions(
   const supportsPermissionModeSelection = supportedPermissionModes.length > 1;
   // The machine's permission limit (Settings → Machines). Modes above it stay
   // listed but unselectable, so the picker never offers a mode the server
-  // would resolve back down.
-  const permissionCeiling =
-    executionOptionsQuery.data?.permissionCeiling ?? "full";
+  // would resolve back down. Before the routed answer lands (cold load, or the
+  // Claude preload placeholder) the cached machine list stands in, so the
+  // picker never briefly offers a mode this machine has already ruled out.
+  const routedHostCeiling = useMemo(() => {
+    const hosts = hostsQuery.data;
+    if (!hosts) return null;
+    const routedHostId =
+      executionOptionsRouting.hostId ??
+      selectPrimaryHost(hosts, systemConfig.data?.primaryHostId ?? null)?.id ??
+      null;
+    if (routedHostId === null) return null;
+    return (
+      hosts.find((host) => host.id === routedHostId)?.maxPermissionMode ?? null
+    );
+  }, [
+    executionOptionsRouting.hostId,
+    hostsQuery.data,
+    systemConfig.data?.primaryHostId,
+  ]);
+  const routedCeiling = executionOptionsQuery.isPlaceholderData
+    ? undefined
+    : executionOptionsQuery.data?.permissionCeiling;
+  const permissionCeiling: PermissionMode =
+    routedCeiling ?? routedHostCeiling ?? "full";
   const allowedPermissionModes = useMemo(
     () =>
       supportedPermissionModes.filter(

@@ -1,9 +1,4 @@
-import {
-  buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { getSupportedPermissionModes } from "@bb/agent-providers";
 import { getProjectExecutionDefaults, getThread } from "@bb/db";
 import type {
   CallerExecutionInputSource,
@@ -18,7 +13,8 @@ import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import {
   clampPermissionModeToHost,
-  resolveThreadHostId,
+  isHostPermissionCeilingConflictError,
+  resolveEnvironmentHostId,
 } from "../hosts/permission-ceiling.js";
 import {
   DEFAULT_REASONING_LEVEL,
@@ -146,7 +142,7 @@ function resolveStoredThreadPermissionMode(
   const permissionMode = clampPermissionModeToHost(deps, {
     hostId:
       args.hostId === undefined
-        ? resolveThreadHostId(deps, thread.id)
+        ? resolveEnvironmentHostId(deps, thread.environmentId)
         : args.hostId,
     permissionMode: resolveThreadExecutionPermissionMode({
       lastExecutionPermissionMode,
@@ -267,27 +263,15 @@ function validateProviderPermissionMode(
     return;
   }
 
-  const provider = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId)
-    : isAcpProviderId(providerId)
-      ? buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        })
-      : null;
-  if (!provider) {
-    return;
-  }
-
-  if (provider.capabilities.supportedPermissionModes.includes(permissionMode)) {
+  const supported = getSupportedPermissionModes(providerId);
+  if (!supported || supported.includes(permissionMode)) {
     return;
   }
 
   throw new ProviderCapabilityValidationError(
     400,
     "invalid_request",
-    `Provider ${providerId} only supports ${provider.capabilities.supportedPermissionModes.join(", ")} permission mode.`,
+    `Provider ${providerId} only supports ${supported.join(", ")} permission mode.`,
   );
 }
 
@@ -393,7 +377,7 @@ export async function resolveExistingThreadExecutionPlan(
   const permissionMode = clampPermissionModeToHost(deps, {
     hostId:
       args.hostId === undefined
-        ? resolveThreadHostId(deps, thread.id)
+        ? resolveEnvironmentHostId(deps, thread.environmentId)
         : args.hostId,
     permissionMode: resolveThreadExecutionPermissionMode({
       requestedPermissionMode: args.input.permissionMode?.value,
@@ -455,7 +439,8 @@ export async function tryResolveExistingThreadExecutionPlan(
     }
     if (
       !hasExecutionInput(args.input) &&
-      isProviderCapabilityValidationError(error)
+      (isProviderCapabilityValidationError(error) ||
+        isHostPermissionCeilingConflictError(error))
     ) {
       return null;
     }

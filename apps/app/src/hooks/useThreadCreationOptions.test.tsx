@@ -5,6 +5,7 @@ import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { hostsQueryKey } from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
 
@@ -287,6 +288,54 @@ describe("useThreadCreationOptions", () => {
         (option) => option.value === "full",
       )?.disabledReason,
     ).toContain("permission limit");
+  });
+
+  it("uses the cached machine limit before the routed answer lands", async () => {
+    // The composer must not offer a mode the machine has already ruled out,
+    // even for the render before /system/execution-options answers.
+    let resolveExecutionOptions: (
+      value: SystemExecutionOptionsResponse,
+    ) => void;
+    vi.mocked(sdk.system.executionOptions).mockReturnValue(
+      new Promise<SystemExecutionOptionsResponse>((resolve) => {
+        resolveExecutionOptions = resolve;
+      }),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(hostsQueryKey(), [
+      {
+        id: "capped-host",
+        name: "capped",
+        type: "persistent",
+        status: "connected",
+        maxPermissionMode: "accept-edits",
+        lastSeenAt: null,
+        lastRejectedProtocolVersion: null,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ]);
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          preferenceProjectId: PROJECT_ID,
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialPermissionMode: "full",
+          initialEnvironmentSelectionValue: "host:capped-host:local",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.permissionModeOptions.find(
+          (option) => option.value === "full",
+        )?.disabled,
+      ).toBe(true);
+    });
+    resolveExecutionOptions!(executionOptionsResponse());
   });
 
   it("persists new-thread environment selection under the project key", () => {

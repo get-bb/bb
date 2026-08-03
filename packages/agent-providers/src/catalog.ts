@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  PermissionMode,
   ProviderCapabilities,
   ProviderComposerAction,
   ProviderInfo,
@@ -337,6 +338,26 @@ export function buildAcpProviderInfo(
     id: args.id,
     logoUrl: args.logoUrl,
   };
+}
+
+/**
+ * Permission modes a provider can actually run in, or null when the id belongs
+ * to no known provider. Server policy (defaults, validation, and the per-machine
+ * permission limit) all resolve against this one answer.
+ */
+export function getSupportedPermissionModes(
+  providerId: string,
+): readonly PermissionMode[] | null {
+  const provider = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        })
+      : null;
+  return provider?.capabilities.supportedPermissionModes ?? null;
 }
 
 export function getAcpProviderServerCapabilities(

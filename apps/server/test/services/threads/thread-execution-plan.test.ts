@@ -5,6 +5,7 @@ import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
   resolveExistingThreadPermissionMode,
+  tryResolveExistingThreadExecutionPlan,
 } from "../../../src/services/threads/thread-execution-plan.js";
 import { resolveProjectExecutionDefaultsForCreate } from "../../../src/services/threads/project-execution-defaults.js";
 import { getLastExecutionOptions } from "../../../src/services/threads/thread-events.js";
@@ -323,6 +324,26 @@ describe("machine permission ceiling", () => {
       });
 
       expect(plan.resolvedExecution.permissionMode).toBe("accept-edits");
+    });
+  });
+
+  it("reads as no default execution options instead of failing the page", async () => {
+    await withTestHarness(async (harness) => {
+      // A read path (thread data, execution options) must degrade the same way
+      // it does for any other provider capability mismatch.
+      const thread = await seedCappedThread(harness, {
+        id: "host-ceiling-pi-read",
+        maxPermissionMode: "accept-edits",
+        providerId: "pi",
+      });
+
+      await expect(
+        tryResolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input: {},
+          threadId: thread.id,
+        }),
+      ).resolves.toBeNull();
     });
   });
 
