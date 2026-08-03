@@ -16,6 +16,23 @@ export function isAgentDelegatedChildThread<
   return thread.parentThreadId !== null;
 }
 
+/**
+ * Whether a child thread reports its turns and blockers to its parent. Forks
+ * and side chats are user-initiated branches the user reads directly, so their
+ * origin excludes them; legacy rows keep that origin next to a parent id. A
+ * hidden child still reports, because a hidden parent delegates work too and
+ * needs the result.
+ */
+export function isParentNotifiableChildThread<
+  T extends Pick<Thread, "parentThreadId"> &
+    Partial<Pick<Thread, "originKind" | "childOrigin">>,
+>(thread: T): thread is T & { parentThreadId: string } {
+  return (
+    isAgentDelegatedChildThread(thread) &&
+    (thread.originKind ?? thread.childOrigin ?? null) === null
+  );
+}
+
 export type ParentThread = Pick<
   Thread,
   | "archivedAt"

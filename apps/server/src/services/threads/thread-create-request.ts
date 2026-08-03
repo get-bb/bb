@@ -48,4 +48,6 @@ export interface ThreadCreateServiceRequest extends Omit<
   environment: EnvironmentArgs;
   providerId: string;
   titleFallback: string | null;
+  /** Resolved at the create boundary: request value, else inherited/default. */
+  visibility: ThreadVisibility;
 }

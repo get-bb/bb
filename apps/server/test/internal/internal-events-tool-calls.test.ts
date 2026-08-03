@@ -165,7 +165,9 @@ describe("internal event and tool-call routes", () => {
           );
         expect(storedToolEvents).toHaveLength(2);
         expect(
-          storedToolEvents.map((event) => JSON.parse(event.data).item.statusLabels),
+          storedToolEvents.map(
+            (event) => JSON.parse(event.data).item.statusLabels,
+          ),
         ).toEqual([statusLabels, statusLabels]);
       } finally {
         setPluginAgentContributions(undefined);
@@ -669,7 +671,7 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("does not notify a parent when a hidden child root turn completes", async () => {
+  it("notifies a parent when a hidden delegated child root turn completes", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -720,6 +722,75 @@ describe("internal event and tool-call routes", () => {
               threadId: childThread.id,
               providerThreadId: "provider-hidden-child",
               scope: turnScope("hidden-child-root-turn"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await flushDeferredChildThreadNotifications();
+      expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", parentThread.id),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("does not notify a parent when a side-chat child root turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Coordinate side chat child work",
+        providerThreadId: "provider-side-chat-parent",
+        threadId: parentThread.id,
+      });
+      // Legacy side-chat rows keep a parent id next to their origin; the
+      // origin, not the hidden visibility, is what excludes them.
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        originKind: "side-chat",
+        parentThreadId: parentThread.id,
+        providerId: "codex",
+        status: "active",
+        visibility: "hidden",
+      });
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/started",
+              threadId: childThread.id,
+              providerThreadId: "provider-side-chat-child",
+              scope: turnScope("side-chat-child-root-turn"),
+            },
+          },
+          {
+            threadId: childThread.id,
+            event: {
+              type: "turn/completed",
+              threadId: childThread.id,
+              providerThreadId: "provider-side-chat-child",
+              scope: turnScope("side-chat-child-root-turn"),
               status: "completed",
             },
           },

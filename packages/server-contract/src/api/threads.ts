@@ -108,7 +108,11 @@ export const createThreadRequestSchema = z
      * origin is "plugin" (enforced below); persisted for attribution.
      */
     originPluginId: z.string().min(1).optional(),
-    /** Hidden threads stay out of sidebar organization and attention surfaces. */
+    /**
+     * Hidden threads stay out of sidebar organization and attention surfaces.
+     * Omitted, a child inherits parentThreadId's visibility and a root is
+     * visible; side chats stay hidden.
+     */
     visibility: threadVisibilitySchema.optional(),
     title: z.string().min(1).optional(),
     // A source-derived side-chat preload may establish the cloned provider

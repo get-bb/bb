@@ -28,7 +28,7 @@ Spawning:
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --section <id>                 Create the thread in a section
-    --visibility <visibility>      visible (default) or hidden
+    --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork or side-chat thread
@@ -42,9 +42,13 @@ Spawning:
   When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
-  ID while staying out of sidebar organization, unread/pending favicon
-  attention, and native parent notifications. Thread lists exclude them unless
+  ID while staying out of sidebar organization and unread/pending favicon
+  attention. Thread lists exclude them unless
   --include-hidden is passed; direct-ID operations remain available.
+  A new child thread inherits the visibility of its parent, so the subagents of
+  a hidden thread stay hidden too. Pass --visibility to override the inherited
+  value. A hidden child still reports its turns and blockers to its parent
+  thread; only forks and side chats stay silent.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that

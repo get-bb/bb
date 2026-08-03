@@ -129,11 +129,14 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   the source thread unless explicitly overridden.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
-  attention or native parent notifications. `bb thread list` excludes them by
+  attention. `bb thread list` excludes them by
   default; pass `--include-hidden` when a hidden worker must be discovered.
-  Direct-ID lifecycle and messaging operations remain available. Visible is
-  the default. Promote or hide an existing thread with `bb thread update <id>
---visibility visible|hidden`.
+  Direct-ID lifecycle and messaging operations remain available. A root thread
+  is visible by default; a child thread inherits its parent's visibility, so a
+  hidden thread's subagents are hidden too. Pass `--visibility` to override the
+  inherited value. A hidden child still reports its turns and blockers to its
+  parent thread; only forks and side chats stay silent. Promote or hide an
+  existing thread with `bb thread update <id> --visibility visible|hidden`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the

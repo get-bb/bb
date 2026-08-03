@@ -8,7 +8,7 @@ import { formatPendingInteractionSubjectDetailLines } from "@bb/core-ui";
 import type { PendingInteraction } from "@bb/domain";
 import { isApprovalPendingInteractionPayload } from "@bb/domain";
 import { getThread, hasStoredTurnStarted } from "@bb/db";
-import { isAgentDelegatedChildThread } from "../services/threads/thread-parent.js";
+import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -85,11 +85,7 @@ function requestChildThreadNeedsAttentionNotification(
   const childThread = getThread(deps.db, args.childThreadId);
   // Forks / side chats are user-initiated branches the user interacts with
   // directly, so a needs-attention prompt must not notify their parent.
-  if (
-    !childThread ||
-    !isAgentDelegatedChildThread(childThread) ||
-    childThread.visibility === "hidden"
-  ) {
+  if (!childThread || !isParentNotifiableChildThread(childThread)) {
     return;
   }
   const parentThreadId = childThread.parentThreadId;

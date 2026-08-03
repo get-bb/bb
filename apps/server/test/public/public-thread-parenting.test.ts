@@ -72,6 +72,59 @@ describe("public thread parenting routes", () => {
     });
   });
 
+  it("inherits a hidden parent's visibility unless the request states one", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const hiddenParentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Coordinate hidden child work",
+        providerThreadId: "provider-hidden-parent-create-child",
+        threadId: hiddenParentThread.id,
+      });
+      const createChild = async (visibility?: "hidden" | "visible") =>
+        harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "app",
+            projectId: project.id,
+            providerId: "codex",
+            model: "gpt-5",
+            input: [{ type: "text", text: "Create child work" }],
+            environment: { type: "reuse", environmentId: environment.id },
+            parentThreadId: hiddenParentThread.id,
+            ...(visibility === undefined ? {} : { visibility }),
+          }),
+        });
+
+      const inheritedResponse = await createChild();
+      expect(inheritedResponse.status).toBe(201);
+      const inheritedThread = threadSchema.parse(
+        await readJson(inheritedResponse),
+      );
+      expect(inheritedThread.parentThreadId).toBe(hiddenParentThread.id);
+      expect(inheritedThread.visibility).toBe("hidden");
+
+      const explicitResponse = await createChild("visible");
+      expect(explicitResponse.status).toBe(201);
+      expect(
+        threadSchema.parse(await readJson(explicitResponse)).visibility,
+      ).toBe("visible");
+    });
+  });
+
   it("assigns a parent to an existing thread", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

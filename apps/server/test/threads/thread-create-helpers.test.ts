@@ -133,6 +133,7 @@ describe("createThreadRecord", () => {
             providerId: "codex",
             startedOnBehalfOf: null,
             titleFallback: null,
+            visibility: "visible",
           },
         });
         throw new Error("Expected createThreadRecord to throw");

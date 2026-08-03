@@ -5,7 +5,12 @@ import {
   getThread,
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
-import type { Project, Thread, ThreadOriginKind } from "@bb/domain";
+import type {
+  Project,
+  Thread,
+  ThreadOriginKind,
+  ThreadVisibility,
+} from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -476,6 +481,31 @@ async function createProvisioningThread(
   return getThreadSafe(deps, thread.id);
 }
 
+interface ResolveCreateThreadVisibilityArgs {
+  originKind: ThreadOriginKind | null;
+  /** Resolved hierarchy parent; null for roots, forks, and side chats. */
+  parentThread: Pick<Thread, "visibility"> | null;
+  requestedVisibility: ThreadVisibility | undefined;
+}
+
+/**
+ * Visibility default for a new thread. An explicit request always wins. A
+ * hierarchy child otherwise inherits its parent, so sub-agents delegated by a
+ * hidden thread stay out of navigation with it. Side chats stay hidden; the
+ * 0079 backfill applied the same default to pre-existing rows.
+ */
+function resolveCreateThreadVisibility(
+  args: ResolveCreateThreadVisibilityArgs,
+): ThreadVisibility {
+  if (args.requestedVisibility !== undefined) {
+    return args.requestedVisibility;
+  }
+  if (args.originKind === "side-chat") {
+    return "hidden";
+  }
+  return args.parentThread?.visibility ?? "visible";
+}
+
 export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
@@ -484,32 +514,19 @@ export async function createThreadFromRequest(
     providerInput?: ThreadCreateServiceRequestInput["input"];
   } = {},
 ) {
-  const normalizedRequestInput: ThreadCreateServiceRequestInput & {
-    visibility: NonNullable<ThreadCreateServiceRequestInput["visibility"]>;
-  } = {
-    ...rawRequestInput,
-    // Side chats are hidden from navigation; the 0079 backfill applied the
-    // same default to pre-existing rows.
-    visibility:
-      rawRequestInput.visibility ??
-      ((rawRequestInput.originKind ?? rawRequestInput.childOrigin) ===
-      "side-chat"
-        ? "hidden"
-        : "visible"),
-  };
   const project = requirePublicProjectForThreadCreate(
     deps,
-    normalizedRequestInput.projectId,
+    rawRequestInput.projectId,
   );
-  if (normalizedRequestInput.origin === "plugin") {
-    if (normalizedRequestInput.originPluginId === undefined) {
+  if (rawRequestInput.origin === "plugin") {
+    if (rawRequestInput.originPluginId === undefined) {
       throw new ApiError(
         400,
         "invalid_request",
         'originPluginId is required when origin is "plugin"',
       );
     }
-  } else if (normalizedRequestInput.originPluginId !== undefined) {
+  } else if (rawRequestInput.originPluginId !== undefined) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -519,13 +536,13 @@ export async function createThreadFromRequest(
   // Resolve the server-owned "project-default" environment marker into a
   // concrete environment before any workspace/provisioning logic runs.
   const requestInput = {
-    ...normalizedRequestInput,
+    ...rawRequestInput,
     environment:
-      normalizedRequestInput.environment.type === "project-default"
+      rawRequestInput.environment.type === "project-default"
         ? resolveProjectDefaultThreadEnvironment(deps, {
-            projectId: normalizedRequestInput.projectId,
+            projectId: rawRequestInput.projectId,
           })
-        : normalizedRequestInput.environment,
+        : rawRequestInput.environment,
   };
   // Plugin mentions resolve once at send time (plugin design §4.9): each
   // unique mention becomes an agent-only context input appended after the
@@ -663,6 +680,11 @@ export async function createThreadFromRequest(
     ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
     childOrigin: originKind,
+    visibility: resolveCreateThreadVisibility({
+      originKind,
+      parentThread,
+      requestedVisibility: requestInput.visibility,
+    }),
     environment: resolveCreateThreadEnvironment({
       parentThread: sourceThread ?? parentThread,
       projectId: requestInput.projectId,

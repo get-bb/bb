@@ -217,6 +217,7 @@ describe("plugin thread lifecycle events", () => {
         providerId: "codex",
         startedOnBehalfOf: null,
         titleFallback: "Plugin event test thread",
+        visibility: "visible",
       };
       const thread = createThreadRecord(
         { db: harness.db, hub: harness.hub },

@@ -588,7 +588,64 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
-  it("does not notify a parent when a hidden child needs attention", async () => {
+  it("notifies a parent when a hidden delegated child needs attention", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-hidden-delegated-needs-attention",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/hidden-delegated-needs-attention-parent",
+        projectId: project.id,
+      });
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/hidden-delegated-needs-attention-child",
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: parentEnvironment.id,
+        inputText: "Coordinate hidden delegated work",
+        providerThreadId: "provider-hidden-delegated-needs-attention-parent",
+        threadId: parentThread.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        environmentId: childEnvironment.id,
+        parentThreadId: parentThread.id,
+        projectId: project.id,
+        visibility: "hidden",
+      });
+
+      const response = await registerInteractiveRequest({
+        body: buildCommandApprovalInteractiveRequest({
+          sessionId: session.id,
+          suffix: "hidden-delegated-needs-attention",
+          threadId: childThread.id,
+        }),
+        harness,
+      });
+
+      expect(response.status).toBe(200);
+      const parentTurnCommand = await waitForQueuedCommand(
+        harness,
+        ({ command, row }) =>
+          row.state === "pending" &&
+          command.type === "turn.submit" &&
+          command.threadId === parentThread.id,
+      );
+      expect(parentTurnCommand.command.type).toBe("turn.submit");
+    });
+  });
+
+  it("does not notify a parent when a fork child needs attention", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-hidden-child-needs-attention",
@@ -616,8 +673,12 @@ describe("internal interactive request lifecycle", () => {
         providerThreadId: "provider-hidden-child-needs-attention-parent",
         threadId: parentThread.id,
       });
+      // Legacy fork rows keep a parent id next to their origin; the origin,
+      // not the hidden visibility, is what excludes them. Side chats never
+      // reach this gate because approval requests reject them earlier.
       const childThread = seedThread(harness.deps, {
         environmentId: childEnvironment.id,
+        originKind: "fork",
         parentThreadId: parentThread.id,
         projectId: project.id,
         visibility: "hidden",

@@ -38,7 +38,7 @@ import {
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
-import { isAgentDelegatedChildThread } from "../services/threads/thread-parent.js";
+import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
@@ -341,7 +341,7 @@ function notifyInsertedEventThreads(
 function addParentTurnNotificationFollowUp(
   args: AddParentTurnNotificationFollowUpArgs,
 ): void {
-  if (!args.thread.parentThreadId || args.thread.visibility === "hidden") {
+  if (!isParentNotifiableChildThread(args.thread)) {
     return;
   }
   if (args.turnStatus === "failed") {
@@ -424,7 +424,7 @@ async function applyEventEffects(
           // Forks / side chats are user-initiated branches, not agent-delegated
           // sub-tasks, so a completed turn must not post a "child finished"
           // notification back into their parent thread.
-          isAgentDelegatedChildThread(turnCompleted.thread)
+          isParentNotifiableChildThread(turnCompleted.thread)
         ) {
           // Command-result failures already notify parent threads for failed turns
           // without terminal events; late terminal events still own status effects.

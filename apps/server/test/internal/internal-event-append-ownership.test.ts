@@ -526,7 +526,7 @@ describe("internal event append ownership", () => {
     }
   });
 
-  it("does not notify a parent when a hidden child provider process exits", async () => {
+  it("does not notify a parent when a side-chat child provider process exits", async () => {
     const { environment, harness, project, session } = await setupEventRoute();
     const parentThread = seedThread(harness.deps, {
       environmentId: environment.id,
@@ -535,12 +535,15 @@ describe("internal event append ownership", () => {
     });
     seedThreadRuntimeState(harness.deps, {
       environmentId: environment.id,
-      inputText: "Coordinate hidden child work",
-      providerThreadId: "provider-hidden-parent-provider-exit",
+      inputText: "Coordinate side chat child work",
+      providerThreadId: "provider-side-chat-parent-provider-exit",
       threadId: parentThread.id,
     });
+    // Legacy side-chat rows keep a parent id next to their origin; the origin,
+    // not the hidden visibility, is what excludes them from parent notices.
     const childThread = seedThread(harness.deps, {
       environmentId: environment.id,
+      originKind: "side-chat",
       parentThreadId: parentThread.id,
       projectId: project.id,
       status: "active",
