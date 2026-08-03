@@ -23,7 +23,11 @@ import {
   getShortcutConflicts,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
-import { formatAppShortcut } from "@/lib/app-keybindings";
+import {
+  formatAppShortcut,
+  formatAppShortcutAria,
+  type AppShortcutPresentation,
+} from "@/lib/app-keybindings";
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
@@ -34,12 +38,23 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
+import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 
 function browserPlatform(): string {
   return typeof navigator === "undefined" ? "" : navigator.platform;
+}
+
+function presentShortcut(
+  shortcut: AppShortcut,
+  platform: string,
+): AppShortcutPresentation {
+  return {
+    ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
+    label: formatAppShortcut(shortcut, platform),
+  };
 }
 
 interface ShortcutRecorderProps {
@@ -61,8 +76,9 @@ function ShortcutRecorder({
 }: ShortcutRecorderProps) {
   const platform = browserPlatform();
   const [error, setError] = useState<string | null>(null);
-  const formattedShortcut =
-    shortcut === null ? "unassigned" : formatAppShortcut(shortcut, platform);
+  const shortcutPresentation =
+    shortcut === null ? null : presentShortcut(shortcut, platform);
+  const formattedShortcut = shortcutPresentation?.label ?? "unassigned";
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (!recording) return;
@@ -97,7 +113,7 @@ function ShortcutRecorder({
         }
         aria-pressed={recording}
         className={cn(
-          "h-7 min-w-24 px-2 font-mono text-xs",
+          "h-7 min-w-24 px-2 text-xs",
           recording && "border-ring text-foreground",
         )}
         disabled={disabled}
@@ -115,11 +131,13 @@ function ShortcutRecorder({
         type="button"
         variant="outline"
       >
-        {recording
-          ? "Press keys"
-          : shortcut === null
-            ? "Unassigned"
-            : formattedShortcut}
+        {recording ? (
+          "Press keys"
+        ) : shortcutPresentation === null ? (
+          "Unassigned"
+        ) : (
+          <AppCommandShortcutPill shortcut={shortcutPresentation} />
+        )}
       </Button>
       {error ? (
         <p className="text-xs text-destructive" role="alert">
@@ -149,6 +167,7 @@ function KeyboardCommandRow({
   overrides,
   recordingCommand,
 }: KeyboardCommandRowProps) {
+  const platform = browserPlatform();
   const metadata = getAppCommandMetadata(command);
   const shortcut = getCommandShortcut(defaults, overrides, command);
   const customized = overrides.some((override) => override.command === command);
@@ -187,17 +206,23 @@ function KeyboardCommandRow({
             className="mt-1.5 flex flex-wrap items-center gap-1.5"
           >
             <span className="text-xs text-subtle-foreground/75">Defaults:</span>
-            {defaultShortcutBindings.map((binding, index) => (
-              <span
-                className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs text-foreground"
-                key={`${binding.shortcut.key}:${index}`}
-              >
-                {formatAppShortcut(binding.shortcut, browserPlatform())}
-                <SettingsBadge>
-                  {binding.desktopOnly ? "Desktop" : "Web"}
-                </SettingsBadge>
-              </span>
-            ))}
+            {defaultShortcutBindings.map((binding, index) => {
+              const presentation = presentShortcut(binding.shortcut, platform);
+              return (
+                <span
+                  className="inline-flex items-center gap-1"
+                  key={`${binding.shortcut.key}:${index}`}
+                >
+                  <AppCommandShortcutPill
+                    ariaHidden={false}
+                    shortcut={presentation}
+                  />
+                  <SettingsBadge>
+                    {binding.desktopOnly ? "Desktop" : "Web"}
+                  </SettingsBadge>
+                </span>
+              );
+            })}
           </div>
         ) : null}
         {conflicts.length > 0 ? (
