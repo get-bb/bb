@@ -47,6 +47,8 @@ const EMPTY_KEYBINDINGS: AppKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 const SETTINGS_SHORTCUT_PILL_CLASS =
   "rounded-none bg-transparent px-0 py-0 text-foreground opacity-100";
+const SETTINGS_DEFAULT_SHORTCUT_CLASS =
+  "rounded-none border-l border-border bg-transparent px-1.5 py-0.5 text-foreground opacity-100";
 
 function browserPlatform(): string {
   return typeof navigator === "undefined" ? "" : navigator.platform;
@@ -252,17 +254,17 @@ function KeyboardCommandRow({
               );
               return (
                 <span
-                  className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-foreground"
+                  className="inline-flex items-stretch overflow-hidden rounded border border-border text-foreground"
                   key={`${binding.shortcut.key}:${index}`}
                 >
+                  <span className="inline-flex items-center bg-muted/40 px-1.5 text-2xs leading-none text-subtle-foreground">
+                    {defaultBindingAvailability(binding)}
+                  </span>
                   <AppCommandShortcutPill
                     ariaHidden={false}
-                    className={SETTINGS_SHORTCUT_PILL_CLASS}
+                    className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
                     shortcut={presentation}
                   />
-                  <SettingsBadge>
-                    {defaultBindingAvailability(binding)}
-                  </SettingsBadge>
                 </span>
               );
             })}

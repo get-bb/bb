@@ -145,8 +145,11 @@ describe("KeyboardSettingsSection", () => {
     expect(webDefault.tagName).toBe("KBD");
     expect(webDefault.className).toContain("font-sans");
     expect(webDefault.getAttribute("aria-hidden")).toBe("false");
-    const webGroup = within(defaults).getByText("Web").parentElement;
+    const webLabel = within(defaults).getByText("Web");
+    const webGroup = webLabel.parentElement;
     expect(webGroup?.className).toContain("border");
+    expect(webGroup?.className).toContain("overflow-hidden");
+    expect(webLabel.className).not.toContain("rounded");
     expect(within(webGroup!).getByText("Ctrl + Shift + O")).toBeDefined();
     const desktopDefault = within(defaults).getByText("Ctrl + N");
     expect(desktopDefault.tagName).toBe("KBD");
