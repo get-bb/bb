@@ -204,7 +204,7 @@ export function SkillsOverview({
 }: SkillsOverviewProps) {
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
-  >([]);
+  >(["bb"]);
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -230,10 +230,11 @@ export function SkillsOverview({
     }));
   }, [providerCounts]);
   useEffect(() => {
+    if (isLoading || hasError) return;
     setProviderFilters((current) =>
       current.filter((provider) => providerCounts.has(provider)),
     );
-  }, [providerCounts]);
+  }, [hasError, isLoading, providerCounts]);
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");
@@ -262,13 +263,20 @@ export function SkillsOverview({
       );
     });
     return [...filtered].sort((left, right) => {
+      if (providerFilters.length === 1 && providerFilters[0] === "bb") {
+        const officialResult =
+          Number(left.scope !== "bb-builtin") -
+          Number(right.scope !== "bb-builtin");
+        if (officialResult !== 0) return officialResult;
+      }
       const base =
         sortMode === "provider"
           ? providerLabel(left.provider).localeCompare(
               providerLabel(right.provider),
             ) || left.name.localeCompare(right.name)
           : left.name.localeCompare(right.name);
-      return sortDirection === "asc" ? base : -base;
+      if (base !== 0) return sortDirection === "asc" ? base : -base;
+      return left.filePath.localeCompare(right.filePath);
     });
   }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
   const libraryPagination = useResourcePagination(visibleSkills, {

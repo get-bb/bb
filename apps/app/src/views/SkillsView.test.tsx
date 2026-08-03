@@ -233,33 +233,38 @@ function renderRegistrySkillRoute() {
 }
 
 describe("SkillsOverview", () => {
-  it("renders flat rows with provider filter and sort controls", () => {
+  it("defaults to BB skills and places BB Official skills first", () => {
     const markup = render({
       skills: [
         makeSkill({ name: "claude-skill", provider: "claude-code" }),
         makeSkill({
-          name: "bb-skill",
+          name: "aa-user-skill",
+          provider: null,
+          scope: "bb-user",
+        }),
+        makeSkill({
+          name: "zz-official-skill",
           provider: null,
           scope: "bb-builtin",
           manageable: false,
         }),
       ],
     });
-    expect(markup).toContain("claude-skill");
+    expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Agent"');
+    expect(markup).toContain('aria-label="Agent: 1 selected"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
     expect(markup).toContain("Browse");
     expect(markup).toContain("BB Official");
     expect(markup).toContain("New bb skill");
-    expect(markup).not.toContain('aria-label="Open bb-skill"');
+    expect(markup).not.toContain('aria-label="Open zz-official-skill"');
     expect(markup.indexOf("Library")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
-    expect(markup.indexOf("bb-skill")).toBeLessThan(
-      markup.indexOf("claude-skill"),
+    expect(markup.indexOf("zz-official-skill")).toBeLessThan(
+      markup.indexOf("aa-user-skill"),
     );
   });
 
@@ -323,6 +328,61 @@ describe("SkillsOverview", () => {
         .getByRole("menuitemcheckbox", { name: "Codex" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
+  });
+
+  it("preserves a user-selected provider filter across library refreshes", async () => {
+    const initialSkills = [
+      makeSkill({
+        id: `skill_${"b".repeat(64)}`,
+        name: "bb-skill",
+        provider: null,
+        scope: "bb-user",
+      }),
+      makeSkill({ name: "claude-skill", provider: "claude-code" }),
+    ];
+    const view = renderDom(
+      <SkillsOverview
+        skills={initialSkills}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("claude-skill")).toBeTruthy();
+      expect(screen.queryByText("bb-skill")).toBeNull();
+    });
+
+    view.rerender(
+      <SkillsOverview
+        skills={[
+          ...initialSkills,
+          makeSkill({
+            id: `skill_${"c".repeat(64)}`,
+            name: "new-bb-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("claude-skill")).toBeTruthy();
+    expect(screen.queryByText("new-bb-skill")).toBeNull();
   });
 
   it("keeps edit and delete actions in detail rather than overview rows", () => {

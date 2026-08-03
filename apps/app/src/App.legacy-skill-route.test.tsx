@@ -3,9 +3,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { LegacySkillDetailRedirect } from "./App";
+import { ExtensionsLandingRedirect, LegacySkillDetailRedirect } from "./App";
 import {
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGINS_ROUTE_PATH,
+  TOOLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 
@@ -33,5 +35,25 @@ describe("LegacySkillDetailRedirect", () => {
     );
 
     expect(screen.getByText("/tools/skills/library/skill_abc123")).toBeTruthy();
+  });
+});
+
+describe("ExtensionsLandingRedirect", () => {
+  afterEach(cleanup);
+
+  it("opens Extensions on Plugins by default", () => {
+    render(
+      <MemoryRouter initialEntries={[TOOLS_ROUTE_PATH]}>
+        <Routes>
+          <Route
+            path={TOOLS_ROUTE_PATH}
+            element={<ExtensionsLandingRedirect />}
+          />
+          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
   });
 });

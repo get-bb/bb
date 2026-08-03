@@ -92,14 +92,24 @@ export function PluginsOverview() {
             .includes(normalizedInstalledQuery);
         })
         .sort((left, right) => {
-          const provenanceResult =
-            Number(left.provenance !== "builtin") -
-            Number(right.provenance !== "builtin");
-          if (provenanceResult !== 0) return provenanceResult;
+          const enabledResult = Number(!left.enabled) - Number(!right.enabled);
+          if (enabledResult !== 0) return enabledResult;
+          if (left.enabled) {
+            const leftOfficial =
+              left.provenance === "builtin" || left.provenance === "catalog";
+            const rightOfficial =
+              right.provenance === "builtin" || right.provenance === "catalog";
+            const provenanceResult =
+              Number(!leftOfficial) - Number(!rightOfficial);
+            if (provenanceResult !== 0) return provenanceResult;
+          }
           const result = (left.name ?? left.id).localeCompare(
             right.name ?? right.id,
           );
-          return installedSortDirection === "asc" ? result : -result;
+          if (result !== 0) {
+            return installedSortDirection === "asc" ? result : -result;
+          }
+          return left.id.localeCompare(right.id);
         }),
     [installedSortDirection, normalizedInstalledQuery, plugins],
   );

@@ -250,6 +250,19 @@ describe("PluginsOverview", () => {
     expect(screen.getByText("Plugin 11")).toBeTruthy();
     expect(screen.queryByText("Plugin 01")).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByText("1–10 of 12")).toBeTruthy();
+    expect(screen.getByText("Plugin 01")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("11–12 of 12")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(await screen.findByText("GitHub")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Installed, 12 plugins" }));
+    expect(screen.getByText("11–12 of 12")).toBeTruthy();
+    expect(screen.getByText("Plugin 11")).toBeTruthy();
+
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search installed plugins" }),
       { target: { value: "Plugin 01" } },
@@ -361,22 +374,39 @@ describe("PluginsOverview", () => {
     }
   });
 
-  it("sorts built-ins first and alphabetically within provenance groups", async () => {
+  it("sorts enabled plugins before inactive plugins and BB Official first within enabled", async () => {
     installFetch([
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "local-zulu",
-        name: "Local Zulu",
-        provenance: "direct",
+        id: "inactive-official",
+        name: "Inactive Official",
+        enabled: false,
+        status: "disabled",
       },
-      { ...AUTOMATIONS_PLUGIN, id: "built-zulu", name: "Built Zulu" },
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "local-alpha",
-        name: "Local Alpha",
+        id: "enabled-local-alpha",
+        name: "Enabled Local",
         provenance: "direct",
       },
-      { ...AUTOMATIONS_PLUGIN, id: "built-alpha", name: "Built Alpha" },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "enabled-official-zulu",
+        name: "Enabled Official Zulu",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "enabled-official-alpha",
+        name: "Enabled Official Alpha",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "inactive-local",
+        name: "Inactive Local",
+        enabled: false,
+        status: "disabled",
+        provenance: "direct",
+      },
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -387,16 +417,17 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Built Alpha");
+    await screen.findByText("Enabled Official Alpha");
     const rows = [...document.querySelectorAll('[data-testid^="plugin-row-"]')];
     expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
-      "plugin-row-built-alpha",
-      "plugin-row-built-zulu",
-      "plugin-row-local-alpha",
-      "plugin-row-local-zulu",
+      "plugin-row-enabled-official-alpha",
+      "plugin-row-enabled-official-zulu",
+      "plugin-row-enabled-local-alpha",
+      "plugin-row-inactive-local",
+      "plugin-row-inactive-official",
     ]);
     const officialPills = screen.getAllByText("BB Official");
-    expect(officialPills).toHaveLength(2);
+    expect(officialPills).toHaveLength(3);
     expect(officialPills[0]?.parentElement?.className).toContain("rounded-md");
     expect(officialPills[0]?.parentElement?.className).toContain(
       "bg-surface-recessed/45",
@@ -407,6 +438,38 @@ describe("PluginsOverview", () => {
     expect(officialPills[0]?.parentElement?.className).toContain("font-medium");
     expect(officialPills[0]?.parentElement?.className).toContain("px-2");
     expect(officialPills[0]?.parentElement?.className).toContain("py-1");
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin name" }));
+    expect(
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "plugin-row-enabled-official-zulu",
+      "plugin-row-enabled-official-alpha",
+      "plugin-row-enabled-local-alpha",
+      "plugin-row-inactive-official",
+      "plugin-row-inactive-local",
+    ]);
+
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Sort" }), {
+      key: "Escape",
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    await screen.findByText("GitHub");
+    fireEvent.click(screen.getByRole("tab", { name: "Installed, 5 plugins" }));
+    expect(
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      ),
+    ).toEqual([
+      "plugin-row-enabled-official-zulu",
+      "plugin-row-enabled-official-alpha",
+      "plugin-row-enabled-local-alpha",
+      "plugin-row-inactive-official",
+      "plugin-row-inactive-local",
+    ]);
   });
 
   it("consolidates built-in and catalog plugins under BB Official", async () => {
