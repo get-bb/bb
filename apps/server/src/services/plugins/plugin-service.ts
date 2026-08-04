@@ -24,6 +24,7 @@ import {
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
+import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { PluginCapabilitySummary } from "@bb/server-contract";
 import {
@@ -1396,7 +1397,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             hasApp: manifest.appEntry !== undefined,
             buildApp: async () => {
               try {
-                await buildPluginApp(bundled.rootDir, deps.appVersion);
+                await buildPluginApp(
+                  bundled.rootDir,
+                  deps.appVersion,
+                  await getPluginBuildToolchain(deps),
+                );
                 setDevBuildProblem(row.id, null);
                 notifyPluginsChanged();
               } catch (error) {

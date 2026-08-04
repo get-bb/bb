@@ -8,6 +8,7 @@ import { createJiti } from "jiti";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
 import { buildPluginApp } from "@bb/plugin-build";
+import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
   getInstalledPlugin,
@@ -898,7 +899,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           `plugin ${row.id}: rebuilding frontend bundle (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION})`,
         );
         try {
-          await buildPluginApp(row.rootDir, deps.appVersion);
+          await buildPluginApp(
+            row.rootDir,
+            deps.appVersion,
+            await getPluginBuildToolchain(deps),
+          );
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);

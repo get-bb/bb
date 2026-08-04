@@ -75,7 +75,9 @@ const electronBuilderConfigSchema = z
 const desktopPackageJsonSchema = z
   .object({
     main: z.literal("dist/main.js"),
-    optionalDependencies: z.record(z.string(), z.string()),
+    // Optional: the desktop app no longer pins per-architecture plugin build
+    // binaries, so it may declare none at all.
+    optionalDependencies: z.record(z.string(), z.string()).optional(),
     type: z.never().optional(),
   })
   .passthrough();
@@ -102,14 +104,6 @@ const signingEnvironmentKeys = [
 ];
 const audioInputEntitlementPattern =
   /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/u;
-const packagedPluginBuildNativePackages = [
-  "@esbuild/darwin-arm64",
-  "@esbuild/darwin-x64",
-  "@tailwindcss/oxide-darwin-arm64",
-  "@tailwindcss/oxide-darwin-x64",
-  "lightningcss-darwin-arm64",
-  "lightningcss-darwin-x64",
-] as const;
 
 type ElectronBuilderConfig = z.infer<typeof electronBuilderConfigSchema>;
 type EnvironmentOverrides = Record<string, string | undefined>;
@@ -218,20 +212,6 @@ const readResolvedConfig: ReadResolvedConfig = async (overrides) => {
   };
 };
 
-async function createPackagedPluginBuildNativePackageDirectories(
-  nodeModulesDirectory: string,
-  omittedPackageName?: (typeof packagedPluginBuildNativePackages)[number],
-): Promise<void> {
-  for (const packageName of packagedPluginBuildNativePackages) {
-    if (packageName === omittedPackageName) {
-      continue;
-    }
-    await mkdir(resolve(nodeModulesDirectory, packageName), {
-      recursive: true,
-    });
-  }
-}
-
 describe("electron-builder signing config", () => {
   it("keeps package metadata compatible with electron universal's CJS entry asar", async () => {
     const packageJsonText = await readFile(
@@ -246,7 +226,9 @@ describe("electron-builder signing config", () => {
     expect(packageJson).not.toHaveProperty("type");
   });
 
-  it("declares both esbuild macOS binaries as direct packaging dependencies", async () => {
+  it("ships no plugin build toolchain binaries", async () => {
+    // The toolchain is fetched into the data dir on first plugin build, so
+    // the packaged app must not carry per-architecture esbuild/oxide binaries.
     const packageJsonText = await readFile(
       resolve(desktopPackageRoot, "package.json"),
       "utf8",
@@ -255,10 +237,12 @@ describe("electron-builder signing config", () => {
       JSON.parse(packageJsonText),
     );
 
-    expect(packageJson.optionalDependencies).toMatchObject({
-      "@esbuild/darwin-arm64": "^0.28.0",
-      "@esbuild/darwin-x64": "^0.28.0",
-    });
+    expect(Object.keys(packageJson.optionalDependencies ?? {})).not.toEqual(
+      expect.arrayContaining([
+        "@esbuild/darwin-arm64",
+        "@esbuild/darwin-x64",
+      ]),
+    );
   });
 
   it("unpacks the ESM bb-app bridge with an explicit module extension", async () => {
@@ -383,10 +367,6 @@ describe("electron-builder signing config", () => {
       await mkdir(dirname(helperPath), { recursive: true });
       await writeFile(helperPath, "helper");
       await chmod(helperPath, 0o644);
-      await createPackagedPluginBuildNativePackageDirectories(
-        resolve(nodePtyPackageDir, ".."),
-      );
-
       const result = await runNativePrepScript(appOutDir);
 
       expect(result.exitCode).toBe(0);
@@ -398,48 +378,6 @@ describe("electron-builder signing config", () => {
       );
       expect((await stat(helperPath)).mode & 0o777).toBe(0o755);
       expect((await stat(rebuiltHelperPath)).mode & 0o777).toBe(0o755);
-    } finally {
-      await rm(appOutDir, { force: true, recursive: true });
-    }
-  });
-
-  it("rejects a package missing a native plugin build architecture", async () => {
-    const appOutDir = await mkdtemp(
-      resolve(tmpdir(), "bb-desktop-plugin-build-modules-"),
-    );
-    const unpackedNodeModulesDir = resolve(
-      appOutDir,
-      "bb.app",
-      "Contents",
-      "Resources",
-      "app.asar.unpacked",
-      "node_modules",
-    );
-    const unixTerminalPath = resolve(
-      unpackedNodeModulesDir,
-      "node-pty",
-      "lib",
-      "unixTerminal.js",
-    );
-
-    try {
-      await mkdir(dirname(unixTerminalPath), { recursive: true });
-      await writeFile(
-        unixTerminalPath,
-        "helperPath = helperPath.replace('app.asar', 'app.asar.unpacked');",
-      );
-
-      await createPackagedPluginBuildNativePackageDirectories(
-        unpackedNodeModulesDir,
-        "@esbuild/darwin-x64",
-      );
-
-      const result = await runNativePrepScript(appOutDir);
-
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain(
-        "Unable to find @esbuild/darwin-x64 under",
-      );
     } finally {
       await rm(appOutDir, { force: true, recursive: true });
     }

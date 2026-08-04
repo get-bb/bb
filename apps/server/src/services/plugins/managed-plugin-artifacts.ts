@@ -12,6 +12,7 @@ import {
   type PluginSourceIntent,
 } from "@bb/db";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import {
   gitArtifactCacheDir,
@@ -248,7 +249,11 @@ export function createManagedPluginArtifacts(
         !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
       ) {
         try {
-          await buildPluginApp(args.rootDir, deps.appVersion);
+          await buildPluginApp(
+            args.rootDir,
+            deps.appVersion,
+            await getPluginBuildToolchain(deps),
+          );
         } catch (error) {
           throw new Error(
             `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -258,7 +263,11 @@ export function createManagedPluginArtifacts(
     }
     if (kind === "git") {
       try {
-        await buildPluginServer(args.rootDir, deps.appVersion);
+        await buildPluginServer(
+          args.rootDir,
+          deps.appVersion,
+          await getPluginBuildToolchain(deps),
+        );
       } catch (error) {
         throw new Error(
           `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,

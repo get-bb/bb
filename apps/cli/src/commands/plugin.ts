@@ -1,4 +1,5 @@
 import { watch } from "node:fs";
+import { homedir } from "node:os";
 import { access, readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -13,6 +14,10 @@ import type {
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
 import { BbHttpError } from "@bb/sdk";
+import {
+  parseDataDirEnvValue,
+  resolveProdDataDir,
+} from "@bb/config/runtime";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
@@ -20,11 +25,40 @@ import {
   buildPluginApp,
   buildPluginServer,
   createPluginDevLoop,
+  resolvePluginBuildToolchain,
+  type PluginBuildToolchain,
 } from "@bb/plugin-build";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
+
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
+
+/**
+ * Where `bb plugin build`/`dev` cache the pinned esbuild/Tailwind set.
+ *
+ * The CLI ships no build toolchain, so the first build on a machine fetches
+ * one. Honors BB_DATA_DIR (dev instances and tests set it) and otherwise uses
+ * the production data dir, so the CLI and server share one cache.
+ */
+function toolchainBaseDir(): string {
+  const configured = process.env.BB_DATA_DIR;
+  const dataDir =
+    configured === undefined || configured.trim().length === 0
+      ? resolveProdDataDir({ homeDir: homedir() })
+      : parseDataDirEnvValue({ homeDir: homedir(), rawDataDir: configured });
+  return join(dataDir, "plugins");
+}
+
+async function cliBuildToolchain(): Promise<PluginBuildToolchain> {
+  return resolvePluginBuildToolchain(toolchainBaseDir(), {
+    onFetchStart: () => {
+      console.log(
+        "Downloading the plugin build toolchain (first plugin build on this machine)…",
+      );
+    },
+  });
+}
 
 const pluginMutationResultSchema = z.object({
   ok: z.boolean(),
@@ -705,7 +739,8 @@ export function registerPluginCommands(
         // buildPluginServer errors legibly on a missing/invalid bb.server —
         // every plugin has one, so a headless plugin succeeds with just the
         // backend bundle (prebuilt distribution, design §6).
-        const server = await buildPluginServer(rootDir, bbVersion);
+        const toolchain = await cliBuildToolchain();
+        const server = await buildPluginServer(rootDir, bbVersion, toolchain);
         const files = [server.jsPath, server.mapPath, server.metaPath];
         let hasApp = false;
         try {
@@ -718,7 +753,7 @@ export function registerPluginCommands(
           // Unreachable in practice: buildPluginServer already read it.
         }
         if (hasApp) {
-          const app = await buildPluginApp(rootDir, bbVersion);
+          const app = await buildPluginApp(rootDir, bbVersion, toolchain);
           files.push(app.jsPath, app.cssPath, app.metaPath);
         }
         for (const file of files) {
@@ -773,7 +808,11 @@ export function registerPluginCommands(
           pluginId: entry.id,
           hasApp,
           buildApp: async () => {
-            await buildPluginApp(rootDir, resolveBbCliVersion());
+            await buildPluginApp(
+              rootDir,
+              resolveBbCliVersion(),
+              await cliBuildToolchain(),
+            );
           },
           reloadPlugin: async () => {
             const result = pluginMutationResultSchema.parse(

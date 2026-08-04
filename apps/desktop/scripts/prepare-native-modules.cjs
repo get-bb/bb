@@ -8,19 +8,8 @@ const desktopPackageRoot = path.resolve(__dirname, "..");
 const NODE_MODULES_DIRECTORY = "node_modules";
 const NODE_PTY_PACKAGE_NAME = "node-pty";
 const BETTER_SQLITE3_PACKAGE_NAME = "better-sqlite3";
-// The packaged CLI uses the caller's Node process, whose architecture can
-// differ from the arm64 Electron app that owns these dependencies.
-const PLUGIN_BUILD_NATIVE_PACKAGE_NAMES = [
-  "@esbuild/darwin-arm64",
-  "@esbuild/darwin-x64",
-  "@tailwindcss/oxide-darwin-arm64",
-  "@tailwindcss/oxide-darwin-x64",
-  "lightningcss-darwin-arm64",
-  "lightningcss-darwin-x64",
-];
 const PACKAGED_NATIVE_PACKAGE_NAMES = [
   NODE_PTY_PACKAGE_NAME,
-  ...PLUGIN_BUILD_NATIVE_PACKAGE_NAMES,
   BETTER_SQLITE3_PACKAGE_NAME,
 ];
 
@@ -113,17 +102,6 @@ async function findNativePackageDirectories(rootPath, packageName) {
   return (await findPackageDirectories(rootPath, [packageName])).get(
     packageName,
   );
-}
-
-function assertPackagedPluginBuildNativePackages(
-  appOutDir,
-  packageDirectories,
-) {
-  for (const packageName of PLUGIN_BUILD_NATIVE_PACKAGE_NAMES) {
-    if (packageDirectories.get(packageName).length === 0) {
-      throw new Error(`Unable to find ${packageName} under ${appOutDir}`);
-    }
-  }
 }
 
 async function chmodIfPresent(filePath, mode) {
@@ -236,7 +214,6 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
     );
   }
   await Promise.all(nodePtyDirectories.map(prepareNodePtyPackageDirectory));
-  assertPackagedPluginBuildNativePackages(appOutDir, packageDirectories);
 
   // The Electron target is only known on the real afterPack path. Standalone
   // invocations (e.g. tests, manual node-pty repair) omit it and skip the fetch.

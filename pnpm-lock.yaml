@@ -432,27 +432,15 @@ importers:
       '@bb/thread-view':
         specifier: workspace:*
         version: link:../../packages/thread-view
-      '@tailwindcss/node':
-        specifier: ^4.3.0
-        version: 4.3.0
-      '@tailwindcss/oxide':
-        specifier: ^4.3.0
-        version: 4.3.0
       cli-table3:
         specifier: ^0.6.5
         version: 0.6.5
       commander:
         specifier: ^13.0.0
         version: 13.1.0
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.1
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
-      tailwindcss:
-        specifier: ^4.3.0
-        version: 4.3.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -460,12 +448,24 @@ importers:
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@tailwindcss/node':
+        specifier: ^4.3.0
+        version: 4.3.0
+      '@tailwindcss/oxide':
+        specifier: ^4.3.0
+        version: 4.3.0
       '@types/mime-types':
         specifier: ^3.0.1
         version: 3.0.1
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.1
+      tailwindcss:
+        specifier: ^4.3.0
+        version: 4.3.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -542,13 +542,6 @@ importers:
       zod:
         specifier: 4.3.6
         version: 4.3.6
-    optionalDependencies:
-      '@esbuild/darwin-arm64':
-        specifier: ^0.28.0
-        version: 0.28.1
-      '@esbuild/darwin-x64':
-        specifier: ^0.28.0
-        version: 0.28.1
     devDependencies:
       '@bb/config':
         specifier: workspace:*
@@ -794,12 +787,6 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
-      '@tailwindcss/node':
-        specifier: ^4.3.0
-        version: 4.3.0
-      '@tailwindcss/oxide':
-        specifier: ^4.3.0
-        version: 4.3.0
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@tanstack/react-start@1.168.25(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)))(better-sqlite3@12.10.0)(drizzle-orm@0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vitest@4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)))(vue@3.5.39(@typescript/typescript6@6.0.2))
@@ -812,9 +799,6 @@ importers:
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4)
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.1
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -839,9 +823,6 @@ importers:
       semver:
         specifier: ^7.7.0
         version: 7.7.4
-      tailwindcss:
-        specifier: ^4.3.0
-        version: 4.3.0
       ws:
         specifier: ^8.19.0
         version: 8.21.0
@@ -1466,18 +1447,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.5.6
         version: 2.5.6
-      '@tailwindcss/node':
-        specifier: ^4.3.0
-        version: 4.3.0
-      '@tailwindcss/oxide':
-        specifier: ^4.3.0
-        version: 4.3.0
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.1
       hono:
         specifier: ^4.7.0
         version: 4.11.9
@@ -1496,9 +1468,6 @@ importers:
       pino-roll:
         specifier: ^4.0.0
         version: 4.0.0
-      tailwindcss:
-        specifier: ^4.3.0
-        version: 4.3.0
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -1892,28 +1861,28 @@ importers:
       '@bb/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      saxes:
+        specifier: ^6.0.0
+        version: 6.0.0
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
       '@tailwindcss/node':
         specifier: ^4.3.0
         version: 4.3.0
       '@tailwindcss/oxide':
         specifier: ^4.3.0
         version: 4.3.0
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.1
-      saxes:
-        specifier: ^6.0.0
-        version: 6.0.0
-      tailwindcss:
-        specifier: ^4.3.0
-        version: 4.3.0
-    devDependencies:
-      '@bb/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.1
+      tailwindcss:
+        specifier: ^4.3.0
+        version: 4.3.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

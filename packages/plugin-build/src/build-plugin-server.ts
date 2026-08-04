@@ -10,6 +10,10 @@ import {
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import {
+  BARE_PLUGIN_BUILD_TOOLCHAIN,
+  type PluginBuildToolchain,
+} from "./toolchain.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
@@ -112,6 +116,7 @@ export interface PluginServerBuildResult {
 export async function buildPluginServer(
   rootDir: string,
   bbVersion: string,
+  toolchain: PluginBuildToolchain = BARE_PLUGIN_BUILD_TOOLCHAIN,
 ): Promise<PluginServerBuildResult> {
   const { serverEntry, packageName, pluginVersion } =
     await readPluginServerConfig(rootDir);
@@ -129,7 +134,10 @@ export async function buildPluginServer(
     const stagedJsPath = join(stageDir, "server.js");
     const stagedMetaPath = join(stageDir, "server.meta.json");
 
-    const esbuild = await import("esbuild");
+    // Dynamic specifier: restate the module type (see build-plugin-app.ts).
+    const esbuild = (await import(
+      toolchain.esbuild
+    )) as typeof import("esbuild");
     await esbuild.build({
       entryPoints: [serverEntry],
       outfile: stagedJsPath,
