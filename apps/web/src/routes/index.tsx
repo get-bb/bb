@@ -1316,7 +1316,7 @@ function AgentChat() {
   );
 }
 
-/* ── Band 3 visual: bb builds itself a plugin ────────────────────── */
+/* ── Band visual: bb builds itself a plugin ───────────────────────── */
 
 type CustomizeMessage = {
   role: "user" | "agent" | "tool";
@@ -1556,7 +1556,7 @@ function CustomizeBuild() {
   );
 }
 
-/* ── Band 5 visual: one agent spawns and manages a thread per provider ── */
+/* ── Band visual: one agent spawns and manages a thread per provider ── */
 
 // A bb sidebar mock: a parent Claude thread with three worker threads nested
 // beneath it on a connector rail, one per provider. Each worker's status flips
@@ -1710,20 +1710,7 @@ function LandingPage() {
 
       <HeroAppMock />
 
-      <Band title="Anything can kick off work." flip visual={<AgentChat />}>
-        <p>
-          The same CLI your agents use is open to any program you write: a shell
-          script, a cron job, or your own Hermes Agent or OpenClaw bot in
-          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
-          waiting in your sidebar when you are.
-        </p>
-        <p>
-          It runs on your machine, and is waiting for you when you&rsquo;re
-          back.
-        </p>
-      </Band>
-
-      <Band title="Fully customizable." visual={<CustomizeBuild />}>
+      <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
         <p>
           Almost anything in bb can be changed in a single prompt. Ask for a
           task tracker and one appears: a panel in your sidebar, a{" "}
@@ -1736,6 +1723,19 @@ function LandingPage() {
           remote access are all plugins.
         </p>
         <p>Nothing is stopping you from building your ideal workbench.</p>
+      </Band>
+
+      <Band title="Anything can kick off work." visual={<AgentChat />}>
+        <p>
+          The same CLI your agents use is open to any program you write: a shell
+          script, a cron job, or your own Hermes Agent or OpenClaw bot in
+          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
+          waiting in your sidebar when you are.
+        </p>
+        <p>
+          It runs on your machine, and is waiting for you when you&rsquo;re
+          back.
+        </p>
       </Band>
 
       <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
