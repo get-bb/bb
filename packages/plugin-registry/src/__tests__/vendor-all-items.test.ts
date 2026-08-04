@@ -6,10 +6,24 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildPluginApp } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
+
+/**
+ * The monorepo's own toolchain: resolved from `@bb/plugin-build`'s
+ * devDependencies, so tests never download one.
+ */
+function testToolchain() {
+  return resolvePluginBuildToolchain(
+    path.join(os.tmpdir(), "bb-toolchain-unused"),
+  );
+}
 
 /**
  * The registry's CI gate (plugin design §5.5 exit criteria): vendor EVERY
@@ -126,7 +140,11 @@ describe("plugin component registry", () => {
       ),
     );
 
-    const result = await buildPluginApp(fixtureDir, "0.9.0-test");
+    const result = await buildPluginApp(
+      fixtureDir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
 
     const js = await readFile(result.jsPath, "utf8");
     // Shared singletons resolve through the runtime, never bundled copies.
