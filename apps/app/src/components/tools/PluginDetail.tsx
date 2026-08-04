@@ -1,7 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
-  ResourceDetailIncludesSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
@@ -418,9 +417,7 @@ export function PluginDetail({
             ) : null}
           </PluginDetailTable>
         </ResourceDetailReleaseSection>
-        <ResourceDetailIncludesSection label="Capabilities">
-          <PluginIncludes plugin={plugin} />
-        </ResourceDetailIncludesSection>
+        <PluginIncludes plugin={plugin} />
         {/*
           Services and schedules are two different objects with two different
           status vocabularies, so they stay under their own names and use

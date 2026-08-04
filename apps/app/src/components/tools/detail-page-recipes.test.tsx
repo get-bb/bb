@@ -99,13 +99,12 @@ function renderPlugin(plugin: PluginListItem) {
 }
 
 describe("Plugin detail recipe", () => {
-  it("places quiet release facts between About and Capabilities", () => {
+  it("omits Capabilities when the plugin has no capability rows", () => {
     const { container } = renderPlugin(PLUGIN);
 
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["release", "Release"],
-      ["includes", "Capabilities"],
     ]);
   });
 
@@ -129,7 +128,6 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["release", "Release"],
-      ["includes", "Capabilities"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -144,7 +142,6 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container)).toEqual([
       ["overview", "About"],
       ["release", "Release"],
-      ["includes", "Capabilities"],
       ["activity", "Background services"],
     ]);
   });
@@ -266,16 +263,17 @@ describe("Plugin detail recipe", () => {
     expect(screen.getByText("Issues")).toBeTruthy();
   });
 
-  it("explains empty capabilities instead of dropping the section", () => {
-    const { container } = renderPlugin(PLUGIN);
+  it("does not preview an unloaded frontend app as a capability", () => {
+    const { container } = renderPlugin({
+      ...PLUGIN,
+      app: { hasApp: true, bundle: null },
+    });
 
-    expect(renderedRecipe(container)).toContainEqual([
+    expect(renderedRecipe(container)).not.toContainEqual([
       "includes",
       "Capabilities",
     ]);
-    expect(
-      screen.getByText("This plugin declares no user-facing capabilities."),
-    ).toBeTruthy();
+    expect(screen.queryByText("Frontend app")).toBeNull();
   });
 
   it("keeps a disabled plugin's static capabilities and explains the missing live ones", () => {
@@ -325,22 +323,28 @@ describe("Plugin detail recipe", () => {
     expect(screen.queryByText(/commands, settings, agent tools/)).toBeNull();
   });
 
-  it("says an enabled plugin is not running rather than claiming it declares nothing", () => {
-    renderPlugin({ ...PLUGIN, enabled: true, status: "error" });
+  it("omits Capabilities when an enabled plugin is not running and has no static rows", () => {
+    const { container } = renderPlugin({
+      ...PLUGIN,
+      enabled: true,
+      status: "error",
+    });
 
-    expect(
-      screen.getByText(
-        "This plugin isn't running yet, so what it adds can't be listed.",
-      ),
-    ).toBeTruthy();
+    expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
+      "Capabilities",
+    );
   });
 
-  it("keeps a disabled plugin with nothing static on the same explanation", () => {
-    renderPlugin({ ...PLUGIN, enabled: false, status: "disabled" });
+  it("omits Capabilities when a disabled plugin has no static rows", () => {
+    const { container } = renderPlugin({
+      ...PLUGIN,
+      enabled: false,
+      status: "disabled",
+    });
 
-    expect(
-      screen.getByText("Enable this plugin to see what it adds to bb."),
-    ).toBeTruthy();
+    expect(renderedRecipe(container).map(([, label]) => label)).not.toContain(
+      "Capabilities",
+    );
   });
 });
 

@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
+  ResourceDetailIncludesSection,
   ResourceStatus,
   type ResourceStatusTone,
 } from "@bb/shared-ui/resource-list";
@@ -281,13 +281,6 @@ export function PluginIncludes({
 }) {
   const slots = usePluginSlots();
   const appItems = pluginAppSurfaceItems(plugin.id, slots);
-  if (plugin.app.hasApp && appItems.length === 0) {
-    appItems.push({
-      key: "frontend-app",
-      label: "Frontend app",
-      detail: "Surface names are available while the plugin app is loaded",
-    });
-  }
 
   const declared = (kind: PluginCapability["kind"]): PluginCapabilityItem[] =>
     plugin.capabilities
@@ -368,45 +361,35 @@ export function PluginIncludes({
     ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
     : "Some capabilities are only listed while the plugin is enabled.";
 
-  // Capabilities is a stable part of the plugin recipe, so it explains an empty
-  // result rather than disappearing.
-  if (items.length === 0) {
-    return (
-      <EmptyStatePanel className="py-6">
-        {live
-          ? "This plugin declares no user-facing capabilities."
-          : plugin.enabled
-            ? "This plugin isn't running yet, so what it adds can't be listed."
-            : "Enable this plugin to see what it adds to bb."}
-      </EmptyStatePanel>
-    );
-  }
+  if (items.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      <PluginDetailTable>
-        {items.map((item) => (
-          <PluginDetailRow
-            key={item.key}
-            glyph={
-              <PluginDetailGlyph
-                icon={item.icon}
-                label={item.kind}
-                className="text-muted-foreground"
-              />
-            }
-            name={item.label}
-            mono={item.mono}
-            detail={item.detail}
-          />
-        ))}
-      </PluginDetailTable>
-      {live ? null : (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {liveCapabilitiesNote}
-        </p>
-      )}
-    </div>
+    <ResourceDetailIncludesSection label="Capabilities">
+      <div className="space-y-3">
+        <PluginDetailTable>
+          {items.map((item) => (
+            <PluginDetailRow
+              key={item.key}
+              glyph={
+                <PluginDetailGlyph
+                  icon={item.icon}
+                  label={item.kind}
+                  className="text-muted-foreground"
+                />
+              }
+              name={item.label}
+              mono={item.mono}
+              detail={item.detail}
+            />
+          ))}
+        </PluginDetailTable>
+        {live ? null : (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {liveCapabilitiesNote}
+          </p>
+        )}
+      </div>
+    </ResourceDetailIncludesSection>
   );
 }
 
