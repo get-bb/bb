@@ -1537,9 +1537,17 @@ interface InitializeRuntimeArgs {
  * Attaching to a bb this app did not start is invisible to the person using it,
  * so ask first. Local development stays silent, because attaching to a
  * `pnpm dev` server is the whole point there.
+ *
+ * `BB_DESKTOP_ATTACH_WITHOUT_PROMPT` exists for the packaged smoke test, which
+ * points a packaged build at a stub server and has no one to click the dialog.
+ * It is deliberately opt-in and never set by the app itself: the prompt is a
+ * safety boundary, so suppressing it must be an explicit act by the harness.
  */
 function shouldAskBeforeAttaching(): boolean {
   if (!app.isPackaged || existingServerDialogPreloadPath === null) {
+    return false;
+  }
+  if (process.env.BB_DESKTOP_ATTACH_WITHOUT_PROMPT === "1") {
     return false;
   }
   return (process.env.BB_DESKTOP_APP_URL ?? "").trim().length === 0;
