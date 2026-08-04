@@ -279,8 +279,6 @@ export class RuntimeManager {
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
   private providerMaintenanceRuntimeGeneration = 0;
-  private providerMaintenanceRuntimeLeaseCount = 0;
-  private readonly retiredProviderMaintenanceRuntimes = new Set<AgentRuntime>();
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
@@ -612,6 +610,11 @@ export class RuntimeManager {
     this.managedShellEnv = { ...shellEnv };
   }
 
+  /**
+   * Tears down the resident provider-maintenance runtime so the next caller
+   * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
+   * down" and are expected to retry; callers refetch after invalidation.
+   */
   async invalidateProviderMaintenanceRuntime(): Promise<void> {
     try {
       await this.shutdownProviderMaintenanceRuntime();
@@ -621,75 +624,6 @@ export class RuntimeManager {
         "Failed to shut down provider maintenance runtime during invalidation",
       );
     }
-  }
-
-  async withProviderMaintenanceRuntime<TResult>(
-    args: { dataDir: string },
-    work: (runtime: AgentRuntime) => Promise<TResult>,
-  ): Promise<TResult> {
-    const release = this.retainProviderMaintenanceRuntime();
-    try {
-      const runtime = await this.ensureProviderMaintenanceRuntime(args);
-      return await work(runtime);
-    } finally {
-      release();
-    }
-  }
-
-  private retainProviderMaintenanceRuntime(): () => void {
-    this.providerMaintenanceRuntimeLeaseCount += 1;
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      this.providerMaintenanceRuntimeLeaseCount -= 1;
-      if (this.providerMaintenanceRuntimeLeaseCount === 0) {
-        void this.shutdownRetiredProviderMaintenanceRuntimes().catch(
-          (error: unknown) => {
-            this.options.logger?.warn(
-              { err: error },
-              "Failed to shut down retired provider maintenance runtime",
-            );
-          },
-        );
-      }
-    };
-  }
-
-  private async shutdownRetiredProviderMaintenanceRuntimes(): Promise<void> {
-    if (
-      this.providerMaintenanceRuntimeLeaseCount > 0 ||
-      this.retiredProviderMaintenanceRuntimes.size === 0
-    ) {
-      return;
-    }
-
-    const runtimes = [...this.retiredProviderMaintenanceRuntimes];
-    this.retiredProviderMaintenanceRuntimes.clear();
-    await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
-  }
-
-  private async retireProviderMaintenanceRuntimes(
-    runtimes: readonly (AgentRuntime | null)[],
-  ): Promise<void> {
-    const uniqueRuntimes = [
-      ...new Set(
-        runtimes.filter((runtime): runtime is AgentRuntime => runtime !== null),
-      ),
-    ];
-    if (uniqueRuntimes.length === 0) {
-      return;
-    }
-    if (this.providerMaintenanceRuntimeLeaseCount > 0) {
-      for (const runtime of uniqueRuntimes) {
-        this.retiredProviderMaintenanceRuntimes.add(runtime);
-      }
-      return;
-    }
-
-    await Promise.all(uniqueRuntimes.map((runtime) => runtime.shutdown()));
   }
 
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
@@ -711,10 +645,10 @@ export class RuntimeManager {
       this.providerMaintenanceRuntime = null;
     }
 
-    await this.retireProviderMaintenanceRuntimes([
-      existingRuntime,
-      resolvedPendingRuntime,
-    ]);
+    const runtimes = [...new Set([existingRuntime, resolvedPendingRuntime])];
+    await Promise.all(
+      runtimes.map((runtime) => runtime?.shutdown() ?? Promise.resolve()),
+    );
   }
 
   private async evictIdleRuntimeEntries(): Promise<void> {

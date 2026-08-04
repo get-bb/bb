@@ -328,17 +328,15 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "thread.unarchive": async (command, options) => {
-    await options.runtimeManager.withProviderMaintenanceRuntime(
-      {
+    const runtime =
+      await options.runtimeManager.ensureProviderMaintenanceRuntime({
         dataDir: options.dataDir,
-      },
-      (runtime) =>
-        runtime.unarchiveThread({
-          threadId: command.threadId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-        }),
-    );
+      });
+    await runtime.unarchiveThread({
+      threadId: command.threadId,
+      providerId: command.providerId,
+      providerThreadId: command.providerThreadId,
+    });
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,
