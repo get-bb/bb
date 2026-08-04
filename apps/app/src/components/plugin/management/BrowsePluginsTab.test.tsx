@@ -362,7 +362,10 @@ describe("BrowsePluginsTab", () => {
     expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
     expect(installed.className).toContain("border-success/40");
     expect(installed.className).toContain("bg-success/15");
-    expect(installed.className).toContain("text-success-foreground");
+    expect(installed.className).toContain(
+      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).not.toContain("text-success-foreground");
     expect(installed.className).toContain("hover:bg-success/25");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     fireEvent.click(installed);
