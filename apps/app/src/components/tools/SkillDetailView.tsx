@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
@@ -129,6 +129,10 @@ function getSkillDirectoryPath(path: string): string {
   return path.replace(/[\\/]SKILL\.md$/i, "");
 }
 
+const SKILL_PAGE_WHEEL_THRESHOLD_PX = 40;
+const SKILL_PAGE_WHEEL_GESTURE_RESET_MS = 160;
+const WHEEL_LINE_HEIGHT_PX = 16;
+
 function SkillFileList({
   files,
   selectedPath,
@@ -173,6 +177,11 @@ function PagedSkillContent({
     pageHeight: 0,
     pageCount: 1,
   });
+  const pageRef = useRef(page);
+  const pageCountRef = useRef(measurement.pageCount);
+  const wheelDeltaRef = useRef(0);
+  const wheelPageChangedRef = useRef(false);
+  const wheelResetTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (viewport === null || pages === null) return;
@@ -209,6 +218,84 @@ function PagedSkillContent({
   }, [pages, viewport]);
 
   const safePage = Math.min(page, measurement.pageCount - 1);
+  pageRef.current = safePage;
+  pageCountRef.current = measurement.pageCount;
+
+  useEffect(() => {
+    if (viewport === null) return;
+    const viewportElement = viewport;
+
+    const resetWheelGesture = () => {
+      wheelDeltaRef.current = 0;
+      wheelPageChangedRef.current = false;
+      if (wheelResetTimeoutRef.current !== null) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+        wheelResetTimeoutRef.current = null;
+      }
+    };
+
+    const refreshWheelGestureReset = () => {
+      if (wheelResetTimeoutRef.current !== null) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+      }
+      wheelResetTimeoutRef.current = window.setTimeout(
+        resetWheelGesture,
+        SKILL_PAGE_WHEEL_GESTURE_RESET_MS,
+      );
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (
+        event.ctrlKey ||
+        event.deltaY === 0 ||
+        Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+      ) {
+        return;
+      }
+
+      refreshWheelGestureReset();
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const currentPage = pageRef.current;
+      const pageCount = pageCountRef.current;
+      const nextPage = currentPage + direction;
+      if (nextPage < 0 || nextPage >= pageCount) {
+        if (!wheelPageChangedRef.current) {
+          wheelDeltaRef.current = 0;
+        }
+        return;
+      }
+
+      event.preventDefault();
+      if (wheelPageChangedRef.current) return;
+      if (
+        wheelDeltaRef.current !== 0 &&
+        Math.sign(wheelDeltaRef.current) !== direction
+      ) {
+        wheelDeltaRef.current = 0;
+      }
+      const normalizedDelta =
+        event.deltaMode === 1
+          ? event.deltaY * WHEEL_LINE_HEIGHT_PX
+          : event.deltaMode === 2
+            ? event.deltaY * viewportElement.clientHeight
+            : event.deltaY;
+      wheelDeltaRef.current += normalizedDelta;
+      if (Math.abs(wheelDeltaRef.current) < SKILL_PAGE_WHEEL_THRESHOLD_PX) {
+        return;
+      }
+
+      wheelPageChangedRef.current = true;
+      wheelDeltaRef.current = 0;
+      pageRef.current = nextPage;
+      setPage(nextPage);
+    };
+
+    viewportElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      viewportElement.removeEventListener("wheel", handleWheel);
+      resetWheelGesture();
+    };
+  }, [viewport]);
 
   return (
     <div className="space-y-3">

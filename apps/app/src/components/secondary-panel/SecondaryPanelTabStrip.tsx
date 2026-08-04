@@ -27,9 +27,6 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { Icon } from "@bb/shared-ui/icon";
 import {
   OverflowFade,
   type OverflowFadeTone,
@@ -37,39 +34,17 @@ import {
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  MACOS_APP_REGION_NO_DRAG_CLASS,
-  MACOS_WINDOW_NO_DRAG_CLASS,
-} from "@/lib/bb-desktop";
+import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
-// How far a chevron click nudges the strip, in CSS pixels. Roughly one wide
-// file tab so a click reveals the next tab without overshooting.
-const CHEVRON_SCROLL_STEP_PX = 140;
-
-// Slack so sub-pixel scroll offsets don't leave a fade/chevron stuck on at a
-// hard edge.
+// Slack so sub-pixel scroll offsets don't leave a fade stuck on at a hard edge.
 const EDGE_EPSILON_PX = 1;
 
 export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
-
-export function getTabStripChevronEdgeClass(
-  direction: "left" | "right",
-): string {
-  return direction === "left"
-    ? "left-0 justify-start"
-    : "right-0 justify-end";
-}
-
-export function getTabStripChevronVisibilityClass(canScroll: boolean): string {
-  return canScroll
-    ? "pointer-events-auto opacity-100"
-    : "pointer-events-none opacity-0";
-}
 
 interface TabStripOverflowState {
   /** Scrolled away from the left edge (content hidden to the left). */
@@ -103,8 +78,8 @@ interface SortableFileTabProps {
  *
  * Only the file tabs scroll; the leading Info/Diff controls and trailing
  * new-tab/panel controls stay anchored outside this component. Edge
- * fades and scroll chevrons appear only on a side that has more tabs, and the
- * active tab is auto-scrolled into view on mount and whenever it changes
+ * fades appear only on a side that has more tabs, and the active tab is
+ * auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
  */
 export function SecondaryPanelTabStrip({
@@ -114,6 +89,7 @@ export function SecondaryPanelTabStrip({
   activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
@@ -178,9 +154,9 @@ export function SecondaryPanelTabStrip({
     applyEdgeFlags();
   }, [applyEdgeFlags]);
 
-  // Track the viewport's own scrolling and resizing. The ResizeObserver fires
-  // once on observe (seeding the initial capacity + flags) and on every resize
-  // (including the panel's drag-resize, which changes clientWidth).
+  // Track the viewport's own scrolling and both dimensions that determine its
+  // capacity. The content row can change intrinsic width without the viewport
+  // resizing (for example, when an async browser title replaces "Browser").
   useEffect(() => {
     const viewport = viewportRef.current;
     if (viewport === null) {
@@ -200,6 +176,9 @@ export function SecondaryPanelTabStrip({
     viewport.addEventListener("scroll", handleScroll, { passive: true });
     const resizeObserver = new ResizeObserver(measureCapacity);
     resizeObserver.observe(viewport);
+    if (contentRef.current !== null) {
+      resizeObserver.observe(contentRef.current);
+    }
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
       resizeObserver.disconnect();
@@ -284,12 +263,6 @@ export function SecondaryPanelTabStrip({
     };
   }, []);
 
-  const scrollByStep = (direction: -1 | 1) => {
-    viewportRef.current?.scrollBy({
-      left: direction * CHEVRON_SCROLL_STEP_PX,
-      behavior: "smooth",
-    });
-  };
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       setDraggingTabId(String(event.active.id));
@@ -329,12 +302,9 @@ export function SecondaryPanelTabStrip({
   );
 
   const noDragClass = usesDesktopChrome ? MACOS_WINDOW_NO_DRAG_CLASS : null;
-  const chevronNoDragClass = usesDesktopChrome
-    ? MACOS_APP_REGION_NO_DRAG_CLASS
-    : null;
   // Memoize the sortable tab tree so the overflow-flag state — which flips every
   // time you reach a scroll edge, i.e. constantly at narrow widths — re-renders
-  // only the edge fades/chevrons, never the tabs. Without this, each edge
+  // only the edge fades, never the tabs. Without this, each edge
   // crossing reconciles the whole list and re-runs useSortable for every tab,
   // which is what kept narrow-width scrolling stuttery.
   const dndTabs = useMemo(
@@ -391,22 +361,22 @@ export function SecondaryPanelTabStrip({
 
   return (
     // Hugs its tabs (no `flex-1`) and shrinks (`min-w-0`) to scroll them under
-    // the edge fades/chevrons when they overflow. The New Tab button follows this
+    // the edge fades when they overflow. The New Tab button follows this
     // viewport as an anchored sibling, so it stays visible at the trailing edge
     // while overflowing tabs scroll beneath the fades.
     <div
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
     >
-      {/* The single surface-colored fade stays opaque beneath the caret at the
-          outer edge while progressively obscuring only the tab content moving
-          behind it. The caret itself deliberately adds no second gradient: a
-          stacked gradient turns this transition into a mismatched solid tile. */}
+      {/* Keep the overflow cue stationary. Overlay scroll buttons used to
+          animate above partially visible tabs, making the tab text and selected
+          fill look clipped while the strip moved. Native wheel, trackpad, and
+          active-tab scrolling already provide the interaction. */}
       <OverflowFade
         placement="left"
         tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
         className={cn(
-          "z-10 transition-opacity",
+          "z-10",
           overflow.canScrollLeft ? "opacity-100" : "opacity-0",
         )}
       />
@@ -414,7 +384,7 @@ export function SecondaryPanelTabStrip({
         placement="right"
         tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
         className={cn(
-          "z-10 transition-opacity",
+          "z-10",
           overflow.canScrollRight ? "opacity-100" : "opacity-0",
         )}
       />
@@ -425,24 +395,17 @@ export function SecondaryPanelTabStrip({
         // (see the wheel handler), and CSS smooth-scroll would turn each wheel
         // notch into its own ~150ms animation — the strip advances, sits frozen
         // between notches, then jumps. Letting it track 1:1 matches native
-        // horizontal trackpad scrolling. The chevron buttons opt back into smooth
-        // per-call via `scrollBy({ behavior: "smooth" })`.
-        className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden"
+        // horizontal trackpad scrolling.
+        className="no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden"
       >
-        {dndTabs}
+        <div
+          ref={contentRef}
+          data-secondary-panel-tab-content
+          className="flex w-max items-center gap-1"
+        >
+          {dndTabs}
+        </div>
       </div>
-      <TabStripScrollChevron
-        direction="left"
-        canScroll={overflow.canScrollLeft}
-        className={chevronNoDragClass}
-        onClick={() => scrollByStep(-1)}
-      />
-      <TabStripScrollChevron
-        direction="right"
-        canScroll={overflow.canScrollRight}
-        className={chevronNoDragClass}
-        onClick={() => scrollByStep(1)}
-      />
     </div>
   );
 }
@@ -492,68 +455,6 @@ function SortableFileTab({
     >
       <FileTab tab={tab} activeTreatment={activeTreatment} />
     </div>
-  );
-}
-
-interface TabStripScrollChevronProps {
-  direction: "left" | "right";
-  canScroll: boolean;
-  className: string | null;
-  onClick: () => void;
-}
-
-function TabStripScrollChevron({
-  direction,
-  canScroll,
-  className,
-  onClick,
-}: TabStripScrollChevronProps) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      // Decorative scroll control: every tab is already reachable via Tab, so
-      // keep the chevron out of the tab order (tabIndex -1) to avoid duplicate
-      // stops. It stays mounted (so reaching an edge is an opacity toggle, not a
-      // DOM commit); when there's nothing to scroll, aria-hidden +
-      // pointer-events-none + opacity-0 (below) make it inert and invisible.
-      // Deliberately NOT the `disabled` attribute: Button carries
-      // `disabled:opacity-50`, which would beat the `opacity-0` hide and leave
-      // both chevrons painted at half opacity on every strip that doesn't
-      // overflow. aria-hidden already removes it from assistive tech, so
-      // `disabled` would add no a11y here anyway.
-      tabIndex={-1}
-      aria-hidden={!canScroll}
-      onClick={onClick}
-      aria-label={
-        direction === "left" ? "Scroll tabs left" : "Scroll tabs right"
-      }
-      className={cn(
-        // The chevron rides the edge fade instead of occluding the tab beneath
-        // it. Its own background stays transparent because the single
-        // OverflowFade already provides the opaque themed backing at the outer
-        // edge; adding another gradient here would double the opacity and make
-        // the selected tab look like a separate block.
-        // The arrow is edge-aligned (justify-start/end) so it hugs the opaque
-        // edge of the fade and clears the central tabs — rather than nudging the
-        // button itself outward, which a clipping ancestor would cut off.
-        "absolute z-50 shrink-0 text-muted-foreground hover:bg-transparent focus-visible:bg-transparent",
-        getTabStripChevronEdgeClass(direction),
-        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-        // Always mounted (so reaching an edge toggles opacity rather than
-        // committing/removing DOM mid-scroll) and always visible whenever there
-        // is more content in that direction. Keeping discovery independent of
-        // browser hover capability also makes the control reliable for pen and
-        // touch users. `pointer-events` follow visibility so an inert chevron
-        // never intercepts clicks meant for the tab beneath it.
-        "transition-opacity",
-        getTabStripChevronVisibilityClass(canScroll),
-        className,
-      )}
-    >
-      <Icon name={direction === "left" ? "ChevronLeft" : "ChevronRight"} />
-    </Button>
   );
 }
 
