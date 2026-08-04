@@ -1731,10 +1731,13 @@ function LandingPage() {
           use it.
         </p>
         <p>
-          Plugins reach the same API bb builds itself on — panels, commands,
-          tools, agent skills, and background services. Missing features stop
-          being feature requests.
+          Much of bb already works this way. Tasks, GitHub issues and pull
+          requests, Markdown docs, durable agent memory, cron automations,
+          workflows, and remote access all ship as plugins, on the same API
+          yours get: panels, commands, tools, agent skills, and background
+          services.
         </p>
+        <p>Missing features stop being feature requests.</p>
       </Band>
 
       <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
