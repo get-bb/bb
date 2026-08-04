@@ -29,6 +29,7 @@ import {
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationExecutionOptionsResponse,
+  type AutomationPermissionOptionsResponse,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -72,6 +73,10 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<AutomationExecutionOptionsResponse>;
+  permissionOptions(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationPermissionOptionsResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -436,6 +441,33 @@ export function createAutomationService(args: {
         .map(({ id, model, displayName }) => ({ id, model, displayName }));
       const permissionModes = provider.capabilities.supportedPermissionModes;
       return { models, permissionModes };
+    },
+
+    async permissionOptions(input) {
+      const automation = requireProjectAutomation(db, input);
+      const execution = parseAutomationExecution(automation.execution);
+      if (execution.mode !== "agent") {
+        throw new Error(
+          "Permission options are only available for agent automations",
+        );
+      }
+      const environment = execution.environment;
+      const routing =
+        environment.type === "reuse"
+          ? { environmentId: environment.environmentId }
+          : environment.type === "host" && environment.hostId !== undefined
+            ? { hostId: environment.hostId }
+            : {};
+      const providers = await bb.sdk.providers.list(routing);
+      const provider = providers.find(
+        (candidate) => candidate.id === execution.providerId,
+      );
+      if (provider === undefined || provider.available === false) {
+        throw new Error(`Provider ${execution.providerId} is not available.`);
+      }
+      return {
+        permissionModes: provider.capabilities.supportedPermissionModes,
+      };
     },
 
     async create(payload) {

@@ -25,6 +25,7 @@ const rpcMethods = [
   "automations_list",
   "automations_get",
   "automations_execution_options",
+  "automations_permission_options",
   "automations_create",
   "automations_update",
   "automations_delete",
@@ -665,6 +666,14 @@ describe("automations server plugin harness", () => {
     });
     expect(options).toMatchObject({
       models: [{ model: "gpt-5.6-codex", displayName: "5.6 Sol" }],
+      permissionModes: ["accept-edits", "auto", "full"],
+    });
+    await expect(
+      harness.callRpc("automations_permission_options", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+      }),
+    ).resolves.toEqual({
       permissionModes: ["accept-edits", "auto", "full"],
     });
 
