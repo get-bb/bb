@@ -266,11 +266,16 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         : null);
   const panes = layout === null ? [] : listPanes(layout.root);
   const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
+  const maximizedPane =
+    layout !== null && maximizedPaneId !== null
+      ? findPane(layout.root, maximizedPaneId)
+      : null;
   const effectiveMaximizedPaneId =
     layout !== null &&
     countPanes(layout.root) > 1 &&
     maximizedPaneId !== null &&
-    findPane(layout.root, maximizedPaneId) !== null
+    maximizedPane !== null &&
+    maximizedPane.content.kind !== "plugin-panel"
       ? maximizedPaneId
       : null;
   const {
@@ -328,7 +333,8 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (
       layout === null ||
       countPanes(layout.root) < 2 ||
-      findPane(layout.root, maximizedPaneId) === null
+      maximizedPane === null ||
+      maximizedPane.content.kind === "plugin-panel"
     ) {
       setMaximizedPaneId(null);
       return;
@@ -336,7 +342,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (layout.focusedPaneId !== maximizedPaneId) {
       setMaximizedPaneId(layout.focusedPaneId);
     }
-  }, [layout, maximizedPaneId, setMaximizedPaneId]);
+  }, [layout, maximizedPane, maximizedPaneId, setMaximizedPaneId]);
 
   // Content navigation inside a pane pushes history like the page surface does
   // today. replacePaneContent focuses the pane, so the pushed URL matches it.
@@ -397,10 +403,12 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const toggleMaximizePane = useCallback(
     (paneId: string) => {
       const current = store.get(splitLayoutAtom);
+      const pane = current === null ? null : findPane(current.root, paneId);
       if (
         current === null ||
         countPanes(current.root) < 2 ||
-        findPane(current.root, paneId) === null
+        pane === null ||
+        pane.content.kind === "plugin-panel"
       ) {
         return;
       }
@@ -783,11 +791,22 @@ function SplitTree(props: SplitTreeProps) {
           isFocused={isFocused}
           isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
-          reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
+          reservesWindowPanelToggle={
+            node.content.kind !== "plugin-panel" &&
+            (isMaximized || (isTopRow && isRightEdge))
+          }
           onRequestClose={() => props.onClosePane(node.paneId)}
           isMaximized={isMaximized}
-          onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
-          onMoveToSide={(side) => props.onMovePaneToSide(node.paneId, side)}
+          onToggleMaximize={
+            node.content.kind === "plugin-panel"
+              ? null
+              : () => props.onToggleMaximizePane(node.paneId)
+          }
+          onMoveToSide={
+            node.content.kind === "plugin-panel"
+              ? undefined
+              : (side) => props.onMovePaneToSide(node.paneId, side)
+          }
           isBoundedPane
           isTopRow={isMaximized || isTopRow}
           ownsWindowTopLeft={
@@ -1051,7 +1070,7 @@ function NonThreadPaneContent({
           subPath={content.kind === "plugin-panel" ? content.subPath : ""}
         />
       ) : null}
-      <PaneMaximizeButton />
+      {content.kind === "plugin-panel" ? null : <PaneMaximizeButton />}
       {onRequestClose ? (
         <Button
           type="button"
