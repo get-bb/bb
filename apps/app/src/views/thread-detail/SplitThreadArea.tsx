@@ -1161,7 +1161,15 @@ function NonThreadPaneContent({
           actions={actions}
         />
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 md:p-5">
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col p-4 md:p-5",
+          // Keep plugin-owned z-index layers inside the plugin surface. The
+          // split host's focus scrim can then treat the pane atomically instead
+          // of landing between a plugin's main content and internal drawer.
+          isBoundedPane && content.kind === "plugin-panel" && "isolate",
+        )}
+      >
         {content.kind === "new-thread" ? (
           <RootComposeView />
         ) : (

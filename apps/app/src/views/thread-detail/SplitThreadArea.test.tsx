@@ -1359,7 +1359,11 @@ describe("SplitThreadArea", () => {
     });
 
     expect(await screen.findByText("Automations content")).toBeTruthy();
-    expect(screen.getByText("Docs content with notes sidebar")).toBeTruthy();
+    const docsPanelContent = screen.getByText(
+      "Docs content with notes sidebar",
+    );
+    expect(docsPanelContent).toBeTruthy();
+    expect(docsPanelContent.closest(".isolate")).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
@@ -1371,7 +1375,11 @@ describe("SplitThreadArea", () => {
     await waitFor(() =>
       expect(screen.queryByText("Automations content")).toBeNull(),
     );
-    expect(screen.getByText("Docs content with notes sidebar")).toBeTruthy();
+    expect(
+      screen
+        .getByText("Docs content with notes sidebar")
+        .closest(".isolate"),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
