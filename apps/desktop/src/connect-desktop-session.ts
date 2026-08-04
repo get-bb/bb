@@ -54,7 +54,8 @@ export type ConnectDesktopSessionFailureCode =
   | "unauthorized";
 
 export type ConnectDesktopSessionResult =
-  | { ok: true }
+  /** `expiresAt` is the cookie's epoch-ms expiry, so callers can renew it. */
+  | { expiresAt: number; ok: true }
   | {
       code: ConnectDesktopSessionFailureCode;
       detail: string;
@@ -198,5 +199,5 @@ export async function installConnectDesktopSession(args: {
       "Electron did not retain the desktop session cookie",
     );
   }
-  return { ok: true };
+  return { expiresAt: cookie.expiresAt, ok: true };
 }

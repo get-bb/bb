@@ -21,9 +21,13 @@ const machineCodeRpcSchema = z
   })
   .strict();
 
-const rpcFailureSchema = z
-  .object({ ok: z.literal(false), error: z.string().optional() })
-  .passthrough();
+// The plugin route wraps a throwing handler as
+// `{ ok: false, error: { code: "handler_error", message: <thrown message> } }`,
+// and the connect plugin throws its stable code as that message.
+const rpcFailureSchema = z.object({
+  ok: z.literal(false),
+  error: z.object({ code: z.string(), message: z.string() }),
+});
 
 export type EnrollDesktopMachineFailureCode =
   | "machine_limit"
@@ -96,7 +100,7 @@ export async function enrollDesktopMachine(
   const minted = machineCodeRpcSchema.safeParse(body);
   if (!minted.success) {
     const rejected = rpcFailureSchema.safeParse(body);
-    const wireError = rejected.success ? (rejected.data.error ?? "") : "";
+    const wireError = rejected.success ? rejected.data.error.message : "";
     if (wireError === "not_paired") {
       return failure("not_paired", "this bb is not paired with bb Connect");
     }

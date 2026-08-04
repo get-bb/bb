@@ -78,14 +78,16 @@ describe("listAccountServers", () => {
 });
 
 describe("redeemMachineCredential", () => {
-  it("returns a credential for the server the code targeted", async () => {
+  it("labels the credential with the target server, not the account handle", async () => {
     const fetchImpl = vi.fn(
       async () =>
         new Response(
           JSON.stringify({
             credential: "bbcm_desktop",
             machineId: "machine-1",
-            handle: "laptop",
+            // The account's primary handle, which is not the server the code
+            // targeted. serverUrl names that server.
+            handle: "sawyer",
             serverUrl: "https://laptop.getbb.app",
           }),
         ),
@@ -134,11 +136,50 @@ describe("redeemMachineCredential", () => {
             JSON.stringify({
               credential: "bbcm_desktop",
               machineId: "machine-1",
-              handle: null,
               serverUrl: null,
             }),
           ),
       ),
     ).rejects.toBeInstanceOf(ConnectMachineRedeemError);
+  });
+
+  it("rejects a server URL the asked-for apex does not own", async () => {
+    const outsiders = [
+      "https://laptop.evil.app",
+      "https://laptop.getbb.app.evil.app",
+      "http://laptop.getbb.app",
+      "https://getbb.app",
+    ];
+    for (const serverUrl of outsiders) {
+      await expect(
+        redeemMachineCredential(
+          { apexUrl: "https://getbb.app", code: "ABCD-1234" },
+          async () =>
+            new Response(
+              JSON.stringify({
+                credential: "bbcm_desktop",
+                machineId: "machine-1",
+                serverUrl,
+              }),
+            ),
+        ),
+      ).rejects.toMatchObject({ code: "invalid_response" });
+    }
+  });
+
+  it("accepts a self-hosted apex", async () => {
+    await expect(
+      redeemMachineCredential(
+        { apexUrl: "https://bb.example", code: "ABCD-1234" },
+        async () =>
+          new Response(
+            JSON.stringify({
+              credential: "bbcm_desktop",
+              machineId: "machine-1",
+              serverUrl: "https://laptop.bb.example",
+            }),
+          ),
+      ),
+    ).resolves.toMatchObject({ handle: "laptop" });
   });
 });

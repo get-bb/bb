@@ -83,6 +83,9 @@ describe("createConnectCredentialCache", () => {
     });
     await cache.write(CREDENTIAL);
 
+    // The caller checks this before enrolling, so a keychain-less machine
+    // never burns an account machine slot on every launch.
+    expect(cache.canPersist()).toBe(false);
     expect(encryptString).not.toHaveBeenCalled();
     expect(fs.file).toBeNull();
     await expect(cache.read()).resolves.toBeNull();

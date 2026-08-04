@@ -52,7 +52,7 @@ describe("enrollDesktopMachine", () => {
     );
   });
 
-  it("falls back to the server URL for a code with no handle", async () => {
+  it("takes the label from the server URL, not the account handle", async () => {
     const fetchImpl = async (input: string | URL | Request) =>
       String(input).endsWith("/rpc/createMachineCode")
         ? machineCodeResponse()
@@ -60,7 +60,7 @@ describe("enrollDesktopMachine", () => {
             JSON.stringify({
               credential: "bbcm_desktop",
               machineId: "machine-1",
-              handle: null,
+              handle: "sawyer",
               serverUrl: "https://laptop.getbb.app",
             }),
           );
@@ -76,9 +76,13 @@ describe("enrollDesktopMachine", () => {
   it("reports an unpaired bb without calling the gate", async () => {
     const fetchImpl = vi.fn(
       async () =>
-        new Response(JSON.stringify({ ok: false, error: "not_paired" }), {
-          status: 500,
-        }),
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: { code: "handler_error", message: "not_paired" },
+          }),
+          { status: 500 },
+        ),
     );
 
     await expect(

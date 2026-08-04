@@ -55,7 +55,7 @@ describe("installConnectDesktopSession", () => {
         mintCookie: successfulSource(),
         remoteServerUrl: "https://laptop.getbb.app",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ expiresAt: 1_800_000, ok: true });
     expect(set).toHaveBeenCalledWith({
       domain: ".getbb.app",
       expirationDate: 1800,

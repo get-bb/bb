@@ -27,6 +27,12 @@ export interface CreateConnectCredentialCacheArgs {
 }
 
 export interface ConnectCredentialCache {
+  /**
+   * Whether a written credential survives a restart. False means the OS gave
+   * Electron no encryption backend, so callers must not enroll: the credential
+   * would live in memory only, and every launch would enroll another machine.
+   */
+  canPersist(): boolean;
   clear(): Promise<void>;
   read(): Promise<ConnectCredential | null>;
   write(credential: ConnectCredential): Promise<void>;
@@ -58,6 +64,9 @@ export function createConnectCredentialCache(
   }
 
   return {
+    canPersist() {
+      return args.encryption.isEncryptionAvailable();
+    },
     clear,
     async read() {
       if (!args.encryption.isEncryptionAvailable()) {

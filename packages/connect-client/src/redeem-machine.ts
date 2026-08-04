@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { ConnectCredential } from "./credential.js";
 
+// `handle` also rides on this response, but it names the account's primary
+// handle, not the server the code targeted. Only `serverUrl` names that server,
+// so the routing label comes from there.
 const redeemMachineResponseSchema = z.object({
   credential: z.string().min(1),
   machineId: z.string().min(1),
-  handle: z.string().nullable(),
   serverUrl: z.string().nullable(),
 });
 
@@ -39,10 +41,28 @@ function codeForStatus(
   return "invalid_code";
 }
 
-/** `https://<label>.getbb.app` → `<label>`. */
-function handleFromServerUrl(serverUrl: string): string | null {
-  const [label] = new URL(serverUrl).hostname.split(".");
-  return label === undefined || label.length === 0 ? null : label;
+/**
+ * `https://<label>.getbb.app` → `<label>`, but only for a URL the apex we
+ * asked actually owns. The gate names the server it enrolled us on; a host
+ * outside that apex would point later gate calls at a stranger.
+ */
+function handleForApex(serverUrl: string, apexUrl: string): string | null {
+  let parsed: URL;
+  let apex: URL;
+  try {
+    parsed = new URL(serverUrl);
+    apex = new URL(apexUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== apex.protocol || parsed.port !== apex.port) {
+    return null;
+  }
+  const [label, ...rest] = parsed.hostname.split(".");
+  if (label === undefined || label.length === 0) {
+    return null;
+  }
+  return rest.join(".") === apex.hostname ? label : null;
 }
 
 /**
@@ -98,7 +118,7 @@ export async function redeemMachineCredential(
       "Machine redeem response failed schema validation",
     );
   }
-  const { credential, handle, serverUrl } = parsed.data;
+  const { credential, serverUrl } = parsed.data;
   // The gate echoes the server the code targeted. Without it there is nothing
   // to point a session at, so treat the row as unusable.
   if (serverUrl === null) {
@@ -107,12 +127,12 @@ export async function redeemMachineCredential(
       "Machine redeem returned no server URL",
     );
   }
-  const resolvedHandle = handle ?? handleFromServerUrl(serverUrl);
-  if (resolvedHandle === null) {
+  const handle = handleForApex(serverUrl, args.apexUrl);
+  if (handle === null) {
     throw new ConnectMachineRedeemError(
       "invalid_response",
-      "Machine redeem returned no routing handle",
+      `Machine redeem returned a server URL outside ${args.apexUrl}`,
     );
   }
-  return { credential, handle: resolvedHandle, serverUrl };
+  return { credential, handle, serverUrl };
 }
