@@ -237,4 +237,31 @@ describe("createConnectSessionRenewal", () => {
       expect.any(Function),
     );
   });
+
+  it("retires an in-flight renewal when a new session starts", async () => {
+    const gate = createGate();
+    const harness = createHarness(async (_serverUrl, isCurrent) => {
+      await gate.promise;
+      expect(isCurrent()).toBe(false);
+      return { expiresAt: 1_000_000 + 2 * HOUR_MS, ok: true };
+    });
+
+    harness.renewal.start({
+      expiresAt: 1_000_000 + HOUR_MS,
+      remoteServerUrl: "https://laptop.getbb.app",
+    });
+    const renewing = harness.renewal.renewNow();
+
+    // The switch to another Connect server lands while the old renewal is
+    // still open, which is what applyServerTarget does before it authenticates.
+    harness.renewal.start({
+      expiresAt: 1_000_000 + 3 * HOUR_MS,
+      remoteServerUrl: "https://phone.getbb.app",
+    });
+    gate.release();
+    await renewing;
+
+    // Only the new session's timer survives; the old renewal added nothing.
+    expect(harness.pendingDelays).toEqual([3 * HOUR_MS - LEAD_MS]);
+  });
 });

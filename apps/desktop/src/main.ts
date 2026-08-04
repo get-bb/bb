@@ -1119,6 +1119,10 @@ async function applyServerTarget(): Promise<void> {
     return;
   }
   const target = serverTargetStore.getTarget();
+  // Retire the outgoing session before any await below. A renewal already in
+  // flight would otherwise still read itself as current while this switch
+  // runs, and its local-server fallback would undo the switch.
+  connectSessionRenewal?.stop();
   if (target.kind === "builtin") {
     const attached = await ensureBuiltinRuntimeAttached();
     if (!attached) {
@@ -1131,7 +1135,6 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
-    connectSessionRenewal?.stop();
     const localServerUrl = currentRuntime?.serverUrl ?? builtinServerUrl;
     // Switching back from a remote target leaves that target's config poll
     // running, so re-pin the sync to the local server here.
@@ -1170,7 +1173,6 @@ async function applyServerTarget(): Promise<void> {
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
-    connectSessionRenewal?.stop();
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
     startRemoteSystemConfigSync(target.url);
