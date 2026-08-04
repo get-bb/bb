@@ -184,6 +184,9 @@ function BrowseCard({
   );
   const description =
     entry.description.length > 0 ? entry.description : undefined;
+  const descriptionArea = (
+    <span className="block min-h-[2lh]">{description}</span>
+  );
   const byline =
     !entry.compatible && entry.incompatibleReason !== null ? (
       <span className="text-warning-text">{entry.incompatibleReason}</span>
@@ -219,7 +222,7 @@ function BrowseCard({
         className="min-h-20 gap-x-2 gap-y-1.5 p-2.5"
         leading={leading}
         title={entry.displayName}
-        description={description}
+        description={descriptionArea}
         byline={byline}
         headerAction={headerAction}
         openLabel={`Open ${entry.displayName} details`}

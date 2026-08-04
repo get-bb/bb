@@ -239,6 +239,15 @@ describe("BrowsePluginsTab", () => {
       .closest(".group");
     expect(githubCard?.className).toContain("min-h-20");
     expect(githubCard?.className).toContain("p-2.5");
+    const memoryDescriptions = screen.getAllByText(MEMORY_ENTRY.description);
+    const githubDescription = screen.getByText(GITHUB_ENTRY.description);
+    for (const memoryDescription of memoryDescriptions) {
+      expect(memoryDescription.className).toContain("min-h-[2lh]");
+      expect(memoryDescription.parentElement?.className).toContain(
+        "line-clamp-2",
+      );
+    }
+    expect(githubDescription.className).toContain("min-h-[2lh]");
     expect(
       screen.getByRole("radio", { name: "Context & knowledge" }),
     ).toBeTruthy();

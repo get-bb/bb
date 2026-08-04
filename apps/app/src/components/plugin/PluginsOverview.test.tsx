@@ -270,6 +270,9 @@ describe("PluginsOverview", () => {
     });
     expect(filters.className).toContain("py-2");
     expect(filters.className).toContain("gap-2");
+    expect(all.className).toContain("cursor-pointer");
+    expect(all.className).toContain("hover:border-foreground/20");
+    expect(all.className).toContain("hover:shadow-xs");
     expect(all.className).toContain("data-[state=on]:bg-secondary/70");
     expect(all.className).not.toContain("data-[state=on]:bg-state-active");
     expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
