@@ -1731,11 +1731,11 @@ function LandingPage() {
           use it.
         </p>
         <p>
-          Much of bb already works this way. A Markdown doc editor, GitHub
-          integration, cross-provider agent memory, cron jobs, cross-provider
-          agent workflows, and even remote access all ship as plugins, on the
-          same API yours get: panels, commands, tools, agent skills, and
-          background services.
+          Most of bb is built this way already. The doc editor is a plugin. So
+          is GitHub. So is the memory your agents keep, the jobs that run on a
+          timer, the workflows they follow, and even the way you reach bb from
+          far away. They all snap together from one set of parts, like Lego
+          bricks. Your plugins get the very same bricks.
         </p>
         <p>Missing features stop being feature requests.</p>
       </Band>
