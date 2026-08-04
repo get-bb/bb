@@ -114,6 +114,7 @@ export function SecondaryPanelTabStrip({
   activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
@@ -178,9 +179,9 @@ export function SecondaryPanelTabStrip({
     applyEdgeFlags();
   }, [applyEdgeFlags]);
 
-  // Track the viewport's own scrolling and resizing. The ResizeObserver fires
-  // once on observe (seeding the initial capacity + flags) and on every resize
-  // (including the panel's drag-resize, which changes clientWidth).
+  // Track the viewport's own scrolling and both dimensions that determine its
+  // capacity. The content row can change intrinsic width without the viewport
+  // resizing (for example, when an async browser title replaces "Browser").
   useEffect(() => {
     const viewport = viewportRef.current;
     if (viewport === null) {
@@ -200,6 +201,9 @@ export function SecondaryPanelTabStrip({
     viewport.addEventListener("scroll", handleScroll, { passive: true });
     const resizeObserver = new ResizeObserver(measureCapacity);
     resizeObserver.observe(viewport);
+    if (contentRef.current !== null) {
+      resizeObserver.observe(contentRef.current);
+    }
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
       resizeObserver.disconnect();
@@ -427,9 +431,15 @@ export function SecondaryPanelTabStrip({
         // between notches, then jumps. Letting it track 1:1 matches native
         // horizontal trackpad scrolling. The chevron buttons opt back into smooth
         // per-call via `scrollBy({ behavior: "smooth" })`.
-        className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden"
+        className="no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden"
       >
-        {dndTabs}
+        <div
+          ref={contentRef}
+          data-secondary-panel-tab-content
+          className="flex w-max items-center gap-1"
+        >
+          {dndTabs}
+        </div>
       </div>
       <TabStripScrollChevron
         direction="left"
