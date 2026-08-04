@@ -269,6 +269,7 @@ describe("BrowsePluginsTab", () => {
 
     const install = screen.getByRole("button", { name: "Install Memory" });
     expect(install.className).toContain("w-7");
+    expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(install);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Install Memory",
@@ -357,8 +358,18 @@ describe("BrowsePluginsTab", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Uninstall Memory",
     );
-    expect(document.querySelector('[data-icon="Check"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
+    expect(installed.className).toContain("border-success/40");
+    expect(installed.className).toContain("bg-success/15");
+    expect(installed.className).toContain("text-success-foreground");
+    expect(installed.className).toContain("hover:bg-success/25");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    fireEvent.click(installed);
+    expect(
+      screen.getByRole("heading", { name: "Uninstall Memory?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open Memory details" }),

@@ -6,7 +6,6 @@ import {
   ResourceBrowseGrid,
   ResourceCollectionViewport,
   ResourceInstallControl,
-  ResourceInstalledControl,
   ResourceListState,
   ResourceSortMenu,
   ResourceToolbar,
@@ -193,11 +192,12 @@ function BrowseCard({
     ) : undefined;
   const headerAction =
     installedPluginId !== null ? (
-      <ResourceInstalledControl
+      <ResourceInstallControl
         accessibleLabel={`Uninstall ${entry.displayName}`}
         pending={uninstall.isPending}
         presentation="icon"
         tooltip={`Uninstall ${entry.displayName}`}
+        className="border-success/40 bg-success/15 text-success-foreground hover:border-success/55 hover:bg-success/25 hover:text-success-foreground focus-visible:border-success/55 focus-visible:bg-success/25 focus-visible:text-success-foreground"
         onAction={() => setConfirmingUninstall(true)}
       />
     ) : (
