@@ -26,6 +26,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
+import { PluginCategoryFilterPills } from "./PluginCategoryFilterPills";
 import { PlaceholderBadge } from "./plugin-ui";
 
 /** Browse BB's official plugins, bundled with the app. */
@@ -37,15 +38,21 @@ export function BrowsePluginsTab({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const entries = searchQuery.data ?? [];
-  const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
+  const categories: string[] = [];
   for (const entry of entries) {
-    const bucket = byCategory.get(entry.category);
-    if (bucket === undefined) byCategory.set(entry.category, [entry]);
-    else bucket.push(entry);
+    if (!categories.includes(entry.category)) categories.push(entry.category);
   }
+  if (category !== null && !categories.includes(category)) {
+    categories.push(category);
+  }
+  const visibleEntries =
+    category === null
+      ? entries
+      : entries.filter((entry) => entry.category === category);
 
   return (
     <ResourceCollectionViewport
@@ -84,25 +91,30 @@ export function BrowsePluginsTab({
           }
         />
       ) : (
-        <div className="space-y-5">
-          {[...byCategory.entries()].map(([category, categoryEntries]) => (
-            <section key={category} aria-label={category}>
-              <h2 className="mb-2 text-sm font-semibold text-foreground">
-                {category}
-              </h2>
-              <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
-                {categoryEntries.map((entry) => (
-                  <BrowseCard
-                    key={entry.entryId}
-                    entry={entry}
-                    installedPluginId={entry.installed ? entry.pluginId : null}
-                    onInstall={onInstall}
-                    onOpenPlugin={onOpenPlugin}
-                  />
-                ))}
-              </ResourceBrowseGrid>
-            </section>
-          ))}
+        <div className="space-y-3">
+          <PluginCategoryFilterPills
+            categories={categories}
+            value={category}
+            onValueChange={setCategory}
+          />
+          {visibleEntries.length === 0 ? (
+            <ResourceListState
+              state="empty"
+              message="No plugins match this category."
+            />
+          ) : (
+            <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
+              {visibleEntries.map((entry) => (
+                <BrowseCard
+                  key={entry.entryId}
+                  entry={entry}
+                  installedPluginId={entry.installed ? entry.pluginId : null}
+                  onInstall={onInstall}
+                  onOpenPlugin={onOpenPlugin}
+                />
+              ))}
+            </ResourceBrowseGrid>
+          )}
         </div>
       )}
     </ResourceCollectionViewport>

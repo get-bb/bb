@@ -84,6 +84,30 @@ const GITHUB_CATALOG_ENTRY = {
   incompatibleReason: null,
 };
 
+const AUTOMATIONS_CATALOG_ENTRY = {
+  ...GITHUB_CATALOG_ENTRY,
+  entryId: "automations",
+  pluginId: "automations",
+  displayName: "Automations",
+  description: AUTOMATIONS_PLUGIN.description,
+  icon: AUTOMATIONS_PLUGIN.icon,
+  category: "Workflow management",
+  source: AUTOMATIONS_PLUGIN.source,
+  installed: true,
+};
+
+const DOCS_CATALOG_ENTRY = {
+  ...GITHUB_CATALOG_ENTRY,
+  entryId: "docs",
+  pluginId: "simple-notes",
+  displayName: "Docs",
+  description: "Create and edit Markdown documents.",
+  icon: "NotebookText",
+  category: "Context & knowledge",
+  source: "builtin:docs",
+  installed: true,
+};
+
 function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
   vi.stubGlobal(
     "fetch",
@@ -111,7 +135,13 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
         });
       }
       if (url.pathname === "/api/v1/plugin-catalog/search") {
-        return responseJson({ results: [GITHUB_CATALOG_ENTRY] });
+        return responseJson({
+          results: [
+            AUTOMATIONS_CATALOG_ENTRY,
+            DOCS_CATALOG_ENTRY,
+            GITHUB_CATALOG_ENTRY,
+          ],
+        });
       }
       if (url.pathname === "/api/v1/plugin-catalog/install") {
         return responseJson({
@@ -172,10 +202,50 @@ describe("PluginsOverview", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Developer tools" }),
+      screen.getByRole("radio", { name: "Developer tools" }),
     ).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+  });
+
+  it("filters installed plugins with the catalog categories", async () => {
+    installFetch([
+      AUTOMATIONS_PLUGIN,
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "simple-notes",
+        source: "builtin:docs",
+        name: "Docs",
+        description: DOCS_CATALOG_ENTRY.description,
+        icon: DOCS_CATALOG_ENTRY.icon,
+        provenance: "catalog",
+        catalogEntryId: "docs",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(screen.getByText("Docs")).toBeTruthy();
+    expect(
+      screen.getByRole("radio", { name: "Developer tools" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Context & knowledge" }),
+    );
+
+    expect(screen.getByText("Docs")).toBeTruthy();
+    expect(screen.queryByText("Automations")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Show all plugin categories" }),
+    );
+    expect(screen.getByText("Automations")).toBeTruthy();
   });
 
   it("opens installed resources on the canonical Tools detail route", async () => {

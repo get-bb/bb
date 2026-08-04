@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  it("renders every returned catalog entry exactly once in direct categories", async () => {
+  it("renders every catalog entry once and filters the grid with category pills", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
       (_, index) => ({
@@ -124,6 +124,25 @@ describe("BrowsePluginsTab", () => {
     });
 
     expect(await screen.findByText("Official 1")).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
+    ).toHaveLength(CATALOG_STATUS.pluginCount);
+    expect(
+      screen.getByRole("radiogroup", { name: "Filter plugins by category" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Context & knowledge" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Developer tools" }),
+    );
+    expect(
+      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
+    ).toHaveLength(6);
+    expect(screen.queryByText("Official 1")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Show all plugin categories" }),
+    );
     expect(
       screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
     ).toHaveLength(CATALOG_STATUS.pluginCount);
@@ -174,11 +193,12 @@ describe("BrowsePluginsTab", () => {
       .closest('[class*="auto-fill"]');
     expect(githubGrid?.className).toContain("auto-fill");
     expect(
-      screen.getByRole("heading", { name: "Context & knowledge" }),
+      screen.getByRole("radio", { name: "Context & knowledge" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Developer tools" }),
+      screen.getByRole("radio", { name: "Developer tools" }),
     ).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Install Memory" }),
     ).toBeTruthy();
