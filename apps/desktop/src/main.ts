@@ -93,6 +93,10 @@ import {
 } from "./connect-credential-cache.js";
 import { enrollDesktopMachine } from "./connect-machine-enrollment.js";
 import {
+  createConnectSessionRenewal,
+  type ConnectSessionRenewal,
+} from "./connect-session-renewal.js";
+import {
   createDesktopShutdownState,
   registerDesktopShutdownSignalHandlers,
 } from "./desktop-shutdown.js";
@@ -177,8 +181,6 @@ const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
 const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
 const REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000;
-const CONNECT_SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
-const CONNECT_SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
 
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
@@ -308,10 +310,7 @@ let connectServerSync: ConnectServerSync | null = null;
 let connectCredentialCache: ConnectCredentialCache | null = null;
 let cachedConnectCredential: ConnectCredential | null = null;
 let enrollingDesktopMachine: Promise<void> | null = null;
-let connectSessionRenewalTimer: NodeJS.Timeout | null = null;
-let connectSessionExpiresAt: number | null = null;
-let connectSessionServerUrl: string | null = null;
-let renewingConnectSession: Promise<void> | null = null;
+let connectSessionRenewal: ConnectSessionRenewal | null = null;
 let connectAccountServers: ConnectAccountServer[] = [];
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
@@ -997,81 +996,6 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
 }
 
 /**
- * Keep the Connect session cookie alive.
- *
- * The gate issues a one-hour cookie, and the app can sit on one remote target
- * far longer than that. So the app re-mints ahead of expiry, and also whenever
- * it becomes active — a sleeping Mac holds timers, and waking up must not land
- * on a dead session.
- */
-function scheduleConnectSessionRenewal(args: {
-  expiresAt: number;
-  remoteServerUrl: string;
-}): void {
-  stopConnectSessionRenewal();
-  connectSessionExpiresAt = args.expiresAt;
-  connectSessionServerUrl = args.remoteServerUrl;
-  const delayMs = Math.max(
-    CONNECT_SESSION_MIN_RENEWAL_DELAY_MS,
-    args.expiresAt - Date.now() - CONNECT_SESSION_RENEWAL_LEAD_MS,
-  );
-  connectSessionRenewalTimer = setTimeout(() => {
-    connectSessionRenewalTimer = null;
-    void renewConnectSession();
-  }, delayMs);
-  connectSessionRenewalTimer.unref();
-}
-
-function stopConnectSessionRenewal(): void {
-  if (connectSessionRenewalTimer !== null) {
-    clearTimeout(connectSessionRenewalTimer);
-    connectSessionRenewalTimer = null;
-  }
-  connectSessionExpiresAt = null;
-  connectSessionServerUrl = null;
-}
-
-async function renewConnectSession(): Promise<void> {
-  const remoteServerUrl = connectSessionServerUrl;
-  if (remoteServerUrl === null || renewingConnectSession !== null) {
-    return;
-  }
-  renewingConnectSession = (async () => {
-    const result = await authenticateConnectTarget(remoteServerUrl);
-    if (result.ok) {
-      scheduleConnectSessionRenewal({
-        expiresAt: result.expiresAt,
-        remoteServerUrl,
-      });
-      return;
-    }
-    createDesktopLogger().warn(
-      `[desktop] could not renew the bb Connect session (${result.code}): ${result.detail}`,
-    );
-    // Retry on the same cadence rather than giving up: the window still shows
-    // the remote server, and the next attempt may find the gate reachable.
-    scheduleConnectSessionRenewal({
-      expiresAt: Date.now() + CONNECT_SESSION_RENEWAL_LEAD_MS,
-      remoteServerUrl,
-    });
-  })().finally(() => {
-    renewingConnectSession = null;
-  });
-  await renewingConnectSession;
-}
-
-/** Renew now when the session is spent or nearly spent. */
-function renewConnectSessionIfDue(): void {
-  if (
-    connectSessionExpiresAt === null ||
-    connectSessionExpiresAt - Date.now() > CONNECT_SESSION_RENEWAL_LEAD_MS
-  ) {
-    return;
-  }
-  void renewConnectSession();
-}
-
-/**
  * Mint and install the Connect session cookie for a remote server.
  *
  * The app's own machine credential is the fast path: it needs no local bb
@@ -1081,6 +1005,7 @@ function renewConnectSessionIfDue(): void {
  */
 async function authenticateConnectTarget(
   remoteServerUrl: string,
+  isCurrent: () => boolean = () => true,
 ): Promise<ConnectDesktopSessionResult> {
   const cookieStore = session.defaultSession.cookies;
   let cachedFailure: ConnectDesktopSessionResult | null = null;
@@ -1108,6 +1033,17 @@ async function authenticateConnectTarget(
     cachedFailure = cachedResult;
   }
 
+  if (!isCurrent()) {
+    // The app left this server while the gate call ran. Starting the local
+    // server now would undo the switch the user just made.
+    return (
+      cachedFailure ?? {
+        code: "network",
+        detail: "the app no longer targets this server",
+        ok: false,
+      }
+    );
+  }
   const localRuntimeReady = await ensureBuiltinRuntimeAttached();
   if (!localRuntimeReady || currentRuntime === null) {
     return (
@@ -1195,7 +1131,7 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
-    stopConnectSessionRenewal();
+    connectSessionRenewal?.stop();
     const localServerUrl = currentRuntime?.serverUrl ?? builtinServerUrl;
     // Switching back from a remote target leaves that target's config poll
     // running, so re-pin the sync to the local server here.
@@ -1225,7 +1161,7 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
-    scheduleConnectSessionRenewal({
+    connectSessionRenewal?.start({
       expiresAt: result.expiresAt,
       remoteServerUrl: target.server.url,
     });
@@ -1234,7 +1170,7 @@ async function applyServerTarget(): Promise<void> {
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
-    stopConnectSessionRenewal();
+    connectSessionRenewal?.stop();
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
     startRemoteSystemConfigSync(target.url);
@@ -1548,7 +1484,7 @@ function handleBeforeQuit(event: Event): void {
 
 async function finishQuit(): Promise<void> {
   stopSystemConfigSync();
-  stopConnectSessionRenewal();
+  connectSessionRenewal?.stop();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -2006,7 +1942,7 @@ async function runDesktopApp(): Promise<void> {
     void desktopAutoUpdateService?.checkAfterActive();
     // A remote target has no realtime socket for config changes.
     refreshRemoteSystemConfig?.();
-    renewConnectSessionIfDue();
+    connectSessionRenewal?.renewIfDue();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     if (desktopBrowserViewManager === null) {
@@ -2131,6 +2067,20 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   connectServerSync.start();
+  connectSessionRenewal = createConnectSessionRenewal({
+    async authenticate(remoteServerUrl, isCurrent) {
+      const result = await authenticateConnectTarget(
+        remoteServerUrl,
+        isCurrent,
+      );
+      return result.ok
+        ? result
+        : { detail: `${result.code}: ${result.detail}`, ok: false };
+    },
+    log: (message) => {
+      logger.warn(`[desktop] ${message}`);
+    },
+  });
 
   desktopUpdateService = createDesktopUpdateService({
     currentVersion: desktopVersion,
