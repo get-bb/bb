@@ -75,6 +75,27 @@ function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
   );
 }
 
+function RootComposeFixture() {
+  const pane = useContext(PaneContext);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const panelModel = useMemo(
+    () => ({
+      composerHost: null,
+      contentKey: "new-thread",
+      isMainCollapsed: false,
+      isOpen: isPanelOpen,
+      panel: <div data-testid="hosted-new-thread-panel" />,
+      onToggle: () => setIsPanelOpen((open) => !open),
+    }),
+    [isPanelOpen],
+  );
+  usePaneSecondaryPanelRegistration(
+    pane?.secondaryPanelHost ?? null,
+    panelModel,
+  );
+  return <div data-testid="root-compose-view" />;
+}
+
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
 }));
@@ -154,7 +175,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 }));
 
 vi.mock("@/views/RootComposeView", () => ({
-  RootComposeView: () => <div data-testid="root-compose-view" />,
+  RootComposeView: RootComposeFixture,
 }));
 
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
@@ -1181,6 +1202,40 @@ describe("SplitThreadArea", () => {
         .querySelector("button")
         ?.getAttribute("aria-expanded"),
     ).toBe("false");
+  });
+
+  it("keeps the panel available for a focused new-thread pane", async () => {
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
+            { type: "pane", paneId: "pane-2", content: newThreadContent },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+      routeContent: newThreadContent,
+    });
+
+    const showPanel = await screen.findByRole("button", {
+      name: "Show right panel",
+    });
+    expect(showPanel.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(showPanel);
+
+    expect(
+      await screen.findByTestId("hosted-new-thread-panel"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Hide right panel" }).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("true");
   });
 
   it("suppresses and disables the panel on a pane with no panel support", async () => {
