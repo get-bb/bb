@@ -31,8 +31,8 @@ Spawning:
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
-    --origin-kind <kind>           Create a fork or side-chat thread
-    --source-thread <id>           Source thread for fork/side-chat
+    --origin-kind <kind>           Create a fork thread
+    --source-thread <id>           Source thread for a fork
     --source-seq-end <seq>         Last included source event sequence
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then the auto product default.
@@ -48,7 +48,7 @@ Spawning:
   A new child thread inherits the visibility of its parent, so the subagents of
   a hidden thread stay hidden too. Pass --visibility to override the inherited
   value. A hidden child still reports its turns and blockers to its parent
-  thread; only forks and side chats stay silent.
+  thread; only source-derived forks stay silent.
   A machine selector accepts an exact ID or an unambiguous name. It works with
   an unmanaged --environment path, --new-environment worktree, or the personal
   workspace. It cannot be combined with an existing environment ID because that
@@ -192,7 +192,7 @@ Persisted panel tabs:
 
 Lifecycle:
 
-  bb thread archive [id]                   Archive a thread (and children/side chats)
+  bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
 
   bb thread unarchive [id]                 Unarchive a thread

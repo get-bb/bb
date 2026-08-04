@@ -20,6 +20,13 @@ export const EMPTY_FORK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const EMPTY_FORK_SWEEP_PAGE_SIZE = 100;
 
 /**
+ * KV prefix marking a fork the sweep already found user work in. Messages never
+ * disappear, so that verdict is permanent — without it every hour re-reads the
+ * full timeline of every side chat anyone has actually used.
+ */
+export const KEPT_FORK_KEY_PREFIX = "kept-fork:";
+
+/**
  * Structural view of the timeline rows the seed policy and sweep walk —
  * conversation rows carry `text`/`role`, turn rows nest `children`. The SDK's
  * `TimelineRow` union satisfies this shape.
@@ -234,6 +241,8 @@ export default async function plugin(bb: BbPluginApi) {
   // when either fails the fork is skipped rather than risked.
   bb.background.schedule("empty-fork-cleanup", "13 * * * *", async () => {
     const now = Date.now();
+    const keptKeys = new Set(await bb.storage.kv.list(KEPT_FORK_KEY_PREFIX));
+    const stillLive = new Set<string>();
     let offset = 0;
     for (;;) {
       const page = await bb.sdk.threads.list({
@@ -258,47 +267,68 @@ export default async function plugin(bb: BbPluginApi) {
           retained += 1;
           continue;
         }
-        if (await sweepEmptyFork(thread.id, thread.createdAt)) continue;
+        const keptKey = `${KEPT_FORK_KEY_PREFIX}${thread.id}`;
+        if (keptKeys.has(keptKey)) {
+          // Already known to hold user work: never archivable, never re-read.
+          stillLive.add(keptKey);
+          retained += 1;
+          continue;
+        }
+        const outcome = await sweepEmptyFork(thread.id, thread.createdAt);
+        if (outcome === "archived") continue;
+        if (outcome === "kept") {
+          await bb.storage.kv.set(keptKey, true);
+          stillLive.add(keptKey);
+        }
+        // A skipped fork (a read failed) records nothing, so the next sweep
+        // retries it.
         retained += 1;
       }
       if (page.length < EMPTY_FORK_SWEEP_PAGE_SIZE) break;
       offset += retained;
     }
+    // Every live fork of this plugin passes through the pages above, so a kept
+    // key nothing matched belongs to a thread that has since been archived or
+    // deleted. Drop it rather than grow the store forever.
+    for (const key of keptKeys) {
+      if (!stillLive.has(key)) await bb.storage.kv.delete(key);
+    }
   });
 
   /**
-   * Archive one candidate fork when it holds no user work. Returns whether the
-   * fork left the unarchived set. Both reads fail closed: when either fails the
-   * fork is skipped rather than risked.
+   * Archive one candidate fork when it holds no user work. `kept` means the
+   * fork holds work and can never become empty; `skipped` means a read failed,
+   * so the caller must not remember the verdict. Both reads fail closed: a
+   * failure keeps the fork rather than risking it.
    */
   async function sweepEmptyFork(
     threadId: string,
     createdAt: number,
-  ): Promise<boolean> {
+  ): Promise<"archived" | "kept" | "skipped"> {
     try {
       const timeline = await bb.sdk.threads.timeline({
         threadId,
         includeNestedRows: "true",
       });
-      if (timelineRowsContainUserMessage(timeline.rows)) return false;
+      if (timelineRowsContainUserMessage(timeline.rows)) return "kept";
     } catch (error) {
       bb.log.warn(
         `empty-fork sweep skipped ${threadId} (timeline read failed: ${
           error instanceof Error ? error.message : String(error)
         })`,
       );
-      return false;
+      return "skipped";
     }
     try {
       const queued = await bb.sdk.threads.queuedMessages.list({ threadId });
-      if (queued.length > 0) return false;
+      if (queued.length > 0) return "kept";
     } catch (error) {
       bb.log.warn(
         `empty-fork sweep skipped ${threadId} (queued-message read failed: ${
           error instanceof Error ? error.message : String(error)
         })`,
       );
-      return false;
+      return "skipped";
     }
     try {
       await bb.sdk.threads.archive({ threadId });
@@ -306,14 +336,14 @@ export default async function plugin(bb: BbPluginApi) {
         `empty-fork sweep archived ${threadId} (no user messages, ` +
           `created ${new Date(createdAt).toISOString()})`,
       );
-      return true;
+      return "archived";
     } catch (error) {
       bb.log.warn(
         `empty-fork sweep failed to archive ${threadId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return false;
+      return "skipped";
     }
   }
 }

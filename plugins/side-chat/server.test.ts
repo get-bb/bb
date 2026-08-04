@@ -403,6 +403,64 @@ describe("empty-fork sweep", () => {
     expect(archive).not.toHaveBeenCalled();
   });
 
+  // A fork with user work can never become empty, so re-reading its whole
+  // timeline every hour is pure waste that grows with the thread history.
+  it("remembers a kept fork and stops re-reading its timeline", async () => {
+    const now = Date.now();
+    const fork = makeThreadResponse({
+      id: "thr_has_work",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      visibility: "hidden",
+      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 60_000,
+    });
+    const timeline = vi.fn(async () =>
+      timelineResult([turnRow([conversationRow("a reply", "user")])]),
+    );
+    const archive = vi.fn(async (_args: { threadId: string }) => ({
+      ok: true,
+    }));
+    const { harness } = await loadPlugin({
+      list: async () => [fork],
+      timeline,
+      archive,
+      queuedMessages: { list: async () => [] },
+    });
+
+    await harness.runSchedule("empty-fork-cleanup");
+    await harness.runSchedule("empty-fork-cleanup");
+
+    expect(timeline).toHaveBeenCalledTimes(1);
+    expect(archive).not.toHaveBeenCalled();
+  });
+
+  // A read failure must not be remembered, or one bad hour retires the fork
+  // from the sweep forever.
+  it("retries a fork whose timeline read failed", async () => {
+    const now = Date.now();
+    const fork = makeThreadResponse({
+      id: "thr_unreadable",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      visibility: "hidden",
+      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 60_000,
+    });
+    const timeline = vi.fn(async () => {
+      throw new Error("timeline unavailable");
+    });
+    const { harness } = await loadPlugin({
+      list: async () => [fork],
+      timeline,
+      archive: async (_args: { threadId: string }) => ({ ok: true }),
+      queuedMessages: { list: async () => [] },
+    });
+
+    await harness.runSchedule("empty-fork-cleanup");
+    await harness.runSchedule("empty-fork-cleanup");
+
+    expect(timeline).toHaveBeenCalledTimes(2);
+  });
+
   it("fails closed when the queued-message read fails", async () => {
     const now = Date.now();
     const fork = makeThreadResponse({

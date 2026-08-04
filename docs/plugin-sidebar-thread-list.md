@@ -15,13 +15,13 @@ Every member below ships with the `experimental_` prefix and an entry in
 
 `AppSidebar` renders five regions from top to bottom:
 
-| Region | Owner today | After this change |
-| --- | --- | --- |
-| Top reserve / window drag row | host | host, always |
-| Primary actions (New thread, search) | `ProjectListActionButtons` | host, always |
-| Plugin nav rows (Tools, Docs, Tasks) | `PluginNavSidebarItems` | host, always |
-| **Scrolling thread list** | `ProjectList` | **the plugin** |
-| Footer (Settings, plugin actions, updates) | host | host, always |
+| Region                                     | Owner today                | After this change |
+| ------------------------------------------ | -------------------------- | ----------------- |
+| Top reserve / window drag row              | host                       | host, always      |
+| Primary actions (New thread, search)       | `ProjectListActionButtons` | host, always      |
+| Plugin nav rows (Tools, Docs, Tasks)       | `PluginNavSidebarItems`    | host, always      |
+| **Scrolling thread list**                  | `ProjectList`              | **the plugin**    |
+| Footer (Settings, plugin actions, updates) | host                       | host, always      |
 
 The plugin replaces the scroll area only. The host keeps the chrome, so
 every sidebar looks like bb, resizes like bb, and collapses like bb.
@@ -400,7 +400,11 @@ import {
   experimental_useSidebarThreads as useSidebarThreads,
   type PluginThreadHeaderActionProps,
 } from "@bb/plugin-sdk/app";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 function SubagentsChip({
   threadId,
@@ -458,14 +462,15 @@ host change beyond the slot. `parentThreadId` and `indicator` are already on
 
 ### What is not on a child thread
 
-`PluginSidebarThread` carries `parentThreadId`, `originKind`
-(`"fork" | "side-chat"`), and `originPluginId`. There is no agent type, no
+`PluginSidebarThread` carries `parentThreadId`, `originKind` (`"fork"`), and
+`originPluginId` — a side chat is the side-chat plugin's fork. There is no agent type, no
 tool count, and no progress figure. A row can show the title, the origin, the
 status, and the time. Anything richer needs the plugin's own backend.
 
 Also note the vocabulary. bb's in-turn subagents are activity on the parent
 thread, counted in `activity.backgroundAgents`. They are not child threads.
-This slot lists child threads: forks, side chats, and plugin-spawned threads.
+This slot lists child threads: forks (side chats among them) and other
+plugin-spawned threads.
 The two sets overlap but are not the same, so label the chip carefully.
 
 ---
@@ -523,35 +528,35 @@ function Row({
 
   return (
     <li>
-        <a
-          {...splitProps}
-          data-sidebar-thread-shortcut-target=""
-          data-sidebar-thread-id={thread.id}
-          aria-label={thread.indicatorLabel ?? undefined}
-          onClick={(event) => {
-            event.preventDefault();
-            actions.open(thread.id, {
-              split: event.metaKey || event.ctrlKey,
-            });
-            onNavigate();
-          }}
-          className={cn(
-            "flex items-center gap-2 rounded-md px-2 py-1",
-            isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-            // This thread sits in another pane: tint it, the way you like.
-            !isActive && layout && "bg-sidebar-accent/50",
-          )}
-        >
-          <span className="min-w-0 flex-1 truncate">
-            {thread.title ?? thread.titleFallback ?? "Untitled"}
-          </span>
-          {/* Your icons, your rules — `indicator` is just a string. */}
-          {thread.indicator === "runtime" ? (
-            <Loader2Icon className="size-3.5 animate-spin" />
-          ) : thread.indicator === "waiting-for-input" ? (
-            <MessageCircleQuestionIcon className="size-3.5" />
-          ) : null}
-        </a>
+      <a
+        {...splitProps}
+        data-sidebar-thread-shortcut-target=""
+        data-sidebar-thread-id={thread.id}
+        aria-label={thread.indicatorLabel ?? undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          actions.open(thread.id, {
+            split: event.metaKey || event.ctrlKey,
+          });
+          onNavigate();
+        }}
+        className={cn(
+          "flex items-center gap-2 rounded-md px-2 py-1",
+          isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+          // This thread sits in another pane: tint it, the way you like.
+          !isActive && layout && "bg-sidebar-accent/50",
+        )}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {thread.title ?? thread.titleFallback ?? "Untitled"}
+        </span>
+        {/* Your icons, your rules — `indicator` is just a string. */}
+        {thread.indicator === "runtime" ? (
+          <Loader2Icon className="size-3.5 animate-spin" />
+        ) : thread.indicator === "waiting-for-input" ? (
+          <MessageCircleQuestionIcon className="size-3.5" />
+        ) : null}
+      </a>
     </li>
   );
 }
