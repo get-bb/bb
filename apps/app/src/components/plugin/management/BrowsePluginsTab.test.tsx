@@ -366,6 +366,13 @@ describe("BrowsePluginsTab", () => {
       "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
     );
     expect(installed.className).not.toContain("text-success-foreground");
+    expect(installed.className).toContain(
+      "hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).toContain(
+      "focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).not.toContain("hover:text-foreground");
     expect(installed.className).toContain("hover:bg-success/25");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     fireEvent.click(installed);
