@@ -183,7 +183,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="narrow panel"
-          hint="360px browser panel; hover the active tab or top content edge to recover the full controls"
+          hint="360px browser panel; the complete navigation toolbar stays visible and usable without hover"
         >
           <BrowserTabStage
             tab={NARROW_TAB}
@@ -199,7 +199,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="loading page"
-          hint="active navigation holds the quieter toolbar open and keeps Stop immediately available"
+          hint="the persistent navigation toolbar replaces Reload with Stop while the page is loading"
         >
           <BrowserTabStage tab={LOADING_TAB} threadId={LOADING_TAB_THREAD_ID} />
         </StoryRow>

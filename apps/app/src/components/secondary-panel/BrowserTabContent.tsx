@@ -258,7 +258,6 @@ function BrowserChrome({
       data-state="expanded"
       role="region"
       aria-label="Browser navigation"
-      aria-expanded="true"
       tabIndex={-1}
       className={cn(
         "relative h-11 shrink-0 overflow-hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring max-md:pointer-coarse:h-[52px]",
