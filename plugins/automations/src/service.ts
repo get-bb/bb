@@ -20,7 +20,10 @@ import {
   type Db,
 } from "./data.js";
 import { createAutomationId } from "./ids.js";
-import { resolvePermissionMode } from "./provider-permissions.js";
+import {
+  providerRoutingForEnvironment,
+  resolvePermissionMode,
+} from "./provider-permissions.js";
 import { publishAutomationChange } from "./realtime.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
@@ -29,6 +32,7 @@ import {
   type AgentExecutionUpdate,
   type AutomationExecution,
   type AutomationExecutionOptionsResponse,
+  type AutomationPermissionOptionsResponse,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -72,6 +76,10 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<AutomationExecutionOptionsResponse>;
+  permissionOptions(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationPermissionOptionsResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -405,13 +413,7 @@ export function createAutomationService(args: {
           "Execution options are only available for agent automations",
         );
       }
-      const environment = execution.environment;
-      const routing =
-        environment.type === "reuse"
-          ? { environmentId: environment.environmentId }
-          : environment.type === "host" && environment.hostId !== undefined
-            ? { hostId: environment.hostId }
-            : {};
+      const routing = providerRoutingForEnvironment(execution.environment);
       const loadModels = bb.sdk.providers.models;
       if (loadModels === undefined) {
         throw new Error("Provider model discovery is unavailable.");
@@ -438,6 +440,33 @@ export function createAutomationService(args: {
       return { models, permissionModes };
     },
 
+    async permissionOptions(input) {
+      const automation = requireProjectAutomation(db, input);
+      const execution = parseAutomationExecution(automation.execution);
+      if (execution.mode !== "agent") {
+        throw new Error(
+          "Permission options are only available for agent automations",
+        );
+      }
+      const environment = execution.environment;
+      const routing =
+        environment.type === "reuse"
+          ? { environmentId: environment.environmentId }
+          : environment.type === "host" && environment.hostId !== undefined
+            ? { hostId: environment.hostId }
+            : {};
+      const providers = await bb.sdk.providers.list(routing);
+      const provider = providers.find(
+        (candidate) => candidate.id === execution.providerId,
+      );
+      if (provider === undefined || provider.available === false) {
+        throw new Error(`Provider ${execution.providerId} is not available.`);
+      }
+      return {
+        permissionModes: provider.capabilities.supportedPermissionModes,
+      };
+    },
+
     async create(payload) {
       await requireProjectAvailable(bb, payload.projectId);
       const now = Date.now();
@@ -448,6 +477,7 @@ export function createAutomationService(args: {
           bb,
           payload.execution.providerId,
           payload.execution.permissionMode,
+          providerRoutingForEnvironment(payload.execution.environment),
         );
       }
       const automationId = createAutomationId();
@@ -511,6 +541,7 @@ export function createAutomationService(args: {
             bb,
             input.execution.providerId,
             input.execution.permissionMode,
+            providerRoutingForEnvironment(input.execution.environment),
           );
         }
         const stored = await resolveStoredExecution({
@@ -522,6 +553,10 @@ export function createAutomationService(args: {
         stagedScriptFile = stored.writtenScriptFile;
       }
       if (input.agent !== undefined) {
+        const updatedExecution = applyAgentExecutionUpdate(
+          currentExecution,
+          input.agent,
+        );
         if (input.agent.permissionMode !== undefined) {
           if (currentExecution.mode !== "agent") {
             throw new Error(
@@ -530,14 +565,12 @@ export function createAutomationService(args: {
           }
           await resolvePermissionMode(
             bb,
-            currentExecution.providerId,
+            updatedExecution.providerId,
             input.agent.permissionMode,
+            providerRoutingForEnvironment(updatedExecution.environment),
           );
         }
-        patch.execution = applyAgentExecutionUpdate(
-          currentExecution,
-          input.agent,
-        );
+        patch.execution = updatedExecution;
       }
       let updated: AutomationRow | null;
       try {

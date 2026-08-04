@@ -522,9 +522,11 @@ function AutomationDetail({
       actionPending={false}
       editing={false}
       executionOptions={executionOptions}
+      permissionModes={["accept-edits", "auto", "full"]}
       executionOptionsError={null}
       onToggle={noop}
       onEdit={noop}
+      onCancelEdit={noop}
       onUpdateAgent={async () => {}}
       onRunNow={noop}
       onDelete={noop}

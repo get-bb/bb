@@ -166,7 +166,7 @@ export function PluginDetailRow({
         className={cn(
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
-          "text-left font-normal",
+          "flex items-center text-left font-normal",
           hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
         )}
         colSpan={hasDetail ? undefined : 2}
@@ -210,7 +210,7 @@ export function PluginDetailRow({
               type="button"
               aria-expanded={expanded}
               aria-controls={detailId}
-              className="mt-2 rounded-sm text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="mt-2 rounded-sm text-xs font-medium text-subtle-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => setExpanded((current) => !current)}
             >
               {expanded ? "Show less" : "Show full description"}
