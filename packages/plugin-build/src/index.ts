@@ -24,7 +24,6 @@ export {
 } from "./build-plugin-server.js";
 export * from "./plugin-dev-loop.js";
 export {
-  BARE_PLUGIN_BUILD_TOOLCHAIN,
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
   toolchainCacheDir,

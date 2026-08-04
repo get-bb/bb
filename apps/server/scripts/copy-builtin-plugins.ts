@@ -1,7 +1,11 @@
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  buildPluginServer,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
 import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -96,14 +100,18 @@ async function copyBuiltinPlugin(args: {
   targetRoot: string;
 }): Promise<void> {
   if (args.build) {
-    await buildPluginServer(args.sourceRoot, args.bbVersion);
+    // Resolves from this repo's own devDependencies; no download here.
+    const toolchain = await resolvePluginBuildToolchain(
+      path.join(serverRoot, "node_modules", ".bb-toolchain"),
+    );
+    await buildPluginServer(args.sourceRoot, args.bbVersion, toolchain);
     const raw = await readFile(
       path.join(args.sourceRoot, "package.json"),
       "utf8",
     );
     const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
     if (packageJson.bb.app !== undefined) {
-      await buildPluginApp(args.sourceRoot, args.bbVersion);
+      await buildPluginApp(args.sourceRoot, args.bbVersion, toolchain);
     }
   }
 

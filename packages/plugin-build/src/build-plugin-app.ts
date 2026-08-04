@@ -7,7 +7,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { derivePluginId } from "@bb/domain";
 import type { Plugin } from "esbuild";
@@ -16,10 +16,7 @@ import {
   TW_ANIMATE_CSS,
 } from "./generated/plugin-theme.generated.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
-import {
-  BARE_PLUGIN_BUILD_TOOLCHAIN,
-  type PluginBuildToolchain,
-} from "./toolchain.js";
+import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
 
@@ -397,7 +394,6 @@ async function buildTailwindCss(
       typeof import("@tailwindcss/oxide")
     >,
   ]);
-  const cliRequire = createRequire(import.meta.url);
   const input = [
     `@layer theme, utilities;`,
     `@import "tailwindcss/theme.css" layer(theme);`,
@@ -415,17 +411,17 @@ async function buildTailwindCss(
   const compiler = await compile(input, {
     base: rootDir,
     onDependency: () => {},
+    // Resolved against the toolchain rather than this module: a shipped
+    // server bundles @bb/plugin-build but installs no tailwindcss, so
+    // resolving relative to import.meta.url finds nothing there.
     customCssResolver: async (id) => {
       if (id !== "tailwindcss" && !id.startsWith("tailwindcss/")) {
         return undefined;
       }
-      try {
-        return cliRequire.resolve(
-          id === "tailwindcss" ? "tailwindcss/index.css" : id,
-        );
-      } catch {
-        return undefined;
-      }
+      const subpath =
+        id === "tailwindcss" ? "index.css" : id.slice("tailwindcss/".length);
+      const candidate = join(toolchain.tailwindCssDir, subpath);
+      return existsSync(candidate) ? candidate : undefined;
     },
   });
   const scannerSources: ScannerSource[] = [
@@ -453,7 +449,7 @@ export interface PluginAppBuildResult {
 export async function buildPluginApp(
   rootDir: string,
   bbVersion: string,
-  toolchain: PluginBuildToolchain = BARE_PLUGIN_BUILD_TOOLCHAIN,
+  toolchain: PluginBuildToolchain,
 ): Promise<PluginAppBuildResult> {
   const { appEntry, packageName, pluginVersion } =
     await readPluginAppConfig(rootDir);

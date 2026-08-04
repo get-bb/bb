@@ -5,6 +5,15 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "esbuild";
 import { buildPluginApp, runtimeShimPlugin } from "./build-plugin-app.js";
+import { resolvePluginBuildToolchain } from "./toolchain.js";
+
+/**
+ * The monorepo's own toolchain: `resolvePluginBuildToolchain` finds these as
+ * devDependencies of this package and performs no download.
+ */
+function testToolchain() {
+  return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
+}
 
 function precedingScopeBounds(
   css: string,
@@ -103,7 +112,7 @@ describe("plugin app runtime shim", () => {
       ".bb71-authored-decoration { text-decoration: underline; }\n",
     );
 
-    const result = await buildPluginApp(dir, "0.9.0-test");
+    const result = await buildPluginApp(dir, "0.9.0-test", await testToolchain());
     const css = await readFile(result.cssPath, "utf8");
 
     expect(css).toContain(
@@ -156,7 +165,9 @@ describe("plugin app runtime shim", () => {
       await writeFile(join(dir, "app.ts"), "export default {};\n");
       await writeFile(join(dir, "icon.svg"), icon);
 
-      await expect(buildPluginApp(dir, "0.9.0-test")).rejects.toThrow(
+      await expect(
+        buildPluginApp(dir, "0.9.0-test", await testToolchain()),
+      ).rejects.toThrow(
         expectedError,
       );
     },

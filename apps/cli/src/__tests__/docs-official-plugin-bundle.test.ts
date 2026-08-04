@@ -7,7 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The Docs plugin bundles Tiptap (prosemirror) — a large graph that
 // blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 120_000 });
-import { buildPluginApp } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
+/**
+ * The monorepo's own toolchain: resolved from `@bb/plugin-build`'s
+ * devDependencies, so tests never download one.
+ */
+function testToolchain() {
+  return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
+}
+
 
 /**
  * Evaluates the official Docs plugin's built bundle against a stub runtime (the
@@ -56,7 +67,7 @@ describe("Docs official plugin frontend bundle", () => {
       join(pluginDir, "node_modules"),
       "dir",
     );
-    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test");
+    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test", await testToolchain());
 
     const registered: Record<string, SlotRegistration[]> = {
       homepageSection: [],

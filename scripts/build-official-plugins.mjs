@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   buildPluginApp,
   buildPluginServer,
+  resolvePluginBuildToolchain,
 } from "../packages/plugin-build/src/index.ts";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
@@ -18,6 +19,11 @@ const selected =
   requested.length === 0 || requested.includes("all")
     ? [...pluginDirectories.keys()]
     : requested;
+
+// Resolves from this repo's own devDependencies; no download here.
+const toolchain = await resolvePluginBuildToolchain(
+  resolve(repositoryRoot, "node_modules/.bb-toolchain"),
+);
 
 for (const plugin of selected) {
   if (!pluginDirectories.has(plugin)) {
@@ -42,8 +48,12 @@ for (const plugin of selected) {
   const rootDirectory = resolve(repositoryRoot, relativeDirectory);
   await rm(resolve(rootDirectory, "dist"), { recursive: true, force: true });
 
-  const server = await buildPluginServer(rootDirectory, bbPackage.version);
-  const app = await buildPluginApp(rootDirectory, bbPackage.version);
+  const server = await buildPluginServer(
+    rootDirectory,
+    bbPackage.version,
+    toolchain,
+  );
+  const app = await buildPluginApp(rootDirectory, bbPackage.version, toolchain);
   console.log(
     `${plugin}: built ${server.jsPath}, ${server.metaPath}, ${app.jsPath}, ${app.cssPath}, and ${app.metaPath}`,
   );

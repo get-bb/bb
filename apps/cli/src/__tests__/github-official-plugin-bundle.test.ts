@@ -7,7 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The plugin bundles real deps (hugeicons icon maps among them) —
 // parsing that graph blows the 5s default on cold CI runners.
 vi.setConfig({ testTimeout: 60_000 });
-import { buildPluginApp } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  resolvePluginBuildToolchain,
+} from "@bb/plugin-build";
+/**
+ * The monorepo's own toolchain: resolved from `@bb/plugin-build`'s
+ * devDependencies, so tests never download one.
+ */
+function testToolchain() {
+  return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
+}
+
 
 /**
  * Evaluates the official GitHub plugin's built bundle against a stub runtime
@@ -60,7 +71,7 @@ describe("GitHub official plugin frontend bundle", () => {
       sharedUiLink,
       "dir",
     );
-    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test");
+    const { jsPath } = await buildPluginApp(pluginDir, "0.9.0-test", await testToolchain());
 
     const registered: Record<string, SlotRegistration[]> = {
       homepageSection: [],

@@ -10,10 +10,7 @@ import {
 import { isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
-import {
-  BARE_PLUGIN_BUILD_TOOLCHAIN,
-  type PluginBuildToolchain,
-} from "./toolchain.js";
+import { type PluginBuildToolchain } from "./toolchain.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
@@ -116,7 +113,7 @@ export interface PluginServerBuildResult {
 export async function buildPluginServer(
   rootDir: string,
   bbVersion: string,
-  toolchain: PluginBuildToolchain = BARE_PLUGIN_BUILD_TOOLCHAIN,
+  toolchain: PluginBuildToolchain,
 ): Promise<PluginServerBuildResult> {
   const { serverEntry, packageName, pluginVersion } =
     await readPluginServerConfig(rootDir);
