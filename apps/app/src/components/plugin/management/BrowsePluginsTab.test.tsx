@@ -125,8 +125,12 @@ describe("BrowsePluginsTab", () => {
       "Open Zulu details",
     ]);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin name" }));
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort: Plugin name, ascending",
+    });
+    expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
+    fireEvent.pointerDown(sortTrigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(cardOrder()).toEqual([
       "Open Zulu details",
       "Open Middle details",
@@ -269,6 +273,7 @@ describe("BrowsePluginsTab", () => {
 
     const install = screen.getByRole("button", { name: "Install Memory" });
     expect(install.className).toContain("w-7");
+    expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(install);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Install Memory",
@@ -357,8 +362,28 @@ describe("BrowsePluginsTab", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Uninstall Memory",
     );
-    expect(document.querySelector('[data-icon="Check"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
+    expect(installed.className).toContain("border-success/40");
+    expect(installed.className).toContain("bg-success/15");
+    expect(installed.className).toContain(
+      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).not.toContain("text-success-foreground");
+    expect(installed.className).toContain(
+      "hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).toContain(
+      "focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
+    );
+    expect(installed.className).not.toContain("hover:text-foreground");
+    expect(installed.className).toContain("hover:bg-success/25");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    fireEvent.click(installed);
+    expect(
+      screen.getByRole("heading", { name: "Uninstall Memory?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open Memory details" }),

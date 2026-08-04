@@ -110,7 +110,7 @@ export function AutomationProviderIcon({ providerId }: { providerId: string }) {
       aria-hidden="true"
       className="inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground"
     >
-      <ProviderIcon className="size-full" />
+      <ProviderIcon className="block size-full" />
     </span>
   );
 }

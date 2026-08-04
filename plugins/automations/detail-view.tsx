@@ -7,6 +7,7 @@ import type {
   AutomationRunResponse,
   AutomationRunStatus,
   AgentExecutionUpdate,
+  PermissionMode,
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
@@ -80,9 +81,11 @@ export interface AutomationDetailViewProps {
   actionPending: boolean;
   executionOptions: AutomationExecutionOptionsResponse | null;
   executionOptionsError: string | null;
+  permissionModes: readonly PermissionMode[];
   editing: boolean;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
+  onCancelEdit: () => void;
   onUpdateAgent: (update: AgentExecutionUpdate) => Promise<void>;
   onRunNow: () => void;
   onDelete: () => void;
@@ -329,10 +332,12 @@ function AutomationSelector({
           className={OPTION_CONTENT_CLASS_NAME}
         >
           {leading}
-          <SelectValue />
+          <span className="inline-flex min-w-0 items-center leading-none">
+            <SelectValue />
+          </span>
         </span>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="w-max min-w-0">
         {options.map((option) => (
           <SelectItem
             key={option.value}
@@ -655,6 +660,8 @@ function AgentAutomationDefinition({
   personalProject,
   projectContextLabel,
   pending,
+  permissionModes,
+  onCancel,
   onUpdate,
 }: {
   execution: Extract<AutomationExecution, { mode: "agent" }>;
@@ -664,6 +671,8 @@ function AgentAutomationDefinition({
   personalProject: boolean;
   projectContextLabel: string;
   pending: boolean;
+  permissionModes: readonly PermissionMode[];
+  onCancel: () => void;
   onUpdate: (update: AgentExecutionUpdate) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState(execution.prompt);
@@ -696,12 +705,10 @@ function AgentAutomationDefinition({
       label: formatAutomationModelLabel(model, execution.providerId),
     });
   }
-  const permissionOptions = (options?.permissionModes ?? [permissionMode]).map(
-    (mode) => ({
-      value: mode,
-      label: formatPermissionMode(mode),
-    }),
-  );
+  const permissionOptions = permissionModes.map((mode) => ({
+    value: mode,
+    label: formatPermissionMode(mode),
+  }));
 
   const promptBox = editing ? (
     <form
@@ -742,11 +749,22 @@ function AgentAutomationDefinition({
           />
         </div>
         <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0"
+          disabled={pending || dirty}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
           type="submit"
           size="sm"
-          className="ml-1 shrink-0"
+          className="shrink-0"
           disabled={pending || !dirty || trimmedPrompt.length === 0}
         >
+          <Icon name="Check" className="size-3.5" aria-hidden />
           Save Prompt
         </Button>
       </div>
@@ -822,11 +840,9 @@ function AgentAutomationDefinition({
           label="Permission mode"
           value={permissionMode}
           options={permissionOptions}
-          disabled={pending || options === null}
+          disabled={pending}
           onValueChange={(value) => {
-            const next = options?.permissionModes.find(
-              (mode) => mode === value,
-            );
+            const next = permissionModes.find((mode) => mode === value);
             if (next !== undefined) setPermissionMode(next);
           }}
           className="h-6 shrink-0"
@@ -857,7 +873,7 @@ function AgentAutomationDefinition({
       )}
       {optionsError ? (
         <p className="mt-1 px-3.5 text-xs text-destructive">
-          Couldn&apos;t load model options. {optionsError}
+          Couldn&apos;t load editing options. {optionsError}
         </p>
       ) : null}
       {editing ? promptFooter : null}
@@ -872,9 +888,11 @@ export function AutomationDetailView({
   actionPending,
   executionOptions,
   executionOptionsError,
+  permissionModes,
   editing,
   onToggle,
   onEdit,
+  onCancelEdit,
   onUpdateAgent,
   onRunNow,
   onDelete,
@@ -983,8 +1001,10 @@ export function AutomationDetailView({
               optionsError={executionOptionsError}
               editing={editing}
               pending={actionPending}
+              permissionModes={permissionModes}
               personalProject={personalProject}
               projectContextLabel={projectContextLabel}
+              onCancel={onCancelEdit}
               onUpdate={onUpdateAgent}
             />
           ) : (

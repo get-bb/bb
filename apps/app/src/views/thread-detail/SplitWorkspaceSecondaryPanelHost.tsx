@@ -10,7 +10,6 @@ import { useAtomValue } from "jotai";
 import {
   Panel,
   PanelGroup,
-  PanelResizeHandle,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
@@ -24,16 +23,11 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
-  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
-  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "@/components/secondary-panel/ThreadSecondaryPanel";
-import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
-  PANEL_RESIZE_HIT_AREA_MARGINS,
 } from "@/components/secondary-panel/panelTransitionTokens";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
@@ -147,9 +141,8 @@ export function SplitWorkspaceSecondaryPanelHost({
     panelWidthPercent,
   ]);
 
-  // Panes without a secondary panel (plugin panes) disable this control. The
-  // remembered window visibility is intentionally left unchanged so returning
-  // to a thread restores the panel the user had open.
+  // The remembered window visibility is intentionally left unchanged while a
+  // plugin pane is focused, so returning to a thread restores its app panel.
   const toggleWindowPanel = () => {
     model?.onToggle();
   };
@@ -168,6 +161,16 @@ export function SplitWorkspaceSecondaryPanelHost({
     [isOpen, isPaneMaximized],
   );
 
+  if (model === null) {
+    return (
+      <SecondaryPanelHostLayoutContext.Provider value={hostLayout}>
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {children}
+        </div>
+      </SecondaryPanelHostLayoutContext.Provider>
+    );
+  }
+
   return (
     // The layout context serves two consumers: a freshly mounted pane panel
     // sizes its resizable Panel to the window visibility (its own persisted
@@ -182,42 +185,32 @@ export function SplitWorkspaceSecondaryPanelHost({
           className={cn(
             "absolute right-2.5 top-2.5 z-40",
             (isOpen || isPaneMaximized) && "hidden",
-            // This overlay already owns positioning and stacking. Use only the
-            // raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds `relative
-            // z-50`, which tailwind-merge would resolve against `absolute` and
-            // move the control back into document flow.
+            // This overlay already owns positioning and stacking. Use only
+            // the raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds
+            // `relative z-50`, which tailwind-merge would resolve against
+            // `absolute` and move the control back into document flow.
             MACOS_APP_REGION_NO_DRAG_CLASS,
           )}
         >
           <AppCommandShortcutHint
-            shortcut={model === null ? null : shortcut}
+            shortcut={shortcut}
             // Keep the modifier-held hint out of the top chrome row. The
             // reserved header slot is exactly the 28px button footprint; a
             // side-by-side hint would extend left over Close pane or plugin
-            // actions. Dropping it below preserves both the stable corner and
-            // the action row's hit targets.
+            // actions. Dropping it below preserves both the stable corner
+            // and the action row's hit targets.
             className="absolute right-0 top-full mt-1"
           />
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className={cn(
-              HEADER_ICON_BUTTON_CLASS,
-              "disabled:cursor-not-allowed",
-            )}
+            className={HEADER_ICON_BUTTON_CLASS}
             aria-label={
-              model === null
-                ? toggleLabel
-                : shortcut
-                  ? `${toggleLabel} (${shortcut.label})`
-                  : toggleLabel
+              shortcut ? `${toggleLabel} (${shortcut.label})` : toggleLabel
             }
-            aria-keyshortcuts={
-              model === null ? undefined : shortcut?.ariaKeyshortcuts
-            }
+            aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
             aria-expanded={isOpen}
-            disabled={model === null}
             onClick={toggleWindowPanel}
           >
             <Icon name="PanelRight" />
@@ -255,43 +248,12 @@ export function SplitWorkspaceSecondaryPanelHost({
               {children}
             </div>
           </Panel>
-          {model === null ? (
-            <>
-              {/* Keep a collapsed second panel registered with the group while
-                  the focused plugin pane has no secondary-panel model. */}
-              <PanelResizeHandle
-                id="split-workspace-empty-secondary-panel-handle"
-                disabled
-                hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
-                className={cn(
-                  "relative z-[5] shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
-                  PANEL_COLLAPSE_TRANSITION_CLASS,
-                  "pointer-events-none w-0 opacity-0",
-                )}
-                aria-label="Resize right panel"
-              />
-              <Panel
-                id="split-workspace-empty-secondary-panel"
-                collapsible
-                collapsedSize={0}
-                defaultSize={0}
-                minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-                maxSize={THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT}
-                order={2}
-                className={cn(
-                  "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
-                  PANEL_COLLAPSE_TRANSITION_CLASS,
-                )}
-              />
-            </>
-          ) : (
-            <PluginComposerHostProvider
-              key={focusedPaneId}
-              value={model.composerHost}
-            >
-              {model.panel}
-            </PluginComposerHostProvider>
-          )}
+          <PluginComposerHostProvider
+            key={focusedPaneId}
+            value={model.composerHost}
+          >
+            {model.panel}
+          </PluginComposerHostProvider>
         </PanelGroup>
       </div>
     </SecondaryPanelHostLayoutContext.Provider>
