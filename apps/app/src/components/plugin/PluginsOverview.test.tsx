@@ -270,6 +270,9 @@ describe("PluginsOverview", () => {
     });
     expect(filters.className).toContain("py-2");
     expect(filters.className).toContain("gap-2");
+    expect(all.className).toContain("cursor-pointer");
+    expect(all.className).toContain("hover:border-foreground/20");
+    expect(all.className).toContain("hover:shadow-xs");
     expect(all.className).toContain("data-[state=on]:bg-secondary/70");
     expect(all.className).not.toContain("data-[state=on]:bg-state-active");
     expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
@@ -549,8 +552,12 @@ describe("PluginsOverview", () => {
     expect(officialPills[0]?.parentElement?.className).toContain("px-2");
     expect(officialPills[0]?.parentElement?.className).toContain("py-1");
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin name" }));
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort: Plugin name, ascending",
+    });
+    expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
+    fireEvent.pointerDown(sortTrigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
         (row) => row.getAttribute("data-testid"),
@@ -563,9 +570,12 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
     ]);
 
-    fireEvent.keyDown(screen.getByRole("menu", { name: "Sort" }), {
-      key: "Escape",
-    });
+    fireEvent.keyDown(
+      screen.getByRole("menu", {
+        name: "Sort: Plugin name, descending",
+      }),
+      { key: "Escape" },
+    );
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     await screen.findByText("GitHub");
     fireEvent.click(screen.getByRole("tab", { name: "Installed, 5 plugins" }));

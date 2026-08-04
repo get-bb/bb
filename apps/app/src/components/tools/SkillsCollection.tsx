@@ -79,7 +79,7 @@ function skillSourceFilterId(
 }
 
 function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
-  return source === "bb-official" ? "bb official" : "Included in plugin";
+  return source === "bb-official" ? "bb official" : "Plugin";
 }
 
 function isResourceSkillSourceFilter(

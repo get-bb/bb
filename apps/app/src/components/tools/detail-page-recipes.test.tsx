@@ -154,9 +154,9 @@ describe("Plugin detail recipe", () => {
     });
 
     for (const name of ["Delivery", "Version"]) {
-      expect(screen.getByRole("rowheader", { name }).className).toContain(
-        "bg-surface-recessed/55",
-      );
+      const header = screen.getByRole("rowheader", { name });
+      expect(header.className).toContain("bg-surface-recessed/55");
+      expect(header.className).toContain("font-medium");
     }
     expect(
       screen.getByRole("rowheader", { name: /Review issues/ }).className,
@@ -242,8 +242,12 @@ describe("Plugin detail recipe", () => {
       "Pull requests",
       "GitHub Dark",
     ] as const) {
-      expect(screen.getByText(item)).toBeTruthy();
+      expect(screen.getByText(item).className).toContain("text-xs");
     }
+    const skillName = screen.getByText("review");
+    expect(skillName.closest("th")?.className).toContain("items-center");
+    expect(skillName.parentElement?.className).toContain("items-center");
+    expect(skillName.previousElementSibling?.className).not.toContain("mt-px");
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -266,15 +270,16 @@ describe("Plugin detail recipe", () => {
       name: "Show full description",
     });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(disclosure.className).toContain("text-subtle-foreground");
 
     fireEvent.click(disclosure);
 
     expect(detail.className).not.toContain("line-clamp-3");
-    expect(
-      screen
-        .getByRole("button", { name: "Show less" })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
+    const collapseDisclosure = screen.getByRole("button", {
+      name: "Show less",
+    });
+    expect(collapseDisclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseDisclosure.className).toContain("text-subtle-foreground");
     expect(container.textContent).toContain(description);
   });
 
@@ -613,6 +618,70 @@ describe("Skill detail recipe", () => {
     expect(content?.style.transform).toBe("translateY(-540px)");
     expect(next.getAttribute("disabled")).not.toBeNull();
   });
+
+  it("pages once per vertical wheel or trackpad gesture", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
+      const viewport = container.querySelector<HTMLElement>(
+        "[data-skill-content-viewport]",
+      );
+      const content = container.querySelector<HTMLElement>(
+        "[data-skill-content-pages]",
+      );
+      expect(viewport).not.toBeNull();
+      expect(content).not.toBeNull();
+
+      Object.defineProperty(viewport, "clientHeight", {
+        configurable: true,
+        value: 240,
+      });
+      Object.defineProperty(content, "scrollHeight", {
+        configurable: true,
+        value: 720,
+      });
+      act(() => window.dispatchEvent(new Event("resize")));
+
+      const pagination = screen.getByRole("navigation", {
+        name: "Skill content pagination",
+      });
+      fireEvent.wheel(viewport!, { deltaY: -100 });
+      expect(pagination.textContent).toContain("Page 1 of 3");
+
+      // Trackpads emit several small pixel deltas. Accumulate them, then move
+      // exactly one page for the gesture even if momentum events continue.
+      fireEvent.wheel(viewport!, { deltaY: 24 });
+      expect(pagination.textContent).toContain("Page 1 of 3");
+      fireEvent.wheel(viewport!, { deltaY: 24 });
+      expect(pagination.textContent).toContain("Page 2 of 3");
+      fireEvent.wheel(viewport!, { deltaY: 100 });
+      expect(pagination.textContent).toContain("Page 2 of 3");
+
+      act(() => {
+        vi.advanceTimersByTime(161);
+      });
+      // Line-mode wheel input is normalized to pixels and uses the same
+      // threshold and one-page-per-gesture behavior.
+      fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
+      expect(pagination.textContent).toContain("Page 3 of 3");
+
+      // Momentum can keep moving toward the boundary, then briefly rebound in
+      // the opposite direction. Both events are still part of the gesture that
+      // moved from page 2 to page 3, so the rebound must not navigate back.
+      fireEvent.wheel(viewport!, { deltaY: 100 });
+      expect(pagination.textContent).toContain("Page 3 of 3");
+      fireEvent.wheel(viewport!, { deltaY: -40 });
+      expect(pagination.textContent).toContain("Page 3 of 3");
+
+      act(() => {
+        vi.advanceTimersByTime(161);
+      });
+      fireEvent.wheel(viewport!, { deltaY: -40 });
+      expect(pagination.textContent).toContain("Page 2 of 3");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 const AUTOMATION: AutomationResponse = {
@@ -659,12 +728,22 @@ const AUTOMATION_EXECUTION_OPTIONS: AutomationExecutionOptionsResponse = {
 
 type TestAutomationDetailProps = Omit<
   ComponentProps<typeof AutomationDetailViewBase>,
-  "editing" | "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+  | "editing"
+  | "executionOptions"
+  | "executionOptionsError"
+  | "permissionModes"
+  | "onCancelEdit"
+  | "onUpdateAgent"
 > &
   Partial<
     Pick<
       ComponentProps<typeof AutomationDetailViewBase>,
-      "editing" | "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+      | "editing"
+      | "executionOptions"
+      | "executionOptionsError"
+      | "permissionModes"
+      | "onCancelEdit"
+      | "onUpdateAgent"
     >
   >;
 
@@ -672,6 +751,8 @@ function AutomationDetailView({
   editing = false,
   executionOptions = AUTOMATION_EXECUTION_OPTIONS,
   executionOptionsError = null,
+  permissionModes = AUTOMATION_EXECUTION_OPTIONS.permissionModes,
+  onCancelEdit = () => {},
   onUpdateAgent = async () => {},
   ...props
 }: TestAutomationDetailProps) {
@@ -681,6 +762,8 @@ function AutomationDetailView({
       editing={editing}
       executionOptions={executionOptions}
       executionOptionsError={executionOptionsError}
+      permissionModes={permissionModes}
+      onCancelEdit={onCancelEdit}
       onUpdateAgent={onUpdateAgent}
     />
   );
@@ -728,6 +811,7 @@ describe("Automation detail recipe", () => {
           }}
           onToggle={() => {}}
           onEdit={() => setEditing(true)}
+          onCancelEdit={() => setEditing(false)}
           onRunNow={() => {}}
           onDelete={() => {}}
           onOpenThread={() => {}}
@@ -894,18 +978,53 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-provider-icon="claude"] svg'),
     ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-automation-provider-icon="claude"] svg.block',
+      ),
+    ).not.toBeNull();
     const savePrompt = screen.getByRole("button", { name: "Save Prompt" });
     expect(promptPanel.contains(savePrompt)).toBe(true);
+    expect(savePrompt.querySelector('[data-icon="Check"]')).not.toBeNull();
     expect((savePrompt as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(promptContent, {
+    const cancelEditing = screen.getByRole("button", { name: "Cancel" });
+    expect((cancelEditing as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(cancelEditing);
+    expect(
+      await screen.findByRole("textbox", { name: "Saved prompt" }),
+    ).toBeTruthy();
+    expect(updateAgent).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    const reopenedPrompt = screen.getByRole("textbox", {
+      name: "Automation prompt",
+    }) as HTMLTextAreaElement;
+    const reopenedPanel = reopenedPrompt.closest("form") as HTMLElement;
+    const reopenedModelSelector = reopenedPanel.querySelector(
+      '[data-automation-selector="Provider and model"]',
+    ) as HTMLButtonElement;
+    const reopenedAccessSelector = container.querySelector(
+      '[data-automation-selector="Permission mode"]',
+    ) as HTMLButtonElement;
+    const reopenedSavePrompt = screen.getByRole("button", {
+      name: "Save Prompt",
+    });
+    fireEvent.change(reopenedPrompt, {
       target: { value: "Summarize the last two days." },
     });
-    fireEvent.keyDown(modelSelector, { key: "Enter" });
+    fireEvent.keyDown(reopenedModelSelector, { key: "Enter" });
+    const modelOptions = await screen.findByRole("listbox");
+    expect(modelOptions.className).toContain("w-max");
+    expect(modelOptions.className).toContain("min-w-0");
     fireEvent.click(await screen.findByRole("option", { name: "Sonnet 5" }));
-    fireEvent.keyDown(accessSelector, { key: "Enter" });
+    fireEvent.keyDown(reopenedAccessSelector, { key: "Enter" });
     fireEvent.click(await screen.findByRole("option", { name: "Full Access" }));
-    expect((savePrompt as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(savePrompt);
+    expect((reopenedSavePrompt as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(reopenedSavePrompt);
     expect(updateAgent).toHaveBeenCalledWith({
       prompt: "Summarize the last two days.",
       model: "claude-sonnet-5",
@@ -917,6 +1036,44 @@ describe("Automation detail recipe", () => {
     expect(
       screen.queryByRole("textbox", { name: "Automation prompt" }),
     ).toBeNull();
+  });
+
+  it("does not make permission editing wait for model discovery", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AutomationDetailView
+          automation={AUTOMATION}
+          projectLabel="Local"
+          runsState={{
+            runs: [],
+            nextCursor: null,
+            loading: false,
+            loadingMore: false,
+            error: null,
+            loadMore: () => {},
+            retry: () => {},
+          }}
+          actionPending={false}
+          editing
+          executionOptions={null}
+          permissionModes={["accept-edits", "auto", "full"]}
+          onToggle={() => {}}
+          onEdit={() => {}}
+          onRunNow={() => {}}
+          onDelete={() => {}}
+          onOpenThread={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const permissionSelector = container.querySelector(
+      '[data-automation-selector="Permission mode"]',
+    ) as HTMLButtonElement;
+    const modelSelector = container.querySelector(
+      '[data-automation-selector="Provider and model"]',
+    ) as HTMLButtonElement;
+    expect(permissionSelector.disabled).toBe(false);
+    expect(modelSelector.disabled).toBe(true);
   });
 
   it("uses the composer metadata treatment without inventing reasoning", () => {

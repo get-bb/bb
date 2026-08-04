@@ -419,6 +419,25 @@ function pluginSplitLayout(): SplitLayout {
   };
 }
 
+function twoPluginSplitLayout(): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane-automations",
+          content: pluginContent("automations"),
+        },
+        { type: "pane", paneId: "pane-docs", content: docsContent },
+      ],
+    },
+    focusedPaneId: "pane-docs",
+  };
+}
+
 function threadPath(threadId: string): string {
   return `/threads/${threadId}`;
 }
@@ -1233,17 +1252,15 @@ describe("SplitThreadArea", () => {
     expect(showPanel.hasAttribute("disabled")).toBe(false);
     fireEvent.click(showPanel);
 
+    expect(await screen.findByTestId("hosted-new-thread-panel")).toBeTruthy();
     expect(
-      await screen.findByTestId("hosted-new-thread-panel"),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Hide right panel" }).getAttribute(
-        "aria-expanded",
-      ),
+      screen
+        .getByRole("button", { name: "Hide right panel" })
+        .getAttribute("aria-expanded"),
     ).toBe("true");
   });
 
-  it("suppresses and disables the panel on a pane with no panel support", async () => {
+  it("omits app panel and full-screen controls from plugin panes", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({
@@ -1264,23 +1281,24 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Focusing the plugin pane hides the unavailable panel and disables its
-    // disclosure without discarding the window-level open state.
+    // Focusing the plugin pane hides the app panel without layering disabled
+    // app controls over the plugin's own header and right panel.
     fireEvent.pointerDown(pluginPane);
-    const unavailableToggle = await screen.findByRole("button", {
-      name: "Right panel unavailable",
-    });
-    expect(unavailableToggle.hasAttribute("disabled")).toBe(true);
-    expect(unavailableToggle.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() =>
+      expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull(),
+    );
+    expect(
+      document.getElementById("split-workspace-empty-secondary-panel"),
+    ).toBeNull();
+    expect(
+      document.getElementById("split-workspace-empty-secondary-panel-handle"),
+    ).toBeNull();
+    expect(
+      pluginPane.querySelector('button[aria-label*="Full Screen"]'),
+    ).toBeNull();
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
-    const emptyPanelHandle = document.getElementById(
-      "split-workspace-empty-secondary-panel-handle",
-    );
-    expect(emptyPanelHandle?.classList).toContain("w-0");
-    expect(emptyPanelHandle?.classList).toContain("pointer-events-none");
-
     // Refocusing the thread pane restores the remembered open panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     const restoredOpenToggle = await screen.findByRole("button", {
@@ -1291,6 +1309,82 @@ describe("SplitThreadArea", () => {
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("preserves plugin-owned right panels with and without a plugin split", async () => {
+    setPluginSlotRegistrations("test-plugin", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Clock",
+          path: "automations",
+          component: () => <div>Automations content</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs content with notes sidebar</div>,
+          headerContent: () => (
+            <button type="button">Collapse notes sidebar</button>
+          ),
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: twoPluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByText("Automations content")).toBeTruthy();
+    const docsPanelContent = screen.getByText(
+      "Docs content with notes sidebar",
+    );
+    expect(docsPanelContent).toBeTruthy();
+    expect(docsPanelContent.closest(".isolate")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Collapse notes sidebar" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Full Screen/ })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[0]!);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Automations content")).toBeNull(),
+    );
+    expect(
+      screen
+        .getByText("Docs content with notes sidebar")
+        .closest(".isolate"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Collapse notes sidebar" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
@@ -1504,7 +1598,7 @@ describe("SplitThreadArea", () => {
     }
   });
 
-  it("reserves collapsed window-left chrome only for the structural top-left pane", async () => {
+  it("reserves collapsed window-left chrome only for the structural top-left plugin pane", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
       latestVersion: null,
@@ -1550,24 +1644,7 @@ describe("SplitThreadArea", () => {
       expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
     }
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Full Screen/ })[3]!);
-    await waitFor(() =>
-      expect(contentRow("bottom-right")).resolves.toHaveProperty(
-        "className",
-        expect.stringContaining("pl-[104px]"),
-      ),
-    );
-    expect((await contentRow("top-left"))?.className).not.toContain(
-      "pl-[104px]",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Exit Full Screen/ }));
-    await waitFor(() =>
-      expect(contentRow("top-left")).resolves.toHaveProperty(
-        "className",
-        expect.stringContaining("pl-[104px]"),
-      ),
-    );
+    expect(screen.queryByRole("button", { name: /Full Screen/ })).toBeNull();
   });
 
   it("assigns exactly one top-left owner through eight-pane structural changes", async () => {

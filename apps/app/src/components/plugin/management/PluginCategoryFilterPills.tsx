@@ -1,6 +1,8 @@
 import { ToggleGroup, ToggleGroupItem } from "@bb/shared-ui/toggle-group";
 
 const ALL_CATEGORIES = "all";
+const CATEGORY_FILTER_CLASS =
+  "h-7 min-w-0 cursor-pointer rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none transition-[background-color,border-color,box-shadow,color] duration-150 hover:border-foreground/20 hover:bg-secondary/50 hover:text-foreground hover:shadow-xs data-[state=on]:border-transparent data-[state=on]:bg-secondary/70 data-[state=on]:text-secondary-foreground";
 
 export function PluginCategoryFilterPills({
   categories,
@@ -27,7 +29,7 @@ export function PluginCategoryFilterPills({
       <ToggleGroupItem
         value={ALL_CATEGORIES}
         aria-label="Show all plugin categories"
-        className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/50 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary/70 data-[state=on]:text-secondary-foreground"
+        className={CATEGORY_FILTER_CLASS}
       >
         All
       </ToggleGroupItem>
@@ -35,7 +37,7 @@ export function PluginCategoryFilterPills({
         <ToggleGroupItem
           key={category}
           value={category}
-          className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/50 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary/70 data-[state=on]:text-secondary-foreground"
+          className={CATEGORY_FILTER_CLASS}
         >
           {category}
         </ToggleGroupItem>
