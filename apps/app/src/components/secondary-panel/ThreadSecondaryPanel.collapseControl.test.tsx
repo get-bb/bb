@@ -41,11 +41,10 @@ function renderPanel(args: {
   );
 }
 
-// The conversation-collapse control is the ONLY way back once the conversation
-// is hidden — there is no standalone rail to click. If the panel ever stops
-// rendering it in the collapsed state, the conversation becomes unrecoverable
-// without a keyboard shortcut, so pin both halves of the disclosure pair.
-describe("ThreadSecondaryPanel conversation collapse control", () => {
+// The full-screen control is the ONLY way back once the conversation is hidden
+// — there is no standalone rail to click. Pin both halves of the same-slot
+// expansion pair so a full-screen tab can always restore its prior layout.
+describe("ThreadSecondaryPanel full-screen control", () => {
   it("expands the panel while the conversation is shown", () => {
     const onToggleConversationCollapse = vi.fn();
     const view = renderPanel({
@@ -53,8 +52,8 @@ describe("ThreadSecondaryPanel conversation collapse control", () => {
       onToggleConversationCollapse,
     });
 
-    const control = view.getByRole("button", { name: "Expand right panel" });
-    expect(control.getAttribute("aria-expanded")).toBe("true");
+    const control = view.getByRole("button", { name: "Full Screen" });
+    expect(control.getAttribute("aria-pressed")).toBe("false");
 
     fireEvent.click(control);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
@@ -67,8 +66,8 @@ describe("ThreadSecondaryPanel conversation collapse control", () => {
       onToggleConversationCollapse,
     });
 
-    const control = view.getByRole("button", { name: "Restore conversation" });
-    expect(control.getAttribute("aria-expanded")).toBe("false");
+    const control = view.getByRole("button", { name: "Exit Full Screen" });
+    expect(control.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(control);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
