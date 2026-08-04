@@ -538,9 +538,10 @@ function DetailView({
 }) {
   const navigate = useBbNavigate();
   const { automation, error, missing, refetch } = useAutomation(route);
+  const [editing, setEditing] = useState(initialEditing);
   const executionOptionsState = useAutomationExecutionOptions(
     route,
-    automation?.execution.mode === "agent",
+    editing && automation?.execution.mode === "agent",
   );
   const overviewState = useOverview();
   const runsState = useRuns(route);
@@ -568,11 +569,6 @@ function DetailView({
     [navigate, route],
   );
 
-  useEffect(() => {
-    if (!initialEditing || automation === null) return;
-    editViaThread(automation);
-  }, [automation, editViaThread, initialEditing]);
-
   const runAction = useCallback(
     (method: "pause" | "resume" | "run") => {
       setActionPending(true);
@@ -593,6 +589,10 @@ function DetailView({
 
   const openEdit = useCallback(() => {
     if (automation === null) return;
+    if (automation.execution.mode === "agent") {
+      setEditing(true);
+      return;
+    }
     editViaThread(automation);
   }, [automation, editViaThread]);
 
@@ -602,9 +602,11 @@ function DetailView({
       try {
         await mutations.update(route, agent);
         toast.success("Automation updated");
+        setEditing(false);
         refetch();
       } catch (rpcError: unknown) {
         toast.error(`Failed to update automation: ${errorText(rpcError)}`);
+        throw rpcError;
       } finally {
         setActionPending(false);
       }
@@ -653,16 +655,6 @@ function DetailView({
     );
   }
 
-  if (initialEditing) {
-    return (
-      <ResourceListState
-        state="loading"
-        message="Opening composer"
-        layout="detail"
-      />
-    );
-  }
-
   const overviewEntry = overviewState.entries?.find(
     (entry) =>
       entry.automation.projectId === route.projectId &&
@@ -683,6 +675,7 @@ function DetailView({
       actionPending={actionPending}
       executionOptions={executionOptionsState.options}
       executionOptionsError={executionOptionsState.error}
+      editing={editing}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
       onUpdateAgent={updateAgent}

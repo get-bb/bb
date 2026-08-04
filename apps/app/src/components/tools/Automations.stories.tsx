@@ -520,6 +520,7 @@ function AutomationDetail({
         retry: noop,
       }}
       actionPending={false}
+      editing={false}
       executionOptions={executionOptions}
       executionOptionsError={null}
       onToggle={noop}

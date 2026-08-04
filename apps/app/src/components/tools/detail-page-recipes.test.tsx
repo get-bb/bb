@@ -10,7 +10,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -505,7 +505,12 @@ const AUTOMATION_EXECUTION_OPTIONS: AutomationExecutionOptionsResponse = {
     {
       id: "claude:claude-opus-5",
       model: "claude-opus-5",
-      displayName: "Opus 5",
+      displayName: "Claude-Opus-5",
+    },
+    {
+      id: "claude:claude-sonnet-5",
+      model: "claude-sonnet-5",
+      displayName: "Claude-Sonnet-5",
     },
   ],
   permissionModes: ["accept-edits", "auto", "full"],
@@ -513,16 +518,17 @@ const AUTOMATION_EXECUTION_OPTIONS: AutomationExecutionOptionsResponse = {
 
 type TestAutomationDetailProps = Omit<
   ComponentProps<typeof AutomationDetailViewBase>,
-  "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+  "editing" | "executionOptions" | "executionOptionsError" | "onUpdateAgent"
 > &
   Partial<
     Pick<
       ComponentProps<typeof AutomationDetailViewBase>,
-      "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+      "editing" | "executionOptions" | "executionOptionsError" | "onUpdateAgent"
     >
   >;
 
 function AutomationDetailView({
+  editing = false,
   executionOptions = AUTOMATION_EXECUTION_OPTIONS,
   executionOptionsError = null,
   onUpdateAgent = async () => {},
@@ -531,6 +537,7 @@ function AutomationDetailView({
   return (
     <AutomationDetailViewBase
       {...props}
+      editing={editing}
       executionOptions={executionOptions}
       executionOptionsError={executionOptionsError}
       onUpdateAgent={onUpdateAgent}
@@ -557,8 +564,9 @@ const FAILED_SCRIPT_RUN: AutomationRunResponse = {
 describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
     const updateAgent = vi.fn(async () => {});
-    const { container } = render(
-      <MemoryRouter>
+    function Harness() {
+      const [editing, setEditing] = useState(false);
+      return (
         <AutomationDetailView
           automation={AUTOMATION}
           projectLabel="Local"
@@ -572,13 +580,19 @@ describe("Automation detail recipe", () => {
             retry: () => {},
           }}
           actionPending={false}
+          editing={editing}
           onUpdateAgent={updateAgent}
           onToggle={() => {}}
-          onEdit={() => {}}
+          onEdit={() => setEditing(true)}
           onRunNow={() => {}}
           onDelete={() => {}}
           onOpenThread={() => {}}
         />
+      );
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <Harness />
       </MemoryRouter>,
     );
 
@@ -618,6 +632,23 @@ describe("Automation detail recipe", () => {
     expect(runsTable.className).toContain("border");
     expect(runsTable.className).toContain("border-border");
     expect(runsTable.className).not.toContain("inline-block");
+
+    const savedPrompt = screen.getByRole("textbox", { name: "Saved prompt" });
+    expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
+    expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
+    expect(screen.queryByRole("button", { name: "Save prompt" })).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-disabled-automation-selector="Provider and model"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-disabled-automation-selector="Permission mode"]',
+      ),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit via chat" }));
 
     const promptContent = screen.getByRole("textbox", {
       name: "Automation prompt",
@@ -676,10 +707,16 @@ describe("Automation detail recipe", () => {
     fireEvent.change(promptContent, {
       target: { value: "Summarize the last two days." },
     });
+    fireEvent.keyDown(modelSelector, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "Sonnet 5" }));
+    fireEvent.keyDown(accessSelector, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "Full Access" }));
     expect((savePrompt as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(savePrompt);
     expect(updateAgent).toHaveBeenCalledWith({
       prompt: "Summarize the last two days.",
+      model: "claude-sonnet-5",
+      permissionMode: "full",
     });
   });
 
@@ -746,8 +783,8 @@ describe("Automation detail recipe", () => {
       promptShell.querySelectorAll('[data-option-display=""]'),
     ).toHaveLength(2);
     expect(
-      promptShell.querySelectorAll("[data-automation-selector]:disabled"),
-    ).toHaveLength(0);
+      promptShell.querySelectorAll("[data-disabled-automation-selector]"),
+    ).toHaveLength(2);
   });
 
   it.each([
@@ -827,10 +864,10 @@ describe("Automation detail recipe", () => {
       );
 
       const selector = container.querySelector(
-        '[data-automation-selector="Provider and model"]',
+        '[data-disabled-automation-selector="Provider and model"]',
       ) as HTMLButtonElement;
       expect(selector.getAttribute("aria-label")).toBe(
-        `Provider and model: ${providerLabel}, ${modelLabel}`,
+        `Provider and model: ${providerLabel}, ${modelLabel}. Read only`,
       );
       expect(selector.textContent).toContain(modelLabel);
       expect(
@@ -906,9 +943,11 @@ describe("Automation detail recipe", () => {
     ).toHaveLength(2);
     expect(
       container
-        .querySelector('[data-automation-selector="Provider and model"]')
+        .querySelector(
+          '[data-disabled-automation-selector="Provider and model"]',
+        )
         ?.getAttribute("aria-label"),
-    ).toBe("Provider and model: Codex, 5");
+    ).toBe("Provider and model: Codex, 5. Read only");
   });
 
   it("shows the stored script with capped overflow and no environment values", () => {
