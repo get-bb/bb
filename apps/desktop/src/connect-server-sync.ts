@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  ConnectListError,
+  listAccountServers,
+  type ConnectCredential,
+} from "@bb/connect-client";
 
 /** POST /api/v1/plugins/connect/rpc/listAccountServers result body. */
 export const connectAccountServerSchema = z
@@ -105,16 +110,27 @@ export async function fetchConnectAccountServers(
 export function selectTargetableConnectServers(
   result: ConnectListAccountServersResult,
 ): ConnectAccountServer[] {
-  return result.servers.filter(
-    (server) => server.handle !== result.selfHandle,
-  );
+  return result.servers.filter((server) => server.handle !== result.selfHandle);
 }
 
 export interface CreateConnectServerSyncArgs {
+  /**
+   * The app's own cached machine credential, or null when it has none. Used
+   * when no local runtime is up, so a remote target still lists servers.
+   */
+  getCredential: () => ConnectCredential | null;
   /** Builtin/local server URL when the runtime is up; null when not. */
   getLocalServerUrl: () => string | null;
   /** Fresh targetable server list after every successful sync. */
   onServers: (servers: ConnectAccountServer[]) => void;
+  /** The gate refused the cached credential — the caller must drop it. */
+  onUnauthorized: () => void;
+  /**
+   * Transport for the direct gate call. Separate from `fetchImpl` because the
+   * gate client needs a full `fetch`, while the local RPC needs only a slice
+   * of the response.
+   */
+  gateFetchImpl?: typeof fetch;
   fetchImpl?: ConnectServerSyncFetch;
   log?: ConnectServerSyncLog;
   now?: () => number;
@@ -135,7 +151,7 @@ export interface ConnectServerSync {
    * older than minIntervalMs (default 60s).
    */
   onListRequested(): void;
-  /** Exposed for tests. */
+  /** Sync once, now, coalescing with a sync already in flight. */
   syncNow(): Promise<void>;
 }
 
@@ -147,7 +163,8 @@ export function createConnectServerSync(
   args: CreateConnectServerSyncArgs,
 ): ConnectServerSync {
   const intervalMs = args.intervalMs ?? CONNECT_SERVER_SYNC_INTERVAL_MS;
-  const minIntervalMs = args.minIntervalMs ?? CONNECT_SERVER_SYNC_MIN_INTERVAL_MS;
+  const minIntervalMs =
+    args.minIntervalMs ?? CONNECT_SERVER_SYNC_MIN_INTERVAL_MS;
   const now = args.now ?? Date.now;
   const setIntervalFn =
     args.setIntervalFn ??
@@ -164,22 +181,41 @@ export function createConnectServerSync(
   let inFlight: Promise<void> | null = null;
   let loggedFailure = false;
 
+  /**
+   * Prefer the local server: it holds the pairing secret and always reflects
+   * whether the plugin is on. Fall back to the app's own credential so a
+   * remote target keeps a live server list with no local runtime.
+   */
+  async function fetchServers(): Promise<ConnectListAccountServersResult | null> {
+    const serverUrl = args.getLocalServerUrl();
+    if (serverUrl !== null) {
+      return fetchConnectAccountServers({
+        serverUrl,
+        fetchImpl: args.fetchImpl,
+      });
+    }
+    const credential = args.getCredential();
+    if (credential === null) {
+      return null;
+    }
+    try {
+      return await listAccountServers(credential, args.gateFetchImpl);
+    } catch (error) {
+      if (error instanceof ConnectListError && error.code === "unauthorized") {
+        args.onUnauthorized();
+      }
+      return null;
+    }
+  }
+
   async function runSync(): Promise<void> {
     lastSyncAttemptAt = now();
-    const serverUrl = args.getLocalServerUrl();
-    if (serverUrl === null) {
-      return;
-    }
-
-    const result = await fetchConnectAccountServers({
-      serverUrl,
-      fetchImpl: args.fetchImpl,
-    });
+    const result = await fetchServers();
     if (result === null) {
       if (!loggedFailure) {
         loggedFailure = true;
         log?.(
-          "connect server sync skipped (plugin disabled, not paired, or local server unavailable)",
+          "connect server sync skipped (plugin disabled, not paired, or no local server and no cached credential)",
         );
       }
       return;

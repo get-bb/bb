@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ConnectCredential } from "./credential.js";
-import { ConnectListError } from "./list-servers.js";
+import { ConnectListError } from "./errors.js";
 
 const desktopSessionResponseSchema = z.object({
   cookie: z.object({
@@ -13,13 +13,19 @@ const desktopSessionResponseSchema = z.object({
 
 export type DesktopSession = z.infer<typeof desktopSessionResponseSchema>;
 
+/**
+ * Exchange the durable machine credential for a short-lived browser session
+ * cookie at the connect gate. The cookie lasts one hour, so every caller mints
+ * a fresh one rather than storing it.
+ */
 export async function fetchDesktopSession(
   credential: ConnectCredential,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<DesktopSession> {
   const url = `${credential.serverUrl.replace(/\/$/, "")}/api/connect/desktop-session`;
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchImpl(url, {
       method: "POST",
       headers: { "x-bb-connect-machine": credential.credential },
     });

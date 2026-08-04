@@ -46,6 +46,23 @@ npx bb-app client ssh-target set <bb-server-origin> <ssh-target>
 
 Phones and tablets need no helper; editor-launch actions are simply unavailable.
 
+## Point the desktop app at another bb
+
+The desktop app's Server menu lists "This Mac", every bb connect server on the
+account, and a custom URL. When you select a remote server, the app stops
+starting a bb server on this Mac. It starts one again only when you select
+"This Mac".
+
+To reach bb connect without a local server, the app enrolls itself once as a
+connect machine. That step needs the local server, so the first switch to a
+remote server still starts it. The app keeps its own credential, encrypted with
+the OS keychain, and never holds the server's pairing secret. The app appears in
+the getbb.app dashboard machine list, where you can revoke it. After a revoke,
+the app drops the credential and asks the local server again.
+
+A remote server has no realtime link for keybindings and theme. The app re-reads
+them when it starts, when it becomes active, and every five minutes.
+
 ## Add an execution machine
 
 Open Settings → Machines and choose Add machine. Run the generated one-line

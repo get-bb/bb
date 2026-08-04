@@ -12,7 +12,7 @@ import {
   isBareBbRealtimeWs,
   TunnelSession,
 } from "@bb/tunnel-client";
-import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
+import { deriveConnectBaseUrl, serverUrlForHandle } from "@bb/connect-client";
 import {
   parseSharePort,
   SharePortError,

@@ -27,7 +27,9 @@ interface CreateTempScriptArgs {
 const tempScripts: TempScript[] = [];
 const processes: BbAppProcess[] = [];
 
-async function createTempScript(args: CreateTempScriptArgs): Promise<TempScript> {
+async function createTempScript(
+  args: CreateTempScriptArgs,
+): Promise<TempScript> {
   const root = await mkdtemp(join(tmpdir(), "bb-desktop-process-"));
   const path = join(root, "child.mjs");
   await writeFile(path, args.contents, "utf8");

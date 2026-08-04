@@ -6,13 +6,15 @@ import type {
   PluginKvStorage,
   PluginLogger,
 } from "@bb/plugin-sdk";
-import type { ConnectCredential } from "./credential.js";
 import {
   ShareHostNotFoundError,
   type ShareHost,
   type ShareHostResolver,
 } from "./hosts.js";
-import { deriveConnectBaseUrl } from "./redeem.js";
+import {
+  deriveConnectBaseUrl,
+  type ConnectCredential,
+} from "@bb/connect-client";
 
 export const SHARES_KV_KEY = "shares";
 

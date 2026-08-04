@@ -1,6 +1,8 @@
 import { z } from "zod";
-import type { ConnectCredential } from "./credential.js";
-import { deriveConnectBaseUrl } from "./redeem.js";
+import {
+  deriveConnectBaseUrl,
+  type ConnectCredential,
+} from "@bb/connect-client";
 
 const machineCodeResponseSchema = z.object({
   code: z.string().min(1),

@@ -64,11 +64,7 @@ export interface DesktopBrowserWindow extends StatefulBrowserWindow {
   loadURL(url: string): Promise<void>;
   maximize(): void;
   on(
-    eventName:
-      | "close"
-      | "closed"
-      | "enter-full-screen"
-      | "leave-full-screen",
+    eventName: "close" | "closed" | "enter-full-screen" | "leave-full-screen",
     listener: () => void,
   ): void;
   once(eventName: "ready-to-show", listener: () => void): void;

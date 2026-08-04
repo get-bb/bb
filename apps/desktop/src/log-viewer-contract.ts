@@ -31,9 +31,7 @@ export interface LogViewerOpenLogsFolderResult {
 }
 
 export type LogViewerAppendHandler = (event: LogViewerAppendEvent) => void;
-export type LogViewerSnapshotHandler = (
-  event: LogViewerSnapshotEvent,
-) => void;
+export type LogViewerSnapshotHandler = (event: LogViewerSnapshotEvent) => void;
 export type LogViewerUnsubscribe = () => void;
 
 export interface LogViewerApi {

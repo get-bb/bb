@@ -144,9 +144,7 @@ export function createLogLineBuffer(
     args.onFlush(pendingLines);
   }
 
-  function scheduleBufferFlush(
-    scheduleArgs: ScheduleBufferFlushArgs,
-  ): void {
+  function scheduleBufferFlush(scheduleArgs: ScheduleBufferFlushArgs): void {
     if (scheduleArgs.buffer.flushTimer !== null) {
       return;
     }
@@ -164,10 +162,7 @@ export function createLogLineBuffer(
 
       state.visibleLines.push(...lines);
       if (state.visibleLines.length > args.maxLines) {
-        state.visibleLines.splice(
-          0,
-          state.visibleLines.length - args.maxLines,
-        );
+        state.visibleLines.splice(0, state.visibleLines.length - args.maxLines);
       }
 
       state.pendingLines.push(...lines);
@@ -193,7 +188,9 @@ export function createLogLineBuffer(
   };
 }
 
-export function createLogViewerViewUrl(args: CreateLogViewerViewUrlArgs): string {
+export function createLogViewerViewUrl(
+  args: CreateLogViewerViewUrlArgs,
+): string {
   const escapedLogDir = escapeHtmlText(args.logDir);
   const html = `<!doctype html>
 <html>
@@ -566,12 +563,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
 
     const childProcess = spawn(
       "tail",
-      [
-        "-n",
-        String(LOG_VIEWER_INITIAL_TAIL_LINES),
-        "-F",
-        restartArgs.filePath,
-      ],
+      ["-n", String(LOG_VIEWER_INITIAL_TAIL_LINES), "-F", restartArgs.filePath],
       {
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -657,8 +649,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     refreshInProgress = true;
     void refreshTailProcesses()
       .catch((error) => {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         emitSystemLine({ text: `log refresh failed: ${message}` });
       })
       .finally(() => {
@@ -689,8 +680,7 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
           handleDirectoryWatchError({ error, watcher });
         });
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         emitSystemLine({ text: `log directory watch failed: ${message}` });
       }
       pollTimer = setInterval(

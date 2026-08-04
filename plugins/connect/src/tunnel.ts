@@ -18,22 +18,23 @@ import {
   type StreamOriginResult,
 } from "@bb/tunnel-client";
 import type { PluginLogger } from "@bb/plugin-sdk";
-import type { ConnectCredential, CredentialStore } from "./credential.js";
-import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
 import {
   ConnectListError,
-  fetchAccountServers,
-  withAccountServerUrls,
+  deriveConnectBaseUrl,
+  fetchDesktopSession,
+  listAccountServers,
+  serverUrlForHandle,
+  type ConnectCredential,
+  type DesktopSession,
   type ListAccountServersResult,
-} from "./list-servers.js";
+} from "@bb/connect-client";
+import type { CredentialStore } from "./credential.js";
+import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
 import {
   asConnectPairError,
   DEFAULT_CONNECT_BASE_URL,
-  deriveConnectBaseUrl,
   redeemConnectCode,
-  serverUrlForHandle,
 } from "./redeem.js";
-import { fetchDesktopSession, type DesktopSession } from "./desktop-session.js";
 import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
@@ -196,11 +197,7 @@ export class ConnectTunnel {
         "this bb is not connected to getbb.app — run `bb connect` for how to pair",
       );
     }
-    const servers = withAccountServerUrls(
-      await fetchAccountServers(credential),
-      credential,
-    );
-    return { servers, selfHandle: credential.handle };
+    return listAccountServers(credential);
   }
 
   async createDesktopSession(): Promise<DesktopSession> {

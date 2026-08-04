@@ -457,11 +457,7 @@ export function createDesktopBrowserViewManager(
     const webContents = entry.view.webContents;
 
     webContents.on("before-input-event", (event, input) => {
-      if (
-        input.type !== "keyDown" ||
-        input.isAutoRepeat ||
-        input.isComposing
-      ) {
+      if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
         return;
       }
       const command = args.resolveAppCommand({

@@ -29,9 +29,7 @@ interface WarningLogger {
   warnings: string[];
 }
 
-function createSpawnResult(
-  args: CreateSpawnResultArgs,
-): ShellPathSpawnResult {
+function createSpawnResult(args: CreateSpawnResultArgs): ShellPathSpawnResult {
   return {
     ...(args.error === undefined ? {} : { error: args.error }),
     signal: args.signal ?? null,

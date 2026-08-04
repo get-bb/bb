@@ -196,11 +196,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   }
 
   on(
-    eventName:
-      | "close"
-      | "closed"
-      | "enter-full-screen"
-      | "leave-full-screen",
+    eventName: "close" | "closed" | "enter-full-screen" | "leave-full-screen",
     listener: () => void,
   ): void {
     if (eventName === "closed") {

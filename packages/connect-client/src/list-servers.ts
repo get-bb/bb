@@ -1,6 +1,10 @@
 import { z } from "zod";
-import type { ConnectCredential } from "./credential.js";
-import { deriveConnectBaseUrl, serverUrlForHandle } from "./redeem.js";
+import {
+  deriveConnectBaseUrl,
+  serverUrlForHandle,
+  type ConnectCredential,
+} from "./credential.js";
+import { ConnectListError } from "./errors.js";
 
 /** One server row from `GET /api/connect/servers` (worker boundary). */
 export const accountServerSchema = z.object({
@@ -41,37 +45,18 @@ export function withAccountServerUrls(
   }));
 }
 
-export type ConnectListErrorCode =
-  | "not_paired"
-  | "unauthorized"
-  | "network"
-  | "invalid_response";
-
-/**
- * Typed list failure. `code` is stable for RPC/CLI mapping; `message` carries
- * detail for logs/stderr.
- */
-export class ConnectListError extends Error {
-  constructor(
-    readonly code: ConnectListErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ConnectListError";
-  }
-}
-
 /**
  * Call the connect gate `GET /api/connect/servers` with the stored pairing
  * credential. Zod-parses the worker response at the boundary.
  */
 export async function fetchAccountServers(
   credential: ConnectCredential,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<AccountServer[]> {
   const url = `${credential.serverUrl.replace(/\/$/, "")}/api/connect/servers`;
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchImpl(url, {
       method: "GET",
       headers: { "x-bb-connect-machine": credential.credential },
     });
@@ -97,7 +82,10 @@ export async function fetchAccountServers(
   try {
     raw = await res.json();
   } catch {
-    throw new ConnectListError("invalid_response", "List servers returned non-JSON");
+    throw new ConnectListError(
+      "invalid_response",
+      "List servers returned non-JSON",
+    );
   }
 
   const parsed = accountServersResponseSchema.safeParse(raw);
@@ -108,4 +96,19 @@ export async function fetchAccountServers(
     );
   }
   return parsed.data.servers;
+}
+
+/**
+ * The gate call plus the URL enrichment and self label, so a caller holding
+ * only a credential gets the same result as the plugin's RPC.
+ */
+export async function listAccountServers(
+  credential: ConnectCredential,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<ListAccountServersResult> {
+  const servers = withAccountServerUrls(
+    await fetchAccountServers(credential, fetchImpl),
+    credential,
+  );
+  return { servers, selfHandle: credential.handle };
 }

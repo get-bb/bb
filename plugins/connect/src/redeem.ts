@@ -63,23 +63,6 @@ export function asConnectPairError(error: unknown): ConnectPairError {
   return new ConnectPairError("network", message);
 }
 
-/**
- * Derive the connect cloud apex (`https://getbb.app`) from a server URL
- * (`https://<handle>.getbb.app`) by dropping the handle label.
- */
-export function deriveConnectBaseUrl(serverUrl: string): string {
-  return new URL(serverUrl).origin.replace(/\/\/[^.]+\./, "//");
-}
-
-/**
- * `https://getbb.app` + routing label → `https://<label>.getbb.app`.
- * `handle` is the redeemed server's subdomain (primary or additional).
- */
-export function serverUrlForHandle(baseUrl: string, handle: string): string {
-  const url = new URL(baseUrl);
-  return `${url.protocol}//${handle}.${url.host}`;
-}
-
 export async function redeemConnectCode(args: {
   code: string;
   baseUrl: string;

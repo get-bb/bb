@@ -1,16 +1,10 @@
-import { z } from "zod";
+import { connectCredentialSchema } from "@bb/connect-client";
+import type { ConnectCredential } from "@bb/connect-client";
 import type { PluginKvStorage } from "@bb/plugin-sdk";
 
-// The durable tunnel credential lives in the plugin's kv storage (bb.db).
-// `handle` is the paired server's routing label (subdomain), which may differ
-// from the account's primary handle when multiple bbs are connected.
-export const connectCredentialSchema = z.object({
-  serverUrl: z.string().min(1),
-  handle: z.string().min(1),
-  credential: z.string().min(1),
-});
-
-export type ConnectCredential = z.infer<typeof connectCredentialSchema>;
+// The durable tunnel credential lives in the plugin's kv storage (bb.db). Its
+// shape and the gate calls that use it live in @bb/connect-client, because the
+// desktop app reaches the same gate without a local server.
 
 export const CREDENTIAL_KV_KEY = "credential";
 

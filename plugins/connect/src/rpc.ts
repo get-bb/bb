@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { defineRpcContract, type PluginRpcHandlers } from "@bb/plugin-sdk";
-import { ConnectListError } from "./list-servers.js";
+import {
+  ConnectListError,
+  type DesktopSession,
+  type ListAccountServersResult,
+} from "@bb/connect-client";
 import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
-import type { ListAccountServersResult } from "./list-servers.js";
-import type { DesktopSession } from "./desktop-session.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
 import type { ShareListing } from "./shares.js";

@@ -8,6 +8,8 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  net,
+  safeStorage,
   session,
   shell,
   type Event,
@@ -19,6 +21,7 @@ import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_ENV_NAME,
 } from "@bb/config/app-surface";
+import type { ConnectCredential } from "@bb/connect-client";
 import type { AppKeybindings } from "@bb/domain";
 import {
   bbDesktopThemeSchema,
@@ -78,7 +81,17 @@ import {
   type ConnectAccountServer,
   type ConnectServerSync,
 } from "./connect-server-sync.js";
-import { installConnectDesktopSession } from "./connect-desktop-session.js";
+import {
+  createCredentialCookieSource,
+  createLocalServerCookieSource,
+  installConnectDesktopSession,
+  type ConnectDesktopSessionResult,
+} from "./connect-desktop-session.js";
+import {
+  createConnectCredentialCache,
+  type ConnectCredentialCache,
+} from "./connect-credential-cache.js";
+import { enrollDesktopMachine } from "./connect-machine-enrollment.js";
 import {
   createDesktopShutdownState,
   registerDesktopShutdownSignalHandlers,
@@ -163,6 +176,7 @@ const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
 const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
+const REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
@@ -244,10 +258,16 @@ interface ResolveDesktopUpdateFeedUrlArgs {
 }
 
 interface FetchSystemConfigArgs {
+  /**
+   * Remote servers authenticate with the Electron session cookie, which only
+   * Electron's own network stack carries. Local ones use plain node fetch.
+   */
+  fetchImpl: typeof fetch;
   serverUrl: string;
 }
 
 interface RefreshSystemConfigArgs {
+  fetchImpl: typeof fetch;
   serverUrl: string;
 }
 
@@ -276,12 +296,16 @@ let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
 let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
+let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
 let serverTargetStore: ServerTargetStore | null = null;
 let connectServerSync: ConnectServerSync | null = null;
+let connectCredentialCache: ConnectCredentialCache | null = null;
+let cachedConnectCredential: ConnectCredential | null = null;
+let enrollingDesktopMachine: Promise<void> | null = null;
 let connectAccountServers: ConnectAccountServer[] = [];
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
@@ -743,7 +767,7 @@ function formatRealtimeUrl(serverUrl: string): string {
 }
 
 async function fetchSystemConfig(args: FetchSystemConfigArgs) {
-  const response = await fetch(formatApiUrl(args));
+  const response = await args.fetchImpl(formatApiUrl(args));
   if (!response.ok) {
     throw new Error(
       `System config request failed with HTTP ${response.status}`,
@@ -796,7 +820,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshSystemConfig({ serverUrl });
+        void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
       }
     } catch {
       return;
@@ -810,7 +834,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
-      void refreshSystemConfig({ serverUrl });
+      void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -837,7 +861,10 @@ async function refreshSystemConfig(
   const token = systemConfigRefreshToken + 1;
   systemConfigRefreshToken = token;
   try {
-    const config = await fetchSystemConfig({ serverUrl: args.serverUrl });
+    const config = await fetchSystemConfig({
+      fetchImpl: args.fetchImpl,
+      serverUrl: args.serverUrl,
+    });
     if (token !== systemConfigRefreshToken) {
       return;
     }
@@ -855,6 +882,40 @@ async function refreshSystemConfig(
   }
 }
 
+/**
+ * Poll a remote server for keybindings and theme.
+ *
+ * The realtime socket is not an option here: a remote server authenticates the
+ * desktop with the Electron session cookie, and only Electron's own network
+ * stack sends it. So the app re-reads the config on start, when it becomes
+ * active, and on a slow timer. A keybinding edit lands within a poll instead
+ * of instantly.
+ */
+function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
+  function refresh(): void {
+    void refreshSystemConfig({
+      fetchImpl: (input, init) =>
+        net.fetch(input as string | Request, {
+          ...init,
+          credentials: "include",
+        }),
+      serverUrl,
+    });
+  }
+
+  const timer = setInterval(refresh, REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS);
+  timer.unref();
+  refreshRemoteSystemConfig = refresh;
+  refresh();
+
+  return {
+    stop(): void {
+      clearInterval(timer);
+      refreshRemoteSystemConfig = null;
+    },
+  };
+}
+
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
@@ -863,7 +924,13 @@ function stopSystemConfigSync(): void {
 function startSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
-  void refreshSystemConfig({ serverUrl });
+  void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+}
+
+/** System config for a connect or custom target, with no local server. */
+function startRemoteSystemConfigSync(serverUrl: string): void {
+  systemConfigSync?.stop();
+  systemConfigSync = createRemoteSystemConfigSync(serverUrl);
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
@@ -884,6 +951,10 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
   });
 }
 
+/**
+ * Attach to a compatible bb server on this Mac, or start one. The caller pins
+ * the system config sync, because a remote target reads its config elsewhere.
+ */
 async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
   if (currentRuntime !== null) {
     return true;
@@ -904,9 +975,6 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
       serverUrl: existingProbe.serverUrl,
       userDataPath: null,
     });
-    // System config / updates stay pinned to the local runtime even when other
-    // windows display remote servers.
-    startSystemConfigSync(existingProbe.serverUrl);
     return true;
   }
 
@@ -919,11 +987,97 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
     serverUrl: builtinServerUrl,
     userDataPath: desktopUserDataPath,
   });
-  if (runtime === null) {
-    return false;
+  return runtime !== null;
+}
+
+/**
+ * Mint and install the Connect session cookie for a remote server.
+ *
+ * The app's own machine credential is the fast path: it needs no local bb
+ * server. A credential the gate refuses (revoked machine, unpaired account) is
+ * dropped, and the local server mints the cookie instead — which is also the
+ * first-launch path, before the app has enrolled.
+ */
+async function authenticateConnectTarget(
+  remoteServerUrl: string,
+): Promise<ConnectDesktopSessionResult> {
+  const cookieStore = session.defaultSession.cookies;
+  if (cachedConnectCredential !== null) {
+    const cachedResult = await installConnectDesktopSession({
+      cookieStore,
+      mintCookie: createCredentialCookieSource({
+        credential: cachedConnectCredential,
+      }),
+      remoteServerUrl,
+    });
+    if (cachedResult.ok || cachedResult.code !== "unauthorized") {
+      return cachedResult;
+    }
+    createDesktopLogger().info(
+      "[desktop] bb Connect refused the cached machine credential — dropping it",
+    );
+    await clearCachedConnectCredential();
   }
-  startSystemConfigSync(runtime.serverUrl);
-  return true;
+
+  const localRuntimeReady = await ensureBuiltinRuntimeAttached();
+  if (!localRuntimeReady || currentRuntime === null) {
+    return {
+      code: "network",
+      detail:
+        "the local bb server is unavailable, and this app has no stored bb Connect credential",
+      ok: false,
+    };
+  }
+  const localResult = await installConnectDesktopSession({
+    cookieStore,
+    mintCookie: createLocalServerCookieSource({
+      localServerUrl: currentRuntime.serverUrl,
+    }),
+    remoteServerUrl,
+  });
+  if (localResult.ok) {
+    // Enroll for next launch, so this target needs no local server again.
+    void ensureDesktopMachineEnrolled();
+  }
+  return localResult;
+}
+
+async function clearCachedConnectCredential(): Promise<void> {
+  cachedConnectCredential = null;
+  await connectCredentialCache?.clear();
+}
+
+/**
+ * Give this app its own connect machine credential, using the local server's
+ * pairing secret once. Best effort: a failure only means the app keeps asking
+ * the local server for session cookies.
+ */
+function ensureDesktopMachineEnrolled(): void {
+  const cache = connectCredentialCache;
+  const localServerUrl = currentRuntime?.serverUrl;
+  if (
+    cache === null ||
+    cachedConnectCredential !== null ||
+    enrollingDesktopMachine !== null ||
+    localServerUrl === undefined
+  ) {
+    return;
+  }
+  const logger = createDesktopLogger();
+  enrollingDesktopMachine = (async () => {
+    const result = await enrollDesktopMachine({ localServerUrl });
+    if (!result.ok) {
+      logger.info(
+        `[desktop] could not enroll this app with bb Connect (${result.code}): ${result.detail}`,
+      );
+      return;
+    }
+    cachedConnectCredential = result.credential;
+    await cache.write(result.credential);
+    logger.info("[desktop] enrolled this app as a bb Connect machine");
+  })().finally(() => {
+    enrollingDesktopMachine = null;
+  });
 }
 
 async function applyServerTarget(): Promise<void> {
@@ -943,36 +1097,21 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
+    const localServerUrl = currentRuntime?.serverUrl ?? builtinServerUrl;
+    // Switching back from a remote target leaves that target's config poll
+    // running, so re-pin the sync to the local server here.
+    startSystemConfigSync(localServerUrl);
     await loadBbApp(
       resolveDesktopWindowUrl({
         env: process.env,
-        serverUrl: currentRuntime?.serverUrl ?? builtinServerUrl,
+        serverUrl: localServerUrl,
       }),
     );
   } else if (target.kind === "connect") {
-    // Connect servers authenticate through the local runtime's connect
-    // plugin, then load as plain web pages. System config and updates
-    // stay pinned to the local runtime.
-    const localRuntimeReady = await ensureBuiltinRuntimeAttached();
-    if (!localRuntimeReady || currentRuntime === null) {
-      const detail =
-        "The local bb server is unavailable, so the desktop app could not create a Connect session.";
-      createDesktopLogger().warn(
-        `[desktop] Connect authentication failed: ${detail}`,
-      );
-      await loadStartupError({
-        details: `${detail} Try switching servers again after the local server is running.`,
-        logs: "",
-        title: "Could not authenticate with bb Connect",
-      });
-      refreshApplicationMenu();
-      return;
-    }
-    const result = await installConnectDesktopSession({
-      cookieStore: session.defaultSession.cookies,
-      localServerUrl: currentRuntime.serverUrl,
-      remoteServerUrl: target.server.url,
-    });
+    // Connect servers load as plain web pages behind a session cookie. The
+    // cookie comes from the app's own machine credential when it has one, so
+    // no local bb server has to run.
+    const result = await authenticateConnectTarget(target.server.url);
     if (!result.ok) {
       createDesktopLogger().warn(
         `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
@@ -989,11 +1128,12 @@ async function applyServerTarget(): Promise<void> {
     }
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.server.url });
+    startRemoteSystemConfigSync(target.server.url);
   } else {
-    // A custom server is a plain web load. The owned local runtime keeps
-    // running, and system config and updates stay pinned to it.
+    // A custom server is a plain web load with no bb Connect involved.
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
+    startRemoteSystemConfigSync(target.url);
   }
   refreshApplicationMenu();
 }
@@ -1759,6 +1899,8 @@ async function runDesktopApp(): Promise<void> {
   app.on("did-become-active", () => {
     void desktopUpdateService?.checkAfterActive();
     void desktopAutoUpdateService?.checkAfterActive();
+    // A remote target has no realtime socket for config changes.
+    refreshRemoteSystemConfig?.();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     if (desktopBrowserViewManager === null) {
@@ -1851,9 +1993,18 @@ async function runDesktopApp(): Promise<void> {
     storagePath: join(userDataPath, SERVER_TARGET_FILE_NAME),
   });
   await serverTargetStore.load();
+  connectCredentialCache = createConnectCredentialCache({
+    encryption: safeStorage,
+    userDataPath,
+  });
+  cachedConnectCredential = await connectCredentialCache.read();
   const logger = createDesktopLogger();
   connectServerSync = createConnectServerSync({
+    getCredential: () => cachedConnectCredential,
     getLocalServerUrl: () => currentRuntime?.serverUrl ?? null,
+    onUnauthorized() {
+      void clearCachedConnectCredential();
+    },
     onServers(servers) {
       connectAccountServers = servers;
       const selected = serverTargetStore?.getConnectServer() ?? null;
@@ -1967,11 +2118,15 @@ async function runDesktopApp(): Promise<void> {
   for (const browserWindow of restoredWindows) {
     registerApplicationWindow(browserWindow);
   }
-  await initializeRuntime({ bridgePath, serverUrl, userDataPath });
-  // The local runtime always starts (system config and updates stay
-  // pinned to it); a persisted remote target then replaces the window URL.
-  if (serverTargetStore.getTarget().kind !== "builtin") {
+  if (serverTargetStore.getTarget().kind === "builtin") {
+    await initializeRuntime({ bridgePath, serverUrl, userDataPath });
+  } else {
+    // A saved remote target needs no bb server on this Mac: the session cookie
+    // and the account server list both come from bb Connect. The local server
+    // starts only when the user switches back to "This Mac", or when this app
+    // has no credential of its own yet.
     await applyServerTarget();
+    connectServerSync.syncNow().catch(() => {});
   }
 }
 

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  ConnectListError,
+  fetchDesktopSession,
+  type ConnectCredential,
+} from "@bb/connect-client";
 
 const rpcSuccessSchema = z.object({
   ok: z.literal(true),
@@ -11,6 +16,13 @@ const rpcSuccessSchema = z.object({
     }),
   }),
 });
+
+export interface DesktopSessionCookie {
+  domain: string;
+  expiresAt: number;
+  name: string;
+  value: string;
+}
 
 export interface DesktopCookie {
   domain?: string;
@@ -38,7 +50,8 @@ export type ConnectDesktopSessionFailureCode =
   | "cookie_verification_failed"
   | "invalid_response"
   | "network"
-  | "request_rejected";
+  | "request_rejected"
+  | "unauthorized";
 
 export type ConnectDesktopSessionResult =
   | { ok: true }
@@ -48,10 +61,18 @@ export type ConnectDesktopSessionResult =
       ok: false;
     };
 
+export type MintDesktopSessionCookieResult =
+  | { cookie: DesktopSessionCookie; ok: true }
+  | { code: ConnectDesktopSessionFailureCode; detail: string; ok: false };
+
+/** Where a session cookie comes from: the local plugin, or the connect gate. */
+export type DesktopSessionCookieSource =
+  () => Promise<MintDesktopSessionCookieResult>;
+
 function failure(
   code: ConnectDesktopSessionFailureCode,
   detail: string,
-): ConnectDesktopSessionResult {
+): { code: ConnectDesktopSessionFailureCode; detail: string; ok: false } {
   return { code, detail, ok: false };
 }
 
@@ -59,43 +80,88 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function installConnectDesktopSession(args: {
-  cookieStore: DesktopCookieStore;
+/**
+ * Mint through the local bb server's connect plugin. The server holds the
+ * pairing secret and forwards the call to the gate.
+ */
+export function createLocalServerCookieSource(args: {
   fetchImpl?: typeof fetch;
   localServerUrl: string;
+}): DesktopSessionCookieSource {
+  return async () => {
+    const fetchImpl = args.fetchImpl ?? globalThis.fetch;
+    const rpcUrl = new URL(
+      "/api/v1/plugins/connect/rpc/createDesktopSession",
+      args.localServerUrl,
+    );
+    let response: Response;
+    try {
+      response = await fetchImpl(rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      });
+    } catch (error) {
+      return failure("network", errorMessage(error));
+    }
+    if (!response.ok) {
+      return failure("request_rejected", `HTTP ${response.status}`);
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (error) {
+      return failure("invalid_response", errorMessage(error));
+    }
+    const parsed = rpcSuccessSchema.safeParse(body);
+    if (!parsed.success) {
+      return failure("invalid_response", "response did not match the contract");
+    }
+    return { cookie: parsed.data.result.cookie, ok: true };
+  };
+}
+
+/**
+ * Mint straight from the connect gate with the app's own cached machine
+ * credential — no local bb server involved.
+ */
+export function createCredentialCookieSource(args: {
+  credential: ConnectCredential;
+  fetchImpl?: typeof fetch;
+}): DesktopSessionCookieSource {
+  return async () => {
+    try {
+      const session = await fetchDesktopSession(
+        args.credential,
+        args.fetchImpl ?? globalThis.fetch,
+      );
+      return { cookie: session.cookie, ok: true };
+    } catch (error) {
+      if (error instanceof ConnectListError) {
+        // "not_paired" belongs to the plugin's own store, never to a call the
+        // app makes with a credential in hand.
+        return failure(
+          error.code === "not_paired" ? "invalid_response" : error.code,
+          error.message,
+        );
+      }
+      return failure("network", errorMessage(error));
+    }
+  };
+}
+
+export async function installConnectDesktopSession(args: {
+  cookieStore: DesktopCookieStore;
+  mintCookie: DesktopSessionCookieSource;
   remoteServerUrl: string;
 }): Promise<ConnectDesktopSessionResult> {
-  const fetchImpl = args.fetchImpl ?? globalThis.fetch;
-  const rpcUrl = new URL(
-    "/api/v1/plugins/connect/rpc/createDesktopSession",
-    args.localServerUrl,
-  );
-  let response: Response;
-  try {
-    response = await fetchImpl(rpcUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "null",
-    });
-  } catch (error) {
-    return failure("network", errorMessage(error));
-  }
-  if (!response.ok) {
-    return failure("request_rejected", `HTTP ${response.status}`);
+  const minted = await args.mintCookie();
+  if (!minted.ok) {
+    return minted;
   }
 
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch (error) {
-    return failure("invalid_response", errorMessage(error));
-  }
-  const parsed = rpcSuccessSchema.safeParse(body);
-  if (!parsed.success) {
-    return failure("invalid_response", "response did not match the contract");
-  }
-
-  const { cookie } = parsed.data.result;
+  const { cookie } = minted;
   const remoteOrigin = new URL(args.remoteServerUrl).origin;
   try {
     await args.cookieStore.set({

@@ -96,10 +96,7 @@ describe("selectTargetableConnectServers", () => {
         { handle: "phone", name: "Phone", live: false, url: "https://p.x" },
       ],
     });
-    expect(servers.map((server) => server.handle)).toEqual([
-      "laptop",
-      "phone",
-    ]);
+    expect(servers.map((server) => server.handle)).toEqual(["laptop", "phone"]);
   });
 });
 
@@ -128,10 +125,12 @@ describe("createConnectServerSync", () => {
     }));
 
     const sync = createConnectServerSync({
+      getCredential: () => null,
       getLocalServerUrl: () => "http://127.0.0.1:38886",
       onServers(servers) {
         received = servers;
       },
+      onUnauthorized: () => undefined,
       fetchImpl,
       now: () => now,
       minIntervalMs: 60_000,
@@ -188,10 +187,12 @@ describe("createConnectServerSync", () => {
     });
 
     const sync = createConnectServerSync({
+      getCredential: () => null,
       getLocalServerUrl: () => "http://127.0.0.1:38886",
       onServers() {
         onServersCalls += 1;
       },
+      onUnauthorized: () => undefined,
       fetchImpl,
       log: (message) => {
         logs.push(message);
@@ -211,5 +212,91 @@ describe("createConnectServerSync", () => {
     fail = true;
     await sync.syncNow();
     expect(logs).toHaveLength(2);
+  });
+});
+
+describe("createConnectServerSync without a local server", () => {
+  const credential = {
+    credential: "bbcm_desktop",
+    handle: "me",
+    serverUrl: "https://me.getbb.app",
+  };
+
+  it("lists servers straight from the gate with the cached credential", async () => {
+    let received: ConnectAccountServer[] | null = null;
+    const gateFetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            servers: [
+              { handle: "me", name: "This Mac", live: true },
+              { handle: "other", name: "Other", live: true },
+            ],
+          }),
+        ),
+    );
+
+    const sync = createConnectServerSync({
+      getCredential: () => credential,
+      getLocalServerUrl: () => null,
+      gateFetchImpl,
+      onServers(servers) {
+        received = servers;
+      },
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+      clearIntervalFn: () => undefined,
+    });
+
+    await sync.syncNow();
+    expect(gateFetchImpl).toHaveBeenCalledWith(
+      "https://me.getbb.app/api/connect/servers",
+      expect.objectContaining({
+        headers: { "x-bb-connect-machine": "bbcm_desktop" },
+      }),
+    );
+    // selfHandle drops out: "This Mac" is its own menu entry.
+    expect(received).toEqual([
+      {
+        handle: "other",
+        name: "Other",
+        live: true,
+        url: "https://other.getbb.app",
+      },
+    ]);
+  });
+
+  it("reports a refused credential so the caller drops it", async () => {
+    let unauthorized = 0;
+    const sync = createConnectServerSync({
+      getCredential: () => credential,
+      getLocalServerUrl: () => null,
+      gateFetchImpl: async () => new Response("no", { status: 403 }),
+      onServers: () => undefined,
+      onUnauthorized() {
+        unauthorized += 1;
+      },
+      setIntervalFn: () => 0,
+      clearIntervalFn: () => undefined,
+    });
+
+    await sync.syncNow();
+    expect(unauthorized).toBe(1);
+  });
+
+  it("stays quiet when the app has no credential", async () => {
+    const gateFetchImpl = vi.fn(async () => new Response("{}"));
+    const sync = createConnectServerSync({
+      getCredential: () => null,
+      getLocalServerUrl: () => null,
+      gateFetchImpl,
+      onServers: () => undefined,
+      onUnauthorized: () => undefined,
+      setIntervalFn: () => 0,
+      clearIntervalFn: () => undefined,
+    });
+
+    await sync.syncNow();
+    expect(gateFetchImpl).not.toHaveBeenCalled();
   });
 });
