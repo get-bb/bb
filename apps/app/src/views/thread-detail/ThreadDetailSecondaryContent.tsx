@@ -287,11 +287,12 @@ function ThreadDetailSecondaryContentBody({
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
-          // The full-width header bar owns the (stable) right-panel toggle, so
-          // the panel drops its own inline hide control entirely — no reserved
-          // slot, so the trailing expand control sits flush at the edge.
+          // The split-workspace host owns the show control while the panel is
+          // closed. Once open, the panel owns its hide control so the two
+          // trailing actions read in their natural order: Full Screen, then
+          // Hide right panel at the outer edge.
           inlinePanelToggle={
-            secondaryPanelHost === null ? "hidden" : "reserved"
+            secondaryPanelHost === null ? "hidden" : "button"
           }
           // In the split-workspace host, panes' panels share one PanelGroup, so
           // each pane's Panel needs its own layout identity (see the prop doc).

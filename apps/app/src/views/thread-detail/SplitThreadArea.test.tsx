@@ -1140,6 +1140,7 @@ describe("SplitThreadArea", () => {
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
     expect(toggle.classList).toContain("absolute");
+    expect(toggle.classList).toContain("hidden");
     expect(toggle.classList).not.toContain("relative");
     expect(toggle.classList).toContain("right-2.5");
     expect(toggle.classList).toContain("top-2.5");
@@ -1167,6 +1168,7 @@ describe("SplitThreadArea", () => {
     expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
       "true",
     );
+    expect(toggle.classList).toContain("hidden");
     expect(toggle.querySelector("button")?.hasAttribute("aria-pressed")).toBe(
       false,
     );
@@ -1195,6 +1197,7 @@ describe("SplitThreadArea", () => {
         .querySelector("button")
         ?.getAttribute("aria-expanded"),
     ).toBe("false");
+    expect(toggle.classList).not.toContain("hidden");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     await screen.findByTestId("hosted-panel-thr-a");

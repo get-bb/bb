@@ -10,6 +10,7 @@ import {
   DefaultPaneContextProvider,
   PaneContext,
   type PaneContextValue,
+  type PaneSecondaryPanelViewModel,
 } from "./PaneContext";
 import { MemoryRouter } from "react-router-dom";
 
@@ -135,6 +136,7 @@ vi.mock(
 
     const ThreadSecondaryPanel = ({
       browserDeck,
+      inlinePanelToggle,
       isOpen,
       renderAsDrawer,
     }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
@@ -142,6 +144,7 @@ vi.mock(
         "section",
         {
           "data-open": String(isOpen),
+          "data-inline-panel-toggle": inlinePanelToggle,
           "data-testid": renderAsDrawer
             ? "drawer-secondary-panel"
             : "inline-secondary-panel",
@@ -185,9 +188,14 @@ interface RenderThreadDetailArgs {
 
 const noop = () => {};
 
+let publishedHostedPanel: PaneSecondaryPanelViewModel | null = null;
 const hostedPaneRegistration = {
-  clear: noop,
-  publish: noop,
+  clear: () => {
+    publishedHostedPanel = null;
+  },
+  publish: (model: PaneSecondaryPanelViewModel) => {
+    publishedHostedPanel = model;
+  },
 };
 
 function ThreadDetailTestPaneProvider({
@@ -452,10 +460,31 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  publishedHostedPanel = null;
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("places the hosted panel hide control at the outer edge of its own toolbar", () => {
+    renderThreadDetail({
+      isCompactViewport: false,
+      isFocusedHosted: true,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck: createBrowserDeckRenderer(),
+      threadId: "thread-1",
+    });
+
+    if (publishedHostedPanel === null) {
+      throw new Error("Expected the focused pane to publish its panel model");
+    }
+    render(<>{publishedHostedPanel.panel}</>);
+    expect(
+      screen
+        .getByTestId("inline-secondary-panel")
+        .getAttribute("data-inline-panel-toggle"),
+    ).toBe("button");
+  });
+
   it("keeps the thread header inside the timeline column beside the side panel", () => {
     renderThreadDetail({
       isCompactViewport: false,

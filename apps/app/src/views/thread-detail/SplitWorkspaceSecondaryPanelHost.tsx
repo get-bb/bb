@@ -181,7 +181,7 @@ export function SplitWorkspaceSecondaryPanelHost({
           data-testid="split-workspace-panel-toggle"
           className={cn(
             "absolute right-2.5 top-2.5 z-40",
-            isPaneMaximized && "hidden",
+            (isOpen || isPaneMaximized) && "hidden",
             // This overlay already owns positioning and stacking. Use only the
             // raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds `relative
             // z-50`, which tailwind-merge would resolve against `absolute` and

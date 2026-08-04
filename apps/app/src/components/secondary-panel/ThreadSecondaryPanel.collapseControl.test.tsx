@@ -45,6 +45,24 @@ function renderPanel(args: {
 // — there is no standalone rail to click. Pin both halves of the same-slot
 // expansion pair so a full-screen tab can always restore its prior layout.
 describe("ThreadSecondaryPanel full-screen control", () => {
+  it("keeps Full Screen before Hide right panel in the trailing toolbar", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const fullScreenControl = view.getByRole("button", {
+      name: "Full Screen",
+    });
+    const hideControl = view.getByRole("button", {
+      name: "Hide right panel",
+    });
+    expect(
+      fullScreenControl.compareDocumentPosition(hideControl) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   it("expands the panel while the conversation is shown", () => {
     const onToggleConversationCollapse = vi.fn();
     const view = renderPanel({
