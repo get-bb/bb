@@ -110,6 +110,14 @@ async function installGitDependencies(args: {
   rootDir: string;
   manifest: PluginManifest;
 }): Promise<void> {
+  // `--prefix` makes npm read `.npmrc` from the cloned repository, and that
+  // file can redirect the registry, relax TLS checks, or interpolate `${ENV}`
+  // from the server's environment into request URLs. The plugin author
+  // controls it, so drop it before npm ever looks. Staging is ours to edit and
+  // the promoted artifact has no use for it.
+  for (const name of [".npmrc", ".yarnrc", ".yarnrc.yml"]) {
+    await rm(join(args.rootDir, name), { force: true });
+  }
   await runInstallCommand(
     "npm",
     [
@@ -173,13 +181,6 @@ export function createManagedPluginArtifacts(
   };
 
   /**
-   * Validation half of an install: read the manifest, refuse engine
-   * mismatches for managed sources (design §6 — install refuses, unlike
-   * load which marks `incompatible`), and materialize/verify the frontend
-   * bundle. Managed (git:/npm:) installs run this against a staging dir so
-   * a failure never touches the currently-installed files.
-   */
-  /**
    * Manifest and engine checks only — no npm, no bundling, no plugin code and
    * no network beyond the clone that already happened.
    *
@@ -222,9 +223,10 @@ export function createManagedPluginArtifacts(
     const managed = kind === "git" || kind === "npm";
     // Dependency + bundle policy (design §5.1):
     // - git: bb installs declared runtime deps (scripts disabled — nothing
-    //   executes), builds BOTH bundles so those deps are inlined, then
-    //   discards node_modules. The promoted artifact is self-contained, so
-    //   `resolveServerEntry` never needs the source fallback for git.
+    //   executes) and builds BOTH bundles so those deps are inlined.
+    //   node_modules is kept: esbuild only bundles statically reachable code,
+    //   so a dependency that reads a data file or .wasm at runtime still needs
+    //   its tree, and the source fallback in `resolveServerEntry` needs it too.
     // - path: the author owns that directory. Never install into it and
     //   never prune it; only the frontend is built.
     // - npm: never built here; must ship a prebuilt dist whose metadata is

@@ -597,6 +597,25 @@ describe("plugin install flows", () => {
       await stat(join(entry.rootDir, "dist", "server.meta.json"));
     });
 
+    it("ignores a repository .npmrc when installing dependencies", async () => {
+      const repoDir = join(workDir, "repo-npmrc");
+      await writePluginFixture(repoDir, { name: "bb-plugin-npmrc" });
+      // `npm --prefix <clone>` reads this file. An author could redirect the
+      // registry, relax TLS, or interpolate ${ENV} into request URLs, so it
+      // must not survive into the install.
+      await writeFile(
+        join(repoDir, ".npmrc"),
+        "registry=http://127.0.0.1:1/evil\nstrict-ssl=false\n",
+      );
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+
+      const entry = await service.install(`git:${repoDir}@main`);
+
+      expect(entry.status).toBe("running");
+      await expect(stat(join(entry.rootDir, ".npmrc"))).rejects.toThrowError();
+    });
+
     it.runIf(hasNpm)(
       "inlines a git plugin's third-party dependency into its bundles",
       async () => {
