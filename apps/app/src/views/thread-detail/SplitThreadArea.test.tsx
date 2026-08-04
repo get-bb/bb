@@ -419,6 +419,25 @@ function pluginSplitLayout(): SplitLayout {
   };
 }
 
+function twoPluginSplitLayout(): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane-automations",
+          content: pluginContent("automations"),
+        },
+        { type: "pane", paneId: "pane-docs", content: docsContent },
+      ],
+    },
+    focusedPaneId: "pane-docs",
+  };
+}
+
 function threadPath(threadId: string): string {
   return `/threads/${threadId}`;
 }
@@ -1290,6 +1309,74 @@ describe("SplitThreadArea", () => {
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("preserves plugin-owned right panels with and without a plugin split", async () => {
+    setPluginSlotRegistrations("test-plugin", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "automations",
+          title: "Automations",
+          icon: "Clock",
+          path: "automations",
+          component: () => <div>Automations content</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs content with notes sidebar</div>,
+          headerContent: () => (
+            <button type="button">Collapse notes sidebar</button>
+          ),
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: twoPluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByText("Automations content")).toBeTruthy();
+    expect(screen.getByText("Docs content with notes sidebar")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Collapse notes sidebar" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Full Screen/ })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[0]!);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Automations content")).toBeNull(),
+    );
+    expect(screen.getByText("Docs content with notes sidebar")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Collapse notes sidebar" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
