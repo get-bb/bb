@@ -37,9 +37,9 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   OptionDisplay,
   OPTION_BASE_CLASS_NAME,
+  OPTION_CONTENT_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
-  OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import {
   Tooltip,
@@ -324,7 +324,10 @@ function AutomationSelector({
           className,
         )}
       >
-        <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+        <span
+          data-automation-selector-content=""
+          className={OPTION_CONTENT_CLASS_NAME}
+        >
           {leading}
           <SelectValue />
         </span>
@@ -347,7 +350,6 @@ function AutomationSelector({
 interface DisabledAutomationSelectorProps {
   label: string;
   value: string;
-  disabledReason: string;
   accessibleValue?: string;
   compactValue?: string;
   leading?: ReactNode;
@@ -358,14 +360,13 @@ interface DisabledAutomationSelectorProps {
 function DisabledAutomationSelector({
   label,
   value,
-  disabledReason,
   accessibleValue,
   compactValue,
   leading,
   title,
   className,
 }: DisabledAutomationSelectorProps) {
-  const control = (
+  return (
     <Button
       type="button"
       variant="ghost"
@@ -382,7 +383,8 @@ function DisabledAutomationSelector({
       )}
     >
       <span
-        className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+        data-automation-selector-content=""
+        className={OPTION_CONTENT_CLASS_NAME}
         title={title ?? `${label}: ${value}`}
       >
         {leading}
@@ -401,25 +403,6 @@ function DisabledAutomationSelector({
         aria-hidden
       />
     </Button>
-  );
-
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex shrink-0 cursor-not-allowed rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            tabIndex={0}
-            aria-label={`${label}. ${disabledReason}`}
-          >
-            {control}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-64">
-          {disabledReason}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
@@ -722,7 +705,7 @@ function AgentAutomationDefinition({
 
   const promptBox = editing ? (
     <form
-      className="rounded-xl border border-border bg-background"
+      className="rounded-xl border border-border bg-background shadow-lift"
       onSubmit={(event) => {
         event.preventDefault();
         if (!dirty || trimmedPrompt.length === 0) return;
@@ -739,36 +722,43 @@ function AgentAutomationDefinition({
         maxLength={AUTOMATION_PROMPT_MAX_LENGTH}
         aria-label="Automation prompt"
         disabled={pending}
-        className="min-h-28 resize-y border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
+        className="min-h-28 resize-none border-0 bg-transparent px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
       />
-      <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border px-2 py-1.5">
-        <AutomationSelector
-          label="Provider and model"
-          accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
-          value={model}
-          options={modelOptions}
-          disabled={pending || options === null}
-          onValueChange={setModel}
-          leading={<AutomationProviderIcon providerId={execution.providerId} />}
-        />
+      <div
+        data-automation-prompt-action-row=""
+        className="flex min-w-0 shrink-0 items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <AutomationSelector
+            label="Provider and model"
+            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
+            value={model}
+            options={modelOptions}
+            disabled={pending || options === null}
+            onValueChange={setModel}
+            leading={
+              <AutomationProviderIcon providerId={execution.providerId} />
+            }
+          />
+        </div>
         <Button
           type="submit"
           size="sm"
+          className="ml-1 shrink-0"
           disabled={pending || !dirty || trimmedPrompt.length === 0}
         >
-          Save prompt
+          Save Prompt
         </Button>
       </div>
     </form>
   ) : (
     <ResourcePromptPreview
-      className="bg-background"
+      disabled
       context={[
         {
           label: (
             <DisabledAutomationSelector
               label="Provider and model"
-              disabledReason="Select Edit via chat to change the provider and model."
               value={formatAutomationModelLabel(
                 execution.model,
                 execution.providerId,
@@ -847,7 +837,6 @@ function AgentAutomationDefinition({
         ) : (
           <DisabledAutomationSelector
             label="Permission mode"
-            disabledReason="Select Edit via chat to change permissions."
             value={formatPermissionMode(execution.permissionMode)}
             compactValue={formatPermissionModeCompact(
               execution.permissionMode,
@@ -966,7 +955,8 @@ export function AutomationDetailView({
               tooltipLabel={
                 execution.mode === "agent" ? "Edit via chat" : "Edit with chat"
               }
-              icon="MessageCirclePlus"
+              icon="Edit"
+              className="size-7 border border-border bg-surface-raised text-foreground shadow-xs hover:bg-accent hover:text-foreground"
               onClick={onEdit}
             />
           }

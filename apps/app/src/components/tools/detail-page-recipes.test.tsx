@@ -14,6 +14,7 @@ import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  AgentExecutionUpdate,
   AutomationExecutionOptionsResponse,
   AutomationResponse,
   AutomationRunResponse,
@@ -563,7 +564,7 @@ const FAILED_SCRIPT_RUN: AutomationRunResponse = {
 
 describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
-    const updateAgent = vi.fn(async () => {});
+    const updateAgent = vi.fn(async (_update: AgentExecutionUpdate) => {});
     function Harness() {
       const [editing, setEditing] = useState(false);
       return (
@@ -581,7 +582,10 @@ describe("Automation detail recipe", () => {
           }}
           actionPending={false}
           editing={editing}
-          onUpdateAgent={updateAgent}
+          onUpdateAgent={async (update) => {
+            await updateAgent(update);
+            setEditing(false);
+          }}
           onToggle={() => {}}
           onEdit={() => setEditing(true)}
           onRunNow={() => {}}
@@ -635,20 +639,37 @@ describe("Automation detail recipe", () => {
 
     const savedPrompt = screen.getByRole("textbox", { name: "Saved prompt" });
     expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
+    expect(savedPrompt.getAttribute("aria-disabled")).toBe("true");
+    expect(savedPrompt.className).toContain("text-muted-foreground");
+    expect(savedPrompt.parentElement?.className).toContain(
+      "bg-surface-recessed/55",
+    );
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
-    expect(screen.queryByRole("button", { name: "Save prompt" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
+    const disabledModelSelector = container.querySelector(
+      '[data-disabled-automation-selector="Provider and model"]',
+    ) as HTMLButtonElement;
+    const disabledPermissionSelector = container.querySelector(
+      '[data-disabled-automation-selector="Permission mode"]',
+    ) as HTMLButtonElement;
+    expect(disabledModelSelector.disabled).toBe(true);
+    expect(disabledPermissionSelector.disabled).toBe(true);
     expect(
-      container.querySelector(
-        '[data-disabled-automation-selector="Provider and model"]',
-      ),
-    ).not.toBeNull();
-    expect(
-      container.querySelector(
-        '[data-disabled-automation-selector="Permission mode"]',
-      ),
-    ).not.toBeNull();
+      disabledModelSelector.querySelector(
+        '[data-automation-selector-content=""]',
+      )?.className,
+    ).toContain("gap-1.5");
+    expect(disabledModelSelector.getAttribute("data-state")).toBeNull();
+    expect(disabledModelSelector.parentElement?.getAttribute("data-state")).toBe(
+      null,
+    );
+    const editButton = screen.getByRole("button", { name: "Edit via chat" });
+    expect(editButton.querySelector('[data-icon="Edit"]')).not.toBeNull();
+    expect(editButton.className).toContain("size-7");
+    expect(editButton.className).toContain("bg-surface-raised");
+    expect(editButton.className).toContain("border-border");
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit via chat" }));
+    fireEvent.click(editButton);
 
     const promptContent = screen.getByRole("textbox", {
       name: "Automation prompt",
@@ -656,14 +677,22 @@ describe("Automation detail recipe", () => {
     const promptPanel = promptContent.closest("form") as HTMLElement;
     expect(promptPanel.className).toContain("bg-background");
     expect(promptPanel.className).toContain("rounded-xl");
+    expect(promptPanel.className).toContain("shadow-lift");
     expect(promptPanel.className).not.toContain("rounded-md");
-    expect(promptPanel.className).not.toContain("shadow-xs");
-    expect(promptPanel.className).not.toContain("shadow-sm");
     expect(promptContent.value).toBe("Summarize yesterday's commits.");
     expect(promptContent.readOnly).toBe(false);
     expect(promptContent.className).toContain("min-h-28");
+    expect(promptContent.className).toContain("resize-none");
+    expect(promptContent.className).not.toContain("resize-y");
     expect(promptContent.className).toContain("px-4");
-    expect(promptContent.className).toContain("py-3");
+    expect(promptContent.className).toContain("pt-3");
+    const promptActionRow = container.querySelector(
+      '[data-automation-prompt-action-row=""]',
+    ) as HTMLElement;
+    expect(promptPanel.contains(promptActionRow)).toBe(true);
+    expect(promptActionRow.className).toContain("pb-2");
+    expect(promptActionRow.className).toContain("pl-3.5");
+    expect(promptActionRow.className).not.toContain("border-t");
     const promptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
@@ -697,12 +726,17 @@ describe("Automation detail recipe", () => {
       "Provider and model: Claude, Opus 5",
     );
     expect(
+      modelSelector.querySelector('[data-automation-selector-content=""]')
+        ?.className,
+    ).toContain("gap-1.5");
+    expect(
       modelSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
     expect(
       container.querySelector('[data-automation-provider-icon="claude"] svg'),
     ).not.toBeNull();
-    const savePrompt = screen.getByRole("button", { name: "Save prompt" });
+    const savePrompt = screen.getByRole("button", { name: "Save Prompt" });
+    expect(promptPanel.contains(savePrompt)).toBe(true);
     expect((savePrompt as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(promptContent, {
       target: { value: "Summarize the last two days." },
@@ -718,6 +752,12 @@ describe("Automation detail recipe", () => {
       model: "claude-sonnet-5",
       permissionMode: "full",
     });
+    expect(
+      await screen.findByRole("textbox", { name: "Saved prompt" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("textbox", { name: "Automation prompt" }),
+    ).toBeNull();
   });
 
   it("uses the composer metadata treatment without inventing reasoning", () => {

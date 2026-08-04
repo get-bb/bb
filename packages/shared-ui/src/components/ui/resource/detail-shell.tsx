@@ -48,10 +48,12 @@ export function ResourcePromptPreview({
   children,
   className,
   context = [],
+  disabled = false,
 }: {
   children: ReactNode;
   className?: string;
   context?: readonly ResourcePromptContextItem[];
+  disabled?: boolean;
 }) {
   return (
     // Match the production follow-up composer's geometry while keeping this
@@ -60,6 +62,7 @@ export function ResourcePromptPreview({
     <div
       className={cn(
         "overflow-hidden rounded-xl border border-border bg-background",
+        disabled && "bg-surface-recessed/55",
         className,
       )}
     >
@@ -68,7 +71,11 @@ export function ResourcePromptPreview({
         role="textbox"
         aria-label="Saved prompt"
         aria-readonly="true"
-        className="min-h-[68px] min-w-0 whitespace-pre-wrap px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed text-foreground"
+        aria-disabled={disabled || undefined}
+        className={cn(
+          "min-h-[68px] min-w-0 whitespace-pre-wrap px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed text-foreground",
+          disabled && "text-muted-foreground",
+        )}
       >
         {children}
       </div>
