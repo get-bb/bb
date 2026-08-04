@@ -1735,7 +1735,7 @@ function LandingPage() {
           have. The GitHub integration, agent memory, scheduled jobs, and even
           remote access are all plugins.
         </p>
-        <p>Nothing is stopping you from building your ideal workspace.</p>
+        <p>Nothing is stopping you from building your ideal workbench.</p>
       </Band>
 
       <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
