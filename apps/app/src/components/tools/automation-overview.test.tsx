@@ -120,6 +120,66 @@ describe("AutomationOverviewView", () => {
     expect(screen.getByRole("button", { name: "New automation" })).toBeTruthy();
   });
 
+  it("labels the Projects filter and prefixes its tooltip summary", async () => {
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    const projectsTrigger = screen.getByRole("button", { name: "Projects" });
+    fireEvent.focus(projectsTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Projects: All",
+    );
+    fireEvent.blur(projectsTrigger);
+    fireEvent.pointerDown(projectsTrigger);
+    expect(screen.getByText("Projects")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(
+      screen.getByRole("button", { name: "Projects: 1 selected" }),
+    ).toBeTruthy();
+  });
+
+  it("labels the Status filter and prefixes its tooltip summary", async () => {
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    const statusTrigger = screen.getByRole("button", { name: "Status" });
+    fireEvent.focus(statusTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Status: All",
+    );
+    fireEvent.blur(statusTrigger);
+    fireEvent.pointerDown(statusTrigger);
+    expect(screen.getByText("Status")).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Active" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Paused" }),
+    ).toBeTruthy();
+  });
+
   it("renders template actions as icon-only controls with specific labels", () => {
     const onCreateViaChat = vi.fn();
     const { container } = render(

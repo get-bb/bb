@@ -270,7 +270,7 @@ describe("SkillsOverview", () => {
     );
   });
 
-  it("defaults to BB official on and Included off, then toggles Included independently", async () => {
+  it("labels the Type filter and preserves independent source toggles", async () => {
     renderDom(
       <SkillsOverview
         skills={[
@@ -303,18 +303,28 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("official-skill")).toBeTruthy();
     expect(screen.getByText("user-skill")).toBeTruthy();
     expect(screen.queryByText("automations")).toBeNull();
-    fireEvent.pointerDown(screen.getByRole("button", { name: "BB official" }));
+    const typeTrigger = screen.getByRole("button", { name: "bb official" });
+    fireEvent.focus(typeTrigger);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Type: bb official",
+    );
+    fireEvent.blur(typeTrigger);
+    fireEvent.pointerDown(typeTrigger);
+    expect(screen.getByText("Type")).toBeTruthy();
+    expect(screen.getByRole("menuitemcheckbox", { name: "All" })).toBeTruthy();
     expect(
       screen
-        .getByRole("menuitemcheckbox", { name: "BB official" })
+        .getByRole("menuitemcheckbox", { name: "bb official" })
         .getAttribute("aria-checked"),
     ).toBe("true");
     expect(
       screen
-        .getByRole("menuitemcheckbox", { name: "Included" })
+        .getByRole("menuitemcheckbox", { name: "Included in plugin" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Included" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
 
     expect(await screen.findByText("automations")).toBeTruthy();
     expect(
@@ -322,7 +332,9 @@ describe("SkillsOverview", () => {
         "automations is included with Automations (bb plugin)",
       ).textContent,
     ).toBe("Included");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Included" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
     expect(screen.queryByText("automations")).toBeNull();
     expect(screen.getByText("official-skill")).toBeTruthy();
   });
@@ -352,14 +364,45 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "BB official" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Included" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "bb official" }));
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB official" }),
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "bb official" }),
     );
 
     expect(await screen.findByText("automations")).toBeTruthy();
     expect(screen.queryByText("official-skill")).toBeNull();
+  });
+
+  it("uses filter-neutral copy when a Type selection removes every skill", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "official-skill",
+            provider: null,
+            scope: "bb-builtin",
+            manageable: false,
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "bb official" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "bb official" }),
+    );
+
+    expect(
+      await screen.findByText("No skills match these filters."),
+    ).toBeTruthy();
+    expect(screen.queryByText("No skills match these providers.")).toBeNull();
   });
 
   it("renders browse content as the active full-page collection mode", () => {
@@ -433,6 +476,38 @@ describe("SkillsOverview", () => {
         .getByRole("menuitemcheckbox", { name: "bb" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
+  });
+
+  it("labels the Provider filter and prefixes its logo tooltip", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "bb-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+          makeSkill({ name: "claude-skill", provider: "claude-code" }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    const providerTrigger = screen.getByRole("button", { name: "bb" });
+    fireEvent.focus(providerTrigger);
+    const defaultTooltip = await screen.findByRole("tooltip");
+    expect(defaultTooltip.textContent?.trim()).toBe("Providers:");
+    expect(defaultTooltip.textContent).not.toContain("bb");
+    expect(
+      defaultTooltip.querySelector('[data-provider-icon="bb"] img'),
+    ).not.toBeNull();
+    fireEvent.blur(providerTrigger);
+
+    fireEvent.pointerDown(providerTrigger);
+    expect(screen.getByText("Provider")).toBeTruthy();
   });
 
   it("keeps the default BB filter selected when only provider skills exist", async () => {
@@ -880,8 +955,14 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
     for (const byline of screen.getAllByText("by owner/repo")) {
-      expect(byline.className).toContain("text-xs");
+      expect(byline.className).toContain("truncate");
+      expect(byline.parentElement?.className).toContain("items-center");
+      expect(byline.parentElement?.className).toContain("text-xs");
     }
+    expect(
+      screen.getByLabelText("100 stars").parentElement?.parentElement
+        ?.className,
+    ).toContain("items-center");
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",

@@ -17,6 +17,7 @@ import {
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceToolbar,
+  type ResourceOption,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_OWNED_COLLECTION_LABEL } from "@/components/tools/tools-navigation";
@@ -63,6 +64,12 @@ function providerFilterLabel(provider: ResourceProviderFilter): string {
   return provider === "bb" ? "bb" : providerLabel(provider);
 }
 
+function isResourceProviderFilter(
+  value: string,
+): value is ResourceProviderFilter {
+  return value === "bb" || value === "claude-code" || value === "codex";
+}
+
 function skillSourceFilterId(
   skill: SkillSummary,
 ): ResourceSkillSourceFilter | null {
@@ -72,7 +79,7 @@ function skillSourceFilterId(
 }
 
 function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
-  return source === "bb-official" ? "BB official" : "Included";
+  return source === "bb-official" ? "bb official" : "Included in plugin";
 }
 
 function isResourceSkillSourceFilter(
@@ -111,6 +118,36 @@ function BbLogo({ className = "size-4" }: { className?: string }) {
   );
 }
 
+function ProviderFilterTooltip({
+  options,
+}: {
+  options: readonly ResourceOption[];
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>Providers: </span>
+      {options.map((option) => {
+        if (!isResourceProviderFilter(option.id)) return null;
+        const provider = option.id;
+        return (
+          <span
+            key={option.id}
+            className="flex size-3.5 items-center justify-center"
+            data-provider-icon={provider}
+            aria-hidden="true"
+          >
+            {provider === "bb" ? (
+              <BbLogo className="size-3.5 brightness-0 invert" />
+            ) : (
+              <ProviderLogo providerId={provider} className="size-3.5" />
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function SkillProvenanceTooltip({
   prefix,
   providerId,
@@ -129,10 +166,7 @@ export function SkillProvenanceTooltip({
         ) : (
           <ProviderLogo
             providerId={providerId}
-            className={cn(
-              "size-3.5",
-              providerId === "codex" && "text-white",
-            )}
+            className={cn("size-3.5", providerId === "codex" && "text-white")}
           />
         )}
       </span>
@@ -383,11 +417,11 @@ export function SkillsOverview({
     <ResourceListState
       state="empty"
       message={
-        normalizedQuery === "" && providerFilters.length === 0
-          ? "No skills in your library."
-          : normalizedQuery === ""
-            ? "No skills match these providers."
-            : `No skills match "${query}"`
+        normalizedQuery !== ""
+          ? `No skills match "${query}"`
+          : skills.length === 0
+            ? "No skills in your library."
+            : "No skills match these filters."
       }
     />
   ) : (
@@ -438,10 +472,12 @@ export function SkillsOverview({
               controls={
                 <>
                   <ResourceMultiSelectMenu
-                    label="Source"
+                    label="Type"
                     icon="PackageReceive"
                     selectedValues={sourceFilters}
                     options={sourceOptions}
+                    allOptionLabel="All"
+                    emptySelectionLabel="None"
                     selectedLabel={(options) =>
                       options.map((option) => option.label).join(", ")
                     }
@@ -459,6 +495,9 @@ export function SkillsOverview({
                     selectedLabel={(options) =>
                       options.map((option) => option.label).join(", ")
                     }
+                    selectedTooltip={(options) => (
+                      <ProviderFilterTooltip options={options} />
+                    )}
                     onChange={(values) =>
                       setProviderFilters(values as ResourceProviderFilter[])
                     }

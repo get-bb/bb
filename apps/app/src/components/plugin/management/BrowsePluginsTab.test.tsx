@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -90,6 +85,55 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
+  it("sorts by plugin name ascending by default and reverses direction", async () => {
+    const entries = [
+      { ...MEMORY_ENTRY, displayName: "Zulu" },
+      { ...GITHUB_ENTRY, displayName: "Alpha" },
+      { ...INCOMPATIBLE_ENTRY, displayName: "Middle" },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
+      wrapper,
+    });
+
+    expect(await screen.findByText("Alpha")).toBeTruthy();
+    const cardOrder = () =>
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          'button[aria-label^="Open "][aria-label$=" details"]',
+        ),
+      ].map((button) => button.getAttribute("aria-label"));
+    expect(cardOrder()).toEqual([
+      "Open Alpha details",
+      "Open Middle details",
+      "Open Zulu details",
+    ]);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin name" }));
+    expect(cardOrder()).toEqual([
+      "Open Zulu details",
+      "Open Middle details",
+      "Open Alpha details",
+    ]);
+  });
+
   it("renders every catalog entry once and filters the grid with category pills", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
@@ -98,8 +142,7 @@ describe("BrowsePluginsTab", () => {
         entryId: `official-${index + 1}`,
         pluginId: `official-${index + 1}`,
         displayName: `Official ${index + 1}`,
-        category:
-          index % 2 === 0 ? "Context & knowledge" : "Developer tools",
+        category: index % 2 === 0 ? "Context & knowledge" : "Developer tools",
       }),
     );
     vi.stubGlobal(
@@ -133,9 +176,7 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.queryByRole("heading", { name: "Context & knowledge" }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Developer tools" }),
-    );
+    fireEvent.click(screen.getByRole("radio", { name: "Developer tools" }));
     expect(
       screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
     ).toHaveLength(6);
@@ -192,16 +233,18 @@ describe("BrowsePluginsTab", () => {
       .getByRole("button", { name: "Open GitHub details" })
       .closest('[class*="auto-fill"]');
     expect(githubGrid?.className).toContain("auto-fill");
+    expect(githubGrid?.className).toContain("18rem");
+    const githubCard = screen
+      .getByRole("button", { name: "Open GitHub details" })
+      .closest(".group");
+    expect(githubCard?.className).toContain("min-h-20");
+    expect(githubCard?.className).toContain("p-2.5");
     expect(
       screen.getByRole("radio", { name: "Context & knowledge" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("radio", { name: "Developer tools" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Developer tools" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Install Memory" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Install Memory" })).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();

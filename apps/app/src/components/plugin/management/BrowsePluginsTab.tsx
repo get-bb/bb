@@ -8,6 +8,7 @@ import {
   ResourceInstallControl,
   ResourceInstalledControl,
   ResourceListState,
+  ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import {
@@ -39,6 +40,7 @@ export function BrowsePluginsTab({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const entries = searchQuery.data ?? [];
@@ -49,10 +51,17 @@ export function BrowsePluginsTab({
   if (category !== null && !categories.includes(category)) {
     categories.push(category);
   }
-  const visibleEntries =
+  const visibleEntries = (
     category === null
       ? entries
-      : entries.filter((entry) => entry.category === category);
+      : entries.filter((entry) => entry.category === category)
+  )
+    .slice()
+    .sort((left, right) => {
+      const result = left.displayName.localeCompare(right.displayName);
+      if (result !== 0) return sortDirection === "asc" ? result : -result;
+      return left.entryId.localeCompare(right.entryId);
+    });
 
   return (
     <ResourceCollectionViewport
@@ -63,6 +72,19 @@ export function BrowsePluginsTab({
           searchValue={query}
           searchPlaceholder="Search plugins"
           onSearchChange={setQuery}
+          containedControls
+          controls={
+            <ResourceSortMenu
+              value="alpha"
+              direction={sortDirection}
+              options={[{ id: "alpha", label: "Plugin name" }]}
+              onChange={() =>
+                setSortDirection((current) =>
+                  current === "asc" ? "desc" : "asc",
+                )
+              }
+            />
+          }
         />
       }
     >
@@ -103,7 +125,7 @@ export function BrowsePluginsTab({
               message="No plugins match this category."
             />
           ) : (
-            <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
+            <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
               {visibleEntries.map((entry) => (
                 <BrowseCard
                   key={entry.entryId}
@@ -194,6 +216,7 @@ function BrowseCard({
   return (
     <>
       <ResourceBrowseCard
+        className="min-h-20 gap-x-2 gap-y-1.5 p-2.5"
         leading={leading}
         title={entry.displayName}
         description={description}

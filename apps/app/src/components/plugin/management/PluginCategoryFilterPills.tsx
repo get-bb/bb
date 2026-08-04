@@ -27,7 +27,7 @@ export function PluginCategoryFilterPills({
       <ToggleGroupItem
         value={ALL_CATEGORIES}
         aria-label="Show all plugin categories"
-        className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/70 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
+        className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/50 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary/70 data-[state=on]:text-secondary-foreground"
       >
         All
       </ToggleGroupItem>
@@ -35,7 +35,7 @@ export function PluginCategoryFilterPills({
         <ToggleGroupItem
           key={category}
           value={category}
-          className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/70 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
+          className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/50 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary/70 data-[state=on]:text-secondary-foreground"
         >
           {category}
         </ToggleGroupItem>

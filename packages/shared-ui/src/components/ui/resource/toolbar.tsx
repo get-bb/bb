@@ -114,10 +114,12 @@ function ResourceMenuTrigger({
   label,
   icon,
   active = false,
+  tooltip = label,
 }: {
   label: string;
   icon: IconName;
   active?: boolean;
+  tooltip?: ReactNode;
 }) {
   return (
     <TooltipProvider delayDuration={250}>
@@ -138,7 +140,7 @@ function ResourceMenuTrigger({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
+        <TooltipContent side="bottom">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -200,6 +202,9 @@ export function ResourceMultiSelectMenu({
   options,
   onChange,
   selectedLabel,
+  selectedTooltip,
+  allOptionLabel,
+  emptySelectionLabel = "All",
 }: {
   label: string;
   icon: IconName;
@@ -207,17 +212,29 @@ export function ResourceMultiSelectMenu({
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
   selectedLabel?: (options: readonly ResourceOption[]) => string;
+  selectedTooltip?: (options: readonly ResourceOption[]) => ReactNode;
+  allOptionLabel?: string;
+  emptySelectionLabel?: string;
 }) {
   const selected = new Set(selectedValues);
-  const activeOptions = options.filter(
-    (option) => !option.disabled && selected.has(option.id),
+  const enabledOptions = options.filter((option) => !option.disabled);
+  const activeOptions = enabledOptions.filter((option) =>
+    selected.has(option.id),
   );
   const activeSelectedCount = activeOptions.length;
+  const allSelected =
+    enabledOptions.length > 0 && activeSelectedCount === enabledOptions.length;
+  const selectionSummary =
+    activeSelectedCount === 0
+      ? emptySelectionLabel
+      : (selectedLabel?.(activeOptions) ?? `${activeSelectedCount} selected`);
   const triggerLabel =
     activeSelectedCount === 0
       ? label
       : (selectedLabel?.(activeOptions) ??
         `${label}: ${activeSelectedCount} selected`);
+  const triggerTooltip =
+    selectedTooltip?.(activeOptions) ?? `${label}: ${selectionSummary}`;
 
   function updateValue(option: ResourceOption, checked: boolean) {
     if (option.disabled) return;
@@ -239,11 +256,25 @@ export function ResourceMultiSelectMenu({
         label={triggerLabel}
         icon={icon}
         active={activeSelectedCount > 0}
+        tooltip={triggerTooltip}
       />
       <DropdownMenuContent align="end" mobileTitle={label} className="min-w-44">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-          {triggerLabel}
+          {label}
         </DropdownMenuLabel>
+        {allOptionLabel ? (
+          <DropdownMenuCheckboxItem
+            checked={allSelected}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(checked) =>
+              onChange(
+                checked === true ? enabledOptions.map(({ id }) => id) : [],
+              )
+            }
+          >
+            {allOptionLabel}
+          </DropdownMenuCheckboxItem>
+        ) : null}
         {options.map((option) => (
           <DropdownMenuCheckboxItem
             key={option.id}

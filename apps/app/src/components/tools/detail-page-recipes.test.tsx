@@ -133,6 +133,38 @@ describe("Plugin detail recipe", () => {
     ]);
   });
 
+  it("uses the Background services fill for both detail-table header orientations", () => {
+    renderPlugin({
+      ...PLUGIN,
+      capabilities: [
+        {
+          kind: "skill",
+          id: "review",
+          label: "Review issues",
+          detail: "Review repository issues.",
+        },
+      ],
+      services: [{ name: "sync", state: "running" }],
+    });
+
+    for (const name of ["Delivery", "Version"]) {
+      expect(screen.getByRole("rowheader", { name }).className).toContain(
+        "bg-surface-recessed/55",
+      );
+    }
+    expect(
+      screen.getByRole("rowheader", { name: /Review issues/ }).className,
+    ).toContain("bg-surface-recessed/55");
+
+    for (const header of screen.getAllByRole("columnheader")) {
+      expect(header.className).toContain("bg-surface-recessed/55");
+    }
+
+    expect(
+      screen.getByRole("rowheader", { name: "sync" }).className,
+    ).not.toContain("bg-surface-recessed/55");
+  });
+
   it("omits an activity section the plugin has no rows for", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
@@ -276,11 +308,36 @@ describe("Plugin detail recipe", () => {
     expect(screen.queryByText("Frontend app")).toBeNull();
   });
 
-  it("keeps a disabled plugin's static capabilities and explains the missing live ones", () => {
+  it("hides the entire Capabilities section for a disabled plugin", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
       enabled: false,
       status: "disabled",
+      capabilities: [
+        {
+          kind: "theme",
+          id: "github.dark",
+          label: "GitHub Dark",
+          detail: null,
+        },
+      ],
+    });
+
+    expect(renderedRecipe(container)).not.toContainEqual([
+      "includes",
+      "Capabilities",
+    ]);
+    expect(screen.queryByText("GitHub Dark")).toBeNull();
+    expect(
+      screen.queryByText(
+        "Some capabilities are only listed while the plugin is enabled.",
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps the Capabilities section for an enabled plugin", () => {
+    const { container } = renderPlugin({
+      ...PLUGIN,
       capabilities: [
         {
           kind: "theme",
@@ -296,12 +353,6 @@ describe("Plugin detail recipe", () => {
       "Capabilities",
     ]);
     expect(screen.getByText("GitHub Dark")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Some capabilities are only listed while the plugin is enabled.",
-      ),
-    ).toBeTruthy();
-    expect(container.querySelector('[data-icon="Info"]')).toBeNull();
   });
 
   it("does not contradict a degraded plugin's still-running health banner", () => {
@@ -650,9 +701,7 @@ describe("Automation detail recipe", () => {
     ) as HTMLElement;
     expect(readOnlyPromptShell.className).toContain("rounded-xl");
     expect(readOnlyPromptShell.className).toContain("border-border");
-    expect(readOnlyPromptShell.className).toContain(
-      "bg-surface-recessed/55",
-    );
+    expect(readOnlyPromptShell.className).toContain("bg-surface-recessed/55");
     expect(readOnlyPromptShell.contains(savedPrompt)).toBe(true);
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
     expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
@@ -665,18 +714,16 @@ describe("Automation detail recipe", () => {
     expect(disabledModelSelector.disabled).toBe(true);
     expect(disabledPermissionSelector.disabled).toBe(true);
     expect(readOnlyPromptShell.contains(disabledModelSelector)).toBe(true);
-    expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(
-      true,
-    );
+    expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(true);
     expect(
       disabledModelSelector.querySelector(
         '[data-automation-selector-content=""]',
       )?.className,
     ).toContain("gap-1.5");
     expect(disabledModelSelector.getAttribute("data-state")).toBeNull();
-    expect(disabledModelSelector.parentElement?.getAttribute("data-state")).toBe(
-      null,
-    );
+    expect(
+      disabledModelSelector.parentElement?.getAttribute("data-state"),
+    ).toBe(null);
     const readOnlyPromptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;

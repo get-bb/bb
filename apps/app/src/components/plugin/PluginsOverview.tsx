@@ -23,8 +23,6 @@ import {
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
-import { PluginCategoryFilterPills } from "@/components/plugin/management/PluginCategoryFilterPills";
-import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
@@ -48,13 +46,12 @@ export function PluginsOverview() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
-  const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  const plugins = listQuery.data?.plugins ?? [];
+  const plugins = useMemo(
+    () => listQuery.data?.plugins ?? [],
+    [listQuery.data?.plugins],
+  );
   const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
-  const [installedCategory, setInstalledCategory] = useState<string | null>(
-    null,
-  );
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
   const installedPageSize = useResourceViewportPageSize(installedViewport);
@@ -78,41 +75,10 @@ export function PluginsOverview() {
     { id: "browse" as const, label: "Browse" },
   ];
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
-  const categoryByPluginId = useMemo(() => {
-    const categories = new Map<string, string>();
-    for (const entry of catalogQuery.data ?? []) {
-      categories.set(entry.entryId, entry.category);
-      categories.set(entry.pluginId, entry.category);
-    }
-    return categories;
-  }, [catalogQuery.data]);
-  const installedCategories = useMemo(() => {
-    const categories: string[] = [];
-    for (const entry of catalogQuery.data ?? []) {
-      if (!categories.includes(entry.category)) {
-        categories.push(entry.category);
-      }
-    }
-    if (
-      installedCategory !== null &&
-      !categories.includes(installedCategory)
-    ) {
-      categories.push(installedCategory);
-    }
-    return categories;
-  }, [catalogQuery.data, installedCategory]);
   const visiblePlugins = useMemo(
     () =>
       plugins
         .filter((plugin) => {
-          if (installedCategory !== null) {
-            const category =
-              (plugin.catalogEntryId === null
-                ? undefined
-                : categoryByPluginId.get(plugin.catalogEntryId)) ??
-              categoryByPluginId.get(plugin.id);
-            if (category !== installedCategory) return false;
-          }
           if (normalizedInstalledQuery.length === 0) return true;
           return [
             plugin.id,
@@ -145,21 +111,11 @@ export function PluginsOverview() {
           }
           return left.id.localeCompare(right.id);
         }),
-    [
-      categoryByPluginId,
-      installedCategory,
-      installedSortDirection,
-      normalizedInstalledQuery,
-      plugins,
-    ],
+    [installedSortDirection, normalizedInstalledQuery, plugins],
   );
   const installedPagination = useResourcePagination(visiblePlugins, {
     pageSize: installedPageSize,
-    resetKey: [
-      normalizedInstalledQuery,
-      installedCategory ?? "all",
-      installedSortDirection,
-    ].join("\u0000"),
+    resetKey: [normalizedInstalledQuery, installedSortDirection].join("\u0000"),
   });
   const hasInstalledPagination =
     !listQuery.isError &&
@@ -251,11 +207,6 @@ export function PluginsOverview() {
         }
         contentClassName="space-y-3"
       >
-        <PluginCategoryFilterPills
-          categories={installedCategories}
-          value={installedCategory}
-          onValueChange={setInstalledCategory}
-        />
         {listQuery.isError ? (
           <ResourceListState
             state="error"
@@ -267,11 +218,7 @@ export function PluginsOverview() {
         ) : plugins.length > 0 && visiblePlugins.length === 0 ? (
           <ResourceListState
             state="empty"
-            message={
-              installedCategory === null
-                ? `No plugins match "${installedQuery}"`
-                : `No installed plugins match ${installedCategory}.`
-            }
+            message={`No plugins match "${installedQuery}"`}
           />
         ) : (
           <InstalledPluginsTab plugins={installedPagination.items} />

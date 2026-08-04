@@ -1104,21 +1104,19 @@ describe("PluginDetail capability inventory", () => {
     // without absorbing the full-width table's spare space and visually
     // detaching names from descriptions.
     const firstRow = table?.querySelector("tr");
-    expect(firstRow?.className).toContain(
-      "grid-cols-[10rem_minmax(0,1fr)]",
-    );
-    expect(firstRow?.className).toContain(
-      "md:grid-cols-[12rem_minmax(0,1fr)]",
-    );
+    expect(firstRow?.className).toContain("grid-cols-[10rem_minmax(0,1fr)]");
+    expect(firstRow?.className).toContain("md:grid-cols-[12rem_minmax(0,1fr)]");
 
     // The cells own the content gutter so the row and column borders connect
     // directly to the table's outer edge.
-    const firstCell = table?.querySelector("td") as HTMLElement;
+    const firstCell = table?.querySelector('th[scope="row"]') as HTMLElement;
     expect(firstCell.className).toContain("border-r");
     expect(firstCell.className).toContain("border-border");
     expect(firstCell.className).toContain("pl-4");
     expect(firstCell.className).toContain("pr-2");
-    const secondCell = table?.querySelector("td + td") as HTMLElement;
+    const secondCell = table?.querySelector(
+      'th[scope="row"] + td',
+    ) as HTMLElement;
     expect(secondCell.className).toContain("pl-2");
     expect(secondCell.className).toContain("pr-4");
     expect(

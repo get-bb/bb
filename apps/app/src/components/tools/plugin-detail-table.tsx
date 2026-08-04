@@ -12,6 +12,9 @@ import { cn } from "@bb/shared-ui/lib/utils";
 /** Shared first-column width for conventional plugin detail tables. */
 export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
 
+/** Theme-aware fill shared by plugin detail table header cells. */
+export const PLUGIN_DETAIL_HEADER_CELL_CLASS = "bg-surface-recessed/55";
+
 const DETAIL_ROW_GRID =
   "grid grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
 
@@ -59,6 +62,7 @@ export function PluginDetailFieldRow({
           scope="row"
           className={cn(
             CELL,
+            PLUGIN_DETAIL_HEADER_CELL_CLASS,
             "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
           )}
         >
@@ -77,6 +81,7 @@ export function PluginDetailFieldRow({
         scope="row"
         className={cn(
           CELL,
+          PLUGIN_DETAIL_HEADER_CELL_CLASS,
           "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
         )}
       >
@@ -150,9 +155,12 @@ export function PluginDetailRow({
   const isLongDescription = typeof detail === "string" && detail.length > 180;
   return (
     <tr className={hasDetail ? DETAIL_ROW_GRID : "grid grid-cols-1"}>
-      <td
+      <th
+        scope="row"
         className={cn(
           CELL,
+          PLUGIN_DETAIL_HEADER_CELL_CLASS,
+          "text-left font-normal",
           hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
         )}
         colSpan={hasDetail ? undefined : 2}
@@ -173,7 +181,7 @@ export function PluginDetailRow({
             {name}
           </span>
         </span>
-      </td>
+      </th>
       {hasDetail ? (
         <td
           id={detailId}

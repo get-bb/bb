@@ -423,6 +423,7 @@ export function ResourceSourceItem({
 }
 
 type ResourceBrowseCardProps = {
+  className?: string;
   leading?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
@@ -441,6 +442,7 @@ type ResourceBrowseCardProps = {
 );
 
 export function ResourceBrowseCard({
+  className,
   leading,
   title,
   description,
@@ -460,6 +462,7 @@ export function ResourceBrowseCard({
         "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr_auto] gap-2 rounded-lg border border-border bg-card p-3 text-left",
         onOpen &&
           "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
+        className,
       )}
     >
       {onOpen ? (
@@ -504,12 +507,12 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {byline ? (
-        <span className="pointer-events-none relative col-start-1 row-start-3 block truncate text-left text-xs text-subtle-foreground">
-          {byline}
+        <span className="pointer-events-none relative col-start-1 row-start-3 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
+          <span className="block min-w-0 truncate">{byline}</span>
         </span>
       ) : null}
       {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-3 flex items-end justify-end text-right">
+        <span className="pointer-events-none relative col-start-2 row-start-3 flex min-h-4 items-center justify-end text-right">
           {footerMeta}
         </span>
       ) : null}

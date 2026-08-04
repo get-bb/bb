@@ -14,6 +14,7 @@ import {
   PluginDetailGlyph,
   PluginDetailRow,
   PluginDetailTable,
+  PLUGIN_DETAIL_HEADER_CELL_CLASS,
   PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS,
 } from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
@@ -274,11 +275,7 @@ function pluginAppSurfaceItems(
   ];
 }
 
-export function PluginIncludes({
-  plugin,
-}: {
-  plugin: PluginListItem;
-}) {
+export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
   const slots = usePluginSlots();
   const appItems = pluginAppSurfaceItems(plugin.id, slots);
 
@@ -344,6 +341,8 @@ export function PluginIncludes({
     groupItems.map((item) => ({ ...item, icon, kind })),
   );
 
+  if (!plugin.enabled || items.length === 0) return null;
+
   // Commands, settings, agent tools, thread integrations and app surfaces are
   // only observable on a *running* plugin — not merely an enabled one. A
   // plugin that is enabled but failed to load, or is still loading, reports
@@ -357,11 +356,8 @@ export function PluginIncludes({
     plugin.status === "running" ||
     plugin.status === "degraded" ||
     plugin.status === "needs-configuration";
-  const liveCapabilitiesNote = plugin.enabled
-    ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
-    : "Some capabilities are only listed while the plugin is enabled.";
-
-  if (items.length === 0) return null;
+  const liveCapabilitiesNote =
+    "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed.";
 
   return (
     <ResourceDetailIncludesSection label="Capabilities">
@@ -506,14 +502,23 @@ export function PluginServices({ plugin }: { plugin: PluginListItem }) {
           <col className={PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS} />
           <col />
         </colgroup>
-        <thead className="bg-surface-recessed/55 text-xs text-muted-foreground">
+        <thead className="text-xs text-muted-foreground">
           <tr className="border-b border-border">
-            <th scope="col" className="px-4 py-2 font-medium">
+            <th
+              scope="col"
+              className={cn(
+                PLUGIN_DETAIL_HEADER_CELL_CLASS,
+                "px-4 py-2 font-medium",
+              )}
+            >
               Status
             </th>
             <th
               scope="col"
-              className="border-l border-border px-4 py-2 font-medium"
+              className={cn(
+                PLUGIN_DETAIL_HEADER_CELL_CLASS,
+                "border-l border-border px-4 py-2 font-medium",
+              )}
             >
               Service
             </th>

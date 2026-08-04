@@ -201,14 +201,12 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    expect(
-      screen.getByRole("radio", { name: "Developer tools" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Developer tools" })).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 
-  it("filters installed plugins with the catalog categories", async () => {
+  it("shows category filters only in Browse", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -234,32 +232,36 @@ describe("PluginsOverview", () => {
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(
-      screen.getByRole("radio", { name: "Developer tools" }),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Context & knowledge" }),
-    );
+      screen.queryByRole("radiogroup", {
+        name: "Filter plugins by category",
+      }),
+    ).toBeNull();
+    expect(screen.queryByText("Category")).toBeNull();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(
+      await screen.findByRole("radiogroup", {
+        name: "Filter plugins by category",
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Category")).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Context & knowledge" }));
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("Automations")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("radio", { name: "Show all plugin categories" }),
-    );
-    expect(screen.getByText("Automations")).toBeTruthy();
   });
 
   it("keeps category pills visually secondary to the collection tabs", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=browse"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
       </MemoryRouter>,
     );
 
-    await screen.findByText("Automations");
+    await screen.findByText("GitHub");
     const filters = screen.getByRole("radiogroup", {
       name: "Filter plugins by category",
     });
@@ -268,17 +270,11 @@ describe("PluginsOverview", () => {
     });
     expect(filters.className).toContain("py-2");
     expect(filters.className).toContain("gap-2");
-    expect(all.className).toContain("data-[state=on]:bg-secondary");
+    expect(all.className).toContain("data-[state=on]:bg-secondary/70");
     expect(all.className).not.toContain("data-[state=on]:bg-state-active");
-    expect(
-      screen.getByRole("tab", { name: "Installed, 1 plugin" }).className,
-    ).toContain("bg-accent");
-    expect(
-      screen.queryByRole("button", { name: "Automations actions" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Automations plugin details" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
+      "bg-accent",
+    );
   });
 
   it("opens installed resources on the canonical Tools detail route", async () => {
