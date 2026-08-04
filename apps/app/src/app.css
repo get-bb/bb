@@ -23,10 +23,23 @@
    *
    * Scoped to standalone: in a Safari tab, lvh is the toolbars-retracted
    * height, which is taller than what the user can see.
+   *
+   * `position: fixed` elements cannot inherit the shell height: a percentage
+   * height on them resolves against the initial containing block, which is the
+   * short 793pt viewport. They have to name the unit themselves, so this
+   * variable is the single switch both they and the shell root read.
    */
+  :root {
+    --bb-shell-height: 100dvh;
+  }
+
   @media (display-mode: standalone) {
+    :root {
+      --bb-shell-height: 100lvh;
+    }
+
     html.bb-app-shell-root {
-      height: 100lvh;
+      height: var(--bb-shell-height);
     }
   }
 

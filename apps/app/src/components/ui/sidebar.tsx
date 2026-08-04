@@ -594,7 +594,9 @@ const Sidebar = React.forwardRef<
                 suppressMobileOpenAnimation ? "true" : undefined
               }
               className={cn(
-                "group fixed inset-y-0 z-40 flex h-dvh w-(--sidebar-width-mobile) flex-col bg-sidebar text-sidebar-foreground outline-none",
+                // Fixed: a percentage height would resolve against the short
+                // initial containing block, so it reads the shell unit directly.
+                "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) flex-col bg-sidebar text-sidebar-foreground outline-none",
                 "[&[data-sidebar-suppress-open-animation=true][data-state=open]]:![animation:none]",
                 side === "left" ? "left-0" : "right-0",
                 variant === "floating" || variant === "inset"
@@ -653,7 +655,9 @@ const Sidebar = React.forwardRef<
         <div
           data-sidebar="panel"
           className={cn(
-            "fixed inset-y-0 z-10 flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground transition-[left,right,width] duration-200 ease-linear",
+            // Fixed: a percentage height would resolve against the short
+            // initial containing block, so it reads the shell unit directly.
+            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
