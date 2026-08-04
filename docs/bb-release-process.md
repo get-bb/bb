@@ -206,6 +206,9 @@ gh workflow run build-desktop.yml \
   publishes `desktop-version.json` only and withholds the unsigned `.dmg`/`.zip`.
 - The `desktop-v<version>` release is immutable: if it already exists the
   workflow fails. Bump to a new version rather than re-running the same one.
+- The immutable `desktop-v<version>` release owns GitHub's repository-wide
+  **Latest** designation. The moving `desktop-latest` release remains opted out;
+  it exists only to provide stable download and auto-update URLs.
 
 If the `npm-release`-style environment or branch protection gates the run, tell
 the user and let the human approval be the release control point.
@@ -217,11 +220,14 @@ After the desktop workflow succeeds, confirm the published version and feed:
 ```bash
 gh release view desktop-latest --json tagName,assets \
   -q '{tag:.tagName,assets:[.assets[].name]}'
+gh release list --limit 10 --json tagName,isLatest \
+  -q '.[] | select(.isLatest) | .tagName'
 curl -fsSL https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json
 ```
 
 Confirm `desktop-version.json` reports the released version and that the
-`desktop-v<version>` release exists with the expected `.dmg`/`.zip` assets.
+`desktop-v<version>` release exists with the expected `.dmg`/`.zip` assets and
+is the release reported as GitHub's **Latest**.
 
 Add to the report from "Verify The Release":
 

@@ -208,7 +208,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "bb desktop ${VERSION}" \
             --notes "bb desktop ${VERSION}" \
-            --latest=false
+            --latest
 
           git tag -f "$LATEST_TAG" "$GITHUB_SHA"
           git push --force origin "refs/tags/${LATEST_TAG}"
