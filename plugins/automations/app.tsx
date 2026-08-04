@@ -248,13 +248,14 @@ function useAutomation(route: DetailRoute): {
 function useAutomationExecutionOptions(
   route: DetailRoute,
   enabled: boolean,
+  executionKey: string,
 ): {
   options: AutomationExecutionOptionsResponse | null;
   error: string | null;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
-  const requestKey = `${projectId}:${automationId}`;
+  const requestKey = `${projectId}:${automationId}:${executionKey}`;
   const requestedKeyRef = useRef<string | null>(null);
   const [state, setState] = useState<{
     options: AutomationExecutionOptionsResponse | null;
@@ -293,6 +294,7 @@ function useAutomationExecutionOptions(
 function useAutomationPermissionOptions(
   route: DetailRoute,
   enabled: boolean,
+  executionKey: string,
 ): {
   options: AutomationPermissionOptionsResponse | null;
   error: string | null;
@@ -300,7 +302,7 @@ function useAutomationPermissionOptions(
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
-  const requestKey = `${projectId}:${automationId}`;
+  const requestKey = `${projectId}:${automationId}:${executionKey}`;
   const requestedKeyRef = useRef<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{
@@ -602,13 +604,22 @@ function DetailView({
   const navigate = useBbNavigate();
   const { automation, error, missing, refetch } = useAutomation(route);
   const [editingRequested, setEditingRequested] = useState(initialEditing);
+  const editingExecutionKey =
+    automation?.execution.mode === "agent"
+      ? JSON.stringify({
+          providerId: automation.execution.providerId,
+          environment: automation.execution.environment,
+        })
+      : "not-agent";
   const executionOptionsState = useAutomationExecutionOptions(
     route,
     editingRequested && automation?.execution.mode === "agent",
+    editingExecutionKey,
   );
   const permissionOptionsState = useAutomationPermissionOptions(
     route,
     editingRequested && automation?.execution.mode === "agent",
+    editingExecutionKey,
   );
   const editing = editingRequested && permissionOptionsState.options !== null;
   const overviewState = useOverview();
