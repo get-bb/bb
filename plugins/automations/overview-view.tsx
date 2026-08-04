@@ -14,7 +14,7 @@ import {
   automationIconName,
   automationScheduleLabel,
 } from "./detail-view.js";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -48,6 +48,17 @@ import {
 import { AutomationMetadataItem } from "./metadata.js";
 
 const PERSONAL_PROJECT_ID = "proj_personal";
+
+function automationMenuIcon(name: IconName) {
+  return (
+    <Icon name={name} className="size-3.5 text-muted-foreground" aria-hidden />
+  );
+}
+
+const AUTOMATION_STATUS_FILTER_OPTIONS = [
+  { id: "active", label: "Active", leading: automationMenuIcon("Play") },
+  { id: "paused", label: "Paused", leading: automationMenuIcon("Pause") },
+] as const;
 
 export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 export const AUTOMATION_CREATE_TEMPLATES = [
@@ -312,7 +323,11 @@ export function AutomationOverviewView({
         automationProjectLabel(entry.project),
       );
     }
-    return [...options].map(([id, label]) => ({ id, label }));
+    return [...options].map(([id, label]) => ({
+      id,
+      label,
+      leading: automationMenuIcon("Folder"),
+    }));
   }, [entries]);
   useEffect(() => {
     setProjectFilters((current) =>
@@ -485,6 +500,7 @@ export function AutomationOverviewView({
                   <ResourceMultiSelectMenu
                     label="Projects"
                     icon="Layers"
+                    compact
                     selectedValues={projectFilters}
                     options={projectOptions}
                     onChange={(values) =>
@@ -494,11 +510,9 @@ export function AutomationOverviewView({
                   <ResourceMultiSelectMenu
                     label="Status"
                     icon="SlidersHorizontal"
+                    compact
                     selectedValues={statusFilters}
-                    options={[
-                      { id: "active", label: "Active" },
-                      { id: "paused", label: "Paused" },
-                    ]}
+                    options={AUTOMATION_STATUS_FILTER_OPTIONS}
                     onChange={(values) =>
                       setStatusFilters(values as AutomationStatusFilter[])
                     }
@@ -506,13 +520,19 @@ export function AutomationOverviewView({
                   <ResourceSortMenu
                     value={sortMode}
                     direction={sortDirection}
+                    compact
                     options={[
                       {
                         id: "project",
                         label: "Project",
                         disabled: projectBucketCount <= 1,
+                        leading: automationMenuIcon("Folder"),
                       },
-                      { id: "alpha", label: "Automation name" },
+                      {
+                        id: "alpha",
+                        label: "Automation name",
+                        leading: automationMenuIcon("Sort"),
+                      },
                     ]}
                     onChange={handleSortChange}
                   />

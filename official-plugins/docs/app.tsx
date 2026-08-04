@@ -1241,10 +1241,16 @@ function orderEntries(
 }
 
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
+const HEADER_STANDALONE_EDGE_OFFSET = 16;
+// Split host actions follow plugin header content: 4px action gap + 28px close
+// button + the header's 16px edge padding. The visual sidebar background can
+// extend behind that host-owned chrome, but its layout box must not overlap it.
+const HEADER_SPLIT_EDGE_OFFSET = 48;
 
 interface NotesSidebarState {
   headerMounted: boolean;
   paneNarrow: boolean;
+  width: number;
   userCollapsed: boolean | null;
 }
 
@@ -1256,10 +1262,34 @@ interface NotesSidebarStore {
 }
 
 const notesSidebarStores = new Map<string, NotesSidebarStore>();
+const STANDALONE_SIDEBAR_SCOPE = "standalone";
 
-function notesSidebarKey(subPath: string): string {
+function notesSidebarVaultKey(subPath: string): string {
   const firstSegment = subPath.split("/", 1)[0];
   return firstSegment ? decodeURIComponent(firstSegment) : "";
+}
+
+function useNotesSidebarScope(subPath: string): {
+  isSplitPane: boolean;
+  scopeRef(element: HTMLElement | null): void;
+  storeKey: string;
+} {
+  const [paneScope, setPaneScope] = useState(STANDALONE_SIDEBAR_SCOPE);
+  const scopeRef = useCallback((element: HTMLElement | null) => {
+    if (element === null) return;
+    const nextPaneScope =
+      element
+        .closest<HTMLElement>("[data-split-pane-id]")
+        ?.getAttribute("data-split-pane-id") ?? STANDALONE_SIDEBAR_SCOPE;
+    setPaneScope((current) =>
+      current === nextPaneScope ? current : nextPaneScope,
+    );
+  }, []);
+  return {
+    isSplitPane: paneScope !== STANDALONE_SIDEBAR_SCOPE,
+    scopeRef,
+    storeKey: `${paneScope}:${notesSidebarVaultKey(subPath)}`,
+  };
 }
 
 function getNotesSidebarStore(key: string): NotesSidebarStore {
@@ -1269,6 +1299,7 @@ function getNotesSidebarStore(key: string): NotesSidebarStore {
     state: {
       headerMounted: false,
       paneNarrow: false,
+      width: 288,
       userCollapsed: null,
     },
     headerMounts: 0,
@@ -1287,12 +1318,26 @@ function updateNotesSidebarState(
   if (
     next.headerMounted === store.state.headerMounted &&
     next.paneNarrow === store.state.paneNarrow &&
+    next.width === store.state.width &&
     next.userCollapsed === store.state.userCollapsed
   ) {
     return;
   }
   store.state = next;
   for (const listener of store.listeners) listener();
+}
+
+function deleteUnusedNotesSidebarStore(
+  key: string,
+  store: NotesSidebarStore,
+): void {
+  if (
+    store.headerMounts === 0 &&
+    store.viewMounts === 0 &&
+    notesSidebarStores.get(key) === store
+  ) {
+    notesSidebarStores.delete(key);
+  }
 }
 
 function useNotesSidebarState(key: string): {
@@ -1312,10 +1357,30 @@ function useNotesSidebarState(key: string): {
   return { state, store };
 }
 
-function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { state: sidebar, store } = useNotesSidebarState(
-    notesSidebarKey(subPath),
+function NotesSidebarToggle({
+  collapsed,
+  onCollapsedChange,
+}: {
+  collapsed: boolean;
+  onCollapsedChange(collapsed: boolean): void;
+}) {
+  return (
+    <Button
+      className="relative z-10 size-8"
+      size="icon"
+      variant="ghost"
+      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
+      aria-expanded={!collapsed}
+      onClick={() => onCollapsedChange(!collapsed)}
+    >
+      <HugeiconsIcon icon={SidebarRightIcon} />
+    </Button>
   );
+}
+
+function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
+  const { isSplitPane, scopeRef, storeKey } = useNotesSidebarScope(subPath);
+  const { state: sidebar, store } = useNotesSidebarState(storeKey);
   const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
   useLayoutEffect(() => {
     store.headerMounts += 1;
@@ -1325,21 +1390,119 @@ function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
       if (store.headerMounts === 0) {
         updateNotesSidebarState(store, { headerMounted: false });
       }
+      deleteUnusedNotesSidebarStore(storeKey, store);
     };
-  }, [store]);
+  }, [store, storeKey]);
   return (
-    <Button
-      className="size-8"
-      size="icon"
-      variant="ghost"
-      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
-      aria-expanded={!collapsed}
-      onClick={() =>
-        updateNotesSidebarState(store, { userCollapsed: !collapsed })
-      }
+    <div
+      ref={scopeRef}
+      data-testid="notes-sidebar-header"
+      className="relative flex h-12 w-8 shrink-0 items-center justify-end"
     >
-      <HugeiconsIcon icon={SidebarRightIcon} />
-    </Button>
+      <span
+        aria-hidden
+        data-testid="notes-sidebar-header-background"
+        className="pointer-events-none absolute inset-y-0 border-l border-border bg-sidebar"
+        style={{
+          right: isSplitPane
+            ? -HEADER_SPLIT_EDGE_OFFSET
+            : -HEADER_STANDALONE_EDGE_OFFSET,
+          width: collapsed ? 48 : sidebar.width,
+        }}
+      />
+      <NotesSidebarToggle
+        collapsed={collapsed}
+        onCollapsedChange={(userCollapsed) =>
+          updateNotesSidebarState(store, { userCollapsed })
+        }
+      />
+    </div>
+  );
+}
+
+interface NotesSidebarNavigationProps {
+  query: string;
+  searchOpen: boolean;
+  onQueryChange(value: string): void;
+  onSearchOpenChange(open: boolean): void;
+  onNewNote(): void;
+  onNewFolder(): void;
+}
+
+function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="Notes sidebar actions"
+      className="flex min-w-0 flex-1 items-center gap-1"
+    >
+      {props.searchOpen ? (
+        <>
+          <div className="relative min-w-0 flex-1">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              autoFocus
+              className="h-8 pl-8"
+              value={props.query}
+              onChange={(event) => props.onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                props.onQueryChange("");
+                props.onSearchOpenChange(false);
+              }}
+              placeholder="Search this vault"
+            />
+          </div>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Close search"
+            onClick={() => {
+              props.onQueryChange("");
+              props.onSearchOpenChange(false);
+            }}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} />
+          </Button>
+        </>
+      ) : null}
+      {!props.searchOpen ? (
+        <>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Search notes"
+            onClick={() => props.onSearchOpenChange(true)}
+          >
+            <HugeiconsIcon icon={Search01Icon} />
+          </Button>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="New note"
+            onClick={props.onNewNote}
+          >
+            <HugeiconsIcon icon={FileAddIcon} />
+          </Button>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="New folder"
+            onClick={props.onNewFolder}
+          >
+            <HugeiconsIcon icon={FolderAddIcon} />
+          </Button>
+          <span className="min-w-0 flex-1" />
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -1383,17 +1546,26 @@ function Tree({
     edge: "before" | "after";
   } | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
+  const { scopeRef, storeKey } = useNotesSidebarScope(sidebarKey);
   const { state: sidebar, store: sidebarStore } =
-    useNotesSidebarState(sidebarKey);
+    useNotesSidebarState(storeKey);
   // null = follow the responsive default (collapsed in narrow panes) until
   // the user toggles the sidebar explicitly.
   const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const sidebarWidth = sidebar.width;
   const asideRef = useRef<HTMLElement | null>(null);
+  const setAsideRef = useCallback(
+    (element: HTMLElement | null) => {
+      asideRef.current = element;
+      scopeRef(element);
+    },
+    [scopeRef],
+  );
   useLayoutEffect(() => {
     if (sidebarStore.viewMounts === 0) {
       updateNotesSidebarState(sidebarStore, {
         paneNarrow: false,
+        width: 288,
         userCollapsed: null,
       });
     }
@@ -1403,11 +1575,13 @@ function Tree({
       if (sidebarStore.viewMounts === 0) {
         updateNotesSidebarState(sidebarStore, {
           paneNarrow: false,
+          width: 288,
           userCollapsed: null,
         });
       }
+      deleteUnusedNotesSidebarStore(storeKey, sidebarStore);
     };
-  }, [sidebarStore]);
+  }, [sidebarStore, storeKey]);
   useLayoutEffect(() => {
     const pane = asideRef.current?.parentElement;
     if (!pane || typeof ResizeObserver === "undefined") return;
@@ -1559,10 +1733,20 @@ function Tree({
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let frame: number | null = null;
+    let pendingWidth = startWidth;
+    const commitPendingWidth = () => {
+      frame = null;
+      updateNotesSidebarState(sidebarStore, { width: pendingWidth });
+    };
     const move = (moveEvent: PointerEvent) => {
-      setSidebarWidth(
-        Math.min(480, Math.max(220, startWidth + startX - moveEvent.clientX)),
+      pendingWidth = Math.min(
+        480,
+        Math.max(220, startWidth + startX - moveEvent.clientX),
       );
+      if (frame === null) {
+        frame = window.requestAnimationFrame(commitPendingWidth);
+      }
     };
     const cleanup = () => {
       if (resizeCleanupRef.current !== cleanup) return;
@@ -1571,6 +1755,10 @@ function Tree({
       handle.removeEventListener("pointercancel", cleanup);
       handle.removeEventListener("lostpointercapture", cleanup);
       window.removeEventListener("blur", cleanup);
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+        commitPendingWidth();
+      }
       resizeCleanupRef.current = null;
       if (handle.hasPointerCapture(pointerId)) {
         handle.releasePointerCapture(pointerId);
@@ -1588,26 +1776,21 @@ function Tree({
   if (sidebarCollapsed) {
     return (
       <aside
-        ref={asideRef}
+        ref={setAsideRef}
         className={cn(
           "order-2 flex shrink-0 flex-col items-center",
           !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-muted/20 py-2",
+            "w-10 border-l border-border bg-sidebar py-2",
         )}
         style={{ width: sidebar.headerMounted ? 0 : 40 }}
       >
         {!sidebar.headerMounted ? (
-          <Button
-            className="size-8"
-            size="icon"
-            variant="ghost"
-            aria-label="Expand notes sidebar"
-            onClick={() =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed: false })
+          <NotesSidebarToggle
+            collapsed
+            onCollapsedChange={(userCollapsed) =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed })
             }
-          >
-            <HugeiconsIcon icon={SidebarRightIcon} />
-          </Button>
+          />
         ) : null}
       </aside>
     );
@@ -1615,88 +1798,26 @@ function Tree({
 
   return (
     <aside
-      ref={asideRef}
-      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
+      ref={setAsideRef}
+      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-sidebar"
       style={{ width: sidebarWidth }}
     >
       <div className="relative flex items-center gap-1 border-b border-border p-2">
-        {searchOpen ? (
-          <>
-            <div className="relative min-w-0 flex-1">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                autoFocus
-                className="h-8 pl-8"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Escape") return;
-                  setQuery("");
-                  setSearchOpen(false);
-                }}
-                placeholder="Search this vault"
-              />
-            </div>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="Close search"
-              onClick={() => {
-                setQuery("");
-                setSearchOpen(false);
-              }}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} />
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="Search notes"
-              onClick={() => setSearchOpen(true)}
-            >
-              <HugeiconsIcon icon={Search01Icon} />
-            </Button>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="New note"
-              onClick={onNewNote}
-            >
-              <HugeiconsIcon icon={FileAddIcon} />
-            </Button>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="New folder"
-              onClick={onNewFolder}
-            >
-              <HugeiconsIcon icon={FolderAddIcon} />
-            </Button>
-            <span className="min-w-0 flex-1" />
-          </>
-        )}
+        <NotesSidebarNavigation
+          query={query}
+          searchOpen={searchOpen}
+          onQueryChange={setQuery}
+          onSearchOpenChange={setSearchOpen}
+          onNewNote={onNewNote}
+          onNewFolder={onNewFolder}
+        />
         {!sidebar.headerMounted ? (
-          <Button
-            className="size-8"
-            size="icon"
-            variant="ghost"
-            aria-label="Collapse notes sidebar"
-            onClick={() =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed: true })
+          <NotesSidebarToggle
+            collapsed={false}
+            onCollapsedChange={(userCollapsed) =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed })
             }
-          >
-            <HugeiconsIcon icon={SidebarRightIcon} />
-          </Button>
+          />
         ) : null}
         {draggingPath && dirname(draggingPath) ? (
           <button
@@ -1720,7 +1841,10 @@ function Tree({
           </button>
         ) : null}
       </div>
-      <div className="relative min-h-0 flex-1 overflow-y-auto p-1.5">
+      <nav
+        aria-label="Notes"
+        className="relative min-h-0 flex-1 overflow-y-auto p-1.5"
+      >
         {data.error ? (
           <div className="p-3 text-xs text-destructive">{data.error}</div>
         ) : null}
@@ -1846,7 +1970,7 @@ function Tree({
             Tree truncated at 5,000 entries.
           </div>
         ) : null}
-      </div>
+      </nav>
       <div className="grid gap-1.5 border-t border-border p-2">
         <div className="flex items-center gap-1">
           <Select value={data.vault.id} onValueChange={onVaultChange}>
@@ -1893,7 +2017,9 @@ function Tree({
         aria-valuemax={480}
         aria-valuenow={sidebarWidth}
         onPointerDown={startResize}
-        onDoubleClick={() => setSidebarWidth(288)}
+        onDoubleClick={() =>
+          updateNotesSidebarState(sidebarStore, { width: 288 })
+        }
       />
     </aside>
   );

@@ -18,7 +18,10 @@ import type {
   ResolvedCreateAutomationInput,
   UpdateAutomationInput,
 } from "./rpc-types.js";
-import { resolvePermissionMode } from "./provider-permissions.js";
+import {
+  providerRoutingForEnvironment,
+  resolvePermissionMode,
+} from "./provider-permissions.js";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   automationScriptInterpreterSchema,
@@ -324,6 +327,7 @@ async function buildExecution(
       );
     }
     validateAgentTargetOptions(args);
+    const environment = await buildAgentEnvironment(bb, args);
     return {
       mode: "agent",
       prompt,
@@ -333,8 +337,9 @@ async function buildExecution(
         bb,
         provider,
         parsePermissionMode(flag(args, "permission-mode")),
+        providerRoutingForEnvironment(environment),
       ),
-      environment: await buildAgentEnvironment(bb, args),
+      environment,
       ...(flag(args, "target-thread")
         ? { targetThreadId: flag(args, "target-thread") }
         : {}),
