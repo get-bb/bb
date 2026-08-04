@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
-  getTabStripChevronGradientClass,
+  getTabStripChevronEdgeClass,
   getTabStripChevronVisibilityClass,
   SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
 } from "./SecondaryPanelTabStrip";
 
 describe("secondary panel tab-strip edge fades", () => {
-  it("fades both edge layers into the themeable sidebar surface", () => {
+  it("uses one opaque themed edge fade and no second caret gradient", () => {
     expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
-    expect(getTabStripChevronGradientClass("left")).toContain("to-sidebar");
-    expect(getTabStripChevronGradientClass("right")).toContain("to-sidebar");
+    expect(getTabStripChevronEdgeClass("left")).toBe(
+      "left-0 justify-start",
+    );
+    expect(getTabStripChevronEdgeClass("right")).toBe(
+      "right-0 justify-end",
+    );
   });
 
   it("keeps an available scroll control visible without requiring hover", () => {

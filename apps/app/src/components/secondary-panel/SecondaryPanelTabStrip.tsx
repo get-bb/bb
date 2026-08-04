@@ -57,12 +57,12 @@ const EDGE_EPSILON_PX = 1;
 
 export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
 
-export function getTabStripChevronGradientClass(
+export function getTabStripChevronEdgeClass(
   direction: "left" | "right",
 ): string {
   return direction === "left"
-    ? "left-0 justify-start bg-gradient-to-l from-transparent to-sidebar"
-    : "right-0 justify-end bg-gradient-to-r from-transparent to-sidebar";
+    ? "left-0 justify-start"
+    : "right-0 justify-end";
 }
 
 export function getTabStripChevronVisibilityClass(canScroll: boolean): string {
@@ -332,7 +332,6 @@ export function SecondaryPanelTabStrip({
   const chevronNoDragClass = usesDesktopChrome
     ? MACOS_APP_REGION_NO_DRAG_CLASS
     : null;
-
   // Memoize the sortable tab tree so the overflow-flag state — which flips every
   // time you reach a scroll edge, i.e. constantly at narrow widths — re-renders
   // only the edge fades/chevrons, never the tabs. Without this, each edge
@@ -399,9 +398,10 @@ export function SecondaryPanelTabStrip({
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
     >
-      {/* Fades + chevrons stay mounted and just toggle opacity as you reach an
-          edge — mounting/unmounting them mid-scroll committed DOM and dirtied
-          layout every edge crossing, which at narrow widths is constant. */}
+      {/* The single surface-colored fade stays opaque beneath the caret at the
+          outer edge while progressively obscuring only the tab content moving
+          behind it. The caret itself deliberately adds no second gradient: a
+          stacked gradient turns this transition into a mismatched solid tile. */}
       <OverflowFade
         placement="left"
         tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
@@ -531,16 +531,15 @@ function TabStripScrollChevron({
       }
       className={cn(
         // The chevron rides the edge fade instead of occluding the tab beneath
-        // it: its backdrop is the same transparent→surface gradient as the
-        // OverflowFade (stacked over the always-on fade), so the edge tab
-        // dissolves smoothly under the arrow rather than being hard-cut by a
-        // solid tile. The ghost hover fill is suppressed so hovering never
-        // re-introduces that opaque block; the arrow brightens on hover instead.
+        // it. Its own background stays transparent because the single
+        // OverflowFade already provides the opaque themed backing at the outer
+        // edge; adding another gradient here would double the opacity and make
+        // the selected tab look like a separate block.
         // The arrow is edge-aligned (justify-start/end) so it hugs the opaque
         // edge of the fade and clears the central tabs — rather than nudging the
         // button itself outward, which a clipping ancestor would cut off.
         "absolute z-50 shrink-0 text-muted-foreground hover:bg-transparent focus-visible:bg-transparent",
-        getTabStripChevronGradientClass(direction),
+        getTabStripChevronEdgeClass(direction),
         COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
         // Always mounted (so reaching an edge toggles opacity rather than
         // committing/removing DOM mid-scroll) and always visible whenever there
