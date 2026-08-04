@@ -31,7 +31,7 @@ describe("secondary panel tab-strip edge fades", () => {
       },
     );
 
-    const { container, queryByRole } = render(
+    const { container } = render(
       createElement(SecondaryPanelTabStrip, {
         fileTabs: [
           {
@@ -63,6 +63,11 @@ describe("secondary panel tab-strip edge fades", () => {
         .querySelector("[data-overflow-fade='left']")
         ?.classList.contains("w-6"),
     ).toBe(true);
-    expect(queryByRole("button", { name: /scroll tabs/i })).toBeNull();
+    expect(
+      container.querySelector('[aria-label="Scroll tabs left"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[aria-label="Scroll tabs right"]'),
+    ).toBeNull();
   });
 });
