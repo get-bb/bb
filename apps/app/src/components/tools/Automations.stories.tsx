@@ -6,6 +6,7 @@ import {
   type AutomationCollectionMode,
 } from "bb-plugin-automations/overview-view";
 import type {
+  AutomationExecutionOptionsResponse,
   AutomationResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
@@ -19,6 +20,16 @@ export default {
 };
 
 const noop = () => {};
+const executionOptions: AutomationExecutionOptionsResponse = {
+  models: [
+    {
+      id: "claude:claude-opus-5",
+      model: "claude-opus-5",
+      displayName: "Opus 5",
+    },
+  ],
+  permissionModes: ["accept-edits", "auto", "full"],
+};
 const now = new Date(2027, 0, 15, 9).getTime();
 
 function automation(
@@ -509,8 +520,11 @@ function AutomationDetail({
         retry: noop,
       }}
       actionPending={false}
+      executionOptions={executionOptions}
+      executionOptionsError={null}
       onToggle={noop}
       onEdit={noop}
+      onUpdateAgent={async () => {}}
       onRunNow={noop}
       onDelete={noop}
       onOpenThread={noop}

@@ -10,14 +10,16 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  AutomationExecutionOptionsResponse,
   AutomationResponse,
   AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import {
-  AutomationDetailView,
+  AutomationDetailView as AutomationDetailViewBase,
   AutomationRunStatusIndicator,
 } from "bb-plugin-automations/detail-view";
 import {
@@ -233,9 +235,9 @@ describe("Plugin detail recipe", () => {
 
     expect(detail.className).not.toContain("line-clamp-3");
     expect(
-      screen.getByRole("button", { name: "Show less" }).getAttribute(
-        "aria-expanded",
-      ),
+      screen
+        .getByRole("button", { name: "Show less" })
+        .getAttribute("aria-expanded"),
     ).toBe("true");
     expect(container.textContent).toContain(description);
   });
@@ -498,6 +500,44 @@ const AUTOMATION: AutomationResponse = {
   updatedAt: 1_700_000_000_000,
 };
 
+const AUTOMATION_EXECUTION_OPTIONS: AutomationExecutionOptionsResponse = {
+  models: [
+    {
+      id: "claude:claude-opus-5",
+      model: "claude-opus-5",
+      displayName: "Opus 5",
+    },
+  ],
+  permissionModes: ["accept-edits", "auto", "full"],
+};
+
+type TestAutomationDetailProps = Omit<
+  ComponentProps<typeof AutomationDetailViewBase>,
+  "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+> &
+  Partial<
+    Pick<
+      ComponentProps<typeof AutomationDetailViewBase>,
+      "executionOptions" | "executionOptionsError" | "onUpdateAgent"
+    >
+  >;
+
+function AutomationDetailView({
+  executionOptions = AUTOMATION_EXECUTION_OPTIONS,
+  executionOptionsError = null,
+  onUpdateAgent = async () => {},
+  ...props
+}: TestAutomationDetailProps) {
+  return (
+    <AutomationDetailViewBase
+      {...props}
+      executionOptions={executionOptions}
+      executionOptionsError={executionOptionsError}
+      onUpdateAgent={onUpdateAgent}
+    />
+  );
+}
+
 const FAILED_SCRIPT_RUN: AutomationRunResponse = {
   id: "run_failed",
   automationId: AUTOMATION.id,
@@ -516,6 +556,7 @@ const FAILED_SCRIPT_RUN: AutomationRunResponse = {
 
 describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
+    const updateAgent = vi.fn(async () => {});
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -531,6 +572,7 @@ describe("Automation detail recipe", () => {
             retry: () => {},
           }}
           actionPending={false}
+          onUpdateAgent={updateAgent}
           onToggle={() => {}}
           onEdit={() => {}}
           onRunNow={() => {}}
@@ -577,24 +619,20 @@ describe("Automation detail recipe", () => {
     expect(runsTable.className).toContain("border-border");
     expect(runsTable.className).not.toContain("inline-block");
 
-    const promptPanel = screen.getByText("Summarize yesterday's commits.")
-      .parentElement as HTMLElement;
+    const promptContent = screen.getByRole("textbox", {
+      name: "Automation prompt",
+    }) as HTMLTextAreaElement;
+    const promptPanel = promptContent.closest("form") as HTMLElement;
     expect(promptPanel.className).toContain("bg-background");
     expect(promptPanel.className).toContain("rounded-xl");
     expect(promptPanel.className).not.toContain("rounded-md");
     expect(promptPanel.className).not.toContain("shadow-xs");
     expect(promptPanel.className).not.toContain("shadow-sm");
-    expect(promptPanel.lastElementChild?.className).not.toContain("border-t");
-    const promptContent = promptPanel.querySelector(
-      '[data-resource-prompt-content=""]',
-    ) as HTMLElement;
-    expect(promptContent.getAttribute("role")).toBe("textbox");
-    expect(promptContent.getAttribute("aria-label")).toBe("Saved prompt");
-    expect(promptContent.getAttribute("aria-readonly")).toBe("true");
-    expect(promptContent.className).toContain("min-h-[68px]");
+    expect(promptContent.value).toBe("Summarize yesterday's commits.");
+    expect(promptContent.readOnly).toBe(false);
+    expect(promptContent.className).toContain("min-h-28");
     expect(promptContent.className).toContain("px-4");
-    expect(promptContent.className).toContain("pt-3");
-    expect(promptContent.className).toContain("pb-1");
+    expect(promptContent.className).toContain("py-3");
     const promptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
@@ -606,12 +644,10 @@ describe("Automation detail recipe", () => {
       promptFooter.querySelectorAll('[data-option-display=""]'),
     ).toHaveLength(1);
     const accessSelector = promptFooter.querySelector(
-      '[data-disabled-automation-selector="Permission mode"]',
+      '[data-automation-selector="Permission mode"]',
     ) as HTMLButtonElement;
-    expect(accessSelector.disabled).toBe(true);
-    expect(accessSelector.getAttribute("aria-label")).toBe(
-      "Permission mode: Approve for me. Read only",
-    );
+    expect(accessSelector.disabled).toBe(false);
+    expect(accessSelector.getAttribute("aria-label")).toBe("Permission mode");
     expect(
       accessSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
@@ -623,11 +659,11 @@ describe("Automation detail recipe", () => {
       container.querySelector('[data-automation-read-only-label=""]'),
     ).toBeNull();
     const modelSelector = promptPanel.querySelector(
-      '[data-disabled-automation-selector="Provider and model"]',
+      '[data-automation-selector="Provider and model"]',
     ) as HTMLButtonElement;
-    expect(modelSelector.disabled).toBe(true);
+    expect(modelSelector.disabled).toBe(false);
     expect(modelSelector.getAttribute("aria-label")).toBe(
-      "Provider and model: Claude, Opus 5. Read only",
+      "Provider and model: Claude, Opus 5",
     );
     expect(
       modelSelector.querySelector('[data-icon="ChevronDown"]'),
@@ -635,24 +671,16 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-provider-icon="claude"] svg'),
     ).not.toBeNull();
-    const modelDisabledTrigger = screen.getByLabelText(
-      "Provider and model. Use Edit with chat to change the provider and model.",
-    );
-    expect(modelDisabledTrigger.className).toContain("cursor-not-allowed");
-    fireEvent.focus(modelDisabledTrigger);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Use Edit with chat to change the provider and model.",
-    );
-    fireEvent.blur(modelDisabledTrigger);
-
-    const permissionDisabledTrigger = screen.getByLabelText(
-      "Permission mode. Use Edit with chat to change permissions.",
-    );
-    expect(permissionDisabledTrigger.className).toContain("cursor-not-allowed");
-    fireEvent.focus(permissionDisabledTrigger);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Use Edit with chat to change permissions.",
-    );
+    const savePrompt = screen.getByRole("button", { name: "Save prompt" });
+    expect((savePrompt as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(promptContent, {
+      target: { value: "Summarize the last two days." },
+    });
+    expect((savePrompt as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(savePrompt);
+    expect(updateAgent).toHaveBeenCalledWith({
+      prompt: "Summarize the last two days.",
+    });
   });
 
   it("uses the composer metadata treatment without inventing reasoning", () => {
@@ -718,10 +746,8 @@ describe("Automation detail recipe", () => {
       promptShell.querySelectorAll('[data-option-display=""]'),
     ).toHaveLength(2);
     expect(
-      promptShell.querySelectorAll(
-        "[data-disabled-automation-selector]:disabled",
-      ),
-    ).toHaveLength(2);
+      promptShell.querySelectorAll("[data-automation-selector]:disabled"),
+    ).toHaveLength(0);
   });
 
   it.each([
@@ -801,10 +827,10 @@ describe("Automation detail recipe", () => {
       );
 
       const selector = container.querySelector(
-        '[data-disabled-automation-selector="Provider and model"]',
+        '[data-automation-selector="Provider and model"]',
       ) as HTMLButtonElement;
       expect(selector.getAttribute("aria-label")).toBe(
-        `Provider and model: ${providerLabel}, ${modelLabel}. Read only`,
+        `Provider and model: ${providerLabel}, ${modelLabel}`,
       );
       expect(selector.textContent).toContain(modelLabel);
       expect(
@@ -880,11 +906,9 @@ describe("Automation detail recipe", () => {
     ).toHaveLength(2);
     expect(
       container
-        .querySelector(
-          '[data-disabled-automation-selector="Provider and model"]',
-        )
+        .querySelector('[data-automation-selector="Provider and model"]')
         ?.getAttribute("aria-label"),
-    ).toBe("Provider and model: Codex, 5. Read only");
+    ).toBe("Provider and model: Codex, 5");
   });
 
   it("shows the stored script with capped overflow and no environment values", () => {

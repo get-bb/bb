@@ -54,7 +54,10 @@ import {
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
 } from "./lib/format-schedule";
-import { formatAutomationModelLabel } from "./lib/model-label";
+import {
+  formatAutomationModelLabel,
+  formatAutomationProviderLabel,
+} from "./lib/model-label";
 import { AutomationProviderIcon } from "./lib/provider-icon";
 import { AutomationMetadataItem } from "./metadata";
 
@@ -287,6 +290,7 @@ function AutomationEnvironmentVariables({
 
 interface AutomationSelectorProps {
   label: string;
+  accessibleLabel?: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onValueChange: (value: string) => void;
@@ -297,6 +301,7 @@ interface AutomationSelectorProps {
 
 function AutomationSelector({
   label,
+  accessibleLabel,
   value,
   options,
   onValueChange,
@@ -307,7 +312,8 @@ function AutomationSelector({
   return (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
-        aria-label={label}
+        aria-label={accessibleLabel ?? label}
+        data-automation-selector={label}
         className={cn(
           OPTION_BASE_CLASS_NAME,
           OPTION_INTERACTIVE_CLASS_NAME,
@@ -600,7 +606,7 @@ function AgentAutomationEditor({
   return (
     <div data-promptbox-shell="" className="min-w-0">
       <form
-        className="rounded-md border border-border bg-background"
+        className="rounded-xl border border-border bg-background"
         onSubmit={(event) => {
           event.preventDefault();
           if (!promptDirty || trimmedPrompt.length === 0) return;
@@ -617,7 +623,8 @@ function AgentAutomationEditor({
         />
         <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border px-2 py-1.5">
           <AutomationSelector
-            label="Model"
+            label="Provider and model"
+            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === execution.model)?.label ?? execution.model}`}
             value={execution.model}
             options={modelOptions}
             disabled={pending || options === null}
