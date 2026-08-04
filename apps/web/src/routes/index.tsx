@@ -1346,7 +1346,9 @@ type CustomizeScenario = {
 const CUSTOMIZE_SCENARIO: CustomizeScenario = {
   title: "Build a tasks plugin",
   prompt: "Add a task management system",
-  promptWidth: "196px",
+  // Measured width of the prompt at the composer's 13.5px Inter, plus a few px
+  // of slack for the metric-adjusted fallback face. Too small clips the tail.
+  promptWidth: "210px",
   branch: "bb/tasks-plugin",
   messages: [
     { role: "user", text: "Add a task management system" },
