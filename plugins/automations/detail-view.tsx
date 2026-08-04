@@ -754,6 +754,7 @@ function AgentAutomationDefinition({
   ) : (
     <ResourcePromptPreview
       disabled
+      className="rounded-none border-0 bg-transparent"
       context={[
         {
           label: (
@@ -777,74 +778,89 @@ function AgentAutomationDefinition({
     </ResourcePromptPreview>
   );
 
+  const promptFooter = (
+    <div
+      data-automation-prompt-footer=""
+      className={cn(
+        "flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground",
+        editing ? "mt-1" : "border-t border-border/70 py-1.5",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+        {!personalProject ? (
+          <OptionDisplay
+            label="Project"
+            value={projectContextLabel}
+            compactValue={projectContextLabel}
+            leading={
+              <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+            }
+            className="shrink-0"
+            muted
+          />
+        ) : null}
+        <OptionDisplay
+          label="Environment"
+          value={
+            execution.targetThreadId !== undefined
+              ? "Existing thread"
+              : automationEnvironmentLabel(execution)
+          }
+          compactValue={automationEnvironmentCompactLabel(execution)}
+          leading={
+            <Icon
+              name={automationEnvironmentIcon(execution)}
+              className="size-3.5 shrink-0"
+              aria-hidden
+            />
+          }
+          muted
+        />
+      </div>
+      {editing ? (
+        <AutomationSelector
+          label="Permission mode"
+          value={permissionMode}
+          options={permissionOptions}
+          disabled={pending || options === null}
+          onValueChange={(value) => {
+            const next = options?.permissionModes.find(
+              (mode) => mode === value,
+            );
+            if (next !== undefined) setPermissionMode(next);
+          }}
+          className="h-6 shrink-0"
+        />
+      ) : (
+        <DisabledAutomationSelector
+          label="Permission mode"
+          value={formatPermissionMode(execution.permissionMode)}
+          compactValue={formatPermissionModeCompact(execution.permissionMode)}
+          className="h-6 shrink-0"
+        />
+      )}
+    </div>
+  );
+
   return (
     <div data-promptbox-shell="" className="min-w-0">
-      {promptBox}
+      {editing ? (
+        promptBox
+      ) : (
+        <div
+          data-automation-prompt-readonly-shell=""
+          className="overflow-hidden rounded-xl border border-border bg-surface-recessed/55"
+        >
+          {promptBox}
+          {promptFooter}
+        </div>
+      )}
       {optionsError ? (
         <p className="mt-1 px-3.5 text-xs text-destructive">
           Couldn&apos;t load model options. {optionsError}
         </p>
       ) : null}
-      <div
-        data-automation-prompt-footer=""
-        className="mt-1 flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-          {!personalProject ? (
-            <OptionDisplay
-              label="Project"
-              value={projectContextLabel}
-              compactValue={projectContextLabel}
-              leading={
-                <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
-              }
-              className="shrink-0"
-              muted
-            />
-          ) : null}
-          <OptionDisplay
-            label="Environment"
-            value={
-              execution.targetThreadId !== undefined
-                ? "Existing thread"
-                : automationEnvironmentLabel(execution)
-            }
-            compactValue={automationEnvironmentCompactLabel(execution)}
-            leading={
-              <Icon
-                name={automationEnvironmentIcon(execution)}
-                className="size-3.5 shrink-0"
-                aria-hidden
-              />
-            }
-            muted
-          />
-        </div>
-        {editing ? (
-          <AutomationSelector
-            label="Permission mode"
-            value={permissionMode}
-            options={permissionOptions}
-            disabled={pending || options === null}
-            onValueChange={(value) => {
-              const next = options?.permissionModes.find(
-                (mode) => mode === value,
-              );
-              if (next !== undefined) setPermissionMode(next);
-            }}
-            className="h-6 shrink-0"
-          />
-        ) : (
-          <DisabledAutomationSelector
-            label="Permission mode"
-            value={formatPermissionMode(execution.permissionMode)}
-            compactValue={formatPermissionModeCompact(
-              execution.permissionMode,
-            )}
-            className="h-6 shrink-0"
-          />
-        )}
-      </div>
+      {editing ? promptFooter : null}
     </div>
   );
 }
@@ -950,13 +966,12 @@ export function AutomationDetailView({
           actions={
             <ResourceActionButton
               label={
-                execution.mode === "agent" ? "Edit via chat" : "Edit with chat"
+                execution.mode === "agent" ? "Edit prompt" : "Edit with chat"
               }
               tooltipLabel={
-                execution.mode === "agent" ? "Edit via chat" : "Edit with chat"
+                execution.mode === "agent" ? "Edit prompt" : "Edit with chat"
               }
               icon="Edit"
-              className="size-7 border border-border bg-surface-raised text-foreground shadow-xs hover:bg-accent hover:text-foreground"
               onClick={onEdit}
             />
           }

@@ -645,9 +645,15 @@ describe("Automation detail recipe", () => {
     expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
     expect(savedPrompt.getAttribute("aria-disabled")).toBe("true");
     expect(savedPrompt.className).toContain("text-muted-foreground");
-    expect(savedPrompt.parentElement?.className).toContain(
+    const readOnlyPromptShell = container.querySelector(
+      '[data-automation-prompt-readonly-shell=""]',
+    ) as HTMLElement;
+    expect(readOnlyPromptShell.className).toContain("rounded-xl");
+    expect(readOnlyPromptShell.className).toContain("border-border");
+    expect(readOnlyPromptShell.className).toContain(
       "bg-surface-recessed/55",
     );
+    expect(readOnlyPromptShell.contains(savedPrompt)).toBe(true);
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
     expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
     const disabledModelSelector = container.querySelector(
@@ -658,6 +664,10 @@ describe("Automation detail recipe", () => {
     ) as HTMLButtonElement;
     expect(disabledModelSelector.disabled).toBe(true);
     expect(disabledPermissionSelector.disabled).toBe(true);
+    expect(readOnlyPromptShell.contains(disabledModelSelector)).toBe(true);
+    expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(
+      true,
+    );
     expect(
       disabledModelSelector.querySelector(
         '[data-automation-selector-content=""]',
@@ -667,11 +677,21 @@ describe("Automation detail recipe", () => {
     expect(disabledModelSelector.parentElement?.getAttribute("data-state")).toBe(
       null,
     );
-    const editButton = screen.getByRole("button", { name: "Edit via chat" });
+    const readOnlyPromptFooter = container.querySelector(
+      '[data-automation-prompt-footer=""]',
+    ) as HTMLElement;
+    expect(readOnlyPromptShell.contains(readOnlyPromptFooter)).toBe(true);
+    expect(readOnlyPromptFooter.className).toContain("border-t");
+    expect(readOnlyPromptFooter.className).not.toContain("mt-1");
+    const editButton = screen.getByRole("button", { name: "Edit prompt" });
     expect(editButton.querySelector('[data-icon="Edit"]')).not.toBeNull();
-    expect(editButton.className).toContain("size-7");
-    expect(editButton.className).toContain("bg-surface-raised");
-    expect(editButton.className).toContain("border-border");
+    expect(editButton.className).toContain("size-6");
+    expect(editButton.className).not.toContain("bg-surface-raised");
+    expect(editButton.className).not.toContain("border-border");
+    fireEvent.pointerMove(editButton);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Edit prompt",
+    );
 
     fireEvent.click(editButton);
 
@@ -679,6 +699,9 @@ describe("Automation detail recipe", () => {
       name: "Automation prompt",
     }) as HTMLTextAreaElement;
     const promptPanel = promptContent.closest("form") as HTMLElement;
+    expect(
+      container.querySelector('[data-automation-prompt-readonly-shell=""]'),
+    ).toBeNull();
     expect(promptPanel.className).toContain("bg-background");
     expect(promptPanel.className).toContain("rounded-xl");
     expect(promptPanel.className).toContain("shadow-lift");
