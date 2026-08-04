@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -101,7 +107,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("moves the sidebar toggle into the shared panel header", async () => {
+  it("keeps the sidebar toggle in the page header above sidebar actions", async () => {
     const panel = app.navPanels[0]!;
     const slot = renderSlot(
       panel,
@@ -112,20 +118,46 @@ describe("Docs nav panel", () => {
 
     const HeaderContent = panel.headerContent!;
     const header = render(<HeaderContent subPath="personal" />);
-    await waitFor(() => {
-      expect(
-        slot.container.querySelector('[aria-label="Collapse notes sidebar"]'),
-      ).toBeNull();
+    const headerSegment = header.getByTestId("notes-sidebar-header");
+    expect(headerSegment.classList.contains("bg-sidebar")).toBe(true);
+    expect(headerSegment.style.width).toBe("288px");
+    const navigation = slot.getByRole("navigation", {
+      name: "Notes sidebar",
     });
-
+    expect(
+      slot.container.querySelector("aside")?.classList.contains("bg-sidebar"),
+    ).toBe(true);
+    expect(
+      within(navigation).getByRole("button", { name: "Search notes" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "New note" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "New folder" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).queryByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
+    ).toBeNull();
     fireEvent.click(
       header.getByRole("button", { name: "Collapse notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
+    expect(headerSegment.style.width).toBe("48px");
     fireEvent.click(
       header.getByRole("button", { name: "Expand notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+    expect(headerSegment.style.width).toBe("288px");
+
+    header.unmount();
+    await waitFor(() => {
+      expect(
+        slot.getByRole("button", { name: "Collapse notes sidebar" }),
+      ).toBeTruthy();
+    });
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {

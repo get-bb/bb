@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import type {
   AutomationResponse,
   AutomationExecutionOptionsResponse,
+  AutomationPermissionOptionsResponse,
   AgentExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
@@ -247,37 +248,101 @@ function useAutomation(route: DetailRoute): {
 function useAutomationExecutionOptions(
   route: DetailRoute,
   enabled: boolean,
+  executionKey: string,
 ): {
   options: AutomationExecutionOptionsResponse | null;
   error: string | null;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
+  const requestKey = `${projectId}:${automationId}:${executionKey}`;
+  const requestedKeyRef = useRef<string | null>(null);
   const [state, setState] = useState<{
     options: AutomationExecutionOptionsResponse | null;
     error: string | null;
   }>({ options: null, error: null });
 
   useEffect(() => {
-    if (!enabled) {
-      setState({ options: null, error: null });
-      return;
-    }
+    requestedKeyRef.current = null;
+    setState({ options: null, error: null });
+  }, [requestKey]);
+
+  useEffect(() => {
+    if (!enabled || requestedKeyRef.current === requestKey) return;
+    requestedKeyRef.current = requestKey;
     let active = true;
+    setState({ options: null, error: null });
     rpc.call("automations_execution_options", { projectId, automationId }).then(
       (options) => {
         if (active) setState({ options, error: null });
       },
       (error: unknown) => {
-        if (active) setState({ options: null, error: errorText(error) });
+        if (active) {
+          requestedKeyRef.current = null;
+          setState({ options: null, error: errorText(error) });
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [automationId, enabled, projectId, rpc]);
+  }, [automationId, enabled, projectId, requestKey, rpc]);
 
-  return state;
+  return { options: state.options, error: state.error };
+}
+
+function useAutomationPermissionOptions(
+  route: DetailRoute,
+  enabled: boolean,
+  executionKey: string,
+): {
+  options: AutomationPermissionOptionsResponse | null;
+  error: string | null;
+  retry: () => void;
+} {
+  const rpc = useRpc<typeof automationRpcContract>();
+  const { projectId, automationId } = route;
+  const requestKey = `${projectId}:${automationId}:${executionKey}`;
+  const requestedKeyRef = useRef<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<{
+    options: AutomationPermissionOptionsResponse | null;
+    error: string | null;
+  }>({ options: null, error: null });
+
+  useEffect(() => {
+    requestedKeyRef.current = null;
+    setState({ options: null, error: null });
+  }, [requestKey]);
+
+  useEffect(() => {
+    if (!enabled || requestedKeyRef.current === requestKey) return;
+    requestedKeyRef.current = requestKey;
+    let active = true;
+    setState({ options: null, error: null });
+    rpc
+      .call("automations_permission_options", { projectId, automationId })
+      .then(
+        (options) => {
+          if (active) setState({ options, error: null });
+        },
+        (error: unknown) => {
+          if (active) {
+            requestedKeyRef.current = null;
+            setState({ options: null, error: errorText(error) });
+          }
+        },
+      );
+    return () => {
+      active = false;
+    };
+  }, [attempt, automationId, enabled, projectId, requestKey, rpc]);
+
+  const retry = useCallback(() => {
+    requestedKeyRef.current = null;
+    setAttempt((current) => current + 1);
+  }, []);
+  return { options: state.options, error: state.error, retry };
 }
 
 interface RunsState {
@@ -538,11 +603,25 @@ function DetailView({
 }) {
   const navigate = useBbNavigate();
   const { automation, error, missing, refetch } = useAutomation(route);
-  const [editing, setEditing] = useState(initialEditing);
+  const [editingRequested, setEditingRequested] = useState(initialEditing);
+  const editingExecutionKey =
+    automation?.execution.mode === "agent"
+      ? JSON.stringify({
+          providerId: automation.execution.providerId,
+          environment: automation.execution.environment,
+        })
+      : "not-agent";
   const executionOptionsState = useAutomationExecutionOptions(
     route,
-    editing && automation?.execution.mode === "agent",
+    editingRequested && automation?.execution.mode === "agent",
+    editingExecutionKey,
   );
+  const permissionOptionsState = useAutomationPermissionOptions(
+    route,
+    editingRequested && automation?.execution.mode === "agent",
+    editingExecutionKey,
+  );
+  const editing = editingRequested && permissionOptionsState.options !== null;
   const overviewState = useOverview();
   const runsState = useRuns(route);
   const mutations = useMutations();
@@ -590,11 +669,14 @@ function DetailView({
   const openEdit = useCallback(() => {
     if (automation === null) return;
     if (automation.execution.mode === "agent") {
-      setEditing(true);
+      if (permissionOptionsState.error !== null) {
+        permissionOptionsState.retry();
+      }
+      setEditingRequested(true);
       return;
     }
     editViaThread(automation);
-  }, [automation, editViaThread]);
+  }, [automation, editViaThread, permissionOptionsState]);
 
   const updateAgent = useCallback(
     async (agent: AgentExecutionUpdate) => {
@@ -602,7 +684,7 @@ function DetailView({
       try {
         await mutations.update(route, agent);
         toast.success("Automation updated");
-        setEditing(false);
+        setEditingRequested(false);
         refetch();
       } catch (rpcError: unknown) {
         toast.error(`Failed to update automation: ${errorText(rpcError)}`);
@@ -674,10 +756,14 @@ function DetailView({
       runsState={runsState}
       actionPending={actionPending}
       executionOptions={executionOptionsState.options}
-      executionOptionsError={executionOptionsState.error}
+      executionOptionsError={
+        executionOptionsState.error ?? permissionOptionsState.error
+      }
+      permissionModes={permissionOptionsState.options?.permissionModes ?? []}
       editing={editing}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
+      onCancelEdit={() => setEditingRequested(false)}
       onUpdateAgent={updateAgent}
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
