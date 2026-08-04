@@ -34,7 +34,6 @@ export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
-const PRODUCT_DEFAULT_MODEL = "gpt-5.5";
 
 export interface ResolveCreateThreadExecutionDefaultsArgs {
   requestedProviderId?: string;
@@ -154,13 +153,6 @@ function resolveSupportedPermissionMode(
   return supportedPermissionModes[0] ?? DEFAULT_PERMISSION_MODE;
 }
 
-function buildProductThreadExecutionDefaults(
-  providerId: string,
-): ProjectExecutionDefaults | null {
-  const defaults = buildInitialProjectExecutionDefaults();
-  return defaults.providerId === providerId ? defaults : null;
-}
-
 export function resolveCreateThreadExecutionDefaults(
   args: ResolveCreateThreadExecutionDefaultsArgs,
 ): CreateThreadExecutionDefaultsResolved {
@@ -179,18 +171,21 @@ export function resolveCreateThreadExecutionDefaults(
   }
 
   return {
-    executionDefaults: buildProductThreadExecutionDefaults(providerId),
+    executionDefaults: null,
     providerId,
   };
 }
 
-export function buildInitialProjectExecutionDefaults(): ProjectExecutionDefaults {
+export function buildProviderThreadExecutionDefaults(args: {
+  model: string;
+  providerId: string;
+}): ProjectExecutionDefaults {
   return {
-    providerId: PRODUCT_DEFAULT_PROVIDER_ID,
-    model: PRODUCT_DEFAULT_MODEL,
+    providerId: args.providerId,
+    model: args.model,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     permissionMode: resolveSupportedPermissionMode({
-      providerId: PRODUCT_DEFAULT_PROVIDER_ID,
+      providerId: args.providerId,
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,
     }),
     serviceTier: DEFAULT_SERVICE_TIER,

@@ -13,6 +13,8 @@ import {
 import { defaultExperiments, threadSchema } from "@bb/domain";
 import { sidebarBootstrapResponseSchema } from "@bb/server-contract";
 import { waitForQueuedCommand } from "../helpers/commands.js";
+import { availableModelFixture } from "../helpers/available-models.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -268,9 +270,25 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("fails thread creation without a model when the explicit provider does not match the remembered provider", async () => {
+  it("uses the explicit provider catalog default when stored defaults belong to another provider", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          "claude-code": {
+            models: [
+              availableModelFixture({
+                model: "claude-opus-catalog-default",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/thread-defaults-provider-mismatch",
@@ -309,17 +327,40 @@ describe("public thread default routes", () => {
         }),
       });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: expect.stringContaining("provider claude-code"),
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === createdThread.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        options: { model: "claude-opus-catalog-default" },
       });
     });
   });
 
-  it("fails thread creation without a model when an explicit provider has no stored defaults", async () => {
+  it("uses the catalog isDefault model when provider and project defaults are omitted", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
+      const { host, session } = seedHostSession(harness.deps);
+      const providerResponder = registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        restoreCommandCaptureAfterResponse: true,
+        modelsByProviderId: {
+          codex: {
+            models: [
+              availableModelFixture({ model: "gpt-first" }),
+              availableModelFixture({
+                model: "gpt-provider-default",
+                isDefault: true,
+              }),
+            ],
+            selectedOnlyModels: [],
+          },
+        },
+      });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/thread-defaults-missing",
@@ -338,7 +379,6 @@ describe("public thread default routes", () => {
         body: JSON.stringify({
           origin: "app",
           projectId: project.id,
-          providerId: "pi",
           input: [{ type: "text", text: "Create without defaults" }],
           environment: {
             type: "reuse",
@@ -347,10 +387,67 @@ describe("public thread default routes", () => {
         }),
       });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: expect.stringContaining("provider pi"),
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === createdThread.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        providerId: "codex",
+        options: { model: "gpt-provider-default" },
+      });
+      expect(
+        providerResponder.requests.map((request) => request.command),
+      ).toEqual([{ type: "provider.list_models", providerId: "codex" }]);
+    });
+  });
+
+  it("returns an actionable error when the default model catalog cannot be loaded", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        modelErrorsByProviderId: {
+          codex: {
+            errorCode: "command_failed",
+            errorMessage: "Codex model discovery failed",
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-catalog-error",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-defaults-catalog-error",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          input: [{ type: "text", text: "Create without defaults" }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(503);
+      await expect(readJson(response)).resolves.toEqual({
+        code: "model_catalog_unavailable",
+        message: expect.stringContaining("Unable to load codex models"),
+        details: { providerId: "codex", code: "failed" },
+        retryable: true,
       });
       expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
         0,
@@ -475,7 +572,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("returns resolved project defaults in sidebar bootstrap without persisting them", async () => {
+  it("does not synthesize project defaults in sidebar bootstrap", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -492,13 +589,7 @@ describe("public thread default routes", () => {
       const sidebarProject = bootstrap.projects.find(
         (candidate) => candidate.id === project.id,
       );
-      expect(sidebarProject?.defaultExecutionOptions).toEqual({
-        providerId: "codex",
-        model: "gpt-5.5",
-        serviceTier: "default",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-      });
+      expect(sidebarProject?.defaultExecutionOptions).toBeNull();
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,

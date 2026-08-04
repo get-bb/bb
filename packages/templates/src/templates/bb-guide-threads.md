@@ -35,7 +35,11 @@ Spawning:
     --source-thread <id>           Source thread for a fork
     --source-seq-end <seq>         Last included source event sequence
 
-  Execution defaults resolve from explicit flags, live parent execution, project defaults, then the auto product default.
+  Execution defaults resolve from explicit flags, live parent execution, and
+  remembered project defaults. With no remembered model, bb uses the explicitly
+  requested provider or Codex and resolves its provider-reported default model
+  on the target machine. The product reasoning and permission defaults are
+  medium and auto.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.

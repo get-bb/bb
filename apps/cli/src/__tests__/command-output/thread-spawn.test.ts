@@ -301,9 +301,7 @@ describe("bb thread spawn command output", () => {
     const helpOutput = await getHelpOutput(["thread", "spawn"], register);
     expect(helpOutput).toContain("--permission-mode <mode>");
     expect(helpOutput).toContain("--visibility <visibility>");
-    expect(helpOutput).toMatch(
-      /Permission mode: accept-edits, auto, or full/,
-    );
+    expect(helpOutput).toMatch(/Permission mode: accept-edits, auto, or full/);
   });
 
   it("bb thread spawn reports invalid permission mode choices", async () => {
@@ -393,11 +391,11 @@ describe("bb thread spawn command output", () => {
     ).toEqual(thread);
   });
 
-  it("bb thread spawn prefixes missing-project-default failures with context", async () => {
+  it("bb thread spawn prefixes model-catalog failures with context", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const post = vi.fn(async () => {
       throw new Error(
-        "HTTP 400: Provider is required when project proj-1 has no stored execution defaults for thread type standard",
+        "HTTP 503: Unable to load codex models to resolve the default",
       );
     });
     stubServerApi({ "v1.threads.$post": post });
@@ -410,7 +408,7 @@ describe("bb thread spawn command output", () => {
     ).rejects.toThrow("process.exit:1");
 
     expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: Failed to create thread: HTTP 400: Provider is required when project proj-1 has no stored execution defaults for thread type standard",
+      "Error: Failed to create thread: HTTP 503: Unable to load codex models to resolve the default",
     );
   });
 

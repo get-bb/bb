@@ -6,6 +6,7 @@ import {
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
 import type {
+  ProjectExecutionDefaults,
   Project,
   Thread,
   ThreadOriginKind,
@@ -43,6 +44,7 @@ import {
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
 import {
+  buildProviderThreadExecutionDefaults,
   resolveCreateThreadEnvironment,
   resolveProjectDefaultThreadEnvironment,
 } from "./thread-default-policy.js";
@@ -63,6 +65,7 @@ import type {
 } from "./thread-provisioning-context.js";
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
+import { resolveSystemProviderModels } from "../system/execution-options.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -102,6 +105,60 @@ interface DeriveThreadCreateTitleFallbackArgs {
   input: ThreadCreateServiceRequestInput["input"];
   originKind: ThreadOriginKind | null;
   sourceThread: Thread | null;
+}
+
+interface ResolveCatalogExecutionDefaultsArgs {
+  executionDefaults: ProjectExecutionDefaults | null;
+  hostId: string | null;
+  providerId: string;
+  requestedModel: string | null;
+}
+
+async function resolveCatalogExecutionDefaults(
+  deps: ThreadCreateDeps,
+  args: ResolveCatalogExecutionDefaultsArgs,
+): Promise<ProjectExecutionDefaults | null> {
+  if (args.executionDefaults !== null || args.requestedModel !== null) {
+    return args.executionDefaults;
+  }
+  if (args.hostId === null) {
+    throw new ApiError(
+      502,
+      "host_unavailable",
+      `Cannot resolve the default ${args.providerId} model without an execution host`,
+      true,
+    );
+  }
+
+  const catalog = await resolveSystemProviderModels(deps, {
+    hostId: args.hostId,
+    providerId: args.providerId,
+  });
+  if (catalog.modelLoadError !== null) {
+    throw new ApiError(
+      503,
+      "model_catalog_unavailable",
+      `Unable to load ${args.providerId} models to resolve the default. Try again once the host is connected and the provider is ready.`,
+      {
+        details: catalog.modelLoadError,
+        retryable: true,
+      },
+    );
+  }
+  const defaultModel =
+    catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
+  if (defaultModel === undefined) {
+    throw new ApiError(
+      503,
+      "model_catalog_unavailable",
+      `The ${args.providerId} model catalog is empty, so no default model can be resolved.`,
+      true,
+    );
+  }
+  return buildProviderThreadExecutionDefaults({
+    providerId: args.providerId,
+    model: defaultModel.model,
+  });
 }
 
 /**
@@ -624,7 +681,7 @@ export async function createThreadFromRequest(
     input: requestInput.input,
     projectId: requestInput.projectId,
   });
-  const { executionDefaults, providerId } =
+  const { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
       executionInputSources: requestInput.executionInputSources,
       model: requestInput.model,
@@ -667,6 +724,15 @@ export async function createThreadFromRequest(
     projectId: request.projectId,
   });
   await ensureCreateHostOnline(deps, { resolvedEnvironment });
+  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
+    deps,
+    {
+      executionDefaults,
+      hostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+      providerId,
+      requestedModel,
+    },
+  );
 
   let environmentId: string | null = null;
   let environmentIntent: ThreadProvisionEnvironmentIntent;
@@ -785,7 +851,7 @@ export async function createThreadFromRequest(
   const thread = await createProvisioningThread(deps, {
     environmentId,
     environmentIntent,
-    executionDefaults,
+    executionDefaults: resolvedExecutionDefaults,
     fork,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }

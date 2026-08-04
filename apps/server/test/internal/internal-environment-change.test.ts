@@ -66,7 +66,11 @@ describe("internal environment change websocket hints", () => {
         message: {
           type: "host-rpc.request",
           requestId: "rpc-protocol-session-scoped",
-          command: { type: "provider.list_models", providerId: "codex" },
+          command: {
+            type: "host.list_files",
+            path: "/tmp/session-scope-test",
+            limit: 10,
+          },
         },
       });
       let resolved = false;
@@ -83,9 +87,9 @@ describe("internal environment change websocket hints", () => {
         raw: JSON.stringify({
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
-          commandType: "provider.list_models",
+          commandType: "host.list_files",
           ok: true,
-          result: { models: [], selectedOnlyModels: [] },
+          result: { files: [], truncated: false },
         }),
       });
 
@@ -100,18 +104,18 @@ describe("internal environment change websocket hints", () => {
         raw: JSON.stringify({
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
-          commandType: "provider.list_models",
+          commandType: "host.list_files",
           ok: true,
-          result: { models: [], selectedOnlyModels: [] },
+          result: { files: [], truncated: false },
         }),
       });
 
       await expect(observed).resolves.toEqual({
         type: "host-rpc.response",
         requestId: "rpc-protocol-session-scoped",
-        commandType: "provider.list_models",
+        commandType: "host.list_files",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { files: [], truncated: false },
       });
       expect(socket.close).not.toHaveBeenCalled();
     });
@@ -251,5 +255,4 @@ describe("internal environment change websocket hints", () => {
       expect(notifyEnvironmentSpy).not.toHaveBeenCalled();
     });
   });
-
 });

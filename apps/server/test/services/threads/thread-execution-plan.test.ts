@@ -113,7 +113,7 @@ describe("thread execution plan input sources", () => {
     });
   });
 
-  it("uses server product defaults when create metadata has no caller-owned provider or model", async () => {
+  it("uses the product provider when create metadata has no caller-owned provider or model", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-source-aware-standard-product-defaults",
@@ -133,13 +133,8 @@ describe("thread execution plan input sources", () => {
       );
 
       expect(resolution.providerId).toBe("codex");
-      expect(resolution.executionDefaults).toEqual({
-        providerId: "codex",
-        model: "gpt-5.5",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        serviceTier: "default",
-      });
+      expect(resolution.executionDefaults).toBeNull();
+      expect(resolution.requestedModel).toBeNull();
     });
   });
 });

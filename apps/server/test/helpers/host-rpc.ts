@@ -7,6 +7,7 @@ import {
 } from "@bb/host-daemon-contract";
 import type { AvailableModel } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
+import { registerTestHostRpcCapture } from "./commands.js";
 
 interface TestHostRpcSocket {
   close(code?: number, reason?: string): void;
@@ -28,6 +29,7 @@ export interface RegisterProviderHostRpcArgs {
   modelErrorsByProviderId?: Record<string, ProviderModelError>;
   modelsByProviderId?: Record<string, ProviderModelResponse>;
   sessionId: string;
+  restoreCommandCaptureAfterResponse?: boolean;
 }
 
 export interface ProviderHostRpcResponder {
@@ -52,6 +54,7 @@ export interface RegisterHostRpcResponderArgs {
   handle: (request: HostDaemonOnlineRpcRequestMessage) => HostRpcHandlerResult;
   hostId: string;
   sessionId: string;
+  restoreCommandCaptureAfterResponse?: boolean;
 }
 
 export interface HostRpcResponder {
@@ -158,6 +161,12 @@ export function registerHostRpcResponder(
         message: response,
         sessionId: args.sessionId,
       });
+      if (args.restoreCommandCaptureAfterResponse) {
+        registerTestHostRpcCapture(harness, {
+          hostId: args.hostId,
+          sessionId: args.sessionId,
+        });
+      }
     },
   };
   harness.hub.registerDaemon(args.sessionId, args.hostId, socket);
@@ -177,6 +186,7 @@ export function registerProviderHostRpcResponder(
   return registerHostRpcResponder(harness, {
     hostId: args.hostId,
     sessionId: args.sessionId,
+    restoreCommandCaptureAfterResponse: args.restoreCommandCaptureAfterResponse,
     handle: (request) => {
       const response = buildProviderRpcResponse(args, request);
       if (response.ok) {

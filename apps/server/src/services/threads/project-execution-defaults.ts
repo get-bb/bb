@@ -7,7 +7,6 @@ import type {
   ResolvedThreadExecutionOptions,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { ApiError } from "../../errors.js";
 import type {
   ThreadCreateServiceRequest,
   ThreadCreateServiceRequestInput,
@@ -29,6 +28,7 @@ export interface ResolveProjectExecutionDefaultsForCreateArgs {
 export interface ResolvedProjectExecutionDefaultsForCreate {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
+  requestedModel: string | null;
 }
 
 type CreateExecutionInputSources =
@@ -95,17 +95,10 @@ export function resolveProjectExecutionDefaultsForCreate(
   });
   const { executionDefaults, providerId } = resolution;
 
-  if (!requestedModel && !executionDefaults) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Model is required when project ${args.projectId} has no stored execution defaults for provider ${providerId}`,
-    );
-  }
-
   return {
     executionDefaults,
     providerId,
+    requestedModel: requestedModel ?? null,
   };
 }
 

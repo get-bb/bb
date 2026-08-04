@@ -228,7 +228,7 @@ describe("server skeleton", () => {
     db.$client.close();
   });
 
-  it("ensures the personal project and execution defaults on startup", () => {
+  it("ensures the personal project without pinning execution defaults", () => {
     const db = initDb(":memory:");
     try {
       expect(getPersonalProject(db)).toMatchObject({
@@ -241,13 +241,7 @@ describe("server skeleton", () => {
         getProjectExecutionDefaults(db, {
           projectId: PERSONAL_PROJECT_ID,
         }),
-      ).toMatchObject({
-        model: expect.any(String),
-        permissionMode: expect.any(String),
-        providerId: expect.any(String),
-        reasoningLevel: expect.any(String),
-        serviceTier: expect.any(String),
-      });
+      ).toBeNull();
     } finally {
       db.$client.close();
     }

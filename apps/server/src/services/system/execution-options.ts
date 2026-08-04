@@ -42,6 +42,11 @@ interface BuildModelLoadErrorArgs {
   provider: ProviderInfo;
 }
 
+export interface ResolveSystemProviderModelsArgs {
+  hostId: string;
+  providerId: string;
+}
+
 interface ExpectedFallbackErrorLogFields {
   errorCode: string;
   errorDetails?: unknown;
@@ -267,6 +272,51 @@ function findCustomAcpAgentForProviderId(
   return customAcpAgents.find(
     (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
   );
+}
+
+/**
+ * Load one provider's model catalog on an already-resolved host. Unlike the
+ * full execution-options response, this does not probe for other installed ACP
+ * agents, so thread creation can resolve an omitted model with one targeted
+ * daemon request.
+ */
+export async function resolveSystemProviderModels(
+  deps: LoggedWorkSessionDeps,
+  args: ResolveSystemProviderModelsArgs,
+): Promise<ModelListResult> {
+  const configuredProvider = listConfiguredSystemProviderInfos(
+    deps.config.customAcpAgents,
+    [],
+  ).find((provider) => provider.id === args.providerId);
+  const knownAcpAgent = findKnownAcpAgentForProviderId(args.providerId);
+  const provider =
+    configuredProvider ??
+    (knownAcpAgent === undefined
+      ? undefined
+      : buildKnownAcpProviderInfo(knownAcpAgent));
+  if (provider === undefined) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Unsupported provider ${args.providerId}`,
+    );
+  }
+
+  const result = await loadSystemProviderModels(deps, {
+    hostId: args.hostId,
+    provider,
+  });
+  const { models, selectedOnlyModels } = appendCustomModels({
+    customModels: deps.config.customModels,
+    models: result.models,
+    providerId: provider.id,
+    selectedOnlyModels: result.selectedOnlyModels,
+  });
+  return {
+    models,
+    selectedOnlyModels,
+    modelLoadError: result.modelLoadError,
+  };
 }
 
 function buildCustomModel(customModel: CustomProviderModel): AvailableModel {

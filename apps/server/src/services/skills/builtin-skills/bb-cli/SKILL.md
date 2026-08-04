@@ -117,7 +117,9 @@ message agents, or inspect projects, providers, and environments.
 
 - Use `bb thread spawn --project <project-id> --prompt "..."` to create another
   thread. Pass the intended project explicitly; the CLI does not infer it from
-  context variables.
+  context variables. Omitted execution flags use remembered project defaults;
+  without a remembered model, bb uses the explicitly requested provider or
+  Codex and resolves its provider-reported default model on the target machine.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)

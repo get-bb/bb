@@ -76,20 +76,14 @@ describe("resolveWorkflowsEnabledPolicy", () => {
 });
 
 describe("resolveCreateThreadExecutionDefaults", () => {
-  it("uses the server-owned Codex defaults when provider and stored defaults are omitted", () => {
+  it("uses Codex as the product provider without pinning a model", () => {
     expect(
       resolveCreateThreadExecutionDefaults({
         storedDefaults: null,
       }),
     ).toEqual({
       providerId: "codex",
-      executionDefaults: {
-        providerId: "codex",
-        model: "gpt-5.5",
-        reasoningLevel: "medium",
-        permissionMode: "auto",
-        serviceTier: "default",
-      },
+      executionDefaults: null,
     });
   });
 

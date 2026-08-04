@@ -22,6 +22,7 @@ import type {
   HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
 import type { TestAppHarness } from "./test-app.js";
+import { availableModelFixture } from "./available-models.js";
 import { createTestDaemonHostKey } from "./test-app.js";
 
 interface CapturedRpcRow {
@@ -228,6 +229,36 @@ function respondToRuntimeWorkspaceFileCommand(
   return true;
 }
 
+function respondToProviderModelListCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  if (message.command.type !== "provider.list_models") return false;
+
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: message.command.type,
+      ok: true,
+      result: {
+        models: [
+          availableModelFixture({
+            model: "test-provider-default",
+            reasoningLevels: ["low", "medium", "high"],
+            defaultReasoningLevel: "medium",
+            isDefault: true,
+          }),
+        ],
+        selectedOnlyModels: [],
+      },
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
 function buildDefaultBranchListResult(
   selectedBranch: string | undefined,
 ): HostDaemonOnlineRpcResult<"host.list_branches"> {
@@ -324,6 +355,9 @@ export function registerTestHostRpcCapture(
       }
       const command = hostDaemonRpcCommandSchema.parse(message.command);
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
+        return;
+      }
+      if (respondToProviderModelListCommand(deps, args, message)) {
         return;
       }
       if (command.type === "host.list_branches") {

@@ -163,7 +163,7 @@ export function registerSpawnCommand(
   parent
     .command("spawn")
     .description(
-      "Spawn a new thread for a project; omitted provider and execution flags inherit remembered project defaults",
+      "Spawn a new thread; omitted execution flags use remembered project defaults, then the target provider catalog default",
     )
     .requiredOption("--prompt <prompt>", "Initial prompt for the thread")
     .option("--json", "Print machine-readable JSON output")
