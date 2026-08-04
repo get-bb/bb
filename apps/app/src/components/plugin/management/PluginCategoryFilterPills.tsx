@@ -22,12 +22,12 @@ export function PluginCategoryFilterPills({
         onValueChange(next === ALL_CATEGORIES ? null : next);
       }}
       aria-label="Filter plugins by category"
-      className="flex-wrap justify-start gap-1.5"
+      className="flex-wrap justify-start gap-2 py-2"
     >
       <ToggleGroupItem
         value={ALL_CATEGORIES}
         aria-label="Show all plugin categories"
-        className="h-7 min-w-0 rounded-full border border-border bg-background px-3 text-xs shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground"
+        className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/70 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
       >
         All
       </ToggleGroupItem>
@@ -35,7 +35,7 @@ export function PluginCategoryFilterPills({
         <ToggleGroupItem
           key={category}
           value={category}
-          className="h-7 min-w-0 rounded-full border border-border bg-background px-3 text-xs shadow-none data-[state=on]:bg-state-active data-[state=on]:text-foreground"
+          className="h-7 min-w-0 rounded-full border border-border bg-transparent px-3 text-xs text-muted-foreground shadow-none hover:bg-secondary/70 hover:text-foreground data-[state=on]:border-transparent data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
         >
           {category}
         </ToggleGroupItem>

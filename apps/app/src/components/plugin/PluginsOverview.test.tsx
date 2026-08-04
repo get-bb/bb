@@ -248,6 +248,39 @@ describe("PluginsOverview", () => {
     expect(screen.getByText("Automations")).toBeTruthy();
   });
 
+  it("keeps category pills visually secondary to the collection tabs", async () => {
+    installFetch();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Automations");
+    const filters = screen.getByRole("radiogroup", {
+      name: "Filter plugins by category",
+    });
+    const all = screen.getByRole("radio", {
+      name: "Show all plugin categories",
+    });
+    expect(filters.className).toContain("py-2");
+    expect(filters.className).toContain("gap-2");
+    expect(all.className).toContain("data-[state=on]:bg-secondary");
+    expect(all.className).not.toContain("data-[state=on]:bg-state-active");
+    expect(
+      screen.getByRole("tab", { name: "Installed, 1 plugin" }).className,
+    ).toContain("bg-accent");
+    expect(
+      screen.queryByRole("button", { name: "Automations actions" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Automations plugin details" }),
+    ).toBeTruthy();
+  });
+
   it("opens installed resources on the canonical Tools detail route", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
