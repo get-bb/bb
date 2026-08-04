@@ -92,11 +92,11 @@ describe("Docs nav panel", () => {
     expect(app.messageDirectives[0]?.id).toBe("docs");
     expect(app.threadPanelActions[0]).toMatchObject({
       id: "document",
-      title: "Docs",
+      title: "Document",
     });
     expect(app.fileOpeners[0]).toMatchObject({
       id: "docs",
-      title: "Docs",
+      title: "Markdown",
       extensions: ["md", "mdx", "markdown"],
     });
   });

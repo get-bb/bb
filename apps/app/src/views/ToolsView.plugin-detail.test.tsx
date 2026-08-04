@@ -1232,4 +1232,69 @@ describe("PluginDetail capability inventory", () => {
         ),
     ).toBe(true);
   });
+
+  it("names repeated product-titled surfaces by their actual capability", () => {
+    const EmptySlot = () => null;
+    setPluginSlotRegistrations("simple-notes", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: EmptySlot,
+        },
+      ],
+      threadPanelActions: [
+        {
+          id: "document",
+          title: "Document",
+          icon: "FileText",
+          component: EmptySlot,
+        },
+      ],
+      composerCustomizations: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [
+        {
+          id: "docs",
+          title: "Markdown",
+          extensions: ["md", "mdx", "markdown"],
+          component: EmptySlot,
+        },
+      ],
+      messageDirectives: [{ id: "docs", component: EmptySlot }],
+      messageActions: [],
+    });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              id: "simple-notes",
+              name: "Docs",
+              capabilities: [],
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("Docs")).toHaveLength(2);
+    for (const label of ["Document", "Markdown", "::docs"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
 });

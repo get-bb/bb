@@ -2275,13 +2275,13 @@ export default definePluginApp((app) => {
   });
   app.slots.threadPanelAction({
     id: "document",
-    title: "Docs",
+    title: "Document",
     icon: "FileText",
     component: DocumentPanel,
   });
   app.slots.fileOpener({
     id: "docs",
-    title: "Docs",
+    title: "Markdown",
     extensions: ["md", "mdx", "markdown"],
     component: DocsFileOpener,
   });

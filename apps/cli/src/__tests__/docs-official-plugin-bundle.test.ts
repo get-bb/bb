@@ -135,7 +135,7 @@ describe("Docs official plugin frontend bundle", () => {
     expect(registered.homepageSection).toHaveLength(0);
     expect(registered.threadPanelAction[0]).toMatchObject({
       id: "document",
-      title: "Docs",
+      title: "Document",
     });
     expect(typeof registered.threadPanelAction[0]?.component).toBe("function");
     expect(registered.messageDirective[0]).toMatchObject({ id: "docs" });
@@ -143,7 +143,7 @@ describe("Docs official plugin frontend bundle", () => {
     expect(registered.sidebarFooterAction).toHaveLength(0);
     expect(registered.fileOpener[0]).toMatchObject({
       id: "docs",
-      title: "Docs",
+      title: "Markdown",
       extensions: ["md", "mdx", "markdown"],
     });
     expect(typeof registered.fileOpener[0]?.component).toBe("function");
