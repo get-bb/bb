@@ -87,9 +87,20 @@ export interface ResourceOption {
   disabled?: boolean;
 }
 
-function ResourceOptionContent({ option }: { option: ResourceOption }) {
+function ResourceOptionContent({
+  option,
+  compact = false,
+}: {
+  option: ResourceOption;
+  compact?: boolean;
+}) {
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span
+      className={cn(
+        "flex min-w-0 items-center gap-2",
+        compact && "md:gap-1.5",
+      )}
+    >
       {option.leading ? (
         <span
           className="flex size-4 shrink-0 items-center justify-center"
@@ -205,6 +216,7 @@ export function ResourceMultiSelectMenu({
   selectedTooltip,
   allOptionLabel,
   emptySelectionLabel = "All",
+  compact = false,
 }: {
   label: string;
   icon: IconName;
@@ -215,6 +227,7 @@ export function ResourceMultiSelectMenu({
   selectedTooltip?: (options: readonly ResourceOption[]) => ReactNode;
   allOptionLabel?: string;
   emptySelectionLabel?: string;
+  compact?: boolean;
 }) {
   const selected = new Set(selectedValues);
   const enabledOptions = options.filter((option) => !option.disabled);
@@ -258,13 +271,25 @@ export function ResourceMultiSelectMenu({
         active={activeSelectedCount > 0}
         tooltip={triggerTooltip}
       />
-      <DropdownMenuContent align="end" mobileTitle={label} className="min-w-44">
-        <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+      <DropdownMenuContent
+        align="end"
+        mobileTitle={label}
+        className={cn(
+          compact ? "w-max max-w-64 md:p-0.5" : "min-w-44",
+        )}
+      >
+        <DropdownMenuLabel
+          className={cn(
+            "text-xs font-normal text-subtle-foreground",
+            compact && "md:px-1.5 md:py-1",
+          )}
+        >
           {label}
         </DropdownMenuLabel>
         {allOptionLabel ? (
           <DropdownMenuCheckboxItem
             checked={allSelected}
+            className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
             onSelect={(event) => event.preventDefault()}
             onCheckedChange={(checked) =>
               onChange(
@@ -280,10 +305,11 @@ export function ResourceMultiSelectMenu({
             key={option.id}
             checked={selected.has(option.id)}
             disabled={option.disabled}
+            className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
             onSelect={(event) => event.preventDefault()}
             onCheckedChange={(checked) => updateValue(option, checked === true)}
           >
-            <ResourceOptionContent option={option} />
+            <ResourceOptionContent option={option} compact={compact} />
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>
@@ -296,17 +322,31 @@ export function ResourceSortMenu({
   direction,
   options,
   onChange,
+  compact = false,
 }: {
   value: string;
   direction: "asc" | "desc";
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
+  compact?: boolean;
 }) {
   return (
     <DropdownMenu>
-      <ResourceMenuTrigger label="Sort" icon="ArrowUpDown" />
-      <DropdownMenuContent align="end" mobileTitle="Sort" className="min-w-40">
-        <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
+      <ResourceMenuTrigger
+        label="Sort"
+        icon={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+      />
+      <DropdownMenuContent
+        align="end"
+        mobileTitle="Sort"
+        className={cn("min-w-40", compact && "md:p-0.5")}
+      >
+        <DropdownMenuLabel
+          className={cn(
+            "text-xs font-normal text-subtle-foreground",
+            compact && "md:px-1.5 md:py-1",
+          )}
+        >
           Sort by
         </DropdownMenuLabel>
         {options.map((option) => {
@@ -320,9 +360,12 @@ export function ResourceSortMenu({
                 if (option.disabled) return;
                 onChange(option.id);
               }}
-              className="flex items-center justify-between gap-3"
+              className={cn(
+                "flex items-center justify-between gap-3",
+                compact && "md:gap-2 md:px-1.5 md:py-1",
+              )}
             >
-              <ResourceOptionContent option={option} />
+              <ResourceOptionContent option={option} compact={compact} />
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden

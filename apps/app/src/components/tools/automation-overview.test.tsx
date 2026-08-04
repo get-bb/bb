@@ -141,8 +141,13 @@ describe("AutomationOverviewView", () => {
     );
     fireEvent.blur(projectsTrigger);
     fireEvent.pointerDown(projectsTrigger);
-    expect(screen.getByText("Projects")).toBeTruthy();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    const projectsMenu = screen.getByRole("menu", { name: "Projects" });
+    expect(projectsMenu.className).toContain("md:p-0.5");
+    expect(projectsMenu.className).toContain("w-max");
+    const projectOption = screen.getByRole("menuitemcheckbox", { name: "bb" });
+    expect(projectOption.className).toContain("md:py-1");
+    expect(projectOption.querySelector('[data-icon="Folder"]')).toBeTruthy();
+    fireEvent.click(projectOption);
     fireEvent.keyDown(document, { key: "Escape" });
 
     expect(
@@ -172,12 +177,43 @@ describe("AutomationOverviewView", () => {
     fireEvent.blur(statusTrigger);
     fireEvent.pointerDown(statusTrigger);
     expect(screen.getByText("Status")).toBeTruthy();
-    expect(
-      screen.getByRole("menuitemcheckbox", { name: "Active" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("menuitemcheckbox", { name: "Paused" }),
-    ).toBeTruthy();
+    const activeOption = screen.getByRole("menuitemcheckbox", {
+      name: "Active",
+    });
+    const pausedOption = screen.getByRole("menuitemcheckbox", {
+      name: "Paused",
+    });
+    expect(activeOption.querySelector('[data-icon="Play"]')).toBeTruthy();
+    expect(pausedOption.querySelector('[data-icon="Pause"]')).toBeTruthy();
+  });
+
+  it("uses compact, icon-labelled sort options and preserves disabled state", () => {
+    render(
+      <AutomationOverviewView
+        entries={INSTALLED_AUTOMATIONS}
+        error={null}
+        onRetry={() => {}}
+        onOpenDetail={() => {}}
+        onEnabledChange={async () => {}}
+        onCreateViaChat={() => {}}
+        activeMode="installed"
+        onModeChange={() => {}}
+      />,
+    );
+
+    const sortTrigger = screen.getByRole("button", { name: "Sort" });
+    expect(sortTrigger.querySelector('[data-icon="ArrowUp"]')).toBeTruthy();
+    fireEvent.pointerDown(sortTrigger);
+    const projectOption = screen.getByRole("menuitem", { name: "Project" });
+    const nameOption = screen.getByRole("menuitem", {
+      name: "Automation name",
+    });
+    expect(projectOption.getAttribute("aria-disabled")).toBe("true");
+    expect(projectOption.querySelector('[data-icon="Folder"]')).toBeTruthy();
+    expect(nameOption.querySelector('[data-icon="Sort"]')).toBeTruthy();
+    expect(nameOption.className).toContain("md:py-1");
+    fireEvent.click(nameOption);
+    expect(sortTrigger.querySelector('[data-icon="ArrowDown"]')).toBeTruthy();
   });
 
   it("renders template actions as icon-only controls with specific labels", () => {
