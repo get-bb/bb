@@ -282,7 +282,7 @@ describe("SkillsOverview", () => {
       ],
     });
 
-    expect(markup).toContain(">Plugin<");
+    expect(markup).toContain(">Included<");
     expect(markup).toContain(
       'aria-label="automations is included with Automations (bb plugin)"',
     );
@@ -351,6 +351,11 @@ describe("SkillsOverview", () => {
         .getByRole("menuitemcheckbox", { name: "Codex" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "Codex" })
+        .querySelector("svg"),
+    ).not.toBeNull();
     expect(
       screen
         .getByRole("menuitemcheckbox", { name: "bb" })
@@ -912,7 +917,7 @@ describe("SkillDetailDialogView", () => {
         manageable: false,
       }),
       accessibleLabel: "documents is included with Documents (Codex plugin)",
-      tooltipName: "Documents plugin",
+      tooltipName: "Documents plugin.",
       providerIcon: "codex",
     },
     {
@@ -925,7 +930,7 @@ describe("SkillDetailDialogView", () => {
       }),
       accessibleLabel:
         "plugin-notes is included with Skill catalog fixture (bb plugin)",
-      tooltipName: "Skill catalog fixture plugin",
+      tooltipName: "Skill catalog fixture plugin.",
       providerIcon: "bb",
     },
   ])("presents $skill.name as plugin-provided", async (example) => {

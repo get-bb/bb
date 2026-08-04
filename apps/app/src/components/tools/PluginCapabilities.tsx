@@ -22,7 +22,6 @@ import { appToast } from "@/components/ui/app-toast";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   reloadPlugin,
-  usePluginSettingsView,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
@@ -140,15 +139,6 @@ interface PluginCapabilityItem {
   label: ReactNode;
   detail?: ReactNode;
   mono?: boolean;
-}
-
-function capabilityDetail(kind: string, id?: string): ReactNode {
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-      <span>{kind}</span>
-      {id ? <span className="break-all font-mono">{id}</span> : null}
-    </span>
-  );
 }
 
 function namedSurface(
@@ -286,55 +276,16 @@ function pluginAppSurfaceItems(
 
 export function PluginIncludes({
   plugin,
-  hasSettings,
 }: {
   plugin: PluginListItem;
-  hasSettings: boolean;
 }) {
   const slots = usePluginSlots();
-  const settingsQuery = usePluginSettingsView(plugin.id, {
-    enabled: plugin.hasSettings,
-  });
-  const settingsSections = slots.settingsSections.filter(
-    (slot) => slot.pluginId === plugin.id,
-  );
   const appItems = pluginAppSurfaceItems(plugin.id, slots);
-  if (
-    plugin.app.hasApp &&
-    appItems.length === 0 &&
-    settingsSections.length === 0
-  ) {
+  if (plugin.app.hasApp && appItems.length === 0) {
     appItems.push({
       key: "frontend-app",
       label: "Frontend app",
       detail: "Surface names are available while the plugin app is loaded",
-    });
-  }
-
-  const settingsItems: PluginCapabilityItem[] = [
-    ...Object.entries(settingsQuery.data?.schema ?? {}).map(
-      ([key, descriptor]) => ({
-        key: `setting:${key}`,
-        label: descriptor.label,
-        detail: capabilityDetail("Setting", key),
-      }),
-    ),
-    ...settingsSections.map((slot) =>
-      namedSurface(
-        "settings-section",
-        slot.id,
-        slot.title,
-        "Custom settings section",
-      ),
-    ),
-  ];
-  if (hasSettings && settingsItems.length === 0) {
-    settingsItems.push({
-      key: "settings",
-      label: "Configurable behavior",
-      detail: settingsQuery.isLoading
-        ? "Loading setting names…"
-        : "Setting names are unavailable",
     });
   }
 
@@ -374,11 +325,6 @@ export function PluginIncludes({
             },
           ]
         : [],
-    },
-    {
-      icon: "Settings",
-      kind: "Setting",
-      items: settingsItems,
     },
     {
       icon: "Explore",

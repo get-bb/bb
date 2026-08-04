@@ -124,6 +124,10 @@ describe("BrowsePluginsTab", () => {
       .getByRole("button", { name: "Open GitHub details" })
       .closest('[class*="auto-fill"]');
     expect(githubGrid?.className).toContain("auto-fill");
+    expect(screen.queryByRole("heading", { name: "Productivity" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Developer tools" }),
+    ).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
     expect(screen.getByText("Requires a newer BB version")).toBeTruthy();

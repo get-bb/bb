@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -144,6 +145,9 @@ export function PluginDetailRow({
   // A row without detail must not reserve an empty second column, or it hangs a
   // strip of dead padding off the right edge of the surface.
   const hasDetail = detail !== null && detail !== undefined && detail !== "";
+  const detailId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const isLongDescription = typeof detail === "string" && detail.length > 180;
   return (
     <tr className={hasDetail ? DETAIL_ROW_GRID : "grid grid-cols-1"}>
       <td
@@ -172,12 +176,31 @@ export function PluginDetailRow({
       </td>
       {hasDetail ? (
         <td
+          id={detailId}
           className={cn(
             CELL,
             "pl-2 pr-4 text-xs leading-normal text-muted-foreground",
           )}
         >
-          {detail}
+          <div
+            className={cn(
+              "space-y-2 break-words leading-relaxed",
+              isLongDescription && !expanded && "line-clamp-3",
+            )}
+          >
+            {detail}
+          </div>
+          {isLongDescription ? (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={detailId}
+              className="mt-2 rounded-sm text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? "Show less" : "Show full description"}
+            </button>
+          ) : null}
         </td>
       ) : null}
     </tr>

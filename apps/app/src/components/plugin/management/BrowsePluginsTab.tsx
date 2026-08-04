@@ -53,20 +53,13 @@ export function BrowsePluginsTab({
     resetKey: debouncedQuery.toLowerCase(),
   });
 
-  const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
-  for (const entry of pagination.items) {
-    const bucket = byCategory.get(entry.category);
-    if (bucket === undefined) byCategory.set(entry.category, [entry]);
-    else bucket.push(entry);
-  }
-
   return (
     <ResourceCollectionViewport
       scrollId="plugins-browse-results"
       contentClassName="space-y-4"
       toolbar={
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-card px-3.5 py-3">
+          <div className="px-0.5">
             <p className="text-sm font-medium text-foreground">
               BB Official plugins
             </p>
@@ -130,28 +123,17 @@ export function BrowsePluginsTab({
           }
         />
       ) : (
-        <div className="space-y-4">
-          {[...byCategory.entries()].map(([category, categoryEntries]) => (
-            <div key={category}>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">
-                {category}
-              </h3>
-              <ResourceBrowseGrid
-                className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]"
-              >
-                {categoryEntries.map((entry) => (
-                  <BrowseCard
-                    key={entry.entryId}
-                    entry={entry}
-                    installedPluginId={entry.installed ? entry.pluginId : null}
-                    onInstall={onInstall}
-                    onOpenPlugin={onOpenPlugin}
-                  />
-                ))}
-              </ResourceBrowseGrid>
-            </div>
+        <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
+          {pagination.items.map((entry) => (
+            <BrowseCard
+              key={entry.entryId}
+              entry={entry}
+              installedPluginId={entry.installed ? entry.pluginId : null}
+              onInstall={onInstall}
+              onOpenPlugin={onOpenPlugin}
+            />
           ))}
-        </div>
+        </ResourceBrowseGrid>
       )}
     </ResourceCollectionViewport>
   );

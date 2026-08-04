@@ -1,7 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
-  ResourceDetailConfigurationSection,
   ResourceDetailIncludesSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
@@ -22,7 +21,6 @@ import {
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -56,7 +54,6 @@ import {
   subscribePluginFrontendDiagnostics,
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
-import { usePluginSlots } from "@/lib/plugin-slots";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   return plugin.provenance === "builtin" || plugin.provenance === "catalog"
@@ -276,7 +273,6 @@ export function PluginDetail({
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
 }) {
-  const { settingsSections } = usePluginSlots();
   // Hooks run before the loading and not-found returns below, so this has to
   // tolerate a null plugin rather than read `plugin.id` unconditionally.
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -304,9 +300,6 @@ export function PluginDetail({
     );
   }
 
-  const hasSettings =
-    plugin.hasSettings ||
-    settingsSections.some((section) => section.pluginId === plugin.id);
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const canEditSource = pluginIsLocalSource(plugin);
   const canRemove = plugin.provenance !== "builtin";
@@ -426,13 +419,8 @@ export function PluginDetail({
           </PluginDetailTable>
         </ResourceDetailReleaseSection>
         <ResourceDetailIncludesSection label="Capabilities">
-          <PluginIncludes plugin={plugin} hasSettings={hasSettings} />
+          <PluginIncludes plugin={plugin} />
         </ResourceDetailIncludesSection>
-        {hasSettings ? (
-          <ResourceDetailConfigurationSection label="Settings">
-            <PluginSettingsDetail plugin={plugin} />
-          </ResourceDetailConfigurationSection>
-        ) : null}
         {/*
           Services and schedules are two different objects with two different
           status vocabularies, so they stay under their own names and use

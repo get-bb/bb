@@ -3,19 +3,10 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
-import { defaultExperiments } from "@bb/domain";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useSettingsNavState } from "./settings-nav";
-
-const mocks = vi.hoisted(() => ({
-  useSystemConfig: vi.fn(),
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: mocks.useSystemConfig,
-}));
 
 vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
   usePluginList: () => ({ data: { plugins: [] } }),
@@ -40,18 +31,6 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   vi.clearAllMocks();
-});
-
-beforeEach(() => {
-  mocks.useSystemConfig.mockReset();
-  mocks.useSystemConfig.mockReturnValue({
-    data: {
-      experiments: {
-        ...defaultExperiments,
-        toolsHub: false,
-      },
-    },
-  });
 });
 
 describe("useSettingsNavState", () => {
@@ -88,15 +67,7 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("keeps plugin management in Settings while Tools Hub is disabled", () => {
-    mocks.useSystemConfig.mockReturnValue({
-      data: {
-        experiments: {
-          ...defaultExperiments,
-          toolsHub: false,
-        },
-      },
-    });
+  it("keeps plugin management in Settings", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings"),
     });
@@ -106,22 +77,4 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("removes plugin management from Settings while Tools Hub is enabled", () => {
-    mocks.useSystemConfig.mockReturnValue({
-      data: {
-        experiments: {
-          ...defaultExperiments,
-          toolsHub: true,
-        },
-      },
-    });
-    const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings"),
-    });
-
-    expect(result.current.sections.map((section) => section.id)).not.toContain(
-      "plugins",
-    );
-    expect(result.current.pluginEntries).toEqual([]);
-  });
 });

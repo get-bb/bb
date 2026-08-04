@@ -4,7 +4,6 @@ import {
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
@@ -84,12 +83,10 @@ export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
   const { fileOpeners, settingsSections } = usePluginSlots();
-  const systemConfig = useSystemConfig();
-  const toolsHubEnabled = systemConfig.data?.experiments.toolsHub === true;
   const settingsSectionPluginIds = new Set(
     settingsSections.map((section) => section.pluginId),
   );
-  const pluginListQuery = usePluginList({ enabled: !toolsHubEnabled });
+  const pluginListQuery = usePluginList({ enabled: true });
 
   const pluginMatch = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, location.pathname);
   const providerMatch = matchPath(
@@ -132,18 +129,13 @@ export function useSettingsNavState(): SettingsNavState {
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
-    if (section.id === "plugins") {
-      return !toolsHubEnabled;
-    }
     return true;
   });
-  const pluginEntries = toolsHubEnabled
-    ? []
-    : (pluginListQuery.data?.plugins ?? []).filter(
-        (plugin) =>
-          plugin.enabled &&
-          (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
-      );
+  const pluginEntries = (pluginListQuery.data?.plugins ?? []).filter(
+    (plugin) =>
+      plugin.enabled &&
+      (plugin.hasSettings || settingsSectionPluginIds.has(plugin.id)),
+  );
   return {
     activeMachineId,
     activePluginId,

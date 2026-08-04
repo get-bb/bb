@@ -7,11 +7,7 @@ import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
 } from "@/lib/plugin-slots";
-import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
-import {
-  getPluginDetailRoutePath,
-  getSettingsPluginRoutePath,
-} from "@/lib/route-paths";
+import { getSettingsPluginRoutePath } from "@/lib/route-paths";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
@@ -43,7 +39,6 @@ function PluginSidebarFooterActionList({
   onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
-  const toolsHubEnabled = useToolsHubExperiment();
   return (
     <>
       {actions.map((action) => (
@@ -65,7 +60,6 @@ function PluginSidebarFooterActionList({
               runSidebarFooterAction({
                 action,
                 navigate,
-                toolsHubEnabled,
               });
             }}
           >
@@ -81,18 +75,12 @@ function PluginSidebarFooterActionList({
 function runSidebarFooterAction({
   action,
   navigate,
-  toolsHubEnabled,
 }: {
   action: PluginSidebarFooterActionSlot;
   navigate: ReturnType<typeof useNavigate>;
-  toolsHubEnabled: boolean;
 }): void {
   const openSettings = () => {
-    void navigate(
-      toolsHubEnabled
-        ? getPluginDetailRoutePath({ pluginId: action.pluginId })
-        : getSettingsPluginRoutePath(action.pluginId),
-    );
+    void navigate(getSettingsPluginRoutePath(action.pluginId));
   };
   const warn = (error: unknown) => {
     console.warn(

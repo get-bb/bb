@@ -12,7 +12,6 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
-  pluginSettingsViewQueryKey,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -1050,18 +1049,7 @@ describe("PluginDetail capability inventory", () => {
         },
       ],
     } satisfies PluginListItem;
-    const { queryClient, wrapper: QueryClientWrapper } =
-      createQueryClientTestHarness();
-    queryClient.setQueryData(pluginSettingsViewQueryKey(plugin.id), {
-      schema: {
-        apiToken: {
-          type: "string",
-          label: "API token",
-          secret: true,
-        },
-      },
-      values: { apiToken: { set: true } },
-    });
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     const { container } = render(
       <MemoryRouter>
         <QueryClientWrapper>
@@ -1129,11 +1117,6 @@ describe("PluginDetail capability inventory", () => {
       "Adds a page to the app sidebar.",
       "enhance-prompt",
       "Adds an action beside the thread composer.",
-      "Advanced preferences",
-      "Custom settings section",
-      "API token",
-      "Setting",
-      "apiToken",
       "bb capability",
       "Inspect contributed capabilities.",
       "review",
@@ -1147,6 +1130,8 @@ describe("PluginDetail capability inventory", () => {
     ]) {
       expect(inventory.getByText(text)).toBeTruthy();
     }
+    expect(inventory.queryByText("Advanced preferences")).toBeNull();
+    expect(inventory.queryByText("API token")).toBeNull();
     expect(inventory.queryByText("watch")).toBeNull();
     expect(inventory.queryByText("daily-cleanup")).toBeNull();
     expect(includes?.textContent).not.toContain("2 background services");

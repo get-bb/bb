@@ -127,7 +127,6 @@ describe("Plugin detail recipe", () => {
       ["overview", "About"],
       ["release", "Release"],
       ["includes", "Capabilities"],
-      ["configuration", "Settings"],
       ["activity", "Background services"],
       ["activity", "Scheduled jobs"],
     ]);
@@ -207,6 +206,38 @@ describe("Plugin detail recipe", () => {
     ] as const) {
       expect(screen.getByText(item)).toBeTruthy();
     }
+  });
+
+  it("collapses long capability descriptions until requested", () => {
+    const description = "Long capability guidance ".repeat(20).trim();
+    const { container } = renderPlugin({
+      ...PLUGIN,
+      capabilities: [
+        {
+          kind: "agent-tool",
+          id: "long-tool",
+          label: "Long tool",
+          detail: description,
+        },
+      ],
+    });
+
+    const detail = screen.getByText(description);
+    expect(detail.className).toContain("line-clamp-3");
+    const disclosure = screen.getByRole("button", {
+      name: "Show full description",
+    });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(disclosure);
+
+    expect(detail.className).not.toContain("line-clamp-3");
+    expect(
+      screen.getByRole("button", { name: "Show less" }).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("true");
+    expect(container.textContent).toContain(description);
   });
 
   it("keeps browser-registered app surfaces in Capabilities", () => {

@@ -101,9 +101,15 @@ export function SkillProvenanceTooltip({
       <span>{prefix}</span>
       <span data-provider-icon={providerId ?? "bb"} aria-hidden="true">
         {providerId === null ? (
-          <BbLogo className="size-3.5" />
+          <BbLogo className="size-3.5 brightness-0 invert" />
         ) : (
-          <ProviderLogo providerId={providerId} className="size-3.5" />
+          <ProviderLogo
+            providerId={providerId}
+            className={cn(
+              "size-3.5",
+              providerId === "codex" && "text-white",
+            )}
+          />
         )}
       </span>
       <span>{name}</span>
@@ -160,12 +166,12 @@ function SkillRow({
           <ProvenancePill label="BB Official" />
         ) : skill.scope === "plugin" ? (
           <ProvenancePill
-            label="Plugin"
+            label="Included"
             tooltip={
               <SkillProvenanceTooltip
                 prefix="Included with"
                 providerId={skill.provider}
-                name={`${providerPluginDisplayName(skill)} plugin`}
+                name={`${providerPluginDisplayName(skill)} plugin.`}
               />
             }
             accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill)}`}
@@ -238,6 +244,12 @@ export function SkillsOverview({
     return RESOURCE_PROVIDER_FILTERS.map((provider) => ({
       id: provider,
       label: providerFilterLabel(provider),
+      leading:
+        provider === "bb" ? (
+          <BbLogo className="size-4" />
+        ) : (
+          <ProviderLogo providerId={provider} className="size-4" />
+        ),
       disabled:
         !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
@@ -534,7 +546,7 @@ export function SkillDetailDialogView({
                   <SkillProvenanceTooltip
                     prefix="Included with"
                     providerId={skill.provider}
-                    name={`${providerPluginDisplayName(skill)} plugin`}
+                    name={`${providerPluginDisplayName(skill)} plugin.`}
                   />
                 ),
                 accessibleLabel: `${skill.name} is included with ${includedPluginDescription(skill)}`,

@@ -1,29 +1,11 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { defaultExperiments } from "@bb/domain";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PluginSettingsCompatibilityRoute } from "./PluginSettingsCompatibilityRoute";
 
-const mocks = vi.hoisted(() => ({
-  useSystemConfig: vi.fn(),
-}));
-
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: mocks.useSystemConfig,
-}));
-
-function renderRoute(path: string, toolsHub: boolean | undefined) {
-  mocks.useSystemConfig.mockReturnValue({
-    data:
-      toolsHub === undefined
-        ? undefined
-        : {
-            experiments: { ...defaultExperiments, toolsHub },
-          },
-  });
-
+function renderRoute(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -54,37 +36,20 @@ function renderRoute(path: string, toolsHub: boolean | undefined) {
 }
 
 describe("PluginSettingsCompatibilityRoute", () => {
-  beforeEach(() => {
-    mocks.useSystemConfig.mockReset();
-  });
-
   afterEach(cleanup);
 
-  it("keeps the existing Settings manager available while Tools Hub is off", () => {
-    renderRoute("/settings/plugins", false);
+  it("keeps the Settings manager available", () => {
+    renderRoute("/settings/plugins");
 
     expect(screen.getByText("Settings plugin manager")).toBeTruthy();
     expect(screen.queryByText("Tools plugins")).toBeNull();
   });
 
-  it("keeps existing Settings plugin detail routes available while Tools Hub is off", () => {
-    renderRoute("/settings/plugins/example", false);
+  it("keeps Settings plugin detail routes available", () => {
+    renderRoute("/settings/plugins/example");
 
     expect(screen.getByText("Settings plugin detail")).toBeTruthy();
     expect(screen.queryByText("Tools plugin detail")).toBeNull();
   });
 
-  it("redirects legacy Settings plugin routes to Tools Hub when enabled", () => {
-    renderRoute("/settings/plugins/example", true);
-
-    expect(screen.getByText("Tools plugin detail")).toBeTruthy();
-    expect(screen.queryByText("Settings plugin detail")).toBeNull();
-  });
-
-  it("renders neither management surface while configuration is loading", () => {
-    renderRoute("/settings/plugins", undefined);
-
-    expect(screen.queryByText("Settings plugin manager")).toBeNull();
-    expect(screen.queryByText("Tools plugins")).toBeNull();
-  });
 });

@@ -82,19 +82,30 @@ export function ResourceTabDescription({ children }: { children: ReactNode }) {
 export interface ResourceOption {
   id: string;
   label: string;
+  leading?: ReactNode;
   description?: string;
   disabled?: boolean;
 }
 
 function ResourceOptionContent({ option }: { option: ResourceOption }) {
   return (
-    <span className="flex min-w-0 flex-col">
-      <span className="truncate text-xs">{option.label}</span>
-      {option.description ? (
-        <span className="truncate text-2xs text-subtle-foreground">
-          {option.description}
+    <span className="flex min-w-0 items-center gap-2">
+      {option.leading ? (
+        <span
+          className="flex size-4 shrink-0 items-center justify-center"
+          aria-hidden="true"
+        >
+          {option.leading}
         </span>
       ) : null}
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-xs">{option.label}</span>
+        {option.description ? (
+          <span className="truncate text-2xs text-subtle-foreground">
+            {option.description}
+          </span>
+        ) : null}
+      </span>
     </span>
   );
 }

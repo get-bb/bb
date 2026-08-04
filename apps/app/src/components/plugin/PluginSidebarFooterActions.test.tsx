@@ -118,12 +118,9 @@ describe("PluginSidebarFooterActions", () => {
     );
   });
 
-  it.each([
-    [false, "/settings/plugins/remote"],
-    [true, "/tools/plugins/remote"],
-  ] as const)(
-    "opens the %s Tools Hub plugin settings destination",
-    (toolsHubEnabled, expectedPath) => {
+  it.each([false, true] as const)(
+    "opens Settings with Tools Hub set to %s",
+    (toolsHubEnabled) => {
       setPluginSlotRegistrations(
         "remote",
         registrationSet({
@@ -142,7 +139,7 @@ describe("PluginSidebarFooterActions", () => {
       fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
 
       expect(screen.getByLabelText("Current path").textContent).toBe(
-        expectedPath,
+        "/settings/plugins/remote",
       );
     },
   );
