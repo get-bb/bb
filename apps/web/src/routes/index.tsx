@@ -1732,7 +1732,7 @@ function LandingPage() {
         </p>
         <p>
           Many of bb&rsquo;s own features are built with the same tools you
-          have. The doc editor, GitHub, agent memory, scheduled jobs, and even
+          have. The GitHub integration, agent memory, scheduled jobs, and even
           remote access are all plugins.
         </p>
         <p>Nothing is stopping you from building your ideal workspace.</p>
