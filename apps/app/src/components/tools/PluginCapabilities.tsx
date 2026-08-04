@@ -374,6 +374,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
                 />
               }
               name={item.label}
+              nameClassName="text-xs"
               mono={item.mono}
               detail={item.detail}
             />

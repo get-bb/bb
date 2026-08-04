@@ -242,7 +242,7 @@ describe("Plugin detail recipe", () => {
       "Pull requests",
       "GitHub Dark",
     ] as const) {
-      expect(screen.getByText(item)).toBeTruthy();
+      expect(screen.getByText(item).className).toContain("text-xs");
     }
   });
 

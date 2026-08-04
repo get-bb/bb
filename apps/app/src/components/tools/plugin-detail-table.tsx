@@ -139,11 +139,13 @@ export function PluginDetailGlyph({
 export function PluginDetailRow({
   glyph,
   name,
+  nameClassName,
   mono = false,
   detail,
 }: {
   glyph: ReactNode;
   name: ReactNode;
+  nameClassName?: string;
   mono?: boolean;
   detail: ReactNode;
 }) {
@@ -176,6 +178,7 @@ export function PluginDetailRow({
             className={cn(
               "min-w-0 break-words text-foreground",
               mono && "font-mono",
+              nameClassName,
             )}
           >
             {name}
