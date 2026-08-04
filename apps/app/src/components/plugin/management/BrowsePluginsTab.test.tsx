@@ -37,6 +37,17 @@ const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   incompatibleReason: "Requires a newer BB version",
 };
 
+const GITHUB_ENTRY: PluginCatalogSearchEntry = {
+  ...MEMORY_ENTRY,
+  entryId: "github",
+  pluginId: "github",
+  displayName: "GitHub",
+  description: "Browse GitHub issues and pull requests in BB.",
+  icon: "Github",
+  category: "Developer tools",
+  source: "builtin:github",
+};
+
 const INSTALLED_MEMORY_PLUGIN = {
   id: "memory",
   source: "builtin:memory",
@@ -79,7 +90,7 @@ describe("BrowsePluginsTab", () => {
         }
         if (url === "/api/v1/plugin-catalog/search?q=") {
           return jsonResponse({
-            results: [MEMORY_ENTRY, INCOMPATIBLE_ENTRY],
+            results: [MEMORY_ENTRY, INCOMPATIBLE_ENTRY, GITHUB_ENTRY],
           });
         }
         if (url === "/api/v1/plugins") {
@@ -109,6 +120,10 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
+    const githubGrid = screen
+      .getByRole("button", { name: "Open GitHub details" })
+      .closest('[class*="auto-fill"]');
+    expect(githubGrid?.className).toContain("auto-fill");
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
     expect(screen.getByText("Requires a newer BB version")).toBeTruthy();

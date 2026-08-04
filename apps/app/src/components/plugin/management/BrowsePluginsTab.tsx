@@ -136,7 +136,9 @@ export function BrowsePluginsTab({
               <h3 className="mb-2 text-sm font-semibold text-foreground">
                 {category}
               </h3>
-              <ResourceBrowseGrid>
+              <ResourceBrowseGrid
+                className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]"
+              >
                 {categoryEntries.map((entry) => (
                   <BrowseCard
                     key={entry.entryId}

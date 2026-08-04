@@ -158,6 +158,18 @@ function SkillRow({
       titleMeta={
         skill.scope === "bb-builtin" ? (
           <ProvenancePill label="BB Official" />
+        ) : skill.scope === "plugin" ? (
+          <ProvenancePill
+            label="Plugin"
+            tooltip={
+              <SkillProvenanceTooltip
+                prefix="Included with"
+                providerId={skill.provider}
+                name={`${providerPluginDisplayName(skill)} plugin`}
+              />
+            }
+            accessibleLabel={`${skill.name} is included with ${includedPluginDescription(skill)}`}
+          />
         ) : undefined
       }
       description={description}
@@ -315,7 +327,7 @@ export function SkillsOverview({
         normalizedQuery === "" && providerFilters.length === 0
           ? "No skills in your library."
           : normalizedQuery === ""
-            ? "No skills match these agents."
+            ? "No skills match these providers."
             : `No skills match "${query}"`
       }
     />
@@ -367,7 +379,7 @@ export function SkillsOverview({
               controls={
                 <>
                   <ResourceMultiSelectMenu
-                    label="Agent"
+                    label="Provider"
                     icon="Layers"
                     selectedValues={providerFilters}
                     options={providerOptions}
@@ -381,7 +393,7 @@ export function SkillsOverview({
                     options={[
                       {
                         id: "provider",
-                        label: "Agent",
+                        label: "Provider",
                         disabled: providerBucketCount <= 1,
                       },
                       { id: "alpha", label: "Skill name" },

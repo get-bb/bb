@@ -253,7 +253,7 @@ describe("SkillsOverview", () => {
     });
     expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Agent: 1 selected"');
+    expect(markup).toContain('aria-label="Provider: 1 selected"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
@@ -266,6 +266,25 @@ describe("SkillsOverview", () => {
     );
     expect(markup.indexOf("zz-official-skill")).toBeLessThan(
       markup.indexOf("aa-user-skill"),
+    );
+  });
+
+  it("labels skills bundled with plugins", () => {
+    const markup = render({
+      skills: [
+        makeSkill({
+          name: "automations",
+          provider: null,
+          scope: "plugin",
+          pluginId: "automations",
+          manageable: false,
+        }),
+      ],
+    });
+
+    expect(markup).toContain(">Plugin<");
+    expect(markup).toContain(
+      'aria-label="automations is included with Automations (bb plugin)"',
     );
   });
 
@@ -317,7 +336,7 @@ describe("SkillsOverview", () => {
     );
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Agent: 1 selected" }),
+      screen.getByRole("button", { name: "Provider: 1 selected" }),
     );
 
     await waitFor(() => {
@@ -358,13 +377,13 @@ describe("SkillsOverview", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Agent: 1 selected" }),
+        screen.getByRole("button", { name: "Provider: 1 selected" }),
       ).toBeTruthy();
       expect(screen.queryByText("codex-skill")).toBeNull();
     });
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Agent: 1 selected" }),
+      screen.getByRole("button", { name: "Provider: 1 selected" }),
     );
     const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
     expect(bbFilter.getAttribute("aria-checked")).toBe("true");
@@ -396,7 +415,7 @@ describe("SkillsOverview", () => {
     );
 
     fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Agent: 1 selected" }),
+      screen.getByRole("button", { name: "Provider: 1 selected" }),
     );
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.click(
