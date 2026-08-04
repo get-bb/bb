@@ -58,12 +58,14 @@ export function PaneMaximizeButton({
 }) {
   const { isMaximized, onToggleMaximize, onMoveToSide } = usePaneContext();
   const shortcut = useAppCommandShortcut("pane.maximize.toggle");
+  // The pointer crosses this button on the way to the close control, so the
+  // menu waits before it appears.
   const {
     open: hoverOpen,
     triggerHoverProps,
     contentHoverProps,
     handleOpenChange,
-  } = useHoverPopover({ closeDelayMs: 100 });
+  } = useHoverPopover({ openDelayMs: 400, closeDelayMs: 100 });
 
   if (onToggleMaximize === null) return null;
 

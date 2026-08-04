@@ -9,6 +9,7 @@ interface HoverPopoverHandlers {
 }
 
 interface UseHoverPopoverOptions {
+  openDelayMs?: number;
   closeDelayMs?: number;
   hoverableContent?: boolean;
 }
@@ -20,6 +21,7 @@ interface UseHoverPopoverResult {
   handleOpenChange: (nextOpen: boolean) => void;
 }
 
+const DEFAULT_OPEN_DELAY_MS = 0;
 const DEFAULT_CLOSE_DELAY_MS = 160;
 const noop = () => undefined;
 const preventAutoFocus = (event: Event) => {
@@ -40,6 +42,7 @@ const NON_HOVERABLE_CONTENT_PROPS: HoverPopoverHandlers = {
 };
 
 export function useHoverPopover({
+  openDelayMs = DEFAULT_OPEN_DELAY_MS,
   closeDelayMs = DEFAULT_CLOSE_DELAY_MS,
   hoverableContent = true,
 }: UseHoverPopoverOptions = {}): UseHoverPopoverResult {
@@ -47,57 +50,72 @@ export function useHoverPopover({
   const [open, setOpen] = useState(false);
   const [isPointerOverTrigger, setIsPointerOverTrigger] = useState(false);
   const [isPointerOverContent, setIsPointerOverContent] = useState(false);
-  const closeTimeoutRef = useRef<number | null>(null);
+  const toggleTimeoutRef = useRef<number | null>(null);
 
-  const clearCloseTimeout = useCallback(() => {
-    if (closeTimeoutRef.current === null) {
+  const clearToggleTimeout = useCallback(() => {
+    if (toggleTimeoutRef.current === null) {
       return;
     }
-    window.clearTimeout(closeTimeoutRef.current);
-    closeTimeoutRef.current = null;
+    window.clearTimeout(toggleTimeoutRef.current);
+    toggleTimeoutRef.current = null;
   }, []);
 
   useEffect(() => {
     // Touch pointers open via tap. Pointer-based hover state has no role.
     if (isPointerCoarse) return;
 
-    clearCloseTimeout();
+    clearToggleTimeout();
 
     if (isPointerOverTrigger || isPointerOverContent) {
-      setOpen(true);
-      return;
+      if (open) return;
+
+      if (openDelayMs <= 0) {
+        setOpen(true);
+        return;
+      }
+
+      toggleTimeoutRef.current = window.setTimeout(() => {
+        setOpen(true);
+        toggleTimeoutRef.current = null;
+      }, openDelayMs);
+
+      return clearToggleTimeout;
     }
 
-    closeTimeoutRef.current = window.setTimeout(() => {
+    if (!open) return;
+
+    toggleTimeoutRef.current = window.setTimeout(() => {
       setOpen(false);
-      closeTimeoutRef.current = null;
+      toggleTimeoutRef.current = null;
     }, closeDelayMs);
 
-    return clearCloseTimeout;
+    return clearToggleTimeout;
   }, [
-    clearCloseTimeout,
+    clearToggleTimeout,
     closeDelayMs,
     isPointerCoarse,
     isPointerOverContent,
     isPointerOverTrigger,
+    open,
+    openDelayMs,
   ]);
 
-  useEffect(() => clearCloseTimeout, [clearCloseTimeout]);
+  useEffect(() => clearToggleTimeout, [clearToggleTimeout]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
-        clearCloseTimeout();
+        clearToggleTimeout();
         setOpen(true);
         return;
       }
 
       setIsPointerOverTrigger(false);
       setIsPointerOverContent(false);
-      clearCloseTimeout();
+      clearToggleTimeout();
       setOpen(false);
     },
-    [clearCloseTimeout],
+    [clearToggleTimeout],
   );
 
   const triggerHoverProps = isPointerCoarse

@@ -115,6 +115,17 @@ describe("PaneMaximizeButton", () => {
     expect(onMoveToSide).toHaveBeenCalledWith("left");
   });
 
+  it("keeps the menu closed while the pointer only passes over the button", async () => {
+    renderButton(false);
+    const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
+
+    fireEvent.pointerEnter(button);
+    fireEvent.pointerLeave(button);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(screen.queryByRole("menu", { name: "Pane arrangement" })).toBeNull();
+  });
+
   it("uses the reduced-glyph header geometry so the arrows do not outsize the close/panel controls", () => {
     renderButton(false);
     const button = screen.getByRole("button", { name: "Full Screen (⌘⇧E)" });
