@@ -347,7 +347,7 @@ describe("plugin update service and routes", () => {
 
     // ...and applying it does fail, so the check is not hiding a real problem.
     const applied = await service.applyUpdate("updater");
-    expect(applied.outcome).not.toBe("updated");
+    expect(applied.ok ? applied.result.outcome : "failed").not.toBe("updated");
   });
 
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
