@@ -79,6 +79,13 @@ export const pluginPackageJsonSchema = z
         bbPluginSdk: requiredManifestString.optional(),
       })
       .optional(),
+    /**
+     * Runtime dependencies. Parsed (rather than left to `.passthrough()`)
+     * because git installs decide whether to run `npm install` from it — a
+     * dependency-free git plugin must keep installing with only `git` on
+     * PATH.
+     */
+    dependencies: z.record(z.string(), z.string()).optional(),
     bb: pluginBbManifestSchema,
   })
   .passthrough();

@@ -11,7 +11,7 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import { buildPluginApp } from "@bb/plugin-build";
+import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import {
   gitArtifactCacheDir,
@@ -94,6 +94,40 @@ export interface ManagedPluginArtifactsContext {
   activateManagedUpdate: (args: ActivateManagedUpdateArgs) => Promise<void>;
 }
 
+/**
+ * Install a git plugin's declared runtime dependencies into its staging dir.
+ *
+ * Nothing here executes plugin code: `--ignore-scripts` means npm only
+ * downloads tarballs and writes files, and esbuild bundles by parsing rather
+ * than evaluating. That keeps the update-check path (which stages git
+ * candidates via `plugin-updates.ts`) free of plugin-authored execution.
+ *
+ * Skipped entirely when the package declares no `dependencies`, so a
+ * dependency-free git plugin still installs with only `git` on PATH.
+ */
+async function installGitDependencies(args: {
+  rootDir: string;
+  manifest: PluginManifest;
+}): Promise<void> {
+  if (!args.manifest.hasDependencies) return;
+  await runInstallCommand(
+    "npm",
+    [
+      "install",
+      "--prefix",
+      args.rootDir,
+      "--ignore-scripts",
+      "--omit=dev",
+      "--omit=optional",
+      "--no-audit",
+      "--no-fund",
+    ],
+    {
+      notFoundHint: `"npm" was not found on PATH — git plugin "${args.manifest.id}" declares dependencies, which require npm to install`,
+    },
+  );
+}
+
 async function installNpmCandidate(args: {
   stagingPrefix: string;
   registry: string;
@@ -162,10 +196,18 @@ export function createManagedPluginArtifacts(
         );
       }
     }
-    // Frontend policy (design §5.1): path:/git: sources build dist/ at
-    // install time — a build failure fails the install, like a manifest
-    // error would. npm packages are never built here; they must ship a
-    // prebuilt dist whose metadata is compatible with this SDK.
+    // Dependency + bundle policy (design §5.1):
+    // - git: bb installs declared runtime deps (scripts disabled — nothing
+    //   executes), builds BOTH bundles so those deps are inlined, then
+    //   discards node_modules. The promoted artifact is self-contained, so
+    //   `resolveServerEntry` never needs the source fallback for git.
+    // - path: the author owns that directory. Never install into it and
+    //   never prune it; only the frontend is built.
+    // - npm: never built here; must ship a prebuilt dist whose metadata is
+    //   compatible with this SDK.
+    if (kind === "git") {
+      await installGitDependencies({ rootDir: args.rootDir, manifest });
+    }
     if (manifest.appEntry !== undefined) {
       if (kind === "npm") {
         const jsPresent = await stat(join(args.rootDir, "dist", "app.js"))
@@ -187,6 +229,22 @@ export function createManagedPluginArtifacts(
           );
         }
       }
+    }
+    if (kind === "git") {
+      try {
+        await buildPluginServer(args.rootDir, deps.appVersion);
+      } catch (error) {
+        throw new Error(
+          `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      // Both bundles now inline the dependencies, so the tree is dead weight
+      // in an immutable artifact. Pruning before hashing keeps the promoted
+      // directory small and its content hash stable.
+      await rm(join(args.rootDir, "node_modules"), {
+        recursive: true,
+        force: true,
+      });
     }
 
     async function validateArtifact(
@@ -217,7 +275,9 @@ export function createManagedPluginArtifacts(
     }
 
     if (managed) {
-      await validateArtifact("server", false);
+      // git builds its own server bundle above, so a missing one is a bug
+      // rather than an author choice. npm sources may still omit it.
+      await validateArtifact("server", kind === "git");
       if (manifest.appEntry !== undefined) {
         await validateArtifact("app", kind === "npm");
       }
