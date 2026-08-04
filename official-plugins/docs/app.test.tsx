@@ -92,8 +92,8 @@ describe("Docs nav panel", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
+      headerContent: expect.any(Function),
     });
-    expect(app.navPanels[0]?.headerContent).toBeUndefined();
     expect(app.messageDirectives).toHaveLength(1);
     expect(app.messageDirectives[0]?.id).toBe("docs");
     expect(app.threadPanelActions[0]).toMatchObject({
@@ -107,7 +107,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("keeps the right-sidebar navigation together across panel layouts", async () => {
+  it("keeps the sidebar toggle in the page header above sidebar actions", async () => {
     const panel = app.navPanels[0]!;
     const slot = renderSlot(
       panel,
@@ -116,6 +116,8 @@ describe("Docs nav panel", () => {
     );
     await slot.findByText("Select a note or HTML page.");
 
+    const HeaderContent = panel.headerContent!;
+    const header = render(<HeaderContent subPath="personal" />);
     const navigation = slot.getByRole("navigation", {
       name: "Notes sidebar",
     });
@@ -128,14 +130,26 @@ describe("Docs nav panel", () => {
     expect(
       within(navigation).getByRole("button", { name: "New folder" }),
     ).toBeTruthy();
-    fireEvent.click(
-      within(navigation).getByRole("button", {
+    expect(
+      within(navigation).queryByRole("button", {
         name: "Collapse notes sidebar",
       }),
+    ).toBeNull();
+    fireEvent.click(
+      header.getByRole("button", { name: "Collapse notes sidebar" }),
     );
-    expect(slot.container.querySelector("aside")?.style.width).toBe("40px");
-    fireEvent.click(slot.getByRole("button", { name: "Expand notes sidebar" }));
+    expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
+    fireEvent.click(
+      header.getByRole("button", { name: "Expand notes sidebar" }),
+    );
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+
+    header.unmount();
+    await waitFor(() => {
+      expect(
+        slot.getByRole("button", { name: "Collapse notes sidebar" }),
+      ).toBeTruthy();
+    });
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {

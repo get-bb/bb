@@ -1243,12 +1243,14 @@ function orderEntries(
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
 
 interface NotesSidebarState {
+  headerMounted: boolean;
   paneNarrow: boolean;
   userCollapsed: boolean | null;
 }
 
 interface NotesSidebarStore {
   state: NotesSidebarState;
+  headerMounts: number;
   viewMounts: number;
   listeners: Set<() => void>;
 }
@@ -1265,9 +1267,11 @@ function getNotesSidebarStore(key: string): NotesSidebarStore {
   if (existing) return existing;
   const store: NotesSidebarStore = {
     state: {
+      headerMounted: false,
       paneNarrow: false,
       userCollapsed: null,
     },
+    headerMounts: 0,
     viewMounts: 0,
     listeners: new Set(),
   };
@@ -1281,6 +1285,7 @@ function updateNotesSidebarState(
 ): void {
   const next = { ...store.state, ...patch };
   if (
+    next.headerMounted === store.state.headerMounted &&
     next.paneNarrow === store.state.paneNarrow &&
     next.userCollapsed === store.state.userCollapsed
   ) {
@@ -1307,33 +1312,68 @@ function useNotesSidebarState(key: string): {
   return { state, store };
 }
 
-type NotesSidebarNavigationProps =
-  | {
-      collapsed: true;
-      onCollapsedChange(collapsed: boolean): void;
-    }
-  | {
-      collapsed: false;
-      query: string;
-      searchOpen: boolean;
-      onQueryChange(value: string): void;
-      onSearchOpenChange(open: boolean): void;
-      onNewNote(): void;
-      onNewFolder(): void;
-      onCollapsedChange(collapsed: boolean): void;
+function NotesSidebarToggle({
+  collapsed,
+  onCollapsedChange,
+}: {
+  collapsed: boolean;
+  onCollapsedChange(collapsed: boolean): void;
+}) {
+  return (
+    <Button
+      className="size-8"
+      size="icon"
+      variant="ghost"
+      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
+      aria-expanded={!collapsed}
+      onClick={() => onCollapsedChange(!collapsed)}
+    >
+      <HugeiconsIcon icon={SidebarRightIcon} />
+    </Button>
+  );
+}
+
+function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
+  const { state: sidebar, store } = useNotesSidebarState(
+    notesSidebarKey(subPath),
+  );
+  const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
+  useLayoutEffect(() => {
+    store.headerMounts += 1;
+    updateNotesSidebarState(store, { headerMounted: true });
+    return () => {
+      store.headerMounts = Math.max(0, store.headerMounts - 1);
+      if (store.headerMounts === 0) {
+        updateNotesSidebarState(store, { headerMounted: false });
+      }
     };
+  }, [store]);
+  return (
+    <NotesSidebarToggle
+      collapsed={collapsed}
+      onCollapsedChange={(userCollapsed) =>
+        updateNotesSidebarState(store, { userCollapsed })
+      }
+    />
+  );
+}
+
+interface NotesSidebarNavigationProps {
+  query: string;
+  searchOpen: boolean;
+  onQueryChange(value: string): void;
+  onSearchOpenChange(open: boolean): void;
+  onNewNote(): void;
+  onNewFolder(): void;
+}
 
 function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
-  const { collapsed, onCollapsedChange } = props;
   return (
     <nav
       aria-label="Notes sidebar"
-      className={cn(
-        "flex items-center gap-1",
-        collapsed ? "justify-center" : "min-w-0 flex-1",
-      )}
+      className="flex min-w-0 flex-1 items-center gap-1"
     >
-      {!collapsed && props.searchOpen ? (
+      {props.searchOpen ? (
         <>
           <div className="relative min-w-0 flex-1">
             <HugeiconsIcon
@@ -1367,7 +1407,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
           </Button>
         </>
       ) : null}
-      {!collapsed && !props.searchOpen ? (
+      {!props.searchOpen ? (
         <>
           <Button
             className="size-8"
@@ -1399,18 +1439,6 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
           <span className="min-w-0 flex-1" />
         </>
       ) : null}
-      <Button
-        className="size-8"
-        size="icon"
-        variant="ghost"
-        aria-label={
-          collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"
-        }
-        aria-expanded={!collapsed}
-        onClick={() => onCollapsedChange(!collapsed)}
-      >
-        <HugeiconsIcon icon={SidebarRightIcon} />
-      </Button>
     </nav>
   );
 }
@@ -1661,15 +1689,21 @@ function Tree({
     return (
       <aside
         ref={asideRef}
-        className="order-2 flex w-10 shrink-0 flex-col items-center border-l border-border bg-muted/20 py-2"
-        style={{ width: 40 }}
+        className={cn(
+          "order-2 flex shrink-0 flex-col items-center",
+          !sidebar.headerMounted &&
+            "w-10 border-l border-border bg-muted/20 py-2",
+        )}
+        style={{ width: sidebar.headerMounted ? 0 : 40 }}
       >
-        <NotesSidebarNavigation
-          collapsed
-          onCollapsedChange={(userCollapsed) =>
-            updateNotesSidebarState(sidebarStore, { userCollapsed })
-          }
-        />
+        {!sidebar.headerMounted ? (
+          <NotesSidebarToggle
+            collapsed
+            onCollapsedChange={(userCollapsed) =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed })
+            }
+          />
+        ) : null}
       </aside>
     );
   }
@@ -1682,17 +1716,21 @@ function Tree({
     >
       <div className="relative flex items-center border-b border-border p-2">
         <NotesSidebarNavigation
-          collapsed={false}
           query={query}
           searchOpen={searchOpen}
           onQueryChange={setQuery}
           onSearchOpenChange={setSearchOpen}
           onNewNote={onNewNote}
           onNewFolder={onNewFolder}
-          onCollapsedChange={(userCollapsed) =>
-            updateNotesSidebarState(sidebarStore, { userCollapsed })
-          }
         />
+        {!sidebar.headerMounted ? (
+          <NotesSidebarToggle
+            collapsed={false}
+            onCollapsedChange={(userCollapsed) =>
+              updateNotesSidebarState(sidebarStore, { userCollapsed })
+            }
+          />
+        ) : null}
         {draggingPath && dirname(draggingPath) ? (
           <button
             type="button"
@@ -2266,6 +2304,7 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
+    headerContent: NotesPanelHeader,
   });
   app.slots.threadPanelAction({
     id: "document",
