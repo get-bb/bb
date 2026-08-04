@@ -1660,6 +1660,54 @@ describe("PromptBoxInternal compact layout", () => {
     ).toBe(true);
   });
 
+  it("uses voice as the primary action for an empty coarse-pointer prompt", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            compact: {
+              isCompact: true,
+              placeholder: "Ask a follow-up",
+            },
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      const voiceButton = screen.getByRole("button", {
+        name: "Start voice input",
+      });
+      const submitGroup = document.querySelector(
+        "[data-promptbox-submit-group]",
+      );
+      expect(submitGroup?.contains(voiceButton)).toBe(true);
+      expect(
+        screen.queryByRole("button", { name: "Submit (Enter)" }),
+      ).toBeNull();
+
+      expect(
+        fireEvent.pointerDown(voiceButton, {
+          button: 0,
+          pointerType: "touch",
+        }),
+      ).toBe(false);
+      fireEvent.click(voiceButton);
+
+      expect(start).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("keeps the editor focused through a pointer submit", async () => {
     const onSubmit = vi.fn();
     render(

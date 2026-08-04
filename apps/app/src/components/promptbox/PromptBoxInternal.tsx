@@ -2291,6 +2291,18 @@ export function PromptBoxInternal({
   const showStop = Boolean(isRunning && onStop && !canSubmit && !isVoiceBusy);
   const canStartVoiceInput =
     voice !== undefined && voice.isSupported && !isSubmitting;
+  const showVoiceAsPrimaryAction =
+    isPointerCoarse && !hasSubmittableInput && canStartVoiceInput;
+  const handleVoicePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!isPointerCoarse || event.button !== 0) return;
+
+      // Keep mobile voice activation from focusing the button and expanding
+      // the follow-up composer before click can start recording.
+      event.preventDefault();
+    },
+    [isPointerCoarse],
+  );
   const startVoiceInput = useCallback(() => {
     if (isPointerCoarse) {
       const currentEditor = editorRef.current;
@@ -3009,7 +3021,9 @@ export function PromptBoxInternal({
                     {!suppressPluginComposerCustomizations ? (
                       <PluginComposerActions />
                     ) : null}
-                    {voice && !showVoiceActionGroup ? (
+                    {voice &&
+                    !showVoiceActionGroup &&
+                    !showVoiceAsPrimaryAction ? (
                       <Button
                         data-promptbox-expanded-only=""
                         type="button"
@@ -3021,6 +3035,7 @@ export function PromptBoxInternal({
                             : "Start voice input"
                         }
                         disabled={!canStartVoiceInput}
+                        onPointerDown={handleVoicePointerDown}
                         onClick={startVoiceInput}
                         className={
                           COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
@@ -3053,6 +3068,24 @@ export function PromptBoxInternal({
                         name="Square"
                         className="size-3.5 fill-current [&_*]:stroke-0"
                       />
+                    </Button>
+                  ) : showVoiceAsPrimaryAction ? (
+                    <Button
+                      data-promptbox-submit-action=""
+                      type="button"
+                      size={showCompactLayout ? "icon" : "sm"}
+                      variant="default"
+                      aria-label="Start voice input"
+                      onPointerDown={handleVoicePointerDown}
+                      onClick={startVoiceInput}
+                      className={cn(
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                        "transition-colors",
+                      )}
+                    >
+                      <Icon name="Mic" className="size-4" />
                     </Button>
                   ) : (
                     <Button
