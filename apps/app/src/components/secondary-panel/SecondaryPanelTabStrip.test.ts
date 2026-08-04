@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
@@ -21,9 +21,13 @@ describe("secondary panel tab-strip edge fades", () => {
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
     const observed: Element[] = [];
+    let resizeCallback: ResizeObserverCallback | undefined;
     vi.stubGlobal(
       "ResizeObserver",
       class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
+        }
         observe(element: Element) {
           observed.push(element);
         }
@@ -57,6 +61,7 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(content).not.toBeNull();
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
+    expect(resizeCallback).toBeDefined();
     expect(container.querySelectorAll("[data-overflow-fade]")).toHaveLength(2);
     expect(
       container
@@ -69,5 +74,17 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(
       container.querySelector('[aria-label="Scroll tabs right"]'),
     ).toBeNull();
+
+    const rightFade = container.querySelector("[data-overflow-fade='right']");
+    expect(rightFade?.classList.contains("opacity-0")).toBe(true);
+    Object.defineProperties(viewport!, {
+      clientWidth: { configurable: true, value: 120 },
+      scrollWidth: { configurable: true, value: 240 },
+      scrollLeft: { configurable: true, value: 0, writable: true },
+    });
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    expect(rightFade?.classList.contains("opacity-100")).toBe(true);
   });
 });

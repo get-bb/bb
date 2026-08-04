@@ -51,11 +51,7 @@ const PERSONAL_PROJECT_ID = "proj_personal";
 
 function automationMenuIcon(name: IconName) {
   return (
-    <Icon
-      name={name}
-      className="size-3.5 text-muted-foreground"
-      aria-hidden
-    />
+    <Icon name={name} className="size-3.5 text-muted-foreground" aria-hidden />
   );
 }
 

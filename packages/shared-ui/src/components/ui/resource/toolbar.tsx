@@ -96,10 +96,7 @@ function ResourceOptionContent({
 }) {
   return (
     <span
-      className={cn(
-        "flex min-w-0 items-center gap-2",
-        compact && "md:gap-1.5",
-      )}
+      className={cn("flex min-w-0 items-center gap-2", compact && "md:gap-1.5")}
     >
       {option.leading ? (
         <span
@@ -110,7 +107,12 @@ function ResourceOptionContent({
         </span>
       ) : null}
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-xs">{option.label}</span>
+        <span
+          className="truncate text-xs"
+          title={compact ? option.label : undefined}
+        >
+          {option.label}
+        </span>
         {option.description ? (
           <span className="truncate text-2xs text-subtle-foreground">
             {option.description}
@@ -274,9 +276,7 @@ export function ResourceMultiSelectMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle={label}
-        className={cn(
-          compact ? "w-max max-w-64 md:p-0.5" : "min-w-44",
-        )}
+        className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
       >
         <DropdownMenuLabel
           className={cn(
@@ -330,11 +330,21 @@ export function ResourceSortMenu({
   onChange: (value: string) => void;
   compact?: boolean;
 }) {
+  const selectedOption = options.find((option) => option.id === value);
+  const directionLabel = direction === "asc" ? "ascending" : "descending";
+  const sortStateLabel = `Sort: ${selectedOption?.label ?? value}, ${directionLabel}`;
+
   return (
     <DropdownMenu>
       <ResourceMenuTrigger
-        label="Sort"
-        icon={direction === "asc" ? "ArrowUp" : "ArrowDown"}
+        label={sortStateLabel}
+        icon={
+          compact
+            ? direction === "asc"
+              ? "ArrowUp"
+              : "ArrowDown"
+            : "ArrowUpDown"
+        }
       />
       <DropdownMenuContent
         align="end"
@@ -355,6 +365,8 @@ export function ResourceSortMenu({
             <DropdownMenuItem
               key={option.id}
               disabled={option.disabled}
+              role="menuitemradio"
+              aria-checked={selected}
               onSelect={(event) => {
                 event.preventDefault();
                 if (option.disabled) return;

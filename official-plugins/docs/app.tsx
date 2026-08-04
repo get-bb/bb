@@ -1241,6 +1241,11 @@ function orderEntries(
 }
 
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
+const HEADER_STANDALONE_EDGE_OFFSET = 16;
+// Split host actions follow plugin header content: 4px action gap + 28px close
+// button + the header's 16px edge padding. The visual sidebar background can
+// extend behind that host-owned chrome, but its layout box must not overlap it.
+const HEADER_SPLIT_EDGE_OFFSET = 48;
 
 interface NotesSidebarState {
   headerMounted: boolean;
@@ -1257,10 +1262,34 @@ interface NotesSidebarStore {
 }
 
 const notesSidebarStores = new Map<string, NotesSidebarStore>();
+const STANDALONE_SIDEBAR_SCOPE = "standalone";
 
-function notesSidebarKey(subPath: string): string {
+function notesSidebarVaultKey(subPath: string): string {
   const firstSegment = subPath.split("/", 1)[0];
   return firstSegment ? decodeURIComponent(firstSegment) : "";
+}
+
+function useNotesSidebarScope(subPath: string): {
+  isSplitPane: boolean;
+  scopeRef(element: HTMLElement | null): void;
+  storeKey: string;
+} {
+  const [paneScope, setPaneScope] = useState(STANDALONE_SIDEBAR_SCOPE);
+  const scopeRef = useCallback((element: HTMLElement | null) => {
+    if (element === null) return;
+    const nextPaneScope =
+      element
+        .closest<HTMLElement>("[data-split-pane-id]")
+        ?.getAttribute("data-split-pane-id") ?? STANDALONE_SIDEBAR_SCOPE;
+    setPaneScope((current) =>
+      current === nextPaneScope ? current : nextPaneScope,
+    );
+  }, []);
+  return {
+    isSplitPane: paneScope !== STANDALONE_SIDEBAR_SCOPE,
+    scopeRef,
+    storeKey: `${paneScope}:${notesSidebarVaultKey(subPath)}`,
+  };
 }
 
 function getNotesSidebarStore(key: string): NotesSidebarStore {
@@ -1298,6 +1327,19 @@ function updateNotesSidebarState(
   for (const listener of store.listeners) listener();
 }
 
+function deleteUnusedNotesSidebarStore(
+  key: string,
+  store: NotesSidebarStore,
+): void {
+  if (
+    store.headerMounts === 0 &&
+    store.viewMounts === 0 &&
+    notesSidebarStores.get(key) === store
+  ) {
+    notesSidebarStores.delete(key);
+  }
+}
+
 function useNotesSidebarState(key: string): {
   state: NotesSidebarState;
   store: NotesSidebarStore;
@@ -1324,7 +1366,7 @@ function NotesSidebarToggle({
 }) {
   return (
     <Button
-      className="size-8"
+      className="relative z-10 size-8"
       size="icon"
       variant="ghost"
       aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
@@ -1337,9 +1379,8 @@ function NotesSidebarToggle({
 }
 
 function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { state: sidebar, store } = useNotesSidebarState(
-    notesSidebarKey(subPath),
-  );
+  const { isSplitPane, scopeRef, storeKey } = useNotesSidebarScope(subPath);
+  const { state: sidebar, store } = useNotesSidebarState(storeKey);
   const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
   useLayoutEffect(() => {
     store.headerMounts += 1;
@@ -1349,14 +1390,26 @@ function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
       if (store.headerMounts === 0) {
         updateNotesSidebarState(store, { headerMounted: false });
       }
+      deleteUnusedNotesSidebarStore(storeKey, store);
     };
-  }, [store]);
+  }, [store, storeKey]);
   return (
     <div
+      ref={scopeRef}
       data-testid="notes-sidebar-header"
-      className="-mr-4 flex h-12 shrink-0 items-center justify-end border-l border-border bg-sidebar pr-4"
-      style={{ width: collapsed ? 48 : sidebar.width }}
+      className="relative flex h-12 w-8 shrink-0 items-center justify-end"
     >
+      <span
+        aria-hidden
+        data-testid="notes-sidebar-header-background"
+        className="pointer-events-none absolute inset-y-0 border-l border-border bg-sidebar"
+        style={{
+          right: isSplitPane
+            ? -HEADER_SPLIT_EDGE_OFFSET
+            : -HEADER_STANDALONE_EDGE_OFFSET,
+          width: collapsed ? 48 : sidebar.width,
+        }}
+      />
       <NotesSidebarToggle
         collapsed={collapsed}
         onCollapsedChange={(userCollapsed) =>
@@ -1378,8 +1431,9 @@ interface NotesSidebarNavigationProps {
 
 function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
   return (
-    <nav
-      aria-label="Notes sidebar"
+    <div
+      role="toolbar"
+      aria-label="Notes sidebar actions"
       className="flex min-w-0 flex-1 items-center gap-1"
     >
       {props.searchOpen ? (
@@ -1448,7 +1502,7 @@ function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
           <span className="min-w-0 flex-1" />
         </>
       ) : null}
-    </nav>
+    </div>
   );
 }
 
@@ -1492,13 +1546,21 @@ function Tree({
     edge: "before" | "after";
   } | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
+  const { scopeRef, storeKey } = useNotesSidebarScope(sidebarKey);
   const { state: sidebar, store: sidebarStore } =
-    useNotesSidebarState(sidebarKey);
+    useNotesSidebarState(storeKey);
   // null = follow the responsive default (collapsed in narrow panes) until
   // the user toggles the sidebar explicitly.
   const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
   const sidebarWidth = sidebar.width;
   const asideRef = useRef<HTMLElement | null>(null);
+  const setAsideRef = useCallback(
+    (element: HTMLElement | null) => {
+      asideRef.current = element;
+      scopeRef(element);
+    },
+    [scopeRef],
+  );
   useLayoutEffect(() => {
     if (sidebarStore.viewMounts === 0) {
       updateNotesSidebarState(sidebarStore, {
@@ -1517,8 +1579,9 @@ function Tree({
           userCollapsed: null,
         });
       }
+      deleteUnusedNotesSidebarStore(storeKey, sidebarStore);
     };
-  }, [sidebarStore]);
+  }, [sidebarStore, storeKey]);
   useLayoutEffect(() => {
     const pane = asideRef.current?.parentElement;
     if (!pane || typeof ResizeObserver === "undefined") return;
@@ -1670,13 +1733,20 @@ function Tree({
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let frame: number | null = null;
+    let pendingWidth = startWidth;
+    const commitPendingWidth = () => {
+      frame = null;
+      updateNotesSidebarState(sidebarStore, { width: pendingWidth });
+    };
     const move = (moveEvent: PointerEvent) => {
-      updateNotesSidebarState(sidebarStore, {
-        width: Math.min(
-          480,
-          Math.max(220, startWidth + startX - moveEvent.clientX),
-        ),
-      });
+      pendingWidth = Math.min(
+        480,
+        Math.max(220, startWidth + startX - moveEvent.clientX),
+      );
+      if (frame === null) {
+        frame = window.requestAnimationFrame(commitPendingWidth);
+      }
     };
     const cleanup = () => {
       if (resizeCleanupRef.current !== cleanup) return;
@@ -1685,6 +1755,10 @@ function Tree({
       handle.removeEventListener("pointercancel", cleanup);
       handle.removeEventListener("lostpointercapture", cleanup);
       window.removeEventListener("blur", cleanup);
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+        commitPendingWidth();
+      }
       resizeCleanupRef.current = null;
       if (handle.hasPointerCapture(pointerId)) {
         handle.releasePointerCapture(pointerId);
@@ -1702,7 +1776,7 @@ function Tree({
   if (sidebarCollapsed) {
     return (
       <aside
-        ref={asideRef}
+        ref={setAsideRef}
         className={cn(
           "order-2 flex shrink-0 flex-col items-center",
           !sidebar.headerMounted &&
@@ -1724,11 +1798,11 @@ function Tree({
 
   return (
     <aside
-      ref={asideRef}
+      ref={setAsideRef}
       className="relative order-2 flex shrink-0 flex-col border-l border-border bg-sidebar"
       style={{ width: sidebarWidth }}
     >
-      <div className="relative flex items-center border-b border-border p-2">
+      <div className="relative flex items-center gap-1 border-b border-border p-2">
         <NotesSidebarNavigation
           query={query}
           searchOpen={searchOpen}
@@ -1767,7 +1841,10 @@ function Tree({
           </button>
         ) : null}
       </div>
-      <div className="relative min-h-0 flex-1 overflow-y-auto p-1.5">
+      <nav
+        aria-label="Notes"
+        className="relative min-h-0 flex-1 overflow-y-auto p-1.5"
+      >
         {data.error ? (
           <div className="p-3 text-xs text-destructive">{data.error}</div>
         ) : null}
@@ -1893,7 +1970,7 @@ function Tree({
             Tree truncated at 5,000 entries.
           </div>
         ) : null}
-      </div>
+      </nav>
       <div className="grid gap-1.5 border-t border-border p-2">
         <div className="flex items-center gap-1">
           <Select value={data.vault.id} onValueChange={onVaultChange}>

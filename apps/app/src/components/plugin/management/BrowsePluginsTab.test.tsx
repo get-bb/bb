@@ -125,8 +125,12 @@ describe("BrowsePluginsTab", () => {
       "Open Zulu details",
     ]);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Plugin name" }));
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort: Plugin name, ascending",
+    });
+    expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
+    fireEvent.pointerDown(sortTrigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(cardOrder()).toEqual([
       "Open Zulu details",
       "Open Middle details",

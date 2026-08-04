@@ -45,6 +45,7 @@ import {
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { OptionRequestGate } from "./src/option-request-gate.js";
 
 const PANEL_PATH = "automations";
 const PERSONAL_PROJECT_ID = "proj_personal";
@@ -245,7 +246,7 @@ function useAutomation(route: DetailRoute): {
   return { ...state, refetch };
 }
 
-function useAutomationExecutionOptions(
+export function useAutomationExecutionOptions(
   route: DetailRoute,
   enabled: boolean,
   executionKey: string,
@@ -256,35 +257,38 @@ function useAutomationExecutionOptions(
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
   const requestKey = `${projectId}:${automationId}:${executionKey}`;
-  const requestedKeyRef = useRef<string | null>(null);
+  const requestGateRef = useRef(new OptionRequestGate());
   const [state, setState] = useState<{
     options: AutomationExecutionOptionsResponse | null;
     error: string | null;
   }>({ options: null, error: null });
 
   useEffect(() => {
-    requestedKeyRef.current = null;
+    requestGateRef.current.reset();
     setState({ options: null, error: null });
   }, [requestKey]);
 
   useEffect(() => {
-    if (!enabled || requestedKeyRef.current === requestKey) return;
-    requestedKeyRef.current = requestKey;
+    if (!enabled) return;
+    const request = requestGateRef.current.begin(requestKey);
+    if (request === null) return;
     let active = true;
     setState({ options: null, error: null });
     rpc.call("automations_execution_options", { projectId, automationId }).then(
       (options) => {
+        request.complete();
         if (active) setState({ options, error: null });
       },
       (error: unknown) => {
+        request.fail();
         if (active) {
-          requestedKeyRef.current = null;
           setState({ options: null, error: errorText(error) });
         }
       },
     );
     return () => {
       active = false;
+      request.cancel();
     };
   }, [automationId, enabled, projectId, requestKey, rpc]);
 

@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { AutomationOverviewView } from "bb-plugin-automations/overview-view";
 import type { AutomationsOverviewResponse } from "bb-plugin-automations/rpc-types";
 
@@ -147,6 +148,9 @@ describe("AutomationOverviewView", () => {
     const projectOption = screen.getByRole("menuitemcheckbox", { name: "bb" });
     expect(projectOption.className).toContain("md:py-1");
     expect(projectOption.querySelector('[data-icon="Folder"]')).toBeTruthy();
+    expect(
+      projectOption.querySelector(".truncate")?.getAttribute("title"),
+    ).toBe("bb");
     fireEvent.click(projectOption);
     fireEvent.keyDown(document, { key: "Escape" });
 
@@ -201,19 +205,76 @@ describe("AutomationOverviewView", () => {
       />,
     );
 
-    const sortTrigger = screen.getByRole("button", { name: "Sort" });
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort: Automation name, ascending",
+    });
     expect(sortTrigger.querySelector('[data-icon="ArrowUp"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
-    const projectOption = screen.getByRole("menuitem", { name: "Project" });
-    const nameOption = screen.getByRole("menuitem", {
+    const projectOption = screen.getByRole("menuitemradio", {
+      name: "Project",
+    });
+    const nameOption = screen.getByRole("menuitemradio", {
       name: "Automation name",
     });
     expect(projectOption.getAttribute("aria-disabled")).toBe("true");
+    expect(projectOption.getAttribute("aria-checked")).toBe("false");
+    expect(nameOption.getAttribute("aria-checked")).toBe("true");
     expect(projectOption.querySelector('[data-icon="Folder"]')).toBeTruthy();
     expect(nameOption.querySelector('[data-icon="Sort"]')).toBeTruthy();
     expect(nameOption.className).toContain("md:py-1");
     fireEvent.click(nameOption);
     expect(sortTrigger.querySelector('[data-icon="ArrowDown"]')).toBeTruthy();
+    expect(sortTrigger.getAttribute("aria-label")).toBe(
+      "Sort: Automation name, descending",
+    );
+  });
+
+  it("preserves sort selection semantics in the compact viewport drawer", async () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <AutomationOverviewView
+          entries={INSTALLED_AUTOMATIONS}
+          error={null}
+          onRetry={() => {}}
+          onOpenDetail={() => {}}
+          onEnabledChange={async () => {}}
+          onCreateViaChat={() => {}}
+          activeMode="installed"
+          onModeChange={() => {}}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort: Automation name, ascending",
+    });
+    fireEvent.click(sortTrigger);
+
+    const projectOption = await screen.findByRole("menuitemradio", {
+      name: "Project",
+    });
+    const nameOption = screen.getByRole("menuitemradio", {
+      name: "Automation name",
+    });
+    expect(projectOption.getAttribute("aria-checked")).toBe("false");
+    expect(projectOption.getAttribute("aria-disabled")).toBe("true");
+    expect((projectOption as HTMLButtonElement).disabled).toBe(true);
+    expect(nameOption.getAttribute("aria-checked")).toBe("true");
+    expect(
+      screen
+        .getAllByRole("menuitemradio")
+        .filter((option) => option.getAttribute("aria-checked") === "true"),
+    ).toHaveLength(1);
+
+    fireEvent.click(projectOption);
+    expect(sortTrigger.getAttribute("aria-label")).toBe(
+      "Sort: Automation name, ascending",
+    );
+    fireEvent.click(nameOption);
+    expect(sortTrigger.getAttribute("aria-label")).toBe(
+      "Sort: Automation name, descending",
+    );
+    expect(nameOption.getAttribute("aria-checked")).toBe("true");
   });
 
   it("renders template actions as icon-only controls with specific labels", () => {
