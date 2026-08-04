@@ -28,8 +28,8 @@ describe("plugin catalog contracts", () => {
   it("keeps status to the bundled plugin count and search fields required", () => {
     const status = {
       pluginCount: 13,
-      includedPluginCount: 9,
-      optionalPluginCount: 4,
+      includedPluginCount: 8,
+      optionalPluginCount: 5,
     };
     expect(pluginCatalogStatusSchema.parse(status)).toEqual(status);
     // Refresh-era freshness fields no longer survive parsing.

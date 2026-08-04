@@ -190,10 +190,11 @@ describe("builtin plugin reconciliation", () => {
   });
 
   it("keeps official plugins bundled but out of the auto-install builtins", () => {
-    expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(
-      "memory",
-    );
-    expect(OFFICIAL_PLUGINS.map((plugin) => plugin.name)).toContain("memory");
+    const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
+    for (const name of ["memory", "t3sidebar"]) {
+      expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(name);
+      expect(optionalNames).toContain(name);
+    }
     expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
   });
 
@@ -206,7 +207,6 @@ describe("builtin plugin reconciliation", () => {
       ["inline-vis", "AppWindow"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],
-      ["t3sidebar", "PanelLeft"],
       ["workflows", "Workflow"],
     ]);
 

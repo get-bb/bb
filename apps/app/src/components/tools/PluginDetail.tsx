@@ -301,7 +301,6 @@ export function PluginDetail({
 
   const hasUpdateManagement = pluginHasUpdateSurfaces(plugin);
   const canEditSource = pluginIsLocalSource(plugin);
-  const canRemove = plugin.provenance !== "builtin";
   // Delivery policy comes from the source itself. Source detail is auxiliary:
   // a missing or still-loading install date must never make a managed plugin
   // look as though it ships with bb.
@@ -345,17 +344,17 @@ export function PluginDetail({
           },
         ]
       : []),
-    ...(canRemove
-      ? [
-          {
-            label: pluginRemovalLabel(plugin),
-            icon: "Trash2" as const,
-            tone: "destructive" as const,
-            disabled: pending,
-            onSelect: () => onDelete(plugin),
-          },
-        ]
-      : []),
+    {
+      label: pluginRemovalLabel(plugin),
+      icon: "Trash2" as const,
+      tone: "destructive" as const,
+      disabled: pending || plugin.provenance === "builtin",
+      disabledReason:
+        plugin.provenance === "builtin"
+          ? "Included with BB; disable this plugin instead."
+          : undefined,
+      onSelect: () => onDelete(plugin),
+    },
   ];
   return (
     <ResourceDetailPage

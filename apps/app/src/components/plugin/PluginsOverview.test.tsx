@@ -129,8 +129,8 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
         return responseJson({
           catalog: {
             pluginCount: 13,
-            includedPluginCount: 9,
-            optionalPluginCount: 4,
+            includedPluginCount: 8,
+            optionalPluginCount: 5,
           },
         });
       }

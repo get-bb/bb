@@ -90,14 +90,6 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
     category: "Workflow management",
   },
-  // Ships with the app but stays off: it replaces the sidebar, which is a
-  // choice the user makes in Settings, never something an install does.
-  {
-    name: "t3sidebar",
-    pluginId: "t3sidebar",
-    defaultEnabled: false,
-    category: "Interface",
-  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,
@@ -135,11 +127,22 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
+  // Replaces the standard sidebar, so users install it deliberately instead
+  // of receiving a disabled registration by default.
+  {
+    name: "t3sidebar",
+    pluginId: "t3sidebar",
+    defaultEnabled: false,
+    category: "Interface",
+    repoDirectory: "plugins" as const,
+  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,
     autoInstall: false,
-    repoDirectory: "official-plugins",
+    repoDirectory:
+      ("repoDirectory" in plugin ? plugin.repoDirectory : undefined) ??
+      "official-plugins",
   }),
 );
 

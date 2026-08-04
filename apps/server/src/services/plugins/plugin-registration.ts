@@ -483,8 +483,12 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       if (!bundled.autoInstall && existing === undefined) {
         continue;
       }
+      const sameBundledSource =
+        existing?.sourceKind === "builtin" &&
+        existing.sourceBuiltinName === bundled.name;
       if (
         existing !== undefined &&
+        !sameBundledSource &&
         !rowMatchesInstallSource(existing, provenance, {
           kind: "builtin",
           name: bundled.name,
@@ -497,6 +501,10 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       }
       if (
         existing === undefined ||
+        !rowMatchesInstallSource(existing, provenance, {
+          kind: "builtin",
+          name: bundled.name,
+        }) ||
         existing.version !== manifest.version ||
         existing.rootDir !== bundled.rootDir
       ) {

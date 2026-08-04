@@ -246,6 +246,29 @@ describe("store-installed official plugins", () => {
     ).resolves.toMatchObject({ id: "builtin-fixture", status: "running" });
   });
 
+  it("keeps an installed plugin while moving it from included to optional", async () => {
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      bundled: [officialEntry({ autoInstall: true })],
+    });
+    await service.start();
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", provenance: "builtin" },
+    ]);
+    await service.stop();
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      bundled: [officialEntry({ autoInstall: false })],
+    });
+    await service.start();
+    expect(service.list()).toMatchObject([
+      { id: "builtin-fixture", provenance: "catalog" },
+    ]);
+  });
+
   it("rejects unknown official plugin names", async () => {
     service = createService({
       db,

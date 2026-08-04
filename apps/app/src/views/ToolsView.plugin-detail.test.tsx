@@ -485,27 +485,29 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
   });
 
-  it("shows built-in provenance with lifecycle controls and no ownership actions", async () => {
+  it("shows a disabled Uninstall action for a built-in plugin", async () => {
+    const onDelete = vi.fn();
+    const builtinPlugin = {
+      ...GITHUB_PLUGIN,
+      id: "automations",
+      name: "Automations",
+      source: "builtin:automations",
+      provenance: "builtin" as const,
+      catalogEntryId: null,
+    };
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
         <QueryClientWrapper>
           <PluginDetail
             isLoading={false}
-            plugin={{
-              ...GITHUB_PLUGIN,
-              id: "automations",
-              name: "Automations",
-              source: "builtin:automations",
-              provenance: "builtin",
-              catalogEntryId: null,
-            }}
+            plugin={builtinPlugin}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
             onEdit={() => {}}
             onOpenSource={() => {}}
-            onDelete={() => {}}
+            onDelete={onDelete}
           />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -516,11 +518,21 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.getByRole("switch", { name: "Disable Automations" }),
     ).toBeTruthy();
 
-    // A built-in cannot be edited, opened, or removed, so it gets no menu at
-    // all rather than an empty one.
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Automations actions" }),
+    );
+    const uninstall = await screen.findByRole("menuitem", {
+      name: "Uninstall",
+    });
+    expect(uninstall.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(uninstall);
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.pointerMove(uninstall);
     expect(
-      screen.queryByRole("button", { name: "Automations actions" }),
-    ).toBeNull();
+      await screen.findAllByText(
+        "Included with BB; disable this plugin instead.",
+      ),
+    ).not.toHaveLength(0);
   });
 });
 

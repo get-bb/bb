@@ -33,8 +33,8 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
 
 const CATALOG_STATUS = {
   pluginCount: 13,
-  includedPluginCount: 9,
-  optionalPluginCount: 4,
+  includedPluginCount: 8,
+  optionalPluginCount: 5,
 };
 
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {

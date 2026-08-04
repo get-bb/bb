@@ -135,15 +135,15 @@ describe("plugin catalog queries", () => {
       receiverSensitiveFetch({
         catalog: {
           pluginCount: 13,
-          includedPluginCount: 9,
-          optionalPluginCount: 4,
+          includedPluginCount: 8,
+          optionalPluginCount: 5,
         },
       }),
     );
     expect(status).toEqual({
       pluginCount: 13,
-      includedPluginCount: 9,
-      optionalPluginCount: 4,
+      includedPluginCount: 8,
+      optionalPluginCount: 5,
     });
   });
 
