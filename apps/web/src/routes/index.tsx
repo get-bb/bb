@@ -1723,21 +1723,19 @@ function LandingPage() {
         </p>
       </Band>
 
-      <Band title="It can customize itself." visual={<CustomizeBuild />}>
+      <Band title="Fully customizable." visual={<CustomizeBuild />}>
         <p>
-          bb is extensible through plugins, and your agents write them. Ask for
-          a task tracker and one appears: a panel in your sidebar, a{" "}
+          Almost anything in bb can be changed in a single prompt. Ask for a
+          task tracker and one appears: a panel in your sidebar, a{" "}
           <code>bb tasks</code> command, and a skill that teaches every agent to
           use it.
         </p>
         <p>
-          Most of bb is already built this way. The doc editor is a plugin. So
-          is GitHub, the memory your agents keep, jobs that run on a schedule,
-          agent workflows, and even remote access. They all use the same API
-          your plugins get: panels, commands, tools, agent skills, and
-          background services.
+          Many of bb&rsquo;s own features are built with the same tools you
+          have. The doc editor, GitHub, agent memory, scheduled jobs, and even
+          remote access are all plugins.
         </p>
-        <p>Missing features stop being feature requests.</p>
+        <p>Nothing is stopping you from building your ideal workspace.</p>
       </Band>
 
       <Band title="The gang's all here" flip visual={<SpawnSidebar />}>
