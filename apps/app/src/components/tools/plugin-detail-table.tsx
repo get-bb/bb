@@ -49,10 +49,12 @@ const CELL = "py-1.5 align-top text-sm leading-snug";
 export function PluginDetailFieldRow({
   label,
   children,
+  labelClassName,
   stackOnNarrow = false,
 }: {
   label: ReactNode;
   children: ReactNode;
+  labelClassName?: string;
   stackOnNarrow?: boolean;
 }) {
   if (stackOnNarrow) {
@@ -64,6 +66,7 @@ export function PluginDetailFieldRow({
             CELL,
             PLUGIN_DETAIL_HEADER_CELL_CLASS,
             "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
+            labelClassName,
           )}
         >
           {label}
@@ -83,6 +86,7 @@ export function PluginDetailFieldRow({
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
           "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
+          labelClassName,
         )}
       >
         {label}
@@ -162,18 +166,18 @@ export function PluginDetailRow({
         className={cn(
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
-          "text-left font-normal",
+          "flex items-center text-left font-normal",
           hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
         )}
         colSpan={hasDetail ? undefined : 2}
       >
-        <span className="flex min-w-0 items-start gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           {/*
             `flex`, not a plain span: as a block it wrapped the inline-level
             glyph in a line box, which added four invisible pixels to every row
             in every one of these tables.
           */}
-          <span className="mt-px flex shrink-0">{glyph}</span>
+          <span className="flex shrink-0">{glyph}</span>
           <span
             className={cn(
               "min-w-0 break-words text-foreground",
@@ -206,7 +210,7 @@ export function PluginDetailRow({
               type="button"
               aria-expanded={expanded}
               aria-controls={detailId}
-              className="mt-2 rounded-sm text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="mt-2 rounded-sm text-xs font-medium text-subtle-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               onClick={() => setExpanded((current) => !current)}
             >
               {expanded ? "Show less" : "Show full description"}

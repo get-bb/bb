@@ -319,12 +319,10 @@ describe("SkillsOverview", () => {
     ).toBe("true");
     expect(
       screen
-        .getByRole("menuitemcheckbox", { name: "Included in plugin" })
+        .getByRole("menuitemcheckbox", { name: "Plugin" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
 
     expect(await screen.findByText("automations")).toBeTruthy();
     expect(
@@ -332,14 +330,12 @@ describe("SkillsOverview", () => {
         "automations is included with Automations (bb plugin)",
       ).textContent,
     ).toBe("Included");
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
     expect(screen.queryByText("automations")).toBeNull();
     expect(screen.getByText("official-skill")).toBeTruthy();
   });
 
-  it("toggles BB official independently from Included", async () => {
+  it("toggles BB official independently from Plugin", async () => {
     renderDom(
       <SkillsOverview
         skills={[
@@ -365,9 +361,7 @@ describe("SkillsOverview", () => {
     );
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "bb official" }));
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
-    );
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "bb official" }),
     );

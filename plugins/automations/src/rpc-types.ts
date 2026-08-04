@@ -228,6 +228,15 @@ export type AutomationExecutionOptionsResponse = z.infer<
   typeof automationExecutionOptionsResponseSchema
 >;
 
+export const automationPermissionOptionsResponseSchema = z
+  .object({
+    permissionModes: z.array(permissionModeSchema),
+  })
+  .strict();
+export type AutomationPermissionOptionsResponse = z.infer<
+  typeof automationPermissionOptionsResponseSchema
+>;
+
 export const automationResponseSchema = z
   .object({
     id: z.string(),
