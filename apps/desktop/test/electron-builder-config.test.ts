@@ -494,6 +494,9 @@ describe("electron-builder signing config", () => {
     const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
 
     expect(config.publish[0]).toMatchObject(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
+    expect(DESKTOP_AUTO_UPDATE_FEED_CONFIG.url).toBe(
+      "https://github.com/get-bb/bb/releases/download/desktop-latest/",
+    );
   });
 
   it("creates a separate nightly app identity and update feed", async () => {

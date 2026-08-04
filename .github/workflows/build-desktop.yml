@@ -255,5 +255,5 @@ jobs:
             echo "- prerelease version: ${IS_PRERELEASE}"
             echo "- stable release publication requested and allowed: ${SHOULD_PUBLISH}"
             echo "- release binary upload enabled: ${PUBLISH_BINARIES}"
-            echo "- desktop feed URL: https://github.com/ymichael/bb/releases/download/desktop-latest/desktop-version.json"
+            echo "- desktop feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -3,7 +3,7 @@
 // package root without requiring any other @bb/* package.
 //
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
-// and read the real source: https://github.com/ymichael/bb
+// and read the real source: https://github.com/get-bb/bb
 
 declare function isComposerDraftEmpty(text: string, attachmentCount: number): boolean;
 

@@ -219,8 +219,8 @@ describe("plugin update service and routes", () => {
 
   it("reports legacy retired-marketplace installs as unavailable without fetching", async () => {
     // Rows installed through the pre-bundling marketplace persist a synthetic
-    // GitHub-Release registry URL; the check must degrade per-row instead of
-    // rejecting the whole multi-plugin update sweep.
+    // GitHub-Release registry URL with the pre-transfer owner; the check must
+    // degrade per-row instead of rejecting the whole multi-plugin update sweep.
     upsertInstalledPlugin(db, {
       id: "legacy-marketplace",
       source: "npm:bb-plugin-legacy-marketplace@^0.2.0",

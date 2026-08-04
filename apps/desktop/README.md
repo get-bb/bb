@@ -126,7 +126,7 @@ The nightly desktop is a separate installation:
 - icon: `assets/icon-nightly.icns` and `assets/icon-nightly.png`
 
 Download it from
-[`desktop-nightly`](https://github.com/ymichael/bb/releases/tag/desktop-nightly)
+[`desktop-nightly`](https://github.com/get-bb/bb/releases/tag/desktop-nightly)
 or run the CLI build with:
 
 ```bash

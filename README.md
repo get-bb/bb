@@ -33,7 +33,7 @@ or hand off to another agent.
 
 The recommended way to start using bb is the desktop app:
 
-**[Download the latest desktop app](https://github.com/ymichael/bb/releases/tag/desktop-latest)**
+**[Download the latest desktop app](https://github.com/get-bb/bb/releases/tag/desktop-latest)**
 
 The desktop build is currently macOS Apple Silicon (arm64) only. Intel Mac and
 Linux users should run bb with `npx` instead. On Windows, run bb inside
@@ -42,7 +42,7 @@ install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not supported.
 
 Early adopters can install
-**[bb Nightly](https://github.com/ymichael/bb/releases/tag/desktop-nightly)**
+**[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**
 alongside the stable desktop app. It has a separate application identity,
 yellow icon, and auto-update feed.
 

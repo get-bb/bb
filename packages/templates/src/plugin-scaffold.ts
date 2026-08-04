@@ -84,7 +84,7 @@ function componentsJsonSource(bbVersion: string): string {
         hooks: "@/hooks",
       },
       registries: {
-        "@bb": `https://raw.githubusercontent.com/ymichael/bb/${registryRef(bbVersion)}/packages/plugin-registry/r/{name}.json`,
+        "@bb": `https://raw.githubusercontent.com/get-bb/bb/${registryRef(bbVersion)}/packages/plugin-registry/r/{name}.json`,
       },
     },
     null,
@@ -359,7 +359,7 @@ install. Ask BB to write plugins for you: the \`bb-plugin-authoring\` skill
 documents the whole surface with examples.
 
 Confused by the API, or need something the types don't explain? Clone the BB
-repo and read the source: <https://github.com/ymichael/bb>.
+repo and read the source: <https://github.com/get-bb/bb>.
 `;
 }
 

@@ -20,7 +20,7 @@ The prompt-composer wiring is hand-rolled **three times** today, and we need a
 4th for the Loops/Skills inline create box. Rather than duplicate it again,
 extract one shared hook and migrate the existing sites onto it.
 
-No upstream work to piggyback on: checked `ymichael/bb` — 8 open PRs + last 20
+No upstream work to piggyback on: checked `get-bb/bb` — 8 open PRs + last 20
 merged. Composer-adjacent ones are fixes (#252 add-to-chat race, #247 prompt
 shell breakpoint, #184 project-agnostic defaults) or a *timeline* reuse refactor
 (#236) — none extracts the composer. No shared composer hook exists in the tree.

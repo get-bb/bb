@@ -11,13 +11,13 @@
     "codex",
     "claude-code"
   ],
-  "homepage": "https://github.com/ymichael/bb#readme",
+  "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
-    "url": "https://github.com/ymichael/bb/issues"
+    "url": "https://github.com/get-bb/bb/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ymichael/bb.git",
+    "url": "git+https://github.com/get-bb/bb.git",
     "directory": "packages/bb-app"
   },
   "type": "module",

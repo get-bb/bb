@@ -217,7 +217,7 @@ After the desktop workflow succeeds, confirm the published version and feed:
 ```bash
 gh release view desktop-latest --json tagName,assets \
   -q '{tag:.tagName,assets:[.assets[].name]}'
-curl -fsSL https://github.com/ymichael/bb/releases/download/desktop-latest/desktop-version.json
+curl -fsSL https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json
 ```
 
 Confirm `desktop-version.json` reports the released version and that the

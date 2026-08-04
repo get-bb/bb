@@ -346,7 +346,7 @@ The import is type-only and erased at load; the scaffold ships the full API
 as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
 needed. Confused, or need a symbol the types don't explain? Clone the repo:
-https://github.com/ymichael/bb. The API in
+https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and

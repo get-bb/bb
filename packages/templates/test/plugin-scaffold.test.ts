@@ -73,7 +73,7 @@ describe("scaffoldPlugin bundled types", () => {
     ).rejects.toThrow();
 
     const readme = await readFile(join(targetDir, "README.md"), "utf8");
-    expect(readme).toContain("https://github.com/ymichael/bb");
+    expect(readme).toContain("https://github.com/get-bb/bb");
   });
 
   it("also ships app types and maps the /app subpath for --app plugins", async () => {
@@ -98,5 +98,12 @@ describe("scaffoldPlugin bundled types", () => {
       "./types/bb-plugin-sdk-app.d.ts",
     ]);
     expect(tsconfig.include).toContain("app.tsx");
+
+    const components = JSON.parse(
+      await readFile(join(targetDir, "components.json"), "utf8"),
+    );
+    expect(components.registries["@bb"]).toBe(
+      "https://raw.githubusercontent.com/get-bb/bb/desktop-v0.9.0/packages/plugin-registry/r/{name}.json",
+    );
   });
 });

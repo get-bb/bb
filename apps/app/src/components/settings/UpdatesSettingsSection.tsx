@@ -39,7 +39,7 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { sdk } from "@/lib/sdk";
 
-const CHANGELOG_URL = "https://github.com/ymichael/bb/blob/main/CHANGELOG.md";
+const CHANGELOG_URL = "https://github.com/get-bb/bb/blob/main/CHANGELOG.md";
 
 /**
  * The rows and the machine bands above them share one text edge: names start

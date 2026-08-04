@@ -380,7 +380,7 @@ jobs:
             echo
             echo "- version: \`$VERSION\`"
             echo "- app identity: \`dev.bb.desktop.nightly\`"
-            echo "- release: https://github.com/ymichael/bb/releases/tag/desktop-nightly"
-            echo "- update feed: https://github.com/ymichael/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- release: https://github.com/get-bb/bb/releases/tag/desktop-nightly"
+            echo "- update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
             echo "- retention for workflow artifacts: 14 days"
           } >> "$GITHUB_STEP_SUMMARY"

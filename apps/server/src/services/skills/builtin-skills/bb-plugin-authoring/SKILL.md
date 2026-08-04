@@ -113,7 +113,7 @@ The scaffold ships the full API as bundled type declarations in `types/`
 `tsconfig.json` maps `@bb/plugin-sdk` to them, so `npm install && npx tsc
 --noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
 are the authoritative, exhaustive surface: read them (or the source at
-<https://github.com/ymichael/bb>, cloned) when you need an exact signature or
+<https://github.com/get-bb/bb>, cloned) when you need an exact signature or
 a symbol this skill doesn't cover. Backend API imports normally stay type-only;
 the root runtime exports are `defineRpcContract`, supplied by BB for shared
 schema contracts, and the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:

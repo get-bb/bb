@@ -71,6 +71,8 @@ const AUTOMATIONS_PLUGIN = {
   app: { hasApp: true, bundle: null },
 };
 
+// Preserve the pre-transfer owner in this retired remote-marketplace fixture:
+// persisted installs can still carry the historical source identity.
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
   pluginId: "github",

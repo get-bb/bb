@@ -4,13 +4,13 @@
   "description": "Create and edit Markdown documents across local and connected-host vaults.",
   "private": true,
   "license": "MIT",
-  "homepage": "https://github.com/ymichael/bb#readme",
+  "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
-    "url": "https://github.com/ymichael/bb/issues"
+    "url": "https://github.com/get-bb/bb/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ymichael/bb.git",
+    "url": "git+https://github.com/get-bb/bb.git",
     "directory": "official-plugins/docs"
   },
   "type": "module",

@@ -25,7 +25,7 @@
     {
       "channel": "latest",
       "provider": "generic",
-      "url": "https://github.com/ymichael/bb/releases/download/desktop-latest/"
+      "url": "https://github.com/get-bb/bb/releases/download/desktop-latest/"
     }
   ],
   "mac": {
