@@ -9,6 +9,7 @@ import bbIcon from "../assets/bb-icon.png";
 import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
+import { ChangelogInline } from "../landing/changelog-inline";
 import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
@@ -56,17 +57,6 @@ const RELEASES = parseChangelog(changelogMd);
 /** "0.0.30" → "0-0-30", a fragment id that survives URL parsing. */
 function anchorId(version: string): string {
   return version.replaceAll(".", "-");
-}
-
-/** Render a changelog line, turning `backtick` spans into <code>. */
-function inline(text: string): ReactNode {
-  const parts = text.split("`");
-  if (parts.length === 1) {
-    return text;
-  }
-  return parts.map((part, index) =>
-    index % 2 === 1 ? <code key={index}>{part}</code> : <Fragment key={index}>{part}</Fragment>,
-  );
 }
 
 /* ── Release media ────────────────────────────────────────────────────
@@ -135,11 +125,15 @@ function Blocks({ blocks }: { blocks: ReleaseBlock[] }) {
         block.kind === "list" ? (
           <ul key={index}>
             {block.items.map((item) => (
-              <li key={item}>{inline(item)}</li>
+              <li key={item}>
+                <ChangelogInline text={item} />
+              </li>
             ))}
           </ul>
         ) : (
-          <p key={index}>{inline(block.text)}</p>
+          <p key={index}>
+            <ChangelogInline text={block.text} />
+          </p>
         ),
       )}
     </>
@@ -164,7 +158,7 @@ function ReleaseEntry({ release }: { release: Release }) {
         {release.lede.map((block, index) =>
           block.kind === "paragraph" ? (
             <p key={index} className="lede">
-              {inline(block.text)}
+              <ChangelogInline text={block.text} />
             </p>
           ) : null,
         )}
