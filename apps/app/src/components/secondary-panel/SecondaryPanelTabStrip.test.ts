@@ -6,8 +6,6 @@ import { afterEach, vi } from "vitest";
 import { describe, expect, it } from "vitest";
 import {
   SecondaryPanelTabStrip,
-  getTabStripChevronEdgeClass,
-  getTabStripChevronVisibilityClass,
   SECONDARY_PANEL_TAB_STRIP_FADE_TONE,
 } from "./SecondaryPanelTabStrip";
 
@@ -17,25 +15,8 @@ afterEach(() => {
 });
 
 describe("secondary panel tab-strip edge fades", () => {
-  it("uses one opaque themed edge fade and no second caret gradient", () => {
+  it("uses the themed edge fade without overlay scroll controls", () => {
     expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
-    expect(getTabStripChevronEdgeClass("left")).toBe(
-      "left-0 justify-start",
-    );
-    expect(getTabStripChevronEdgeClass("right")).toBe(
-      "right-0 justify-end",
-    );
-  });
-
-  it("keeps an available scroll control visible without requiring hover", () => {
-    const visibleClass = getTabStripChevronVisibilityClass(true);
-
-    expect(visibleClass).toContain("pointer-events-auto");
-    expect(visibleClass).toContain("opacity-100");
-    expect(visibleClass).not.toContain("hover:");
-    expect(getTabStripChevronVisibilityClass(false)).toBe(
-      "pointer-events-none opacity-0",
-    );
   });
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
@@ -50,7 +31,7 @@ describe("secondary panel tab-strip edge fades", () => {
       },
     );
 
-    const { container } = render(
+    const { container, queryByRole } = render(
       createElement(SecondaryPanelTabStrip, {
         fileTabs: [
           {
@@ -76,5 +57,12 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(content).not.toBeNull();
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
+    expect(container.querySelectorAll("[data-overflow-fade]")).toHaveLength(2);
+    expect(
+      container
+        .querySelector("[data-overflow-fade='left']")
+        ?.classList.contains("w-6"),
+    ).toBe(true);
+    expect(queryByRole("button", { name: /scroll tabs/i })).toBeNull();
   });
 });
