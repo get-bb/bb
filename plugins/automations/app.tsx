@@ -254,44 +254,38 @@ function useAutomationExecutionOptions(
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
+  const requestKey = `${projectId}:${automationId}`;
+  const requestedKeyRef = useRef<string | null>(null);
   const [state, setState] = useState<{
     options: AutomationExecutionOptionsResponse | null;
     error: string | null;
-    requested: boolean;
-  }>({ options: null, error: null, requested: false });
+  }>({ options: null, error: null });
 
   useEffect(() => {
-    setState({ options: null, error: null, requested: false });
-  }, [automationId, projectId]);
+    requestedKeyRef.current = null;
+    setState({ options: null, error: null });
+  }, [requestKey]);
 
   useEffect(() => {
-    if (!enabled) {
-      if (state.error !== null) {
-        setState({ options: null, error: null, requested: false });
-      }
-      return;
-    }
-    if (state.options !== null || state.requested) return;
+    if (!enabled || requestedKeyRef.current === requestKey) return;
+    requestedKeyRef.current = requestKey;
     let active = true;
-    setState((current) => ({ ...current, requested: true }));
+    setState({ options: null, error: null });
     rpc.call("automations_execution_options", { projectId, automationId }).then(
       (options) => {
-        if (active) setState({ options, error: null, requested: true });
+        if (active) setState({ options, error: null });
       },
       (error: unknown) => {
         if (active) {
-          setState({
-            options: null,
-            error: errorText(error),
-            requested: true,
-          });
+          requestedKeyRef.current = null;
+          setState({ options: null, error: errorText(error) });
         }
       },
     );
     return () => {
       active = false;
     };
-  }, [automationId, enabled, projectId, rpc, state]);
+  }, [automationId, enabled, projectId, requestKey, rpc]);
 
   return { options: state.options, error: state.error };
 }
@@ -302,51 +296,51 @@ function useAutomationPermissionOptions(
 ): {
   options: AutomationPermissionOptionsResponse | null;
   error: string | null;
+  retry: () => void;
 } {
   const rpc = useRpc<typeof automationRpcContract>();
   const { projectId, automationId } = route;
+  const requestKey = `${projectId}:${automationId}`;
+  const requestedKeyRef = useRef<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{
     options: AutomationPermissionOptionsResponse | null;
     error: string | null;
-    requested: boolean;
-  }>({ options: null, error: null, requested: false });
+  }>({ options: null, error: null });
 
   useEffect(() => {
-    setState({ options: null, error: null, requested: false });
-  }, [automationId, projectId]);
+    requestedKeyRef.current = null;
+    setState({ options: null, error: null });
+  }, [requestKey]);
 
   useEffect(() => {
-    if (!enabled) {
-      if (state.error !== null) {
-        setState({ options: null, error: null, requested: false });
-      }
-      return;
-    }
-    if (state.options !== null || state.requested) return;
+    if (!enabled || requestedKeyRef.current === requestKey) return;
+    requestedKeyRef.current = requestKey;
     let active = true;
-    setState((current) => ({ ...current, requested: true }));
+    setState({ options: null, error: null });
     rpc
       .call("automations_permission_options", { projectId, automationId })
       .then(
         (options) => {
-          if (active) setState({ options, error: null, requested: true });
+          if (active) setState({ options, error: null });
         },
         (error: unknown) => {
           if (active) {
-            setState({
-              options: null,
-              error: errorText(error),
-              requested: true,
-            });
+            requestedKeyRef.current = null;
+            setState({ options: null, error: errorText(error) });
           }
         },
       );
     return () => {
       active = false;
     };
-  }, [automationId, enabled, projectId, rpc, state]);
+  }, [attempt, automationId, enabled, projectId, requestKey, rpc]);
 
-  return { options: state.options, error: state.error };
+  const retry = useCallback(() => {
+    requestedKeyRef.current = null;
+    setAttempt((current) => current + 1);
+  }, []);
+  return { options: state.options, error: state.error, retry };
 }
 
 interface RunsState {
@@ -664,11 +658,14 @@ function DetailView({
   const openEdit = useCallback(() => {
     if (automation === null) return;
     if (automation.execution.mode === "agent") {
+      if (permissionOptionsState.error !== null) {
+        permissionOptionsState.retry();
+      }
       setEditingRequested(true);
       return;
     }
     editViaThread(automation);
-  }, [automation, editViaThread]);
+  }, [automation, editViaThread, permissionOptionsState]);
 
   const updateAgent = useCallback(
     async (agent: AgentExecutionUpdate) => {

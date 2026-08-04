@@ -665,11 +665,17 @@ describe("Skill detail recipe", () => {
       fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
       expect(pagination.textContent).toContain("Page 3 of 3");
 
+      // Momentum can keep moving toward the boundary, then briefly rebound in
+      // the opposite direction. Both events are still part of the gesture that
+      // moved from page 2 to page 3, so the rebound must not navigate back.
+      fireEvent.wheel(viewport!, { deltaY: 100 });
+      expect(pagination.textContent).toContain("Page 3 of 3");
+      fireEvent.wheel(viewport!, { deltaY: -40 });
+      expect(pagination.textContent).toContain("Page 3 of 3");
+
       act(() => {
         vi.advanceTimersByTime(161);
       });
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
       fireEvent.wheel(viewport!, { deltaY: -40 });
       expect(pagination.textContent).toContain("Page 2 of 3");
     } finally {

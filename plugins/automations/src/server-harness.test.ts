@@ -45,6 +45,7 @@ async function bootAutomationsPlugin(
     "auto",
     "full",
   ],
+  routedPermissionModes?: Array<"accept-edits" | "auto" | "full">,
 ): Promise<FakePluginHost> {
   const host = createFakePluginHost({
     pluginId: "automations",
@@ -76,11 +77,16 @@ async function bootAutomationsPlugin(
         },
       },
       providers: {
-        async list() {
+        async list(routing) {
+          const permissionModes =
+            routing?.environmentId === "env_routed" &&
+            routedPermissionModes !== undefined
+              ? routedPermissionModes
+              : supportedPermissionModes;
           return [
             {
               id: "codex",
-              capabilities: { supportedPermissionModes },
+              capabilities: { supportedPermissionModes: permissionModes },
             },
           ] as never;
         },
@@ -737,6 +743,39 @@ describe("automations server plugin harness", () => {
     expect(unchanged.execution).toMatchObject({
       mode: "agent",
       permissionMode: "accept-edits",
+    });
+
+    await harness.dispose();
+  });
+
+  it("validates permission updates against the automation target environment", async () => {
+    const { harness } = await bootAutomationsPlugin(
+      ["accept-edits"],
+      ["full"],
+    );
+    const created = await createAgentAutomation(harness);
+
+    await expect(
+      harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        agent: {
+          permissionMode: "full",
+          target: {
+            type: "environment",
+            environment: {
+              type: "reuse",
+              environmentId: "env_routed",
+            },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      execution: {
+        mode: "agent",
+        permissionMode: "full",
+        environment: { type: "reuse", environmentId: "env_routed" },
+      },
     });
 
     await harness.dispose();

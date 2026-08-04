@@ -234,6 +234,16 @@ function PagedSkillContent({
       }
     };
 
+    const refreshWheelGestureReset = () => {
+      if (wheelResetTimeoutRef.current !== null) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+      }
+      wheelResetTimeoutRef.current = window.setTimeout(
+        resetWheelGesture,
+        SKILL_PAGE_WHEEL_GESTURE_RESET_MS,
+      );
+    };
+
     const handleWheel = (event: WheelEvent) => {
       if (
         event.ctrlKey ||
@@ -243,24 +253,19 @@ function PagedSkillContent({
         return;
       }
 
+      refreshWheelGestureReset();
       const direction = event.deltaY > 0 ? 1 : -1;
       const currentPage = pageRef.current;
       const pageCount = pageCountRef.current;
       const nextPage = currentPage + direction;
       if (nextPage < 0 || nextPage >= pageCount) {
-        resetWheelGesture();
+        if (!wheelPageChangedRef.current) {
+          wheelDeltaRef.current = 0;
+        }
         return;
       }
 
       event.preventDefault();
-      if (wheelResetTimeoutRef.current !== null) {
-        window.clearTimeout(wheelResetTimeoutRef.current);
-      }
-      wheelResetTimeoutRef.current = window.setTimeout(
-        resetWheelGesture,
-        SKILL_PAGE_WHEEL_GESTURE_RESET_MS,
-      );
-
       if (wheelPageChangedRef.current) return;
       if (
         wheelDeltaRef.current !== 0 &&
