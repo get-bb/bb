@@ -1949,71 +1949,73 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
 
-.mockup-wrap-automation {
+.mockup-wrap-customize {
   width: min(100%, 360px);
   margin: 0;
 }
 
-.mock-automation-mobile {
+.mock-customize-mobile {
   width: 100%;
   border-radius: 22px;
 }
 
-.mock-automation-mobile .mock-bar {
+.mock-customize-mobile .mock-bar {
   height: 42px;
 }
 
-.mock-automation-mobile .bar-left {
+.mock-customize-mobile .bar-left {
   width: auto;
   gap: 10px;
   padding: 0 10px 0 14px;
 }
 
-.mock-automation-mobile .bar-main {
+.mock-customize-mobile .bar-main {
   padding: 0 12px;
 }
 
-.mock-automation-mobile .bar-actions {
+.mock-customize-mobile .bar-actions {
   display: none;
 }
 
-.automation-body {
+.customize-body {
   height: 438px;
   border-top: 0;
+  /* Clips the plugin panel while it waits offscreen below. */
+  overflow: hidden;
 }
 
-.automation-body.leaving {
-  animation: automation-leave 0.5s ease forwards;
+.customize-body.leaving {
+  animation: customize-leave 0.5s ease forwards;
 }
 
-.mock-automation-mobile .main {
+.mock-customize-mobile .main {
   min-height: 0;
 }
 
-.automation-feed {
+.customize-feed {
   padding: 18px 18px 16px;
   gap: 11px;
 }
 
-.automation-msg {
+.customize-msg {
   opacity: 0;
   transform: translateY(8px);
-  animation: automation-msg-in 0.44s ease forwards;
+  animation: customize-msg-in 0.44s ease forwards;
 }
 
-.automation-tool {
+.customize-tool {
   color: var(--accent);
 }
 
-.automation-composer {
+.customize-composer {
   padding: 12px;
 }
 
-.automation-composer-box {
+.customize-composer-box {
   padding: 11px 12px;
 }
 
-.automation-typeahead {
+.customize-typeahead {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -2022,18 +2024,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--ink);
 }
 
-.automation-type-text {
+.customize-type-text {
   display: inline-block;
   width: 0;
-  max-width: min(100%, var(--automation-prompt-width));
+  max-width: min(100%, var(--customize-prompt-width));
   overflow: hidden;
   white-space: nowrap;
   animation:
-    automation-type 1.45s steps(28, end) 0.25s forwards,
-    automation-clear 0.2s ease 2.95s forwards;
+    customize-type 1.45s steps(28, end) 0.25s forwards,
+    customize-clear 0.2s ease 2.95s forwards;
 }
 
-.automation-caret {
+.customize-caret {
   display: inline-block;
   width: 1px;
   height: 1em;
@@ -2041,57 +2043,167 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: currentColor;
   color: var(--ink);
   animation:
-    automation-caret-blink 0.8s step-end infinite,
-    automation-clear 0.2s ease 2.95s forwards;
+    customize-caret-blink 0.8s step-end infinite,
+    customize-clear 0.2s ease 2.95s forwards;
 }
 
-.automation-send {
-  animation: automation-send-pulse 0.42s ease 2.7s both;
+.customize-send {
+  animation: customize-send-pulse 0.42s ease 2.7s both;
 }
 
-.automation-context {
+.customize-context {
   gap: 5px;
 }
 
-.automation-context .ctx {
+.customize-context .ctx {
   max-width: 100%;
 }
 
-@keyframes automation-type {
+@keyframes customize-type {
   to {
-    width: min(100%, var(--automation-prompt-width));
+    width: min(100%, var(--customize-prompt-width));
   }
 }
 
-@keyframes automation-clear {
+@keyframes customize-clear {
   to {
     opacity: 0;
   }
 }
 
-@keyframes automation-caret-blink {
+@keyframes customize-caret-blink {
   50% {
     opacity: 0;
   }
 }
 
-@keyframes automation-send-pulse {
+@keyframes customize-send-pulse {
   50% {
     transform: translateY(-1px) scale(1.04);
-    box-shadow: 0 8px 18px -12px color-mix(in oklab, var(--ink) 60%, transparent);
+    box-shadow: 0 8px 18px -12px
+      color-mix(in oklab, var(--ink) 60%, transparent);
   }
 }
 
-@keyframes automation-msg-in {
+@keyframes customize-msg-in {
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-@keyframes automation-leave {
+@keyframes customize-leave {
   to {
     opacity: 0;
+  }
+}
+
+/* The panel the agent just built, sliding up over the thread that built it.
+   Absolute inside .customize-body so the reveal never reflows the mock. */
+.plugin-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  transform: translateY(100%);
+  animation: plugin-panel-up 0.62s cubic-bezier(0.16, 1, 0.3, 1) 7.9s forwards;
+}
+
+.plugin-panel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  flex-shrink: 0;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.plugin-panel-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.plugin-panel-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.plugin-panel-rows {
+  padding: 6px 0;
+}
+
+/* Mirrors the Tasks plugin's list row: status dot, key, title, priority. */
+.plugin-task {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  height: 34px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+  opacity: 0;
+  animation: plugin-task-in 0.34s ease forwards;
+}
+
+.plugin-task-status {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--subtle);
+}
+
+.plugin-task-status.is-in_progress {
+  border-color: var(--spark);
+  background: linear-gradient(to right, var(--spark) 50%, transparent 50%);
+}
+
+.plugin-task-status.is-todo {
+  border-color: var(--accent);
+}
+
+.plugin-task-key {
+  width: 38px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plugin-task-prio {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--subtle);
+}
+
+.plugin-task-prio.is-high {
+  color: var(--spark);
+}
+
+@keyframes plugin-panel-up {
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes plugin-task-in {
+  to {
+    opacity: 1;
   }
 }
 
@@ -2506,7 +2618,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
      card's drop shadow fades into the left gutter instead of being shaved off
      at the card's own edge. overflow-y stays visible so the bottom shadow and
      the scroll-in entrance still show. */
-  .mockup-wrap:not(.mockup-wrap-automation) {
+  .mockup-wrap:not(.mockup-wrap-customize) {
     margin-left: -28px;
     margin-right: -28px;
     padding-left: 28px;
@@ -2519,7 +2631,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
      (`--mock-visible-width`) fills the available width. Both vars are defined
      only here, so the mock is unscaled above this breakpoint; the fallback
      scale covers the pre-hydration/no-JS paint. */
-  .mockup-wrap:not(.mockup-wrap-automation) .mock {
+  .mockup-wrap:not(.mockup-wrap-customize) .mock {
     --mock-desktop-width: 980px;
     --mock-visible-width: 560px;
     width: var(--mock-desktop-width);
@@ -2592,26 +2704,41 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     animation: none;
   }
 
-  .automation-body,
-  .automation-msg,
-  .automation-type-text,
-  .automation-caret,
-  .automation-send {
+  .customize-body,
+  .customize-msg,
+  .customize-type-text,
+  .customize-caret,
+  .customize-send {
     animation: none;
   }
 
-  .automation-msg {
+  .customize-msg {
     opacity: 1;
     transform: none;
   }
 
-  .automation-type-text {
+  .customize-type-text {
     clip-path: none;
     opacity: 0;
   }
 
-  .automation-caret {
+  .customize-caret {
     opacity: 0;
+  }
+
+  /* No slide: show the built panel already in place, which is the point of
+     the section. */
+  .plugin-panel,
+  .plugin-task {
+    animation: none;
+  }
+
+  .plugin-panel {
+    transform: none;
+  }
+
+  .plugin-task {
+    opacity: 1;
   }
 
   .tg-msg,
