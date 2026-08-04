@@ -196,7 +196,8 @@ describe("Codex ChatGPT client", () => {
 
     const result = await completeCodexInference({
       type: "codex.inference.complete",
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "none",
       prompt: "Return a title",
       outputSchema: {
         type: "object",
@@ -215,7 +216,7 @@ describe("Codex ChatGPT client", () => {
     });
 
     expect(result).toEqual({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
       value: { title: "Short title" },
     });
     const [, init] = requiredFetchCall(fetchMock, 0);
@@ -225,9 +226,10 @@ describe("Codex ChatGPT client", () => {
     expect(headers.get("openai-beta")).toBe("responses=experimental");
     const requestBody = JSON.parse(textBodyFromInit(init));
     expect(requestBody).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
       instructions:
         "Follow the user prompt and respond with structured JSON that matches the requested schema.",
+      reasoning: { effort: "none" },
       stream: true,
       text: {
         format: {
@@ -273,7 +275,8 @@ describe("Codex ChatGPT client", () => {
 
     const result = await completeCodexInference({
       type: "codex.inference.complete",
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "none",
       prompt: "Return a title",
       outputSchema: {
         type: "object",
@@ -287,7 +290,7 @@ describe("Codex ChatGPT client", () => {
     });
 
     expect(result).toEqual({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
       value: { title: "OpenAI title" },
     });
     const [url, init] = requiredFetchCall(fetchMock, 0);
@@ -297,9 +300,10 @@ describe("Codex ChatGPT client", () => {
     expect(headers.get("chatgpt-account-id")).toBeNull();
     const requestBody = JSON.parse(textBodyFromInit(init));
     expect(requestBody).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-luna",
       instructions:
         "Follow the user prompt and respond with structured JSON that matches the requested schema.",
+      reasoning: { effort: "none" },
       stream: true,
       text: {
         format: {
@@ -336,6 +340,7 @@ describe("Codex ChatGPT client", () => {
     await completeCodexInference({
       type: "codex.inference.complete",
       model: "gpt-5.4-mini",
+      reasoningEffort: "none",
       prompt: "Return a title",
       outputSchema: { type: "object" },
       timeoutMs: 10000,
@@ -376,6 +381,7 @@ describe("Codex ChatGPT client", () => {
       completeCodexInference({
         type: "codex.inference.complete",
         model: "gpt-5.4-mini",
+        reasoningEffort: "none",
         prompt: "Return a title",
         outputSchema: { type: "object" },
         timeoutMs: 10000,
@@ -398,6 +404,7 @@ describe("Codex ChatGPT client", () => {
       completeCodexInference({
         type: "codex.inference.complete",
         model: "gpt-5.4-mini",
+        reasoningEffort: "none",
         prompt: "Return a title",
         outputSchema: { type: "object" },
         timeoutMs: 20,
@@ -425,6 +432,7 @@ describe("Codex ChatGPT client", () => {
       await completeCodexInference({
         type: "codex.inference.complete",
         model: "gpt-5.4-mini",
+        reasoningEffort: "none",
         prompt: "Return a title",
         outputSchema: { type: "object" },
         timeoutMs: 10000,

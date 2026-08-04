@@ -112,6 +112,9 @@ interface CodexResponseFormat {
 interface CodexResponsesRequest {
   model: string;
   instructions: string;
+  reasoning: {
+    effort: InferenceCompleteCommand["reasoningEffort"];
+  };
   store: boolean;
   stream: boolean;
   input: CodexInputMessage[];
@@ -656,6 +659,7 @@ function buildCodexResponsesRequest(
     model: command.model,
     instructions:
       "Follow the user prompt and respond with structured JSON that matches the requested schema.",
+    reasoning: { effort: command.reasoningEffort },
     store: false,
     stream: true,
     input: [

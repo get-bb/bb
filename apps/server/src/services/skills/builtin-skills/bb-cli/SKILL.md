@@ -37,6 +37,10 @@ message agents, or inspect projects, providers, and environments.
 
 ## App Settings
 
+- `BB_INFERENCE` selects the shared model for server-side helper completions,
+  including thread titles and commit subjects. It defaults to
+  `codex/gpt-5.6-luna`; set an override with
+  `bb-app config set BB_INFERENCE <provider/model>`.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).

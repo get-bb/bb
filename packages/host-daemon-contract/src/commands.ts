@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 69 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 70 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -410,6 +410,7 @@ const codexInferenceCompleteCommandSchema = z
   .object({
     type: z.literal("codex.inference.complete"),
     model: z.string().min(1),
+    reasoningEffort: z.literal("none"),
     prompt: z.string().min(1),
     outputSchema: jsonObjectSchema,
     timeoutMs: z.number().int().positive(),

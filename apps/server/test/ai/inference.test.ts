@@ -19,7 +19,7 @@ const titleSchema = Type.Object({
 describe("inferenceComplete", () => {
   it("surfaces missing host for codex inference", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       await expect(
         inferenceComplete(harness.deps, {
@@ -38,7 +38,7 @@ describe("inferenceComplete", () => {
 
   it("routes codex inference through the host daemon and validates structured output", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const completion = inferenceComplete(harness.deps, {
@@ -54,13 +54,14 @@ describe("inferenceComplete", () => {
       expect(queued.row.hostId).toBe(host.id);
       expect(queued.command).toMatchObject({
         type: "codex.inference.complete",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
         prompt: "Generate a title",
         timeoutMs: 5000,
       });
 
       await reportQueuedCommandSuccess(harness, queued, {
-        model: "gpt-5.4-mini",
+        model: "gpt-5.6-luna",
         value: { title: "Generated title" },
       });
 
@@ -72,7 +73,7 @@ describe("inferenceComplete", () => {
 
   it("converts codex daemon timeouts into inference timeouts", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       seedHostSession(harness.deps);
       const completion = inferenceComplete(harness.deps, {
@@ -98,7 +99,7 @@ describe("inferenceComplete", () => {
 
   it("surfaces codex daemon auth errors", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       seedHostSession(harness.deps);
       const completion = inferenceComplete(harness.deps, {

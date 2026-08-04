@@ -130,6 +130,9 @@ async function completeWithCodexHostDaemon<T extends TSchema>(
       command: {
         type: "codex.inference.complete",
         model: modelInfo.modelId,
+        // Helper inference is limited to short titles and commit subjects;
+        // preserve the previous no-reasoning latency and cost profile.
+        reasoningEffort: "none",
         prompt: args.prompt,
         outputSchema: parseInferenceSchema(args.schema),
         timeoutMs,

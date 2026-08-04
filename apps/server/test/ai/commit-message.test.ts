@@ -207,7 +207,7 @@ describe("commit message generation", () => {
 
   it("returns null for Codex inference setup failures", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       await expect(
         generateCommitMessage(harness.deps, commitMessageArgs),
@@ -217,7 +217,7 @@ describe("commit message generation", () => {
 
   it("returns null for transient Codex inference command failures", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       seedHostSession(harness.deps);
       const messagePromise = generateCommitMessage(
@@ -338,7 +338,7 @@ describe("commit message generation", () => {
 
   it("uses the route fallback message when Codex commit-message inference fails", async () => {
     await withTestHarness({
-      inferenceModel: "codex/gpt-5.4-mini",
+      inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
