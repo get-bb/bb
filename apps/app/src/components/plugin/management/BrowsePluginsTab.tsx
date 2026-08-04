@@ -6,7 +6,6 @@ import {
   ResourceBrowseGrid,
   ResourceCollectionViewport,
   ResourceInstallControl,
-  ResourceInstalledControl,
   ResourceListState,
   ResourceSortMenu,
   ResourceToolbar,
@@ -184,17 +183,21 @@ function BrowseCard({
   );
   const description =
     entry.description.length > 0 ? entry.description : undefined;
+  const descriptionArea = (
+    <span className="block min-h-[2lh]">{description}</span>
+  );
   const byline =
     !entry.compatible && entry.incompatibleReason !== null ? (
       <span className="text-warning-text">{entry.incompatibleReason}</span>
     ) : undefined;
   const headerAction =
     installedPluginId !== null ? (
-      <ResourceInstalledControl
+      <ResourceInstallControl
         accessibleLabel={`Uninstall ${entry.displayName}`}
         pending={uninstall.isPending}
         presentation="icon"
         tooltip={`Uninstall ${entry.displayName}`}
+        className="border-success/40 bg-success/15 text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-success/55 hover:bg-success/25 hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] focus-visible:border-success/55 focus-visible:bg-success/25 focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
         onAction={() => setConfirmingUninstall(true)}
       />
     ) : (
@@ -219,7 +222,7 @@ function BrowseCard({
         className="min-h-20 gap-x-2 gap-y-1.5 p-2.5"
         leading={leading}
         title={entry.displayName}
-        description={description}
+        description={descriptionArea}
         byline={byline}
         headerAction={headerAction}
         openLabel={`Open ${entry.displayName} details`}

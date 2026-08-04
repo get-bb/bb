@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -22,7 +29,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 interface NoteSummary {
   path: string;
@@ -101,7 +111,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("moves the sidebar toggle into the shared panel header", async () => {
+  it("keeps the sidebar toggle in the page header above sidebar actions", async () => {
     const panel = app.navPanels[0]!;
     const slot = renderSlot(
       panel,
@@ -112,20 +122,73 @@ describe("Docs nav panel", () => {
 
     const HeaderContent = panel.headerContent!;
     const header = render(<HeaderContent subPath="personal" />);
-    await waitFor(() => {
-      expect(
-        slot.container.querySelector('[aria-label="Collapse notes sidebar"]'),
-      ).toBeNull();
+    const headerSegment = header.getByTestId("notes-sidebar-header");
+    const headerBackground = header.getByTestId(
+      "notes-sidebar-header-background",
+    );
+    expect(headerSegment.classList.contains("w-8")).toBe(true);
+    expect(headerBackground.classList.contains("bg-sidebar")).toBe(true);
+    expect(headerBackground.style.width).toBe("288px");
+    expect(headerBackground.style.right).toBe("-16px");
+    const toolbar = slot.getByRole("toolbar", {
+      name: "Notes sidebar actions",
     });
-
+    expect(slot.getByRole("navigation", { name: "Notes" })).toBeTruthy();
+    expect(
+      slot.container.querySelector("aside")?.classList.contains("bg-sidebar"),
+    ).toBe(true);
+    expect(
+      within(toolbar).getByRole("button", { name: "Search notes" }),
+    ).toBeTruthy();
+    expect(
+      within(toolbar).getByRole("button", { name: "New note" }),
+    ).toBeTruthy();
+    expect(
+      within(toolbar).getByRole("button", { name: "New folder" }),
+    ).toBeTruthy();
+    expect(
+      within(toolbar).queryByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
+    ).toBeNull();
     fireEvent.click(
       header.getByRole("button", { name: "Collapse notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
+    expect(headerBackground.style.width).toBe("48px");
     fireEvent.click(
       header.getByRole("button", { name: "Expand notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+    expect(headerBackground.style.width).toBe("288px");
+
+    header.unmount();
+    const fallbackToggle = await slot.findByRole("button", {
+      name: "Collapse notes sidebar",
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Search notes" }));
+    await waitFor(() => {
+      expect(slot.getByRole("button", { name: "Close search" })).toBeTruthy();
+    });
+    expect(fallbackToggle.parentElement?.classList.contains("gap-1")).toBe(
+      true,
+    );
+  });
+
+  it("keeps the sidebar header background aligned behind split host controls", () => {
+    const HeaderContent = app.navPanels[0]!.headerContent!;
+    const header = render(
+      <div data-split-pane-id="pane-docs">
+        <HeaderContent subPath="personal" />
+      </div>,
+    );
+
+    const headerSegment = header.getByTestId("notes-sidebar-header");
+    const background = header.getByTestId("notes-sidebar-header-background");
+    expect(headerSegment.classList.contains("-mr-4")).toBe(false);
+    expect(headerSegment.classList.contains("w-8")).toBe(true);
+    expect(background.style.right).toBe("-48px");
+    expect(background.style.width).toBe("288px");
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {
@@ -159,6 +222,19 @@ describe("Docs nav panel", () => {
   });
 
   it("keeps folder children together and lets the sidebar collapse and resize", async () => {
+    let nextFrameId = 1;
+    const frames = new Map<number, FrameRequestCallback>();
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const frameId = nextFrameId;
+      nextFrameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    const cancelAnimationFrame = vi.fn((frameId: number) => {
+      frames.delete(frameId);
+    });
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "personal" },
@@ -218,9 +294,122 @@ describe("Docs nav panel", () => {
     fireEvent.pointerDown(resizeHandle, { clientX: 288, pointerId: 7 });
     expect(setPointerCapture).toHaveBeenCalledWith(7);
     fireEvent.pointerMove(resizeHandle, { clientX: 176, pointerId: 7 });
-    expect(slot.container.querySelector("aside")?.style.width).toBe("400px");
+    fireEvent.pointerMove(resizeHandle, { clientX: 156, pointerId: 7 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+    const firstFrame = frames.entries().next().value as
+      | [number, FrameRequestCallback]
+      | undefined;
+    expect(firstFrame).toBeTruthy();
+    act(() => firstFrame?.[1](0));
+    frames.delete(firstFrame?.[0] ?? -1);
+    expect(slot.container.querySelector("aside")?.style.width).toBe("420px");
+    fireEvent.pointerMove(resizeHandle, { clientX: 146, pointerId: 7 });
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
     fireEvent.pointerUp(resizeHandle, { pointerId: 7 });
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(slot.container.querySelector("aside")?.style.width).toBe("430px");
     expect(releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("isolates sidebar width and collapse state between panes on one vault", async () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 17),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const panel = app.navPanels[0]!;
+    const PanelContent = panel.component;
+    const rpc = { listNotes: () => listNotesResult([]) };
+    const first = renderSlot(panel, { subPath: "personal" }, { rpc });
+    const second = renderSlot(panel, { subPath: "personal" }, { rpc });
+    first.rerender(
+      <div data-split-pane-id="pane-one">
+        <PanelContent subPath="personal" />
+      </div>,
+    );
+    second.rerender(
+      <div data-split-pane-id="pane-two">
+        <PanelContent subPath="personal" />
+      </div>,
+    );
+    await within(first.container).findByText("Select a note or HTML page.");
+    await within(second.container).findByText("Select a note or HTML page.");
+
+    const HeaderContent = panel.headerContent!;
+    const firstHeader = render(
+      <div data-split-pane-id="pane-one">
+        <HeaderContent subPath="personal" />
+      </div>,
+    );
+    const secondHeader = render(
+      <div data-split-pane-id="pane-two">
+        <HeaderContent subPath="personal" />
+      </div>,
+    );
+    const firstAside = first.container.querySelector("aside");
+    const secondAside = second.container.querySelector("aside");
+    expect(firstAside?.style.width).toBe("288px");
+    expect(secondAside?.style.width).toBe("288px");
+
+    const resizeHandle = within(first.container).getByRole("separator", {
+      name: "Resize notes sidebar",
+    });
+    resizeHandle.setPointerCapture = vi.fn();
+    resizeHandle.hasPointerCapture = () => true;
+    resizeHandle.releasePointerCapture = vi.fn();
+    fireEvent.pointerDown(resizeHandle, { clientX: 288, pointerId: 11 });
+    fireEvent.pointerMove(resizeHandle, { clientX: 176, pointerId: 11 });
+    fireEvent.pointerUp(resizeHandle, { pointerId: 11 });
+
+    expect(firstAside?.style.width).toBe("400px");
+    expect(secondAside?.style.width).toBe("288px");
+    expect(
+      within(firstHeader.container).getByTestId(
+        "notes-sidebar-header-background",
+      ).style.width,
+    ).toBe("400px");
+    expect(
+      within(secondHeader.container).getByTestId(
+        "notes-sidebar-header-background",
+      ).style.width,
+    ).toBe("288px");
+
+    fireEvent.click(
+      within(firstHeader.container).getByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
+    );
+    expect(firstAside?.style.width).toBe("0px");
+    expect(secondAside?.style.width).toBe("288px");
+    expect(
+      within(secondHeader.container).getByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
+    ).toBeTruthy();
+
+    firstHeader.unmount();
+    first.unmount();
+    const reopened = renderSlot(panel, { subPath: "personal" }, { rpc });
+    reopened.rerender(
+      <div data-split-pane-id="pane-one">
+        <PanelContent subPath="personal" />
+      </div>,
+    );
+    await within(reopened.container).findByText("Select a note or HTML page.");
+    const reopenedHeader = render(
+      <div data-split-pane-id="pane-one">
+        <HeaderContent subPath="personal" />
+      </div>,
+    );
+    expect(reopened.container.querySelector("aside")?.style.width).toBe(
+      "288px",
+    );
+    expect(
+      within(reopenedHeader.container).getByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
+    ).toBeTruthy();
   });
 
   it("defaults the sidebar to collapsed in a narrow pane but allows expanding", async () => {

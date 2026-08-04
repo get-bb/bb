@@ -403,10 +403,14 @@ export function PluginDetail({
           <PluginDetailTable>
             <PluginDetailFieldRow
               label={updatesWithBb ? "Delivery" : "Installed"}
+              labelClassName="font-medium"
             >
               {installedValue}
             </PluginDetailFieldRow>
-            <PluginDetailFieldRow label="Version">
+            <PluginDetailFieldRow
+              label="Version"
+              labelClassName="font-medium"
+            >
               <span className="font-mono text-xs">{plugin.version}</span>
             </PluginDetailFieldRow>
             {hasReleaseUpdate ? (
