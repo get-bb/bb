@@ -99,10 +99,7 @@ describe("BrowsePluginsTab", () => {
         entryId: `official-${index + 1}`,
         pluginId: `official-${index + 1}`,
         displayName: `Official ${index + 1}`,
-        category:
-          index < CATALOG_STATUS.includedPluginCount
-            ? "Included with BB"
-            : "Productivity",
+        category: index % 2 === 0 ? "Productivity" : "Developer tools",
       }),
     );
     vi.stubGlobal(
@@ -132,6 +129,9 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
     ).toHaveLength(CATALOG_STATUS.pluginCount);
+    expect(
+      screen.queryByRole("heading", { name: "Included with BB" }),
+    ).toBeNull();
   });
 
   it("shows the official plugins and entries", async () => {

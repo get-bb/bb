@@ -388,6 +388,8 @@ describe("PluginsOverview", () => {
         name: "Inactive Official",
         enabled: false,
         status: "disabled",
+        provenance: "catalog",
+        catalogEntryId: "inactive-official",
       },
       {
         ...AUTOMATIONS_PLUGIN,
@@ -476,6 +478,52 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-official",
       "plugin-row-inactive-local",
     ]);
+  });
+
+  it("omits disabled auto-included builtins from the installed projection", async () => {
+    installFetch([
+      AUTOMATIONS_PLUGIN,
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "inactive-builtin",
+        name: "Inactive Builtin",
+        enabled: false,
+        status: "disabled",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "inactive-catalog",
+        name: "Inactive Catalog Plugin",
+        enabled: false,
+        status: "disabled",
+        provenance: "catalog",
+        catalogEntryId: "inactive-catalog",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "inactive-local",
+        name: "Inactive Local Plugin",
+        enabled: false,
+        status: "disabled",
+        provenance: "direct",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: "Installed, 3 plugins" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Inactive Builtin")).toBeNull();
+    expect(screen.getByText("Inactive Catalog Plugin")).toBeTruthy();
+    expect(screen.getByText("Inactive Local Plugin")).toBeTruthy();
   });
 
   it("consolidates built-in and catalog plugins under BB Official", async () => {

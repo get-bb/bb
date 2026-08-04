@@ -36,21 +36,58 @@ export const BUILTIN_PLUGINS = [
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
+    category: "Productivity",
   },
-  { name: "automations", pluginId: "automations", defaultEnabled: true },
-  { name: "connect", pluginId: "connect", defaultEnabled: true },
+  {
+    name: "automations",
+    pluginId: "automations",
+    defaultEnabled: true,
+    category: "Productivity",
+  },
+  {
+    name: "connect",
+    pluginId: "connect",
+    defaultEnabled: true,
+    category: "Developer tools",
+  },
   {
     name: "custom-instructions",
     pluginId: "custom-instructions",
     defaultEnabled: true,
+    category: "Productivity",
   },
-  { name: "inline-vis", pluginId: "inline-vis", defaultEnabled: true },
-  { name: "secrets", pluginId: "secrets", defaultEnabled: true },
-  { name: "side-chat", pluginId: "side-chat", defaultEnabled: true },
-  { name: "workflows", pluginId: "workflows", defaultEnabled: false },
+  {
+    name: "inline-vis",
+    pluginId: "inline-vis",
+    defaultEnabled: true,
+    category: "Developer tools",
+  },
+  {
+    name: "secrets",
+    pluginId: "secrets",
+    defaultEnabled: true,
+    category: "Developer tools",
+  },
+  {
+    name: "side-chat",
+    pluginId: "side-chat",
+    defaultEnabled: true,
+    category: "Productivity",
+  },
+  {
+    name: "workflows",
+    pluginId: "workflows",
+    defaultEnabled: false,
+    category: "Productivity",
+  },
   // Ships with the app but stays off: it replaces the sidebar, which is a
   // choice the user makes in Settings, never something an install does.
-  { name: "t3sidebar", pluginId: "t3sidebar", defaultEnabled: false },
+  {
+    name: "t3sidebar",
+    pluginId: "t3sidebar",
+    defaultEnabled: false,
+    category: "Productivity",
+  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,

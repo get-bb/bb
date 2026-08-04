@@ -38,8 +38,7 @@ export function createPluginCatalogService(deps: {
     deps.bundledPlugins ?? listBundledPluginRegistrations();
   const officialPlugins = bundledPlugins.map((plugin) => ({
     ...plugin,
-    category:
-      plugin.category ?? (plugin.autoInstall ? "Included with BB" : "Other"),
+    category: plugin.category ?? "Other",
   }));
 
   // Manifests are read per search so a dev checkout editing a bundled

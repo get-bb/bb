@@ -87,9 +87,12 @@ describe("bundled plugin catalog service", () => {
       BUNDLED_PLUGINS.map((plugin) => plugin.name).sort(),
     );
     expect(results).toHaveLength(catalog.status().pluginCount);
-    expect(
-      results.filter((entry) => entry.category === "Included with BB"),
-    ).toHaveLength(BUILTIN_PLUGINS.length);
+    expect(results.some((entry) => entry.category === "Included with BB")).toBe(
+      false,
+    );
+    expect(new Set(results.map((entry) => entry.category))).toEqual(
+      new Set(["Developer tools", "Productivity"]),
+    );
     const docs = results.find((entry) => entry.entryId === "docs");
     expect(docs).toMatchObject({
       pluginId: "simple-notes",
