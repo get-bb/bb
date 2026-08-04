@@ -13,6 +13,23 @@
     height: 100%;
   }
 
+  /*
+   * iOS standalone subtracts the top safe-area inset from the small and
+   * dynamic viewports but not from the large one. On a 852pt screen with a
+   * 59pt inset, innerHeight/100svh/100dvh/height:100% all report 793 while
+   * 100lvh reports the true 852. The shell starts at y=0 under the
+   * translucent status bar, so a 793pt shell leaves a 59pt dead band at the
+   * bottom. 100lvh is the only value that spans the screen.
+   *
+   * Scoped to standalone: in a Safari tab, lvh is the toolbars-retracted
+   * height, which is taller than what the user can see.
+   */
+  @media (display-mode: standalone) {
+    html.bb-app-shell-root {
+      height: 100lvh;
+    }
+  }
+
   html.bb-app-shell-root,
   body.bb-app-shell {
     overflow: hidden;
