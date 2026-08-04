@@ -49,13 +49,7 @@ export function PluginsOverview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  const plugins = useMemo(
-    () =>
-      (listQuery.data?.plugins ?? []).filter(
-        (plugin) => plugin.provenance !== "builtin" || plugin.enabled,
-      ),
-    [listQuery.data],
-  );
+  const plugins = listQuery.data?.plugins ?? [];
   const activeMode = modeFromSearchParams(searchParams.get("view"));
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedCategory, setInstalledCategory] = useState<string | null>(

@@ -553,7 +553,7 @@ describe("PluginsOverview", () => {
     ]);
   });
 
-  it("omits disabled auto-included builtins from the installed projection", async () => {
+  it("keeps disabled plugins installed regardless of provenance", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -592,9 +592,12 @@ describe("PluginsOverview", () => {
 
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(
-      screen.getByRole("tab", { name: "Installed, 3 plugins" }),
+      screen.getByRole("tab", { name: "Installed, 4 plugins" }),
     ).toBeTruthy();
-    expect(screen.queryByText("Inactive Builtin")).toBeNull();
+    expect(screen.getByText("Inactive Builtin")).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Enable inactive-builtin" }),
+    ).toBeTruthy();
     expect(screen.getByText("Inactive Catalog Plugin")).toBeTruthy();
     expect(screen.getByText("Inactive Local Plugin")).toBeTruthy();
   });
