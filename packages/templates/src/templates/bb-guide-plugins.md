@@ -216,12 +216,36 @@ category across the bundled official plugins (status: installed / compatible
 `path:`, `npm:`, `git:`, and `builtin:` sources—and path-like
 syntax—continue to bypass official-plugin resolution.
 
-Frontend builds are automatic once installed: path installs and git installs
-without a prebuilt app compile dist/ at install time (a build failure fails the
-install), provided their imported dependencies are already available. Git and
-npm plugins may also ship a metadata-validated prebuilt app; npm packages must
-do so or the install is refused. The server rebuilds source-built apps after a
-bb upgrade.
+Builds are automatic once installed. Git installs run `npm install` for any
+declared dependencies (lifecycle scripts disabled), compile both bundles so
+those dependencies are inlined, then discard node_modules — so a git plugin
+may use third-party packages and its artifact stays self-contained. A git
+plugin that declares no dependencies installs with only `git` on PATH, and a
+committed dist/ is always replaced by the bundles bb builds. Path installs
+compile dist/ at install time from dependencies you have already installed. A
+build failure fails the install. npm packages must ship a metadata-validated
+prebuilt app or the install is refused. The server rebuilds source-built apps
+after a bb upgrade.
+
+bb ships no build toolchain. The first time a git or path plugin is built on
+a machine, bb downloads a pinned esbuild + Tailwind set into
+`<dataDir>/plugins/toolchain-<versions>/` and reuses it afterwards. Installing
+a prebuilt npm plugin never triggers that download.
+
+To build a plugin yourself — in CI, or to check it compiles without a running
+bb — depend on the published `bb-app` package and call the CLI:
+
+```jsonc
+// your plugin's package.json
+"devDependencies": { "bb-app": "^0.35.1" },
+"scripts": { "build": "bb plugin build" }
+```
+
+`bb plugin build` talks to no server. Depending on `bb-app@X` builds with
+exactly that release's shim configuration, so the bundle cannot be built
+against a mismatched host runtime. Cache the toolchain directory in CI to skip
+the download on later runs. Only `bb plugin dev` needs a running bb, because
+it reloads the installed plugin after each rebuild.
 
 The backend half is prebuilt too: when a builtin/official/git/npm install
 ships a dist/server.js built for the running SDK major, the server loads it

@@ -47,9 +47,15 @@ The manifest is `package.json`:
   prefer when its SDK major matches, so consumers never need npm or
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
-  installs and git installs without a prebuilt app build it automatically at
-  install time when their imported dependencies are already available. Git
-  plugins may instead ship a metadata-validated prebuilt app.
+  and git installs build it automatically at install time. Git installs also
+  `npm install` any declared `dependencies` first, so a git plugin may use
+  third-party packages; bb discards node_modules after bundling. Path installs
+  build from dependencies you have already installed.
+- Building yourself (CI, or verifying a build without a running bb): add
+  `bb-app` to `devDependencies` and set `"build": "bb plugin build"`.
+  `bb plugin build` needs no server, and depending on `bb-app@X` builds
+  against exactly that release's shim configuration. bb downloads its build
+  toolchain on first use, so cache `<dataDir>/plugins/toolchain-*` in CI.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
