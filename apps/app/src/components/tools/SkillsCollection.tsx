@@ -34,6 +34,7 @@ import {
 } from "@/lib/provider-icon";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
+type ResourceSkillSourceFilter = "included" | "bb-official";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
@@ -41,6 +42,11 @@ const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
   "bb",
   "claude-code",
   "codex",
+];
+
+const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
+  "included",
+  "bb-official",
 ];
 
 function providerLabel(provider: SkillProvider | null): string {
@@ -55,6 +61,24 @@ function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
 
 function providerFilterLabel(provider: ResourceProviderFilter): string {
   return provider === "bb" ? "bb" : providerLabel(provider);
+}
+
+function skillSourceFilterId(
+  skill: SkillSummary,
+): ResourceSkillSourceFilter | null {
+  if (skill.scope === "bb-builtin") return "bb-official";
+  if (skill.scope === "plugin") return "included";
+  return null;
+}
+
+function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
+  return source === "bb-official" ? "BB official" : "Included";
+}
+
+function isResourceSkillSourceFilter(
+  value: string,
+): value is ResourceSkillSourceFilter {
+  return value === "included" || value === "bb-official";
 }
 
 export function ProviderLogo({
@@ -223,6 +247,9 @@ export function SkillsOverview({
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
   >(["bb"]);
+  const [sourceFilters, setSourceFilters] = useState<
+    ResourceSkillSourceFilter[]
+  >(["bb-official"]);
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -254,6 +281,14 @@ export function SkillsOverview({
         !providerCounts.has(provider) && !providerFilters.includes(provider),
     }));
   }, [providerCounts, providerFilters]);
+  const sourceOptions = useMemo(
+    () =>
+      RESOURCE_SKILL_SOURCE_FILTERS.map((source) => ({
+        id: source,
+        label: skillSourceFilterLabel(source),
+      })),
+    [],
+  );
   useEffect(() => {
     if (sortMode === "provider" && providerBucketCount <= 1) {
       setSortMode("alpha");
@@ -262,6 +297,10 @@ export function SkillsOverview({
   }, [providerBucketCount, sortMode]);
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
+      const source = skillSourceFilterId(skill);
+      if (source !== null && !sourceFilters.includes(source)) {
+        return false;
+      }
       if (
         providerFilters.length > 0 &&
         !providerFilters.includes(skillProviderFilterId(skill))
@@ -297,12 +336,20 @@ export function SkillsOverview({
       if (base !== 0) return sortDirection === "asc" ? base : -base;
       return left.filePath.localeCompare(right.filePath);
     });
-  }, [normalizedQuery, providerFilters, skills, sortDirection, sortMode]);
+  }, [
+    normalizedQuery,
+    providerFilters,
+    skills,
+    sortDirection,
+    sortMode,
+    sourceFilters,
+  ]);
   const libraryPagination = useResourcePagination(visibleSkills, {
     pageSize: libraryPageSize,
     resetKey: [
       normalizedQuery,
       providerFilters.join(","),
+      sourceFilters.join(","),
       sortMode,
       sortDirection,
     ].join("\u0000"),
@@ -390,6 +437,20 @@ export function SkillsOverview({
               onSearchChange={onQueryChange}
               controls={
                 <>
+                  <ResourceMultiSelectMenu
+                    label="Source"
+                    icon="PackageReceive"
+                    selectedValues={sourceFilters}
+                    options={sourceOptions}
+                    selectedLabel={(options) =>
+                      options.map((option) => option.label).join(", ")
+                    }
+                    onChange={(values) =>
+                      setSourceFilters(
+                        values.filter(isResourceSkillSourceFilter),
+                      )
+                    }
+                  />
                   <ResourceMultiSelectMenu
                     label="Provider"
                     icon="Layers"
