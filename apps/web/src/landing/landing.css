@@ -1612,6 +1612,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   max-width: 32em;
 }
 
+/* Inline code in body copy, matching the chips in the thread mocks. The mono
+   face runs wide and tall next to 16px Inter, so it's set down to 0.86em and
+   given a recessed chip — otherwise it out-measures the sentence it sits in. */
+.band-copy code {
+  font-size: 0.86em;
+  background: var(--surface-recessed);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .band-cta {
   margin-top: 26px;
 }
