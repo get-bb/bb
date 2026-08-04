@@ -195,6 +195,7 @@ export type AgentExecutionTarget = z.infer<typeof agentExecutionTargetSchema>;
 export const agentExecutionUpdateSchema = z
   .object({
     prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH).optional(),
+    model: z.string().min(1).optional(),
     permissionMode: permissionModeSchema.optional(),
     target: agentExecutionTargetSchema.optional(),
   })
@@ -202,11 +203,30 @@ export const agentExecutionUpdateSchema = z
   .refine(
     (value) =>
       value.prompt !== undefined ||
+      value.model !== undefined ||
       value.permissionMode !== undefined ||
       value.target !== undefined,
     { message: "at least one agent execution field is required" },
   );
 export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
+
+export const automationExecutionOptionsResponseSchema = z
+  .object({
+    models: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          model: z.string().min(1),
+          displayName: z.string().min(1),
+        })
+        .strict(),
+    ),
+    permissionModes: z.array(permissionModeSchema),
+  })
+  .strict();
+export type AutomationExecutionOptionsResponse = z.infer<
+  typeof automationExecutionOptionsResponseSchema
+>;
 
 export const automationResponseSchema = z
   .object({

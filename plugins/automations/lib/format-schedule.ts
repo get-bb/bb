@@ -181,6 +181,7 @@ export function formatOverviewScheduleMetadata(
   if (
     label === "Failed" ||
     label === "Paused" ||
+    label === "Completed" ||
     label === "Expired — edit to reschedule"
   ) {
     return null;

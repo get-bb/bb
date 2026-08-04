@@ -20,6 +20,8 @@ import type { automationRpcContract } from "./src/rpc.js";
 import { toast } from "sonner";
 import type {
   AutomationResponse,
+  AutomationExecutionOptionsResponse,
+  AgentExecutionUpdate,
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
@@ -242,6 +244,42 @@ function useAutomation(route: DetailRoute): {
   return { ...state, refetch };
 }
 
+function useAutomationExecutionOptions(
+  route: DetailRoute,
+  enabled: boolean,
+): {
+  options: AutomationExecutionOptionsResponse | null;
+  error: string | null;
+} {
+  const rpc = useRpc<typeof automationRpcContract>();
+  const { projectId, automationId } = route;
+  const [state, setState] = useState<{
+    options: AutomationExecutionOptionsResponse | null;
+    error: string | null;
+  }>({ options: null, error: null });
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ options: null, error: null });
+      return;
+    }
+    let active = true;
+    rpc.call("automations_execution_options", { projectId, automationId }).then(
+      (options) => {
+        if (active) setState({ options, error: null });
+      },
+      (error: unknown) => {
+        if (active) setState({ options: null, error: errorText(error) });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [automationId, enabled, projectId, rpc]);
+
+  return state;
+}
+
 interface RunsState {
   runs: AutomationRunResponse[];
   nextCursor: string | null;
@@ -369,6 +407,8 @@ function useMutations() {
     resume: (route: DetailRoute) => call("automations_resume", route),
     run: (route: DetailRoute) => call("automations_run", route),
     delete: (route: DetailRoute) => call("automations_delete", route),
+    update: (route: DetailRoute, agent: AgentExecutionUpdate) =>
+      rpc.call("automations_update", { ...route, agent }),
   };
 }
 
@@ -498,6 +538,10 @@ function DetailView({
 }) {
   const navigate = useBbNavigate();
   const { automation, error, missing, refetch } = useAutomation(route);
+  const executionOptionsState = useAutomationExecutionOptions(
+    route,
+    automation?.execution.mode === "agent",
+  );
   const overviewState = useOverview();
   const runsState = useRuns(route);
   const mutations = useMutations();
@@ -551,6 +595,22 @@ function DetailView({
     if (automation === null) return;
     editViaThread(automation);
   }, [automation, editViaThread]);
+
+  const updateAgent = useCallback(
+    async (agent: AgentExecutionUpdate) => {
+      setActionPending(true);
+      try {
+        await mutations.update(route, agent);
+        toast.success("Automation updated");
+        refetch();
+      } catch (rpcError: unknown) {
+        toast.error(`Failed to update automation: ${errorText(rpcError)}`);
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [mutations, refetch, route],
+  );
 
   const confirmDelete = useCallback(() => {
     setDeleting(true);
@@ -621,8 +681,11 @@ function DetailView({
       projectLabel={projectLabel}
       runsState={runsState}
       actionPending={actionPending}
+      executionOptions={executionOptionsState.options}
+      executionOptionsError={executionOptionsState.error}
       onToggle={(checked) => runAction(checked ? "resume" : "pause")}
       onEdit={openEdit}
+      onUpdateAgent={updateAgent}
       onRunNow={() => runAction("run")}
       onDelete={() => setDeleteOpen(true)}
       onOpenThread={openThread}

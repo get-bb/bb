@@ -28,6 +28,7 @@ import {
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
+  type AutomationExecutionOptionsResponse,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -54,7 +55,8 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
-    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
+    providers: Pick<BbPluginApi["sdk"]["providers"], "list"> &
+      Partial<Pick<BbPluginApi["sdk"]["providers"], "models">>;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -66,6 +68,10 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<AutomationResponse>;
+  executionOptions(input: {
+    projectId: string;
+    automationId: string;
+  }): Promise<AutomationExecutionOptionsResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -258,6 +264,7 @@ function applyAgentExecutionUpdate(
   const next = {
     ...execution,
     ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
+    ...(update.model !== undefined ? { model: update.model } : {}),
     ...(update.permissionMode !== undefined
       ? { permissionMode: update.permissionMode }
       : {}),
@@ -388,6 +395,47 @@ export function createAutomationService(args: {
         pluginDataDir,
         row: requireProjectAutomation(db, input),
       });
+    },
+
+    async executionOptions(input) {
+      const automation = requireProjectAutomation(db, input);
+      const execution = parseAutomationExecution(automation.execution);
+      if (execution.mode !== "agent") {
+        throw new Error(
+          "Execution options are only available for agent automations",
+        );
+      }
+      const environment = execution.environment;
+      const routing =
+        environment.type === "reuse"
+          ? { environmentId: environment.environmentId }
+          : environment.type === "host" && environment.hostId !== undefined
+            ? { hostId: environment.hostId }
+            : {};
+      const loadModels = bb.sdk.providers.models;
+      if (loadModels === undefined) {
+        throw new Error("Provider model discovery is unavailable.");
+      }
+      const options = await loadModels({
+        ...routing,
+        providerId: execution.providerId,
+      });
+      const provider = options.providers.find(
+        (candidate) => candidate.id === execution.providerId,
+      );
+      if (provider === undefined || !provider.available) {
+        throw new Error(`Provider ${execution.providerId} is not available.`);
+      }
+      const seenModels = new Set<string>();
+      const models = [...options.selectedOnlyModels, ...options.models]
+        .filter((model) => {
+          if (seenModels.has(model.model)) return false;
+          seenModels.add(model.model);
+          return true;
+        })
+        .map(({ id, model, displayName }) => ({ id, model, displayName }));
+      const permissionModes = provider.capabilities.supportedPermissionModes;
+      return { models, permissionModes };
     },
 
     async create(payload) {

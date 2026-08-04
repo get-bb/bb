@@ -243,8 +243,8 @@ function OverviewRow({
           disabledReason={
             lifecycleLocked
               ? oneShotLifecycle === "expired"
-                ? "This one-time automation expired. Open it and edit the schedule to run it again."
-                : "This one-time automation has completed. Open it and edit the schedule to run it again."
+                ? "Missed its run time. Edit to reschedule."
+                : "Already ran. Edit to reschedule."
               : undefined
           }
           label={`${automation.enabled ? "Disable" : "Enable"} ${automation.name}`}

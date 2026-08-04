@@ -24,6 +24,7 @@ const rpcMethods = [
   "automations_overview",
   "automations_list",
   "automations_get",
+  "automations_execution_options",
   "automations_create",
   "automations_update",
   "automations_delete",
@@ -81,6 +82,27 @@ async function bootAutomationsPlugin(
               capabilities: { supportedPermissionModes },
             },
           ] as never;
+        },
+        async models() {
+          return {
+            providers: [
+              {
+                id: "codex",
+                available: true,
+                capabilities: { supportedPermissionModes },
+              },
+            ],
+            permissionCeiling: "full",
+            models: [
+              {
+                id: "gpt-5.6-codex",
+                model: "gpt-5.6-codex",
+                displayName: "5.6 Sol",
+              },
+            ],
+            selectedOnlyModels: [],
+            modelLoadError: null,
+          } as never;
         },
       },
       threads: {
@@ -618,6 +640,7 @@ describe("automations server plugin harness", () => {
         automationId: created.id,
         agent: {
           prompt: "updated by RPC",
+          model: "gpt-5.6-codex",
           permissionMode: "full",
           target: { type: "target-thread", threadId: THREAD_ID },
         },
@@ -629,11 +652,20 @@ describe("automations server plugin harness", () => {
         mode: "agent",
         prompt: "updated by RPC",
         providerId: "codex",
-        model: "gpt-5",
+        model: "gpt-5.6-codex",
         permissionMode: "full",
         environment: { type: "project-default" },
         targetThreadId: THREAD_ID,
       },
+    });
+
+    const options = await harness.callRpc("automations_execution_options", {
+      projectId: PROJECT_ID,
+      automationId: created.id,
+    });
+    expect(options).toMatchObject({
+      models: [{ model: "gpt-5.6-codex", displayName: "5.6 Sol" }],
+      permissionModes: ["accept-edits", "auto", "full"],
     });
 
     await expect(
