@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -86,8 +92,8 @@ describe("Docs nav panel", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
-      headerContent: expect.any(Function),
     });
+    expect(app.navPanels[0]?.headerContent).toBeUndefined();
     expect(app.messageDirectives).toHaveLength(1);
     expect(app.messageDirectives[0]?.id).toBe("docs");
     expect(app.threadPanelActions[0]).toMatchObject({
@@ -101,7 +107,7 @@ describe("Docs nav panel", () => {
     });
   });
 
-  it("moves the sidebar toggle into the shared panel header", async () => {
+  it("keeps the right-sidebar navigation together across panel layouts", async () => {
     const panel = app.navPanels[0]!;
     const slot = renderSlot(
       panel,
@@ -110,21 +116,25 @@ describe("Docs nav panel", () => {
     );
     await slot.findByText("Select a note or HTML page.");
 
-    const HeaderContent = panel.headerContent!;
-    const header = render(<HeaderContent subPath="personal" />);
-    await waitFor(() => {
-      expect(
-        slot.container.querySelector('[aria-label="Collapse notes sidebar"]'),
-      ).toBeNull();
+    const navigation = slot.getByRole("navigation", {
+      name: "Notes sidebar",
     });
-
+    expect(
+      within(navigation).getByRole("button", { name: "Search notes" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "New note" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "New folder" }),
+    ).toBeTruthy();
     fireEvent.click(
-      header.getByRole("button", { name: "Collapse notes sidebar" }),
+      within(navigation).getByRole("button", {
+        name: "Collapse notes sidebar",
+      }),
     );
-    expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
-    fireEvent.click(
-      header.getByRole("button", { name: "Expand notes sidebar" }),
-    );
+    expect(slot.container.querySelector("aside")?.style.width).toBe("40px");
+    fireEvent.click(slot.getByRole("button", { name: "Expand notes sidebar" }));
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
   });
 

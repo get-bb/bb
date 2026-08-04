@@ -1243,14 +1243,12 @@ function orderEntries(
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
 
 interface NotesSidebarState {
-  headerMounted: boolean;
   paneNarrow: boolean;
   userCollapsed: boolean | null;
 }
 
 interface NotesSidebarStore {
   state: NotesSidebarState;
-  headerMounts: number;
   viewMounts: number;
   listeners: Set<() => void>;
 }
@@ -1267,11 +1265,9 @@ function getNotesSidebarStore(key: string): NotesSidebarStore {
   if (existing) return existing;
   const store: NotesSidebarStore = {
     state: {
-      headerMounted: false,
       paneNarrow: false,
       userCollapsed: null,
     },
-    headerMounts: 0,
     viewMounts: 0,
     listeners: new Set(),
   };
@@ -1285,7 +1281,6 @@ function updateNotesSidebarState(
 ): void {
   const next = { ...store.state, ...patch };
   if (
-    next.headerMounted === store.state.headerMounted &&
     next.paneNarrow === store.state.paneNarrow &&
     next.userCollapsed === store.state.userCollapsed
   ) {
@@ -1312,34 +1307,111 @@ function useNotesSidebarState(key: string): {
   return { state, store };
 }
 
-function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { state: sidebar, store } = useNotesSidebarState(
-    notesSidebarKey(subPath),
-  );
-  const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  useLayoutEffect(() => {
-    store.headerMounts += 1;
-    updateNotesSidebarState(store, { headerMounted: true });
-    return () => {
-      store.headerMounts = Math.max(0, store.headerMounts - 1);
-      if (store.headerMounts === 0) {
-        updateNotesSidebarState(store, { headerMounted: false });
-      }
+type NotesSidebarNavigationProps =
+  | {
+      collapsed: true;
+      onCollapsedChange(collapsed: boolean): void;
+    }
+  | {
+      collapsed: false;
+      query: string;
+      searchOpen: boolean;
+      onQueryChange(value: string): void;
+      onSearchOpenChange(open: boolean): void;
+      onNewNote(): void;
+      onNewFolder(): void;
+      onCollapsedChange(collapsed: boolean): void;
     };
-  }, [store]);
+
+function NotesSidebarNavigation(props: NotesSidebarNavigationProps) {
+  const { collapsed, onCollapsedChange } = props;
   return (
-    <Button
-      className="size-8"
-      size="icon"
-      variant="ghost"
-      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
-      aria-expanded={!collapsed}
-      onClick={() =>
-        updateNotesSidebarState(store, { userCollapsed: !collapsed })
-      }
+    <nav
+      aria-label="Notes sidebar"
+      className={cn(
+        "flex items-center gap-1",
+        collapsed ? "justify-center" : "min-w-0 flex-1",
+      )}
     >
-      <HugeiconsIcon icon={SidebarRightIcon} />
-    </Button>
+      {!collapsed && props.searchOpen ? (
+        <>
+          <div className="relative min-w-0 flex-1">
+            <HugeiconsIcon
+              icon={Search01Icon}
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              autoFocus
+              className="h-8 pl-8"
+              value={props.query}
+              onChange={(event) => props.onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                props.onQueryChange("");
+                props.onSearchOpenChange(false);
+              }}
+              placeholder="Search this vault"
+            />
+          </div>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Close search"
+            onClick={() => {
+              props.onQueryChange("");
+              props.onSearchOpenChange(false);
+            }}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} />
+          </Button>
+        </>
+      ) : null}
+      {!collapsed && !props.searchOpen ? (
+        <>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="Search notes"
+            onClick={() => props.onSearchOpenChange(true)}
+          >
+            <HugeiconsIcon icon={Search01Icon} />
+          </Button>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="New note"
+            onClick={props.onNewNote}
+          >
+            <HugeiconsIcon icon={FileAddIcon} />
+          </Button>
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            aria-label="New folder"
+            onClick={props.onNewFolder}
+          >
+            <HugeiconsIcon icon={FolderAddIcon} />
+          </Button>
+          <span className="min-w-0 flex-1" />
+        </>
+      ) : null}
+      <Button
+        className="size-8"
+        size="icon"
+        variant="ghost"
+        aria-label={
+          collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"
+        }
+        aria-expanded={!collapsed}
+        onClick={() => onCollapsedChange(!collapsed)}
+      >
+        <HugeiconsIcon icon={SidebarRightIcon} />
+      </Button>
+    </nav>
   );
 }
 
@@ -1589,26 +1661,15 @@ function Tree({
     return (
       <aside
         ref={asideRef}
-        className={cn(
-          "order-2 flex shrink-0 flex-col items-center",
-          !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-muted/20 py-2",
-        )}
-        style={{ width: sidebar.headerMounted ? 0 : 40 }}
+        className="order-2 flex w-10 shrink-0 flex-col items-center border-l border-border bg-muted/20 py-2"
+        style={{ width: 40 }}
       >
-        {!sidebar.headerMounted ? (
-          <Button
-            className="size-8"
-            size="icon"
-            variant="ghost"
-            aria-label="Expand notes sidebar"
-            onClick={() =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed: false })
-            }
-          >
-            <HugeiconsIcon icon={SidebarRightIcon} />
-          </Button>
-        ) : null}
+        <NotesSidebarNavigation
+          collapsed
+          onCollapsedChange={(userCollapsed) =>
+            updateNotesSidebarState(sidebarStore, { userCollapsed })
+          }
+        />
       </aside>
     );
   }
@@ -1619,85 +1680,19 @@ function Tree({
       className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
       style={{ width: sidebarWidth }}
     >
-      <div className="relative flex items-center gap-1 border-b border-border p-2">
-        {searchOpen ? (
-          <>
-            <div className="relative min-w-0 flex-1">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                autoFocus
-                className="h-8 pl-8"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Escape") return;
-                  setQuery("");
-                  setSearchOpen(false);
-                }}
-                placeholder="Search this vault"
-              />
-            </div>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="Close search"
-              onClick={() => {
-                setQuery("");
-                setSearchOpen(false);
-              }}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} />
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="Search notes"
-              onClick={() => setSearchOpen(true)}
-            >
-              <HugeiconsIcon icon={Search01Icon} />
-            </Button>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="New note"
-              onClick={onNewNote}
-            >
-              <HugeiconsIcon icon={FileAddIcon} />
-            </Button>
-            <Button
-              className="size-8"
-              size="icon"
-              variant="ghost"
-              aria-label="New folder"
-              onClick={onNewFolder}
-            >
-              <HugeiconsIcon icon={FolderAddIcon} />
-            </Button>
-            <span className="min-w-0 flex-1" />
-          </>
-        )}
-        {!sidebar.headerMounted ? (
-          <Button
-            className="size-8"
-            size="icon"
-            variant="ghost"
-            aria-label="Collapse notes sidebar"
-            onClick={() =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed: true })
-            }
-          >
-            <HugeiconsIcon icon={SidebarRightIcon} />
-          </Button>
-        ) : null}
+      <div className="relative flex items-center border-b border-border p-2">
+        <NotesSidebarNavigation
+          collapsed={false}
+          query={query}
+          searchOpen={searchOpen}
+          onQueryChange={setQuery}
+          onSearchOpenChange={setSearchOpen}
+          onNewNote={onNewNote}
+          onNewFolder={onNewFolder}
+          onCollapsedChange={(userCollapsed) =>
+            updateNotesSidebarState(sidebarStore, { userCollapsed })
+          }
+        />
         {draggingPath && dirname(draggingPath) ? (
           <button
             type="button"
@@ -2271,7 +2266,6 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    headerContent: NotesPanelHeader,
   });
   app.slots.threadPanelAction({
     id: "document",
