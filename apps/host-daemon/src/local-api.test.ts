@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,6 @@ import {
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
 import {
-  resolveNativeFolderPicker,
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api.js";
@@ -37,27 +36,6 @@ describe("local API server", () => {
     server = null;
   });
 
-  it("resolves native folder picker support from one shared helper", () => {
-    const providedPicker = async () => "/tmp/project";
-
-    expect(
-      resolveNativeFolderPicker({
-        pickFolder: providedPicker,
-        platform: "linux",
-      }),
-    ).toBe(providedPicker);
-    expect(
-      resolveNativeFolderPicker({
-        platform: "darwin",
-      }),
-    ).not.toBeNull();
-    expect(
-      resolveNativeFolderPicker({
-        platform: "linux",
-      }),
-    ).toBeNull();
-  });
-
   it("serves host identity and status over localhost", async () => {
     server = await startLocalApiServer({
       hostId: "host-1",
@@ -78,128 +56,11 @@ describe("local API server", () => {
       connected: true,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       serverUrl: "http://server.test",
-      supportsNativeFolderPicker:
-        resolveNativeFolderPicker({
-          platform: process.platform,
-        }) !== null,
+      supportsNativeFolderPicker: process.platform === "darwin",
       platform: resolveHostPlatform(),
     });
     const healthResponse = await client.health.$get();
     expect(await healthResponse.text()).toBe("ok");
-  });
-
-  it("reports path existence by stat'ing each requested path", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "bb-path-exists-"));
-    const existingDir = path.join(dir, "repo");
-    const existingFile = path.join(dir, "file.txt");
-    const missing = path.join(dir, "nope");
-    await mkdir(existingDir);
-    await writeFile(existingFile, "hi");
-
-    try {
-      server = await startLocalApiServer({
-        hostId: "host-1",
-        localApiConfig: createLocalApiConfig(),
-        serverUrl: "http://server.test",
-        serverPort: 3334,
-        devAppPort: 5173,
-        getConnected: () => true,
-      });
-      const client = createHostDaemonLocalClient(
-        `http://localhost:${server.port}`,
-      );
-
-      const response = await client.paths.exist.$post({
-        json: { paths: [existingDir, existingFile, missing] },
-      });
-
-      expect(await response.json()).toEqual({
-        existence: {
-          [existingDir]: true,
-          [existingFile]: true,
-          [missing]: false,
-        },
-      });
-    } finally {
-      await rm(dir, { force: true, recursive: true });
-    }
-  });
-
-  it("treats permission-denied paths as existing rather than failing the batch", async () => {
-    if (process.platform === "win32" || process.getuid?.() === 0) {
-      return;
-    }
-    const dir = await mkdtemp(path.join(tmpdir(), "bb-path-exists-eacces-"));
-    const lockedParent = path.join(dir, "locked");
-    const inaccessible = path.join(lockedParent, "child");
-    const reachable = path.join(dir, "reachable");
-    await mkdir(lockedParent);
-    await mkdir(reachable);
-    await chmod(lockedParent, 0o000);
-
-    try {
-      server = await startLocalApiServer({
-        hostId: "host-1",
-        localApiConfig: createLocalApiConfig(),
-        serverUrl: "http://server.test",
-        serverPort: 3334,
-        devAppPort: 5173,
-        getConnected: () => true,
-      });
-      const client = createHostDaemonLocalClient(
-        `http://localhost:${server.port}`,
-      );
-
-      const response = await client.paths.exist.$post({
-        json: { paths: [inaccessible, reachable] },
-      });
-
-      expect(response.ok).toBe(true);
-      expect(await response.json()).toEqual({
-        existence: {
-          [inaccessible]: true,
-          [reachable]: true,
-        },
-      });
-    } finally {
-      await chmod(lockedParent, 0o700);
-      await rm(dir, { force: true, recursive: true });
-    }
-  });
-
-  it("dedupes repeated paths in /paths/exist and rejects oversized batches", async () => {
-    server = await startLocalApiServer({
-      hostId: "host-1",
-      localApiConfig: createLocalApiConfig(),
-      serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
-      getConnected: () => true,
-    });
-    const client = createHostDaemonLocalClient(
-      `http://localhost:${server.port}`,
-    );
-
-    const dir = await mkdtemp(path.join(tmpdir(), "bb-path-exists-dedup-"));
-    try {
-      const dedupeResponse = await client.paths.exist.$post({
-        json: { paths: [dir, dir, dir] },
-      });
-      expect(await dedupeResponse.json()).toEqual({
-        existence: { [dir]: true },
-      });
-
-      const oversizedPaths = Array.from(
-        { length: 201 },
-        (_, i) => `${dir}/p${i}`,
-      );
-      const oversizedResponse = await client.paths.exist.$post({
-        json: { paths: oversizedPaths },
-      });
-      expect(oversizedResponse.ok).toBe(false);
-    } finally {
-      await rm(dir, { force: true, recursive: true });
-    }
   });
 
   it("lists workspace open targets and delegates target-aware open requests", async () => {
@@ -434,31 +295,6 @@ describe("local API server", () => {
       path: "/tmp/workspace",
       targetId: "vscode",
     });
-  });
-
-  it("returns 501 for folder picking when native picker support is unavailable", async () => {
-    if (process.platform === "darwin") {
-      return;
-    }
-
-    server = await startLocalApiServer({
-      hostId: "host-1",
-      localApiConfig: createLocalApiConfig(),
-      serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
-      getConnected: () => true,
-    });
-    const client = createHostDaemonLocalClient(
-      `http://localhost:${server.port}`,
-    );
-
-    const statusResponse = await client.status.$get();
-    const status = await statusResponse.json();
-    expect(status.supportsNativeFolderPicker).toBe(false);
-
-    const pickFolderResponse = await client["pick-folder"].$post({});
-    expect(pickFolderResponse.status).toBe(501);
   });
 
   it("supports health-only mode", async () => {

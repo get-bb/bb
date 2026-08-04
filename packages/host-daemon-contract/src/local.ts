@@ -294,16 +294,10 @@ export type ProviderCliInstallEvent = z.infer<
 /**
  * Local daemon HTTP API.
  *
- * This API predates remote-client support and currently mixes two ownership
- * classes:
- *
- * - client-machine-local routes: actions about the machine showing the UI, such as
- *   local editor discovery and launch
- * - work-host routes: actions about the machine running bb work, such as path
- *   checks and provider CLI health
- *
- * Keep the ownership comments below accurate while the API is split or routed
- * through server-backed work-host commands.
+ * This API is limited to client-machine-local helper actions about the machine
+ * showing the UI, plus daemon status and health. Work-host operations are
+ * exposed through server routes and forwarded to the connected daemon over
+ * WebSocket RPC.
  */
 export type HostDaemonLocalSchema = {
   [DEFAULT_HOST_DAEMON_LOCAL_HEALTH_PATH]: {
@@ -320,38 +314,9 @@ export type HostDaemonLocalSchema = {
   "/open-in-target": {
     $post: Endpoint<{ json: OpenInTargetRequest }, Record<string, never>>;
   };
-  /**
-   * work-host, same-machine only; deprecated for direct app/browser callers.
-   * The canonical app path should be a server route that gates same-machine
-   * access before asking the work host daemon to show a native folder picker.
-   */
-  "/pick-folder": {
-    $post: Endpoint<EmptyInput, PickFolderResponse>;
-  };
-  /** work-host; deprecated for direct app/browser callers. */
-  "/paths/exist": {
-    $post: Endpoint<{ json: PathsExistRequest }, PathsExistResponse>;
-  };
   /** mixed: helper reachability plus connected work-host/session identity. */
   "/status": {
     $get: Endpoint<EmptyInput, StatusResponse>;
-  };
-  /** work-host; deprecated for direct app/browser callers. */
-  "/provider-clis/status": {
-    $get: Endpoint<EmptyInput, ProviderCliStatusResponse>;
-  };
-  /**
-   * work-host; deprecated for direct app/browser callers.
-   * Installs or updates provider CLIs on the machine that runs agents.
-   */
-  "/provider-clis/install": {
-    /** Streams `npm install -g <provider package>@latest` progress as newline-delimited JSON events. */
-    $post: Endpoint<
-      { json: ProviderCliInstallRequest },
-      ProviderCliInstallEvent,
-      200,
-      "text"
-    >;
   };
 };
 

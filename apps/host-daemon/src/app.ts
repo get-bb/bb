@@ -133,7 +133,6 @@ export interface CreateHostDaemonAppOptions {
   threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
-  pickFolder?: () => Promise<string | null>;
   fetchFn?: FetchFn;
   createWebSocket?: CreateReconnectingWebSocket;
   closeMachineAuthProxy?: () => Promise<void>;
@@ -207,12 +206,6 @@ export function startIdleProviderSessionReaper(
       timer.clear();
     },
   };
-}
-
-function providerCliEnvFromShellEnv(
-  shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
-): NodeJS.ProcessEnv {
-  return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
 }
 
 interface SessionRequestArgs<TResult> {
@@ -703,9 +696,6 @@ export async function createHostDaemonApp(
       throw error;
     }
   };
-  const getProviderCliEnv = async () =>
-    providerCliEnvFromShellEnv(runtimeManager.getShellEnv());
-
   const idleProviderSessionReaper = startIdleProviderSessionReaper({
     logger: options.logger,
     nowMs: Date.now,
@@ -866,9 +856,7 @@ export async function createHostDaemonApp(
         serverPort: Number(new URL(options.serverUrl).port) || 0,
         devAppPort: options.devAppPort,
         appUrl: options.appUrl,
-        getProviderCliEnv,
         getConnected: () => connection.sessionId != null,
-        pickFolder: options.pickFolder,
       })
     : null;
   const eventLoopStallMonitor = startEventLoopStallMonitor({

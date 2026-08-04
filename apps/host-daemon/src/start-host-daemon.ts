@@ -61,7 +61,6 @@ export interface StartHostDaemonOptions {
   createRuntime?: CreateHostDaemonAppOptions["createRuntime"];
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
-  pickFolder?: () => Promise<string | null>;
   fetchFn?: typeof fetch;
   createWebSocket?: CreateReconnectingWebSocket;
 }
@@ -273,7 +272,6 @@ export async function startHostDaemon(
       resolveRuntimeShellEnv,
       hostWatcher,
       onToolCall: options.onToolCall,
-      pickFolder: options.pickFolder,
       fetchFn: options.fetchFn,
       createWebSocket: options.createWebSocket,
       closeMachineAuthProxy: machineAuthProxy?.close,
