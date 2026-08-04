@@ -1183,7 +1183,7 @@ describe("SplitThreadArea", () => {
     ).toBe("false");
   });
 
-  it("keeps the open panel as an empty state on a pane with no panel support", async () => {
+  it("suppresses and disables the panel on a pane with no panel support", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({
@@ -1204,38 +1204,30 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Focusing the plugin pane keeps the panel open, swapping its content for
-    // the empty state; the neutral disclosure toggle stays put and expanded.
+    // Focusing the plugin pane hides the unavailable panel and disables its
+    // disclosure without discarding the window-level open state.
     fireEvent.pointerDown(pluginPane);
-    await screen.findByTestId("split-workspace-empty-panel-state");
+    const unavailableToggle = await screen.findByRole("button", {
+      name: "Right panel unavailable",
+    });
+    expect(unavailableToggle.hasAttribute("disabled")).toBe(true);
+    expect(unavailableToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByTestId("split-workspace-empty-panel-state"),
+    ).toBeNull();
     const emptyPanelHandle = document.getElementById(
       "split-workspace-empty-secondary-panel-handle",
     );
-    expect(emptyPanelHandle?.classList).toContain("w-px");
-    expect(emptyPanelHandle?.classList).toContain("bg-border-seam");
-    expect(emptyPanelHandle?.classList).not.toContain("w-1.5");
-    expect(
-      screen
-        .getByTestId("split-workspace-panel-toggle")
-        .querySelector("button")
-        ?.getAttribute("aria-expanded"),
-    ).toBe("true");
+    expect(emptyPanelHandle?.classList).toContain("w-0");
+    expect(emptyPanelHandle?.classList).toContain("pointer-events-none");
 
-    // The toggle closes the window panel from the plugin pane, and the closed
-    // state survives refocusing the thread pane (imposed on its persisted
-    // state).
-    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
-    expect(
-      screen
-        .getByTestId("split-workspace-panel-toggle")
-        .querySelector("button")
-        ?.getAttribute("aria-expanded"),
-    ).toBe("false");
+    // Refocusing the thread pane restores the remembered open panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
-    const restoredClosedToggle = await screen.findByRole("button", {
-      name: "Show right panel",
+    const restoredOpenToggle = await screen.findByRole("button", {
+      name: "Hide right panel",
     });
-    expect(restoredClosedToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(restoredOpenToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("hosted-panel-thr-a")).toBeTruthy();
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
