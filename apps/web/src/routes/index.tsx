@@ -1432,11 +1432,6 @@ function CustomizeBuild() {
           </div>
           <div className="bar-main">
             <span className="bar-title">{run.title}</span>
-            <span className="bar-actions">
-              <span className="commit-btn" aria-hidden>
-                Automation
-              </span>
-            </span>
           </div>
         </div>
 

@@ -1985,10 +1985,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding: 0 12px;
 }
 
-.mock-customize-mobile .bar-actions {
-  display: none;
-}
-
 .customize-body {
   height: 438px;
   border-top: 0;
