@@ -879,9 +879,25 @@ body.sidebar-resizing [data-sidebar="panel"] {
     background-color: var(--foreground);
   }
 
+  /*
+   * Indeterminate progress sweep. Used while a plugin installs: the server does
+   * the work behind one blocking request, so the client can say that work is
+   * happening but not how far along it is. A first install on a machine also
+   * downloads the build toolchain, which is why this window can run ~17s.
+   */
+  .animate-plugin-install-progress {
+    animation: plugin-install-progress 1.5s ease-in-out infinite;
+  }
+
   /* Reduced motion: drop the shimmer sweep and render the active cue as plain
      full-strength foreground text/glyph instead of a frozen gradient/mask. */
   @media (prefers-reduced-motion: reduce) {
+    /* A static half-width fill still reads as "busy" without the sweep. */
+    .animate-plugin-install-progress {
+      animation: none;
+      width: 50%;
+    }
+
     .animate-shine {
       animation: none;
       background: none;
@@ -902,6 +918,15 @@ body.sidebar-resizing [data-sidebar="panel"] {
   }
   100% {
     background-position: -200% 0%;
+  }
+}
+
+@keyframes plugin-install-progress {
+  0% {
+    margin-inline-start: -35%;
+  }
+  100% {
+    margin-inline-start: 100%;
   }
 }
 

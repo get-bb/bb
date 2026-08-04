@@ -179,7 +179,12 @@ async function isInstalled(dir: string): Promise<boolean> {
  */
 export async function resolvePluginBuildToolchain(
   baseDir: string,
-  options?: { onFetchStart?: () => void; ignoreLocal?: boolean },
+  options?: {
+    onFetchStart?: () => void;
+    /** Called once the toolchain is on disk and verified, with elapsed ms. */
+    onFetchDone?: (elapsedMs: number) => void;
+    ignoreLocal?: boolean;
+  },
 ): Promise<PluginBuildToolchain> {
   if (options?.ignoreLocal !== true) {
     const local = resolveLocalToolchain();
@@ -193,6 +198,7 @@ export async function resolvePluginBuildToolchain(
   }
 
   options?.onFetchStart?.();
+  const startedAt = Date.now();
   const staging = `${dir}.staging-${randomUUID()}`;
   try {
     await mkdir(staging, { recursive: true });
@@ -242,6 +248,7 @@ export async function resolvePluginBuildToolchain(
 
   const promoted = toolchainFrom(createRequire(join(dir, "noop.js")));
   if (promoted === null) throw new Error(errorPromoting(dir));
+  options?.onFetchDone?.(Date.now() - startedAt);
   return promoted;
 }
 

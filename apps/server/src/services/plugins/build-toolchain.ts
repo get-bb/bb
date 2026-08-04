@@ -33,6 +33,11 @@ export async function getPluginBuildToolchain(
         "downloading the plugin build toolchain (first plugin build on this machine)",
       );
     },
+    onFetchDone: (elapsedMs) => {
+      args.logger.info(
+        `plugin build toolchain ready in ${Math.round(elapsedMs / 100) / 10}s`,
+      );
+    },
   });
   byDataDir.set(args.dataDir, pending);
   try {

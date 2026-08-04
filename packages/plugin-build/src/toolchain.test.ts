@@ -72,9 +72,17 @@ describe("plugin build toolchain", () => {
     it.runIf(process.env.BB_TEST_TOOLCHAIN_FETCH === "1")(
       "builds a plugin frontend with nothing resolvable locally",
       async () => {
+        const fetchEvents: string[] = [];
         const toolchain = await resolvePluginBuildToolchain(baseDir, {
           ignoreLocal: true,
+          onFetchStart: () => fetchEvents.push("start"),
+          onFetchDone: (ms) => fetchEvents.push(`done:${ms > 0}`),
         });
+
+        // Both ends are reported: without the completion callback the caller
+        // has no way to say the download finished, which is what left the CLI
+        // silent for the whole fetch.
+        expect(fetchEvents).toEqual(["start", "done:true"]);
 
         expect(toolchain.esbuild).toContain("toolchain-");
         expect(toolchain.tailwindCssDir).toContain("toolchain-");

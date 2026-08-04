@@ -126,6 +126,39 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("reports progress while an install is in flight", async () => {
+    // A first install on a machine also downloads the build toolchain, so this
+    // window can run ~17s. The server does that behind one blocking request, so
+    // the client can only say that work is happening — not how far along it is.
+    let release: (() => void) | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(jsonResponse(INSTALLED_PLUGIN_RESPONSE));
+        }),
+    );
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText("Plugin source"), {
+      target: { value: "./plugins/linear" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
+
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /installing plugin/i }),
+      ).toBeTruthy();
+    });
+    // The trust warning has served its purpose by now; the bar replaces it.
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(screen.queryByTestId("full-trust-warning")).toBeNull();
+
+    release?.();
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    });
+  });
+
   it("installs official catalog entries through the catalog endpoint", async () => {
     const requests = stubFetch();
     renderDialog({

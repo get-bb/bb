@@ -164,7 +164,17 @@ function AddPluginDialogContent({
           </div>
         )}
 
-        <FullTrustWarning />
+        {install.isPending ? (
+          <div
+            className="h-0.5 overflow-hidden rounded-full bg-border"
+            role="progressbar"
+            aria-label="Installing plugin"
+          >
+            <div className="h-full w-1/3 animate-plugin-install-progress rounded-full bg-muted-foreground" />
+          </div>
+        ) : (
+          <FullTrustWarning />
+        )}
       </div>
       <DialogFooter>
         <Button
@@ -185,7 +195,9 @@ function AddPluginDialogContent({
           {install.isPending ? (
             <Icon name="Spinner" className="animate-spin" />
           ) : null}
-          Install {initial?.displayName ?? "plugin"}
+          {install.isPending
+            ? `Installing ${initial?.displayName ?? "plugin"}…`
+            : `Install ${initial?.displayName ?? "plugin"}`}
         </Button>
       </DialogFooter>
     </>
