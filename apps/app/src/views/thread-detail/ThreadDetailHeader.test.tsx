@@ -72,7 +72,7 @@ describe("ThreadDetailHeader", () => {
     expect(header?.classList).toContain("border-border-seam-vertical/60");
   });
 
-  it("uses a neutral disclosure state for the right-panel toggle", () => {
+  it("leaves the open right-panel collapse control to the panel header", () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>
         <ThreadDetailHeader
@@ -87,9 +87,37 @@ describe("ThreadDetailHeader", () => {
       </PaneContext.Provider>,
     );
 
-    const toggle = screen.getByRole("button", { name: "Hide right panel" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.hasAttribute("aria-pressed")).toBe(false);
+    expect(
+      screen.queryByRole("button", { name: "Hide right panel" }),
+    ).toBeNull();
+  });
+
+  it("keeps thread Full Screen in a split header while its panel is open", () => {
+    render(
+      <PaneContext.Provider
+        value={{
+          ...PANE_CONTEXT,
+          isSplitPane: true,
+          secondaryPanelHost: { clear: vi.fn(), publish: vi.fn() },
+          onToggleMaximize: vi.fn(),
+        }}
+      >
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadTitle="Split panel state"
+        />
+      </PaneContext.Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: /Full Screen/ })).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Hide right panel" }),
+    ).toBeNull();
   });
 
   it("moves secondary controls into overflow for narrow split panes", () => {

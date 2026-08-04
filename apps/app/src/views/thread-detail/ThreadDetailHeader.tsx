@@ -134,12 +134,11 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
-  // Standalone thread pages keep their header toggle mounted across open/close
-  // on wide layouts. Split panes publish to the one workspace-level toggle, so
-  // no pane header renders its own copy. The drawer still hides the standalone
-  // toggle while open because the drawer carries its own close affordance.
+  // The thread header owns only the show control. Once the panel opens, its
+  // toolbar owns collapse so pane actions (including Full Screen) keep their
+  // stable positions in the thread header.
   const showRightPanelToggle =
-    secondaryPanelHost === null && (!renderAsDrawer || !isSecondaryPanelOpen);
+    secondaryPanelHost === null && !isSecondaryPanelOpen;
 
   const center = (
     <>

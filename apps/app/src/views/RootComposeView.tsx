@@ -454,7 +454,7 @@ export function resolveRootComposePanelTogglePlacement(args: {
   showPinnedToggle: boolean;
 } {
   if (args.isHosted) {
-    return { inlinePanelToggle: "reserved", showPinnedToggle: false };
+    return { inlinePanelToggle: "button", showPinnedToggle: false };
   }
   return {
     inlinePanelToggle: "button",

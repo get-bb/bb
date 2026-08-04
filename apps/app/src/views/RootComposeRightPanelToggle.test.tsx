@@ -22,7 +22,7 @@ describe("RootComposeRightPanelToggle", () => {
     ).toEqual({ inlinePanelToggle: "button", showPinnedToggle: false });
     expect(
       resolveRootComposePanelTogglePlacement({ isHosted: true, isOpen: true }),
-    ).toEqual({ inlinePanelToggle: "reserved", showPinnedToggle: false });
+    ).toEqual({ inlinePanelToggle: "button", showPinnedToggle: false });
   });
 
   it("uses a disclosure state without painting the whole click target as selected", () => {

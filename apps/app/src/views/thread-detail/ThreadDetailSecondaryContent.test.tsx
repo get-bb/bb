@@ -465,6 +465,21 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("keeps the standalone panel hide control in the panel toolbar", () => {
+    renderThreadDetail({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck: createBrowserDeckRenderer(),
+      threadId: "thread-1",
+    });
+
+    expect(
+      screen
+        .getByTestId("inline-secondary-panel")
+        .getAttribute("data-inline-panel-toggle"),
+    ).toBe("button");
+  });
+
   it("places the hosted panel hide control at the outer edge of its own toolbar", () => {
     renderThreadDetail({
       isCompactViewport: false,

@@ -287,13 +287,9 @@ function ThreadDetailSecondaryContentBody({
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
-          // The split-workspace host owns the show control while the panel is
-          // closed. Once open, the panel owns its hide control so the two
-          // trailing actions read in their natural order: Full Screen, then
-          // Hide right panel at the outer edge.
-          inlinePanelToggle={
-            secondaryPanelHost === null ? "hidden" : "button"
-          }
+          // The owning thread or workspace header shows a closed panel. Once
+          // open, collapse belongs at the outer edge of the panel toolbar.
+          inlinePanelToggle="button"
           // In the split-workspace host, panes' panels share one PanelGroup, so
           // each pane's Panel needs its own layout identity (see the prop doc).
           resizablePanelId={
