@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceDefinitionSection,
   ResourceDetailCollection,
@@ -156,6 +157,103 @@ function SkillFileList({
   );
 }
 
+function PagedSkillContent({
+  path,
+  content,
+  markdown,
+}: {
+  path: string;
+  content: string;
+  markdown: boolean;
+}) {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<HTMLDivElement | null>(null);
+  const [page, setPage] = useState(0);
+  const [measurement, setMeasurement] = useState({
+    pageHeight: 0,
+    pageCount: 1,
+  });
+
+  useEffect(() => {
+    if (viewport === null || pages === null) return;
+    const viewportElement = viewport;
+    const pagesElement = pages;
+
+    function measure() {
+      const pageHeight = viewportElement.clientHeight;
+      if (pageHeight <= 0) return;
+      const pageCount = Math.max(
+        1,
+        Math.ceil(pagesElement.scrollHeight / pageHeight),
+      );
+      setMeasurement((current) =>
+        current.pageHeight === pageHeight && current.pageCount === pageCount
+          ? current
+          : { pageHeight, pageCount },
+      );
+    }
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    resizeObserver?.observe(viewportElement);
+    resizeObserver?.observe(pagesElement);
+    window.addEventListener("resize", measure);
+    measure();
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [pages, viewport]);
+
+  const safePage = Math.min(page, measurement.pageCount - 1);
+
+  return (
+    <div className="space-y-3">
+      <ResourceDetailPanel surface="recessed" className="shadow-none">
+        <div
+          ref={setViewport}
+          data-skill-content-viewport
+          className="max-h-[60dvh] overflow-hidden"
+        >
+          <div
+            ref={setPages}
+            data-skill-content-pages
+            style={{
+              transform: `translateY(-${safePage * measurement.pageHeight}px)`,
+            }}
+          >
+            <FilePreview
+              path={path}
+              headerMode="none"
+              state={{
+                kind: "ready",
+                file: {
+                  name: path.split("/").at(-1) ?? path,
+                  contents: content,
+                },
+                lineRange: null,
+                textPreviewKind: markdown ? "markdown" : null,
+              }}
+            />
+          </div>
+        </div>
+      </ResourceDetailPanel>
+      <ResourcePagination
+        page={safePage}
+        pageSize={1}
+        total={measurement.pageCount}
+        visibleCount={1}
+        onPageChange={setPage}
+        summary={`${measurement.pageCount} pages`}
+        ariaLabel="Skill content pagination"
+      />
+    </div>
+  );
+}
+
 export function SkillDetailView({
   leading,
   title,
@@ -242,28 +340,12 @@ export function SkillDetailView({
                 </Button>
               </ResourceDetailPanel>
             ) : (
-              <ResourceDetailPanel
-                surface="recessed"
-                className={
-                  selectedFileIsMarkdown
-                    ? "shadow-none"
-                    : "max-h-[60dvh] overflow-auto shadow-none"
-                }
-              >
-                <FilePreview
-                  path={selectedPath}
-                  headerMode="none"
-                  state={{
-                    kind: "ready",
-                    file: {
-                      name: selectedPath.split("/").at(-1) ?? selectedPath,
-                      contents: contentState.content,
-                    },
-                    lineRange: null,
-                    textPreviewKind: selectedFileIsMarkdown ? "markdown" : null,
-                  }}
-                />
-              </ResourceDetailPanel>
+              <PagedSkillContent
+                key={`${selectedPath}:${contentState.content}`}
+                path={selectedPath}
+                content={contentState.content}
+                markdown={selectedFileIsMarkdown}
+              />
             ))}
         </ResourceDefinitionSection>
       </ResourceDetailStack>

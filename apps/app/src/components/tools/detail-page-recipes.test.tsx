@@ -9,7 +9,13 @@
  * required section fails here rather than silently drifting.
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -527,6 +533,85 @@ describe("Skill detail recipe", () => {
     expect(
       container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
     ).toContain("text-destructive");
+  });
+
+  it("keeps short skill content on one page without pagination chrome", () => {
+    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
+    const viewport = container.querySelector<HTMLElement>(
+      "[data-skill-content-viewport]",
+    );
+    const content = container.querySelector<HTMLElement>(
+      "[data-skill-content-pages]",
+    );
+    expect(viewport).not.toBeNull();
+    expect(content).not.toBeNull();
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 240,
+    });
+    Object.defineProperty(content, "scrollHeight", {
+      configurable: true,
+      value: 120,
+    });
+    act(() => window.dispatchEvent(new Event("resize")));
+
+    expect(viewport?.className).toContain("max-h-[60dvh]");
+    expect(
+      screen.queryByRole("navigation", { name: "Skill content pagination" }),
+    ).toBeNull();
+  });
+
+  it("pages through long skill content with first and last page controls", () => {
+    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
+    const viewport = container.querySelector<HTMLElement>(
+      "[data-skill-content-viewport]",
+    );
+    const content = container.querySelector<HTMLElement>(
+      "[data-skill-content-pages]",
+    );
+    expect(viewport).not.toBeNull();
+    expect(content).not.toBeNull();
+
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 240,
+    });
+    Object.defineProperty(content, "scrollHeight", {
+      configurable: true,
+      value: 720,
+    });
+    act(() => window.dispatchEvent(new Event("resize")));
+
+    const pagination = screen.getByRole("navigation", {
+      name: "Skill content pagination",
+    });
+    const previous = screen.getByRole("button", { name: /Previous/ });
+    const next = screen.getByRole("button", { name: /Next/ });
+    expect(pagination.textContent).toContain("Page 1 of 3");
+    expect(previous.getAttribute("disabled")).not.toBeNull();
+    expect(next.getAttribute("disabled")).toBeNull();
+
+    fireEvent.click(next);
+    expect(pagination.textContent).toContain("Page 2 of 3");
+    expect(content?.style.transform).toBe("translateY(-240px)");
+
+    fireEvent.click(next);
+    expect(pagination.textContent).toContain("Page 3 of 3");
+    expect(previous.getAttribute("disabled")).toBeNull();
+    expect(next.getAttribute("disabled")).not.toBeNull();
+
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 180,
+    });
+    act(() => window.dispatchEvent(new Event("resize")));
+    expect(pagination.textContent).toContain("Page 3 of 4");
+    expect(next.getAttribute("disabled")).toBeNull();
+
+    fireEvent.click(next);
+    expect(pagination.textContent).toContain("Page 4 of 4");
+    expect(content?.style.transform).toBe("translateY(-540px)");
+    expect(next.getAttribute("disabled")).not.toBeNull();
   });
 });
 

@@ -213,6 +213,7 @@ export function ResourcePagination({
   onPageChange,
   scrollTargetId,
   summary,
+  ariaLabel = "Results pagination",
 }: {
   page: number;
   pageSize: number;
@@ -221,6 +222,7 @@ export function ResourcePagination({
   onPageChange: (page: number) => void;
   scrollTargetId?: string;
   summary?: ReactNode;
+  ariaLabel?: string;
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) return null;
@@ -235,7 +237,7 @@ export function ResourcePagination({
 
   return (
     <nav
-      aria-label="Results pagination"
+      aria-label={ariaLabel}
       className="flex flex-wrap items-center justify-between gap-2 px-1"
     >
       <span className="text-xs text-subtle-foreground">
