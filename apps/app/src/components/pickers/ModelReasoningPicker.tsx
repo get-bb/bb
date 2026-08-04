@@ -72,6 +72,7 @@ const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
 // Below this many models (primary + selected-only) the list is short enough to
 // scan by eye, so the search box is more clutter than help.
 const MODEL_SEARCH_MIN_OPTIONS = 5;
+const MODEL_PICKER_MENU_WIDTH_CLASS_NAME = "w-max min-w-52 max-w-80";
 
 // Splits a trailing parenthetical off a model label (e.g. "Opus 4.8 (1M)" →
 // base "Opus 4.8", tag "1M") so the tag can render as a small, muted suffix
@@ -783,7 +784,11 @@ export function ModelReasoningPicker({
       <PopoverContent
         align="start"
         mobileTitle="Model"
-        className="flex w-52 flex-col p-0 max-md:w-full max-md:max-w-none"
+        className={cn(
+          "flex flex-col p-0",
+          MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
+          "max-md:w-full max-md:min-w-0 max-md:max-w-none",
+        )}
       >
         <ResetBrowseStateOnUnmount onReset={resetBrowseState} />
         {/* Provider icon tabs */}
@@ -1189,7 +1194,10 @@ function MoreModelsSubmenu({
         side="right"
         align="start"
         sideOffset={6}
-        className="flex w-52 flex-col p-1 data-[state=closed]:animate-none"
+        className={cn(
+          "flex flex-col p-1 data-[state=closed]:animate-none",
+          MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
+        )}
         onKeyDown={(event) => {
           if (event.key === "Escape" || event.key === "ArrowLeft") {
             event.preventDefault();
