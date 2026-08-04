@@ -71,36 +71,45 @@ export function SlimRow({
           {/* The same slot as a card, so a shelf keeps the card's column. A
               snoozed row spends it on the wake time: when the thread comes
               BACK is that shelf's whole question, and it outranks an age the
-              user has already decided to ignore. */}
+              user has already decided to ignore.
+
+              The restore button shares this one cell instead of following it.
+              A button of its own would sit between the age and the row's edge
+              and push the whole column off the card's, which is the one thing
+              the fixed slot exists to prevent. */}
           <span
             className={cn(
               STATUS_SLOT_CLASS,
               "pointer-events-none relative tabular-nums text-2xs text-muted-foreground/60",
             )}
           >
-            {shelf === "snoozed" && wakeAt !== null ? (
-              snoozeWakeLabel(wakeAt, now)
-            ) : (
-              <StatusOrTime thread={thread} now={now} />
-            )}
+            <span className="flex items-center group-hover/slim:opacity-0">
+              {shelf === "snoozed" && wakeAt !== null ? (
+                snoozeWakeLabel(wakeAt, now)
+              ) : (
+                <StatusOrTime thread={thread} now={now} />
+              )}
+            </span>
+            <button
+              type="button"
+              aria-label={
+                shelf === "snoozed" ? "Wake thread now" : "Un-settle thread"
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRestore();
+              }}
+              // Pulled right by its own padding, so the icon — not the hit
+              // area — lands on the column.
+              className="pointer-events-auto absolute -right-0.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/slim:opacity-100"
+            >
+              <Icon
+                name={shelf === "snoozed" ? "Clock" : "ArrowTurnBackward"}
+                className="size-3.5"
+              />
+            </button>
           </span>
-          <button
-            type="button"
-            aria-label={
-              shelf === "snoozed" ? "Wake thread now" : "Un-settle thread"
-            }
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onRestore();
-            }}
-            className="relative shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/slim:opacity-100"
-          >
-            <Icon
-              name={shelf === "snoozed" ? "Clock" : "ArrowTurnBackward"}
-              className="size-3.5"
-            />
-          </button>
         </div>
       </li>
     </RowContextMenu>

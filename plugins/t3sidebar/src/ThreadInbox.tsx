@@ -17,6 +17,7 @@ import {
 import { ThreadCard } from "./ThreadCard";
 import { SlimRow } from "./SlimRow";
 import { useLifecycle } from "./useLifecycle";
+import { TRAILING_GLYPH_BOX_CLASS } from "./StatusSlot";
 import {
   filterByProject,
   hideChildrenOfVisibleParents,
@@ -136,12 +137,18 @@ export function ThreadInbox({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {status === "loading" ? null : status === "error" ? (
-          <p role="status" className="px-2 py-6 text-center text-xs text-muted-foreground">
+          <p
+            role="status"
+            className="px-2 py-6 text-center text-xs text-muted-foreground"
+          >
             Could not load threads.
           </p>
         ) : pinned.length + inbox.length + snoozed.length + settled.length ===
           0 ? (
-          <p role="status" className="px-2 py-6 text-center text-xs text-muted-foreground">
+          <p
+            role="status"
+            className="px-2 py-6 text-center text-xs text-muted-foreground"
+          >
             {searchQuery.trim() ? "No threads found" : "No threads yet"}
           </p>
         ) : (
@@ -239,19 +246,23 @@ function ParkedShelf({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="mt-3 flex w-full items-center gap-2 px-1 pb-1 text-left"
+        // Padded like a card, so the chevron ends on the same right edge as
+        // every row's status and provider glyph.
+        className="mt-3 flex w-full items-center gap-2 px-2.5 pb-1 text-left"
       >
         <span className="text-2xs font-medium text-muted-foreground/70">
           {expanded ? label : `${label} (${threads.length})`}
         </span>
         <span className="h-px flex-1 bg-sidebar-border" />
-        <Icon
-          name="ChevronDown"
-          className={cn(
-            "size-3 text-muted-foreground/70 transition-transform",
-            expanded && "rotate-180",
-          )}
-        />
+        <span className={TRAILING_GLYPH_BOX_CLASS}>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              "size-3 text-muted-foreground/70 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </span>
       </button>
       {expanded ? (
         <ul className="flex flex-col gap-px">
@@ -289,7 +300,7 @@ function Shelf({
     // which is exactly right for the single unlabelled inbox list.
     <section {...(label ? { "aria-label": label } : {})}>
       {label ? (
-        <h2 className={cn("flex items-center gap-2 px-1 pb-1 pt-3")}>
+        <h2 className={cn("flex items-center gap-2 px-2.5 pb-1 pt-3")}>
           <span className="text-2xs font-medium text-muted-foreground/70">
             {label}
           </span>
