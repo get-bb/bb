@@ -95,21 +95,21 @@ export interface ManagedPluginArtifactsContext {
 }
 
 /**
- * Install a git plugin's declared runtime dependencies into its staging dir.
+ * Install a git plugin's runtime dependencies into its staging dir.
  *
  * Nothing here executes plugin code: `--ignore-scripts` means npm only
  * downloads tarballs and writes files, and esbuild bundles by parsing rather
- * than evaluating. That keeps the update-check path (which stages git
- * candidates via `plugin-updates.ts`) free of plugin-authored execution.
+ * than evaluating. Resolving a dependency tree still reaches the registry (and
+ * any `file:`/`git:` dependency the author declared), which is why this runs
+ * only on the install/apply path and never on an update check.
  *
- * Skipped entirely when the package declares no `dependencies`, so a
- * dependency-free git plugin still installs with only `git` on PATH.
+ * Run unconditionally: `git:` installs require npm regardless, because the
+ * build toolchain itself is fetched on demand.
  */
 async function installGitDependencies(args: {
   rootDir: string;
   manifest: PluginManifest;
 }): Promise<void> {
-  if (!args.manifest.hasDependencies) return;
   await runInstallCommand(
     "npm",
     [
@@ -123,7 +123,7 @@ async function installGitDependencies(args: {
       "--no-fund",
     ],
     {
-      notFoundHint: `"npm" was not found on PATH — git plugin "${args.manifest.id}" declares dependencies, which require npm to install`,
+      notFoundHint: `"npm" was not found on PATH — installing git plugin "${args.manifest.id}" requires npm`,
     },
   );
 }
@@ -179,14 +179,21 @@ export function createManagedPluginArtifacts(
    * bundle. Managed (git:/npm:) installs run this against a staging dir so
    * a failure never touches the currently-installed files.
    */
-  async function validateInstallDir(args: {
+  /**
+   * Manifest and engine checks only — no npm, no bundling, no plugin code and
+   * no network beyond the clone that already happened.
+   *
+   * This is what an update *check* runs. Checks are read-only by contract, so
+   * they must not resolve a dependency tree: a `file:` or `git:` dependency an
+   * author declared would otherwise reach local paths or new hosts every time
+   * bb polled for updates.
+   */
+  async function validateManifestOnly(args: {
     rootDir: string;
     source: string;
     refuseEngineMismatch: boolean;
   }): Promise<PluginManifest> {
     const manifest = await readPluginManifest(args.rootDir);
-    const kind = sourceKind(args.source);
-    const managed = kind === "git" || kind === "npm";
     if (args.refuseEngineMismatch) {
       const engineProblem =
         checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
@@ -196,6 +203,23 @@ export function createManagedPluginArtifacts(
         );
       }
     }
+    return manifest;
+  }
+
+  /**
+   * Validation half of an install or update-apply: everything
+   * {@link validateManifestOnly} does, plus dependency installation, bundle
+   * builds, and artifact-metadata checks. Runs against a staging dir so a
+   * failure never touches the installed files.
+   */
+  async function validateInstallDir(args: {
+    rootDir: string;
+    source: string;
+    refuseEngineMismatch: boolean;
+  }): Promise<PluginManifest> {
+    const manifest = await validateManifestOnly(args);
+    const kind = sourceKind(args.source);
+    const managed = kind === "git" || kind === "npm";
     // Dependency + bundle policy (design §5.1):
     // - git: bb installs declared runtime deps (scripts disabled — nothing
     //   executes), builds BOTH bundles so those deps are inlined, then
@@ -238,13 +262,10 @@ export function createManagedPluginArtifacts(
           `install failed: server bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      // Both bundles now inline the dependencies, so the tree is dead weight
-      // in an immutable artifact. Pruning before hashing keeps the promoted
-      // directory small and its content hash stable.
-      await rm(join(args.rootDir, "node_modules"), {
-        recursive: true,
-        force: true,
-      });
+      // node_modules is deliberately retained. esbuild only bundles what it
+      // can discover statically, so a dependency that reads a data file,
+      // template, or .wasm at runtime would break if the tree were pruned —
+      // and the source fallback at `resolveServerEntry` needs it too.
     }
 
     async function validateArtifact(
@@ -923,7 +944,9 @@ export function createManagedPluginArtifacts(
         };
       }
       try {
-        await validateInstallDir({
+        // A check validates the manifest only; an apply additionally installs
+        // dependencies and builds. See `validateManifestOnly`.
+        await (args.promote ? validateInstallDir : validateManifestOnly)({
           rootDir: realPluginRoot,
           source: args.row.source,
           refuseEngineMismatch: true,

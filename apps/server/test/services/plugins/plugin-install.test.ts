@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import {
   mkdtemp,
@@ -584,7 +583,7 @@ describe("plugin install flows", () => {
       await expect(service.install("git:@main")).rejects.toThrowError();
     });
 
-    it("builds a self-contained server bundle and discards node_modules", async () => {
+    it("builds both bundles for a git plugin", async () => {
       const repoDir = join(workDir, "repo-selfcontained");
       await writePluginFixture(repoDir, { name: "bb-plugin-selfcontained" });
       await initGitRepo(repoDir);
@@ -592,35 +591,10 @@ describe("plugin install flows", () => {
 
       const entry = await service.install(`git:${repoDir}@main`);
       expect(entry.status).toBe("running");
-      // Built here rather than committed, so `resolveServerEntry` never has
-      // to fall back to source for a git artifact.
+      // Built here rather than committed, so the loader prefers a bundle
+      // stamped for this exact SDK over the TypeScript source.
       await stat(join(entry.rootDir, "dist", "server.js"));
       await stat(join(entry.rootDir, "dist", "server.meta.json"));
-      await expect(
-        stat(join(entry.rootDir, "node_modules")),
-      ).rejects.toThrowError();
-    });
-
-    it("installs a dependency-free git plugin without npm on PATH", async () => {
-      const repoDir = join(workDir, "repo-no-deps");
-      await writePluginFixture(repoDir, { name: "bb-plugin-nodeps" });
-      await initGitRepo(repoDir);
-      await commitAll(repoDir, "init");
-
-      // A plugin that declares no dependencies must never shell out to npm,
-      // so `git` alone stays sufficient for the common case.
-      const path = process.env.PATH ?? "";
-      const withoutNpm = path
-        .split(":")
-        .filter((dir) => !existsSync(join(dir, "npm")))
-        .join(":");
-      vi.stubEnv("PATH", withoutNpm);
-      try {
-        const entry = await service.install(`git:${repoDir}@main`);
-        expect(entry.status).toBe("running");
-      } finally {
-        vi.unstubAllEnvs();
-      }
     });
 
     it.runIf(hasNpm)(
@@ -669,9 +643,9 @@ describe("plugin install flows", () => {
           "utf8",
         );
         expect(bundle).toContain("hello from the dependency");
-        await expect(
-          stat(join(entry.rootDir, "node_modules")),
-        ).rejects.toThrowError();
+        // node_modules is retained: esbuild only bundles statically reachable
+        // code, so a dependency's runtime data files must survive.
+        await stat(join(entry.rootDir, "node_modules"));
       },
     );
   });

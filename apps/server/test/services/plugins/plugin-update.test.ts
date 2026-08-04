@@ -322,6 +322,34 @@ describe("plugin update service and routes", () => {
     });
   });
 
+  it("checks a git candidate without installing or building it", async () => {
+    // An update check is read-only by contract: it must not resolve a
+    // dependency tree or bundle, or a `file:`/`git:` dependency would reach
+    // local paths and new hosts on every poll. This candidate cannot compile,
+    // so a check that built would report `unavailable` instead of offering
+    // the update; the failure belongs at apply time.
+    const candidate = await commitPlugin(
+      repo,
+      "1.2.0",
+      undefined,
+      "export default function plugin(bb: any) { this is not valid typescript",
+    );
+
+    const results = await service.checkForUpdates("updater");
+
+    expect(results).toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: candidate },
+      },
+    ]);
+
+    // ...and applying it does fail, so the check is not hiding a real problem.
+    const applied = await service.applyUpdate("updater");
+    expect(applied.outcome).not.toBe("updated");
+  });
+
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
     const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
     const incompatibleCommit = await commitPlugin(repo, "2.0.0", {

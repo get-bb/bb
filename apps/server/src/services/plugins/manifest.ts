@@ -29,12 +29,6 @@ export interface PluginManifest {
       darkPath?: string;
     };
   };
-  /**
-   * Whether the package declares any runtime `dependencies`. Git installs
-   * only shell out to npm when this is true, so a dependency-free plugin
-   * still installs with nothing but `git` on PATH.
-   */
-  hasDependencies: boolean;
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
   /** semver range from engines.bbPluginSdk; absent manifests are legacy. */
@@ -138,13 +132,7 @@ export async function readPluginManifest(
       `invalid plugin package.json${path ? ` (${path})` : ""}: ${issue?.message ?? "unknown error"}`,
     );
   }
-  const {
-    name: packageName,
-    version,
-    engines,
-    dependencies,
-    bb,
-  } = parsed.data;
+  const { name: packageName, version, engines, bb } = parsed.data;
   if (
     engines?.bbPluginSdk !== undefined &&
     semver.validRange(engines.bbPluginSdk) === null
@@ -261,7 +249,6 @@ export async function readPluginManifest(
         : { compactIconPath: brandingCompactIconPath }),
       ...(brandingLogo === undefined ? {} : { logo: brandingLogo }),
     },
-    hasDependencies: Object.keys(dependencies ?? {}).length > 0,
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
