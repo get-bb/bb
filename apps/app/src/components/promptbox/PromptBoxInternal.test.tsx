@@ -905,6 +905,69 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("inserts text without reopening the editor on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const onChange = vi.fn();
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({ onChange, promptBoxRef })}
+        />,
+      );
+
+      await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+      const outsideTarget = document.createElement("button");
+      document.body.append(outsideTarget);
+      outsideTarget.focus();
+
+      act(() => promptBoxRef.current?.insertTextAtCursor("transcript"));
+
+      expect(onChange).toHaveBeenLastCalledWith("transcript", []);
+      expect(document.activeElement).toBe(outsideTarget);
+      outsideTarget.remove();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("blurs the editor before starting voice input on coarse pointers", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    try {
+      const start = vi.fn();
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            promptBoxRef,
+            voice: {
+              state: "idle",
+              isSupported: true,
+              stream: null,
+              start,
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      await waitFor(() => expect(promptBoxRef.current).not.toBeNull());
+      const editor = getPromptEditorElement();
+      editor.focus();
+      expect(document.activeElement).toBe(editor);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Start voice input" }),
+      );
+
+      expect(start).toHaveBeenCalledOnce();
+      expect(document.activeElement).not.toBe(editor);
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("refocuses when the history reset key changes on fine pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
@@ -1696,6 +1759,29 @@ describe("PromptBoxInternal compact layout", () => {
 
     expect(submitGroup?.contains(submit)).toBe(true);
     expect(submitGroup?.contains(voice)).toBe(false);
+  });
+
+  it("keeps collapsed composer controls from covering voice controls", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          voice: {
+            state: "recording",
+            isSupported: true,
+            stream: null,
+            start: vi.fn(),
+            stop: vi.fn(),
+            cancel: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    const main = document.querySelector("[data-promptbox-main]");
+    expect(main?.classList.contains("pointer-events-none")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Stop and transcribe recording" }),
+    ).toBeTruthy();
   });
 
   it("does not expose zen controls in the full mobile layout", () => {
