@@ -1245,6 +1245,7 @@ const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
 interface NotesSidebarState {
   headerMounted: boolean;
   paneNarrow: boolean;
+  width: number;
   userCollapsed: boolean | null;
 }
 
@@ -1269,6 +1270,7 @@ function getNotesSidebarStore(key: string): NotesSidebarStore {
     state: {
       headerMounted: false,
       paneNarrow: false,
+      width: 288,
       userCollapsed: null,
     },
     headerMounts: 0,
@@ -1287,6 +1289,7 @@ function updateNotesSidebarState(
   if (
     next.headerMounted === store.state.headerMounted &&
     next.paneNarrow === store.state.paneNarrow &&
+    next.width === store.state.width &&
     next.userCollapsed === store.state.userCollapsed
   ) {
     return;
@@ -1349,12 +1352,18 @@ function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
     };
   }, [store]);
   return (
-    <NotesSidebarToggle
-      collapsed={collapsed}
-      onCollapsedChange={(userCollapsed) =>
-        updateNotesSidebarState(store, { userCollapsed })
-      }
-    />
+    <div
+      data-testid="notes-sidebar-header"
+      className="-mr-4 flex h-12 shrink-0 items-center justify-end border-l border-border bg-sidebar pr-4"
+      style={{ width: collapsed ? 48 : sidebar.width }}
+    >
+      <NotesSidebarToggle
+        collapsed={collapsed}
+        onCollapsedChange={(userCollapsed) =>
+          updateNotesSidebarState(store, { userCollapsed })
+        }
+      />
+    </div>
   );
 }
 
@@ -1488,12 +1497,13 @@ function Tree({
   // null = follow the responsive default (collapsed in narrow panes) until
   // the user toggles the sidebar explicitly.
   const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const sidebarWidth = sidebar.width;
   const asideRef = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (sidebarStore.viewMounts === 0) {
       updateNotesSidebarState(sidebarStore, {
         paneNarrow: false,
+        width: 288,
         userCollapsed: null,
       });
     }
@@ -1503,6 +1513,7 @@ function Tree({
       if (sidebarStore.viewMounts === 0) {
         updateNotesSidebarState(sidebarStore, {
           paneNarrow: false,
+          width: 288,
           userCollapsed: null,
         });
       }
@@ -1660,9 +1671,12 @@ function Tree({
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const move = (moveEvent: PointerEvent) => {
-      setSidebarWidth(
-        Math.min(480, Math.max(220, startWidth + startX - moveEvent.clientX)),
-      );
+      updateNotesSidebarState(sidebarStore, {
+        width: Math.min(
+          480,
+          Math.max(220, startWidth + startX - moveEvent.clientX),
+        ),
+      });
     };
     const cleanup = () => {
       if (resizeCleanupRef.current !== cleanup) return;
@@ -1692,7 +1706,7 @@ function Tree({
         className={cn(
           "order-2 flex shrink-0 flex-col items-center",
           !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-muted/20 py-2",
+            "w-10 border-l border-border bg-sidebar py-2",
         )}
         style={{ width: sidebar.headerMounted ? 0 : 40 }}
       >
@@ -1711,7 +1725,7 @@ function Tree({
   return (
     <aside
       ref={asideRef}
-      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
+      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-sidebar"
       style={{ width: sidebarWidth }}
     >
       <div className="relative flex items-center border-b border-border p-2">
@@ -1926,7 +1940,9 @@ function Tree({
         aria-valuemax={480}
         aria-valuenow={sidebarWidth}
         onPointerDown={startResize}
-        onDoubleClick={() => setSidebarWidth(288)}
+        onDoubleClick={() =>
+          updateNotesSidebarState(sidebarStore, { width: 288 })
+        }
       />
     </aside>
   );

@@ -118,9 +118,15 @@ describe("Docs nav panel", () => {
 
     const HeaderContent = panel.headerContent!;
     const header = render(<HeaderContent subPath="personal" />);
+    const headerSegment = header.getByTestId("notes-sidebar-header");
+    expect(headerSegment.classList.contains("bg-sidebar")).toBe(true);
+    expect(headerSegment.style.width).toBe("288px");
     const navigation = slot.getByRole("navigation", {
       name: "Notes sidebar",
     });
+    expect(
+      slot.container.querySelector("aside")?.classList.contains("bg-sidebar"),
+    ).toBe(true);
     expect(
       within(navigation).getByRole("button", { name: "Search notes" }),
     ).toBeTruthy();
@@ -139,10 +145,12 @@ describe("Docs nav panel", () => {
       header.getByRole("button", { name: "Collapse notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
+    expect(headerSegment.style.width).toBe("48px");
     fireEvent.click(
       header.getByRole("button", { name: "Expand notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
+    expect(headerSegment.style.width).toBe("288px");
 
     header.unmount();
     await waitFor(() => {
