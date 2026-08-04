@@ -1646,10 +1646,7 @@ function LandingPage() {
           <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
           <span aria-hidden="true">→</span>
         </a>
-        <h1>
-          The First LDE<span className="lde-star">*</span>
-        </h1>
-        <p className="lde-expand">(Loop Development Environment)</p>
+        <h1>The IDE that builds itself</h1>
         <p className="sub">
           bb can control, customize, and automate itself, laying the groundwork
           for your own software factory.

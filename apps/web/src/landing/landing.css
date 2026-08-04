@@ -482,17 +482,7 @@ code,
   max-width: 780px;
   margin: 0 auto;
   color: oklch(0.21 0 0);
-}
-
-.lde-star {
-  color: var(--accent);
-}
-
-.lde-expand {
-  margin: 9px auto 0;
-  font-size: 15px;
-  letter-spacing: 0.01em;
-  color: var(--subtle);
+  text-wrap: balance;
 }
 
 .hero .sub {
