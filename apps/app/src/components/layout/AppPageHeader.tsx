@@ -44,6 +44,13 @@ export const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
 export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
   HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
+/**
+ * Seam that separates a header row from the body below it. Every app header
+ * carries this seam, so it belongs to the shared chrome instead of to each
+ * call site. Panes without it read as if their title bar floats on the body.
+ */
+export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
+
 interface AppPageHeaderProps {
   center?: ReactNode;
   actions?: ReactNode;
@@ -86,6 +93,7 @@ export function AppPageHeader({
       ref={headerRef}
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
+        HEADER_SEAM_CLASS,
         "relative shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         className,

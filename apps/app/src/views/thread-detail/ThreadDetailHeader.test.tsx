@@ -52,25 +52,8 @@ afterEach(() => {
 });
 
 describe("ThreadDetailHeader", () => {
-  it("keeps the thread header visually separated from the timeline", () => {
-    const { container } = render(
-      <PaneContext.Provider value={PANE_CONTEXT}>
-        <ThreadDetailHeader
-          actionsMenu={null}
-          childPillLabel={null}
-          isSecondaryPanelOpen={false}
-          onOpenThreadGitAction={vi.fn()}
-          onToggleSecondaryPanel={vi.fn()}
-          threadHeaderGitActions={[]}
-          threadTitle="Header separator"
-        />
-      </PaneContext.Provider>,
-    );
-
-    const header = container.querySelector("header");
-    expect(header?.classList).toContain("border-b");
-    expect(header?.classList).toContain("border-border-seam-vertical/60");
-  });
+  // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
+  // guards it for every header instead of this one call site.
 
   it("leaves the open right-panel collapse control to the panel header", () => {
     render(
