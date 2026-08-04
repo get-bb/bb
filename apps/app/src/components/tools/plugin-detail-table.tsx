@@ -49,10 +49,12 @@ const CELL = "py-1.5 align-top text-sm leading-snug";
 export function PluginDetailFieldRow({
   label,
   children,
+  labelClassName,
   stackOnNarrow = false,
 }: {
   label: ReactNode;
   children: ReactNode;
+  labelClassName?: string;
   stackOnNarrow?: boolean;
 }) {
   if (stackOnNarrow) {
@@ -64,6 +66,7 @@ export function PluginDetailFieldRow({
             CELL,
             PLUGIN_DETAIL_HEADER_CELL_CLASS,
             "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
+            labelClassName,
           )}
         >
           {label}
@@ -83,6 +86,7 @@ export function PluginDetailFieldRow({
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
           "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
+          labelClassName,
         )}
       >
         {label}

@@ -154,9 +154,9 @@ describe("Plugin detail recipe", () => {
     });
 
     for (const name of ["Delivery", "Version"]) {
-      expect(screen.getByRole("rowheader", { name }).className).toContain(
-        "bg-surface-recessed/55",
-      );
+      const header = screen.getByRole("rowheader", { name });
+      expect(header.className).toContain("bg-surface-recessed/55");
+      expect(header.className).toContain("font-medium");
     }
     expect(
       screen.getByRole("rowheader", { name: /Review issues/ }).className,
