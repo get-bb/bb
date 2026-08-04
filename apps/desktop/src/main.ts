@@ -311,6 +311,7 @@ let connectCredentialCache: ConnectCredentialCache | null = null;
 let cachedConnectCredential: ConnectCredential | null = null;
 let enrollingDesktopMachine: Promise<void> | null = null;
 let connectSessionRenewal: ConnectSessionRenewal | null = null;
+let serverTargetGeneration = 0;
 let connectAccountServers: ConnectAccountServer[] = [];
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
@@ -1005,7 +1006,7 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
  */
 async function authenticateConnectTarget(
   remoteServerUrl: string,
-  isCurrent: () => boolean = () => true,
+  isCurrent: () => boolean,
 ): Promise<ConnectDesktopSessionResult> {
   const cookieStore = session.defaultSession.cookies;
   let cachedFailure: ConnectDesktopSessionResult | null = null;
@@ -1114,6 +1115,14 @@ function ensureDesktopMachineEnrolled(): void {
   });
 }
 
+/**
+ * Load the saved target and pin the session, config sync, and menu to it.
+ *
+ * The Server menu starts a switch without waiting, so two of these can overlap
+ * and a slow one can finish last. Each run therefore claims a generation and
+ * checks it after every wait: a run the user has already superseded stops
+ * quietly instead of loading its own server over the newer one.
+ */
 async function applyServerTarget(): Promise<void> {
   if (serverTargetStore === null) {
     return;
@@ -1123,8 +1132,15 @@ async function applyServerTarget(): Promise<void> {
   // flight would otherwise still read itself as current while this switch
   // runs, and its local-server fallback would undo the switch.
   connectSessionRenewal?.stop();
+  serverTargetGeneration += 1;
+  const generation = serverTargetGeneration;
+  const isCurrent = (): boolean => serverTargetGeneration === generation;
+
   if (target.kind === "builtin") {
     const attached = await ensureBuiltinRuntimeAttached();
+    if (!isCurrent()) {
+      return;
+    }
     if (!attached) {
       await loadStartupError({
         details:
@@ -1149,7 +1165,13 @@ async function applyServerTarget(): Promise<void> {
     // Connect servers load as plain web pages behind a session cookie. The
     // cookie comes from the app's own machine credential when it has one, so
     // no local bb server has to run.
-    const result = await authenticateConnectTarget(target.server.url);
+    const result = await authenticateConnectTarget(
+      target.server.url,
+      isCurrent,
+    );
+    if (!isCurrent()) {
+      return;
+    }
     if (!result.ok) {
       createDesktopLogger().warn(
         `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
@@ -1170,11 +1192,17 @@ async function applyServerTarget(): Promise<void> {
     });
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.server.url });
+    if (!isCurrent()) {
+      return;
+    }
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
     bbAppLoaded = true;
     await loadWindowUrl({ url: target.url });
+    if (!isCurrent()) {
+      return;
+    }
     startRemoteSystemConfigSync(target.url);
   }
   refreshApplicationMenu();
