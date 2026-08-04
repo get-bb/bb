@@ -194,6 +194,7 @@ const hostSchema = z
     name: z.string().min(1),
     type: z.literal("persistent"),
     status: z.enum(["connected", "disconnected"]),
+    maxPermissionMode: z.enum(["full", "auto", "accept-edits"]),
     lastSeenAt: z.number().nullable(),
     lastRejectedProtocolVersion: z.number().int().positive().nullable(),
     createdAt: z.number(),
