@@ -48,9 +48,11 @@ The manifest is `package.json`:
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
   and git installs build it automatically at install time. Git installs also
-  `npm install` any declared `dependencies` first, so a git plugin may use
-  third-party packages; bb discards node_modules after bundling. Path installs
-  build from dependencies you have already installed.
+  run `npm install` first (so a git plugin may use third-party packages) and
+  keep node_modules, since bundling cannot inline data files read at runtime.
+  Installing or updating a git plugin needs `npm` on PATH; checking for
+  updates does not, because a check reads the manifest and never builds. Path
+  installs build from dependencies you have already installed.
 - Building yourself (CI, or verifying a build without a running bb): add
   `bb-app` to `devDependencies` and set `"build": "bb plugin build"`.
   `bb plugin build` needs no server, and depending on `bb-app@X` builds

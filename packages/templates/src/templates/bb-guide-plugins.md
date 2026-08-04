@@ -216,16 +216,19 @@ category across the bundled official plugins (status: installed / compatible
 `path:`, `npm:`, `git:`, and `builtin:` sources—and path-like
 syntax—continue to bypass official-plugin resolution.
 
-Builds are automatic once installed. Git installs run `npm install` for any
-declared dependencies (lifecycle scripts disabled), compile both bundles so
-those dependencies are inlined, then discard node_modules — so a git plugin
-may use third-party packages and its artifact stays self-contained. A git
-plugin that declares no dependencies installs with only `git` on PATH, and a
-committed dist/ is always replaced by the bundles bb builds. Path installs
-compile dist/ at install time from dependencies you have already installed. A
-build failure fails the install. npm packages must ship a metadata-validated
-prebuilt app or the install is refused. The server rebuilds source-built apps
-after a bb upgrade.
+Builds are automatic once installed. Git installs run `npm install`
+(lifecycle scripts disabled), then compile both bundles — so a git plugin may
+depend on third-party packages. node_modules is kept, because bundling cannot
+inline data files a dependency reads at runtime. A committed dist/ is always
+replaced by the bundles bb builds. Path installs compile dist/ at install time
+from dependencies you have already installed. A build failure fails the
+install. npm packages must ship a metadata-validated prebuilt app or the
+install is refused. The server rebuilds source-built apps after a bb upgrade.
+
+Installing or updating a git plugin requires `npm` on PATH. Checking for
+updates does not: a check reads the candidate's manifest and stops, so
+polling never resolves a dependency tree or builds. A candidate that fails to
+build is reported as available and fails when you apply it.
 
 bb ships no build toolchain. The first time a git or path plugin is built on
 a machine, bb downloads a pinned esbuild + Tailwind set into
