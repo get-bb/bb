@@ -244,6 +244,9 @@ describe("Plugin detail recipe", () => {
     ] as const) {
       expect(screen.getByText(item).className).toContain("text-xs");
     }
+    const skillName = screen.getByText("review");
+    expect(skillName.parentElement?.className).toContain("items-center");
+    expect(skillName.previousElementSibling?.className).not.toContain("mt-px");
   });
 
   it("collapses long capability descriptions until requested", () => {

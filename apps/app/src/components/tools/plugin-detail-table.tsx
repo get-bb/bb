@@ -167,13 +167,13 @@ export function PluginDetailRow({
         )}
         colSpan={hasDetail ? undefined : 2}
       >
-        <span className="flex min-w-0 items-start gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           {/*
             `flex`, not a plain span: as a block it wrapped the inline-level
             glyph in a line box, which added four invisible pixels to every row
             in every one of these tables.
           */}
-          <span className="mt-px flex shrink-0">{glyph}</span>
+          <span className="flex shrink-0">{glyph}</span>
           <span
             className={cn(
               "min-w-0 break-words text-foreground",
