@@ -5,7 +5,6 @@ import {
   fireEvent,
   render,
   screen,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
@@ -25,7 +24,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
   icon: "Brain",
-  category: "Productivity",
+  category: "Context & knowledge",
   source: "builtin:memory",
   installed: false,
   compatible: true,
@@ -91,7 +90,7 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  it("renders every official catalog card represented by the catalog count", async () => {
+  it("renders every returned catalog entry exactly once in direct categories", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
       (_, index) => ({
@@ -99,7 +98,8 @@ describe("BrowsePluginsTab", () => {
         entryId: `official-${index + 1}`,
         pluginId: `official-${index + 1}`,
         displayName: `Official ${index + 1}`,
-        category: index % 2 === 0 ? "Productivity" : "Developer tools",
+        category:
+          index % 2 === 0 ? "Context & knowledge" : "Developer tools",
       }),
     );
     vi.stubGlobal(
@@ -123,15 +123,11 @@ describe("BrowsePluginsTab", () => {
       wrapper,
     });
 
-    expect(
-      await screen.findByText("13 plugins · 9 included with BB, 4 optional"),
-    ).toBeTruthy();
+    expect(await screen.findByText("Official 1")).toBeTruthy();
     expect(
       screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
     ).toHaveLength(CATALOG_STATUS.pluginCount);
-    expect(
-      screen.queryByRole("heading", { name: "Included with BB" }),
-    ).toBeNull();
+    expect(screen.queryByText("BB Official plugins")).toBeNull();
   });
 
   it("shows the official plugins and entries", async () => {
@@ -161,12 +157,7 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    expect(
-      await screen.findByText("13 plugins · 9 included with BB, 4 optional"),
-    ).toBeTruthy();
-    const officialCatalog = screen.getByRole("region", {
-      name: "BB Official plugins",
-    });
+    expect(await screen.findByText("Memory")).toBeTruthy();
     const memoryCard = (await screen.findByText("Memory")).closest("div");
     expect(memoryCard).not.toBeNull();
     // Scoped to the card on purpose: INCOMPATIBLE_ENTRY spreads MEMORY_ENTRY
@@ -183,16 +174,15 @@ describe("BrowsePluginsTab", () => {
       .closest('[class*="auto-fill"]');
     expect(githubGrid?.className).toContain("auto-fill");
     expect(
-      within(officialCatalog).getByRole("heading", { name: "Productivity" }),
+      screen.getByRole("heading", { name: "Context & knowledge" }),
     ).toBeTruthy();
     expect(
-      within(officialCatalog).getByRole("heading", {
-        name: "Developer tools",
-      }),
+      screen.getByRole("heading", { name: "Developer tools" }),
     ).toBeTruthy();
     expect(
-      within(officialCatalog).getByRole("button", { name: "Install Memory" }),
+      screen.getByRole("button", { name: "Install Memory" }),
     ).toBeTruthy();
+    expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
     expect(screen.getByText("Requires a newer BB version")).toBeTruthy();

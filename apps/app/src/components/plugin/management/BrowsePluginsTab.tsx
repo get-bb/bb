@@ -22,7 +22,6 @@ import {
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   usePluginCatalogSearch,
-  usePluginCatalogStatus,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
@@ -39,9 +38,7 @@ export function BrowsePluginsTab({
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
-  const statusQuery = usePluginCatalogStatus({ enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  const status = statusQuery.data;
   const entries = searchQuery.data ?? [];
   const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
   for (const entry of entries) {
@@ -62,89 +59,52 @@ export function BrowsePluginsTab({
         />
       }
     >
-      <section
-        aria-labelledby="bb-official-plugins-heading"
-        className="space-y-4 rounded-lg border border-border bg-card px-3.5 py-3"
-      >
-        <div>
-          <h2
-            id="bb-official-plugins-heading"
-            className="text-sm font-medium text-foreground"
-          >
-            BB Official plugins
-          </h2>
-          {status === undefined ? (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {statusQuery.isPending
-                ? "Loading plugins…"
-                : "Plugin list unavailable."}
-            </p>
-          ) : (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {status.pluginCount} plugin
-              {status.pluginCount === 1 ? "" : "s"} ·{" "}
-              {status.includedPluginCount}
-              {" included with BB, "}
-              {status.optionalPluginCount} optional
-            </p>
-          )}
+      {searchQuery.isError && entries.length > 0 ? (
+        <p className="text-xs text-warning-text" role="status">
+          Showing cached catalog results because the latest search failed.
+        </p>
+      ) : null}
+
+      {searchQuery.isPending ? (
+        <ResourceListState state="loading" message="Loading plugins" />
+      ) : entries.length === 0 ? (
+        <ResourceListState
+          state={searchQuery.isError ? "error" : "empty"}
+          message={
+            searchQuery.isError
+              ? "BB's official plugins are unavailable."
+              : "No plugins match this search."
+          }
+          onRetry={
+            searchQuery.isError
+              ? () => {
+                  void searchQuery.refetch();
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <div className="space-y-5">
+          {[...byCategory.entries()].map(([category, categoryEntries]) => (
+            <section key={category} aria-label={category}>
+              <h2 className="mb-2 text-sm font-semibold text-foreground">
+                {category}
+              </h2>
+              <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
+                {categoryEntries.map((entry) => (
+                  <BrowseCard
+                    key={entry.entryId}
+                    entry={entry}
+                    installedPluginId={entry.installed ? entry.pluginId : null}
+                    onInstall={onInstall}
+                    onOpenPlugin={onOpenPlugin}
+                  />
+                ))}
+              </ResourceBrowseGrid>
+            </section>
+          ))}
         </div>
-
-        {searchQuery.isError && entries.length > 0 ? (
-          <p className="text-xs text-warning-text" role="status">
-            Showing cached catalog results because the latest search failed.
-          </p>
-        ) : null}
-
-        {searchQuery.isPending ? (
-          <ResourceListState state="loading" message="Loading plugins" />
-        ) : entries.length === 0 ? (
-          <ResourceListState
-            state={searchQuery.isError ? "error" : "empty"}
-            message={
-              searchQuery.isError
-                ? "BB's official plugins are unavailable."
-                : "No plugins match this search."
-            }
-            onRetry={
-              searchQuery.isError
-                ? () => {
-                    void searchQuery.refetch();
-                  }
-                : undefined
-            }
-          />
-        ) : (
-          <div className="space-y-4">
-            {[...byCategory.entries()].map(([category, categoryEntries]) => (
-              <section
-                key={category}
-                aria-labelledby={`plugin-category-${category}`}
-              >
-                <h3
-                  id={`plugin-category-${category}`}
-                  className="mb-2 text-sm font-semibold text-foreground"
-                >
-                  {category}
-                </h3>
-                <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,23rem),1fr))]">
-                  {categoryEntries.map((entry) => (
-                    <BrowseCard
-                      key={entry.entryId}
-                      entry={entry}
-                      installedPluginId={
-                        entry.installed ? entry.pluginId : null
-                      }
-                      onInstall={onInstall}
-                      onOpenPlugin={onOpenPlugin}
-                    />
-                  ))}
-                </ResourceBrowseGrid>
-              </section>
-            ))}
-          </div>
-        )}
-      </section>
+      )}
     </ResourceCollectionViewport>
   );
 }

@@ -14,6 +14,7 @@ import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
   OFFICIAL_PLUGINS,
+  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
 
@@ -90,25 +91,28 @@ describe("bundled plugin catalog service", () => {
     expect(results.some((entry) => entry.category === "Included with BB")).toBe(
       false,
     );
-    expect(new Set(results.map((entry) => entry.category))).toEqual(
-      new Set(["Developer tools", "Productivity"]),
+    expect([...new Set(results.map((entry) => entry.category))]).toEqual(
+      PLUGIN_CATALOG_CATEGORIES,
     );
     const docs = results.find((entry) => entry.entryId === "docs");
     expect(docs).toMatchObject({
       pluginId: "simple-notes",
       displayName: "Docs",
       icon: "FileText",
-      category: "Productivity",
+      category: "Context & knowledge",
       source: "builtin:docs",
       installed: false,
       compatible: true,
       incompatibleReason: null,
     });
-    expect(results.map((entry) => entry.displayName)).toEqual(
-      [...results.map((entry) => entry.displayName)].sort((a, b) =>
-        a.localeCompare(b),
-      ),
-    );
+    for (const category of PLUGIN_CATALOG_CATEGORIES) {
+      const categoryNames = results
+        .filter((entry) => entry.category === category)
+        .map((entry) => entry.displayName);
+      expect(categoryNames).toEqual(
+        [...categoryNames].sort((a, b) => a.localeCompare(b)),
+      );
+    }
   });
 
   it("matches queries against entry id, plugin id, and manifest text", async () => {

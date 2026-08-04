@@ -7,7 +7,6 @@ import { Input } from "@bb/shared-ui/input";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   usePluginCatalogSearch,
-  usePluginCatalogStatus,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import type { AddPluginInitial } from "@/components/plugin/management/AddPluginDialog";
@@ -25,9 +24,7 @@ export function BrowsePluginsTab({
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
-  const statusQuery = usePluginCatalogStatus({ enabled: true });
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
-  const status = statusQuery.data;
   const entries = searchQuery.data ?? [];
 
   const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
@@ -39,26 +36,6 @@ export function BrowsePluginsTab({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-card px-3.5 py-3">
-        <p className="text-sm font-medium text-foreground">
-          BB Official plugins
-        </p>
-        {status === undefined ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {statusQuery.isPending
-              ? "Loading plugins…"
-              : "Plugin list unavailable."}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {status.pluginCount} plugin
-            {status.pluginCount === 1 ? "" : "s"} · {status.includedPluginCount}
-            {" included with BB, "}
-            {status.optionalPluginCount} optional
-          </p>
-        )}
-      </div>
-
       <div className="relative min-w-48">
         <Icon
           name="Search"

@@ -171,7 +171,10 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    expect(screen.getByText("BB Official plugins")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Developer tools" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("BB Official plugins")).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 

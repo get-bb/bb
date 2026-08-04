@@ -16,7 +16,8 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import {
-  OFFICIAL_PLUGINS,
+  BUNDLED_PLUGINS,
+  PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
   type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
@@ -84,10 +85,37 @@ describe("official plugin registry invariants", () => {
     }
   });
 
-  it("gives every official plugin a store category", () => {
-    for (const plugin of OFFICIAL_PLUGINS) {
-      expect(plugin.category, plugin.name).toBeTruthy();
-    }
+  it("assigns every bundled plugin to one curated store category", () => {
+    const expectedCategories = {
+      "ask-user-question": "Agent interaction",
+      automations: "Workflow management",
+      connect: "Host access",
+      "custom-instructions": "Context & knowledge",
+      docs: "Context & knowledge",
+      github: "Developer tools",
+      "inline-vis": "Interface",
+      memory: "Context & knowledge",
+      secrets: "Developer tools",
+      "side-chat": "Agent interaction",
+      t3sidebar: "Interface",
+      tasks: "Workflow management",
+      workflows: "Workflow management",
+    };
+
+    expect(new Set(BUNDLED_PLUGINS.map((plugin) => plugin.name)).size).toBe(
+      BUNDLED_PLUGINS.length,
+    );
+    expect(
+      Object.fromEntries(
+        BUNDLED_PLUGINS.map((plugin) => [plugin.name, plugin.category]),
+      ),
+    ).toEqual(expectedCategories);
+    const validCategories = new Set<string>(PLUGIN_CATALOG_CATEGORIES);
+    expect(
+      BUNDLED_PLUGINS.every((plugin) =>
+        validCategories.has(plugin.category ?? ""),
+      ),
+    ).toBe(true);
   });
 });
 

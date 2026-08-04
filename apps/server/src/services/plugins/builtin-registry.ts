@@ -31,36 +31,46 @@ interface ResolveBuiltinPluginRootPathArgs {
 }
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
+
+export const PLUGIN_CATALOG_CATEGORIES = [
+  "Workflow management",
+  "Agent interaction",
+  "Context & knowledge",
+  "Developer tools",
+  "Host access",
+  "Interface",
+] as const;
+
 export const BUILTIN_PLUGINS = [
   {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
-    category: "Productivity",
+    category: "Agent interaction",
   },
   {
     name: "automations",
     pluginId: "automations",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Workflow management",
   },
   {
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "Host access",
   },
   {
     name: "custom-instructions",
     pluginId: "custom-instructions",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Context & knowledge",
   },
   {
     name: "inline-vis",
     pluginId: "inline-vis",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "Interface",
   },
   {
     name: "secrets",
@@ -72,13 +82,13 @@ export const BUILTIN_PLUGINS = [
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Agent interaction",
   },
   {
     name: "workflows",
     pluginId: "workflows",
     defaultEnabled: false,
-    category: "Productivity",
+    category: "Workflow management",
   },
   // Ships with the app but stays off: it replaces the sidebar, which is a
   // choice the user makes in Settings, never something an install does.
@@ -86,7 +96,7 @@ export const BUILTIN_PLUGINS = [
     name: "t3sidebar",
     pluginId: "t3sidebar",
     defaultEnabled: false,
-    category: "Productivity",
+    category: "Interface",
   },
 ].map(
   (plugin): BundledPluginDefinition => ({
@@ -111,19 +121,19 @@ export const OFFICIAL_PLUGINS = [
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Context & knowledge",
   },
   {
     name: "memory",
     pluginId: "memory",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Context & knowledge",
   },
   {
     name: "tasks",
     pluginId: "tasks",
     defaultEnabled: true,
-    category: "Productivity",
+    category: "Workflow management",
   },
 ].map(
   (plugin): BundledPluginDefinition => ({

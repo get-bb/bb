@@ -7,6 +7,7 @@ import type {
 import {
   builtinPluginSource,
   listBundledPluginRegistrations,
+  PLUGIN_CATALOG_CATEGORIES,
   type BundledPluginRegistration,
 } from "../plugins/builtin-registry.js";
 import {
@@ -40,6 +41,9 @@ export function createPluginCatalogService(deps: {
     ...plugin,
     category: plugin.category ?? "Other",
   }));
+  const categoryOrder = new Map<string, number>(
+    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category, index]),
+  );
 
   // Manifests are read per search so a dev checkout editing a bundled
   // plugin's package.json sees fresh store metadata; this small local catalog
@@ -126,9 +130,15 @@ export function createPluginCatalogService(deps: {
               .includes(query),
         )
         .map(({ result }) => result)
-        .sort((left, right) =>
-          left.displayName.localeCompare(right.displayName),
-        );
+        .sort((left, right) => {
+          const categoryDifference =
+            (categoryOrder.get(left.category) ?? categoryOrder.size) -
+            (categoryOrder.get(right.category) ?? categoryOrder.size);
+          return (
+            categoryDifference ||
+            left.displayName.localeCompare(right.displayName)
+          );
+        });
     },
 
     async install(entryId) {

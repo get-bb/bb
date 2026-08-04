@@ -19,7 +19,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
   icon: "Brain",
-  category: "Productivity",
+  category: "Context & knowledge",
   source: "builtin:memory",
   installed: false,
   compatible: true,
@@ -59,7 +59,10 @@ describe("BrowsePluginsTab", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(<BrowsePluginsTab onInstall={onInstall} />, { wrapper });
 
-    expect(await screen.findByText("BB Official plugins")).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "Context & knowledge" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("BB Official plugins")).toBeNull();
     const card = await screen.findByTestId("browse-card-memory");
     expect(card.querySelector('[data-icon="Brain"]')).not.toBeNull();
 
