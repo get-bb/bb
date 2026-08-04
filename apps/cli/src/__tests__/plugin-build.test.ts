@@ -12,12 +12,13 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import {
   buildPluginApp,
   resolvePluginBuildToolchain,
+  type PluginBuildToolchain,
 } from "@bb/plugin-build";
 /**
  * The monorepo's own toolchain: resolved from `@bb/plugin-build`'s
@@ -30,18 +31,27 @@ function testToolchain() {
 
 const TEST_BB_VERSION = "0.9.0-test";
 
-// Pass-through wrapper around the real Tailwind compiler (a third-party
-// boundary) so a single test can make the CSS step fail after esbuild
-// succeeded. Every other test hits the real `compile`.
-const tailwindFailure = vi.hoisted(() => ({ error: null as Error | null }));
-vi.mock("@tailwindcss/node", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tailwindcss/node")>();
-  const compile: typeof actual.compile = (...args) => {
-    if (tailwindFailure.error) throw tailwindFailure.error;
-    return actual.compile(...args);
-  };
-  return { ...actual, compile };
-});
+/**
+ * A toolchain whose Tailwind entry throws, so one test can fail the CSS step
+ * after esbuild has already succeeded.
+ *
+ * Injected through `PluginBuildToolchain` rather than `vi.mock`: the build
+ * imports Tailwind by resolved path, which a bare-specifier mock cannot
+ * intercept.
+ */
+async function failingTailwindToolchain(
+  dir: string,
+  message: string,
+): Promise<PluginBuildToolchain> {
+  const real = await testToolchain();
+  const stub = join(dir, "tailwind-stub.mjs");
+  await writeFile(
+    stub,
+    `export function compile() { throw new Error(${JSON.stringify(message)}); }\n` +
+      `export function __unused() {}\n`,
+  );
+  return { ...real, tailwindNode: pathToFileURL(stub).href };
+}
 
 const FIXTURE_PACKAGE_JSON = JSON.stringify(
   {
@@ -90,7 +100,6 @@ describe("buildPluginApp", () => {
   });
 
   afterEach(async () => {
-    tailwindFailure.error = null;
     await rm(root, { recursive: true, force: true });
   });
 
@@ -265,11 +274,13 @@ describe("buildPluginApp", () => {
       join(root, "app.tsx"),
       FIXTURE_APP_TSX.replace("count:", "changed:"),
     );
-    tailwindFailure.error = new Error("tailwind exploded");
-
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      "tailwind exploded",
-    );
+    await expect(
+      buildPluginApp(
+        root,
+        TEST_BB_VERSION,
+        await failingTailwindToolchain(root, "tailwind exploded"),
+      ),
+    ).rejects.toThrow("tailwind exploded");
 
     // dist/ still serves the last complete build — no fresh app.js beside
     // stale css/meta, and no staging leftovers.
