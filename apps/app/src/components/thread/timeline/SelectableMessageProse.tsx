@@ -371,10 +371,9 @@ export function SelectableMessageProse({
     <div
       ref={nodeRef}
       className={className}
-      // The compact sidebar listens globally for a right-swipe from the main
-      // inset. A long-press text selection uses the same touch sequence, so
-      // keep sidebar swipe recognition out of selectable message prose.
-      data-no-sidebar-swipe
+      // Let compact-sidebar swipes begin over message prose, but give an
+      // expanded native text selection priority over the same touch sequence.
+      data-sidebar-swipe-selectable
     >
       {children}
     </div>

@@ -51,6 +51,7 @@ type SidebarInsetSwipeSession = {
   lastTimeMs: number;
   velocityX: number;
   isDragging: boolean;
+  selectionRoot: Element | null;
 };
 
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
@@ -152,11 +153,13 @@ function createSidebarInsetSwipeSession({
   id,
   startX,
   startY,
+  selectionRoot,
 }: {
   kind: "pointer" | "touch";
   id: number;
   startX: number;
   startY: number;
+  selectionRoot: Element | null;
 }): SidebarInsetSwipeSession {
   const nowMs = Date.now();
   return {
@@ -170,6 +173,7 @@ function createSidebarInsetSwipeSession({
     lastTimeMs: nowMs,
     velocityX: 0,
     isDragging: false,
+    selectionRoot,
   };
 }
 
@@ -218,6 +222,26 @@ function isInsideHorizontalScrollRegion(target: Element): boolean {
   return false;
 }
 
+function getSidebarSwipeSelectionRoot(
+  target: EventTarget | null,
+): Element | null {
+  return target instanceof Element
+    ? target.closest("[data-sidebar-swipe-selectable]")
+    : null;
+}
+
+function hasExpandedTextSelectionWithin(root: Element): boolean {
+  const selection = root.ownerDocument.getSelection();
+  if (selection === null || selection.isCollapsed) {
+    return false;
+  }
+
+  return (
+    (selection.anchorNode !== null && root.contains(selection.anchorNode)) ||
+    (selection.focusNode !== null && root.contains(selection.focusNode))
+  );
+}
+
 function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) {
     return false;
@@ -238,6 +262,14 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
         "[data-no-sidebar-swipe]",
       ].join(", "),
     ) !== null
+  ) {
+    return true;
+  }
+
+  const selectionRoot = getSidebarSwipeSelectionRoot(target);
+  if (
+    selectionRoot !== null &&
+    hasExpandedTextSelectionWithin(selectionRoot)
   ) {
     return true;
   }
@@ -1002,6 +1034,7 @@ const SidebarInset = React.forwardRef<
         id: touch.identifier,
         startX: touch.clientX,
         startY: touch.clientY,
+        selectionRoot: getSidebarSwipeSelectionRoot(event.target),
       });
 
       const removeListeners = () => {
@@ -1046,6 +1079,7 @@ const SidebarInset = React.forwardRef<
         id: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
+        selectionRoot: getSidebarSwipeSelectionRoot(event.target),
       });
 
       const removeListeners = () => {
@@ -1064,6 +1098,17 @@ const SidebarInset = React.forwardRef<
   );
 
   React.useEffect(() => {
+    const cancelSwipeForTextSelection = () => {
+      const selectionRoot = swipeSessionRef.current?.selectionRoot;
+      if (
+        selectionRoot !== null &&
+        selectionRoot !== undefined &&
+        hasExpandedTextSelectionWithin(selectionRoot)
+      ) {
+        clearSwipeSession();
+      }
+    };
+
     document.addEventListener("pointerdown", startPointerSwipe, {
       capture: true,
       passive: true,
@@ -1072,6 +1117,7 @@ const SidebarInset = React.forwardRef<
       capture: true,
       passive: true,
     });
+    document.addEventListener("selectionchange", cancelSwipeForTextSelection);
     return () => {
       document.removeEventListener("pointerdown", startPointerSwipe, {
         capture: true,
@@ -1079,8 +1125,12 @@ const SidebarInset = React.forwardRef<
       document.removeEventListener("touchstart", startTouchSwipe, {
         capture: true,
       });
+      document.removeEventListener(
+        "selectionchange",
+        cancelSwipeForTextSelection,
+      );
     };
-  }, [startPointerSwipe, startTouchSwipe]);
+  }, [clearSwipeSession, startPointerSwipe, startTouchSwipe]);
 
   const handleWheelSwipe = React.useCallback(
     (event: WheelEvent) => {

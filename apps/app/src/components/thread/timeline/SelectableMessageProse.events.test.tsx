@@ -58,14 +58,19 @@ function waitForAnimationFrame(): Promise<void> {
 }
 
 describe("SelectableMessageProse", () => {
-  it("opts selectable prose out of the compact sidebar swipe gesture", () => {
+  it("keeps selectable prose available to the compact sidebar swipe gesture", () => {
     const { getByText } = render(
       <SelectableMessageProse>Selectable answer text</SelectableMessageProse>,
     );
 
     expect(
-      getByText("Selectable answer text").closest("[data-no-sidebar-swipe]"),
+      getByText("Selectable answer text").closest(
+        "[data-sidebar-swipe-selectable]",
+      ),
     ).not.toBeNull();
+    expect(
+      getByText("Selectable answer text").closest("[data-no-sidebar-swipe]"),
+    ).toBeNull();
   });
 
   it("reports a selection only after pointer release", async () => {
