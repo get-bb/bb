@@ -294,8 +294,6 @@ describe("bb thread action command output", () => {
       candidate: {
         failedRequestId: "request-failed-1",
         turnId: "turn-failed-1",
-        scopeKey: "host-1:codex",
-        hostId: "host-1",
         automatic: true,
         resetsAtMs: 123,
         rateLimits: {

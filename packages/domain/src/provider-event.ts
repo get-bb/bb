@@ -105,13 +105,7 @@ export type ProviderRateLimitWindow = z.infer<
 export const providerRateLimitStateSchema = z.object({
   providerId: z.string().min(1),
   status: providerRateLimitStatusSchema,
-  kind: z.enum([
-    "request-throttle",
-    "subscription-window",
-    "credits",
-    "spend-control",
-    "unknown",
-  ]),
+  kind: z.enum(["subscription-window", "credits", "spend-control", "unknown"]),
   windows: z.array(providerRateLimitWindowSchema),
   reachedReason: z.string().min(1).nullable(),
   overageStatus: z
@@ -119,7 +113,7 @@ export const providerRateLimitStateSchema = z.object({
     .nullable(),
   overageReason: z.string().min(1).nullable(),
   observedAtMs: z.number().int().nonnegative(),
-  source: z.enum(["codex-account", "claude-rate-limit", "http"]),
+  source: z.enum(["codex-account", "claude-rate-limit"]),
 });
 export type ProviderRateLimitState = z.infer<
   typeof providerRateLimitStateSchema

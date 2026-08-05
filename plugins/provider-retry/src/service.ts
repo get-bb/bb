@@ -38,7 +38,7 @@ function errorMessage(error: unknown): string {
 }
 
 function refreshSupported(providerId: string): boolean {
-  return providerId === "codex" || providerId === "claudeCode";
+  return providerId === "codex" || providerId === "claude-code";
 }
 
 function usageForProvider(
@@ -48,7 +48,7 @@ function usageForProvider(
   switch (providerId) {
     case "codex":
       return usage.codex;
-    case "claudeCode":
+    case "claude-code":
       return usage.claudeCode;
     default:
       return null;
@@ -85,9 +85,7 @@ function recoveryView(args: {
     reachedReason: rateLimits?.reachedReason ?? null,
     overageReason: rateLimits?.overageReason ?? null,
     recoveryReason: args.status.reason,
-    refreshAvailable: refreshSupported(rateLimits?.providerId ?? "unknown"),
     refreshError: null,
-    processLifetime: true,
   };
 }
 
@@ -272,7 +270,6 @@ export class ProviderRetryService {
     if (!refreshSupported(entry.view.providerId)) {
       entry.view = {
         ...entry.view,
-        refreshAvailable: false,
         refreshError: "Usage refresh is unavailable for this provider.",
       };
       this.publish(threadId);
@@ -322,7 +319,6 @@ export class ProviderRetryService {
       if (!entry) continue;
       entry.view = {
         ...entry.view,
-        refreshAvailable: error === null,
         refreshError: error,
       };
       this.publish(threadId);

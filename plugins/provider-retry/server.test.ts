@@ -9,9 +9,12 @@ import { RELEASE_PACE_MS, RESET_BUFFER_MS } from "./src/service.js";
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
 
-function rateLimits(status: "allowed" | "blocked" = "blocked") {
+function rateLimits(
+  status: "allowed" | "blocked" = "blocked",
+  providerId: "claude-code" | "codex" = "codex",
+) {
   return {
-    providerId: "codex",
+    providerId,
     status,
     kind: "subscription-window",
     windows: [
@@ -32,18 +35,19 @@ function rateLimits(status: "allowed" | "blocked" = "blocked") {
   } as const;
 }
 
-function eligibleStatus(threadId: string) {
-  const limits = rateLimits();
+function eligibleStatus(
+  threadId: string,
+  providerId: "claude-code" | "codex" = "codex",
+) {
+  const limits = rateLimits("blocked", providerId);
   return {
     reason: "eligible",
-    scopeKey: "host-one:codex",
+    scopeKey: `host-one:${providerId}`,
     hostId: "host-one",
     rateLimits: limits,
     candidate: {
       failedRequestId: `request-${threadId}`,
       turnId: `turn-${threadId}`,
-      scopeKey: "host-one:codex",
-      hostId: "host-one",
       automatic: true,
       resetsAtMs: RESET_AT_MS,
       rateLimits: limits,
@@ -65,8 +69,6 @@ function manualStatus(threadId: string) {
     candidate: {
       failedRequestId: `request-${threadId}`,
       turnId: `turn-${threadId}`,
-      scopeKey: "host-one:codex",
-      hostId: "host-one",
       automatic: false,
       resetsAtMs: null,
       rateLimits: limits,
@@ -218,6 +220,60 @@ describe("provider retry scheduler", () => {
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
+    await host.harness.dispose();
+  });
+
+  it("refreshes Claude usage using the canonical provider id", async () => {
+    const continueAfterRateLimit = vi.fn(async () => ({
+      ok: true as const,
+      requestId: "continuation-request",
+    }));
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        system: {
+          usageLimits: async () => ({
+            codex: { status: "unauthenticated" as const },
+            claudeCode: {
+              status: "ok" as const,
+              accountEmail: null,
+              planLabel: "Max",
+              windows: [
+                {
+                  label: "Five-hour",
+                  usedPercent: 20,
+                  resetsAt: new Date(RESET_AT_MS).toISOString(),
+                },
+              ],
+            },
+            cursor: { status: "unauthenticated" as const },
+          }),
+        },
+        threads: {
+          rateLimitRecovery: async ({ threadId }) =>
+            eligibleStatus(threadId, "claude-code"),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-claude", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-claude",
+      }),
+    ).resolves.toMatchObject({
+      view: { providerId: "claude-code" },
+    });
+    await host.harness.callRpc("providerRetryRefresh", {
+      threadId: "thread-claude",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
     await host.harness.dispose();
   });
 

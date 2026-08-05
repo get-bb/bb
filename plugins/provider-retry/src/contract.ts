@@ -26,9 +26,7 @@ export const providerRetryViewSchema = z
     reachedReason: z.string().min(1).nullable(),
     overageReason: z.string().min(1).nullable(),
     recoveryReason: z.string().min(1),
-    refreshAvailable: z.boolean(),
     refreshError: z.string().min(1).nullable(),
-    processLifetime: z.literal(true),
   })
   .strict();
 export type ProviderRetryView = z.infer<typeof providerRetryViewSchema>;

@@ -195,8 +195,6 @@ describe("provider rate-limit recovery", () => {
         candidate: {
           failedRequestId: FAILED_REQUEST_ID,
           turnId: fixture.turnId,
-          scopeKey: `${fixture.host.id}:codex`,
-          hostId: fixture.host.id,
           automatic: true,
           resetsAtMs: RESET_AT_MS,
           rateLimits: RATE_LIMITS,

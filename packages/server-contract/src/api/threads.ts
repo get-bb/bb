@@ -237,8 +237,6 @@ export type ProviderRateLimitRecoveryReason = z.infer<
 export const providerRateLimitRecoveryCandidateSchema = z.object({
   failedRequestId: clientTurnRequestIdSchema,
   turnId: z.string().min(1),
-  scopeKey: z.string().min(1),
-  hostId: z.string().min(1),
   automatic: z.boolean(),
   resetsAtMs: z.number().int().nonnegative().nullable(),
   rateLimits: providerRateLimitStateSchema,

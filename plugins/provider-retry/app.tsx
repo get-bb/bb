@@ -17,7 +17,7 @@ function providerLabel(providerId: string): string {
   switch (providerId) {
     case "codex":
       return "Codex";
-    case "claudeCode":
+    case "claude-code":
       return "Claude Code";
     default:
       return providerId;
@@ -138,7 +138,7 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
 
   if (view === null) return null;
   const canRefresh =
-    view.providerId === "codex" || view.providerId === "claudeCode";
+    view.providerId === "codex" || view.providerId === "claude-code";
   const canRetry = view.failedRequestId !== null && view.phase !== "releasing";
 
   return (

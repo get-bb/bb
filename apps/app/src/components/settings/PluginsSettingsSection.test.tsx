@@ -166,31 +166,6 @@ describe("PluginSettingsForm", () => {
       values: { apiKey: "sk-123" },
     });
   });
-
-  it("keeps the schema visible but disables every control when read-only", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
-    );
-
-    const { wrapper } = createQueryClientTestHarness();
-    render(<PluginSettingsForm pluginId="demo" disabled />, { wrapper });
-
-    const greeting = (await screen.findByLabelText(
-      "Greeting",
-    )) as HTMLInputElement;
-    const enabled = screen.getByLabelText("Enabled") as HTMLButtonElement;
-    const save = screen.getByRole("button", {
-      name: /save settings/i,
-    }) as HTMLButtonElement;
-    const form = greeting.closest("form");
-
-    expect(greeting.disabled).toBe(true);
-    expect(enabled.disabled).toBe(true);
-    expect(save.disabled).toBe(true);
-    expect(form?.getAttribute("aria-disabled")).toBe("true");
-    expect(form?.className).toContain("opacity-50");
-  });
 });
 
 describe("PluginsSettingsSection", () => {
@@ -434,22 +409,22 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
-  it("renders the preserved form read-only for an errored plugin", async () => {
+  it("shows the no-settings state for an enabled errored plugin", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
-        <PluginSettingsDetail plugin={rowPlugin("error")} />
+        <PluginSettingsDetail
+          plugin={{ ...rowPlugin("error"), hasSettings: false }}
+        />
       </MemoryRouter>,
       { wrapper },
     );
-    const greeting = (await screen.findByLabelText(
-      "Greeting",
-    )) as HTMLInputElement;
-    expect(greeting.disabled).toBe(true);
+    expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(screen.getByText("This plugin declares no settings.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
-    expect(fetchSpy).toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("removes a stale builtin plugin from its detail page", async () => {

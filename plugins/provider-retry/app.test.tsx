@@ -10,9 +10,9 @@ const banner = app.composerCustomizations[0]!.banners![0]!;
 const waitingView: ProviderRetryView = {
   threadId: "thread-one",
   failedRequestId: "request-one",
-  scopeKey: "host-one:claudeCode",
+  scopeKey: "host-one:claude-code",
   hostId: "host-one",
-  providerId: "claudeCode",
+  providerId: "claude-code",
   phase: "waiting-for-reset",
   automatic: true,
   dueAtMs: Date.parse("2026-08-05T15:12:00.000Z"),
@@ -22,9 +22,7 @@ const waitingView: ProviderRetryView = {
   reachedReason: "rate_limit_reached",
   overageReason: null,
   recoveryReason: "eligible",
-  refreshAvailable: true,
   refreshError: null,
-  processLifetime: true,
 };
 
 afterEach(() => {

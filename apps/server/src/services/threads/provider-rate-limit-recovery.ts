@@ -282,8 +282,6 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
         automatic,
         failedRequestId,
         turnId,
-        scopeKey: scopeKey(args.environment, args.thread),
-        hostId: args.environment.hostId,
         resetsAtMs,
         rateLimits: currentBlockedRateLimits,
       },
