@@ -62,6 +62,7 @@ import type {
   ThreadForkDescriptor,
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
+  ThreadSessionImportDescriptor,
 } from "./thread-provisioning-context.js";
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
@@ -89,6 +90,7 @@ interface CreateProvisioningThreadArgs {
     typeof buildExecutionOptions
   >[2]["projectDefaults"];
   fork: ThreadForkDescriptor | null;
+  sessionImport: ThreadSessionImportDescriptor | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
 }
@@ -530,6 +532,7 @@ async function createProvisioningThread(
       environmentIntent: args.environmentIntent,
       execution,
       fork: args.fork,
+      sessionImport: args.sessionImport,
       input: args.request.input,
       ...(args.providerInput !== undefined
         ? { providerInput: args.providerInput }
@@ -657,6 +660,25 @@ export async function createThreadFromRequest(
       "invalid_request",
       "sourceSeqEnd requires an originKind",
     );
+  }
+  const sessionImport = requestInput.sessionImport ?? null;
+  if (sessionImport !== null) {
+    // An import binds to an external session; it cannot also derive from a bb
+    // source thread, and its "first turn" is pure history replay.
+    if (originKind !== null || sourceThreadId !== undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "sessionImport is incompatible with source-derived thread creation",
+      );
+    }
+    if (requestInput.input.length > 0) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "sessionImport requires empty input",
+      );
+    }
   }
   const sourceThread = sourceThreadId
     ? requireLiveSourceThread(deps, {
@@ -901,6 +923,7 @@ export async function createThreadFromRequest(
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
     fork,
+    sessionImport,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }
       : {}),

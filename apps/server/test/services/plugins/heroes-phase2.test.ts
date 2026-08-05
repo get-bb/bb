@@ -85,6 +85,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
       environment,
       execution,
       fork: null,
+      sessionImport: null,
       permissionEscalation: "ask",
       input: textInput("hello"),
       projectId: project.id,

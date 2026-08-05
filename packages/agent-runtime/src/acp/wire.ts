@@ -119,6 +119,14 @@ export const acpAgentMessageChunkUpdateSchema = z
   })
   .passthrough();
 
+/** Replayed user input; agents only send these while loading a session. */
+export const acpUserMessageChunkUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("user_message_chunk"),
+    content: acpContentBlockSchema,
+  })
+  .passthrough();
+
 export const acpAgentThoughtChunkUpdateSchema = z
   .object({
     sessionUpdate: z.literal("agent_thought_chunk"),

@@ -1237,6 +1237,12 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
             },
           };
+        case "thread/import":
+          // ACP-only operation; the server gates on supportsSessionImport, so
+          // this is unreachable unless that guard is bypassed.
+          throw new Error(
+            `Provider "${providerInfo.id}" does not support importing external sessions.`,
+          );
         case "thread/fork": {
           finishOpenProviderTurn({
             registry: turnState,

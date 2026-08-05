@@ -42,7 +42,10 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { getLastProviderThreadId } from "./thread-events.js";
-import type { ThreadForkDescriptor } from "./thread-provisioning-context.js";
+import type {
+  ThreadForkDescriptor,
+  ThreadSessionImportDescriptor,
+} from "./thread-provisioning-context.js";
 import {
   resolveThreadRuntimeCommandConfig,
   type ResolvedThreadRuntimeCommandConfig,
@@ -91,6 +94,9 @@ export interface ThreadStartCommandArgs {
   // Non-null ⇒ clone the parent's provider session at its branch point (native
   // fork) instead of starting fresh. null ⇒ a normal start.
   fork: ThreadForkDescriptor | null;
+  // Non-null ⇒ bind the new thread to this existing external provider session
+  // (ACP session import) and replay its history. null ⇒ a normal start.
+  sessionImport: ThreadSessionImportDescriptor | null;
   permissionEscalation: PermissionEscalation;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
@@ -391,6 +397,7 @@ export async function buildThreadStartCommand(
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
     ...(args.fork ? { fork: args.fork } : {}),
+    ...(args.sessionImport ? { sessionImport: args.sessionImport } : {}),
   };
 }
 

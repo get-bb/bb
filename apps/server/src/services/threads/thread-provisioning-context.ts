@@ -63,6 +63,10 @@ export const threadForkDescriptorSchema = z.object({
   sourceProviderThreadId: z.string().min(1),
 });
 
+export const threadSessionImportDescriptorSchema = z.object({
+  providerThreadId: z.string().min(1),
+});
+
 export const threadProvisionCommonPayloadSchema = z.object({
   branchSlug: z.string().nullable().default(null),
   clientRequestId: clientTurnRequestIdSchema,
@@ -73,6 +77,11 @@ export const threadProvisionCommonPayloadSchema = z.object({
   // not a fork. Only populated for forkable forks; the server gates on
   // originKind/provider capability/source session/host at create time.
   fork: threadForkDescriptorSchema.nullable().default(null),
+  // Non-null ⇒ provision this thread by loading an existing external provider
+  // session (ACP session import) and replaying its history as historical
+  // events. null ⇒ not an import. The server gates on provider capability and
+  // cwd/workspace match at create time.
+  sessionImport: threadSessionImportDescriptorSchema.nullable().default(null),
   input: z.array(promptInputSchema),
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
   titleProvided: z.boolean(),
@@ -84,6 +93,9 @@ export const threadProvisionCommonPayloadSchema = z.object({
 });
 
 export type ThreadForkDescriptor = z.infer<typeof threadForkDescriptorSchema>;
+export type ThreadSessionImportDescriptor = z.infer<
+  typeof threadSessionImportDescriptorSchema
+>;
 export type ThreadProvisionEnvironmentIntent = z.infer<
   typeof threadProvisionEnvironmentIntentSchema
 >;
@@ -198,6 +210,7 @@ export interface CreateMetadataPendingContextArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
+  sessionImport: ThreadSessionImportDescriptor | null;
   input: PromptInput[];
   seedWithoutRun: boolean;
   titleProvided: boolean;
@@ -358,6 +371,7 @@ export function createMetadataPendingContext(
       environmentIntent: args.environmentIntent,
       execution: args.execution,
       fork: args.fork,
+      sessionImport: args.sessionImport,
       input: args.input,
       titleProvided: args.titleProvided,
       seedWithoutRun: args.seedWithoutRun,
@@ -464,8 +478,10 @@ export function createReprovisioningContext(
       },
       clientRequestId: args.clientRequestId,
       execution: args.execution,
-      // Reprovision is a new turn on an existing thread, never a fork.
+      // Reprovision is a new turn on an existing thread, never a fork or an
+      // import.
       fork: null,
+      sessionImport: null,
       input: args.input,
       ...(args.inputGroups !== undefined
         ? { inputGroups: args.inputGroups }

@@ -77,6 +77,7 @@ describe("ask-user-question builtin plugin", () => {
       environment,
       execution,
       fork: null,
+      sessionImport: null,
       permissionEscalation: "ask",
       input: textInput("hello"),
       projectId: project.id,

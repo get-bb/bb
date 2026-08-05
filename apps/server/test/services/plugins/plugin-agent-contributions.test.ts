@@ -265,6 +265,7 @@ describe("plugin agent contributions reach thread runtime config", () => {
         environment,
         execution,
         fork: null,
+        sessionImport: null,
         permissionEscalation: "ask",
         input: textInput("hello"),
         projectId: project.id,

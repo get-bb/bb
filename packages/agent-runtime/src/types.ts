@@ -166,6 +166,12 @@ export interface StartThreadArgs {
    * instead of starting fresh; absent means a normal start.
    */
   fork?: { sourceProviderThreadId: string };
+  /**
+   * Present means bind the new thread to this existing external provider
+   * session (ACP session import): the provider loads the session and replays
+   * its history as historical events. Absent means a normal start.
+   */
+  sessionImport?: { providerThreadId: string };
 }
 
 export interface StartThreadResult {

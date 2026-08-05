@@ -130,6 +130,18 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
           threadId: command.threadId,
         },
       };
+    case "thread/import":
+      return {
+        kind: "request",
+        method: "thread/import",
+        params: {
+          cwd: command.cwd,
+          dynamicTools: command.dynamicTools,
+          options: command.options,
+          providerThreadId: command.providerThreadId,
+          threadId: command.threadId,
+        },
+      };
     case "turn/start":
       return {
         kind: "request",
@@ -469,6 +481,7 @@ export function createFakeAdapter(
       supportsServiceTier: false,
       supportsUserQuestion,
       supportsFork: true,
+      supportsSessionImport: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
     decodeToolCallRequest,

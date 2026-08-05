@@ -34,6 +34,13 @@ export interface ThreadCreateServiceRequestInput {
   providerId?: CreateThreadRequest["providerId"];
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];
   serviceTier?: CreateThreadRequest["serviceTier"];
+  /**
+   * Present ⇒ bind the new thread to this existing external provider session
+   * (ACP session import) and replay its history instead of starting fresh.
+   * Set only by the thread-import service; incompatible with source-derived
+   * creation (originKind/sourceThreadId) and requires empty input.
+   */
+  sessionImport?: { providerThreadId: string };
   sourceSeqEnd?: CreateThreadRequest["sourceSeqEnd"];
   sourceThreadId?: string;
   startedOnBehalfOf: StartedOnBehalfOf | null;

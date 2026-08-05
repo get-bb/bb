@@ -55,6 +55,7 @@ import {
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
+  type AcpBridgeThreadImportParams,
   type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
 } from "../bridge-protocol.js";
@@ -126,6 +127,12 @@ interface AcpThreadSession {
   promptActive: boolean;
   queuedInputs: PromptInput[][];
   loading: boolean;
+  /**
+   * True for sessions opened via thread/import: session/update notifications
+   * replayed while `loading` are forwarded (marked historical) instead of
+   * being dropped.
+   */
+  importing: boolean;
   stopping: boolean;
   /** Resolves when the in-flight bb turn loop fully settles. */
   turnSettled: Promise<void> | undefined;
@@ -1440,7 +1447,8 @@ function getSessionByProviderThreadId(
 
 type AcpSessionStartParams =
   | { kind: "start"; params: AcpBridgeThreadStartParams }
-  | { kind: "resume"; params: AcpBridgeThreadResumeParams };
+  | { kind: "resume"; params: AcpBridgeThreadResumeParams }
+  | { kind: "import"; params: AcpBridgeThreadImportParams };
 
 async function startAgentSession(
   request: AcpSessionStartParams,
@@ -1509,6 +1517,7 @@ async function startAgentSession(
     promptActive: false,
     queuedInputs: [],
     loading: false,
+    importing: request.kind === "import",
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
@@ -1538,10 +1547,19 @@ async function startAgentSession(
       initializeResult.agentCapabilities?.loadSession ?? false;
     const mcpServers = await buildSessionMcpServers(params);
 
+    if (request.kind === "import" && !supportsLoadSession) {
+      // An import without session/load would silently degrade to a fresh
+      // history-less session, defeating the whole operation. Fail loudly.
+      throw new Error(
+        `ACP agent "${agentLabel}" does not support session/load, so it ` +
+          "cannot import an existing session.",
+      );
+    }
+
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
-    if (request.kind === "resume" && supportsLoadSession) {
+    if (request.kind !== "start" && supportsLoadSession) {
       session.loading = true;
       try {
         const configState = await connection.request({
@@ -1556,10 +1574,27 @@ async function startAgentSession(
         loadedConfigOptions = configState?.configOptions;
         loadedModels = configState?.models;
         sessionId = request.params.providerThreadId;
-      } catch {
+      } catch (error) {
+        if (request.kind === "import") {
+          throw new Error(
+            `ACP agent "${agentLabel}" failed to load session ` +
+              `"${request.params.providerThreadId}": ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         sessionId = undefined;
       } finally {
         session.loading = false;
+      }
+      if (request.kind === "import" && sessionId !== undefined) {
+        // The agent replays the imported history as session/update
+        // notifications before answering session/load; close the historical
+        // frame so the adapter completes the synthetic replay turn.
+        sendNotification(ACP_TURN_COMPLETED_METHOD, {
+          threadId: bbThreadId,
+          stopReason: "end_turn",
+          historical: true,
+        });
       }
     }
 
@@ -1726,7 +1761,13 @@ function handleAgentNotification(
   if (method !== "session/update") {
     return;
   }
-  if (session.loading || session.stopping) {
+  if (session.stopping) {
+    return;
+  }
+  // While session/load is in flight the agent replays the session's history.
+  // A resume drops that replay (bb already has the events); an import must
+  // persist it, so the updates are forwarded marked historical.
+  if (session.loading && !session.importing) {
     return;
   }
   const parsed = acpSessionNotificationParamsSchema.safeParse(params);
@@ -1736,6 +1777,7 @@ function handleAgentNotification(
   sendNotification(ACP_UPDATE_METHOD, {
     threadId: session.bbThreadId,
     update: parsed.data.update,
+    ...(session.loading ? { historical: true } : {}),
   });
 }
 
@@ -1823,6 +1865,14 @@ async function handleRequest(
     case "thread/resume": {
       const session = await startAgentSession({
         kind: "resume",
+        params: request.params,
+      });
+      sendResult(request.id, { providerThreadId: session.providerThreadId });
+      return;
+    }
+    case "thread/import": {
+      const session = await startAgentSession({
+        kind: "import",
         params: request.params,
       });
       sendResult(request.id, { providerThreadId: session.providerThreadId });

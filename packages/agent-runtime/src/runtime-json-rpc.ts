@@ -242,6 +242,18 @@ export function getJsonRpcStringParam(
   return typeof value === "string" ? value : undefined;
 }
 
+export function getJsonRpcBooleanParam(
+  message: JsonRpcObject,
+  key: string,
+): boolean | undefined {
+  if (!isJsonRpcObject(message.params)) {
+    return undefined;
+  }
+
+  const value = message.params[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 export function settleJsonRpcResponse(args: SettleJsonRpcResponseArgs): void {
   const pending = args.pending.get(args.id);
   if (!pending) {

@@ -23,6 +23,7 @@ import {
   toProviderExecutionContext,
 } from "./execution-options.js";
 import {
+  getJsonRpcBooleanParam,
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
   type JsonRpcObject,
@@ -171,6 +172,12 @@ interface EmitTranslatedEventsArgs {
   events: ThreadEvent[];
   proc: ProviderProcess;
   sourceThreadId?: string;
+  /**
+   * True when the events replay history from an imported provider session.
+   * Historical events are persisted (onEvent) but bypass all live turn/state
+   * observers — they describe turns that never ran under this runtime.
+   */
+  historical?: boolean;
 }
 
 interface EmitAcceptedCommandEventsArgs {
@@ -883,6 +890,14 @@ function createAgentRuntimeInternal(
           threadId: targetThreadId,
         });
 
+        if (args.historical) {
+          // Imported-history replay: persist for display, but never feed the
+          // live turn/background/idle/goal state machines with turns that were
+          // executed outside this runtime.
+          options.onEvent(normalizeProviderThreadNameEvent(stampedEvent));
+          continue;
+        }
+
         const replayResult = turnReplayFilter.observe(stampedEvent);
         if (replayResult.kind === "drop-replayed-turn-start") {
           options.onStderr?.(
@@ -927,10 +942,16 @@ function createAgentRuntimeInternal(
 
   function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
+    // Set by the ACP bridge on session/update notifications replayed while
+    // importing an existing external session.
+    const historical =
+      getJsonRpcBooleanParam(args.parsed, "historical") === true;
     emitTranslatedEvents({
       events: args.proc.adapter.translateEvent(args.parsed, {
         threadId: sourceThreadId,
+        ...(historical ? { historical } : {}),
       }),
+      ...(historical ? { historical } : {}),
       proc: args.proc,
       sourceThreadId,
     });
@@ -1018,6 +1039,7 @@ function createAgentRuntimeInternal(
       instructionMode = "append",
       outputSchema,
       fork,
+      sessionImport,
     }) {
       return runThreadOperation({
         threadId,
@@ -1088,16 +1110,27 @@ function createAgentRuntimeInternal(
                 disallowedTools,
                 instructionMode,
               }
-            : {
-                type: "thread/start",
-                threadId,
-                cwd: options.workspacePath,
-                options: providerExecutionContext,
-                dynamicTools,
-                disallowedTools,
-                instructionMode,
-                ...(outputSchema !== undefined ? { outputSchema } : {}),
-              };
+            : sessionImport
+              ? {
+                  type: "thread/import",
+                  threadId,
+                  cwd: options.workspacePath,
+                  providerThreadId: sessionImport.providerThreadId,
+                  options: providerExecutionContext,
+                  dynamicTools,
+                  disallowedTools,
+                  instructionMode,
+                }
+              : {
+                  type: "thread/start",
+                  threadId,
+                  cwd: options.workspacePath,
+                  options: providerExecutionContext,
+                  dynamicTools,
+                  disallowedTools,
+                  instructionMode,
+                  ...(outputSchema !== undefined ? { outputSchema } : {}),
+                };
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
             plan: proc.adapter.buildCommandPlan(adapterCommand),

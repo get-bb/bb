@@ -332,9 +332,10 @@ async function queueReadyParentSystemMessage(
 
   const command = await prepareReadyThreadTurnCommand(deps, {
     thread: args.thread,
-    // A parent system message targets an already-started thread; forking only
-    // happens at create time.
+    // A parent system message targets an already-started thread; forking and
+    // session import only happen at create time.
     fork: null,
+    sessionImport: null,
     input: args.input,
     requestId,
     execution: args.execution,

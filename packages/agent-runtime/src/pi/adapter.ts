@@ -1389,6 +1389,12 @@ export function createPiProviderAdapter(
               ),
             },
           };
+        case "thread/import":
+          // ACP-only operation; the server gates on supportsSessionImport, so
+          // this is unreachable unless that guard is bypassed.
+          throw new Error(
+            "Provider \"pi\" does not support importing external sessions.",
+          );
         case "thread/fork": {
           // Pi's provider identity == the bb threadId, so the source pi session
           // id is command.sourceProviderThreadId (the source bb thread id). The

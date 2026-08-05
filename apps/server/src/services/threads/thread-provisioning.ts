@@ -25,6 +25,7 @@ import {
   createMetadataPendingContext,
   createReprovisioningContext,
   type ThreadForkDescriptor,
+  type ThreadSessionImportDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
   type ThreadProvisionProvisionableContext,
@@ -52,6 +53,11 @@ interface RequestThreadProvisionArgs {
   // (native fork) instead of starting fresh. null ⇒ not a fork. Resolved by the
   // server at create time (originKind/provider capability/source session/host).
   fork: ThreadForkDescriptor | null;
+  // Non-null ⇒ provision this thread by loading the caller-supplied external
+  // provider session (ACP session import) and replaying its history. null ⇒
+  // not an import. Resolved by the server at create time (provider capability
+  // and cwd/workspace match).
+  sessionImport: ThreadSessionImportDescriptor | null;
   input: PromptInput[];
   /** Input sent to the provider when the persisted start input is seed-only. */
   providerInput?: PromptInput[];
@@ -232,6 +238,7 @@ async function startThreadIfEnvironmentReady(
       workspaceProvisionType: args.environment.workspaceProvisionType,
     },
     fork: args.context.request.fork,
+    sessionImport: args.context.request.sessionImport,
     input: args.context.request.input,
     ...(args.context.request.inputGroups !== undefined
       ? { inputGroups: args.context.request.inputGroups }

@@ -86,6 +86,7 @@ async function startLiveThreadStartRpc(
     thread,
     environment,
     fork: null,
+    sessionImport: null,
     input: textInput("start live runtime"),
     requestId: encodeClientTurnRequestIdNumber({
       value: args.requestIdValue,

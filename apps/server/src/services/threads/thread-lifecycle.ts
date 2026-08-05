@@ -694,7 +694,13 @@ function isThreadStartActivationStale(
 function lifecycleEventForSuccessfulThreadStart(
   command: ThreadStartCommand,
 ): ThreadLifecycleEvent {
-  if (command.fork && command.input.length === 0) {
+  // A fork established with empty input and an imported session (whose
+  // "first turn" is pure history replay) both run no live turn: the start is
+  // a zero-work run, settled straight to idle.
+  if (
+    (command.fork !== undefined || command.sessionImport !== undefined) &&
+    command.input.length === 0
+  ) {
     return { type: "run.succeeded" };
   }
   return { type: "run.started" };
@@ -703,7 +709,10 @@ function lifecycleEventForSuccessfulThreadStart(
 function shouldAutoSendQueuedMessagesAfterThreadStart(
   command: ThreadStartCommand,
 ): boolean {
-  return command.fork !== null && command.input.length === 0;
+  return (
+    (command.fork !== undefined || command.sessionImport !== undefined) &&
+    command.input.length === 0
+  );
 }
 
 function recordEmptyThreadStartProviderSessionInTransaction(

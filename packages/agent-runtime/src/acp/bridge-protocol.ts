@@ -151,6 +151,17 @@ export type AcpBridgeThreadResumeParams = z.infer<
   typeof acpBridgeThreadResumeParamsSchema
 >;
 
+/**
+ * Import an existing external agent session as this thread: requires
+ * session/load support (no fresh-session fallback) and forwards the replayed
+ * history as historical `acp/update` notifications instead of dropping it.
+ */
+export const acpBridgeThreadImportParamsSchema =
+  acpBridgeThreadResumeParamsSchema;
+export type AcpBridgeThreadImportParams = z.infer<
+  typeof acpBridgeThreadImportParamsSchema
+>;
+
 export const acpBridgeTurnStartParamsSchema = z.object({
   threadId: z.string().min(1),
   input: z.array(promptInputSchema),
@@ -184,6 +195,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/resume"),
     params: acpBridgeThreadResumeParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/import"),
+    params: acpBridgeThreadImportParamsSchema,
   }),
   z.object({
     method: z.literal("turn/start"),
@@ -220,6 +235,8 @@ export const acpTurnCompletedNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),
     stopReason: acpStopReasonSchema,
+    /** True when closing the replayed-history frame of an imported session. */
+    historical: z.boolean().optional(),
   })
   .passthrough();
 
@@ -227,6 +244,8 @@ export const acpUpdateNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),
     update: acpSessionUpdateSchema,
+    /** True when the update replays history from an imported session. */
+    historical: z.boolean().optional(),
   })
   .passthrough();
 

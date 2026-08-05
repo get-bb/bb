@@ -374,6 +374,11 @@ async function applyEventEffects(
     try {
       const event = entry.event;
       if (event.type === "turn/started") {
+        // Replayed history from an imported provider session is persisted for
+        // display only; it must not drive thread lifecycle transitions.
+        if (event.historical) {
+          continue;
+        }
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
           scope: event.scope,
@@ -402,6 +407,11 @@ async function applyEventEffects(
       }
 
       if (event.type === "turn/completed") {
+        // See turn/started above: imported-history frames complete with no
+        // turn-completion side effects.
+        if (event.historical) {
+          continue;
+        }
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
           scope: event.scope,

@@ -23,6 +23,12 @@ import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 export interface ProviderTranslationContext {
   threadId?: string;
   parentToolCallId?: string;
+  /**
+   * True when the event replays history from an imported provider session.
+   * Translated turn-framing events are marked historical so neither the
+   * runtime nor the server applies turn-lifecycle side effects to them.
+   */
+  historical?: boolean;
 }
 
 export interface ProviderAcceptedCommandTranslationArgs {
@@ -159,6 +165,17 @@ export type AdapterCommand =
       threadId: string;
       cwd: string;
       sourceProviderThreadId: string;
+      options: ProviderExecutionContext;
+      dynamicTools?: DynamicTool[];
+      disallowedTools?: readonly string[];
+      instructionMode: InstructionMode;
+    }
+  | {
+      type: "thread/import";
+      threadId: string;
+      cwd: string;
+      /** External session id supplied by the caller, not minted by bb. */
+      providerThreadId: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];

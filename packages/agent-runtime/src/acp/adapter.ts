@@ -104,6 +104,7 @@ import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
   acpAgentThoughtChunkUpdateSchema,
+  acpUserMessageChunkUpdateSchema,
   acpPlanUpdateSchema,
   acpToolCallUpdateEventSchema,
   extractAcpContentText,
@@ -143,6 +144,9 @@ interface AcpTurnState extends AcceptedUserMessageState {
   };
   agentMessageTextsByItemId: Map<string, string>;
   fsWriteCounter: number;
+  /** Accumulated text of the open replayed user message (import history). */
+  openUserMessageText: string | undefined;
+  userMessageCounter: number;
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
   reasoningItemCounter: number;
@@ -618,6 +622,8 @@ export function createAcpProviderAdapter(
       },
       agentMessageTextsByItemId: new Map(),
       fsWriteCounter: 0,
+      openUserMessageText: undefined,
+      userMessageCounter: 0,
       openAssistantMessageIdsByScope: new Map(),
       openReasoningItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
@@ -664,6 +670,36 @@ export function createAcpProviderAdapter(
   function createReasoningItemId(state: AcpTurnState): string {
     state.reasoningItemCounter += 1;
     return `acp-reasoning-${state.reasoningItemCounter}`;
+  }
+
+  /**
+   * Close the open replayed user message (if any) as a completed userMessage
+   * item. Only imported-history replay accumulates one; a no-op otherwise.
+   */
+  function flushOpenUserMessageItem(
+    events: ThreadEvent[],
+    state: AcpTurnState,
+  ): void {
+    const text = state.openUserMessageText;
+    if (text === undefined || !state.currentTurnId) {
+      return;
+    }
+    state.openUserMessageText = undefined;
+    if (text.trim().length === 0) {
+      return;
+    }
+    state.userMessageCounter += 1;
+    events.push({
+      type: "item/completed",
+      threadId: UNSTAMPED_THREAD_ID,
+      providerThreadId: "",
+      scope: turnScope(state.currentTurnId),
+      item: {
+        type: "userMessage",
+        id: `acp-user-${state.userMessageCounter}`,
+        content: [{ type: "text", text }],
+      },
+    });
   }
 
   /** Close the open thought item (if any) with its accumulated content. */
@@ -811,6 +847,7 @@ export function createAcpProviderAdapter(
           state,
           threadId: UNSTAMPED_THREAD_ID,
         });
+        flushOpenUserMessageItem(events, state);
         flushOpenThoughtItem(events, state, parentToolCallId);
         const itemId = turnState.getOrCreateAssistantMessageId({
           assistantIdPrefix: "acp-assistant",
@@ -846,6 +883,7 @@ export function createAcpProviderAdapter(
           state,
           threadId: UNSTAMPED_THREAD_ID,
         });
+        flushOpenUserMessageItem(events, state);
         const itemId = getOrCreateScopedItemId({
           createItemId: () => createReasoningItemId(state),
           openItemIdsByScope: state.openReasoningItemIdsByScope,
@@ -878,6 +916,7 @@ export function createAcpProviderAdapter(
           state,
           threadId: UNSTAMPED_THREAD_ID,
         });
+        flushOpenUserMessageItem(events, state);
         flushOpenThoughtItem(events, state, parentToolCallId);
         flushOpenAgentMessageItem(events, state, parentToolCallId);
         const item = translateAcpToolCallItem(parsed.data, parentToolCallId);
@@ -964,6 +1003,40 @@ export function createAcpProviderAdapter(
         return events;
       }
 
+      case "user_message_chunk": {
+        // Agents replay user input only while loading a session; outside an
+        // import the chunk stays an unhandled provider event.
+        if (!context?.historical) {
+          return buildUnhandledProviderEvents({
+            providerId: profile.providerId,
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: ACP_UPDATE_METHOD,
+              params: { update },
+            },
+            visibilityMetadata: acpVisibilityMetadata,
+            ...(state.currentTurnId ? { turnId: state.currentTurnId } : {}),
+            ...(parentToolCallId ? { parentToolCallId } : {}),
+          });
+        }
+        const parsed = acpUserMessageChunkUpdateSchema.safeParse(update);
+        const text = parsed.success
+          ? extractAcpContentText(parsed.data.content)
+          : undefined;
+        if (text === undefined) {
+          return [];
+        }
+        ensureAcpTurnStarted({
+          events,
+          state,
+          threadId: UNSTAMPED_THREAD_ID,
+        });
+        flushOpenThoughtItem(events, state, parentToolCallId);
+        flushOpenAgentMessageItem(events, state, parentToolCallId);
+        state.openUserMessageText = (state.openUserMessageText ?? "") + text;
+        return events;
+      }
+
       case "plan": {
         const parsed = acpPlanUpdateSchema.safeParse(update);
         if (!parsed.success) {
@@ -1017,6 +1090,7 @@ export function createAcpProviderAdapter(
       return [];
     }
     const events: ThreadEvent[] = [];
+    flushOpenUserMessageItem(events, state);
     flushOpenThoughtItem(events, state, context?.parentToolCallId);
     flushOpenAgentMessageItem(events, state, context?.parentToolCallId);
     const openToolCallStatus: ThreadEventItemStatus =
@@ -1064,6 +1138,24 @@ export function createAcpProviderAdapter(
       threadId: context?.threadId ?? "",
     });
     return events;
+  }
+
+  /**
+   * Stamp turn-framing events of an imported-history replay as historical so
+   * neither the runtime nor the server applies turn-lifecycle side effects.
+   */
+  function markHistoricalTurnFraming(
+    events: ThreadEvent[],
+    context: ProviderTranslationContext | undefined,
+  ): ThreadEvent[] {
+    if (!context?.historical) {
+      return events;
+    }
+    return events.map((event) =>
+      event.type === "turn/started" || event.type === "turn/completed"
+        ? { ...event, historical: true }
+        : event,
+    );
   }
 
   function translateAcpEvent(
@@ -1125,9 +1217,12 @@ export function createAcpProviderAdapter(
         if (!params.success) {
           return [];
         }
-        return translateTurnCompleted(
-          params.data.stopReason,
-          resolveState(context),
+        return markHistoricalTurnFraming(
+          translateTurnCompleted(
+            params.data.stopReason,
+            resolveState(context),
+            context,
+          ),
           context,
         );
       }
@@ -1139,9 +1234,8 @@ export function createAcpProviderAdapter(
         if (!params.success) {
           return [];
         }
-        return translateAcpUpdate(
-          params.data.update,
-          resolveState(context),
+        return markHistoricalTurnFraming(
+          translateAcpUpdate(params.data.update, resolveState(context), context),
           context,
         );
       }
@@ -1228,7 +1322,7 @@ export function createAcpProviderAdapter(
   function buildSessionParams(
     command: Extract<
       AdapterCommand,
-      { type: "thread/start" | "thread/resume" }
+      { type: "thread/start" | "thread/resume" | "thread/import" }
     >,
   ): Record<string, unknown> {
     const instructions = buildAcpSessionInstructions(command.options);
@@ -1381,6 +1475,20 @@ export function createAcpProviderAdapter(
             },
           };
         }
+        case "thread/import": {
+          finishOpenProviderTurn({
+            registry: turnState,
+            threadId: command.threadId,
+          });
+          return {
+            kind: "request",
+            method: "thread/import",
+            params: {
+              ...buildSessionParams(command),
+              providerThreadId: command.providerThreadId,
+            },
+          };
+        }
         case "turn/start":
           return {
             kind: "request",
@@ -1448,6 +1556,7 @@ export function createAcpProviderAdapter(
       if (
         command.type === "thread/start" ||
         command.type === "thread/resume" ||
+        command.type === "thread/import" ||
         command.type === "thread/stop"
       ) {
         const state = turnState.getOrCreate({ threadId: command.threadId });

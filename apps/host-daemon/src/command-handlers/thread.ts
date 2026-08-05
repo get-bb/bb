@@ -229,6 +229,7 @@ export async function startThread(
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
       ...(command.fork ? { fork: command.fork } : {}),
+      ...(command.sessionImport ? { sessionImport: command.sessionImport } : {}),
     });
     return result;
   } catch (error) {

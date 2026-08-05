@@ -502,9 +502,10 @@ export async function sendThreadMessage(
   if (mode === "start") {
     const command = await prepareReadyThreadTurnCommand(deps, {
       thread,
-      // A send/steer always targets an already-started thread; forking only
-      // happens at create time.
+      // A send/steer always targets an already-started thread; forking and
+      // session import only happen at create time.
       fork: null,
+      sessionImport: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
       requestId,
