@@ -77,6 +77,29 @@ Forking:
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 
+Importing:
+
+  bb thread import --project <id> --provider <acp-provider> --provider-session <external-session-id> [options]
+
+    --project <id>                 Project the imported thread belongs to (required)
+    --provider <acp-provider>      ACP provider that owns the session, e.g. acp-omp (required)
+    --provider-session <id>        External provider session ID to import (required)
+    --host <id>                    Host the session lives on (default: primary host)
+    --cwd <path>                   Working directory the session ran in (default: the project source path)
+    --title <title>                Thread title
+    --permission-mode <mode>       Permission mode: accept-edits, auto, or full
+    --visibility <visibility>      visible (default) or hidden
+    --json                         Print machine-readable JSON output
+
+  Imports an existing external ACP agent session (for example an `omp acp`
+  session) as a bb thread bound to the caller-supplied provider session ID.
+  The agent must support ACP session/load; bb replays the session's full
+  history into the thread timeline as read-only historical events (no live
+  turn runs) and the thread lands idle, ready for follow-up turns. The
+  session's working directory must match the project source path — pass
+  --cwd when it ran in another workspace already attached to the project.
+  Importing a provider session another live thread already binds is refused.
+
 Listing:
 
   bb thread list                           List threads
