@@ -9,6 +9,12 @@
  *
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
+ * - FAKE_ACP_LOAD_SESSION_ERROR=1
+ *                            → advertise session/load but fail the request
+ * - FAKE_ACP_REPLAY_UPDATES=1
+ *                            → replay a small scripted history as
+ *                              session/update notifications during
+ *                              session/load (mimics omp's full replay)
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
@@ -31,6 +37,8 @@ import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
 
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
+const loadSessionError = process.env.FAKE_ACP_LOAD_SESSION_ERROR === "1";
+const replayUpdates = process.env.FAKE_ACP_REPLAY_UPDATES === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
@@ -356,8 +364,28 @@ async function handleMessage(message) {
       if (!requireAuthenticated(message)) {
         return;
       }
-      if (loadSession) {
+      if (loadSession && loadSessionError) {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32603, message: "session storage corrupted" },
+        });
+      } else if (loadSession) {
         captureMcpServers(message);
+        if (replayUpdates) {
+          notifyUpdate({
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: "replayed-user" },
+          });
+          notifyUpdate(messageChunk("replayed-agent"));
+          notifyUpdate({
+            sessionUpdate: "tool_call",
+            toolCallId: "replay-tool-1",
+            title: "Replayed tool",
+            kind: "execute",
+            status: "completed",
+          });
+        }
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
       } else {
         send({

@@ -1622,6 +1622,90 @@ describe("acp bridge", () => {
     });
   });
 
+  it("imports an external session and forwards its replayed history as historical updates", async () => {
+    const importId = sendRequest("thread/import", {
+      threadId: "thread-import-1",
+      providerThreadId: "external-sess-1",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_REPLAY_UPDATES: "1" },
+    });
+    const response = await waitForResponse(importId);
+    expect(response.result).toEqual({ providerThreadId: "external-sess-1" });
+    startedProviderThreadIds.push("external-sess-1");
+
+    // The replay is forwarded (not dropped by the loading gate), each update
+    // marked historical for the adapter's replay translation.
+    const updates = notifications("acp/update").map(
+      (message) => message.params,
+    );
+    expect(updates).toHaveLength(3);
+    for (const update of updates) {
+      expect(update).toMatchObject({
+        threadId: "thread-import-1",
+        historical: true,
+      });
+    }
+    expect(agentMessageTexts()).toContain("replayed-agent");
+    // The historical frame closes once session/load settles.
+    const completed = notifications("acp/turn/completed").at(-1);
+    expect(completed?.params).toMatchObject({
+      threadId: "thread-import-1",
+      stopReason: "end_turn",
+      historical: true,
+    });
+    const identity = notifications("thread/identity").at(-1);
+    expect(identity?.params).toEqual({
+      threadId: "thread-import-1",
+      providerThreadId: "external-sess-1",
+    });
+    expect(notifications("acp/warning")).toHaveLength(0);
+  });
+
+  it("refuses to import when the agent does not support session/load", async () => {
+    const importId = sendRequest("thread/import", {
+      threadId: "thread-import-unsupported",
+      providerThreadId: "external-sess-2",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+    });
+    const response = await waitForResponse(importId);
+    expect(response.error?.message).toMatch(
+      /does not support session\/load, so it cannot import/,
+    );
+    // No silent fresh-session fallback.
+    expect(notifications("thread/identity")).toHaveLength(0);
+  });
+
+  it("fails the import with a clear error when session/load fails", async () => {
+    const importId = sendRequest("thread/import", {
+      threadId: "thread-import-load-failure",
+      providerThreadId: "external-sess-3",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_LOAD_SESSION_ERROR: "1",
+      },
+    });
+    const response = await waitForResponse(importId);
+    expect(response.error?.message).toMatch(
+      /failed to load session "external-sess-3".*session storage corrupted/,
+    );
+    // No silent fresh-session fallback: no session was established.
+    expect(notifications("thread/identity")).toHaveLength(0);
+    expect(notifications("acp/warning")).toHaveLength(0);
+  });
+
   it("reports unexpected agent exits as a single provider error", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {

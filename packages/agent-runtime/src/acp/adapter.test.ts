@@ -1133,6 +1133,121 @@ describe("acp adapter event translation", () => {
   });
 });
 
+describe("acp adapter historical replay translation", () => {
+  const HISTORICAL_CONTEXT = { threadId: "thread-1", historical: true };
+
+  function historicalUpdate(update: Record<string, unknown>) {
+    return {
+      jsonrpc: "2.0" as const,
+      method: "acp/update",
+      params: { threadId: "thread-1", update, historical: true },
+    };
+  }
+
+  it("translates replayed history into a historical turn frame", () => {
+    const adapter = createAdapter();
+
+    const userEvents = adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "replayed-user" },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    // The replay opens a synthetic turn marked historical so neither the
+    // runtime nor the server applies turn-lifecycle side effects.
+    expect(userEvents).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        historical: true,
+      },
+    ]);
+
+    const agentEvents = adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "replayed-agent" },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    // The agent chunk closes the accumulated user message first.
+    expect(agentEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "userMessage",
+          id: "acp-user-1",
+          content: [{ type: "text", text: "replayed-user" }],
+        },
+      },
+      {
+        type: "item/agentMessage/delta",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        itemId: "acp-assistant-1",
+        delta: "replayed-agent",
+      },
+    ]);
+
+    const completedEvents = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: {
+          threadId: "thread-1",
+          stopReason: "end_turn",
+          historical: true,
+        },
+      },
+      HISTORICAL_CONTEXT,
+    );
+    expect(completedEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "agentMessage",
+          id: "acp-assistant-1",
+          text: "replayed-agent",
+        },
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+        historical: true,
+      },
+    ]);
+  });
+
+  it("keeps live user_message_chunk updates as unhandled provider events", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+    const events = adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "not-a-replay" },
+      }),
+      THREAD_CONTEXT,
+    );
+    expect(
+      events.every((event) => event.type !== "item/completed"),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "turn/started")).toBe(false);
+  });
+});
+
 describe("acp adapter interactive requests", () => {
   it("decodes execute permission requests as command approvals", () => {
     const adapter = createAdapter();
