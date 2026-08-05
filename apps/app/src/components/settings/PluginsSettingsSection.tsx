@@ -565,8 +565,6 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   );
   const settingsAvailable =
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  const showDeclarativeSettingsCard =
-    plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   const frontendDiagnostics = useSyncExternalStore(
@@ -644,9 +642,7 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
                 {provenanceLine}
               </p>
             ) : null}
-            {!isRunning &&
-            plugin.description !== null &&
-            plugin.description.length > 0 ? (
+            {plugin.description !== null && plugin.description.length > 0 ? (
               <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
                 {plugin.description}
               </p>
@@ -659,16 +655,10 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
           </div>
           <PluginUpdateBanner plugin={plugin} />
           <PluginUpdatesSourceCard plugin={plugin} />
-          {showDeclarativeSettingsCard ? (
+          {plugin.hasSettings ? (
             <div className="rounded-lg border border-border bg-card px-4 py-3.5">
               {settingsAvailable ? (
-                plugin.hasSettings ? (
-                  <PluginSettingsForm pluginId={plugin.id} />
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    This plugin declares no settings.
-                  </p>
-                )
+                <PluginSettingsForm pluginId={plugin.id} />
               ) : (
                 <p className="text-xs text-muted-foreground">
                   {plugin.enabled

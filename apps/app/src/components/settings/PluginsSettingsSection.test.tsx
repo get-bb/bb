@@ -263,7 +263,7 @@ function rowPlugin(
 }
 
 describe("PluginSettingsDetail settings gating", () => {
-  it("enables a disabled plugin from its detail page without duplicating its status", async () => {
+  it("keeps a no-settings plugin's identity stable while enabling it", async () => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(
       "fetch",
@@ -276,16 +276,26 @@ describe("PluginSettingsDetail settings gating", () => {
       }),
     );
     const { wrapper } = createQueryClientTestHarness();
-    render(
+    const description = "Continues safe turns after provider limits reset.";
+    const { rerender } = render(
       <MemoryRouter>
         <PluginSettingsDetail
-          plugin={{ ...rowPlugin("disabled"), enabled: false }}
+          plugin={{
+            ...rowPlugin("disabled"),
+            description,
+            enabled: false,
+            hasSettings: false,
+          }}
         />
       </MemoryRouter>,
       { wrapper },
     );
 
     expect(screen.getAllByText("disabled")).toHaveLength(1);
+    expect(screen.getByText(description)).toBeDefined();
+    expect(
+      screen.queryByText("Enable this plugin to edit its settings."),
+    ).toBeNull();
     const toggle = screen.getByRole("switch", { name: "Enable linear" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
@@ -296,6 +306,20 @@ describe("PluginSettingsDetail settings gating", () => {
         init: expect.objectContaining({ method: "POST" }),
       });
     });
+
+    rerender(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            description,
+            hasSettings: false,
+          }}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 
   it("disables a running plugin from its detail page", async () => {
