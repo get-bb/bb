@@ -73,6 +73,12 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
+    name: "provider-retry",
+    pluginId: "provider-retry",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
     name: "secrets",
     pluginId: "secrets",
     defaultEnabled: true,
