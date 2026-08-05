@@ -662,6 +662,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     threadId: z$1.ZodString;
     providerThreadId: z$1.ZodString;
     parentToolCallId: z$1.ZodOptional<z$1.ZodString>;
+    historical: z$1.ZodOptional<z$1.ZodBoolean>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"turn/completed">;
     threadId: z$1.ZodString;
@@ -674,6 +675,7 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     error: z$1.ZodOptional<z$1.ZodObject<{
         message: z$1.ZodString;
     }, z$1.core.$strip>>;
+    historical: z$1.ZodOptional<z$1.ZodBoolean>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"turn/input/accepted">;
     threadId: z$1.ZodString;
@@ -2000,6 +2002,7 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsServiceTier: z$1.ZodBoolean;
         supportsUserQuestion: z$1.ZodBoolean;
         supportsFork: z$1.ZodBoolean;
+        supportsSessionImport: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
             full: "full";
             auto: "auto";
@@ -2068,8 +2071,8 @@ type ThreadEventRow = {
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    starting: "starting";
     idle: "idle";
+    starting: "starting";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -3726,6 +3729,9 @@ declare const hostDaemonCommandRegistry: {
         threadStoragePath: z$1.ZodOptional<z$1.ZodString>;
         fork: z$1.ZodOptional<z$1.ZodObject<{
             sourceProviderThreadId: z$1.ZodString;
+        }, z$1.core.$strip>>;
+        sessionImport: z$1.ZodOptional<z$1.ZodObject<{
+            providerThreadId: z$1.ZodString;
         }, z$1.core.$strip>>;
     }, z$1.core.$strict>, z$1.ZodObject<{
         providerThreadId: z$1.ZodString;
@@ -6398,6 +6404,7 @@ declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
             supportsServiceTier: z$1.ZodBoolean;
             supportsUserQuestion: z$1.ZodBoolean;
             supportsFork: z$1.ZodBoolean;
+            supportsSessionImport: z$1.ZodBoolean;
             supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
                 "accept-edits": "accept-edits";
                 auto: "auto";

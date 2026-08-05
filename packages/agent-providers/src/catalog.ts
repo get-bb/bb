@@ -93,6 +93,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: true,
   supportsUserQuestion: false,
   supportsFork: true,
+  supportsSessionImport: false,
   supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
@@ -102,6 +103,7 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: false,
   supportsUserQuestion: true,
   supportsFork: true,
+  supportsSessionImport: false,
   supportedPermissionModes: ["accept-edits", "auto", "full"],
 };
 
@@ -111,6 +113,7 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportsServiceTier: false,
   supportsUserQuestion: false,
   supportsFork: true,
+  supportsSessionImport: false,
   supportedPermissionModes: ["full"],
 };
 
@@ -159,6 +162,12 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   // ACP has no session-fork primitive; the adapter has no thread/fork handler,
   // so forks are blocked at the server boundary rather than failing at runtime.
   supportsFork: false,
+  // ACP `session/load` lets an existing external agent session be imported as
+  // a bb thread. Whether a specific agent binary really supports it is only
+  // knowable from its live `initialize` handshake (agentCapabilities.loadSession),
+  // so this flag advertises the protocol capability and the bridge refuses the
+  // import with a clear error when the agent does not declare loadSession.
+  supportsSessionImport: true,
   supportedPermissionModes: ["accept-edits", "full"],
 };
 
@@ -294,6 +303,7 @@ function cloneCapabilities(
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsUserQuestion: capabilities.supportsUserQuestion,
     supportsFork: capabilities.supportsFork,
+    supportsSessionImport: capabilities.supportsSessionImport,
     supportedPermissionModes: [...capabilities.supportedPermissionModes],
   };
 }
@@ -391,6 +401,20 @@ export function supportsNativeFork(providerId: string): boolean {
     isAgentProviderId(providerId) &&
     getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
   );
+}
+
+/** Whether an existing external session of this provider can be imported. */
+export function supportsProviderSessionImport(providerId: string): boolean {
+  const provider = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderInfo(providerId)
+    : isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: providerId,
+          logoUrl: null,
+        })
+      : null;
+  return provider?.capabilities.supportsSessionImport ?? false;
 }
 
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {

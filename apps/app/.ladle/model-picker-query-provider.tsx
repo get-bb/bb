@@ -63,6 +63,7 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
       supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
       supportsUserQuestion: true,
       supportsFork: true,
+      supportsSessionImport: false,
       supportedPermissionModes: [...supportedPermissionModes],
     },
   }),

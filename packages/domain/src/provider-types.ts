@@ -31,6 +31,8 @@ export const providerCapabilitiesSchema = z.object({
   supportsServiceTier: z.boolean(),
   supportsUserQuestion: z.boolean(),
   supportsFork: z.boolean(),
+  /** Whether an existing external provider session can be imported as a thread. */
+  supportsSessionImport: z.boolean(),
   supportedPermissionModes: z.array(permissionModeSchema).min(1),
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;

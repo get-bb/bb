@@ -38,6 +38,7 @@ describe("agent provider catalog", () => {
         supportsServiceTier: true,
         supportsUserQuestion: false,
         supportsFork: false,
+        supportsSessionImport: true,
         supportedPermissionModes: ["accept-edits", "full"],
       },
       composerActions: [{ kind: "skills", trigger: "/" }],

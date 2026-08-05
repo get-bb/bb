@@ -759,6 +759,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
+  "hostDaemonCommandSchema.sessionImport":
+    "thread.start omits sessionImport unless the new thread binds to an imported external provider session; absent means a normal start.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
@@ -1039,10 +1041,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 83 adds the nested provider route to model/list results so clients
-  // can disambiguate models without changing their friendly display names.
-  it("uses protocol version 83 for model route provider metadata", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
+  // thread.start gained the sessionImport descriptor in version 84 (ACP
+  // session import). Older daemons would silently drop the field and start a
+  // fresh history-less session, so the bump forces an update first.
+  it("uses protocol version 84 for thread.start session import", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(84);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

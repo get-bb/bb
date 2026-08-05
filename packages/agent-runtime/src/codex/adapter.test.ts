@@ -326,6 +326,7 @@ describe("codex provider adapter", () => {
       supportsServiceTier: true,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionImport: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
   });

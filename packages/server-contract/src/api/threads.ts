@@ -206,6 +206,45 @@ export const forkThreadRequestSchema = z
   });
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
+export const importThreadRequestSchema = z
+  .object({
+    projectId: z.string().min(1),
+    /** ACP provider that owns the external session (e.g. "acp-omp"). */
+    providerId: z.string().min(1),
+    /** External provider session id the new thread binds to and replays. */
+    providerSessionId: z.string().min(1),
+    /** Host the imported session lives on; defaults to the primary host. */
+    hostId: z.string().min(1).optional(),
+    /**
+     * Working directory the external session ran in. Must match the project
+     * source path (the default) or the path of an existing workspace already
+     * attached to the project; anything else is refused.
+     */
+    cwd: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    permissionMode: permissionModeInputSchema.optional(),
+    visibility: threadVisibilitySchema.default("visible"),
+    origin: threadCreateOriginSchema.default("sdk"),
+    originPluginId: z.string().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.origin === "plugin" && value.originPluginId === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId is required when origin is "plugin"',
+        path: ["originPluginId"],
+      });
+    }
+    if (value.origin !== "plugin" && value.originPluginId !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'originPluginId requires origin "plugin"',
+        path: ["originPluginId"],
+      });
+    }
+  });
+export type ImportThreadRequest = z.infer<typeof importThreadRequestSchema>;
+
 export const sendMessageRequestSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),

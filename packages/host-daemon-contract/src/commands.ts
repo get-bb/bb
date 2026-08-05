@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 83 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 84 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -300,14 +300,32 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
     /** Present means fork the new thread from this source provider session
      *  instead of starting fresh; absent means a normal start. */
     fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
+    /** Present means bind the new thread to this existing external provider
+     *  session (ACP session import): the runtime loads the session and
+     *  replays its history as historical events instead of starting fresh.
+     *  An import start runs no first turn, so it carries no input. */
+    sessionImport: z
+      .object({ providerThreadId: z.string().min(1) })
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.fork === undefined && value.input.length === 0) {
+    if (
+      value.fork === undefined &&
+      value.sessionImport === undefined &&
+      value.input.length === 0
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
         path: ["input"],
+      });
+    }
+    if (value.fork !== undefined && value.sessionImport !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "fork and sessionImport are mutually exclusive",
+        path: ["sessionImport"],
       });
     }
     refineGroupedInputMatchesFlatInput(value, ctx);

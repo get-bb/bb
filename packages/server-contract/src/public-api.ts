@@ -62,6 +62,7 @@ import type {
   CreateThreadRequest,
   ForkThreadRequest,
   RestartTerminalRequest,
+  ImportThreadRequest,
   DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
@@ -235,6 +236,7 @@ import {
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
+  importThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
@@ -930,6 +932,14 @@ export const publicApiRoutes = {
       method: "post",
       request: jsonRequest<EmptyInput, ForkThreadRequest>(
         forkThreadRequestSchema,
+      ),
+      response: jsonResponse<ThreadResponse>({ status: 201 }),
+    }),
+    import: defineRoute({
+      path: "/threads/import",
+      method: "post",
+      request: jsonRequest<EmptyInput, ImportThreadRequest>(
+        importThreadRequestSchema,
       ),
       response: jsonResponse<ThreadResponse>({ status: 201 }),
     }),

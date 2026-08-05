@@ -190,6 +190,7 @@ describe("pi provider adapter", () => {
       supportsServiceTier: false,
       supportsUserQuestion: false,
       supportsFork: true,
+      supportsSessionImport: false,
       supportedPermissionModes: ["full"],
     });
   });

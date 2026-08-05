@@ -400,6 +400,10 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     parentToolCallId: z.string().optional(),
+    // True when the turn frames replayed history from an imported provider
+    // session: the events are persisted for display but drive no thread
+    // lifecycle transitions (the turn never ran under this thread).
+    historical: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("turn/completed"),
@@ -409,6 +413,9 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string().nullable(),
     status: threadEventTurnStatusSchema,
     error: z.object({ message: z.string() }).optional(),
+    // See turn/started.historical: closes a replayed-history frame without
+    // turn-completion side effects.
+    historical: z.boolean().optional(),
   }),
   z
     .object({

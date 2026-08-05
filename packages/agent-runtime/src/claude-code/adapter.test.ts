@@ -172,6 +172,7 @@ describe("claude-code provider adapter", () => {
       supportsServiceTier: false,
       supportsUserQuestion: true,
       supportsFork: true,
+      supportsSessionImport: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     });
   });

@@ -20,6 +20,7 @@ export {
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
   supportsNativeFork,
+  supportsProviderSessionImport,
 } from "./catalog.js";
 export type {
   AcpAgentProviderId,

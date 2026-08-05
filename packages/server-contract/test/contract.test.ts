@@ -88,6 +88,17 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Import requires only project/provider/session; host and cwd default to the project's primary source, and the remaining fields select optional behaviors.",
+    fields: [
+      "importThreadRequestSchema.cwd",
+      "importThreadRequestSchema.hostId",
+      "importThreadRequestSchema.originPluginId",
+      "importThreadRequestSchema.permissionMode",
+      "importThreadRequestSchema.title",
+    ],
+  },
+  {
+    reason:
       "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
     fields: [
       "createThreadRequestSchema.sectionId",
@@ -1714,6 +1725,7 @@ describe("server-contract clients", () => {
         contract.createQueuedMessageRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
       forkThreadRequestSchema: contract.forkThreadRequestSchema,
+      importThreadRequestSchema: contract.importThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,
