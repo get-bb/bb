@@ -1036,12 +1036,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 73 adds `workspace.discover_repos` and widens the provider-usage
-  // `error` variant with locally-known plan/account fields. An older daemon has
-  // no handler for the command and sends the narrower error shape, so the bump
-  // forces an update before the server relies on either.
-  it("uses protocol version 73 for repo discovery and usage plan fallback", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(73);
+  // Version 74 prefixes the provider onto every Pi model id, so an aggregator
+  // model reads `openrouter/deepseek/deepseek-v4-flash` rather than
+  // `deepseek/deepseek-v4-flash`. A daemon on 73 answers `model.list` with the
+  // old unprefixed ids, which the server resolves to a different provider, so
+  // the bump forces an update before the server trusts either side.
+  it("uses protocol version 74 for provider-prefixed Pi model ids", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(74);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
