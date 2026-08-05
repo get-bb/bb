@@ -229,12 +229,39 @@ function respondToRuntimeWorkspaceFileCommand(
   return true;
 }
 
+// Test-only override for the mocked `provider.list_models` response's
+// `supportsSessionImport` field, keyed by providerId. Lets a test simulate a
+// live ACP `initialize` handshake result without spawning a real agent.
+const testProviderListModelsSupportsSessionImportOverride = new Map<
+  string,
+  boolean
+>();
+
+export function setTestProviderSupportsSessionImport(
+  providerId: string,
+  supportsSessionImport: boolean,
+): void {
+  testProviderListModelsSupportsSessionImportOverride.set(
+    providerId,
+    supportsSessionImport,
+  );
+}
+
+export function clearTestProviderSupportsSessionImportOverrides(): void {
+  testProviderListModelsSupportsSessionImportOverride.clear();
+}
+
 function respondToProviderModelListCommand(
   deps: Pick<TestAppHarness, "hub">,
   args: RegisterTestHostRpcCaptureArgs,
   message: HostDaemonOnlineRpcRequestMessage,
 ): boolean {
   if (message.command.type !== "provider.list_models") return false;
+
+  const supportsSessionImport =
+    testProviderListModelsSupportsSessionImportOverride.get(
+      message.command.providerId,
+    );
 
   deps.hub.recordHostOnlineRpcResponse({
     message: hostDaemonOnlineRpcResponseMessageSchema.parse({
@@ -252,6 +279,9 @@ function respondToProviderModelListCommand(
           }),
         ],
         selectedOnlyModels: [],
+        ...(supportsSessionImport !== undefined
+          ? { supportsSessionImport }
+          : {}),
       },
     }),
     sessionId: args.sessionId,

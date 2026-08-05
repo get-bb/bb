@@ -374,6 +374,73 @@ describe("live thread start handoff", () => {
     });
   });
 
+  it("does not treat a historical turn/completed event as start activation staleness", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = await startLiveThreadStartRpc({
+        harness,
+        requestIdValue: 7,
+      });
+      const providerThreadId = "provider-historical-replay-race";
+      const turnId = "turn-historical-replay-race";
+      const sessionId = fixture.startCommand.row.sessionId;
+      if (!sessionId) {
+        throw new Error("Queued thread start is missing sessionId");
+      }
+
+      // A replayed import history frame can land stamped with the same
+      // providerThreadId the live start later settles with (e.g. a retried
+      // import on a runtime whose identity registry still holds the prior
+      // session id). Historical frames must never count as activation
+      // staleness, or the start never applies run.started and the thread
+      // sticks in `starting` forever.
+      const eventResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              createTestDaemonEventEnvelope({
+                event: {
+                  type: "turn/started",
+                  threadId: fixture.thread.id,
+                  providerThreadId,
+                  scope: turnScope(turnId),
+                  historical: true,
+                },
+              }),
+              createTestDaemonEventEnvelope({
+                event: {
+                  type: "turn/completed",
+                  threadId: fixture.thread.id,
+                  providerThreadId,
+                  scope: turnScope(turnId),
+                  status: "completed",
+                  historical: true,
+                },
+              }),
+            ]),
+          }),
+        },
+      );
+      expect(eventResponse.status).toBe(200);
+      // Historical frames carry no lifecycle side effects, so the thread stays
+      // in its pre-activation `starting` status.
+      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+        status: "starting",
+      });
+
+      await reportQueuedCommandSuccess(harness, fixture.startCommand, {
+        providerThreadId,
+      });
+
+      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+        status: "active",
+      });
+    });
+  });
+
   it("does not reactivate an archived thread when a late thread start succeeds", async () => {
     await withTestHarness(async (harness) => {
       const fixture = await startLiveThreadStartRpc({

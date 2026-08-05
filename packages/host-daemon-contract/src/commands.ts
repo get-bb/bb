@@ -304,9 +304,7 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
      *  session (ACP session import): the runtime loads the session and
      *  replays its history as historical events instead of starting fresh.
      *  An import start runs no first turn, so it carries no input. */
-    sessionImport: z
-      .object({ providerThreadId: z.string().min(1) })
-      .optional(),
+    sessionImport: z.object({ providerThreadId: z.string().min(1) }).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -1326,6 +1324,11 @@ const writeSkillResultSchema = z.discriminatedUnion("outcome", [
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
+  // Live, per-agent capability from the ACP `initialize` handshake
+  // (agentCapabilities.loadSession). Undefined when the provider isn't ACP or
+  // the live handshake result isn't available (e.g. a CLI-based model list
+  // that never spawned a session); callers must not treat that as `false`.
+  supportsSessionImport: z.boolean().optional(),
 });
 
 const knownAcpAgentExecutableStatusSchema = z

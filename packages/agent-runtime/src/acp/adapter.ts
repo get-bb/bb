@@ -146,6 +146,13 @@ interface AcpTurnState extends AcceptedUserMessageState {
   fsWriteCounter: number;
   /** Accumulated text of the open replayed user message (import history). */
   openUserMessageText: string | undefined;
+  /**
+   * Wire `messageId` of the open replayed user message, when the agent sends
+   * one. A chunk with a different messageId starts a new message instead of
+   * concatenating into the open one; agents that never send messageId keep
+   * the prior concatenation behavior.
+   */
+  openUserMessageId: string | undefined;
   userMessageCounter: number;
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
@@ -623,6 +630,7 @@ export function createAcpProviderAdapter(
       agentMessageTextsByItemId: new Map(),
       fsWriteCounter: 0,
       openUserMessageText: undefined,
+      openUserMessageId: undefined,
       userMessageCounter: 0,
       openAssistantMessageIdsByScope: new Map(),
       openReasoningItemIdsByScope: new Map(),
@@ -685,6 +693,7 @@ export function createAcpProviderAdapter(
       return;
     }
     state.openUserMessageText = undefined;
+    state.openUserMessageId = undefined;
     if (text.trim().length === 0) {
       return;
     }
@@ -1033,6 +1042,21 @@ export function createAcpProviderAdapter(
         });
         flushOpenThoughtItem(events, state, parentToolCallId);
         flushOpenAgentMessageItem(events, state, parentToolCallId);
+        // omp (and any agent that does the same) tags each replayed history
+        // entry with a fresh messageId, including distinct user messages,
+        // bashExecution/pythonExecution/compactionSummary entries replayed as
+        // user_message_chunk. A messageId change closes the open message
+        // instead of merging into it; agents that never send messageId keep
+        // the prior concatenation behavior.
+        const messageId = parsed.success ? parsed.data.messageId : undefined;
+        if (
+          messageId !== undefined &&
+          state.openUserMessageId !== undefined &&
+          messageId !== state.openUserMessageId
+        ) {
+          flushOpenUserMessageItem(events, state);
+        }
+        state.openUserMessageId = messageId ?? state.openUserMessageId;
         state.openUserMessageText = (state.openUserMessageText ?? "") + text;
         return events;
       }
@@ -1235,7 +1259,11 @@ export function createAcpProviderAdapter(
           return [];
         }
         return markHistoricalTurnFraming(
-          translateAcpUpdate(params.data.update, resolveState(context), context),
+          translateAcpUpdate(
+            params.data.update,
+            resolveState(context),
+            context,
+          ),
           context,
         );
       }

@@ -291,6 +291,11 @@ export interface ProviderAdapter {
   parseModelListResult(result: unknown): {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
+    /**
+     * Live per-agent capability from the ACP `initialize` handshake
+     * (agentCapabilities.loadSession). Only ACP adapters ever set this.
+     */
+    supportsSessionImport?: boolean;
   };
   translateEvent(
     event: ProviderRuntimeEvent,

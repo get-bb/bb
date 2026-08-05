@@ -294,6 +294,7 @@ export {
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
+  findLiveThreadIdByProviderThreadId,
   findStoredClientTurnRequestSequenceByRequestId,
   findStoredEventRow,
   getActiveStoredTurnId,

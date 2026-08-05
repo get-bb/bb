@@ -119,11 +119,17 @@ export const acpAgentMessageChunkUpdateSchema = z
   })
   .passthrough();
 
-/** Replayed user input; agents only send these while loading a session. */
+/**
+ * Replayed user input; agents only send these while loading a session.
+ * `messageId` is an optional per-agent extension (e.g. omp) that tags each
+ * replayed history entry; a change in messageId across consecutive chunks
+ * means a new message started rather than a continuation.
+ */
 export const acpUserMessageChunkUpdateSchema = z
   .object({
     sessionUpdate: z.literal("user_message_chunk"),
     content: acpContentBlockSchema,
+    messageId: z.string().optional(),
   })
   .passthrough();
 

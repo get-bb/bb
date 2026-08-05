@@ -312,6 +312,11 @@ export interface AgentRuntime {
   listModels(args: ListModelsArgs): Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
+    /**
+     * Live per-agent capability from the ACP `initialize` handshake
+     * (agentCapabilities.loadSession). Only set for ACP providers.
+     */
+    supportsSessionImport?: boolean;
   }>;
 
   listRunningProviders(): string[];

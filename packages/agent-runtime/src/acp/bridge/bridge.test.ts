@@ -407,6 +407,35 @@ describe("acp bridge", () => {
     });
   });
 
+  it("reports the live loadSession handshake capability on model/list", async () => {
+    const supportedId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_LOAD_SESSION: "1" },
+      },
+      primaryModels: [],
+    });
+    expect((await waitForResponse(supportedId)).result).toMatchObject({
+      supportsSessionImport: true,
+    });
+
+    const unsupportedId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        // FAKE_ACP_LOAD_SESSION omitted (unsupported); FAKE_ACP_MODEL_COUNT
+        // set only to give this agent command a distinct discovery cache key
+        // from the "supported" case above.
+        envVars: { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_MODEL_COUNT: "2" },
+      },
+      primaryModels: [],
+    });
+    expect((await waitForResponse(unsupportedId)).result).toMatchObject({
+      supportsSessionImport: false,
+    });
+  });
+
   it("discovers ACP-native models from session models state", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
@@ -1665,6 +1694,41 @@ describe("acp bridge", () => {
     expect(notifications("acp/warning")).toHaveLength(0);
   });
 
+  it("forwards distinct replayed user message ids on the wire", async () => {
+    const importId = sendRequest("thread/import", {
+      threadId: "thread-import-distinct-messages",
+      providerThreadId: "external-sess-distinct-messages",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_REPLAY_UPDATES: "1",
+        FAKE_ACP_REPLAY_DISTINCT_USER_MESSAGES: "1",
+      },
+    });
+    const response = await waitForResponse(importId);
+    expect(response.result).toEqual({
+      providerThreadId: "external-sess-distinct-messages",
+    });
+    startedProviderThreadIds.push("external-sess-distinct-messages");
+
+    const updates = notifications("acp/update").map(
+      (message) => message.params as Record<string, unknown>,
+    );
+    const userChunkMessageIds = updates
+      .map((params) => params.update as Record<string, unknown>)
+      .filter((update) => update.sessionUpdate === "user_message_chunk")
+      .map((update) => update.messageId);
+    expect(userChunkMessageIds).toEqual([
+      "replay-msg-1",
+      "replay-msg-1",
+      "replay-msg-2",
+    ]);
+  });
+
   it("refuses to import when the agent does not support session/load", async () => {
     const importId = sendRequest("thread/import", {
       threadId: "thread-import-unsupported",
@@ -1704,6 +1768,104 @@ describe("acp bridge", () => {
     // No silent fresh-session fallback: no session was established.
     expect(notifications("thread/identity")).toHaveLength(0);
     expect(notifications("acp/warning")).toHaveLength(0);
+  });
+
+  it("closes the historical turn before reporting a session/load failure that replayed part of the history", async () => {
+    const importId = sendRequest("thread/import", {
+      threadId: "thread-import-load-failure-partial-replay",
+      providerThreadId: "external-sess-4",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_LOAD_SESSION_ERROR: "1",
+        FAKE_ACP_REPLAY_UPDATES: "1",
+      },
+    });
+    const response = await waitForResponse(importId);
+    expect(response.error?.message).toMatch(
+      /failed to load session "external-sess-4".*session storage corrupted/,
+    );
+
+    // The partial replay was forwarded before the failure...
+    const updates = notifications("acp/update").map(
+      (message) => message.params,
+    );
+    expect(updates.length).toBeGreaterThan(0);
+    for (const update of updates) {
+      expect(update).toMatchObject({
+        threadId: "thread-import-load-failure-partial-replay",
+        historical: true,
+      });
+    }
+    // ...and the synthetic historical turn it opened is closed before the
+    // error result, instead of staying open forever.
+    const completedIndex = output.messages.findIndex(
+      (message) => message.method === "acp/turn/completed",
+    );
+    const responseIndex = output.messages.findIndex(
+      (message) => message.id === importId,
+    );
+    expect(completedIndex).toBeGreaterThanOrEqual(0);
+    expect(completedIndex).toBeLessThan(responseIndex);
+    const completed = notifications("acp/turn/completed").at(-1);
+    expect(completed?.params).toMatchObject({
+      threadId: "thread-import-load-failure-partial-replay",
+      stopReason: "cancelled",
+      historical: true,
+    });
+    expect(notifications("thread/identity")).toHaveLength(0);
+  });
+
+  it("refuses to import the same provider session into a second bb thread", async () => {
+    const firstImportId = sendRequest("thread/import", {
+      threadId: "thread-import-dup-1",
+      providerThreadId: "external-sess-dup",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    const firstResponse = await waitForResponse(firstImportId);
+    expect(firstResponse.result).toEqual({
+      providerThreadId: "external-sess-dup",
+    });
+    startedProviderThreadIds.push("external-sess-dup");
+
+    const secondImportId = sendRequest("thread/import", {
+      threadId: "thread-import-dup-2",
+      providerThreadId: "external-sess-dup",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    const secondResponse = await waitForResponse(secondImportId);
+    expect(secondResponse.error?.message).toMatch(
+      /already bound to bb thread "thread-import-dup-1"/,
+    );
+    // The first thread's binding is untouched: a turn/start against the
+    // shared provider session id still routes to the first bb thread.
+    const turnId = sendRequest("turn/start", {
+      threadId: "external-sess-dup",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+    });
+    const turnResponse = await waitForResponse(turnId);
+    expect(turnResponse.error).toBeUndefined();
+    const completed = await waitFor(
+      () => notifications("acp/turn/completed").at(-1),
+      "turn/completed",
+    );
+    expect(completed.params).toMatchObject({
+      threadId: "thread-import-dup-1",
+    });
   });
 
   it("reports unexpected agent exits as a single provider error", async () => {

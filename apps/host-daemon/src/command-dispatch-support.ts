@@ -55,6 +55,7 @@ export interface CommandDispatchOptions {
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
+    supportsSessionImport?: boolean;
   }>;
   getProviderCliStatusForProvider?: (
     providerId: string,
@@ -121,6 +122,7 @@ export async function defaultListModels(
 ): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
+  supportsSessionImport?: boolean;
 }> {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +

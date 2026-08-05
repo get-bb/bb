@@ -7,6 +7,7 @@ import {
   isNull,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import {
   deleteThread,
@@ -645,6 +646,12 @@ function hasThreadInterruptedEventAtOrAfter(
   );
 }
 
+// Imported-session replay stamps its turn/completed rows `historical: true`
+// (see markHistoricalTurnFraming); those frames close a synthetic replay
+// turn, not a live one, so they must never count toward start-activation
+// staleness.
+const isNotHistoricalTurnCompletedEventData = sql`COALESCE(json_extract(${events.data}, '$.historical'), 0) = 0`;
+
 function hasProviderTurnCompletedEventAtOrAfter(
   deps: ThreadLifecycleReadDeps,
   args: HasProviderTurnCompletedEventAtOrAfterArgs,
@@ -659,6 +666,7 @@ function hasProviderTurnCompletedEventAtOrAfter(
           eq(events.providerThreadId, args.providerThreadId),
           eq(events.type, "turn/completed"),
           gte(events.createdAt, args.createdAt),
+          isNotHistoricalTurnCompletedEventData,
         ),
       )
       .limit(1)

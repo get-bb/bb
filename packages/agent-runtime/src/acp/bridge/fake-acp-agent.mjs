@@ -10,11 +10,20 @@
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
  * - FAKE_ACP_LOAD_SESSION_ERROR=1
- *                            → advertise session/load but fail the request
+ *                            → advertise session/load but fail the request;
+ *                              combined with FAKE_ACP_REPLAY_UPDATES, replays
+ *                              a partial history before failing (mimics an
+ *                              agent that streams some updates, then errors)
  * - FAKE_ACP_REPLAY_UPDATES=1
  *                            → replay a small scripted history as
  *                              session/update notifications during
  *                              session/load (mimics omp's full replay)
+ * - FAKE_ACP_REPLAY_DISTINCT_USER_MESSAGES=1
+ *                            → with FAKE_ACP_REPLAY_UPDATES, replay two
+ *                              separate user_message_chunk messages (each
+ *                              its own messageId, one split across chunks)
+ *                              instead of one, mimicking omp tagging every
+ *                              replayed history entry with a fresh messageId
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
@@ -39,6 +48,8 @@ import { appendFileSync, writeFileSync } from "node:fs";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const loadSessionError = process.env.FAKE_ACP_LOAD_SESSION_ERROR === "1";
 const replayUpdates = process.env.FAKE_ACP_REPLAY_UPDATES === "1";
+const replayDistinctUserMessages =
+  process.env.FAKE_ACP_REPLAY_DISTINCT_USER_MESSAGES === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
@@ -99,6 +110,31 @@ function notifyUpdate(update) {
     jsonrpc: "2.0",
     method: "session/update",
     params: { sessionId, update },
+  });
+}
+
+function notifyReplayedUserMessages() {
+  if (!replayDistinctUserMessages) {
+    notifyUpdate({
+      sessionUpdate: "user_message_chunk",
+      content: { type: "text", text: "replayed-user" },
+    });
+    return;
+  }
+  notifyUpdate({
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "Hello " },
+    messageId: "replay-msg-1",
+  });
+  notifyUpdate({
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "world" },
+    messageId: "replay-msg-1",
+  });
+  notifyUpdate({
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "Fix the bug" },
+    messageId: "replay-msg-2",
   });
 }
 
@@ -365,6 +401,13 @@ async function handleMessage(message) {
         return;
       }
       if (loadSession && loadSessionError) {
+        // A replay that then fails still needs to exercise the replayed
+        // updates: the agent may stream part of the history before hitting
+        // whatever made it fail.
+        if (replayUpdates) {
+          notifyReplayedUserMessages();
+          notifyUpdate(messageChunk("replayed-agent"));
+        }
         send({
           jsonrpc: "2.0",
           id: message.id,
@@ -373,10 +416,7 @@ async function handleMessage(message) {
       } else if (loadSession) {
         captureMcpServers(message);
         if (replayUpdates) {
-          notifyUpdate({
-            sessionUpdate: "user_message_chunk",
-            content: { type: "text", text: "replayed-user" },
-          });
+          notifyReplayedUserMessages();
           notifyUpdate(messageChunk("replayed-agent"));
           notifyUpdate({
             sessionUpdate: "tool_call",

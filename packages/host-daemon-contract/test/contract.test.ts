@@ -1044,7 +1044,13 @@ describe("host-daemon command schemas", () => {
   // thread.start gained the sessionImport descriptor in version 84 (ACP
   // session import). Older daemons would silently drop the field and start a
   // fresh history-less session, so the bump forces an update first.
-  it("uses protocol version 84 for thread.start session import", () => {
+  //
+  // The same version also carries the optional provider.list_models
+  // supportsSessionImport result field: the server-side import gate uses it
+  // to derive the live per-agent loadSession capability instead of trusting
+  // the static ACP-family constant. An older daemon simply omits the field,
+  // which the server treats as "unknown" and falls back to the static check.
+  it("uses protocol version 84 for ACP session import", () => {
     expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(84);
   });
 

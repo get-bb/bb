@@ -6,6 +6,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   max,
@@ -2561,6 +2562,36 @@ export function getStoredProviderThreadIdAtOrBeforeSequence(
     .limit(1)
     .get();
   return row?.providerThreadId ?? null;
+}
+
+/**
+ * Reverse lookup for provider-session uniqueness: the most recently touched
+ * non-deleted thread on this host whose event log has ever recorded this
+ * providerThreadId (via thread/identity or any provider-scoped event). Used
+ * to refuse importing an external ACP session that another live bb thread
+ * already binds, since the ACP bridge routes by provider session id and a
+ * second binding would misroute turns between the two threads.
+ */
+export function findLiveThreadIdByProviderThreadId(
+  db: DbQueryConnection,
+  args: { hostId: string; providerThreadId: string },
+): string | null {
+  const row = db
+    .select({ threadId: events.threadId })
+    .from(events)
+    .innerJoin(threads, eq(threads.id, events.threadId))
+    .innerJoin(environments, eq(environments.id, threads.environmentId))
+    .where(
+      and(
+        eq(events.providerThreadId, args.providerThreadId),
+        eq(environments.hostId, args.hostId),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  return row?.threadId ?? null;
 }
 
 export function listThreadTurnInterruptionEventStates(

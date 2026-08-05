@@ -1,7 +1,15 @@
 import { upsertProjectExecutionDefaults } from "@bb/db";
+import { threadScope } from "@bb/domain";
+import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { threadResponseSchema } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  clearTestProviderSupportsSessionImportOverrides,
+  createTestDaemonEventEnvelope,
+  internalAuthHeaders,
+  setTestProviderSupportsSessionImport,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -47,6 +55,10 @@ async function postImport(
 }
 
 describe("public thread import route", () => {
+  afterEach(() => {
+    clearTestProviderSupportsSessionImportOverrides();
+  });
+
   it("imports an external ACP session bound to the project source", async () => {
     await withTestHarness(async (harness) => {
       const { host, project } = seedImportTarget(harness);
@@ -115,9 +127,94 @@ describe("public thread import route", () => {
 
       expect(response.status).toBe(400);
       const body = await readJson(response);
-      expect(JSON.stringify(body)).toContain(
-        "does not support session import",
+      expect(JSON.stringify(body)).toContain("does not support session import");
+    });
+  });
+
+  it("refuses importing a provider session another live thread already binds", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      const providerSessionId = "external-omp-session-shared";
+
+      const firstResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstThread = threadResponseSchema.parse(
+        await readJson(firstResponse),
       );
+
+      const startCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === firstThread.id,
+      );
+      const sessionId = startCommand.row.sessionId;
+      if (!sessionId) {
+        throw new Error("Queued thread start is missing sessionId");
+      }
+      // The bridge records the binding by sending thread/identity once the
+      // agent accepts session/load; that's what the reverse lookup relies on.
+      const eventResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              createTestDaemonEventEnvelope({
+                event: {
+                  type: "thread/identity",
+                  threadId: firstThread.id,
+                  providerThreadId: providerSessionId,
+                  scope: threadScope(),
+                },
+              }),
+            ]),
+          }),
+        },
+      );
+      expect(eventResponse.status).toBe(200);
+
+      const secondResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+      });
+
+      expect(secondResponse.status).toBe(409);
+      const body = await readJson(secondResponse);
+      expect(body).toMatchObject({ code: "provider_session_already_bound" });
+      expect(JSON.stringify(body)).toContain(firstThread.id);
+    });
+  });
+
+  it("refuses importing when the agent's live handshake reports no session/load support", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      // Static ACP_CAPABILITIES advertises supportsSessionImport for every
+      // acp-* provider; this simulates the agent's own live `initialize`
+      // handshake (agentCapabilities.loadSession) reporting otherwise, which
+      // must override the static family-level constant.
+      setTestProviderSupportsSessionImport("acp-omp", false);
+
+      const response = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "external-omp-session-no-load",
+        hostId: host.id,
+      });
+
+      expect(response.status).toBe(400);
+      const body = await readJson(response);
+      expect(body).toMatchObject({ code: "invalid_request" });
+      expect(JSON.stringify(body)).toContain("does not support session/load");
     });
   });
 });

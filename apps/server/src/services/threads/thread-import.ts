@@ -1,10 +1,20 @@
-import { findEnvironmentByHostPath } from "@bb/db";
+import {
+  findEnvironmentByHostPath,
+  findLiveThreadIdByProviderThreadId,
+} from "@bb/db";
 import { normalizeProjectPathInput } from "@bb/domain";
-import { supportsProviderSessionImport } from "@bb/agent-providers";
+import {
+  isAcpProviderId,
+  supportsProviderSessionImport,
+} from "@bb/agent-providers";
+import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { ImportThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
+import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
+import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
 import { createThreadFromRequest } from "./thread-create.js";
 import {
   requirePublicProjectForThreadCreate,
@@ -13,12 +23,89 @@ import {
 
 type ThreadImportDeps = LoggedPendingInteractionWorkSessionDeps;
 
-function requireImportCapableProvider(providerId: string): void {
-  if (!supportsProviderSessionImport(providerId)) {
+/**
+ * The static ACP-family constant only says the protocol has a session/load
+ * primitive; whether this specific agent binary actually implements it is
+ * only knowable from its live `initialize` handshake
+ * (agentCapabilities.loadSession). Ask the daemon for that live capability
+ * (the same probe model discovery already performs) for known built-in ACP
+ * agents so an agent that doesn't support it is refused here instead of
+ * silently provisioning an environment and dispatching a doomed thread.start.
+ * Best-effort: any probe failure or an agent bb has no static launch spec for
+ * falls back to the static family check, with the bridge's own refusal
+ * (packages/agent-runtime/src/acp/bridge/bridge.ts) as the final backstop.
+ */
+async function probeAcpSupportsSessionImport(
+  deps: ThreadImportDeps,
+  args: { hostId: string; providerId: string },
+): Promise<boolean | undefined> {
+  const knownAgent = findKnownAcpAgentForProviderId(args.providerId);
+  if (!knownAgent) {
+    return undefined;
+  }
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "provider.list_models",
+        providerId: args.providerId,
+        acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(knownAgent),
+      },
+    });
+    return result.supportsSessionImport;
+  } catch {
+    return undefined;
+  }
+}
+
+async function requireImportCapableProvider(
+  deps: ThreadImportDeps,
+  args: { hostId: string; providerId: string },
+): Promise<void> {
+  if (!supportsProviderSessionImport(args.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Provider ${providerId} does not support session import`,
+      `Provider ${args.providerId} does not support session import`,
+    );
+  }
+  if (!isAcpProviderId(args.providerId)) {
+    return;
+  }
+  const liveSupportsSessionImport = await probeAcpSupportsSessionImport(
+    deps,
+    args,
+  );
+  if (liveSupportsSessionImport === false) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Provider ${args.providerId}'s agent does not support session/load, so it cannot import an existing session`,
+    );
+  }
+}
+
+/**
+ * Non-Codex ACP threads share one bridge process per provider, which routes
+ * turns by provider session id (packages/agent-runtime/src/acp/bridge/bridge.ts).
+ * Binding a second bb thread to a provider session another live thread
+ * already binds would make the bridge misroute turns between the two, so
+ * refuse it up front.
+ */
+function requireUnboundProviderSession(
+  deps: Pick<ThreadImportDeps, "db">,
+  args: { hostId: string; providerSessionId: string },
+): void {
+  const existingThreadId = findLiveThreadIdByProviderThreadId(deps.db, {
+    hostId: args.hostId,
+    providerThreadId: args.providerSessionId,
+  });
+  if (existingThreadId !== null) {
+    throw new ApiError(
+      409,
+      "provider_session_already_bound",
+      `Provider session ${args.providerSessionId} is already bound to thread ${existingThreadId}`,
     );
   }
 }
@@ -62,9 +149,16 @@ export async function createThreadImportFromRequest(
   deps: ThreadImportDeps,
   request: ImportThreadRequest,
 ) {
-  requireImportCapableProvider(request.providerId);
   requirePublicProjectForThreadCreate(deps, request.projectId);
   const hostId = request.hostId ?? requireConnectedPrimaryHostId(deps);
+  await requireImportCapableProvider(deps, {
+    hostId,
+    providerId: request.providerId,
+  });
+  requireUnboundProviderSession(deps, {
+    hostId,
+    providerSessionId: request.providerSessionId,
+  });
   const source = requireSourceForHost(deps, request.projectId, hostId);
   const cwd = resolveImportCwd(deps, {
     hostId,

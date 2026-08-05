@@ -133,6 +133,13 @@ interface AcpThreadSession {
    * being dropped.
    */
   importing: boolean;
+  /**
+   * Set once a replayed session/update has been forwarded during import. If
+   * session/load then fails, the adapter has already opened a synthetic
+   * historical turn from that update, so the import failure path must close
+   * it with a historical turn/completed before reporting the error.
+   */
+  historicalReplayForwarded: boolean;
   stopping: boolean;
   /** Resolves when the in-flight bb turn loop fully settles. */
   turnSettled: Promise<void> | undefined;
@@ -391,10 +398,7 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
 function reasoningSupportFromCli(
   reasoningCli: AcpBridgeReasoningCli | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (reasoningCli === undefined) {
     return undefined;
@@ -416,10 +420,7 @@ function reasoningSupportFromCli(
 function reasoningSupportFromNativeHint(
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (nativeReasoning === undefined) {
     return undefined;
@@ -512,8 +513,7 @@ function nativeReasoningLevelToValue(args: {
   nativeReasoning: AcpBridgeNativeReasoning;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override =
-    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
@@ -578,7 +578,10 @@ function applyPermissionCliArgs(
   permissionCli: AcpBridgePermissionCli | undefined,
   permissionMode: AcpSessionPolicy["permissionMode"],
 ): string[] {
-  const permissionArgs = permissionCliArgsForMode(permissionCli, permissionMode);
+  const permissionArgs = permissionCliArgsForMode(
+    permissionCli,
+    permissionMode,
+  );
   if (permissionArgs.length === 0) {
     return [...agentArgs];
   }
@@ -618,6 +621,15 @@ const SESSION_MODEL_DISCOVERY_TTL_MS = 60_000;
 let cachedSessionDiscoveredModels: {
   key: string;
   models: AvailableModel[];
+  fetchedAt: number;
+} | null = null;
+// Populated alongside session model discovery from the same `initialize`
+// handshake, so a model/list caller learns whether this agent binary really
+// supports `session/load` (thread/import's actual gate) instead of trusting
+// the static ACP-family capability constant.
+let cachedAcpAgentSupportsSessionImport: {
+  key: string;
+  supportsSessionImport: boolean;
   fetchedAt: number;
 } | null = null;
 
@@ -772,6 +784,12 @@ async function loadSessionDiscoveredModels(
           },
           resultSchema: acpInitializeResultSchema,
         });
+        cachedAcpAgentSupportsSessionImport = {
+          key,
+          supportsSessionImport:
+            initializeResult.agentCapabilities?.loadSession ?? false,
+          fetchedAt: Date.now(),
+        };
         await authenticateAcpAgent({
           connection,
           env: childEnv,
@@ -834,6 +852,26 @@ async function loadSessionDiscoveredModels(
     }
     connection.kill();
   }
+}
+
+/**
+ * The loadSession capability learned from the most recent `initialize`
+ * handshake for this exact agent launch, if it's still within the model
+ * discovery TTL. Undefined when no live handshake has happened yet (or it's
+ * gone stale) — callers must treat that as "unknown", not "false".
+ */
+function getCachedAcpAgentSupportsSessionImport(
+  agent: AcpBridgeAgentCommand,
+): boolean | undefined {
+  const key = JSON.stringify(agent);
+  if (
+    cachedAcpAgentSupportsSessionImport?.key === key &&
+    Date.now() - cachedAcpAgentSupportsSessionImport.fetchedAt <
+      SESSION_MODEL_DISCOVERY_TTL_MS
+  ) {
+    return cachedAcpAgentSupportsSessionImport.supportsSessionImport;
+  }
+  return undefined;
 }
 
 async function discoverAcpNativeReasoningByModel(args: {
@@ -1445,6 +1483,36 @@ function getSessionByProviderThreadId(
   return bbThreadId ? sessionsByBbThreadId.get(bbThreadId) : undefined;
 }
 
+/**
+ * Defense in depth against two bb threads binding the same provider session:
+ * the server already refuses this at import time, but this process-local map
+ * is the actual turn-routing table (getSessionByProviderThreadId), so an
+ * overwrite here would silently steal routing from the other live session
+ * instead of failing loudly. Called as soon as a reused provider session id
+ * is known, before any notification is sent for it, so a rejected session
+ * never emits history/turn framing for a bb thread it will not end up bound
+ * to.
+ */
+function assertProviderSessionUnboundElsewhere(
+  bbThreadId: string,
+  providerThreadId: string,
+): void {
+  const boundToOtherThreadId =
+    bbThreadIdByProviderThreadId.get(providerThreadId);
+  if (
+    boundToOtherThreadId === undefined ||
+    boundToOtherThreadId === bbThreadId
+  ) {
+    return;
+  }
+  const otherSession = sessionsByBbThreadId.get(boundToOtherThreadId);
+  if (otherSession && !otherSession.stopping) {
+    throw new Error(
+      `ACP provider session "${providerThreadId}" is already bound to bb thread "${boundToOtherThreadId}"`,
+    );
+  }
+}
+
 type AcpSessionStartParams =
   | { kind: "start"; params: AcpBridgeThreadStartParams }
   | { kind: "resume"; params: AcpBridgeThreadResumeParams }
@@ -1518,6 +1586,7 @@ async function startAgentSession(
     queuedInputs: [],
     loading: false,
     importing: request.kind === "import",
+    historicalReplayForwarded: false,
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
@@ -1576,6 +1645,18 @@ async function startAgentSession(
         sessionId = request.params.providerThreadId;
       } catch (error) {
         if (request.kind === "import") {
+          if (session.historicalReplayForwarded) {
+            // The agent replayed (and this forwarded) at least one
+            // session/update before session/load failed; the adapter has
+            // already opened a synthetic historical turn from it, so close
+            // that turn before reporting the failure or it stays open
+            // forever.
+            sendNotification(ACP_TURN_COMPLETED_METHOD, {
+              threadId: bbThreadId,
+              stopReason: "cancelled",
+              historical: true,
+            });
+          }
           throw new Error(
             `ACP agent "${agentLabel}" failed to load session ` +
               `"${request.params.providerThreadId}": ` +
@@ -1585,6 +1666,12 @@ async function startAgentSession(
         sessionId = undefined;
       } finally {
         session.loading = false;
+      }
+      // Checked before any notification goes out for this (reused) provider
+      // session id: a session this bb thread will not end up bound to must
+      // not emit history/turn framing for it first.
+      if (sessionId !== undefined) {
+        assertProviderSessionUnboundElsewhere(bbThreadId, sessionId);
       }
       if (request.kind === "import" && sessionId !== undefined) {
         // The agent replays the imported history as session/update
@@ -1629,6 +1716,10 @@ async function startAgentSession(
         nativeReasoning: params.nativeReasoning,
       });
     }
+
+    // Re-checked here too: the branch above only covers a reused (session/load)
+    // id, and this covers the freshly created (session/new) id as well.
+    assertProviderSessionUnboundElsewhere(bbThreadId, sessionId);
 
     session.providerThreadId = sessionId;
     sessionsByBbThreadId.set(bbThreadId, session);
@@ -1774,6 +1865,9 @@ function handleAgentNotification(
   if (!parsed.success) {
     return;
   }
+  if (session.loading) {
+    session.historicalReplayForwarded = true;
+  }
   sendNotification(ACP_UPDATE_METHOD, {
     threadId: session.bbThreadId,
     update: parsed.data.update,
@@ -1831,6 +1925,13 @@ async function handleRequest(
         request.params.listCommand === undefined && request.params.agent
           ? await loadSessionDiscoveredModels(request.params.agent)
           : null;
+      // Populated as a side effect of the same discovery spawn above (or a
+      // prior one still within TTL); undefined when no live handshake with
+      // this agent has happened yet.
+      const supportsSessionImport =
+        request.params.listCommand === undefined && request.params.agent
+          ? getCachedAcpAgentSupportsSessionImport(request.params.agent)
+          : undefined;
       if (sessionDiscoveredModels) {
         sendResult(request.id, {
           models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
@@ -1838,6 +1939,9 @@ async function handleRequest(
             nativeReasoning: request.params.nativeReasoning,
           }),
           selectedOnlyModels: [],
+          ...(supportsSessionImport !== undefined
+            ? { supportsSessionImport }
+            : {}),
         });
         return;
       }
@@ -1849,6 +1953,9 @@ async function handleRequest(
           }),
         ],
         selectedOnlyModels: [],
+        ...(supportsSessionImport !== undefined
+          ? { supportsSessionImport }
+          : {}),
       });
       return;
     }

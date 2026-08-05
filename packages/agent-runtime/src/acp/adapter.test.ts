@@ -1231,6 +1231,137 @@ describe("acp adapter historical replay translation", () => {
     ]);
   });
 
+  it("keeps replayed user messages separate when messageId changes", () => {
+    const adapter = createAdapter();
+
+    const firstEvents = adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "Hello world" },
+        messageId: "replay-msg-1",
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    expect(firstEvents).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        historical: true,
+      },
+    ]);
+
+    // A messageId change closes the first message instead of merging into it.
+    const secondEvents = adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "Fix the bug" },
+        messageId: "replay-msg-2",
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    expect(secondEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "userMessage",
+          id: "acp-user-1",
+          content: [{ type: "text", text: "Hello world" }],
+        },
+      },
+    ]);
+
+    const completedEvents = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: {
+          threadId: "thread-1",
+          stopReason: "end_turn",
+          historical: true,
+        },
+      },
+      HISTORICAL_CONTEXT,
+    );
+    expect(completedEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "userMessage",
+          id: "acp-user-2",
+          content: [{ type: "text", text: "Fix the bug" }],
+        },
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+        historical: true,
+      },
+    ]);
+  });
+
+  it("keeps concatenating replayed user chunks that carry no messageId", () => {
+    const adapter = createAdapter();
+
+    adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "Hello " },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "world" },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    const completedEvents = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: {
+          threadId: "thread-1",
+          stopReason: "end_turn",
+          historical: true,
+        },
+      },
+      HISTORICAL_CONTEXT,
+    );
+    expect(completedEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "userMessage",
+          id: "acp-user-1",
+          content: [{ type: "text", text: "Hello world" }],
+        },
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+        historical: true,
+      },
+    ]);
+  });
+
   it("keeps live user_message_chunk updates as unhandled provider events", () => {
     const adapter = createAdapter();
     startTurn(adapter);
@@ -1241,9 +1372,7 @@ describe("acp adapter historical replay translation", () => {
       }),
       THREAD_CONTEXT,
     );
-    expect(
-      events.every((event) => event.type !== "item/completed"),
-    ).toBe(true);
+    expect(events.every((event) => event.type !== "item/completed")).toBe(true);
     expect(events.some((event) => event.type === "turn/started")).toBe(false);
   });
 });
