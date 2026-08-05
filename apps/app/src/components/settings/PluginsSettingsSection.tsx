@@ -600,9 +600,11 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
               <span className="text-xs text-muted-foreground">
                 v{plugin.version}
               </span>
-              <Pill variant={statusPillVariant(plugin.status)} size="sm">
-                {plugin.status}
-              </Pill>
+              {plugin.status === "running" ? null : (
+                <Pill variant={statusPillVariant(plugin.status)} size="sm">
+                  {plugin.status}
+                </Pill>
+              )}
             </div>
             {lifecycleControl}
           </div>

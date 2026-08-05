@@ -313,7 +313,7 @@ describe("PluginSettingsDetail settings gating", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("v0.1.0")).toBeDefined();
-    expect(screen.getByText("running")).toBeDefined();
+    expect(screen.queryByText("running")).toBeNull();
     expect(screen.getByText(description)).toBeDefined();
     expect(screen.getByText("This plugin declares no settings.")).toBeDefined();
   });
