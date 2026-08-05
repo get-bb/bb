@@ -171,8 +171,8 @@ Messaging:
   The server requires accepted input, no assistant output or possible side
   effects, and no newer request. It starts an agent-only system turn containing
   `Please continue.` on the existing provider conversation; it does not resend
-  the original prompt or create another user message. The default Provider retry
-  plugin invokes this guard automatically for timed limits.
+  the original prompt or create another user message. When enabled, the Provider
+  retry plugin invokes this guard automatically for timed limits.
 
 Ownership:
 

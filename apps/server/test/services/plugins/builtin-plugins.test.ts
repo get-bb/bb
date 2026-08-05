@@ -398,6 +398,31 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
+  it("ships Provider retry disabled on a fresh database", async () => {
+    const providerRetry = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "provider-retry",
+    );
+    expect(providerRetry?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "provider-retry",
+      defaultEnabled: providerRetry?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("provider-retry"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "provider-retry",
+        source: "builtin:provider-retry",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+  });
+
   it("loads the builtin connect plugin like other builtins", async () => {
     service = createService({
       db,

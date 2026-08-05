@@ -375,9 +375,10 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
-- The default Provider retry plugin automatically waits for structured Codex
-  and Claude Code subscription-window resets when the failed turn was accepted
-  but produced no output or possible side effects. Its timers last only while
+- The opt-in Provider retry plugin automatically waits for structured Codex and
+  Claude Code subscription-window resets when the failed turn was accepted but
+  produced no output or possible side effects. Enable it with `bb plugin enable
+provider-retry` or under Extensions → Plugins. Its timers last only while
   the current bb server/plugin process is running. Inspect it with
   `bb provider-retry status [thread-id]`; use the same command's `refresh`,
   `now`, and `cancel` subcommands to control the wait. `bb settings usage`
