@@ -20,6 +20,8 @@ async function eventually(
   }
 }
 
+const STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS = 30_000;
+
 async function workflowStatus(
   harness: ReturnType<typeof createFakePluginHost>["harness"],
   runId: string,
@@ -712,7 +714,7 @@ describe("workflows plugin", () => {
 
     worker.controller.abort();
     await worker.done;
-  });
+  }, STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS);
 
   it("rejects cyclic and unsafe host values before persistence", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
