@@ -2071,8 +2071,8 @@ type ThreadEventRow = {
 declare const threadStatusSchema: z$1.ZodEnum<{
     error: "error";
     active: "active";
-    idle: "idle";
     starting: "starting";
+    idle: "idle";
     stopping: "stopping";
 }>;
 type ThreadStatus = z$1.infer<typeof threadStatusSchema>;
@@ -8147,6 +8147,31 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
     originPluginId: z$1.ZodOptional<z$1.ZodString>;
 }, z$1.core.$strip>;
 type ForkThreadRequest = z$1.infer<typeof forkThreadRequestSchema>;
+declare const importThreadRequestSchema: z$1.ZodObject<{
+    projectId: z$1.ZodString;
+    providerId: z$1.ZodString;
+    providerSessionId: z$1.ZodString;
+    hostId: z$1.ZodOptional<z$1.ZodString>;
+    cwd: z$1.ZodOptional<z$1.ZodString>;
+    title: z$1.ZodOptional<z$1.ZodString>;
+    permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
+        auto: "auto";
+        "accept-edits": "accept-edits";
+        full: "full";
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    visibility: z$1.ZodDefault<z$1.ZodEnum<{
+        visible: "visible";
+        hidden: "hidden";
+    }>>;
+    origin: z$1.ZodDefault<z$1.ZodEnum<{
+        plugin: "plugin";
+        app: "app";
+        cli: "cli";
+        sdk: "sdk";
+    }>>;
+    originPluginId: z$1.ZodOptional<z$1.ZodString>;
+}, z$1.core.$strip>;
+type ImportThreadRequest = z$1.infer<typeof importThreadRequestSchema>;
 declare const sendMessageRequestSchema: z$1.ZodObject<{
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
@@ -12152,6 +12177,7 @@ interface ThreadOutputResponse {
 type ThreadMutationResult = ThreadResponse;
 type ThreadSpawnResult = ThreadResponse;
 type ThreadForkResult = ThreadResponse;
+type ThreadImportResult = ThreadResponse;
 type ThreadInteractionGetResult = PendingInteraction;
 type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 type ThreadInteractionResolveResult = PendingInteraction;
@@ -12218,6 +12244,10 @@ interface ThreadForkArgs extends Omit<ForkThreadRequest, "origin" | "visibility"
     origin?: ForkThreadRequest["origin"];
     visibility?: ForkThreadRequest["visibility"];
     workspace?: ForkThreadRequest["workspace"];
+}
+interface ThreadImportArgs extends Omit<ImportThreadRequest, "origin" | "visibility"> {
+    origin?: ImportThreadRequest["origin"];
+    visibility?: ImportThreadRequest["visibility"];
 }
 interface ThreadUpdateArgs extends UpdateThreadRequest {
     threadId: string;
@@ -12393,6 +12423,7 @@ interface ThreadsArea {
     events: ThreadEventsArea;
     fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
     get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+    import(args: ThreadImportArgs): Promise<ThreadImportResult>;
     interactions: ThreadInteractionsArea;
     list(args?: ThreadListArgs): Promise<ThreadListResult>;
     markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
