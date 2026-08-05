@@ -93,21 +93,6 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
   cursor: { status: "not_installed" },
 };
 
-const THRESHOLD_USAGE: Usage = {
-  codex: {
-    status: "ok",
-    accountEmail: "sawyer@example.com",
-    planLabel: "Pro",
-    windows: [
-      { label: "Below warning", usedPercent: 79, resetsAt: null },
-      { label: "Warning", usedPercent: 85, resetsAt: null },
-      { label: "Critical", usedPercent: 98, resetsAt: null },
-    ],
-  },
-  claudeCode: { status: "not_installed" },
-  cursor: { status: "not_installed" },
-};
-
 const HOSTS: Host[] = [
   {
     id: "host-macbook",
@@ -209,12 +194,6 @@ export function Usage() {
         <UsagePreview usage={HEALTHY_USAGE} />
       </StoryRow>
       <StoryRow
-        label="usage thresholds"
-        hint="Default, warning, and critical progress treatments"
-      >
-        <UsagePreview usage={THRESHOLD_USAGE} />
-      </StoryRow>
-      <StoryRow
         label="authentication"
         hint="Signed out, expired, and uninstalled providers"
       >
@@ -228,15 +207,6 @@ export function Usage() {
       </StoryRow>
       <StoryRow label="loading" hint="Initial request with no cached data">
         <UsagePreview usage={{}} isLoading />
-      </StoryRow>
-      <StoryRow
-        label="refreshing"
-        hint="Existing data remains visible while reload is in progress"
-      >
-        <UsagePreview usage={HEALTHY_USAGE} isFetching />
-      </StoryRow>
-      <StoryRow label="unavailable" hint="No data returned for any provider">
-        <UsagePreview usage={{}} />
       </StoryRow>
       <StoryRow
         label="request failed"

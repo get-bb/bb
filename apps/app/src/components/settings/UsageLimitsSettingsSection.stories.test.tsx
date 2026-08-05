@@ -20,8 +20,6 @@ describe("settings/Settings Page/Usage story", () => {
     expect(screen.getByText("authentication")).toBeDefined();
     expect(screen.getByText("provider responses")).toBeDefined();
     expect(screen.getByText("loading")).toBeDefined();
-    expect(screen.getByText("refreshing")).toBeDefined();
-    expect(screen.getByText("unavailable")).toBeDefined();
     expect(screen.getByText("request failed")).toBeDefined();
     expect(screen.getByText("multiple machines")).toBeDefined();
     expect(

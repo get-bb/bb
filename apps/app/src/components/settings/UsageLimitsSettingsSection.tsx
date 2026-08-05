@@ -237,6 +237,8 @@ function ProviderUsageBlock({
   const iconInfo = getProviderIconInfo(config.providerId);
   const ProviderIcon = iconInfo?.icon;
   const headingId = useId();
+  const showsUsageWindows =
+    !isError && usage?.status === "ok" && usage.windows.length > 0;
 
   return (
     <section
@@ -244,7 +246,7 @@ function ProviderUsageBlock({
       className="space-y-3.5 py-3.5 first:pt-0 last:pb-0"
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-2.5">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
           {ProviderIcon ? (
             <span aria-hidden="true" className="mt-0.5 shrink-0">
               <ProviderIcon
@@ -255,7 +257,7 @@ function ProviderUsageBlock({
               />
             </span>
           ) : null}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3
               id={headingId}
               className="text-sm font-semibold text-foreground"
@@ -267,18 +269,30 @@ function ProviderUsageBlock({
                 {accountEmail}
               </p>
             ) : null}
+            {!showsUsageWindows ? (
+              <div className={accountEmail ? "mt-1.5" : undefined}>
+                <ProviderUsageBody
+                  config={config}
+                  usage={usage}
+                  isLoading={isLoading}
+                  isError={isError}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
         {planLabel ? <SettingsBadge>{planLabel}</SettingsBadge> : null}
       </div>
-      <div className={ProviderIcon ? "pl-6" : undefined}>
-        <ProviderUsageBody
-          config={config}
-          usage={usage}
-          isLoading={isLoading}
-          isError={isError}
-        />
-      </div>
+      {showsUsageWindows ? (
+        <div className={ProviderIcon ? "pl-6" : undefined}>
+          <ProviderUsageBody
+            config={config}
+            usage={usage}
+            isLoading={isLoading}
+            isError={isError}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -87,6 +87,20 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
   });
 
+  it("keeps states without usage bars with the provider heading", () => {
+    renderContent({
+      usage: { codex: { status: "unauthenticated" } },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    const heading = screen.getByRole("heading", { name: "Codex" });
+    const status = screen.getByText(/Run `codex` to sign in/u);
+    expect(heading.parentElement?.contains(status)).toBe(true);
+  });
+
   it("selects which connected machine supplies usage", () => {
     const onSelectHost = vi.fn();
     renderContent({
