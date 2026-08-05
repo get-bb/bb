@@ -614,26 +614,54 @@ export class PiSdkSession {
   }
 }
 
+type PiModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
+
 /**
- * Resolve a model string like "anthropic/claude-sonnet-4-20250514" to a
- * Pi Model object. Returns undefined if the model can't be resolved.
+ * Resolve a model string to a Pi Model object. Returns undefined when no model
+ * is configured, and throws when a configured model does not exist.
+ *
+ * The canonical form is `<provider>/<model id>`, and the model id keeps its own
+ * slashes (`openrouter/deepseek/deepseek-v4-flash`), so the provider comes from
+ * the first segment only.
+ *
+ * A bare provider-native model id (`deepseek/deepseek-v4-flash`) also resolves.
+ * CLI and SDK callers type that form, and selections stored before bb applied
+ * the provider prefix to aggregator models still use it.
+ *
+ * Both readings can match different models, because an aggregator lists the
+ * same model under a name that a direct provider also uses. A provider the user
+ * has authenticated then wins, so a bare aggregator id runs through the
+ * aggregator instead of a direct provider the user cannot reach.
  */
 function resolveConfiguredModel(
   modelRuntime: ModelRuntime,
   modelStr: string | undefined,
-): ReturnType<ModelRuntime["getModel"]> | undefined {
+): PiModel | undefined {
   if (!modelStr) {
     return undefined;
   }
 
   const slashIdx = modelStr.indexOf("/");
-  if (slashIdx === -1) {
-    throw new Error(`Failed to resolve Pi model "${modelStr}"`);
+  const prefixed =
+    slashIdx > 0
+      ? modelRuntime.getModel(
+          modelStr.slice(0, slashIdx),
+          modelStr.slice(slashIdx + 1),
+        )
+      : undefined;
+  if (prefixed && modelRuntime.hasConfiguredAuth(prefixed.provider)) {
+    return prefixed;
   }
 
-  const provider = modelStr.slice(0, slashIdx);
-  const modelId = modelStr.slice(slashIdx + 1);
-  const model = modelRuntime.getModel(provider, modelId);
+  const bare = modelRuntime
+    .getModels()
+    .filter((candidate) => candidate.id === modelStr);
+  const model =
+    bare.find((candidate) =>
+      modelRuntime.hasConfiguredAuth(candidate.provider),
+    ) ??
+    prefixed ??
+    bare[0];
   if (!model) {
     throw new Error(`Failed to resolve Pi model "${modelStr}"`);
   }

@@ -61,6 +61,8 @@ const {
   mockDispose,
   mockPrompt,
   mockGetModel,
+  mockGetModels,
+  mockHasConfiguredAuth,
   mockModelRuntime,
 } = vi.hoisted(() => {
   const mockSessionEventListeners: MockAgentSessionEventListener[] = [];
@@ -123,7 +125,17 @@ const {
     id: modelId,
     provider,
   }));
-  const mockModelRuntime = { getModel: mockGetModel };
+  const mockGetModels = vi.fn<() => { id: string; provider: string }[]>(
+    () => [],
+  );
+  const mockHasConfiguredAuth = vi.fn<(provider: string) => boolean>(
+    () => true,
+  );
+  const mockModelRuntime = {
+    getModel: mockGetModel,
+    getModels: mockGetModels,
+    hasConfiguredAuth: mockHasConfiguredAuth,
+  };
 
   return {
     mockGetActiveToolNames,
@@ -140,6 +152,8 @@ const {
     mockDispose,
     mockPrompt,
     mockGetModel,
+    mockGetModels,
+    mockHasConfiguredAuth,
     mockModelRuntime,
   };
 });
@@ -234,6 +248,8 @@ describe("PiSdkSession", () => {
       id: modelId,
       provider,
     }));
+    mockGetModels.mockReturnValue([]);
+    mockHasConfiguredAuth.mockReturnValue(true);
   });
 
   it("opens a persistent session file when provided", async () => {
@@ -292,6 +308,92 @@ describe("PiSdkSession", () => {
           provider: "openai-codex",
         },
         modelRuntime: mockModelRuntime,
+      }),
+    );
+  });
+
+  it("keeps the aggregator provider for a model id that contains a slash", async () => {
+    const session = new PiSdkSession(
+      {
+        cwd: "/tmp/project",
+        model: "openrouter/deepseek/deepseek-v4-flash-0731",
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await session.start();
+
+    expect(mockGetModel).toHaveBeenCalledWith(
+      "openrouter",
+      "deepseek/deepseek-v4-flash-0731",
+    );
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: {
+          id: "deepseek/deepseek-v4-flash-0731",
+          provider: "openrouter",
+        },
+      }),
+    );
+  });
+
+  it("resolves a bare aggregator model id through an authenticated provider", async () => {
+    // Selections stored before bb prefixed aggregator models keep this shape,
+    // and it also names a model on the direct DeepSeek provider.
+    mockGetModel.mockReturnValue({
+      id: "deepseek-v4-flash",
+      provider: "deepseek",
+    });
+    mockGetModels.mockReturnValue([
+      { id: "deepseek/deepseek-v4-flash", provider: "openrouter" },
+    ]);
+    mockHasConfiguredAuth.mockImplementation(
+      (provider: string) => provider === "openrouter",
+    );
+    const session = new PiSdkSession(
+      {
+        cwd: "/tmp/project",
+        model: "deepseek/deepseek-v4-flash",
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await session.start();
+
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: {
+          id: "deepseek/deepseek-v4-flash",
+          provider: "openrouter",
+        },
+      }),
+    );
+  });
+
+  it("prefers the prefixed provider when both readings are authenticated", async () => {
+    mockGetModel.mockReturnValue({
+      id: "deepseek-v4-flash",
+      provider: "deepseek",
+    });
+    mockGetModels.mockReturnValue([
+      { id: "deepseek/deepseek-v4-flash", provider: "openrouter" },
+    ]);
+    const session = new PiSdkSession(
+      {
+        cwd: "/tmp/project",
+        model: "deepseek/deepseek-v4-flash",
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await session.start();
+
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { id: "deepseek-v4-flash", provider: "deepseek" },
       }),
     );
   });

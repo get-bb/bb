@@ -8,7 +8,10 @@ import {
   turnScope,
 } from "@bb/domain";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { createPiProviderAdapter } from "./adapter.js";
+import {
+  createPiModelContextWindowResolverFrom,
+  createPiProviderAdapter,
+} from "./adapter.js";
 import { buildPiAvailableModels } from "./model-list.js";
 import type { ProviderExecutionContext } from "../provider-adapter.js";
 import { promptTextInput } from "../test/prompt-input.js";
@@ -2013,5 +2016,87 @@ describe("pi provider adapter", () => {
         isDefault: false,
       }),
     );
+  });
+
+  it("keeps the provider prefix on aggregator models whose id has a slash", () => {
+    // OpenRouter and the Vercel AI Gateway name a model after the vendor that
+    // serves it. Without the prefix the id collides with the direct provider.
+    const { models } = buildPiAvailableModels({
+      models: [
+        {
+          id: "deepseek/deepseek-v4-flash-0731",
+          name: "DeepSeek V4 Flash",
+          provider: "openrouter",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "openai/gpt-5.1-codex",
+          name: "GPT-5.1 Codex",
+          provider: "openrouter",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "accounts/fireworks/models/deepseek-v4-flash",
+          name: "DeepSeek V4 Flash",
+          provider: "fireworks",
+          reasoning: false,
+          input: ["text"],
+          supportedThinkingLevels: [],
+        },
+      ],
+    });
+
+    expect(models.map((model) => model.id)).toEqual([
+      "openrouter/deepseek/deepseek-v4-flash-0731",
+      "openrouter/openai/gpt-5.1-codex",
+      "fireworks/accounts/fireworks/models/deepseek-v4-flash",
+    ]);
+    // The per-provider default is itself a slashed id, so it only matches once
+    // the prefix survives.
+    expect(models.find((model) => model.isDefault)?.id).toBe(
+      "openrouter/openai/gpt-5.1-codex",
+    );
+  });
+
+  it("reads the context window of the provider that served the message", () => {
+    // Pi's catalog holds 134 of these pairs, and the two sides disagree on the
+    // window often enough to matter for compaction.
+    const resolveContextWindow = createPiModelContextWindowResolverFrom([
+      {
+        id: "deepseek/deepseek-v4-flash",
+        provider: "openrouter",
+        contextWindow: 1_048_575,
+      },
+      {
+        id: "deepseek-v4-flash",
+        provider: "deepseek",
+        contextWindow: 1_000_000,
+      },
+    ]);
+
+    const assistant = (provider: string | undefined, model: string) => ({
+      role: "assistant" as const,
+      content: [],
+      ...(provider === undefined ? {} : { provider }),
+      model,
+    });
+
+    expect(
+      resolveContextWindow(
+        assistant("openrouter", "deepseek/deepseek-v4-flash"),
+      ),
+    ).toBe(1_048_575);
+    expect(
+      resolveContextWindow(assistant("deepseek", "deepseek-v4-flash")),
+    ).toBe(1_000_000);
+    // Without a provider only the model id is left to match on.
+    expect(
+      resolveContextWindow(assistant(undefined, "deepseek-v4-flash")),
+    ).toBe(1_000_000);
+    expect(resolveContextWindow(assistant("openrouter", "unknown"))).toBeNull();
   });
 });
