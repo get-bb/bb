@@ -12,6 +12,7 @@ import {
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
+  environmentPullRequestQueryKey,
   environmentWorkStatusQueryKey,
   hostPathExistenceQueryKey,
   projectPathsQueryKey,
@@ -409,6 +410,43 @@ describe("createRealtimeCacheEffects", () => {
       true,
     );
 
+    effects.dispose();
+  });
+
+  it("refetches the active environment pull request when a turn completes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
+    const nextPullRequest = {
+      outcome: "available",
+      pullRequest: { number: 42 },
+    };
+    const pullRequestQueryFn = vi.fn(async () => nextPullRequest);
+    queryClient.setQueryData(threadQueryKey("thr_1"), {
+      environmentId: "env-1",
+      id: "thr_1",
+    });
+    queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryFn: pullRequestQueryFn,
+      queryKey: pullRequestKey,
+      staleTime: Infinity,
+    });
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["turn/completed"] },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(pullRequestKey)).toEqual(nextPullRequest);
+
+    unsubscribePullRequest();
     effects.dispose();
   });
 
