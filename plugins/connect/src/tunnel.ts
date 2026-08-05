@@ -433,6 +433,7 @@ export class ConnectTunnel {
     let connectedAt = 0;
 
     tunnel.on("open", () => {
+      if (this.stopped || this.tunnel !== tunnel) return;
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;
@@ -454,6 +455,7 @@ export class ConnectTunnel {
       this.publish();
     });
     tunnel.on("unexpected-response", (_req, res) => {
+      if (this.stopped || this.tunnel !== tunnel) return;
       const statusCode = res.statusCode ?? 0;
       if (statusCode === 401 || statusCode === 403) {
         this.credentialRejected(statusCode);
@@ -463,6 +465,7 @@ export class ConnectTunnel {
       this.options.log.warn(this.lastError);
     });
     tunnel.on("error", (e: Error) => {
+      if (this.stopped || this.tunnel !== tunnel) return;
       // Humanize transport failures for the reconnecting card; the raw
       // message still rides the log via the close handler below.
       this.lastError = humanizeTransportError(
@@ -471,11 +474,11 @@ export class ConnectTunnel {
       );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
+      if (this.stopped || this.tunnel !== tunnel) return;
       this.connected = false;
       this.session?.dispose();
       this.session = undefined;
       this.remoteClients = 0;
-      if (this.stopped || this.tunnel !== tunnel) return;
       const stable = connectedAt ? Date.now() - connectedAt : 0;
       const delay = this.backoff.nextDelayAfterClose(stable);
       // A clean close with no prior socket error still leaves the card empty;

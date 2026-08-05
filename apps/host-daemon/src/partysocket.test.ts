@@ -11,6 +11,7 @@ describe("PartySocket", () => {
       import PartySocket from "partysocket/ws";
 
       let closeCount = 0;
+      let failureDeadline;
 
       class ConnectingWebSocket extends EventEmitter {
         readyState = 0;
@@ -31,9 +32,18 @@ describe("PartySocket", () => {
               "error",
               new Error("WebSocket was closed before the connection was established"),
             );
+            clearTimeout(failureDeadline);
+            if (closeCount !== 1) {
+              throw new Error(\`Expected one timed-out connection, received \${closeCount}\`);
+            }
+            process.stdout.write("survived late WebSocket error");
           });
         }
       }
+
+      failureDeadline = setTimeout(() => {
+        throw new Error("Timed out waiting for PartySocket to close the connection");
+      }, 5_000);
 
       new PartySocket("ws://unreachable.test", [], {
         WebSocket: ConnectingWebSocket,
@@ -41,13 +51,6 @@ describe("PartySocket", () => {
         maxRetries: 0,
         minReconnectionDelay: 0,
       });
-
-      setTimeout(() => {
-        if (closeCount !== 1) {
-          throw new Error(\`Expected one timed-out connection, received \${closeCount}\`);
-        }
-        process.stdout.write("survived late WebSocket error");
-      }, 25);
     `;
 
     const result = await execFileAsync(

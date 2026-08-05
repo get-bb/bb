@@ -115,7 +115,7 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
   };
 }
 
-function getFreePort() {
+function reserveFreePort() {
   return new Promise((resolvePromise, reject) => {
     const server = createServer();
     server.once("error", reject);
@@ -126,16 +126,36 @@ function getFreePort() {
         reject(new Error("Expected TCP server address with a port"));
         return;
       }
-      const { port } = address;
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolvePromise(port);
-      });
+      resolvePromise({ port: address.port, server });
     });
   });
+}
+
+async function getFreePorts(count) {
+  const reservations = [];
+  try {
+    // Keep every listener open until the whole set is allocated. Closing each
+    // one immediately lets the OS hand the same port to the next request.
+    for (let index = 0; index < count; index += 1) {
+      reservations.push(await reserveFreePort());
+    }
+    return reservations.map(({ port }) => port);
+  } finally {
+    await Promise.all(
+      reservations.map(
+        ({ server }) =>
+          new Promise((resolvePromise, reject) => {
+            server.close((error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+              resolvePromise();
+            });
+          }),
+      ),
+    );
+  }
 }
 
 async function waitForHttp({ label, processRef, url }) {
@@ -565,8 +585,7 @@ async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
 
 async function smokeFullStack(tarballPath, sdkDir) {
   const dataDir = join(tempRoot, "full-stack-data");
-  const serverPort = await getFreePort();
-  const daemonPort = await getFreePort();
+  const [serverPort, daemonPort] = await getFreePorts(2);
   const serverUrl = `http://127.0.0.1:${serverPort}`;
   const stack = spawnManagedProcess({
     args: createNpxArgs(tarballPath, "bb-app", [
@@ -632,10 +651,9 @@ async function smokeFullStack(tarballPath, sdkDir) {
 async function smokeDaemonJoin(tarballPath) {
   const serverDataDir = join(tempRoot, "join-server-data");
   const daemonDataDir = join(tempRoot, "join-daemon-data");
-  const serverPort = await getFreePort();
-  const daemonPort = await getFreePort();
+  const [serverPort, daemonPort, staleEnvPort] = await getFreePorts(3);
   const serverUrl = `http://127.0.0.1:${serverPort}`;
-  const staleEnvServerUrl = `http://127.0.0.1:${await getFreePort()}`;
+  const staleEnvServerUrl = `http://127.0.0.1:${staleEnvPort}`;
   const server = spawnManagedProcess({
     args: createNpxArgs(tarballPath, "bb-server", [
       "--data-dir",

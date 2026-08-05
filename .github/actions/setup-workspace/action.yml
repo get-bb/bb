@@ -38,4 +38,14 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pnpm install --frozen-lockfile --prefer-offline
+      run: |
+        for attempt in 1 2 3; do
+          if pnpm install --frozen-lockfile --prefer-offline; then
+            exit 0
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            exit 1
+          fi
+          echo "::warning::pnpm install failed on attempt $attempt; retrying"
+          sleep $((attempt * 5))
+        done
