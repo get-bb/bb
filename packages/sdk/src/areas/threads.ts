@@ -15,6 +15,7 @@ import type {
   ContinueAfterProviderRateLimitResponse,
   CreateThreadRequest,
   ForkThreadRequest,
+  ImportThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
   ProviderRateLimitRecoveryStatus,
@@ -97,6 +98,7 @@ export interface ThreadOutputResponse {
 export type ThreadMutationResult = ThreadResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
+export type ThreadImportResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
 export type ThreadInteractionListResult = ThreadPendingInteractionsResponse;
 export type ThreadInteractionResolveResult = PendingInteraction;
@@ -168,6 +170,14 @@ export interface ThreadForkArgs extends Omit<
   origin?: ForkThreadRequest["origin"];
   visibility?: ForkThreadRequest["visibility"];
   workspace?: ForkThreadRequest["workspace"];
+}
+
+export interface ThreadImportArgs extends Omit<
+  ImportThreadRequest,
+  "origin" | "visibility"
+> {
+  origin?: ImportThreadRequest["origin"];
+  visibility?: ImportThreadRequest["visibility"];
 }
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
@@ -432,6 +442,7 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+  import(args: ThreadImportArgs): Promise<ThreadImportResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
@@ -550,6 +561,14 @@ function forkJson(args: ThreadForkArgs): ForkThreadRequest {
     origin: args.origin ?? "sdk",
     visibility: args.visibility ?? "visible",
     workspace: args.workspace ?? "isolated",
+  };
+}
+
+function importJson(args: ThreadImportArgs): ImportThreadRequest {
+  return {
+    ...args,
+    origin: args.origin ?? "sdk",
+    visibility: args.visibility ?? "visible",
   };
 }
 
@@ -929,6 +948,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    async import(input) {
+      return transport.readJson(
+        transport.api.v1.threads.import.$post({
+          json: importJson(input),
+        }),
+      );
+    },
     interactions,
     async list(input) {
       return transport.readJson(

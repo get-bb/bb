@@ -358,6 +358,7 @@ type ExpectedThreadsKey =
   | "events"
   | "fork"
   | "get"
+  | "import"
   | "interactions"
   | "list"
   | "markRead"
