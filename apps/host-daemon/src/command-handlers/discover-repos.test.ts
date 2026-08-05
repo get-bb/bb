@@ -79,6 +79,21 @@ describe("discoverRepos", () => {
     expect(repos).toEqual([]);
   });
 
+  it("detects linked worktrees, whose .git is a file rather than a directory", async () => {
+    // `git worktree add` and submodules both write a `.git` file pointing at
+    // the real git dir. Treating only directories as repo markers walked
+    // straight into them and returned nothing.
+    await mkdir(join(home, "projects/linked"), { recursive: true });
+    await writeFile(
+      join(home, "projects/linked/.git"),
+      "gitdir: /home/user/projects/app/.git/worktrees/linked\n",
+    );
+
+    const { repos } = await run();
+
+    expect(repos.map((repo) => repo.name)).toEqual(["linked"]);
+  });
+
   it("still returns repos when no agent history is available", async () => {
     await makeRepo("projects/app");
 

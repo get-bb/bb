@@ -74,7 +74,11 @@ function resolveStatus(
   installed: boolean,
 ): OnboardingAgent["status"] {
   if (!installed) return "not_installed";
-  switch (usage?.status) {
+  // No usage result at all means the probe never reached the daemon. That is
+  // not evidence of a working login, so it must not read as connected — the
+  // step would let the user continue onto an agent that cannot run.
+  if (usage === undefined) return "unauthenticated";
+  switch (usage.status) {
     case "ok":
       return "connected";
     case "unauthenticated":
@@ -86,6 +90,9 @@ function resolveStatus(
       // paths). Trust the health check, which is what install acts on.
       return "unauthenticated";
     default:
+      // `error` only: the CLI is installed and authenticated, we just could not
+      // read usage. Telling the user to sign in again over a network blip would
+      // be worse than showing them connected.
       return "connected";
   }
 }

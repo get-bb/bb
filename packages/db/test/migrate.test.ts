@@ -1221,11 +1221,9 @@ describe("migrate", () => {
         "INSERT INTO projects (id, name, created_at, updated_at, sort_key, kind) VALUES ('proj_a','app',1,1,'V','standard')",
       )
       .run();
-    db.$client
-      .prepare(
-        "INSERT OR REPLACE INTO app_settings (id, updated_at) VALUES ('current', 1)",
-      )
-      .run();
+    // Deliberately no app_settings row: it is created on first save, so an
+    // existing user can have projects without one.
+    db.$client.prepare("DELETE FROM app_settings").run();
 
     migrate(db);
 

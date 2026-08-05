@@ -31,18 +31,32 @@ import type {
 async function withDeadline<T>(
   operation: Promise<T>,
   deadline: number,
+  /** Releases a result that arrives after the deadline, so nothing leaks. */
+  disposeLate?: (value: T) => void,
 ): Promise<T | null> {
   const remaining = deadline - Date.now();
-  if (remaining <= 0) return null;
+  if (remaining <= 0) {
+    void operation.then((value) => disposeLate?.(value)).catch(() => {});
+    return null;
+  }
   let timer: NodeJS.Timeout | undefined;
+  let timedOut = false;
   try {
-    return await Promise.race([
-      operation,
+    const result = await Promise.race([
+      operation.then((value) => {
+        // The race already resolved null; this value has no owner.
+        if (timedOut) disposeLate?.(value);
+        return value;
+      }),
       new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), remaining);
+        timer = setTimeout(() => {
+          timedOut = true;
+          resolve(null);
+        }, remaining);
         timer.unref?.();
       }),
     ]);
+    return timedOut ? null : result;
   } catch {
     return null;
   } finally {
@@ -68,6 +82,12 @@ const SKIP_DIRECTORIES = new Set([
 ]);
 
 const WALK_BUDGET_MS = 3_000;
+/**
+ * Directories opened at once. Unbounded recursion over a wide home directory
+ * can start thousands of `opendir` calls together and reach the process file
+ * limit, which would disrupt active agent work on the same daemon.
+ */
+const WALK_CONCURRENCY = 32;
 const AGENT_HISTORY_BUDGET_MS = 2_000;
 
 interface FoundRepo {
@@ -99,7 +119,9 @@ async function walkForRepos(
 
     // Unreadable or hung directory (permissions, broken mount) is not an error
     // here — it just contributes nothing.
-    const handle = await withDeadline(opendir(dir), deadline);
+    const handle = await withDeadline(opendir(dir), deadline, (late) => {
+      void late.close().catch(() => {});
+    });
     if (handle === null) {
       if (Date.now() > deadline) truncated = true;
       return;
@@ -109,11 +131,14 @@ async function walkForRepos(
     let isRepo = false;
     try {
       for await (const entry of handle) {
-        if (!entry.isDirectory()) continue;
+        // Linked worktrees and submodules carry `.git` as a file pointing at
+        // the real git dir, so the name check has to come before the
+        // directory check or those repos are never detected.
         if (entry.name === ".git") {
           isRepo = true;
           continue;
         }
+        if (!entry.isDirectory()) continue;
         if (entry.name.startsWith(".")) continue;
         if (SKIP_DIRECTORIES.has(entry.name)) continue;
         children.push(entry.name);
@@ -125,21 +150,31 @@ async function walkForRepos(
     if (isRepo) {
       // Stop here. Nested repos below a repo root are submodules or vendored
       // copies, not separate projects the user thinks about.
-      let lastActivityMs = 0;
-      // Unreadable HEAD leaves mtime 0, which the recency filter drops. That is
-      // the honest outcome: we have no evidence it was touched recently.
+      // `.git/HEAD` is the best activity signal, but a linked worktree or
+      // submodule has `.git` as a file, so fall back to stat-ing the marker
+      // itself. Leaving mtime 0 would drop those repos at the recency filter.
       const head = await withDeadline(
         stat(join(dir, ".git", "HEAD")),
         deadline,
       );
-      lastActivityMs = head?.mtimeMs ?? 0;
+      const marker =
+        head ?? (await withDeadline(stat(join(dir, ".git")), deadline));
+      const lastActivityMs = marker?.mtimeMs ?? 0;
       repos.push({ path: dir, lastActivityMs });
       return;
     }
 
-    await Promise.all(
-      children.map((child) => walk(join(dir, child), depth + 1)),
-    );
+    for (let index = 0; index < children.length; index += WALK_CONCURRENCY) {
+      if (Date.now() > deadline) {
+        truncated = true;
+        return;
+      }
+      await Promise.all(
+        children
+          .slice(index, index + WALK_CONCURRENCY)
+          .map((child) => walk(join(dir, child), depth + 1)),
+      );
+    }
   };
 
   await walk(root, 0);

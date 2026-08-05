@@ -226,11 +226,13 @@ export function useOnboardingAgents(
     queryKey: onboardingAgentsQueryKey(),
     queryFn: ({ signal }) => sdk.system.onboardingAgents({ signal }),
     enabled: options.enabled ?? true,
-    // Onboarding polls so a terminal install/login lands without a refresh.
-    // Other readers (the composer's provider default) just want one answer.
+    // Each read runs CLI health checks, known-agent checks, and up to three
+    // provider usage requests, so this polls slowly and only while the agents
+    // step is actually on screen. An explicit re-check covers the impatient
+    // case. Other readers (the composer's provider default) want one answer.
     ...(options.poll === false
       ? { staleTime: 60_000 }
-      : { refetchInterval: 4000 }),
+      : { refetchInterval: 15_000 }),
   });
 }
 

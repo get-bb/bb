@@ -276,7 +276,9 @@ export function OnboardingFlow({
   const [adding, setAdding] = useState(false);
   const [startedReported, setStartedReported] = useState(false);
 
-  const agentsQuery = useOnboardingAgents();
+  // Poll only while the agents step is visible; the projects step has no use
+  // for it and each read is several host round-trips.
+  const agentsQuery = useOnboardingAgents({ poll: step === 0 });
   // Re-read after a terminal sign-in rather than waiting out the poll. Using the
   // query's own refetch keeps cache writes inside the query layer.
   const recheck = useCallback(() => {

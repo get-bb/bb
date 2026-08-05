@@ -15,6 +15,24 @@ import {
 import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
 import { sdk } from "@/lib/sdk";
 
+/**
+ * Collapse the two spellings of one remote so SSH and HTTPS clones of the same
+ * repository compare equal. A repo with no remote returns null and is never
+ * matched — path is not available on a project, so those are left to the
+ * server's own duplicate handling.
+ */
+function normalizeRemote(url: string | null): string | null {
+  if (url === null) return null;
+  const trimmed = url.trim();
+  if (trimmed === "") return null;
+  return trimmed
+    .replace(/\.git$/u, "")
+    .replace(/^git@([^:]+):/u, "https://$1/")
+    .replace(/^ssh:\/\/git@/u, "https://")
+    .replace(/\/+$/u, "")
+    .toLowerCase();
+}
+
 /** Maps an onboarding provider id back to its managed-CLI key. */
 const CLI_KEY_BY_PROVIDER: Record<string, "codex" | "claudeCode" | "cursor"> = {
   codex: "codex",
@@ -49,9 +67,17 @@ export function OnboardingHost() {
 
   const settings = configQuery.data?.generalSettings;
   const primaryHostId = primaryHost?.id ?? null;
+  // Migration 0085 stamps existing installs as already onboarded, so a null
+  // timestamp means exactly one thing here: show the flow. That is what lets
+  // Settings re-trigger it by clearing the column.
+  const neverOnboarded =
+    settings !== undefined && settings.onboardingCompletedAt === null;
   const cliStatusQuery = useHostProviderCliStatus({
     hostId: primaryHostId,
-    enabled: primaryHostId !== null,
+    // Only needed to build an install job, and only while the flow is open.
+    // Left ungated this runs provider CLI and package-registry checks on every
+    // app start, forever, for users who finished onboarding long ago.
+    enabled: primaryHostId !== null && neverOnboarded,
   });
 
   const projects = navigationQuery.data?.projects;
@@ -85,13 +111,7 @@ export function OnboardingHost() {
     [cliStatusQuery.data, installRunner, primaryHostId],
   );
 
-  // Migration 0085 stamps existing installs as already onboarded, so a null
-  // timestamp means exactly one thing here: show the flow. That is what lets
-  // Settings re-trigger it by clearing the column.
-  const shouldShow =
-    settings !== undefined &&
-    settings.onboardingCompletedAt === null &&
-    primaryHostId !== null;
+  const shouldShow = neverOnboarded && primaryHostId !== null;
 
   // Stamp when the flow actually opens, so a re-trigger hours into a session
   // does not report the whole session as its duration.
@@ -103,19 +123,20 @@ export function OnboardingHost() {
   const addProjects = useCallback(
     async (repos: readonly DiscoveredRepo[]) => {
       if (primaryHostId === null) return;
-      // Guard against re-adding a repo bb already tracks. Projects expose their
-      // remote, not their path, so the remote is the join key.
+      // Guard against re-adding a repo bb already tracks on replay. Projects
+      // expose their remote, not their path, so the remote is the join key —
+      // normalized, because `git@host:o/r.git` and `https://host/o/r` are the
+      // same repository.
       const existingRemotes = new Set(
         (projects ?? [])
-          .map((project) => project.gitRemoteUrl)
+          .map((project) => normalizeRemote(project.gitRemoteUrl))
           .filter((remote): remote is string => remote !== null),
       );
       // Sequential: project creation touches the host workspace, and a burst of
       // parallel creates would race on the same daemon.
       for (const repo of repos) {
-        if (repo.originUrl !== null && existingRemotes.has(repo.originUrl)) {
-          continue;
-        }
+        const remote = normalizeRemote(repo.originUrl);
+        if (remote !== null && existingRemotes.has(remote)) continue;
         await createProject.mutateAsync({
           name: repo.name,
           source: {
