@@ -1,5 +1,5 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { Link, MemoryRouter, useLocation } from "react-router-dom";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AutomationDetailView } from "bb-plugin-automations/detail-view";
 import {
   AutomationOverviewView,
@@ -257,11 +257,11 @@ function BreadcrumbFlowHarness() {
 }
 
 export function BreadcrumbNavigation() {
-  return (
-    <MemoryRouter initialEntries={[`${AUTOMATIONS_ROOT}/browse`]}>
-      <BreadcrumbFlowHarness />
-    </MemoryRouter>
-  );
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate(`${AUTOMATIONS_ROOT}/browse`, { replace: true });
+  }, [navigate]);
+  return <BreadcrumbFlowHarness />;
 }
 
 const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
