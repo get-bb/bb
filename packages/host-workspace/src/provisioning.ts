@@ -433,12 +433,25 @@ export async function createWorktree(
 }
 
 /**
+ * Cap on paths named in one transcript entry. A broad pattern can match
+ * thousands of files, and the daemon keeps and forwards the whole transcript.
+ */
+const WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT = 20;
+
+function summarizePaths(paths: readonly string[]): string {
+  const shown = paths.slice(0, WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT);
+  const hiddenCount = paths.length - shown.length;
+  const suffix = hiddenCount > 0 ? `, and ${hiddenCount} more` : "";
+  return `${shown.join(", ")}${suffix}`;
+}
+
+/**
  * Copy the untracked files listed in `.worktreeinclude` into the new worktree
  * and report the result in the provisioning transcript. This runs before the
  * setup script so the script can read a copied `.env`.
  *
- * A failure here never fails provisioning: the transcript names every skipped
- * entry and the thread still starts.
+ * A failure here never fails provisioning: the transcript reports what bb
+ * skipped and the thread still starts. Only cancellation propagates.
  */
 async function copyIncludedFiles(args: {
   sourcePath: string;
@@ -472,14 +485,28 @@ async function copyIncludedFiles(args: {
     return;
   }
 
-  for (const skipped of result.skipped) {
+  for (const skipped of result.skipped.slice(
+    0,
+    WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT,
+  )) {
     emitOutput(args.onProgress, "worktree-include", `Skipped ${skipped}`);
+  }
+  const hiddenSkipCount =
+    result.skipped.length - WORKTREE_INCLUDE_TRANSCRIPT_PATH_LIMIT;
+  if (hiddenSkipCount > 0) {
+    emitOutput(
+      args.onProgress,
+      "worktree-include",
+      `Skipped ${hiddenSkipCount} more file(s)`,
+    );
   }
   if (result.copied.length > 0) {
     emitOutput(
       args.onProgress,
       "worktree-include",
-      `Copied ${result.copied.length} file(s): ${result.copied.join(", ")}`,
+      `Copied ${result.copied.length} file(s): ${summarizePaths(
+        result.copied,
+      )}`,
     );
   }
   emitStep({

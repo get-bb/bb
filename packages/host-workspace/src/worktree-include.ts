@@ -1,7 +1,8 @@
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { WORKTREE_INCLUDE_FILE_NAME } from "@bb/domain";
-import { runGit } from "./git.js";
+import { runGit, WorkspaceError } from "./git.js";
 
 export interface CopyWorktreeIncludeFilesArgs {
   /** Existing checkout that owns the `.worktreeinclude` file. */
@@ -38,14 +39,30 @@ function hasPattern(contents: string): boolean {
     .some((line) => line.length > 0 && !line.startsWith("#"));
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
+/**
+ * Read `.worktreeinclude`, or return null when the repo has no such file. Any
+ * other read failure — a permission error, a directory in its place — is a
+ * real problem the caller must report.
+ */
 async function readIncludeFile(sourcePath: string): Promise<string | null> {
   try {
     return await fs.readFile(
       path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
       "utf8",
     );
-  } catch {
-    return null;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+    throw error;
   }
 }
 
@@ -68,12 +85,36 @@ async function listMatchingFiles(
       `--exclude-from=${WORKTREE_INCLUDE_FILE_NAME}`,
       "-z",
     ],
-    { cwd: sourcePath, allowFailure: true, signal },
+    { cwd: sourcePath, signal },
   );
-  if (result.exitCode !== 0) {
-    return [];
-  }
   return result.stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * True when anything already occupies `targetPath`, including a broken
+ * symlink. `lstat` never follows the last component, so a symlink planted by
+ * the base branch reports itself rather than what it points at.
+ */
+async function pathPresent(targetPath: string): Promise<boolean> {
+  try {
+    await fs.lstat(targetPath);
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new WorkspaceError(
+      "provision_cancelled",
+      "Workspace provisioning was cancelled",
+      { cause: signal.reason },
+    );
+  }
 }
 
 function isInside(parentRealPath: string, childRealPath: string): boolean {
@@ -89,8 +130,10 @@ function isInside(parentRealPath: string, childRealPath: string): boolean {
  * checkout into a new worktree. A fresh worktree contains tracked files only,
  * so local `.env` files and credentials never arrive on their own.
  *
- * Nothing here is fatal: a missing file, an unreadable entry, or a failed copy
- * is reported and provisioning continues.
+ * A per-file failure is collected in `skipped` and the remaining files still
+ * copy. An unreadable include file or a failed `git ls-files` throws, because
+ * silently reporting zero matches would hide the real cause. Cancellation
+ * throws `provision_cancelled` between files.
  */
 export async function copyWorktreeIncludeFiles(
   args: CopyWorktreeIncludeFilesArgs,
@@ -119,6 +162,7 @@ export async function copyWorktreeIncludeFiles(
   const copied: string[] = [];
   const skipped: string[] = [];
   for (const relativePath of relativePaths) {
+    throwIfAborted(args.signal);
     const sourceFile = path.join(args.sourcePath, relativePath);
     const targetFile = path.join(targetRealPath, relativePath);
     try {
@@ -127,13 +171,19 @@ export async function copyWorktreeIncludeFiles(
         skipped.push(`${relativePath}: symlink`);
         continue;
       }
+      if (await pathPresent(targetFile)) {
+        skipped.push(`${relativePath}: already exists in the worktree`);
+        continue;
+      }
       await fs.mkdir(path.dirname(targetFile), { recursive: true });
       const parentRealPath = await fs.realpath(path.dirname(targetFile));
       if (!isInside(targetRealPath, parentRealPath)) {
         skipped.push(`${relativePath}: destination escapes the worktree`);
         continue;
       }
-      await fs.copyFile(sourceFile, targetFile);
+      // COPYFILE_EXCL fails rather than following a symlink or replacing a
+      // file that appeared between the check above and this write.
+      await fs.copyFile(sourceFile, targetFile, fsConstants.COPYFILE_EXCL);
       copied.push(relativePath);
     } catch (error) {
       skipped.push(`${relativePath}: ${describeError(error)}`);

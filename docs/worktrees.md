@@ -67,8 +67,10 @@ Contract:
 
 - bb copies files. It does not create symlinks, and each worktree gets its own
   copy — an edit inside the worktree does not change your main checkout.
-- bb never replaces a tracked file. Only untracked files are candidates.
-- bb skips symlinks in the source checkout rather than copying their targets.
+- bb never replaces anything the worktree already has. If the branch tracks a
+  file at that path, the tracked file wins and bb reports the skip.
+- bb skips symlinks in the source checkout rather than copying their targets,
+  and it never writes through a symlink in the worktree.
 - A pattern that matches nothing, an unreadable file, or a failed copy is
   reported in the provisioning transcript. Provisioning continues.
 - Large directories such as `node_modules` are copied file by file, which is

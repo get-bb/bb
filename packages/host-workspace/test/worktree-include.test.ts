@@ -106,6 +106,85 @@ describe("copyWorktreeIncludeFiles", () => {
     await expect(fs.stat(path.join(targetPath, ".env"))).rejects.toThrow();
   });
 
+  it("does not write through a symlink already in the worktree", async () => {
+    const sourcePath = await initRepo(".env\n");
+    await writeFile(path.join(sourcePath, ".env"), "SECRET=1\n");
+    await writeFile(
+      path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
+      ".env\n",
+    );
+    const outsideDir = await makeTempDir("bb-worktree-include-outside-");
+    const hostFile = path.join(outsideDir, "host-file");
+    await writeFile(hostFile, "untouched\n");
+    const targetPath = await makeTempDir("bb-worktree-include-target-");
+    // The base branch can track a symlink where the source has a real file.
+    await fs.symlink(hostFile, path.join(targetPath, ".env"));
+
+    const result = await copyWorktreeIncludeFiles({ sourcePath, targetPath });
+
+    expect(result.copied).toEqual([]);
+    expect(result.skipped).toEqual([".env: already exists in the worktree"]);
+    await expect(fs.readFile(hostFile, "utf8")).resolves.toBe("untouched\n");
+  });
+
+  it("does not replace a file the worktree already has", async () => {
+    const sourcePath = await initRepo("config.json\n");
+    await writeFile(
+      path.join(sourcePath, "config.json"),
+      '{"from":"source"}\n',
+    );
+    await writeFile(
+      path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
+      "config.json\n",
+    );
+    const targetPath = await makeTempDir("bb-worktree-include-target-");
+    await writeFile(
+      path.join(targetPath, "config.json"),
+      '{"from":"branch"}\n',
+    );
+
+    const result = await copyWorktreeIncludeFiles({ sourcePath, targetPath });
+
+    expect(result.copied).toEqual([]);
+    await expect(
+      fs.readFile(path.join(targetPath, "config.json"), "utf8"),
+    ).resolves.toBe('{"from":"branch"}\n');
+  });
+
+  it("reports a git listing failure instead of claiming zero matches", async () => {
+    const sourcePath = await makeTempDir("bb-worktree-include-nonrepo-");
+    await writeFile(
+      path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
+      ".env\n",
+    );
+    const targetPath = await makeTempDir("bb-worktree-include-target-");
+
+    await expect(
+      copyWorktreeIncludeFiles({ sourcePath, targetPath }),
+    ).rejects.toThrow(/git ls-files/u);
+  });
+
+  it("stops copying once provisioning is cancelled", async () => {
+    const sourcePath = await initRepo("secrets/\n");
+    await writeFile(path.join(sourcePath, "secrets/a.pem"), "a\n");
+    await writeFile(path.join(sourcePath, "secrets/b.pem"), "b\n");
+    await writeFile(
+      path.join(sourcePath, WORKTREE_INCLUDE_FILE_NAME),
+      "secrets/\n",
+    );
+    const targetPath = await makeTempDir("bb-worktree-include-target-");
+    const controller = new AbortController();
+    // Abort after git has listed the matches, before the copy loop runs.
+    const listed = copyWorktreeIncludeFiles({
+      sourcePath,
+      targetPath,
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(listed).rejects.toThrow(/cancelled/u);
+  });
+
   it("does nothing when the file holds no patterns", async () => {
     const sourcePath = await initRepo(".env\n");
     await writeFile(path.join(sourcePath, ".env"), "TOKEN=1\n");

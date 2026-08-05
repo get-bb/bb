@@ -1023,11 +1023,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Provider usage gained Claude model-scoped windows and duration-aware Codex
-  // labels in version 71. Older daemons omit or mislabel them, so the bump
-  // forces an update before the server requests provider usage.
-  it("uses protocol version 71 for provider usage normalization", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(71);
+  // Worktree provisioning gained the .worktreeinclude copy step in version 72.
+  // An older daemon connects, skips the copy, and emits no such transcript
+  // entry, so a repo that lists its .env silently gets a worktree without it.
+  // The bump forces an update before the server provisions a worktree.
+  it("uses protocol version 72 for .worktreeinclude worktree provisioning", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(72);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

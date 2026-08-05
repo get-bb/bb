@@ -48,11 +48,11 @@ Making your repo work with bb:
     !.env.example
     certs/
 
-  bb copies files only. It follows no symlinks and it replaces no tracked
-  file. The copy runs after `git worktree add` and before .bb-env-setup.sh, so
-  the setup script can read the copied files. A pattern that matches nothing,
-  or a file bb cannot read, is reported in the provisioning transcript and
-  does not fail provisioning.
+  bb copies files only. It follows no symlinks, and it replaces nothing that
+  the worktree already has. The copy runs after `git worktree add` and before
+  .bb-env-setup.sh, so the setup script can read the copied files. A pattern
+  that matches nothing, or a file bb cannot read, is reported in the
+  provisioning transcript and does not fail provisioning.
 
   Large directories such as node_modules are copied file by file. Install
   dependencies in .bb-env-setup.sh instead of listing them here.
