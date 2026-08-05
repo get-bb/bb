@@ -37,9 +37,9 @@ import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { automationScriptDir } from "./script-files.js";
 
-function createTestDb(): Db {
+function createTestDb(includeRunMigration = true): Db {
   const db = new Database(":memory:");
-  db.exec(migrations[0] ?? "");
+  db.exec(includeRunMigration ? migrations.join("\n") : (migrations[0] ?? ""));
   return db;
 }
 
@@ -152,7 +152,7 @@ function createAutomationServiceBb() {
 
 describe("data migrations", () => {
   it("migrates stored agent automations to current permission modes", () => {
-    const db = createTestDb();
+    const db = createTestDb(false);
     const insert = db.prepare(
       `INSERT INTO automations (
          id, project_id, name, enabled, trigger_type, trigger_config,

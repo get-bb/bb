@@ -63,6 +63,10 @@ import {
 } from "./lib/model-label";
 import { AutomationProviderIcon } from "./lib/provider-icon";
 import { AutomationMetadataItem } from "./metadata";
+import {
+  formatRunDomainLabel,
+  formatRunTransportLabel,
+} from "./src/run-summary";
 
 export interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -505,17 +509,17 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   }
 > = {
   running: {
-    label: "Running",
+    label: "transport=running",
     icon: "Loading",
     className: "animate-spin text-muted-foreground",
   },
   failed: {
-    label: "Failed",
+    label: "transport=failed",
     icon: "CircleX",
     className: "text-destructive",
   },
   skipped: {
-    label: "Skipped",
+    label: "transport=skipped",
     // Not CircleDashed: icon.tsx aliases it to the same DashedLineCircleIcon as
     // Spinner, so a skipped run rendered an identical shape to a running one.
     // ArrowTurnForward is the only glyph in the map that reads as "passed
@@ -524,7 +528,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
     className: "text-subtle-foreground",
   },
   succeeded: {
-    label: "Succeeded",
+    label: "transport=succeeded",
     icon: "CircleCheck",
     className: "text-success",
   },
@@ -567,6 +571,8 @@ function RunRow({
     run.runMode === "script" &&
     (run.output !== null || run.error !== null || silent);
   const visual = AUTOMATION_RUN_STATUS_VISUALS[run.status];
+  const transportLabel = formatRunTransportLabel(run.status);
+  const domainLabel = formatRunDomainLabel(run.terminalToken);
   const running = run.status === "running";
   const openable = run.runMode === "agent" && run.threadId !== null;
   // The whole row is the affordance when there is a thread, so the destination
@@ -619,9 +625,18 @@ function RunRow({
             : "text-subtle-foreground",
         )}
       >
-        {running ? `${visual.label}\u2026` : (duration ?? "")}
-        {run.skipReason ? `${duration ? " · " : ""}${run.skipReason}` : ""}
+        {running ? `${transportLabel}\u2026` : transportLabel}
+        {duration ? ` · ${duration}` : ""}
+        {run.skipReason ? ` · ${run.skipReason}` : ""}
       </span>
+      {domainLabel ? (
+        <span
+          aria-label={domainLabel}
+          className="max-w-40 shrink-0 truncate rounded-full bg-surface-recessed/70 px-2 py-0.5 font-mono text-xs text-muted-foreground"
+        >
+          {domainLabel}
+        </span>
+      ) : null}
       {openable ? (
         <Icon
           name="ChevronRight"

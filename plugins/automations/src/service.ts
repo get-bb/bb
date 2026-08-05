@@ -671,6 +671,7 @@ export function createAutomationService(args: {
             runId: run.id,
             status: "failed",
             error: error instanceof Error ? error.message : String(error),
+            terminalToken: null,
             now: Date.now(),
           });
         };

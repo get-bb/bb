@@ -850,7 +850,7 @@ describe("automations server plugin harness", () => {
 
     await harness.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
-      lastAssistantText: null,
+      lastAssistantText: "work complete\nTASK_COMPLETE\n",
     });
     const closedRuns = automationRunListResponseSchema.parse(
       await harness.callRpc("automations_runs", {
@@ -861,7 +861,19 @@ describe("automations server plugin harness", () => {
     expect(closedRuns[0]).toMatchObject({
       status: "succeeded",
       threadId: "thr_spawned",
+      terminalToken: "TASK_COMPLETE",
     });
+    const cliRuns = await harness.runCli([
+      "runs",
+      automation.id,
+      "--project",
+      PROJECT_ID,
+    ]);
+    expect(cliRuns.exitCode).toBe(0);
+    expect(cliRuns.stdout).toContain("Transport");
+    expect(cliRuns.stdout).toContain("Domain");
+    expect(cliRuns.stdout).toContain("transport=succeeded");
+    expect(cliRuns.stdout).toContain("domain=TASK_COMPLETE");
     expect(signalKinds(host)).toEqual(
       expect.arrayContaining([
         "automations-changed",

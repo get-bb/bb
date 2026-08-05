@@ -26,6 +26,10 @@ import {
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   automationScriptInterpreterSchema,
 } from "./rpc-types.js";
+import {
+  formatRunDomainLabel,
+  formatRunTransportLabel,
+} from "./run-summary.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
@@ -523,10 +527,11 @@ function printAutomationTable(automations: AutomationResponse[]): string {
 
 function printRunTable(runs: AutomationRunResponse[]): string {
   return table(
-    ["ID", "Status", "Started", "Thread/Exit", "Detail"],
+    ["ID", "Transport", "Domain", "Started", "Thread/Exit", "Detail"],
     runs.map((run) => [
       run.id,
-      run.status,
+      formatRunTransportLabel(run.status),
+      formatRunDomainLabel(run.terminalToken) ?? "-",
       formatTimestamp(run.startedAt),
       run.threadId ?? (run.exitCode === null ? "-" : `exit ${run.exitCode}`),
       run.skipReason ?? run.error ?? "-",

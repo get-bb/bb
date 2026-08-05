@@ -280,6 +280,7 @@ export async function executeScriptRun(
       output: mapped.output,
       exitCode: mapped.exitCode,
       error: mapped.error,
+      terminalToken: mapped.terminalToken,
       now: Date.now(),
     });
   } catch (error) {
@@ -298,14 +299,21 @@ export async function executeScriptRun(
 export function closeAutomationRunForSettledThread(
   bb: Pick<BbPluginApi, "realtime">,
   db: Db,
-  args: { threadId: string; status: "idle" | "failed"; error?: string | null },
+  args: {
+    threadId: string;
+    status: "succeeded" | "failed";
+    error?: string | null;
+    terminalToken?: string | null;
+  },
 ): void {
   const run = getRunningAutomationRunByThread(db, args.threadId);
   if (!run) return;
   const closed = closeAutomationRun(db, {
     runId: run.id,
-    status: args.status === "idle" ? "succeeded" : "failed",
-    error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
+    status: args.status,
+    error: args.status === "succeeded" ? null : (args.error ?? "Turn failed"),
+    terminalToken:
+      args.status === "succeeded" ? (args.terminalToken ?? null) : null,
     threadId: args.threadId,
     now: Date.now(),
   });

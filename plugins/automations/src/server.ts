@@ -10,6 +10,7 @@ import {
 import { registerAutomationCli } from "./cli.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
+import { extractTerminalToken } from "./terminal-token.js";
 
 function resolveServerUrl(): string {
   return process.env.BB_SERVER_URL?.trim() || "http://127.0.0.1:38886";
@@ -31,10 +32,11 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   registerAutomationCli({ bb, service });
 
-  bb.events.on("thread.idle", ({ thread }) => {
+  bb.events.on("thread.idle", ({ thread, lastAssistantText }) => {
     closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
-      status: "idle",
+      status: "succeeded",
+      terminalToken: extractTerminalToken(lastAssistantText),
     });
   });
   bb.events.on("thread.failed", ({ thread, error }) => {

@@ -50,14 +50,14 @@ export interface AutomationRunRow {
   error: string | null;
   output: string | null;
   exitCode: number | null;
+  terminalToken: string | null;
   idempotencyKey: string | null;
   scheduledFor: number;
   startedAt: number;
   finishedAt: number | null;
 }
 
-interface RawAutomationRow
-  extends Omit<AutomationRow, "enabled"> {
+interface RawAutomationRow extends Omit<AutomationRow, "enabled"> {
   enabled: 0 | 1;
 }
 
@@ -163,7 +163,16 @@ export const migrations = [
        'workspace-write',
        'readonly'
      );`,
+  `ALTER TABLE automation_runs ADD COLUMN terminal_token TEXT;`,
 ];
+
+const automationRunSelectColumns = `
+  id, automation_id AS automationId, run_mode AS runMode,
+  thread_id AS threadId, status, trigger, skip_reason AS skipReason,
+  error, output, exit_code AS exitCode, terminal_token AS terminalToken,
+  idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
+  started_at AS startedAt, finished_at AS finishedAt
+`;
 
 export interface CreateAutomationInput {
   id?: string;
@@ -194,11 +203,15 @@ function serializeExecution(execution: AutomationExecution): string {
   return JSON.stringify(execution);
 }
 
-export function parseAutomationTrigger(triggerConfig: string): AutomationTrigger {
+export function parseAutomationTrigger(
+  triggerConfig: string,
+): AutomationTrigger {
   return automationTriggerSchema.parse(JSON.parse(triggerConfig));
 }
 
-export function parseAutomationExecution(execution: string): AutomationExecution {
+export function parseAutomationExecution(
+  execution: string,
+): AutomationExecution {
   return automationExecutionSchema.parse(JSON.parse(execution));
 }
 
@@ -239,13 +252,17 @@ export function toAutomationRunResponse(
     error: row.error,
     output: row.output,
     exitCode: row.exitCode,
+    terminalToken: row.terminalToken,
     scheduledFor: row.scheduledFor,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
   });
 }
 
-export function createAutomation(db: Db, input: CreateAutomationInput): AutomationRow {
+export function createAutomation(
+  db: Db,
+  input: CreateAutomationInput,
+): AutomationRow {
   const now = Date.now();
   const id = input.id ?? createAutomationId();
   db.prepare(
@@ -353,11 +370,16 @@ export function listAllAutomations(db: Db): AutomationRow[] {
 
 export function updateAutomation(
   db: Db,
-  args: { projectId: string; automationId: string; patch: UpdateAutomationInput },
+  args: {
+    projectId: string;
+    automationId: string;
+    patch: UpdateAutomationInput;
+  },
 ): AutomationRow | null {
   const existing = getAutomationForProject(db, args);
   if (!existing) return null;
-  const nextTrigger = args.patch.trigger ?? parseAutomationTrigger(existing.triggerConfig);
+  const nextTrigger =
+    args.patch.trigger ?? parseAutomationTrigger(existing.triggerConfig);
   const nextExecution =
     args.patch.execution ?? parseAutomationExecution(existing.execution);
   const now = Date.now();
@@ -387,7 +409,9 @@ export function updateAutomation(
           ? (nextExecution.targetThreadId ?? null)
           : null,
     nextRunAt:
-      args.patch.nextRunAt !== undefined ? args.patch.nextRunAt : existing.nextRunAt,
+      args.patch.nextRunAt !== undefined
+        ? args.patch.nextRunAt
+        : existing.nextRunAt,
     now,
   });
   return getAutomationForProject(db, args);
@@ -526,11 +550,11 @@ export function claimAutomationScheduledRun(
     db.prepare(
       `INSERT INTO automation_runs (
          id, automation_id, run_mode, thread_id, status, trigger, skip_reason,
-         error, output, exit_code, idempotency_key, scheduled_for, started_at,
-         finished_at
+         error, output, exit_code, terminal_token, idempotency_key,
+         scheduled_for, started_at, finished_at
        ) VALUES (
          @id, @automationId, @runMode, NULL, @status, 'schedule', @skipReason,
-         NULL, NULL, NULL, NULL, @scheduledFor, @startedAt, @finishedAt
+         NULL, NULL, NULL, NULL, NULL, @scheduledFor, @startedAt, @finishedAt
        )`,
     ).run({
       id: runId,
@@ -601,7 +625,8 @@ export function restoreAutomationAfterFailedRun(
     }
     db.prepare(
       `UPDATE automation_runs
-       SET status = 'failed', error = @error, finished_at = @now
+       SET status = 'failed', error = @error, terminal_token = NULL,
+           finished_at = @now
        WHERE id = @runId`,
     ).run({ runId: args.runId, error: args.error, now: args.now });
   })();
@@ -617,33 +642,43 @@ export function closeAutomationRun(
     output?: string | null;
     exitCode?: number | null;
     threadId?: string | null;
+    terminalToken?: string | null;
     now: number;
   },
 ): { run: AutomationRunRow; automationId: string } | null {
   return db.transaction(() => {
     const existing = getAutomationRun(db, args.runId);
     if (!existing) return null;
-    db.prepare(
-       `UPDATE automation_runs SET
-         status = @status,
-         skip_reason = @skipReason,
-         error = @error,
-         output = @output,
-         exit_code = @exitCode,
-         thread_id = CASE WHEN @hasThreadId THEN @threadId ELSE thread_id END,
-         finished_at = @now
-       WHERE id = @runId`,
-    ).run({
-      runId: args.runId,
-      status: args.status,
-      skipReason: args.skipReason ?? null,
-      error: args.error ?? null,
-      output: args.output ?? null,
-      exitCode: args.exitCode ?? null,
-      hasThreadId: args.threadId === undefined ? 0 : 1,
-      threadId: args.threadId ?? null,
-      now: args.now,
-    });
+    const run = optionalRunRow(
+      db
+        .prepare(
+          `UPDATE automation_runs SET
+             status = @status,
+             skip_reason = @skipReason,
+             error = @error,
+             output = @output,
+             exit_code = @exitCode,
+             terminal_token = @terminalToken,
+             thread_id = CASE WHEN @hasThreadId THEN @threadId ELSE thread_id END,
+             finished_at = @now
+           WHERE id = @runId AND status = 'running'
+           RETURNING ${automationRunSelectColumns}`,
+        )
+        .get({
+          runId: args.runId,
+          status: args.status,
+          skipReason: args.skipReason ?? null,
+          error: args.error ?? null,
+          output: args.output ?? null,
+          exitCode: args.exitCode ?? null,
+          terminalToken:
+            args.status === "succeeded" ? (args.terminalToken ?? null) : null,
+          hasThreadId: args.threadId === undefined ? 0 : 1,
+          threadId: args.threadId ?? null,
+          now: args.now,
+        }),
+    );
+    if (!run) return { run: existing, automationId: existing.automationId };
     db.prepare(
       `UPDATE automations SET
          last_run_status = @status,
@@ -661,8 +696,6 @@ export function closeAutomationRun(
       error: args.error ?? null,
       now: args.now,
     });
-    const run = getAutomationRun(db, args.runId);
-    if (!run) return null;
     return { run, automationId: run.automationId };
   })();
 }
@@ -682,11 +715,7 @@ export function createManualRun(
         db
           .prepare(
             `SELECT
-               id, automation_id AS automationId, run_mode AS runMode,
-               thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-               error, output, exit_code AS exitCode,
-               idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-               started_at AS startedAt, finished_at AS finishedAt
+               ${automationRunSelectColumns}
              FROM automation_runs
              WHERE automation_id = ? AND idempotency_key = ?`,
           )
@@ -698,11 +727,11 @@ export function createManualRun(
     db.prepare(
       `INSERT INTO automation_runs (
          id, automation_id, run_mode, thread_id, status, trigger, skip_reason,
-         error, output, exit_code, idempotency_key, scheduled_for, started_at,
-         finished_at
+         error, output, exit_code, terminal_token, idempotency_key,
+         scheduled_for, started_at, finished_at
        ) VALUES (
          @id, @automationId, @runMode, NULL, 'running', 'manual', NULL,
-         NULL, NULL, NULL, @idempotencyKey, @now, @now, NULL
+         NULL, NULL, NULL, NULL, @idempotencyKey, @now, @now, NULL
        )`,
     ).run({
       id: runId,
@@ -722,11 +751,7 @@ export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
     db
       .prepare(
         `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${automationRunSelectColumns}
          FROM automation_runs WHERE id = ?`,
       )
       .get(id),
@@ -763,9 +788,7 @@ export function isAutomationSpawnedThread(db: Db, threadId: string): boolean {
       )
       .get(threadId) !== undefined ||
     db
-      .prepare(
-        `SELECT id FROM automation_runs WHERE thread_id = ? LIMIT 1`,
-      )
+      .prepare(`SELECT id FROM automation_runs WHERE thread_id = ? LIMIT 1`)
       .get(threadId) !== undefined
   );
 }
@@ -778,11 +801,7 @@ export function getRunningAutomationRunByThread(
     db
       .prepare(
         `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${automationRunSelectColumns}
          FROM automation_runs
          WHERE thread_id = ? AND status = 'running'
          ORDER BY started_at DESC
@@ -804,11 +823,7 @@ export function listAutomationRuns(
     ? db
         .prepare(
           `SELECT
-             id, automation_id AS automationId, run_mode AS runMode,
-             thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-             error, output, exit_code AS exitCode,
-             idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-             started_at AS startedAt, finished_at AS finishedAt
+             ${automationRunSelectColumns}
            FROM automation_runs
            WHERE automation_id = ?
              AND (started_at < ? OR (started_at = ? AND id < ?))
@@ -825,11 +840,7 @@ export function listAutomationRuns(
     : db
         .prepare(
           `SELECT
-             id, automation_id AS automationId, run_mode AS runMode,
-             thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-             error, output, exit_code AS exitCode,
-             idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-             started_at AS startedAt, finished_at AS finishedAt
+             ${automationRunSelectColumns}
            FROM automation_runs
            WHERE automation_id = ?
            ORDER BY started_at DESC, id DESC

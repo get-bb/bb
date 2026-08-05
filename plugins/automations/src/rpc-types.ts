@@ -271,6 +271,7 @@ export const automationRunResponseSchema = z
     error: z.string().nullable(),
     output: z.string().nullable(),
     exitCode: z.number().int().nullable(),
+    terminalToken: z.string().nullable(),
     scheduledFor: z.number(),
     startedAt: z.number(),
     finishedAt: z.number().nullable(),

@@ -6,6 +6,7 @@ import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
   type AutomationScriptInterpreter,
 } from "./rpc-types.js";
+import { extractTerminalToken } from "./terminal-token.js";
 import {
   resolveAutomationScriptPath,
   resolveDefaultInterpreter,
@@ -71,6 +72,7 @@ export interface ScriptRunOutcome {
   exitCode: number | null;
   error: string | null;
   skipReason: string | null;
+  terminalToken: string | null;
 }
 
 export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome {
@@ -81,6 +83,7 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
       exitCode: null,
       error: "Script timed out",
       skipReason: null,
+      terminalToken: null,
     };
   }
   if (result.exitCode !== 0) {
@@ -90,6 +93,7 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
       exitCode: result.exitCode,
       error: `Script exited with code ${result.exitCode}`,
       skipReason: null,
+      terminalToken: null,
     };
   }
   if (result.output.trim().length === 0) {
@@ -99,6 +103,7 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
       exitCode: 0,
       error: null,
       skipReason: "empty output",
+      terminalToken: null,
     };
   }
   if (isWakeAgentSuppressed(result.output)) {
@@ -108,6 +113,7 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
       exitCode: 0,
       error: null,
       skipReason: "wakeAgent false",
+      terminalToken: null,
     };
   }
   return {
@@ -116,6 +122,7 @@ export function mapScriptResultToRun(result: ScriptRunResult): ScriptRunOutcome 
     exitCode: 0,
     error: null,
     skipReason: null,
+    terminalToken: extractTerminalToken(result.output),
   };
 }
 
