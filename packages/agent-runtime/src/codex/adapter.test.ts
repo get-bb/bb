@@ -5033,25 +5033,51 @@ describe("codex provider adapter", () => {
     expect(readyEvents).toEqual([]);
   });
 
-  // -- translateEvent: unknown events --------------------------------------
+  // -- translateEvent: account events --------------------------------------
 
-  it("translateEvent returns empty for unhandled codex events", () => {
+  it("translateEvent preserves Codex subscription rate limits", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(
       codexEvent("account/rateLimits/updated", {
         rateLimits: {
-          limitId: null,
-          limitName: null,
-          primary: null,
+          limitId: "codex",
+          limitName: "Codex",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
           secondary: null,
           credits: null,
           individualLimit: null,
           planType: null,
-          rateLimitReachedType: null,
+          rateLimitReachedType: "rate_limit_reached",
         },
       }),
     );
-    expect(events).toMatchObject([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        rateLimits: expect.objectContaining({
+          providerId: "codex",
+          status: "blocked",
+          kind: "subscription-window",
+          reachedReason: "rate_limit_reached",
+          source: "codex-account",
+          windows: [
+            {
+              providerKey: "primary",
+              label: "Current session",
+              status: "blocked",
+              usedPercent: 100,
+              resetsAtMs: 1_781_120_400_000,
+              modelIds: [],
+            },
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("translateEvent ignores remote control status changes", () => {

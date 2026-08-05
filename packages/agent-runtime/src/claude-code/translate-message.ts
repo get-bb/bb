@@ -1,5 +1,7 @@
 import type {
   ProviderErrorInfo,
+  ProviderRateLimitState,
+  ProviderRateLimitStatus,
   ThreadEvent,
   ThreadEventItem,
   ThreadEventTokenUsageBreakdown,
@@ -331,6 +333,101 @@ function buildClaudeRateLimitEventDetail(
     details.push(`overage disabled: ${info.overageDisabledReason}`);
   }
   return details.join("; ");
+}
+
+function normalizeClaudeRateLimitStatus(
+  status: string,
+): ProviderRateLimitStatus {
+  switch (status) {
+    case "allowed":
+      return "allowed";
+    case "allowed_warning":
+      return "warning";
+    case "rejected":
+      return "blocked";
+    default:
+      return "unknown";
+  }
+}
+
+function claudeRateLimitLabel(providerKey: string | undefined): string | null {
+  switch (providerKey) {
+    case "five_hour":
+      return "Five-hour limit";
+    case "seven_day":
+      return "Weekly limit";
+    case "seven_day_opus":
+      return "Weekly Opus limit";
+    case "seven_day_sonnet":
+      return "Weekly Sonnet limit";
+    case "seven_day_overage_included":
+      return "Weekly included overage";
+    case "overage":
+      return "Overage";
+    default:
+      return null;
+  }
+}
+
+function normalizeClaudeOverageStatus(
+  status: string | undefined,
+): ProviderRateLimitState["overageStatus"] {
+  switch (status) {
+    case undefined:
+      return null;
+    case "allowed":
+      return "allowed";
+    case "allowed_warning":
+      return "warning";
+    case "rejected":
+      return "rejected";
+    default:
+      return "unavailable";
+  }
+}
+
+function normalizeClaudeRateLimits(
+  message: ClaudeRateLimitEvent,
+): ProviderRateLimitState {
+  const info = message.rate_limit_info;
+  const windowStatus = normalizeClaudeRateLimitStatus(info.status);
+  const overageStatus = normalizeClaudeOverageStatus(info.overageStatus);
+  const status =
+    windowStatus === "blocked" && overageStatus === "allowed"
+      ? "allowed"
+      : windowStatus === "blocked" && overageStatus === "warning"
+        ? "warning"
+        : windowStatus;
+  const providerKey = info.rateLimitType ?? null;
+
+  return {
+    providerId: "claude-code",
+    status,
+    kind:
+      providerKey === "overage"
+        ? "credits"
+        : providerKey === null
+          ? "unknown"
+          : "subscription-window",
+    windows: [
+      {
+        providerKey,
+        label: claudeRateLimitLabel(info.rateLimitType),
+        status: windowStatus,
+        usedPercent: null,
+        resetsAtMs: info.resetsAt === undefined ? null : info.resetsAt * 1_000,
+        modelIds: [],
+      },
+    ],
+    reachedReason:
+      windowStatus === "blocked"
+        ? (info.rateLimitType ?? "rate_limit_rejected")
+        : null,
+    overageStatus,
+    overageReason: info.overageDisabledReason ?? null,
+    observedAtMs: Date.now(),
+    source: "claude-rate-limit",
+  };
 }
 
 function isHardClaudeRateLimitRejection(
@@ -902,8 +999,15 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      events.push({
+        type: "provider/rateLimits/updated",
+        threadId,
+        providerThreadId: "",
+        scope: threadScope(),
+        rateLimits: normalizeClaudeRateLimits(message),
+      });
       if (!isHardClaudeRateLimitRejection(message)) {
-        return [];
+        return events;
       }
       const turnId = state.currentTurnId ?? null;
       events.push(

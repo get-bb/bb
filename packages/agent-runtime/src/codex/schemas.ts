@@ -737,7 +737,50 @@ function createCodexEventSchema<
   });
 }
 
+const codexRateLimitWindowSchema = z
+  .object({
+    usedPercent: z.number(),
+    windowDurationMins: z.number().nullable(),
+    resetsAt: z.number().nullable(),
+  })
+  .passthrough();
+
+const codexRateLimitSnapshotSchema = z
+  .object({
+    limitId: z.string().nullable(),
+    limitName: z.string().nullable(),
+    primary: codexRateLimitWindowSchema.nullable(),
+    secondary: codexRateLimitWindowSchema.nullable(),
+    credits: z
+      .object({
+        hasCredits: z.boolean(),
+        unlimited: z.boolean(),
+        balance: z.string().nullable(),
+      })
+      .passthrough()
+      .nullable(),
+    individualLimit: z
+      .object({
+        limit: z.string(),
+        used: z.string(),
+        remainingPercent: z.number(),
+        resetsAt: z.number(),
+      })
+      .passthrough()
+      .nullable(),
+    planType: z.string().nullable(),
+    rateLimitReachedType: z.string().nullable(),
+  })
+  .passthrough();
+export type CodexRateLimitSnapshot = z.infer<
+  typeof codexRateLimitSnapshotSchema
+>;
+
 export const codexHandledEventSchema = z.discriminatedUnion("method", [
+  createCodexEventSchema(
+    "account/rateLimits/updated",
+    z.object({ rateLimits: codexRateLimitSnapshotSchema }).passthrough(),
+  ),
   createCodexEventSchema(
     "turn/started",
     z

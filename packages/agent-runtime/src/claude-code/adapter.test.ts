@@ -2496,7 +2496,7 @@ describe("claude-code provider adapter", () => {
     );
   });
 
-  it("translateEvent ignores rate limit events", () => {
+  it("translateEvent preserves unknown Claude rate limit window keys", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2508,7 +2508,7 @@ describe("claude-code provider adapter", () => {
           type: "rate_limit_event",
           rate_limit_info: {
             status: "allowed",
-            rateLimitType: "five_hour",
+            rateLimitType: "seven_day_fable",
             overageStatus: "rejected",
             overageDisabledReason: "out_of_credits",
           },
@@ -2516,10 +2516,26 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toMatchObject([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        rateLimits: expect.objectContaining({
+          providerId: "claude-code",
+          status: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "seven_day_fable",
+              label: null,
+              modelIds: [],
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
-  it("translateEvent ignores primary rate limit rejections when overage is allowed", () => {
+  it("translateEvent keeps overage-covered rejections nonterminal", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2539,7 +2555,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "allowed",
+          overageStatus: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              status: "blocked",
+              resetsAtMs: 1_781_120_400_000,
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("translateEvent ignores task-updated system events from the SDK envelope", () => {
@@ -2915,6 +2946,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "blocked",
+          kind: "subscription-window",
+          reachedReason: "five_hour",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              resetsAtMs: 12_345_000,
+            }),
+          ],
+        }),
+      }),
+    );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",

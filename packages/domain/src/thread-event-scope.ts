@@ -127,6 +127,11 @@ export const threadEventScopeDefinitionByType = {
     rationale:
       "Provider diagnostics use thread scope for provider setup/session failures; in-turn failures use turn scope.",
   },
+  "provider/rateLimits/updated": {
+    policy: "thread",
+    rationale:
+      "Subscription usage is account-scoped state that can affect multiple turns and threads.",
+  },
   "provider/warning": {
     policy: "thread-or-turn",
     rationale:

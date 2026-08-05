@@ -404,37 +404,13 @@ export type ClaudeResultMessage = z.infer<typeof claudeResultMessageSchema>;
 
 const claudeRateLimitInfoSchema = z
   .object({
-    status: z.enum(["allowed", "allowed_warning", "rejected"]),
+    status: z.string().min(1),
     resetsAt: z.number().optional(),
-    rateLimitType: z
-      .enum([
-        "five_hour",
-        "seven_day",
-        "seven_day_opus",
-        "seven_day_sonnet",
-        "overage",
-      ])
-      .optional(),
-    overageStatus: z
-      .enum(["allowed", "allowed_warning", "rejected"])
-      .optional(),
-    overageDisabledReason: z
-      .enum([
-        "overage_not_provisioned",
-        "org_level_disabled",
-        "org_level_disabled_until",
-        "out_of_credits",
-        "seat_tier_level_disabled",
-        "member_level_disabled",
-        "seat_tier_zero_credit_limit",
-        "group_zero_credit_limit",
-        "member_zero_credit_limit",
-        "org_service_level_disabled",
-        "no_limits_configured",
-        "fetch_error",
-        "unknown",
-      ])
-      .optional(),
+    // Claude adds provider-defined windows over time. Keep the raw key instead
+    // of rejecting new model families or account tiers.
+    rateLimitType: z.string().min(1).optional(),
+    overageStatus: z.string().min(1).optional(),
+    overageDisabledReason: z.string().min(1).optional(),
   })
   .passthrough();
 

@@ -115,7 +115,7 @@ const CODEX_SERVER_NOTIFICATION_METHODS = {
 
 const CODEX_NOTIFICATION_COVERAGE = {
   "account/login/completed": "unknown",
-  "account/rateLimits/updated": "noise",
+  "account/rateLimits/updated": "normalized",
   "account/updated": "unknown",
   "app/list/updated": "unknown",
   "command/exec/outputDelta": "unknown",

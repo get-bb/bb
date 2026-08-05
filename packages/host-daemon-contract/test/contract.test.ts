@@ -1038,10 +1038,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 79 adds canonical Codex repository skills to command and skill RPC
-  // results. The bump updates enrolled daemons before the server requests them.
-  it("uses protocol version 79 for canonical Codex repository skills", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(79);
+  // Version 80 adds model-scoped/duration-aware provider usage windows and
+  // structured account rate-limit events on top of version 79's canonical
+  // Codex repository skills. The bump updates enrolled daemons before they
+  // receive the combined wire contract.
+  it("uses protocol version 80 for provider usage and rate-limit events", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(80);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
