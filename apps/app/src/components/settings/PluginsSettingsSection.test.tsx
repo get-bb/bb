@@ -495,7 +495,11 @@ describe("PluginSettingsDetail settings gating", () => {
     setPluginSlotRegistrations("connect", {
       homepageSections: [],
       settingsSections: [
-        { id: "remote", title: "Remote access", component: ConnectSettings },
+        {
+          id: "remote",
+          description: "Configure remote access.",
+          component: ConnectSettings,
+        },
       ],
       navPanels: [],
       threadPanelActions: [],
@@ -543,7 +547,9 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(screen.getByText("connect")).toBeDefined();
     expect(screen.getByText("v0.1.0")).toBeDefined();
     expect(screen.getByText(description)).toBeDefined();
-    expect(screen.getByText("Remote access")).toBeDefined();
+    expect(screen.queryByText("Remote access")).toBeNull();
+    expect(screen.queryByText("Plugin settings")).toBeNull();
+    expect(screen.getByText("Configure remote access.")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
     expect(
       screen.getByRole("switch", { name: "Disable connect" }),

@@ -136,7 +136,6 @@ function CustomInstructionsSettings() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "custom-instructions",
-    title: "Custom instructions",
     description:
       "Give agents extra instructions and context for tasks on this bb host.",
     component: CustomInstructionsSettings,

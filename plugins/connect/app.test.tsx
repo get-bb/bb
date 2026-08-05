@@ -54,6 +54,10 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
   });
 
 describe("connect settings section", () => {
+  it("uses the plugin page header instead of declaring a second title", () => {
+    expect(app.settingsSections[0]?.title).toBeUndefined();
+  });
+
   it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
     let currentStatus = status();
     const slot = renderSlot(

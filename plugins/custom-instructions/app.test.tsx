@@ -8,6 +8,10 @@ const app = await loadPluginApp(() => import("./app"));
 afterEach(cleanup);
 
 describe("custom instructions settings", () => {
+  it("uses the plugin page header instead of declaring a second title", () => {
+    expect(app.settingsSections[0]?.title).toBeUndefined();
+  });
+
   it("loads and autosaves only the latest debounced instructions", async () => {
     const slot = renderSlot(
       app.settingsSections[0]!,

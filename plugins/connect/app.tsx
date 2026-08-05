@@ -1172,7 +1172,6 @@ function ConnectSettingsSection() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "remote-access",
-    title: "Remote access",
     description:
       "Use this bb from any device, anywhere — powered by getbb.app.",
     component: ConnectSettingsSection,
