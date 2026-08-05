@@ -212,6 +212,79 @@ describe("normalizeClaudeUsage", () => {
       windows: [{ label: "Current session", usedPercent: 7, resetsAt: null }],
     });
   });
+
+  it("keeps valid usage when one optional scoped row is malformed", () => {
+    const result = normalizeClaudeUsage(
+      {
+        five_hour: { utilization: 7, resets_at: null },
+        seven_day: { utilization: 18, resets_at: null },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: 42 }, surface: null },
+            percent: "lots",
+            resets_at: null,
+          },
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: "Fable" }, surface: null },
+            percent: 48,
+            resets_at: null,
+          },
+        ],
+      },
+      { accessToken: "token" },
+    );
+
+    expect(result).toEqual({
+      status: "ok",
+      accountEmail: null,
+      planLabel: null,
+      windows: [
+        { label: "Current session", usedPercent: 7, resetsAt: null },
+        { label: "Weekly limit", usedPercent: 18, resetsAt: null },
+        { label: "Fable", usedPercent: 48, resetsAt: null },
+      ],
+    });
+  });
+
+  it("drops surface-scoped and duplicate model rows", () => {
+    const result = normalizeClaudeUsage(
+      {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            scope: {
+              model: { display_name: "Fable" },
+              surface: { display_name: "Claude Code" },
+            },
+            percent: 20,
+            resets_at: null,
+          },
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: "Fable" }, surface: null },
+            percent: 48,
+            resets_at: null,
+          },
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: "fable" }, surface: null },
+            percent: 52,
+            resets_at: null,
+          },
+        ],
+      },
+      { accessToken: "token" },
+    );
+
+    expect(result).toEqual({
+      status: "ok",
+      accountEmail: null,
+      planLabel: null,
+      windows: [{ label: "Fable", usedPercent: 48, resetsAt: null }],
+    });
+  });
 });
 
 describe("normalizeCursorUsage", () => {

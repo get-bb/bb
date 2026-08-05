@@ -261,6 +261,9 @@ const claudeScopedUsageLimitSchema = z
         model: z
           .object({ display_name: z.string().trim().min(1).nullish() })
           .nullish(),
+        // Surface-specific buckets need a distinct display identity. Until the
+        // provider documents that shape, accept only the aggregate model row.
+        surface: z.null().optional(),
       })
       .nullish(),
     percent: z.number().nullish(),
@@ -272,7 +275,10 @@ const claudeUsageResponseSchema = z
   .object({
     five_hour: claudeUsageWindowSchema.nullish(),
     seven_day: claudeUsageWindowSchema.nullish(),
-    limits: z.array(claudeScopedUsageLimitSchema).nullish(),
+    limits: z
+      .array(claudeScopedUsageLimitSchema.nullable().catch(null))
+      .nullish()
+      .catch([]),
   })
   .passthrough();
 
@@ -378,27 +384,34 @@ function claudeWindow(
 }
 
 function claudeScopedWindows(
-  limits: z.infer<typeof claudeScopedUsageLimitSchema>[] | null | undefined,
+  limits:
+    | (z.infer<typeof claudeScopedUsageLimitSchema> | null)[]
+    | null
+    | undefined,
 ): ProviderUsageWindow[] {
   // `limits` repeats the aggregate session/week rows and adds model buckets.
   // Only the model-scoped weekly rows are additive to the legacy top-level data.
-  return (limits ?? []).flatMap((limit) => {
-    const label = limit.scope?.model?.display_name;
+  const windows: ProviderUsageWindow[] = [];
+  const seenLabels = new Set<string>();
+  for (const limit of limits ?? []) {
+    const label = limit?.scope?.model?.display_name;
     if (
+      limit == null ||
       limit.kind !== "weekly_scoped" ||
       label == null ||
-      limit.percent == null
+      limit.percent == null ||
+      seenLabels.has(label.toLowerCase())
     ) {
-      return [];
+      continue;
     }
-    return [
-      {
-        label,
-        usedPercent: clampPercent(limit.percent),
-        resetsAt: normalizeIsoTimestamp(limit.resets_at),
-      },
-    ];
-  });
+    seenLabels.add(label.toLowerCase());
+    windows.push({
+      label,
+      usedPercent: clampPercent(limit.percent),
+      resetsAt: normalizeIsoTimestamp(limit.resets_at),
+    });
+  }
+  return windows;
 }
 
 function normalizeClaudeUsage(
