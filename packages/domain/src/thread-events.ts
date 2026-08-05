@@ -132,6 +132,8 @@ export type ClientTurnLifecycleEventData = z.infer<
 export const turnRequestEventDataSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
+  /** Failed request resumed by a guarded system continuation, when present. */
+  continuationOfRequestId: clientTurnRequestIdSchema.optional(),
   source: z.enum(["spawn", "tell"]),
   initiator: threadTurnInitiatorSchema,
   // Non-null only when initiator === "agent". The invariant is enforced by

@@ -738,6 +738,11 @@ export interface FindStoredEventRowArgs {
   type: ThreadEventType;
 }
 
+export interface GetLatestStoredEventRowByTypeArgs {
+  threadId: string;
+  type: ThreadEventType;
+}
+
 export interface ListStoredEventRowsInRangeArgs {
   seqEnd: number;
   seqStart: number;
@@ -1099,8 +1104,23 @@ export function findStoredEventRow(
   );
 }
 
+export function getLatestStoredEventRowByType(
+  db: DbQueryConnection,
+  args: GetLatestStoredEventRowByTypeArgs,
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(and(eq(events.threadId, args.threadId), eq(events.type, args.type)))
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 export function listStoredEventRowsInRange(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: ListStoredEventRowsInRangeArgs,
 ): StoredEventRow[] {
   return db

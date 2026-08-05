@@ -59,6 +59,7 @@ interface ThreadEventTransactionDeps {
 }
 
 export interface ClientTurnRequestedEventArgs {
+  continuationOfRequestId?: ClientTurnRequestId;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
@@ -242,6 +243,9 @@ function buildClientTurnRequestedEventData(
   return {
     ...buildClientTurnBaseEventData(args),
     requestId,
+    ...(args.continuationOfRequestId !== undefined
+      ? { continuationOfRequestId: args.continuationOfRequestId }
+      : {}),
     senderThreadId: args.senderThreadId,
     // Stamp the Family-B taxonomy fields when present. Omitted entirely for
     // non-system turns so legacy events keep parsing via the schema's optional
@@ -665,6 +669,9 @@ export function parseStoredTurnRequestEvent(
     return {
       direction: event.direction,
       requestId: event.requestId,
+      ...(event.continuationOfRequestId !== undefined
+        ? { continuationOfRequestId: event.continuationOfRequestId }
+        : {}),
       source: event.source,
       initiator: event.initiator,
       senderThreadId: event.senderThreadId,
