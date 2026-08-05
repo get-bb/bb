@@ -33,6 +33,7 @@ import {
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   removePlugin,
+  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -545,7 +546,20 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
 
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
+  const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
+  const name = plugin.name ?? plugin.id;
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setPluginEnabled(fetch, plugin.id, enabled),
+    onError: (error, enabled) => {
+      appToast.error(`${enabled ? "Enabling" : "Disabling"} ${name} failed`, {
+        description: pluginAdminErrorMessage(error),
+      });
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
+  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );
@@ -553,7 +567,6 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
     plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const showDeclarativeSettingsCard =
     plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const name = plugin.name ?? plugin.id;
   const isRunning = plugin.status === "running";
   const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
   const frontendDiagnostics = useSyncExternalStore(
@@ -578,6 +591,14 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
       : plugin.provenance === "direct"
         ? `v${plugin.version} · direct install`
         : null;
+  const lifecycleControl = (
+    <Switch
+      checked={enabled}
+      disabled={toggle.isPending}
+      aria-label={`${enabled ? "Disable" : "Enable"} ${name}`}
+      onCheckedChange={(next) => toggle.mutate(next)}
+    />
+  );
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
       {frontendFailure !== null && frontendFailure !== undefined ? (
@@ -592,29 +613,31 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
           : {frontendFailure.message}
         </div>
       ) : null}
-      {sectionOwnsHeader ? null : (
+      {sectionOwnsHeader ? (
+        <div className="flex justify-end">{lifecycleControl}</div>
+      ) : (
         <div className="space-y-3">
           <div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
-              <h2 className="text-sm font-semibold text-foreground">{name}</h2>
-              {/* The version + status pills read as diagnostics; a running,
-                  configurable plugin doesn't need them on its settings page. */}
-              {!isRunning ? (
-                <>
-                  <span className="text-xs text-muted-foreground">
-                    v{plugin.version}
-                  </span>
-                  <Pill variant={statusPillVariant(plugin.status)} size="sm">
-                    {plugin.status}
-                  </Pill>
-                  {!plugin.enabled ? (
-                    <Pill variant="outline" size="sm">
-                      disabled
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
+                <h2 className="text-sm font-semibold text-foreground">
+                  {name}
+                </h2>
+                {/* The version + status pill reads as diagnostics; a running,
+                    configurable plugin doesn't need it on its settings page. */}
+                {!isRunning ? (
+                  <>
+                    <span className="text-xs text-muted-foreground">
+                      v{plugin.version}
+                    </span>
+                    <Pill variant={statusPillVariant(plugin.status)} size="sm">
+                      {plugin.status}
                     </Pill>
-                  ) : null}
-                </>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
+              {lifecycleControl}
             </div>
             {isRunning && provenanceLine !== null ? (
               <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">

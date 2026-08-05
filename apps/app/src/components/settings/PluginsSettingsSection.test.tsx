@@ -263,6 +263,71 @@ function rowPlugin(
 }
 
 describe("PluginSettingsDetail settings gating", () => {
+  it("enables a disabled plugin from its detail page without duplicating its status", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({
+          ok: true,
+          plugin: serverPlugin({ enabled: true, status: "running" }),
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{ ...rowPlugin("disabled"), enabled: false }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.getAllByText("disabled")).toHaveLength(1);
+    const toggle = screen.getByRole("switch", { name: "Enable linear" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear/enable",
+        init: expect.objectContaining({ method: "POST" }),
+      });
+    });
+  });
+
+  it("disables a running plugin from its detail page", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({
+          ok: true,
+          plugin: serverPlugin({ enabled: false, status: "disabled" }),
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("running")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Disable linear" }));
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear/disable",
+        init: expect.objectContaining({ method: "POST" }),
+      });
+    });
+  });
+
   it("renders the settings form for a needs-configuration plugin (regression: the plugin that most needs configuring must be configurable)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -376,6 +441,9 @@ describe("PluginSettingsDetail settings gating", () => {
 
     expect(await screen.findByText("Remote access")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
+    expect(
+      screen.getByRole("switch", { name: "Disable connect" }),
+    ).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });
