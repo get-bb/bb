@@ -73,10 +73,11 @@ const SAFE_EMPTY_TURN_EVENT_TYPES = new Set<ThreadEvent["type"]>([
 ]);
 
 interface InternalRecoveryCandidate {
+  automatic: boolean;
   execution: ResolvedThreadExecutionOptions;
   failedRequestId: ClientTurnRequestId;
   rateLimits: ProviderRateLimitState;
-  resetsAtMs: number;
+  resetsAtMs: number | null;
   turnId: string;
 }
 
@@ -105,6 +106,7 @@ function emptyInspection(
     status: {
       reason,
       scopeKey: scopeKey(args.environment, args.thread),
+      hostId: args.environment.hostId,
       rateLimits,
       candidate: null,
     },
@@ -238,14 +240,6 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
   ) {
     return emptyInspection(args, "provider-will-retry", turnRateLimits);
   }
-  if (turnRateLimits.kind !== "subscription-window") {
-    return emptyInspection(args, "not-subscription-window", turnRateLimits);
-  }
-
-  const resetsAtMs = recoveryResetAtMs(turnRateLimits);
-  if (resetsAtMs === null) {
-    return emptyInspection(args, "reset-unavailable", turnRateLimits);
-  }
   if (hasOutputOrSideEffect(events, turnId)) {
     return emptyInspection(
       args,
@@ -261,25 +255,37 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
     return emptyInspection(args, "execution-unavailable", turnRateLimits);
   }
   const failedRequestId = clientTurnRequestIdSchema.parse(request.requestId);
+  const currentBlockedRateLimits =
+    observedRateLimits?.status === "blocked"
+      ? observedRateLimits
+      : turnRateLimits;
+  const resetsAtMs = recoveryResetAtMs(currentBlockedRateLimits);
+  const automatic =
+    currentBlockedRateLimits.kind === "subscription-window" &&
+    resetsAtMs !== null;
   const candidate: InternalRecoveryCandidate = {
+    automatic,
     execution: execution.data,
     failedRequestId,
-    rateLimits: turnRateLimits,
+    rateLimits: currentBlockedRateLimits,
     resetsAtMs,
     turnId,
   };
   return {
     candidate,
     status: {
-      reason: "eligible",
+      reason: automatic ? "eligible" : "manual-only",
       scopeKey: scopeKey(args.environment, args.thread),
-      rateLimits: turnRateLimits,
+      hostId: args.environment.hostId,
+      rateLimits: observedRateLimits ?? turnRateLimits,
       candidate: {
+        automatic,
         failedRequestId,
         turnId,
         scopeKey: scopeKey(args.environment, args.thread),
+        hostId: args.environment.hostId,
         resetsAtMs,
-        rateLimits: turnRateLimits,
+        rateLimits: currentBlockedRateLimits,
       },
     },
   };

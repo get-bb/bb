@@ -47,7 +47,11 @@ const RATE_LIMITS: ProviderRateLimitState = {
 
 function seedFailedRateLimitedTurn(
   harness: TestAppHarness,
-  options: { withOutput?: boolean; willRetry?: boolean } = {},
+  options: {
+    rateLimits?: ProviderRateLimitState;
+    withOutput?: boolean;
+    willRetry?: boolean;
+  } = {},
 ) {
   const { host } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
@@ -65,6 +69,7 @@ function seedFailedRateLimitedTurn(
   });
   const providerThreadId = "provider-thread-rate-limited";
   const turnId = "turn-rate-limited";
+  const rateLimits = options.rateLimits ?? RATE_LIMITS;
   seedEvent(harness.deps, {
     threadId: thread.id,
     environmentId: environment.id,
@@ -123,7 +128,7 @@ function seedFailedRateLimitedTurn(
     sequence: 5,
     type: "provider/rateLimits/updated",
     scope: threadScope(),
-    data: { providerThreadId, rateLimits: RATE_LIMITS },
+    data: { providerThreadId, rateLimits },
   });
   seedEvent(harness.deps, {
     threadId: thread.id,
@@ -185,11 +190,14 @@ describe("provider rate-limit recovery", () => {
       expect(status).toEqual({
         reason: "eligible",
         scopeKey: `${fixture.host.id}:codex`,
+        hostId: fixture.host.id,
         rateLimits: RATE_LIMITS,
         candidate: {
           failedRequestId: FAILED_REQUEST_ID,
           turnId: fixture.turnId,
           scopeKey: `${fixture.host.id}:codex`,
+          hostId: fixture.host.id,
+          automatic: true,
           resetsAtMs: RESET_AT_MS,
           rateLimits: RATE_LIMITS,
         },
@@ -220,6 +228,75 @@ describe("provider rate-limit recovery", () => {
           thread: retryFixture.thread,
         }).reason,
       ).toBe("provider-will-retry");
+    });
+  });
+
+  it("allows manual recovery for blocked limits without a reset time", async () => {
+    await withTestHarness(async (harness) => {
+      const creditsRateLimits: ProviderRateLimitState = {
+        ...RATE_LIMITS,
+        kind: "credits",
+        windows: [],
+      };
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        rateLimits: creditsRateLimits,
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }),
+      ).toMatchObject({
+        reason: "manual-only",
+        candidate: {
+          automatic: false,
+          resetsAtMs: null,
+          rateLimits: creditsRateLimits,
+        },
+      });
+    });
+  });
+
+  it("keeps the safe candidate when a later observation reports allowed", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness);
+      const allowedRateLimits: ProviderRateLimitState = {
+        ...RATE_LIMITS,
+        status: "allowed",
+        windows: RATE_LIMITS.windows.map((window) => ({
+          ...window,
+          status: "allowed",
+          usedPercent: 0,
+        })),
+        observedAtMs: Date.now() + 1,
+      };
+      seedEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-thread-rate-limited",
+        sequence: 8,
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        data: {
+          providerThreadId: "provider-thread-rate-limited",
+          rateLimits: allowedRateLimits,
+        },
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }),
+      ).toMatchObject({
+        reason: "eligible",
+        rateLimits: allowedRateLimits,
+        candidate: {
+          automatic: true,
+          rateLimits: RATE_LIMITS,
+        },
+      });
     });
   });
 

@@ -225,8 +225,7 @@ export const providerRateLimitRecoveryReasonSchema = z.enum([
   "input-not-accepted",
   "no-rate-limit-state",
   "provider-will-retry",
-  "not-subscription-window",
-  "reset-unavailable",
+  "manual-only",
   "output-or-side-effect-observed",
   "superseded",
   "execution-unavailable",
@@ -239,7 +238,9 @@ export const providerRateLimitRecoveryCandidateSchema = z.object({
   failedRequestId: clientTurnRequestIdSchema,
   turnId: z.string().min(1),
   scopeKey: z.string().min(1),
-  resetsAtMs: z.number().int().nonnegative(),
+  hostId: z.string().min(1),
+  automatic: z.boolean(),
+  resetsAtMs: z.number().int().nonnegative().nullable(),
   rateLimits: providerRateLimitStateSchema,
 });
 export type ProviderRateLimitRecoveryCandidate = z.infer<
@@ -249,6 +250,7 @@ export type ProviderRateLimitRecoveryCandidate = z.infer<
 export const providerRateLimitRecoveryStatusSchema = z.object({
   reason: providerRateLimitRecoveryReasonSchema,
   scopeKey: z.string().min(1),
+  hostId: z.string().min(1),
   rateLimits: providerRateLimitStateSchema.nullable(),
   candidate: providerRateLimitRecoveryCandidateSchema.nullable(),
 });
