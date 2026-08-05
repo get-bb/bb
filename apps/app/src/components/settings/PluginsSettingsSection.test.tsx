@@ -25,7 +25,6 @@ import {
 } from "@/lib/plugin-slots";
 import {
   PluginSettingsDetail,
-  PluginSettingsDetailSection,
   PluginSettingsForm,
   PluginsSettingsSection,
 } from "./PluginsSettingsSection";
@@ -43,13 +42,6 @@ interface RecordedRequest {
 }
 
 function jsonOk(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function responseJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "content-type": "application/json" },
@@ -174,6 +166,31 @@ describe("PluginSettingsForm", () => {
       values: { apiKey: "sk-123" },
     });
   });
+
+  it("keeps the schema visible but disables every control when read-only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW))),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" disabled />, { wrapper });
+
+    const greeting = (await screen.findByLabelText(
+      "Greeting",
+    )) as HTMLInputElement;
+    const enabled = screen.getByLabelText("Enabled") as HTMLButtonElement;
+    const save = screen.getByRole("button", {
+      name: /save settings/i,
+    }) as HTMLButtonElement;
+    const form = greeting.closest("form");
+
+    expect(greeting.disabled).toBe(true);
+    expect(enabled.disabled).toBe(true);
+    expect(save.disabled).toBe(true);
+    expect(form?.getAttribute("aria-disabled")).toBe("true");
+    expect(form?.className).toContain("opacity-50");
+  });
 });
 
 describe("PluginsSettingsSection", () => {
@@ -292,10 +309,12 @@ describe("PluginSettingsDetail settings gating", () => {
     );
 
     expect(screen.getAllByText("disabled")).toHaveLength(1);
+    expect(screen.getByText("v0.1.0")).toBeDefined();
     expect(screen.getByText(description)).toBeDefined();
     expect(
       screen.queryByText("Enable this plugin to edit its settings."),
     ).toBeNull();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
     const toggle = screen.getByRole("switch", { name: "Enable linear" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
@@ -318,7 +337,55 @@ describe("PluginSettingsDetail settings gating", () => {
         />
       </MemoryRouter>,
     );
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText("running")).toBeDefined();
     expect(screen.getByText(description)).toBeDefined();
+    expect(screen.getByText("This plugin declares no settings.")).toBeDefined();
+  });
+
+  it("hides declared settings while disabled", () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{ ...rowPlugin("disabled"), enabled: false }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("waits for an enabled frontend bundle before declaring that it has no settings", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            hasSettings: false,
+            app: {
+              hasApp: true,
+              bundle: {
+                jsUrl: "/api/v1/plugins/linear/app.js",
+                cssUrl: null,
+                hash: "linear-app",
+                sdkMajor: 0,
+                sdkVersion: "0.4.1",
+                compatible: true,
+              },
+            },
+          }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.getByText("v0.1.0")).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 
@@ -367,7 +434,7 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
-  it("renders no form for an errored plugin (no schema exists server-side)", () => {
+  it("renders the preserved form read-only for an errored plugin", async () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
@@ -377,9 +444,12 @@ describe("PluginSettingsDetail settings gating", () => {
       </MemoryRouter>,
       { wrapper },
     );
-    expect(screen.queryByLabelText("Greeting")).toBeNull();
+    const greeting = (await screen.findByLabelText(
+      "Greeting",
+    )) as HTMLInputElement;
+    expect(greeting.disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   it("removes a stale builtin plugin from its detail page", async () => {
@@ -418,7 +488,7 @@ describe("PluginSettingsDetail settings gating", () => {
     });
   });
 
-  it("renders a slot-only settings page", async () => {
+  it("shows a slot-only settings section beneath the stable header only while enabled", () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
@@ -433,37 +503,47 @@ describe("PluginSettingsDetail settings gating", () => {
       fileOpeners: [],
       messageDirectives: [],
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const rawUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
-        const path = new URL(rawUrl, "http://localhost").pathname;
-        if (path === "/api/v1/system/config") {
-          return responseJson(systemConfig());
-        }
-        if (path === "/api/v1/plugins") {
-          return responseJson({
-            plugins: [serverPlugin({ id: "connect", hasSettings: false })],
-          });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
     const { wrapper } = createQueryClientTestHarness();
-    render(
+    const description = "Give this host remote access.";
+    const { rerender } = render(
       <MemoryRouter>
-        <PluginSettingsDetailSection pluginId="connect" />
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("disabled"),
+            id: "connect",
+            enabled: false,
+            hasSettings: false,
+            description,
+          }}
+        />
       </MemoryRouter>,
       { wrapper },
     );
 
-    expect(await screen.findByText("Remote access")).toBeDefined();
+    expect(screen.getByText("connect")).toBeDefined();
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.queryByText("Remote access")).toBeNull();
+    expect(screen.queryByText("Custom connect settings")).toBeNull();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            id: "connect",
+            hasSettings: false,
+            description,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("connect")).toBeDefined();
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.getByText("Remote access")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
     expect(
       screen.getByRole("switch", { name: "Disable connect" }),
