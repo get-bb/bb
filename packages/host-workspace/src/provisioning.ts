@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
+  WORKTREE_INCLUDE_FILE_NAME,
   createTerminalOutputLineReader,
   readTerminalOutputLines,
   type ProvisioningTranscriptEntry,
@@ -24,6 +25,10 @@ import {
   runGitWithWorktreeMetadataLock,
   withWorktreeMetadataLock,
 } from "./worktree-metadata-lock.js";
+import {
+  copyWorktreeIncludeFiles,
+  type CopyWorktreeIncludeFilesResult,
+} from "./worktree-include.js";
 
 type ProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
 type EmitStepArgs = {
@@ -236,6 +241,12 @@ function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
   }
 }
 
+function isProvisionAbortError(error: unknown): boolean {
+  return (
+    error instanceof WorkspaceError && error.code === "provision_cancelled"
+  );
+}
+
 async function resolveRemoteBaseBranch(
   sourcePath: string,
   baseBranch: string,
@@ -245,9 +256,7 @@ async function resolveRemoteBaseBranch(
     return null;
   }
 
-  const remotes = (
-    await runGit(["remote"], { cwd: sourcePath, signal })
-  ).stdout
+  const remotes = (await runGit(["remote"], { cwd: sourcePath, signal })).stdout
     .split("\n")
     .map((remote) => remote.trim())
     .filter(Boolean);
@@ -389,6 +398,12 @@ export async function createWorktree(
       keySuffix: "target",
       cwd: args.targetPath,
     });
+    await copyIncludedFiles({
+      sourcePath: args.sourcePath,
+      targetPath: args.targetPath,
+      onProgress: args.onProgress,
+      signal: args.signal,
+    });
     await runSetupScript({
       workspacePath: args.targetPath,
       timeoutMs: args.timeoutMs,
@@ -415,6 +430,66 @@ export async function createWorktree(
     });
     throw error;
   }
+}
+
+/**
+ * Copy the untracked files listed in `.worktreeinclude` into the new worktree
+ * and report the result in the provisioning transcript. This runs before the
+ * setup script so the script can read a copied `.env`.
+ *
+ * A failure here never fails provisioning: the transcript names every skipped
+ * entry and the thread still starts.
+ */
+async function copyIncludedFiles(args: {
+  sourcePath: string;
+  targetPath: string;
+  onProgress: ProgressCallback | undefined;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  throwIfProvisionAborted(args.signal);
+  const startedAt = Date.now();
+  let result: CopyWorktreeIncludeFilesResult;
+  try {
+    result = await copyWorktreeIncludeFiles({
+      sourcePath: args.sourcePath,
+      targetPath: args.targetPath,
+      signal: args.signal,
+    });
+  } catch (error) {
+    if (isProvisionAbortError(error)) {
+      throw error;
+    }
+    emitOutput(
+      args.onProgress,
+      "worktree-include",
+      `Skipped ${WORKTREE_INCLUDE_FILE_NAME}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return;
+  }
+  if (!result.ran) {
+    return;
+  }
+
+  for (const skipped of result.skipped) {
+    emitOutput(args.onProgress, "worktree-include", `Skipped ${skipped}`);
+  }
+  if (result.copied.length > 0) {
+    emitOutput(
+      args.onProgress,
+      "worktree-include",
+      `Copied ${result.copied.length} file(s): ${result.copied.join(", ")}`,
+    );
+  }
+  emitStep({
+    onProgress: args.onProgress,
+    key: "worktree-include-completed",
+    text: `Copied ${result.copied.length} file(s) from ${WORKTREE_INCLUDE_FILE_NAME}`,
+    status: "completed",
+    startedAt,
+    metadata: { durationMs: Date.now() - startedAt },
+  });
 }
 
 export async function runSetupScript(

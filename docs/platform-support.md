@@ -128,6 +128,8 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The supported setup hook is POSIX `.bb-env-setup.sh`.
 - The same shell-based hook contract is used across macOS, Linux, and WSL2.
 - No parallel `.bb-env-setup.ts` product-path mechanism is supported.
+- The `.worktreeinclude` copy step runs no shell. It works on every platform,
+  including native Windows.
 
 ## Line Ending Policy
 

@@ -6,10 +6,10 @@ with its own branch. Worktrees let bb work on multiple things in parallel
 without touching your main checkout, and they make it easy to throw away
 whatever the agent does without affecting the rest of your work.
 
-You can pair a worktree with a **setup script** that bb runs the first time
-the worktree is created — useful for installing dependencies, copying a
-`.env`, generating secrets, or anything else you need before the agent
-starts.
+You can pair a worktree with a **`.worktreeinclude` file** that lists the local
+files each new worktree needs, and with a **setup script** that bb runs the
+first time the worktree is created — useful for installing dependencies,
+generating secrets, or anything else you need before the agent starts.
 
 ## What is a managed worktree?
 
@@ -42,6 +42,38 @@ When you omit `--base-branch`, bb chooses the project's default worktree base,
 preferring the origin default branch when safe. Pass `--base-branch <name>`
 only when you need a specific base.
 
+## Copy local files with `.worktreeinclude`
+
+A new worktree checks out tracked files only. Your `.env`, your local
+certificates, and anything else git ignores stay behind in your main checkout.
+
+Commit a `.worktreeinclude` file at the root of your repo to list what a
+worktree needs. It uses gitignore syntax — one pattern per line, `#` for
+comments, `!` to negate an earlier pattern:
+
+```gitignore
+# Local credentials the agent needs
+.env
+.env.*
+!.env.example
+certs/
+```
+
+bb copies every untracked file in the source checkout that matches a pattern,
+after it creates the worktree and before it runs `.bb-env-setup.sh`. Your
+setup script can therefore read the copied files.
+
+Contract:
+
+- bb copies files. It does not create symlinks, and each worktree gets its own
+  copy — an edit inside the worktree does not change your main checkout.
+- bb never replaces a tracked file. Only untracked files are candidates.
+- bb skips symlinks in the source checkout rather than copying their targets.
+- A pattern that matches nothing, an unreadable file, or a failed copy is
+  reported in the provisioning transcript. Provisioning continues.
+- Large directories such as `node_modules` are copied file by file, which is
+  slow. Install dependencies in `.bb-env-setup.sh` instead.
+
 ## Run setup with `.bb-env-setup.sh`
 
 Drop a file named `.bb-env-setup.sh` at the root of your project. If bb finds
@@ -49,14 +81,14 @@ one when it creates a worktree, it runs the script inside the new worktree
 before handing the thread to the agent.
 
 Use it for anything the agent will need in a fresh checkout — install
-dependencies, copy a `.env`, sync local state, generate tokens, etc.
+dependencies, sync local state, generate tokens, etc. To bring local files in
+from your main checkout, prefer `.worktreeinclude` above.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
 pnpm install
-cp ~/.config/myapp/.env .
 ```
 
 Contract:

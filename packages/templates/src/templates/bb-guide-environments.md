@@ -37,17 +37,25 @@ Making your repo work with bb:
   "Running .bb-env-setup.sh" and then ".bb-env-setup.sh finished",
   ".bb-env-setup.sh failed", or ".bb-env-setup.sh cancelled".
 
-  New worktrees do not contain gitignored files such as .env.local. To copy
-  them from the original checkout, locate the source root through git's common
-  directory:
+  New worktrees do not contain untracked files such as .env.local. To copy
+  them from the source checkout, commit a .worktreeinclude file at the repo
+  root. It uses gitignore syntax: one pattern per line, # for comments, ! to
+  negate an earlier pattern. bb copies each untracked file in the source
+  checkout that matches a pattern:
 
-    common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
-    source_root=$(dirname "$common_dir")
-    workspace_root=$(pwd -P)
+    .env
+    .env.*
+    !.env.example
+    certs/
 
-  A real setup script should then copy a fixed list of needed env files if they
-  exist in source_root and are missing in workspace_root, warn and continue on
-  optional copy failures, then run dependency setup such as pnpm install.
+  bb copies files only. It follows no symlinks and it replaces no tracked
+  file. The copy runs after `git worktree add` and before .bb-env-setup.sh, so
+  the setup script can read the copied files. A pattern that matches nothing,
+  or a file bb cannot read, is reported in the provisioning transcript and
+  does not fail provisioning.
+
+  Large directories such as node_modules are copied file by file. Install
+  dependencies in .bb-env-setup.sh instead of listing them here.
 
   For files that customize agent instructions and skills (AGENTS.md,
   .bb/AGENTS.md, .bb/skills/), run `bb guide agent-configuration`.

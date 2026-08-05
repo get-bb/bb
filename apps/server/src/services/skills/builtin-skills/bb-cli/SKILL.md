@@ -22,7 +22,12 @@ message agents, or inspect projects, providers, and environments.
 ## Environment Setup Script
 
 - To make a repo work with bb worktrees, run `bb guide environments`. It
-  documents the repo-level `.bb-env-setup.sh` setup hook.
+  documents the repo-level `.bb-env-setup.sh` setup hook and the
+  `.worktreeinclude` file.
+- A new worktree checks out tracked files only. Commit a `.worktreeinclude`
+  file at the repo root to list untracked files, such as `.env`, that bb must
+  copy from the source checkout. It uses gitignore pattern syntax. bb copies
+  the matches before it runs `.bb-env-setup.sh`.
 
 ## Remote Client
 
