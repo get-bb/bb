@@ -431,11 +431,9 @@ export function Appearance() {
   );
 }
 
-export function UsageAndFiles() {
+export function Files() {
   return (
     <SettingsStoryFrame>
-      <UsageLimitsStory />
-      <VoiceInputStory />
       <FilePreferencesStory />
     </SettingsStoryFrame>
   );

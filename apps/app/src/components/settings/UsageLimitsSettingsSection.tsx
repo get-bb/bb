@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { Host } from "@bb/domain";
 import type {
   ProviderUsage,
@@ -236,7 +236,7 @@ function ProviderUsageBlock({
   const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
   const iconInfo = getProviderIconInfo(config.providerId);
   const ProviderIcon = iconInfo?.icon;
-  const headingId = `usage-provider-${config.key}`;
+  const headingId = useId();
 
   return (
     <section
