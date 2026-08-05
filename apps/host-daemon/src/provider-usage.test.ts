@@ -87,6 +87,34 @@ describe("normalizeCodexUsage", () => {
     });
   });
 
+  it("labels a weekly primary window from its duration", () => {
+    const resetAt = 1_786_380_099;
+    expect(
+      normalizeCodexUsage({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 8,
+            limit_window_seconds: 604_800,
+            reset_at: resetAt,
+          },
+          secondary_window: null,
+        },
+      }),
+    ).toEqual({
+      status: "ok",
+      accountEmail: null,
+      planLabel: "Pro",
+      windows: [
+        {
+          label: "Weekly limit",
+          usedPercent: 8,
+          resetsAt: new Date(resetAt * 1000).toISOString(),
+        },
+      ],
+    });
+  });
+
   it("flags a malformed payload instead of inventing numbers", () => {
     const result = normalizeCodexUsage({
       rate_limit: { primary_window: { used_percent: "lots" } },
@@ -102,13 +130,29 @@ describe("normalizeClaudeUsage", () => {
     subscriptionType: "max",
   };
 
-  it("maps the session and weekly windows and derives the plan label", () => {
+  it("maps session, weekly, and model-scoped windows and derives the plan label", () => {
     const result = normalizeClaudeUsage(
       {
         five_hour: { utilization: 0, resets_at: "2026-06-19T22:00:00.000Z" },
         seven_day: { utilization: 18.4, resets_at: "2026-06-24T14:23:00.000Z" },
-        // Model-specific sub-limits are intentionally ignored.
         seven_day_sonnet: { utilization: 0, resets_at: null },
+        limits: [
+          {
+            kind: "session",
+            scope: null,
+            percent: 0,
+            resets_at: "2026-06-19T22:00:00.000Z",
+          },
+          {
+            kind: "weekly_scoped",
+            scope: {
+              model: { id: null, display_name: "Fable" },
+              surface: null,
+            },
+            percent: 48.2,
+            resets_at: "2026-06-24T14:22:59.000Z",
+          },
+        ],
       },
       credentials,
       "claude@example.com",
@@ -129,6 +173,11 @@ describe("normalizeClaudeUsage", () => {
           usedPercent: 18,
           resetsAt: "2026-06-24T14:23:00.000Z",
         },
+        {
+          label: "Fable",
+          usedPercent: 48,
+          resetsAt: "2026-06-24T14:22:59.000Z",
+        },
       ],
     });
   });
@@ -138,6 +187,20 @@ describe("normalizeClaudeUsage", () => {
       {
         five_hour: { utilization: 7, resets_at: null },
         seven_day: { resets_at: "2026-06-24T14:23:00.000Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            scope: { model: null },
+            percent: 25,
+            resets_at: "2026-06-24T14:23:00.000Z",
+          },
+          {
+            kind: "weekly_scoped",
+            scope: { model: { display_name: "Fable" } },
+            percent: null,
+            resets_at: "2026-06-24T14:23:00.000Z",
+          },
+        ],
       },
       { accessToken: "token" },
     );

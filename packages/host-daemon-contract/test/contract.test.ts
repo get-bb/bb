@@ -1023,11 +1023,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Codex structured inference gained a required reasoning-effort field in
-  // version 70. Older daemons reject that strict command shape, so the bump
-  // forces an update before the server can send it.
-  it("uses protocol version 70 for explicit Codex inference reasoning", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(70);
+  // Provider usage gained Claude model-scoped windows and duration-aware Codex
+  // labels in version 71. Older daemons omit or mislabel them, so the bump
+  // forces an update before the server requests provider usage.
+  it("uses protocol version 71 for provider usage normalization", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(71);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
