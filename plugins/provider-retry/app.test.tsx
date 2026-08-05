@@ -128,4 +128,28 @@ describe("provider retry app", () => {
       await slot.findByText(/There is no automatic reset time/i),
     ).toBeTruthy();
   });
+
+  it("keeps the banner when cancellation loses to an in-progress release", async () => {
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thread-one" } },
+        rpc: {
+          providerRetryStatus: () => ({ view: waitingView }),
+          providerRetryNow: () => ({ started: true, view: null }),
+          providerRetryCancel: () => ({ cancelled: false }),
+          providerRetryRefresh: () => ({ view: waitingView }),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Cancel" }));
+    expect(
+      await slot.findByText("This continuation is already in progress."),
+    ).toBeTruthy();
+    expect(
+      slot.getByRole("region", { name: "Provider usage recovery" }),
+    ).toBeTruthy();
+  });
 });

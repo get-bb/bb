@@ -75,7 +75,6 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
   const [view, setView] = useState<ProviderRetryView | null>(null);
   const [busy, setBusy] = useState<"cancel" | "now" | "refresh" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [, setClockTick] = useState(0);
 
   const load = useCallback(async () => {
     const result = await rpc.call("providerRetryStatus", { threadId });
@@ -105,23 +104,19 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
     if (reconnected) void load().catch(() => undefined);
   }, [connection, load]);
 
-  useEffect(() => {
-    if (view?.phase !== "waiting-for-reset" || view.dueAtMs === null) return;
-    const interval = window.setInterval(
-      () => setClockTick((tick) => tick + 1),
-      1_000,
-    );
-    return () => window.clearInterval(interval);
-  }, [view?.dueAtMs, view?.phase]);
-
   const runAction = useCallback(
     async (action: "cancel" | "now" | "refresh") => {
       setBusy(action);
       setActionError(null);
       try {
         if (action === "cancel") {
-          await rpc.call("providerRetryCancel", { threadId });
-          setView(null);
+          const result = await rpc.call("providerRetryCancel", { threadId });
+          if (result.cancelled) {
+            setView(null);
+          } else {
+            await load();
+            setActionError("This continuation is already in progress.");
+          }
         } else if (action === "now") {
           const result = await rpc.call("providerRetryNow", { threadId });
           setView(result.view);
@@ -138,7 +133,7 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
         setBusy(null);
       }
     },
-    [rpc, threadId],
+    [load, rpc, threadId],
   );
 
   if (view === null) return null;
