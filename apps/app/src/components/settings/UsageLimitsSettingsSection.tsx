@@ -6,7 +6,11 @@ import type {
 } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  SettingsBadge,
+  SettingsRowList,
+  SettingsSection,
+} from "@/components/ui/settings-section";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   DropdownMenu,
@@ -20,11 +24,16 @@ import {
   useSystemUsageLimits,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import {
+  getProviderIconColorClass,
+  getProviderIconInfo,
+} from "@/lib/provider-icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
   key: "codex" | "claudeCode" | "cursor";
   name: string;
+  providerId: "codex" | "claude-code" | "acp-cursor";
   signInHint: string;
   expiredHint: string;
 }
@@ -33,12 +42,14 @@ const PROVIDERS: ProviderConfig[] = [
   {
     key: "codex",
     name: "Codex",
+    providerId: "codex",
     signInHint: "Run `codex` to sign in and see your usage.",
     expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
   {
     key: "claudeCode",
     name: "Claude Code",
+    providerId: "claude-code",
     signInHint: "Run `claude` to sign in and see your usage.",
     expiredHint:
       "Your Claude session expired. Run `claude`, then reload usage.",
@@ -46,6 +57,7 @@ const PROVIDERS: ProviderConfig[] = [
   {
     key: "cursor",
     name: "Cursor",
+    providerId: "acp-cursor",
     signInHint: "Run `cursor-agent login` to sign in and see your usage.",
     expiredHint:
       "Your Cursor session expired. Run `cursor-agent login`, then reload usage.",
@@ -222,29 +234,52 @@ function ProviderUsageBlock({
 }: ProviderUsageBlockProps) {
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
   const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
+  const iconInfo = getProviderIconInfo(config.providerId);
+  const ProviderIcon = iconInfo?.icon;
+  const headingId = `usage-provider-${config.key}`;
 
   return (
-    <div className="space-y-3.5">
+    <section
+      aria-labelledby={headingId}
+      className="space-y-3.5 py-3.5 first:pt-0 last:pb-0"
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-normal text-foreground">{config.name}</h3>
-          {accountEmail ? (
-            <p className="truncate text-xs text-muted-foreground">
-              {accountEmail}
-            </p>
+        <div className="flex min-w-0 items-start gap-2.5">
+          {ProviderIcon ? (
+            <span aria-hidden="true" className="mt-0.5 shrink-0">
+              <ProviderIcon
+                className={cn(
+                  "size-4",
+                  getProviderIconColorClass(config.providerId),
+                )}
+              />
+            </span>
           ) : null}
+          <div className="min-w-0">
+            <h3
+              id={headingId}
+              className="text-sm font-semibold text-foreground"
+            >
+              {config.name}
+            </h3>
+            {accountEmail ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {accountEmail}
+              </p>
+            ) : null}
+          </div>
         </div>
-        {planLabel ? (
-          <span className="text-xs text-muted-foreground">{planLabel}</span>
-        ) : null}
+        {planLabel ? <SettingsBadge>{planLabel}</SettingsBadge> : null}
       </div>
-      <ProviderUsageBody
-        config={config}
-        usage={usage}
-        isLoading={isLoading}
-        isError={isError}
-      />
-    </div>
+      <div className={ProviderIcon ? "pl-6" : undefined}>
+        <ProviderUsageBody
+          config={config}
+          usage={usage}
+          isLoading={isLoading}
+          isError={isError}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -352,18 +387,17 @@ export function UsageLimitsSettingsSectionContent({
         </div>
       }
     >
-      <div className="divide-y divide-border">
+      <SettingsRowList>
         {visibleProviders.map((config) => (
-          <div key={config.key} className="py-3.5 first:pt-0 last:pb-0">
-            <ProviderUsageBlock
-              config={config}
-              usage={usage[config.key]}
-              isLoading={isLoading}
-              isError={isError}
-            />
-          </div>
+          <ProviderUsageBlock
+            key={config.key}
+            config={config}
+            usage={usage[config.key]}
+            isLoading={isLoading}
+            isError={isError}
+          />
         ))}
-      </div>
+      </SettingsRowList>
     </SettingsSection>
   );
 }

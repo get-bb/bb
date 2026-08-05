@@ -63,6 +63,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "Cursor" })).toBeDefined();
     expect(screen.getByText("cursor@example.com")).toBeDefined();
     expect(screen.getByText("Plan usage")).toBeDefined();
     expect(screen.getByText("50% used")).toBeDefined();
