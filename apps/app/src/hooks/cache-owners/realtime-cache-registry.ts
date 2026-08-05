@@ -49,6 +49,7 @@ import {
   getCachedProjectThreadListInvalidationQueryKeys,
   getCachedRootOrderThreadListInvalidationQueryKeys,
   getCachedSidebarNavigationThreads,
+  getCachedThreadListPlaceholder,
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
@@ -696,12 +697,14 @@ function dirtyThreadPullRequestQueryForCompletedTurn({
   if (!threadId || !eventTypes?.includes("turn/completed")) {
     return [];
   }
-  const environmentId = queryClient.getQueryData<ThreadWithRuntime>(
-    threadQueryKey(threadId),
-  )?.environmentId;
-  return environmentId
-    ? [environmentPullRequestQueryKey(environmentId)]
-    : [];
+  const cachedThread =
+    queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)) ??
+    getCachedThreadListPlaceholder(queryClient, threadId) ??
+    getCachedSidebarNavigationThreads(queryClient).find(
+      (thread) => thread.id === threadId,
+    );
+  const environmentId = cachedThread?.environmentId;
+  return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
 }
 
 function dirtyThreadPendingInteractionQueries({

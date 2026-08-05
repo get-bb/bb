@@ -413,42 +413,56 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches the active environment pull request when a turn completes", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const pullRequestKey = environmentPullRequestQueryKey("env-1");
-    const nextPullRequest = {
-      outcome: "available",
-      pullRequest: { number: 42 },
-    };
-    const pullRequestQueryFn = vi.fn(async () => nextPullRequest);
-    queryClient.setQueryData(threadQueryKey("thr_1"), {
-      environmentId: "env-1",
-      id: "thr_1",
-    });
-    queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
-    const pullRequestObserver = new QueryObserver(queryClient, {
-      queryFn: pullRequestQueryFn,
-      queryKey: pullRequestKey,
-      staleTime: Infinity,
-    });
-    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+  it.each(["thread detail", "sidebar navigation"] as const)(
+    "refetches the active environment pull request from %s when a turn completes",
+    async (cacheSource) => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const pullRequestKey = environmentPullRequestQueryKey("env-1");
+      const nextPullRequest = {
+        outcome: "available",
+        pullRequest: { number: 42 },
+      };
+      const pullRequestQueryFn = vi.fn(async () => nextPullRequest);
+      if (cacheSource === "thread detail") {
+        queryClient.setQueryData(threadQueryKey("thr_1"), {
+          environmentId: "env-1",
+          id: "thr_1",
+        });
+      } else {
+        queryClient.setQueryData(sidebarNavigationQueryKey(), {
+          personalProject: { threads: [] },
+          projects: [
+            {
+              threads: [{ environmentId: "env-1", id: "thr_1" }],
+            },
+          ],
+        });
+      }
+      queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
+      const pullRequestObserver = new QueryObserver(queryClient, {
+        queryFn: pullRequestQueryFn,
+        queryKey: pullRequestKey,
+        staleTime: Infinity,
+      });
+      const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
 
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { eventTypes: ["turn/completed"] },
-      changes: ["events-appended"],
-    });
-    await vi.advanceTimersByTimeAsync(50);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { eventTypes: ["turn/completed"] },
+        changes: ["events-appended"],
+      });
+      await vi.advanceTimersByTimeAsync(50);
 
-    expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(pullRequestKey)).toEqual(nextPullRequest);
+      expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
+      expect(queryClient.getQueryData(pullRequestKey)).toEqual(nextPullRequest);
 
-    unsubscribePullRequest();
-    effects.dispose();
-  });
+      unsubscribePullRequest();
+      effects.dispose();
+    },
+  );
 
   it("invalidates cached thread search results when environment metadata changes", () => {
     vi.useFakeTimers();
