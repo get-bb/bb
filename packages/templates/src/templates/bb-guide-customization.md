@@ -98,6 +98,10 @@ Host files and voice transcription
   bb file read|write|list|paths|mkdir|move|remove ...
   bb voice transcribe <audio-file> [--prompt <context>]
 
+Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
+`codex/gpt-transcribe`. Override it with
+`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. Use `--json` for
 metadata and machine-readable results.

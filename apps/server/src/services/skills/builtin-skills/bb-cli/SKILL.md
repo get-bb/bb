@@ -41,6 +41,9 @@ message agents, or inspect projects, providers, and environments.
   including thread titles and commit subjects. It defaults to
   `codex/gpt-5.6-luna`; set an override with
   `bb-app config set BB_INFERENCE <provider/model>`.
+- `BB_TRANSCRIPTION` selects the voice transcription model. It defaults to
+  `codex/gpt-transcribe`; set an override with
+  `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).

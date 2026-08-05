@@ -10,5 +10,5 @@ export const DEFAULTS = {
   logLevel: { prod: "info", dev: "debug" },
   secretToken: { dev: "dev-secret" },
   inferenceModel: "codex/gpt-5.6-luna",
-  transcriptionModel: "codex/gpt-4o-mini-transcribe",
+  transcriptionModel: "codex/gpt-transcribe",
 } as const;
