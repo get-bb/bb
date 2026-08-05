@@ -20,6 +20,14 @@ export interface SecondaryPanelHostLayout {
   isOpen: boolean;
   /** The panel remains logically open but is hidden while a thread is full screen. */
   isSuppressed: boolean;
+  /**
+   * Whether the host paints its toggle over the workspace's top-right corner.
+   * An open panel hosts the toggle in its own chrome, and a full-screen pane
+   * hides it, so the right-edge pane headers reserve that corner only while
+   * this is true. The empty-state panel has no chrome of its own, so the
+   * corner toggle stays with it — otherwise no button could close it.
+   */
+  pinsCornerToggle: boolean;
 }
 
 export const SecondaryPanelHostLayoutContext =

@@ -6,13 +6,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import {
   Panel,
   PanelGroup,
+  PanelResizeHandle,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
+import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -23,11 +25,16 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "@/components/secondary-panel/ThreadSecondaryPanel";
+import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
+  PANEL_RESIZE_HIT_AREA_MARGINS,
 } from "@/components/secondary-panel/panelTransitionTokens";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
@@ -62,7 +69,7 @@ export function SplitWorkspaceSecondaryPanelHost({
   // Null until the first pane publishes, so entering a split adopts the
   // focused content's persisted state.
   const [isPanelVisible, setIsPanelVisible] = useState<boolean | null>(null);
-  const isOpen = model !== null && (isPanelVisible ?? model.isOpen);
+  const isOpen = isPanelVisible ?? model?.isOpen ?? false;
   const lastTargetRef = useRef<{
     paneId: string;
     contentKey: string;
@@ -141,35 +148,46 @@ export function SplitWorkspaceSecondaryPanelHost({
     panelWidthPercent,
   ]);
 
-  // The remembered window visibility is intentionally left unchanged while a
-  // plugin pane is focused, so returning to a thread restores its app panel.
+  // A pane without a panel keeps the control working: the toggle drives the
+  // window visibility directly, so the empty state opens and closes like any
+  // panel. Refocusing a publishing pane re-aligns through the effect above.
   const toggleWindowPanel = () => {
-    model?.onToggle();
+    if (model !== null) {
+      model.onToggle();
+      return;
+    }
+    setIsPanelVisible((current) => !(current ?? false));
   };
   useAppCommandHandler("panel.toggle", () => {
-    return model === null;
+    if (model !== null) return false;
+    toggleWindowPanel();
+    return true;
   });
 
-  const toggleLabel =
-    model === null
-      ? "Right panel unavailable"
-      : isOpen
-        ? "Hide right panel"
-        : "Show right panel";
-  const hostLayout = useMemo<SecondaryPanelHostLayout>(
-    () => ({ isOpen, isSuppressed: isPaneMaximized }),
-    [isOpen, isPaneMaximized],
-  );
+  // Resizing the empty-state panel mirrors the real panel's persistence: the
+  // shared width atom updates on drag end, so the size carries to whichever
+  // pane's panel shows next. Dragging it collapsed closes the window panel.
+  const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const lastEmptyPanelSizeRef = useRef(0);
+  const handleEmptyPanelResize = (size: number) => {
+    if (size > 0) lastEmptyPanelSizeRef.current = size;
+  };
+  const handleEmptyPanelDragging = (isDragging: boolean) => {
+    if (isDragging || lastEmptyPanelSizeRef.current <= 0) return;
+    setPanelWidthPercent(lastEmptyPanelSizeRef.current);
+  };
+  const handleEmptyPanelCollapse = () => {
+    setIsPanelVisible(false);
+  };
 
-  if (model === null) {
-    return (
-      <SecondaryPanelHostLayoutContext.Provider value={hostLayout}>
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {children}
-        </div>
-      </SecondaryPanelHostLayoutContext.Provider>
-    );
-  }
+  const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
+  // An open pane panel carries the toggle in its own chrome, and a full-screen
+  // pane hides it. The empty state has no chrome, so it keeps the corner.
+  const pinsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  const hostLayout = useMemo<SecondaryPanelHostLayout>(
+    () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
+    [isOpen, isPaneMaximized, pinsCornerToggle],
+  );
 
   return (
     // The layout context serves two consumers: a freshly mounted pane panel
@@ -183,8 +201,11 @@ export function SplitWorkspaceSecondaryPanelHost({
         <div
           data-testid="split-workspace-panel-toggle"
           className={cn(
-            "absolute right-2.5 top-2.5 z-40",
-            (isOpen || isPaneMaximized) && "hidden",
+            // right-4 puts the button on the pane header's own action axis
+            // (its px-4 edge padding), so the gap to Close pane matches the
+            // gaps inside that row instead of reading 6px wider.
+            "absolute right-4 top-2.5 z-40",
+            !pinsCornerToggle && "hidden",
             // This overlay already owns positioning and stacking. Use only
             // the raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds
             // `relative z-50`, which tailwind-merge would resolve against
@@ -248,12 +269,60 @@ export function SplitWorkspaceSecondaryPanelHost({
               {children}
             </div>
           </Panel>
-          <PluginComposerHostProvider
-            key={focusedPaneId}
-            value={model.composerHost}
-          >
-            {model.panel}
-          </PluginComposerHostProvider>
+          {model === null ? (
+            <>
+              {/* Working twin of the panel's gutter-style resize handle: the
+                  seam keeps the split dividers' body, and the window panel
+                  stays resizable even while it shows the empty state. */}
+              <PanelResizeHandle
+                id="split-workspace-empty-secondary-panel-handle"
+                disabled={!isOpen}
+                onDragging={handleEmptyPanelDragging}
+                hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
+                className={cn(
+                  "relative z-[5] shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
+                  isOpen
+                    ? "w-px cursor-col-resize opacity-100"
+                    : "pointer-events-none w-0 opacity-0",
+                )}
+                aria-label="Resize right panel"
+              />
+              <Panel
+                id="split-workspace-empty-secondary-panel"
+                collapsible
+                collapsedSize={0}
+                defaultSize={isOpen ? panelWidthPercent : 0}
+                minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
+                maxSize={THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT}
+                onCollapse={handleEmptyPanelCollapse}
+                onResize={handleEmptyPanelResize}
+                order={2}
+                className={cn(
+                  "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
+                )}
+              >
+                <div
+                  data-testid="split-workspace-empty-panel-state"
+                  // pt-12 keeps the placeholder clear of the floating window
+                  // toggle, which occupies the panel's top chrome corner.
+                  className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-4 pt-12"
+                >
+                  <EmptyStatePanel className="flex-1 rounded-lg">
+                    This pane has no right panel.
+                  </EmptyStatePanel>
+                </div>
+              </Panel>
+            </>
+          ) : (
+            <PluginComposerHostProvider
+              key={focusedPaneId}
+              value={model.composerHost}
+            >
+              {model.panel}
+            </PluginComposerHostProvider>
+          )}
         </PanelGroup>
       </div>
     </SecondaryPanelHostLayoutContext.Provider>

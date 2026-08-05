@@ -1241,11 +1241,6 @@ function orderEntries(
 }
 
 const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
-const HEADER_STANDALONE_EDGE_OFFSET = 16;
-// Split host actions follow plugin header content: 4px action gap + 28px close
-// button + the header's 16px edge padding. The visual sidebar background can
-// extend behind that host-owned chrome, but its layout box must not overlap it.
-const HEADER_SPLIT_EDGE_OFFSET = 48;
 
 interface NotesSidebarState {
   headerMounted: boolean;
@@ -1261,6 +1256,11 @@ interface NotesSidebarStore {
   listeners: Set<() => void>;
 }
 
+// The header toggle and the sidebar view live in separate React subtrees and
+// find each other only through this map. Entries stay for the session: a
+// deleted entry lets one subtree keep the old store while the other creates a
+// new one, which silently breaks the header toggle. A reopened pane starts
+// clean anyway, because the view resets the state on its first mount.
 const notesSidebarStores = new Map<string, NotesSidebarStore>();
 const STANDALONE_SIDEBAR_SCOPE = "standalone";
 
@@ -1270,7 +1270,6 @@ function notesSidebarVaultKey(subPath: string): string {
 }
 
 function useNotesSidebarScope(subPath: string): {
-  isSplitPane: boolean;
   scopeRef(element: HTMLElement | null): void;
   storeKey: string;
 } {
@@ -1286,7 +1285,6 @@ function useNotesSidebarScope(subPath: string): {
     );
   }, []);
   return {
-    isSplitPane: paneScope !== STANDALONE_SIDEBAR_SCOPE,
     scopeRef,
     storeKey: `${paneScope}:${notesSidebarVaultKey(subPath)}`,
   };
@@ -1327,19 +1325,6 @@ function updateNotesSidebarState(
   for (const listener of store.listeners) listener();
 }
 
-function deleteUnusedNotesSidebarStore(
-  key: string,
-  store: NotesSidebarStore,
-): void {
-  if (
-    store.headerMounts === 0 &&
-    store.viewMounts === 0 &&
-    notesSidebarStores.get(key) === store
-  ) {
-    notesSidebarStores.delete(key);
-  }
-}
-
 function useNotesSidebarState(key: string): {
   state: NotesSidebarState;
   store: NotesSidebarStore;
@@ -1366,7 +1351,7 @@ function NotesSidebarToggle({
 }) {
   return (
     <Button
-      className="relative z-10 size-8"
+      className="size-8"
       size="icon"
       variant="ghost"
       aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
@@ -1379,7 +1364,7 @@ function NotesSidebarToggle({
 }
 
 function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { isSplitPane, scopeRef, storeKey } = useNotesSidebarScope(subPath);
+  const { scopeRef, storeKey } = useNotesSidebarScope(subPath);
   const { state: sidebar, store } = useNotesSidebarState(storeKey);
   const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
   useLayoutEffect(() => {
@@ -1390,26 +1375,14 @@ function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
       if (store.headerMounts === 0) {
         updateNotesSidebarState(store, { headerMounted: false });
       }
-      deleteUnusedNotesSidebarStore(storeKey, store);
     };
-  }, [store, storeKey]);
+  }, [store]);
   return (
     <div
       ref={scopeRef}
       data-testid="notes-sidebar-header"
-      className="relative flex h-12 w-8 shrink-0 items-center justify-end"
+      className="flex w-8 shrink-0 items-center justify-end"
     >
-      <span
-        aria-hidden
-        data-testid="notes-sidebar-header-background"
-        className="pointer-events-none absolute inset-y-0 border-l border-border bg-sidebar"
-        style={{
-          right: isSplitPane
-            ? -HEADER_SPLIT_EDGE_OFFSET
-            : -HEADER_STANDALONE_EDGE_OFFSET,
-          width: collapsed ? 48 : sidebar.width,
-        }}
-      />
       <NotesSidebarToggle
         collapsed={collapsed}
         onCollapsedChange={(userCollapsed) =>
@@ -1579,9 +1552,8 @@ function Tree({
           userCollapsed: null,
         });
       }
-      deleteUnusedNotesSidebarStore(storeKey, sidebarStore);
     };
-  }, [sidebarStore, storeKey]);
+  }, [sidebarStore]);
   useLayoutEffect(() => {
     const pane = asideRef.current?.parentElement;
     if (!pane || typeof ResizeObserver === "undefined") return;
@@ -1780,7 +1752,7 @@ function Tree({
         className={cn(
           "order-2 flex shrink-0 flex-col items-center",
           !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-sidebar py-2",
+            "w-10 border-l border-border bg-muted/20 py-2",
         )}
         style={{ width: sidebar.headerMounted ? 0 : 40 }}
       >
@@ -1799,7 +1771,7 @@ function Tree({
   return (
     <aside
       ref={setAsideRef}
-      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-sidebar"
+      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
       style={{ width: sidebarWidth }}
     >
       <div className="relative flex items-center gap-1 border-b border-border p-2">

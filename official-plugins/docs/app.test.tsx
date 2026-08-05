@@ -123,19 +123,16 @@ describe("Docs nav panel", () => {
     const HeaderContent = panel.headerContent!;
     const header = render(<HeaderContent subPath="personal" />);
     const headerSegment = header.getByTestId("notes-sidebar-header");
-    const headerBackground = header.getByTestId(
-      "notes-sidebar-header-background",
-    );
     expect(headerSegment.classList.contains("w-8")).toBe(true);
-    expect(headerBackground.classList.contains("bg-sidebar")).toBe(true);
-    expect(headerBackground.style.width).toBe("288px");
-    expect(headerBackground.style.right).toBe("-16px");
+    // The sidebar is the plugin's own panel: it stays below the host header,
+    // so no plugin chrome may paint over the header's seam.
+    expect(header.queryByTestId("notes-sidebar-header-background")).toBeNull();
     const toolbar = slot.getByRole("toolbar", {
       name: "Notes sidebar actions",
     });
     expect(slot.getByRole("navigation", { name: "Notes" })).toBeTruthy();
     expect(
-      slot.container.querySelector("aside")?.classList.contains("bg-sidebar"),
+      slot.container.querySelector("aside")?.classList.contains("bg-muted/20"),
     ).toBe(true);
     expect(
       within(toolbar).getByRole("button", { name: "Search notes" }),
@@ -155,12 +152,10 @@ describe("Docs nav panel", () => {
       header.getByRole("button", { name: "Collapse notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("0px");
-    expect(headerBackground.style.width).toBe("48px");
     fireEvent.click(
       header.getByRole("button", { name: "Expand notes sidebar" }),
     );
     expect(slot.container.querySelector("aside")?.style.width).toBe("288px");
-    expect(headerBackground.style.width).toBe("288px");
 
     header.unmount();
     const fallbackToggle = await slot.findByRole("button", {
@@ -175,7 +170,7 @@ describe("Docs nav panel", () => {
     );
   });
 
-  it("keeps the sidebar header background aligned behind split host controls", () => {
+  it("keeps the header toggle inside its own box in a split pane", () => {
     const HeaderContent = app.navPanels[0]!.headerContent!;
     const header = render(
       <div data-split-pane-id="pane-docs">
@@ -184,11 +179,10 @@ describe("Docs nav panel", () => {
     );
 
     const headerSegment = header.getByTestId("notes-sidebar-header");
-    const background = header.getByTestId("notes-sidebar-header-background");
+    // The toggle must not reach into the host's own split-pane controls.
     expect(headerSegment.classList.contains("-mr-4")).toBe(false);
     expect(headerSegment.classList.contains("w-8")).toBe(true);
-    expect(background.style.right).toBe("-48px");
-    expect(background.style.width).toBe("288px");
+    expect(header.queryByTestId("notes-sidebar-header-background")).toBeNull();
   });
 
   it("keeps the right sidebar pinned while a note loads", async () => {
@@ -364,16 +358,6 @@ describe("Docs nav panel", () => {
 
     expect(firstAside?.style.width).toBe("400px");
     expect(secondAside?.style.width).toBe("288px");
-    expect(
-      within(firstHeader.container).getByTestId(
-        "notes-sidebar-header-background",
-      ).style.width,
-    ).toBe("400px");
-    expect(
-      within(secondHeader.container).getByTestId(
-        "notes-sidebar-header-background",
-      ).style.width,
-    ).toBe("288px");
 
     fireEvent.click(
       within(firstHeader.container).getByRole("button", {

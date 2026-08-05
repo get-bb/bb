@@ -274,8 +274,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     layout !== null &&
     countPanes(layout.root) > 1 &&
     maximizedPaneId !== null &&
-    maximizedPane !== null &&
-    maximizedPane.content.kind !== "plugin-panel"
+    maximizedPane !== null
       ? maximizedPaneId
       : null;
   const {
@@ -333,8 +332,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (
       layout === null ||
       countPanes(layout.root) < 2 ||
-      maximizedPane === null ||
-      maximizedPane.content.kind === "plugin-panel"
+      maximizedPane === null
     ) {
       setMaximizedPaneId(null);
       return;
@@ -404,12 +402,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     (paneId: string) => {
       const current = store.get(splitLayoutAtom);
       const pane = current === null ? null : findPane(current.root, paneId);
-      if (
-        current === null ||
-        countPanes(current.root) < 2 ||
-        pane === null ||
-        pane.content.kind === "plugin-panel"
-      ) {
+      if (current === null || countPanes(current.root) < 2 || pane === null) {
         return;
       }
       if (current.focusedPaneId !== paneId) {
@@ -791,22 +784,14 @@ function SplitTree(props: SplitTreeProps) {
           isFocused={isFocused}
           isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
-          reservesWindowPanelToggle={
-            node.content.kind !== "plugin-panel" &&
-            (isMaximized || (isTopRow && isRightEdge))
-          }
+          // Position alone decides this: the host pins its toggle over the
+          // workspace corner, so a plugin pane sitting there must reserve the
+          // same footprint or the toggle lands on its Close pane button.
+          reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
           onRequestClose={() => props.onClosePane(node.paneId)}
           isMaximized={isMaximized}
-          onToggleMaximize={
-            node.content.kind === "plugin-panel"
-              ? null
-              : () => props.onToggleMaximizePane(node.paneId)
-          }
-          onMoveToSide={
-            node.content.kind === "plugin-panel"
-              ? undefined
-              : (side) => props.onMovePaneToSide(node.paneId, side)
-          }
+          onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
+          onMoveToSide={(side) => props.onMovePaneToSide(node.paneId, side)}
           isBoundedPane
           isTopRow={isMaximized || isTopRow}
           ownsWindowTopLeft={
@@ -1033,8 +1018,9 @@ function NonThreadPaneContent({
     reservesWindowPanelToggle: false,
     isFocused: true,
   };
-  const isWindowPanelOpen =
-    useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
+  // The corner belongs to the pane unless the host paints its toggle there.
+  const showsWindowPanelToggle = hostLayout?.pinsCornerToggle === true;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const panel =
@@ -1070,7 +1056,7 @@ function NonThreadPaneContent({
           subPath={content.kind === "plugin-panel" ? content.subPath : ""}
         />
       ) : null}
-      {content.kind === "plugin-panel" ? null : <PaneMaximizeButton />}
+      <PaneMaximizeButton />
       {onRequestClose ? (
         <Button
           type="button"
@@ -1092,11 +1078,11 @@ function NonThreadPaneContent({
           />
         </Button>
       ) : null}
-      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+      {reservesWindowPanelToggle && showsWindowPanelToggle ? (
         // The host's shortcut hint drops below the chrome row; reserve only
-        // its stable 28px corner button beside these pane actions. With the
-        // window panel open, the toggle overlays the panel's own chrome
-        // instead, so the pane actions sit flush at the pane edge.
+        // its stable 28px corner button beside these pane actions. Whenever
+        // the host hides that toggle, the pane actions sit flush at the pane
+        // edge instead of trailing an empty slot.
         <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}
     </>
