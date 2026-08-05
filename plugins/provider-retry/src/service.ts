@@ -503,7 +503,7 @@ export class ProviderRetryService {
       }
       await this.bb.sdk.threads.continueAfterRateLimit({
         threadId,
-        expectedRequestId: failedRequestId,
+        failedRequestId,
       });
       this.remove(threadId);
       return true;

@@ -316,7 +316,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       await continueThreadAfterProviderRateLimit(deps, {
         environment,
-        expectedRequestId: payload.expectedRequestId,
+        failedRequestId: payload.failedRequestId,
         thread,
       }),
     );

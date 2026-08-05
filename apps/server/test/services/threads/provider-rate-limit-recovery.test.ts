@@ -308,7 +308,7 @@ describe("provider rate-limit recovery", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ expectedRequestId: FAILED_REQUEST_ID }),
+          body: JSON.stringify({ failedRequestId: FAILED_REQUEST_ID }),
         },
       );
       expect(response.status).toBe(200);
@@ -349,16 +349,38 @@ describe("provider rate-limit recovery", () => {
           },
         ],
       });
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", fixture.thread.id),
-      ).toHaveLength(1);
+      const [command] = listQueuedThreadCommands(
+        harness,
+        "turn.submit",
+        fixture.thread.id,
+      );
+      expect(command).toMatchObject({
+        type: "turn.submit",
+        target: { mode: "start" },
+        input: [
+          {
+            type: "text",
+            text: "Please continue.",
+            visibility: "agent-only",
+          },
+        ],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+        },
+        resumeContext: {
+          providerThreadId: "provider-thread-rate-limited",
+        },
+      });
 
       const repeated = await harness.app.request(
         `/api/v1/threads/${fixture.thread.id}/rate-limit-recovery/continue`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ expectedRequestId: FAILED_REQUEST_ID }),
+          body: JSON.stringify({ failedRequestId: FAILED_REQUEST_ID }),
         },
       );
       expect(repeated.status).toBe(409);

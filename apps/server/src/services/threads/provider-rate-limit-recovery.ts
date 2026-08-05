@@ -311,7 +311,7 @@ export async function continueThreadAfterProviderRateLimit(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: {
     environment: Environment;
-    expectedRequestId: ClientTurnRequestId;
+    failedRequestId: ClientTurnRequestId;
     thread: Thread;
   },
 ): Promise<ContinueAfterProviderRateLimitResponse> {
@@ -327,7 +327,7 @@ export async function continueThreadAfterProviderRateLimit(
   });
   if (
     !initial.candidate ||
-    initial.candidate.failedRequestId !== args.expectedRequestId
+    initial.candidate.failedRequestId !== args.failedRequestId
   ) {
     throw unavailableRecoveryError(initial.status);
   }
@@ -373,7 +373,7 @@ export async function continueThreadAfterProviderRateLimit(
       });
       if (
         !current.candidate ||
-        current.candidate.failedRequestId !== args.expectedRequestId
+        current.candidate.failedRequestId !== args.failedRequestId
       ) {
         throw unavailableRecoveryError(current.status);
       }
@@ -382,7 +382,7 @@ export async function continueThreadAfterProviderRateLimit(
         threadId: currentThread.id,
         environmentId: currentEnvironment.id,
         type: "client/turn/requested",
-        continuationOfRequestId: args.expectedRequestId,
+        continuationOfRequestId: args.failedRequestId,
         input: CONTINUE_INPUT,
         execution: current.candidate.execution,
         initiator: "system",
@@ -399,11 +399,11 @@ export async function continueThreadAfterProviderRateLimit(
         scope: threadScope(),
         data: {
           operation: "provider_rate_limit_recovery",
-          operationId: `provider-rate-limit-recovery:${args.expectedRequestId}`,
+          operationId: `provider-rate-limit-recovery:${args.failedRequestId}`,
           status: "completed",
           message: "Continued after provider rate limit reset",
           metadata: {
-            failedRequestId: args.expectedRequestId,
+            failedRequestId: args.failedRequestId,
             continuationRequestId: requestId,
           },
         },

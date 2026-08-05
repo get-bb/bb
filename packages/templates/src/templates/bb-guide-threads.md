@@ -160,9 +160,19 @@ Messaging:
   is free.
 
   bb thread stop [id]                      Stop an active or provisioning thread
+  bb thread retry [id]                     Continue a safe subscription-limited turn
+    --self                                 Target current thread
+    --request-id <id>                      Require an exact failed request id
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread
+
+  `thread retry` is only for a terminal provider subscription-limit failure.
+  The server requires accepted input, no assistant output or possible side
+  effects, and no newer request. It starts an agent-only system turn containing
+  `Please continue.` on the existing provider conversation; it does not resend
+  the original prompt or create another user message. The default Provider retry
+  plugin invokes this guard automatically for timed limits.
 
 Ownership:
 

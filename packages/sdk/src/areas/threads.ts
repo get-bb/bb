@@ -187,7 +187,7 @@ export interface ThreadActionArgs {
 }
 
 export interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
-  expectedRequestId: string;
+  failedRequestId: string;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -964,7 +964,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["rate-limit-recovery"].continue.$post({
           param: { id: input.threadId },
-          json: { expectedRequestId: input.expectedRequestId },
+          json: { failedRequestId: input.failedRequestId },
         }),
       );
     },

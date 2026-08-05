@@ -77,6 +77,10 @@ interface ThreadStopCommandOptions {
   json?: boolean;
 }
 
+interface ThreadRetryCommandOptions extends ThreadStopCommandOptions {
+  requestId?: string;
+}
+
 type ThreadBannerActionCommandOptions = ThreadStopCommandOptions;
 
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
@@ -400,6 +404,39 @@ export function registerActionsCommands(
               ? `Thread ${id} steered`
               : `Thread ${id} updated`,
           );
+        },
+      ),
+    );
+
+  parent
+    .command("retry [id]")
+    .description("Continue a safe turn after a provider subscription limit")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option(
+      "--request-id <id>",
+      "Require this failed client request id before continuing",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const status = await sdk.threads.rateLimitRecovery({ threadId });
+          const failedRequestId =
+            opts.requestId ?? status.candidate?.failedRequestId;
+          if (failedRequestId === undefined) {
+            throw new Error(
+              `Thread ${threadId} cannot be safely continued after a provider rate limit (${status.reason}).`,
+            );
+          }
+          const result = await sdk.threads.continueAfterRateLimit({
+            threadId,
+            failedRequestId,
+          });
+          const output = { threadId, failedRequestId, ...result };
+          if (outputJson(opts, output)) return;
+          console.log(`Thread ${threadId} continued after provider rate limit`);
         },
       ),
     );

@@ -259,7 +259,7 @@ export type ProviderRateLimitRecoveryStatus = z.infer<
 >;
 
 export const continueAfterProviderRateLimitRequestSchema = z
-  .object({ expectedRequestId: clientTurnRequestIdSchema })
+  .object({ failedRequestId: clientTurnRequestIdSchema })
   .strict();
 export type ContinueAfterProviderRateLimitRequest = z.infer<
   typeof continueAfterProviderRateLimitRequestSchema

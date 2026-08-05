@@ -375,6 +375,17 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
+- The default Provider retry plugin automatically waits for structured Codex
+  and Claude Code subscription-window resets when the failed turn was accepted
+  but produced no output or possible side effects. Its timers last only while
+  the current bb server/plugin process is running. Inspect it with
+  `bb provider-retry status [thread-id]`; use the same command's `refresh`,
+  `now`, and `cancel` subcommands to control the wait. `bb settings usage`
+  reads current provider usage directly from the machine.
+- Use `bb thread retry [id] [--request-id <id>]` for the same guarded core
+  continuation when no plugin timer remains. It sends agent-only “Please
+  continue.” on the existing provider conversation and fails closed after
+  output, possible side effects, a newer request, or provider-owned retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.

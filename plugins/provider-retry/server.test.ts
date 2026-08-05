@@ -118,14 +118,14 @@ describe("provider retry scheduler", () => {
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
     expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
       threadId: "thread-a",
-      expectedRequestId: "request-thread-a",
+      failedRequestId: "request-thread-a",
     });
 
     await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
     expect(continueAfterRateLimit).toHaveBeenLastCalledWith({
       threadId: "thread-b",
-      expectedRequestId: "request-thread-b",
+      failedRequestId: "request-thread-b",
     });
     await host.harness.dispose();
   });
