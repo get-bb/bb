@@ -29,8 +29,42 @@ const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<AppSurface>();
 
+/**
+ * Which coding agents the machine had when onboarding opened. Answers "how many
+ * installs have no compatible CLI" directly: count distinct install ids with
+ * `onboarding_started` where `agent_state = none`.
+ */
+export type OnboardingAgentState = "connected" | "signed_out" | "none";
+
 export type TelemetryEvent =
   | { name: "app_started" }
+  | {
+      name: "onboarding_started";
+      properties: {
+        agent_state: OnboardingAgentState;
+        detected_agent_count: number;
+      };
+    }
+  | {
+      name: "onboarding_step_completed";
+      properties: { step: "agents" | "projects" };
+    }
+  | {
+      name: "onboarding_step_skipped";
+      properties: { step: "agents" | "projects" };
+    }
+  | {
+      name: "onboarding_completed";
+      properties: {
+        agent_state: OnboardingAgentState;
+        projects_added: number;
+        duration_ms: number;
+      };
+    }
+  | {
+      name: "onboarding_dismissed";
+      properties: { step: "agents" | "projects" };
+    }
   | {
       name: "thread_created";
       properties: {

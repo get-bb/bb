@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   onClose: vi.fn(),
   onOpen: vi.fn(),
   onOpenChange: vi.fn(),
+  openPathEntry: vi.fn(),
   openPicker: vi.fn(),
   setRootComposeProjectId: vi.fn(),
 }));
@@ -35,6 +36,7 @@ vi.mock("@/hooks/useLocalPathPicker", () => ({
     isAvailable: true,
     hostId: "host_atum",
     hostName: "atum",
+    openPathEntry: mocks.openPathEntry,
     openPicker: mocks.openPicker,
     platform: "linux",
     projectPathDialog: {
@@ -81,50 +83,24 @@ afterEach(() => {
 });
 
 describe("useQuickCreateProject", () => {
-  it("opens the dialog instead of the native primary-host picker when several machines exist", () => {
-    mocks.hosts = [host("host_atum", "atum"), host("host_thoth", "Thoth")];
+  // Choosing between the native picker and the in-app dialog now lives in
+  // `useLocalPathPicker.openPathEntry`, so it is covered there. This hook only
+  // has to hand the create target to it.
+  it("delegates opening to the shared path-entry surface", () => {
     const { result } = renderHook(() => useQuickCreateProject());
 
     act(() => result.current.openCreateDialog());
 
-    expect(mocks.onOpen).toHaveBeenCalledWith({ kind: "create" });
-    expect(mocks.openPicker).not.toHaveBeenCalled();
+    expect(mocks.openPathEntry).toHaveBeenCalledWith({ kind: "create" });
+  });
+
+  it("exposes the machine list for the dialog's picker", () => {
+    mocks.hosts = [host("host_atum", "atum"), host("host_thoth", "Thoth")];
+    const { result } = renderHook(() => useQuickCreateProject());
+
     expect(result.current.hosts.map((item) => item.id)).toEqual([
       "host_atum",
       "host_thoth",
     ]);
-  });
-
-  it("keeps the current picker behavior with one machine", () => {
-    const { result } = renderHook(() => useQuickCreateProject());
-
-    act(() => result.current.openCreateDialog());
-
-    expect(mocks.openPicker).toHaveBeenCalledWith({ kind: "create" });
-    expect(mocks.onOpen).not.toHaveBeenCalled();
-  });
-
-  it("keeps the native picker when the only other machine is offline", () => {
-    mocks.hosts = [
-      host("host_atum", "atum"),
-      host("host_dead", "Old laptop", "disconnected"),
-    ];
-    const { result } = renderHook(() => useQuickCreateProject());
-
-    act(() => result.current.openCreateDialog());
-
-    expect(mocks.openPicker).toHaveBeenCalledWith({ kind: "create" });
-    expect(mocks.onOpen).not.toHaveBeenCalled();
-  });
-
-  it("opens the dialog while the machine list is still loading", () => {
-    mocks.hosts = undefined;
-    mocks.isLoadingHosts = true;
-    const { result } = renderHook(() => useQuickCreateProject());
-
-    act(() => result.current.openCreateDialog());
-
-    expect(mocks.onOpen).toHaveBeenCalledWith({ kind: "create" });
-    expect(mocks.openPicker).not.toHaveBeenCalled();
   });
 });

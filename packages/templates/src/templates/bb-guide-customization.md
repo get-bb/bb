@@ -60,10 +60,15 @@ follow-up; when disabled, those actions are reversed.
 
   bb settings show
   bb settings general <key> <true|false>
+  bb settings replay-onboarding
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
   bb settings reload
+
+`bb settings replay-onboarding` clears `onboardingCompletedAt` so the first-run
+setup guide (agent detection, then adding projects) shows again on the next app
+load. The same button lives in Settings → General → Setup guide.
 
 The `toolsHub` experiment exposes Extensions for managing skills and plugins.
 Automations stays in the Plugins section beside threads. It does not enable or

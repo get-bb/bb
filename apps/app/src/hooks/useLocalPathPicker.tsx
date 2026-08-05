@@ -3,7 +3,7 @@ import { normalizeProjectPathInput } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useDialogState } from "@/hooks/useDialogState";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { usePrimaryHost } from "@/hooks/queries/host-queries";
+import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
 import type {
   ProjectPathDialogSubmitHandler,
@@ -26,6 +26,13 @@ export interface LocalPathPickerController {
   isAvailable: boolean;
   hostId: string | null;
   hostName: string | null;
+  /**
+   * Open whichever path-entry surface fits this machine: the native folder
+   * picker when there is exactly one connected host and the daemon supports it,
+   * the in-app browser dialog otherwise. Callers that want a specific surface
+   * can still reach `openPicker` / `projectPathDialog.onOpen` directly.
+   */
+  openPathEntry: (target: ProjectPathDialogTarget) => void;
   openPicker: (target: ProjectPathDialogTarget) => void;
   platform: HostPlatform | null;
   projectPathDialog: ReturnType<typeof useDialogState<ProjectPathDialogTarget>>;
@@ -73,6 +80,11 @@ export function useLocalPathPicker({
   const { platform } = useHostDaemon();
   const { canUseNativeFolderPicker, clientHostId, hostId, hostName } =
     usePathPickerHost();
+  const hostsQuery = useHosts();
+  const isLoadingHosts = hostsQuery.isPending;
+  const connectedHostCount = (hostsQuery.data ?? []).filter(
+    (host) => host.status === "connected",
+  ).length;
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();
   const closeDialog = projectPathDialog.onClose;
 
@@ -131,10 +143,27 @@ export function useLocalPathPicker({
     [submitPath],
   );
 
+  // Only *connected* machines are choosable, so a lone stale enrollment must
+  // not cost desktop users the native folder picker. While the host list is
+  // still loading we cannot yet tell single- from multi-machine: open the
+  // dialog, which grows the picker once the list arrives, rather than
+  // committing to the primary host behind the user's back.
+  const openPathEntry = useCallback(
+    (target: ProjectPathDialogTarget) => {
+      if (isLoadingHosts || connectedHostCount > 1) {
+        projectPathDialog.onOpen(target);
+        return;
+      }
+      openPicker(target);
+    },
+    [connectedHostCount, isLoadingHosts, openPicker, projectPathDialog],
+  );
+
   return {
     isAvailable: hostId != null,
     hostId,
     hostName,
+    openPathEntry,
     openPicker,
     platform,
     projectPathDialog,

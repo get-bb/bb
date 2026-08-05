@@ -89,6 +89,10 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
   claudeCode: {
     status: "error",
     message: "Claude usage is temporarily unavailable.",
+    // Read from local credentials before the usage call, so an outage does not
+    // erase the plan bb already knows about.
+    planLabel: "Max (5x)",
+    accountEmail: null,
   },
   cursor: { status: "not_installed" },
 };

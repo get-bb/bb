@@ -49,6 +49,7 @@ import {
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { OnboardingHost } from "@/components/onboarding/OnboardingHost";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ToolsExperimentGate } from "./components/tools/ToolsExperimentGate";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
@@ -275,6 +276,9 @@ export function App() {
               started it, so its failure toast can be clicked from any route —
               including auth callback, which renders no app shell. */}
           <ProviderCliInstallLogDialogHost />
+          {/* First-run onboarding. Outside <Routes> so it is not tied to a
+              page, and self-gating on the persisted completion timestamp. */}
+          <OnboardingHost />
         </RouteNavigationProvider>
       </AppCommandProvider>
     </QuickCreateProjectProvider>

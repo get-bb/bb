@@ -130,6 +130,25 @@ export function registerSettingsCommands(
     );
 
   settings
+    .command("replay-onboarding")
+    .description("Show the first-run setup guide again on the next app load")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        // Clearing the timestamp is the whole trigger: the app gates the flow
+        // on this field alone.
+        const result = await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          onboardingCompletedAt: null,
+        });
+        if (outputJson(opts, result)) return;
+        console.log("Onboarding will show again");
+      }),
+    );
+
+  settings
     .command("experiment <key> <value>")
     .description("Set an experiment value")
     .option("--json", "Print machine-readable JSON output")

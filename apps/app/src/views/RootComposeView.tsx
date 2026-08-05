@@ -93,6 +93,7 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   useHostProviderCliStatus,
+  useOnboardingAgents,
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -1004,11 +1005,25 @@ export function RootComposeView() {
     currentProject?.defaultExecutionOptions ??
     projectDefaultExecutionOptionsQuery.data ??
     null;
+  // Only consulted when the project has no saved default, so one cached read
+  // rather than the polling onboarding uses.
+  const agentOverviewQuery = useOnboardingAgents({
+    enabled: projectDefaultExecutionOptions === null,
+    poll: false,
+  });
+  const connectedProviderId = agentOverviewQuery.data?.agents.find(
+    (agent) => agent.status === "connected",
+  )?.providerId;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
     resolveProviderRouting,
-    initialProviderId: projectDefaultExecutionOptions?.providerId,
+    // Without a saved project default, fall back to an agent the user is
+    // actually signed in to. The raw provider catalog is a fixed list, so
+    // `providers[0]` would always be Codex — wrong for anyone who only has,
+    // say, Claude Code connected.
+    initialProviderId:
+      projectDefaultExecutionOptions?.providerId ?? connectedProviderId,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
     initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,

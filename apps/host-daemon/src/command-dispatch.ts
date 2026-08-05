@@ -55,6 +55,7 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
+import { discoverRepos } from "./command-handlers/discover-repos.js";
 import { getProviderUsage } from "./provider-usage.js";
 import {
   getKnownAcpAgentsStatus,
@@ -471,6 +472,13 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
     }),
   "provider_cli.install": installProviderCliOnHost,
+  "workspace.discover_repos": async (command, options) =>
+    discoverRepos({
+      maxDepth: command.maxDepth,
+      sinceDays: command.sinceDays,
+      limit: command.limit,
+      env: options.runtimeManager.getShellEnv(),
+    }),
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

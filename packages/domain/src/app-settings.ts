@@ -30,6 +30,16 @@ export const appSettingsSchema = z
     claudeCodeSubagentsDisabled: z.boolean(),
     /** Prevent Claude Code from exposing its native Workflow tool. */
     claudeCodeWorkflowsDisabled: z.boolean(),
+    /**
+     * ISO timestamp of when first-run onboarding last finished or was
+     * dismissed; null means it has never run. A timestamp rather than a boolean
+     * so we also know *when*, and so "never ran" has an honest value.
+     *
+     * Deliberately not a proxy for "is bb set up": whether an agent is usable is
+     * answered live by `provider.usage`, so dismissing onboarding never claims
+     * the machine is configured. Setting this back to null re-triggers the flow.
+     */
+    onboardingCompletedAt: z.string().nullable(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -44,4 +54,5 @@ export const defaultAppSettings: AppSettings = {
   codexSubagentsDisabled: false,
   claudeCodeSubagentsDisabled: false,
   claudeCodeWorkflowsDisabled: false,
+  onboardingCompletedAt: null,
 };

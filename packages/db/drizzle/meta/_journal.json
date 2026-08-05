@@ -596,6 +596,13 @@
       "when": 1785800787885,
       "tag": "0084_side_chat_plugin_only",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "6",
+      "when": 1785947206119,
+      "tag": "0085_glamorous_black_panther",
+      "breakpoints": true
     }
   ]
 }

@@ -198,6 +198,8 @@ export const appSettings = sqliteTable("app_settings", {
     .notNull()
     .default(false),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
+  /** ISO timestamp of the last onboarding completion/dismissal; null = never. */
+  onboardingCompletedAt: text("onboarding_completed_at"),
   updatedAt: integer("updated_at").notNull(),
 });
 

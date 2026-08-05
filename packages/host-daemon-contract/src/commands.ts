@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 72 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 73 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1394,7 +1394,8 @@ export type ProviderUsageWindow = z.infer<typeof providerUsageWindowSchema>;
  * - `unauthenticated` — no local credentials (the CLI is not logged in).
  * - `expired` — credentials exist but the token expired; the CLI must refresh
  *   it (we never refresh another tool's tokens here).
- * - `error` — network/HTTP/parse failure; `message` is user-facing.
+ * - `error` — network/HTTP/parse failure; `message` is user-facing. Carries
+ *   `planLabel`/`accountEmail` when they were known locally before the call.
  */
 export const providerUsageSchema = z.discriminatedUnion("status", [
   z.object({
@@ -1406,7 +1407,17 @@ export const providerUsageSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("not_installed") }),
   z.object({ status: z.literal("unauthenticated") }),
   z.object({ status: z.literal("expired") }),
-  z.object({ status: z.literal("error"), message: z.string().min(1) }),
+  z.object({
+    status: z.literal("error"),
+    message: z.string().min(1),
+    /**
+     * Plan and account are read from local credentials *before* the usage HTTP
+     * call, so a rate limit or outage does not have to erase them. Null when the
+     * provider only learns them from the response body.
+     */
+    planLabel: z.string().min(1).nullable().default(null),
+    accountEmail: z.string().nullable().default(null),
+  }),
 ]);
 export type ProviderUsage = z.infer<typeof providerUsageSchema>;
 
@@ -1419,6 +1430,49 @@ export type ProviderUsageResponse = z.infer<typeof providerUsageResponseSchema>;
 
 const providerUsageCommandSchema = z
   .object({ type: z.literal("provider.usage") })
+  .strict();
+
+/**
+ * One candidate project found on the host. `agentSeenAt` is set when a
+ * supported coding agent has been run here (or in another checkout of the same
+ * repo); it is a ranking hint only, never the reason a repo is listed.
+ */
+export const discoveredRepoSchema = z
+  .object({
+    path: z.string().min(1),
+    name: z.string().min(1),
+    /** Last local activity, from `.git/HEAD` mtime. */
+    lastActivityAt: z.string(),
+    /** Remote URL when the repo has one; used to collapse worktrees. */
+    originUrl: z.string().nullable(),
+    /** True when a supported agent has been run here (or in a sibling checkout). */
+    agentSeen: z.boolean(),
+    /**
+     * When that last agent session was, if the source reported a time. Claude
+     * Code's history carries no timestamp, so `agentSeen` can be true while
+     * this stays null.
+     */
+    agentSeenAt: z.string().nullable(),
+  })
+  .strict();
+export type DiscoveredRepo = z.infer<typeof discoveredRepoSchema>;
+
+export const discoverReposResultSchema = z
+  .object({
+    repos: z.array(discoveredRepoSchema),
+    /** True when the walk hit its time budget and results may be partial. */
+    truncated: z.boolean(),
+  })
+  .strict();
+export type DiscoverReposResult = z.infer<typeof discoverReposResultSchema>;
+
+const discoverReposCommandSchema = z
+  .object({
+    type: z.literal("workspace.discover_repos"),
+    maxDepth: z.number().int().min(1).max(8),
+    sinceDays: z.number().int().min(1).max(3650),
+    limit: z.number().int().min(1).max(200),
+  })
   .strict();
 
 const providerCliStatusCommandSchema = z
@@ -1882,6 +1936,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.usage",
     schema: providerUsageCommandSchema,
     resultSchema: providerUsageResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "workspace.discover_repos": defineHostDaemonCommandDescriptor({
+    type: "workspace.discover_repos",
+    schema: discoverReposCommandSchema,
+    resultSchema: discoverReposResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

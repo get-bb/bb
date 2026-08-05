@@ -50,10 +50,6 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const { mutate, isPending } = useCreateProject();
   const hostsQuery = useHosts();
   const hosts = hostsQuery.data ?? EMPTY_HOSTS;
-  const isLoadingHosts = hostsQuery.isPending;
-  const connectedHostCount = hosts.filter(
-    (host) => host.status === "connected",
-  ).length;
   const navigate = useNavigate();
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -89,18 +85,9 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     submit,
   });
 
-  // Only *connected* machines are choosable, so a lone stale enrollment must
-  // not cost desktop users the native folder picker. While the host list is
-  // still loading we can't yet tell single- from multi-machine: open the
-  // dialog, which grows the picker once the list arrives, rather than
-  // committing to the primary host behind the user's back.
   const openCreateDialog = useCallback(() => {
-    if (isLoadingHosts || connectedHostCount > 1) {
-      controller.projectPathDialog.onOpen({ kind: "create" });
-      return;
-    }
-    controller.openPicker({ kind: "create" });
-  }, [connectedHostCount, controller, isLoadingHosts]);
+    controller.openPathEntry({ kind: "create" });
+  }, [controller]);
 
   return useMemo(
     () => ({

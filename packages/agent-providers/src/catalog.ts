@@ -274,7 +274,7 @@ const builtInAgentProviderById = new Map(
 export const PI_DEFAULT_MODEL_PER_PROVIDER: PiDefaultModelPerProvider = {
   anthropic: "claude-opus-4-8",
   openai: "gpt-5.4",
-  "openai-codex": "gpt-5.5",
+  "openai-codex": "gpt-5.6-sol",
   "amazon-bedrock": "us.anthropic.claude-opus-4-8",
   google: "gemini-2.5-pro",
   "google-gemini-cli": "gemini-2.5-pro",

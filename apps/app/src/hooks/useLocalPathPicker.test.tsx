@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLocalPathPicker } from "./useLocalPathPicker";
 
 const mocks = vi.hoisted(() => ({
+  hosts: undefined as Host[] | undefined,
+  isLoadingHosts: false,
   pickFolder: vi.fn(),
   primaryHost: null as Host | null,
   supportsNativeFolderPicker: true,
@@ -23,6 +25,7 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
+  useHosts: () => ({ data: mocks.hosts, isPending: mocks.isLoadingHosts }),
   usePrimaryHost: () => mocks.primaryHost,
 }));
 
@@ -42,9 +45,19 @@ const atum: Host = {
   updatedAt: 0,
 };
 
+function host(
+  id: string,
+  name: string,
+  status: Host["status"] = "connected",
+): Host {
+  return { ...atum, id, name, status };
+}
+
 beforeEach(() => {
   mocks.primaryHost = atum;
   mocks.supportsNativeFolderPicker = true;
+  mocks.hosts = [atum];
+  mocks.isLoadingHosts = false;
   mocks.pickFolder.mockResolvedValue({ path: "/home/me/repo" });
 });
 
@@ -104,5 +117,60 @@ describe("useLocalPathPicker", () => {
         expect.objectContaining({ hostId: "host_atum", path: "/home/me/repo" }),
       );
     });
+  });
+});
+
+/**
+ * Choosing between the native folder picker and the in-app dialog. This lived
+ * in `useQuickCreateProject` until onboarding needed the same behavior; it is
+ * shared here so every path-entry caller agrees.
+ */
+describe("useLocalPathPicker openPathEntry", () => {
+  it("opens the dialog instead of the native picker when several machines exist", () => {
+    mocks.hosts = [atum, host("host_thoth", "Thoth")];
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => result.current.openPathEntry({ kind: "create" }));
+
+    expect(result.current.projectPathDialog.isOpen).toBe(true);
+    expect(mocks.pickFolder).not.toHaveBeenCalled();
+  });
+
+  it("uses the native picker with one machine", () => {
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => result.current.openPathEntry({ kind: "create" }));
+
+    expect(mocks.pickFolder).toHaveBeenCalled();
+    expect(result.current.projectPathDialog.isOpen).toBe(false);
+  });
+
+  it("keeps the native picker when the only other machine is offline", () => {
+    mocks.hosts = [atum, host("host_dead", "Old laptop", "disconnected")];
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => result.current.openPathEntry({ kind: "create" }));
+
+    expect(mocks.pickFolder).toHaveBeenCalled();
+    expect(result.current.projectPathDialog.isOpen).toBe(false);
+  });
+
+  it("opens the dialog while the machine list is still loading", () => {
+    mocks.hosts = undefined;
+    mocks.isLoadingHosts = true;
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
+    );
+
+    act(() => result.current.openPathEntry({ kind: "create" }));
+
+    expect(result.current.projectPathDialog.isOpen).toBe(true);
+    expect(mocks.pickFolder).not.toHaveBeenCalled();
   });
 });

@@ -175,6 +175,7 @@ export interface GeneralSettingsSectionProps {
   caffeinateAvailable: boolean;
   caffeinateDisabled: boolean;
   caffeinateEnabled: boolean;
+  onReplayOnboarding: () => void;
   desktopBrowserAvailable: boolean;
   onCaffeinateChange: (enabled: boolean) => void;
   navigateToThreadAfterCreate: boolean;
@@ -782,6 +783,7 @@ export function GeneralSettingsSection({
   richTextEditing,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
+  onReplayOnboarding,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
@@ -823,8 +825,34 @@ export function GeneralSettingsSection({
           enabled={rewriteLocalhostLinks}
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
+
+        <ReplayOnboardingSettingsControl onReplay={onReplayOnboarding} />
       </div>
     </SettingsSection>
+  );
+}
+
+/**
+ * Clearing `onboardingCompletedAt` is all it takes: the onboarding host gates
+ * purely on that timestamp, so the flow reopens on the spot.
+ */
+function ReplayOnboardingSettingsControl({
+  onReplay,
+}: {
+  onReplay: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="text-sm">Setup guide</div>
+        <p className="mt-0.5 text-xs text-subtle-foreground">
+          Walk through agent detection and adding projects again.
+        </p>
+      </div>
+      <Button variant="outline" size="sm" onClick={onReplay}>
+        Show again
+      </Button>
+    </div>
   );
 }
 
@@ -1159,6 +1187,12 @@ export function SettingsView() {
           }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onReplayOnboarding={() =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              onboardingCompletedAt: null,
+            })
+          }
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>

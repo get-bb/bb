@@ -8,9 +8,13 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
+  OnboardingAgentOverview,
   SystemVersionResponse,
 } from "@bb/server-contract";
-import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
+import type {
+  DiscoverReposResult,
+  ProviderCliStatusResponse,
+} from "@bb/host-daemon-contract";
 import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import {
@@ -22,6 +26,8 @@ import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
+  onboardingAgentsQueryKey,
+  onboardingReposQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemUsageLimitsQueryKey,
@@ -206,6 +212,35 @@ export function useHostProviderCliStatus({
       }),
     enabled: (enabled ?? true) && hostId !== null,
     ...SESSION_STATIC_QUERY_POLICY,
+  });
+}
+
+/**
+ * Live agent state for onboarding. Polled while the step is open so installing
+ * or signing in from a terminal updates the list without a manual refresh.
+ */
+export function useOnboardingAgents(
+  options: QueryOptions & { poll?: boolean } = {},
+) {
+  return useQuery<OnboardingAgentOverview>({
+    queryKey: onboardingAgentsQueryKey(),
+    queryFn: ({ signal }) => sdk.system.onboardingAgents({ signal }),
+    enabled: options.enabled ?? true,
+    // Onboarding polls so a terminal install/login lands without a refresh.
+    // Other readers (the composer's provider default) just want one answer.
+    ...(options.poll === false
+      ? { staleTime: 60_000 }
+      : { refetchInterval: 4000 }),
+  });
+}
+
+/** Candidate projects on the host. Runs once when the projects step opens. */
+export function useOnboardingRepos(options: QueryOptions = {}) {
+  return useQuery<DiscoverReposResult>({
+    queryKey: onboardingReposQueryKey(),
+    queryFn: ({ signal }) => sdk.system.onboardingRepos({ signal }),
+    enabled: options.enabled ?? true,
+    staleTime: Infinity,
   });
 }
 

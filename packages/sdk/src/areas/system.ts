@@ -3,7 +3,10 @@ import type {
   AppSettings,
   Experiments,
 } from "@bb/domain";
-import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
+import type {
+  DiscoverReposResult,
+  ProviderUsageResponse,
+} from "@bb/host-daemon-contract";
 import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
@@ -13,6 +16,9 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemInstallCliSkillsRequest,
   SystemInstallCliSkillsResponse,
+  OnboardingAgentOverview,
+  OnboardingTelemetryEvent,
+  SystemOnboardingReposQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -65,6 +71,11 @@ export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
+export interface SystemOnboardingArgs extends SystemOnboardingReposQuery {
+  signal?: AbortSignal;
+}
+export type SystemOnboardingAgentsResult = OnboardingAgentOverview;
+export type SystemOnboardingReposResult = DiscoverReposResult;
 export type SystemVersionResult = SystemVersionResponse;
 
 export interface SystemArea {
@@ -96,6 +107,16 @@ export interface SystemArea {
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
+  /** Report one onboarding funnel event to anonymous telemetry. */
+  onboardingEvent(args: OnboardingTelemetryEvent): Promise<{ ok: true }>;
+  /** Live agent state for onboarding: install, auth, and plan per provider. */
+  onboardingAgents(
+    args?: SystemOnboardingArgs,
+  ): Promise<SystemOnboardingAgentsResult>;
+  /** Candidate projects discovered on the host, ranked for onboarding. */
+  onboardingRepos(
+    args?: SystemOnboardingArgs,
+  ): Promise<SystemOnboardingReposResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
@@ -192,6 +213,27 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async updateKeyboardSettings(input) {
       return transport.readJson(
         transport.api.v1.settings.keyboard.$put({ json: input }),
+      );
+    },
+    async onboardingEvent(input) {
+      return transport.readJson(
+        transport.api.v1.system.onboarding.event.$post({ json: input }),
+      );
+    },
+    async onboardingAgents(input = {}) {
+      return transport.readJson(
+        transport.api.v1.system.onboarding.agents.$get(
+          { query: { hostId: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async onboardingRepos(input = {}) {
+      return transport.readJson(
+        transport.api.v1.system.onboarding.repos.$get(
+          { query: { hostId: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async usageLimits(input = {}) {

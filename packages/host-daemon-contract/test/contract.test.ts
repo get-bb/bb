@@ -434,6 +434,19 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "workspace.discover_repos": {
+    repos: [
+      {
+        path: "/home/user/projects/bb",
+        name: "bb",
+        lastActivityAt: "2026-08-05T00:00:00.000Z",
+        originUrl: "https://github.com/example/bb",
+        agentSeen: true,
+        agentSeenAt: "2026-08-04T00:00:00.000Z",
+      },
+    ],
+    truncated: false,
+  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -1023,12 +1036,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Worktree provisioning gained the .worktreeinclude copy step in version 72.
-  // An older daemon connects, skips the copy, and emits no such transcript
-  // entry, so a repo that lists its .env silently gets a worktree without it.
-  // The bump forces an update before the server provisions a worktree.
-  it("uses protocol version 72 for .worktreeinclude worktree provisioning", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(72);
+  // Version 73 adds `workspace.discover_repos` and widens the provider-usage
+  // `error` variant with locally-known plan/account fields. An older daemon has
+  // no handler for the command and sends the narrower error shape, so the bump
+  // forces an update before the server relies on either.
+  it("uses protocol version 73 for repo discovery and usage plan fallback", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(73);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

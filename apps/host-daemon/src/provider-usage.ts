@@ -154,7 +154,12 @@ function normalizeCodexUsage(
 ): ProviderUsage {
   const parsed = codexUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
-    return { status: "error", message: "Codex usage response was malformed." };
+    return {
+      status: "error",
+      message: "Codex usage response was malformed.",
+      planLabel: null,
+      accountEmail: null,
+    };
   }
 
   const windows = [
@@ -184,7 +189,12 @@ async function fetchCodexUsage(): Promise<ProviderUsage> {
     ) {
       return { status: "unauthenticated" };
     }
-    return { status: "error", message: errorMessage(error) };
+    return {
+      status: "error",
+      message: errorMessage(error),
+      planLabel: null,
+      accountEmail: null,
+    };
   }
 
   if (credentials.type === "apiKey") {
@@ -192,6 +202,8 @@ async function fetchCodexUsage(): Promise<ProviderUsage> {
       status: "error",
       message:
         "Codex is authenticated with an API key, which has no subscription usage limits.",
+      planLabel: null,
+      accountEmail: null,
     };
   }
 
@@ -213,6 +225,8 @@ async function fetchCodexUsage(): Promise<ProviderUsage> {
     return {
       status: "error",
       message: `Codex usage request failed (HTTP ${response.status}).`,
+      planLabel: null,
+      accountEmail: null,
     };
   }
 
@@ -421,7 +435,12 @@ function normalizeClaudeUsage(
 ): ProviderUsage {
   const parsed = claudeUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
-    return { status: "error", message: "Claude usage response was malformed." };
+    return {
+      status: "error",
+      message: "Claude usage response was malformed.",
+      planLabel: null,
+      accountEmail: null,
+    };
   }
 
   const windows = [
@@ -467,16 +486,24 @@ async function fetchClaudeUsage(): Promise<ProviderUsage> {
   if (response.status === 401) {
     return { status: "expired" };
   }
+  // Plan and account came from the local credential file, so a rate limit or
+  // outage should not blank them — bb still knows which plan pays for this.
+  const known = {
+    planLabel: claudePlanLabel(credentials),
+    accountEmail,
+  } as const;
   if (response.status === 429) {
     return {
       status: "error",
       message: "Claude usage is rate limited right now. Try again shortly.",
+      ...known,
     };
   }
   if (!response.ok) {
     return {
       status: "error",
       message: `Claude usage request failed (HTTP ${response.status}).`,
+      ...known,
     };
   }
 
@@ -700,7 +727,12 @@ function normalizeCursorUsage(
 ): ProviderUsage {
   const usage = cursorCurrentPeriodUsageSchema.safeParse(rawUsage);
   if (!usage.success) {
-    return { status: "error", message: "Cursor usage response was malformed." };
+    return {
+      status: "error",
+      message: "Cursor usage response was malformed.",
+      planLabel: null,
+      accountEmail: null,
+    };
   }
   const plan = cursorPlanInfoSchema.safeParse(rawPlan);
   const resetsAt = epochMillisecondsToIso(usage.data.billingCycleEnd);
@@ -779,6 +811,8 @@ async function fetchCursorUsage(): Promise<ProviderUsage> {
     return {
       status: "error",
       message: `Cursor usage request failed (HTTP ${usageResponse.status}).`,
+      planLabel: null,
+      accountEmail: null,
     };
   }
 
@@ -806,18 +840,24 @@ export async function getProviderUsage(): Promise<ProviderUsageResponse> {
       (error): ProviderUsage => ({
         status: "error",
         message: errorMessage(error),
+        planLabel: null,
+        accountEmail: null,
       }),
     ),
     fetchClaudeUsage().catch(
       (error): ProviderUsage => ({
         status: "error",
         message: errorMessage(error),
+        planLabel: null,
+        accountEmail: null,
       }),
     ),
     fetchCursorUsage().catch(
       (error): ProviderUsage => ({
         status: "error",
         message: errorMessage(error),
+        planLabel: null,
+        accountEmail: null,
       }),
     ),
   ]);
