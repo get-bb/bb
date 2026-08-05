@@ -174,6 +174,32 @@ describe("app keybindings", () => {
             none: ["modalOpen", "terminalFocus", "browserFocus"],
           },
         },
+        // The picker popover is modal, so a second scoped copy of each chord
+        // keeps cycling alive while it is open.
+        {
+          command: "modelPicker.cycleModel",
+          shortcut: {
+            key: "m",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
+        },
+        {
+          command: "modelPicker.cycleReasoning",
+          shortcut: {
+            key: "t",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
+        },
       ]);
       // No other default binding may use Alt, so the cycle chords cannot be
       // shadowed by an earlier binding for the same chord.
@@ -181,7 +207,12 @@ describe("app keybindings", () => {
         config.defaultKeybindings
           .filter((binding) => binding.shortcut.alt)
           .map((binding) => binding.command),
-      ).toEqual(["modelPicker.cycleModel", "modelPicker.cycleReasoning"]);
+      ).toEqual([
+        "modelPicker.cycleModel",
+        "modelPicker.cycleReasoning",
+        "modelPicker.cycleModel",
+        "modelPicker.cycleReasoning",
+      ]);
       expect(
         config.defaultKeybindings
           .filter((binding) => binding.command.startsWith("pane."))

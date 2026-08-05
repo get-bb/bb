@@ -1,9 +1,14 @@
 /** Outcome of a Cmd+Shift+M dispatch for a single model picker instance. */
 export type ModelPickerToggleAction = "open" | "close" | "ignore";
 
-export interface ModelPickerToggleInput {
-  /** Whether this picker is currently open. */
-  open: boolean;
+/**
+ * Which mounted picker a model-picker chord addresses. Every composer registers
+ * its own handler — including side-chat composers that stay mounted while
+ * hidden — so every such chord must scope to the focused pane AND to a single
+ * composer within it. Shared by the toggle and the cycle chords so their scope
+ * rules cannot drift apart.
+ */
+export interface ModelPickerScope {
   /** Whether this picker is disabled (locked/preview surfaces). */
   disabled: boolean;
   /** Whether this picker's split pane is the focused one. */
@@ -23,32 +28,44 @@ export interface ModelPickerToggleInput {
   caretInOtherComposerOfPane: boolean;
 }
 
+export interface ModelPickerToggleInput extends ModelPickerScope {
+  /** Whether this picker is currently open. */
+  open: boolean;
+}
+
 /**
- * Decides what a single {@link ModelReasoningPicker} should do when the
- * `modelPicker.toggle` command (Cmd+Shift+M) fires. Every mounted composer
- * registers its own handler — including side-chat composers that stay mounted
- * while hidden — so the decision must scope to the focused pane AND to a single
- * composer within it.
+ * Whether this picker instance is the one a model-picker chord addresses.
  *
- * Precedence:
  * 1. Disabled pickers never act.
- * 2. Only the focused pane participates (checked before close so a stale open
- *    picker in an unfocused pane can't swallow the chord).
- * 3. An open picker in the focused pane toggles closed.
- * 4. If the caret is inside a composer, only that composer's picker opens; a
+ * 2. Only the focused pane participates (checked before the open rule so a
+ *    stale open picker in an unfocused pane cannot swallow the chord).
+ * 3. An open picker in the focused pane owns every model-picker chord. Its
+ *    popover is portaled out of the composer, so once it opens the caret rules
+ *    below can no longer see it.
+ * 4. If the caret is inside a composer, only that composer's picker acts; a
  *    sibling composer of the same pane defers to it.
  * 5. Otherwise (caret outside every composer, e.g. after keyboard pane
- *    navigation) only a split pane's primary composer opens — lone surfaces keep
+ *    navigation) only a split pane's primary composer acts — lone surfaces keep
  *    their prior "do nothing unless the caret is in the composer" behavior.
+ */
+export function ownsModelPickerChord(input: ModelPickerToggleInput): boolean {
+  if (input.disabled) return false;
+  if (!input.isFocusedPane) return false;
+  if (input.open) return true;
+  if (input.caretInThisComposer) return true;
+  if (input.caretInOtherComposerOfPane) return false;
+  if (!input.isSplitPane) return false;
+  return input.isPrimaryComposer;
+}
+
+/**
+ * Decides what a single {@link ModelReasoningPicker} should do when the
+ * `modelPicker.toggle` command (Cmd+Shift+M) fires. The cycle commands share
+ * {@link ownsModelPickerChord} with it, so their scope rules cannot drift.
  */
 export function resolveModelPickerToggle(
   input: ModelPickerToggleInput,
 ): ModelPickerToggleAction {
-  if (input.disabled) return "ignore";
-  if (!input.isFocusedPane) return "ignore";
-  if (input.open) return "close";
-  if (input.caretInThisComposer) return "open";
-  if (input.caretInOtherComposerOfPane) return "ignore";
-  if (!input.isSplitPane) return "ignore";
-  return input.isPrimaryComposer ? "open" : "ignore";
+  if (!ownsModelPickerChord(input)) return "ignore";
+  return input.open ? "close" : "open";
 }

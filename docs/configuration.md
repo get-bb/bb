@@ -173,6 +173,8 @@ delayed shortcut badges without disabling any shortcuts.
 | Workspace | Open in preferred app         | `Mod+O`                           | All clients              |
 | Composer  | Focus composer                | `Mod+Shift+C`                     | All clients              |
 | Composer  | Toggle model picker           | `Mod+Shift+M`                     | All clients              |
+| Composer  | Next model                    | `Alt+M`                           | All clients              |
+| Composer  | Next reasoning level          | `Alt+T`                           | All clients              |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
 | Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
 

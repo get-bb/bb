@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ownsModelPickerChord,
   resolveModelPickerToggle,
   type ModelPickerToggleInput,
 } from "./modelPickerToggle";
@@ -90,5 +91,47 @@ describe("resolveModelPickerToggle", () => {
         caretInThisComposer: false,
       }),
     ).toBe("ignore");
+  });
+});
+
+// The cycle chords (Alt+M / Alt+T) resolve through this same predicate, so the
+// toggle and the cycles can never disagree about which picker a chord addresses.
+describe("ownsModelPickerChord", () => {
+  it("agrees with the toggle on every scope decision", () => {
+    for (const open of [false, true]) {
+      for (const overrides of [
+        {},
+        { disabled: true },
+        { isFocusedPane: false },
+        { caretInThisComposer: false },
+        { caretInThisComposer: false, isSplitPane: false },
+        { caretInThisComposer: false, isPrimaryComposer: false },
+        { caretInThisComposer: false, caretInOtherComposerOfPane: true },
+      ]) {
+        const input = { ...base, ...overrides, open };
+        expect(ownsModelPickerChord(input)).toBe(
+          resolveModelPickerToggle(input) !== "ignore",
+        );
+      }
+    }
+  });
+
+  // The popover portals out of the composer, so once it opens the caret is in
+  // neither composer. Without this rule the cycle chords would die on open.
+  it("owns the chord while the picker is open and the caret is nowhere", () => {
+    expect(
+      ownsModelPickerChord({
+        ...base,
+        open: true,
+        isSplitPane: false,
+        caretInThisComposer: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("still ignores an open picker in an unfocused pane", () => {
+    expect(
+      ownsModelPickerChord({ ...base, open: true, isFocusedPane: false }),
+    ).toBe(false);
   });
 });

@@ -192,6 +192,17 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     all: ["mainSurface", "promptAvailable"],
     none: ["modalOpen", "terminalFocus", "browserFocus"],
   }),
+  // The picker popover is itself modal, so the bindings above stop the moment it
+  // opens. These later, scoped copies keep cycling available while it is open —
+  // the same escape hatch `modelPicker.toggle` uses to close itself.
+  binding("modelPicker.cycleModel", "m", { alt: true }, {
+    all: ["mainSurface", "modelPickerOpen"],
+    none: [],
+  }),
+  binding("modelPicker.cycleReasoning", "t", { alt: true }, {
+    all: ["mainSurface", "modelPickerOpen"],
+    none: [],
+  }),
   binding("browser.focusLocation", "l", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
     desktopOnly: true,

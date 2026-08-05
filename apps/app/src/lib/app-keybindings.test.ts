@@ -116,19 +116,35 @@ describe("app keybindings", () => {
         false,
       ),
     ).toBe(true);
-    // A different physical key that happens to compose to "m" must not match.
+    // A non-US layout still reports a plain letter for Alt chords. AZERTY
+    // Alt+A is key "a" on physical KeyQ — it must keep matching the character
+    // the user sees, not the physical key underneath it.
     expect(
       matchesAppShortcut(
         {
-          key: "m",
-          code: "KeyK",
+          key: "a",
+          code: "KeyQ",
           metaKey: false,
           ctrlKey: false,
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
-        true,
+        { ...ALT_M, key: "a" },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      matchesAppShortcut(
+        {
+          key: "a",
+          code: "KeyQ",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        { ...ALT_M, key: "q" },
+        false,
       ),
     ).toBe(false);
   });

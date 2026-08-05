@@ -143,15 +143,20 @@ function baseKeyFromCode(code: string): string | null {
   return null;
 }
 
+function isAsciiAlphanumeric(value: string): boolean {
+  return /^[a-z0-9]$/iu.test(value);
+}
+
 export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
   }
   // macOS composes Option+<letter> into another character — Option+M reports
-  // key "µ" — so an Alt chord can never be matched by `key` there. The physical
-  // code is stable, so Alt chords resolve through it on every platform. Chords
-  // without Alt keep matching by `key`, which respects the user's layout.
-  if (input.altKey) {
+  // key "µ" — so an Alt chord could never be matched by `key` there. Fall back
+  // to the physical key only when the composed character is NOT a plain letter
+  // or digit. A non-US layout still reports one (AZERTY Alt+A is key "a", code
+  // "KeyQ"), so it keeps matching the character the user actually sees.
+  if (input.altKey && !isAsciiAlphanumeric(input.key)) {
     const fromCode = baseKeyFromCode(input.code);
     if (fromCode !== null) return fromCode;
   }

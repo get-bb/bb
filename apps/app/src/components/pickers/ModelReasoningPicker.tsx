@@ -60,12 +60,12 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
-import { resolveModelPickerToggle } from "./modelPickerToggle";
 import {
-  nextCycleValue,
-  shouldModelPickerCycle,
-  type ModelPickerCycleScope,
-} from "./modelPickerCycle";
+  ownsModelPickerChord,
+  resolveModelPickerToggle,
+  type ModelPickerScope,
+} from "./modelPickerToggle";
+import { nextCycleValue } from "./modelPickerCycle";
 
 interface ModelLabelParts {
   base: string;
@@ -549,7 +549,7 @@ export function ModelReasoningPicker({
   const isFocusedPane = paneContext?.isFocused ?? true;
   const isSplitPane = paneContext?.isSplitPane ?? false;
   const resolveCommandScope = useCallback(
-    (target: EventTarget | null): ModelPickerCycleScope => {
+    (target: EventTarget | null): ModelPickerScope => {
       const pickerComposer =
         triggerRef.current?.closest("[data-app-composer]") ?? null;
       const caretComposer =
@@ -599,14 +599,22 @@ export function ModelReasoningPicker({
   // tab's, so the shortcut means the same thing whether the popover is open or
   // shut. A preview in progress is dropped so the visible tab keeps matching the
   // committed selection.
+  //
+  // An in-scope chord ALWAYS returns true, even with nowhere to rotate to. A
+  // false result makes the command provider bail before `preventDefault()`, and
+  // macOS would then insert the composed Option character (Option+M → "µ") into
+  // the prompt. Owning the chord and doing nothing is the correct no-op.
   useAppCommandHandler(
     "modelPicker.cycleModel",
     ({ target }) => {
-      if (!shouldModelPickerCycle(resolveCommandScope(target))) return false;
+      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
+        return false;
+      }
       const next = nextCycleValue(modelOptions, modelValue);
-      if (next === null) return false;
-      onModelChange(next);
-      setPreviewProviderId(null);
+      if (next !== null) {
+        onModelChange(next);
+        setPreviewProviderId(null);
+      }
       return true;
     },
     50,
@@ -614,11 +622,14 @@ export function ModelReasoningPicker({
   useAppCommandHandler(
     "modelPicker.cycleReasoning",
     ({ target }) => {
-      if (!shouldModelPickerCycle(resolveCommandScope(target))) return false;
+      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
+        return false;
+      }
       const next = nextCycleValue(reasoningOptions, reasoningValue);
-      if (next === null) return false;
-      onReasoningChange(next);
-      setPreviewProviderId(null);
+      if (next !== null) {
+        onReasoningChange(next);
+        setPreviewProviderId(null);
+      }
       return true;
     },
     50,
