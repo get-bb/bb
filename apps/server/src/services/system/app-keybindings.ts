@@ -179,6 +179,19 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     all: ["mainSurface", "modelPickerOpen"],
     none: [],
   }),
+  // Rotate the composer's model and reasoning level without opening the picker,
+  // scoped exactly like `modelPicker.toggle` above. Alt is otherwise unused by
+  // bb, the browser, and both desktop menus, so these chords shadow nothing.
+  // macOS composes Option+<letter> into another character, so they match on the
+  // physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
+  binding("modelPicker.cycleModel", "m", { alt: true }, {
+    all: ["mainSurface", "promptAvailable"],
+    none: ["modalOpen", "terminalFocus", "browserFocus"],
+  }),
+  binding("modelPicker.cycleReasoning", "t", { alt: true }, {
+    all: ["mainSurface", "promptAvailable"],
+    none: ["modalOpen", "terminalFocus", "browserFocus"],
+  }),
   binding("browser.focusLocation", "l", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
     desktopOnly: true,

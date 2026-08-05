@@ -78,6 +78,8 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "terminal.open": "terminal.open";
         "composer.focus": "composer.focus";
         "modelPicker.toggle": "modelPicker.toggle";
+        "modelPicker.cycleModel": "modelPicker.cycleModel";
+        "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
         "browser.focusLocation": "browser.focusLocation";
         "browser.reload": "browser.reload";
         "workspace.openPreferred": "workspace.openPreferred";
@@ -2840,8 +2842,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -6592,6 +6594,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "terminal.open": "terminal.open";
             "composer.focus": "composer.focus";
             "modelPicker.toggle": "modelPicker.toggle";
+            "modelPicker.cycleModel": "modelPicker.cycleModel";
+            "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";
@@ -6682,6 +6686,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "terminal.open": "terminal.open";
             "composer.focus": "composer.focus";
             "modelPicker.toggle": "modelPicker.toggle";
+            "modelPicker.cycleModel": "modelPicker.cycleModel";
+            "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";
@@ -6772,6 +6778,8 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "terminal.open": "terminal.open";
             "composer.focus": "composer.focus";
             "modelPicker.toggle": "modelPicker.toggle";
+            "modelPicker.cycleModel": "modelPicker.cycleModel";
+            "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";

@@ -154,6 +154,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Toggle model picker",
         "Open or close the focused composer's model picker.",
       ),
+      command(
+        "modelPicker.cycleModel",
+        "Next model",
+        "Select the next model of the composer's provider.",
+      ),
+      command(
+        "modelPicker.cycleReasoning",
+        "Next reasoning level",
+        "Select the next reasoning level of the composer's model.",
+      ),
     ],
   },
   {

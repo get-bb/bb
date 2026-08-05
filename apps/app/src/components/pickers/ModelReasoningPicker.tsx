@@ -61,6 +61,11 @@ import {
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { resolveModelPickerToggle } from "./modelPickerToggle";
+import {
+  nextCycleValue,
+  shouldModelPickerCycle,
+  type ModelPickerCycleScope,
+} from "./modelPickerCycle";
 
 interface ModelLabelParts {
   base: string;
@@ -537,15 +542,14 @@ export function ModelReasoningPicker({
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
   );
 
-  // Scope Cmd+Shift+M to one composer of the focused pane. Standalone/single-pane
-  // surfaces have no pane context and default to focused/non-split.
+  // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
+  // Standalone/single-pane surfaces have no pane context and default to
+  // focused/non-split.
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
   const isSplitPane = paneContext?.isSplitPane ?? false;
-  useAppCommandContext("modelPickerOpen", open && !disabled);
-  useAppCommandHandler(
-    "modelPicker.toggle",
-    ({ target }) => {
+  const resolveCommandScope = useCallback(
+    (target: EventTarget | null): ModelPickerCycleScope => {
       const pickerComposer =
         triggerRef.current?.closest("[data-app-composer]") ?? null;
       const caretComposer =
@@ -557,15 +561,15 @@ export function ModelReasoningPicker({
       const pickerPane =
         triggerRef.current?.closest("[data-split-pane-id]") ?? null;
       const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
-      const action = resolveModelPickerToggle({
-        open,
+      return {
         disabled: disabled ?? false,
         isFocusedPane,
         isSplitPane,
         // The main/new-thread composer is primary; a side chat marks itself
         // secondary via data-app-composer-role.
         isPrimaryComposer:
-          pickerComposer?.getAttribute("data-app-composer-role") !== "secondary",
+          pickerComposer?.getAttribute("data-app-composer-role") !==
+          "secondary",
         caretInThisComposer:
           caretComposer !== null && caretComposer === pickerComposer,
         caretInOtherComposerOfPane:
@@ -573,9 +577,48 @@ export function ModelReasoningPicker({
           caretComposer !== pickerComposer &&
           pickerPane !== null &&
           caretPane === pickerPane,
+      };
+    },
+    [disabled, isFocusedPane, isSplitPane],
+  );
+  useAppCommandContext("modelPickerOpen", open && !disabled);
+  useAppCommandHandler(
+    "modelPicker.toggle",
+    ({ target }) => {
+      const action = resolveModelPickerToggle({
+        open,
+        ...resolveCommandScope(target),
       });
       if (action === "ignore") return false;
       setOpen(action === "open");
+      return true;
+    },
+    50,
+  );
+  // Both cycle chords rotate the COMMITTED provider's lists, never a previewed
+  // tab's, so the shortcut means the same thing whether the popover is open or
+  // shut. A preview in progress is dropped so the visible tab keeps matching the
+  // committed selection.
+  useAppCommandHandler(
+    "modelPicker.cycleModel",
+    ({ target }) => {
+      if (!shouldModelPickerCycle(resolveCommandScope(target))) return false;
+      const next = nextCycleValue(modelOptions, modelValue);
+      if (next === null) return false;
+      onModelChange(next);
+      setPreviewProviderId(null);
+      return true;
+    },
+    50,
+  );
+  useAppCommandHandler(
+    "modelPicker.cycleReasoning",
+    ({ target }) => {
+      if (!shouldModelPickerCycle(resolveCommandScope(target))) return false;
+      const next = nextCycleValue(reasoningOptions, reasoningValue);
+      if (next === null) return false;
+      onReasoningChange(next);
+      setPreviewProviderId(null);
       return true;
     },
     50,

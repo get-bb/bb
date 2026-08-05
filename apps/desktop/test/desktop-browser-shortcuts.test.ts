@@ -38,6 +38,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         input: {
           altKey: false,
           ctrlKey: false,
+          code: "KeyL",
           key: "l",
           metaKey: true,
           shiftKey: false,
@@ -51,6 +52,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         input: {
           altKey: false,
           ctrlKey: false,
+          code: "KeyK",
           key: "k",
           metaKey: true,
           shiftKey: false,
@@ -64,6 +66,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         input: {
           altKey: false,
           ctrlKey: true,
+          code: "KeyL",
           key: "l",
           metaKey: false,
           shiftKey: false,
@@ -97,6 +100,7 @@ describe("resolveDesktopBrowserAppCommand", () => {
         input: {
           altKey: false,
           ctrlKey: false,
+          code: "BracketLeft",
           key: "{",
           metaKey: true,
           shiftKey: true,

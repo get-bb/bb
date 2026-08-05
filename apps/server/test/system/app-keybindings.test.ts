@@ -132,6 +132,56 @@ describe("app keybindings", () => {
           none: ["modalOpen", "terminalFocus", "browserFocus"],
         },
       });
+      // The cycle chords must stay on plain Alt and share the scope of
+      // `modelPicker.toggle`. Alt is unused elsewhere in bb, so nothing shadows
+      // them and they shadow nothing.
+      expect(
+        config.defaultKeybindings
+          .filter((binding) => binding.command.startsWith("modelPicker.cycle"))
+          .map((binding) => ({
+            command: binding.command,
+            shortcut: binding.shortcut,
+            when: binding.when,
+          })),
+      ).toEqual([
+        {
+          command: "modelPicker.cycleModel",
+          shortcut: {
+            key: "m",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: {
+            all: ["mainSurface", "promptAvailable"],
+            none: ["modalOpen", "terminalFocus", "browserFocus"],
+          },
+        },
+        {
+          command: "modelPicker.cycleReasoning",
+          shortcut: {
+            key: "t",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: {
+            all: ["mainSurface", "promptAvailable"],
+            none: ["modalOpen", "terminalFocus", "browserFocus"],
+          },
+        },
+      ]);
+      // No other default binding may use Alt, so the cycle chords cannot be
+      // shadowed by an earlier binding for the same chord.
+      expect(
+        config.defaultKeybindings
+          .filter((binding) => binding.shortcut.alt)
+          .map((binding) => binding.command),
+      ).toEqual(["modelPicker.cycleModel", "modelPicker.cycleReasoning"]);
       expect(
         config.defaultKeybindings
           .filter((binding) => binding.command.startsWith("pane."))

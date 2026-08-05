@@ -58,6 +58,8 @@ export const APP_COMMAND_IDS = [
   "terminal.open",
   "composer.focus",
   "modelPicker.toggle",
+  "modelPicker.cycleModel",
+  "modelPicker.cycleReasoning",
   "browser.focusLocation",
   "browser.reload",
   "workspace.openPreferred",
@@ -101,6 +103,8 @@ export type AppShortcut = z.infer<typeof appShortcutSchema>;
 
 export interface AppShortcutInput {
   altKey: boolean;
+  /** The physical key (`KeyboardEvent.code`), layout- and modifier-independent. */
+  code: string;
   ctrlKey: boolean;
   key: string;
   metaKey: boolean;
@@ -131,9 +135,25 @@ const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "?": "/",
 };
 
+// The unshifted letter or digit a physical key produces, or null for every
+// other key (arrows, punctuation, F-keys), whose `key` is already stable.
+function baseKeyFromCode(code: string): string | null {
+  if (/^Key[A-Z]$/u.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/u.test(code)) return code.slice(5);
+  return null;
+}
+
 export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
+  }
+  // macOS composes Option+<letter> into another character — Option+M reports
+  // key "µ" — so an Alt chord can never be matched by `key` there. The physical
+  // code is stable, so Alt chords resolve through it on every platform. Chords
+  // without Alt keep matching by `key`, which respects the user's layout.
+  if (input.altKey) {
+    const fromCode = baseKeyFromCode(input.code);
+    if (fromCode !== null) return fromCode;
   }
   return input.shiftKey
     ? (SHIFTED_KEY_BASES[input.key] ?? input.key)

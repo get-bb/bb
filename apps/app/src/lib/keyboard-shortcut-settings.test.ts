@@ -49,6 +49,7 @@ describe("keyboard shortcut settings", () => {
       appShortcutFromInput(
         {
           key: "{",
+          code: "BracketLeft",
           metaKey: true,
           ctrlKey: false,
           altKey: false,
@@ -66,11 +67,31 @@ describe("keyboard shortcut settings", () => {
     });
   });
 
+  // Recording must agree with matching: macOS reports Option+M as "µ", so the
+  // recorder has to store the physical key or the captured chord would never
+  // fire again.
+  it("records an alt chord by its physical key", () => {
+    expect(
+      appShortcutFromInput(
+        {
+          key: "µ",
+          code: "KeyM",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        "MacIntel",
+      ),
+    ).toMatchObject({ key: "m", alt: true, mod: false, shift: false });
+  });
+
   it("preserves explicit non-primary modifiers", () => {
     expect(
       appShortcutFromInput(
         {
           key: "K",
+          code: "KeyK",
           metaKey: true,
           ctrlKey: true,
           altKey: false,

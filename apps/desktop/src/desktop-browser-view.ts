@@ -462,6 +462,7 @@ export function createDesktopBrowserViewManager(
       }
       const command = args.resolveAppCommand({
         altKey: input.alt,
+        code: input.code,
         ctrlKey: input.control,
         key: input.key,
         metaKey: input.meta,
