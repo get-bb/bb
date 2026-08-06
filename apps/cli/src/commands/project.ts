@@ -35,6 +35,14 @@ interface ProjectShowCommandOptions {
   json?: boolean;
 }
 
+interface ProjectWorkspaceSettingsCommandOptions {
+  clearRun?: boolean;
+  clearSetup?: boolean;
+  json?: boolean;
+  runScript?: string;
+  setupScript?: string;
+}
+
 interface ProjectHistoryCommandOptions {
   json?: boolean;
   limit?: string;
@@ -250,9 +258,79 @@ export function registerProjectCommands(
   const source = project
     .command("source")
     .description("Manage project sources");
+  const workspaceSettings = project
+    .command("workspace-settings")
+    .description("Inspect and configure project workspace scripts");
   const attachment = project
     .command("attachment")
     .description("Upload and download server-managed project attachments");
+
+  workspaceSettings
+    .command("show <id>")
+    .description("Show the project's Setup and Run scripts")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (id: string, opts: ProjectWorkspaceSettingsCommandOptions) => {
+          const settings = await createCliBbSdk(
+            getUrl(),
+          ).projects.workspaceSettings({ projectId: id });
+          if (outputJson(opts, settings)) return;
+          console.log(`Setup: ${settings.setupScript ?? "Not configured"}`);
+          console.log(`Run: ${settings.runScript ?? "Not configured"}`);
+        },
+      ),
+    );
+
+  workspaceSettings
+    .command("set <id>")
+    .description("Set or clear the project's Setup and Run scripts")
+    .option("--setup-script <script>", "Set the Setup script")
+    .option("--run-script <script>", "Set the Run script")
+    .option("--clear-setup", "Clear the Setup script")
+    .option("--clear-run", "Clear the Run script")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (id: string, opts: ProjectWorkspaceSettingsCommandOptions) => {
+          if (opts.setupScript !== undefined && opts.clearSetup) {
+            throw new Error(
+              "Cannot combine --setup-script with --clear-setup.",
+            );
+          }
+          if (opts.runScript !== undefined && opts.clearRun) {
+            throw new Error("Cannot combine --run-script with --clear-run.");
+          }
+          if (
+            opts.setupScript === undefined &&
+            opts.runScript === undefined &&
+            !opts.clearSetup &&
+            !opts.clearRun
+          ) {
+            throw new Error(
+              "No changes requested. Provide a script or clear option.",
+            );
+          }
+          const settings = await createCliBbSdk(
+            getUrl(),
+          ).projects.updateWorkspaceSettings({
+            projectId: id,
+            ...(opts.setupScript !== undefined
+              ? { setupScript: opts.setupScript }
+              : opts.clearSetup
+                ? { setupScript: null }
+                : {}),
+            ...(opts.runScript !== undefined
+              ? { runScript: opts.runScript }
+              : opts.clearRun
+                ? { runScript: null }
+                : {}),
+          });
+          if (outputJson(opts, settings)) return;
+          console.log(`Workspace scripts updated for project ${id}`);
+        },
+      ),
+    );
 
   attachment
     .command("upload <id>")

@@ -43,6 +43,36 @@ describe("bb project command output", () => {
     expect(help).toContain("Alias for --machine");
   });
 
+  it("updates project workspace scripts", async () => {
+    const patch = vi.fn(async () => ({
+      runScript: "corepack pnpm dev",
+      setupScript: null,
+    }));
+    stubServerApi({ "v1.projects.:id.workspace-settings.$patch": patch });
+
+    await runCommand(
+      [
+        "project",
+        "workspace-settings",
+        "set",
+        "proj-1",
+        "--run-script",
+        "corepack pnpm dev",
+        "--clear-setup",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "proj-1" },
+      json: { runScript: "corepack pnpm dev", setupScript: null },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual({ runScript: "corepack pnpm dev", setupScript: null });
+  });
+
   it("uploads binary bytes read on a remote CLI machine with explicit metadata", async () => {
     const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
     try {

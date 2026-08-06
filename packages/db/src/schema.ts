@@ -147,6 +147,18 @@ export const projectExecutionDefaults = sqliteTable(
   ],
 );
 
+export const projectWorkspaceSettings = sqliteTable(
+  "project_workspace_settings",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    setupScript: text("setup_script"),
+    runScript: text("run_script"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);
+
 export const systemExperiments = sqliteTable("system_experiments", {
   id: text("id").primaryKey(),
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {

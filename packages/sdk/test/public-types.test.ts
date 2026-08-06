@@ -315,7 +315,9 @@ type ExpectedProjectsKey =
   | "promptHistory"
   | "reorder"
   | "sources"
-  | "update";
+  | "update"
+  | "updateWorkspaceSettings"
+  | "workspaceSettings";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";

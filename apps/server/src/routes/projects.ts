@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   countProjectSources,
   createProject,
+  getProjectWorkspaceSettings,
   getPersonalProject,
   createProjectSource,
   deleteProjectSource,
@@ -15,6 +16,7 @@ import {
   reorderProject,
   updateProject,
   updateProjectSource,
+  upsertProjectWorkspaceSettings,
   setProjectGitRemoteUrlIfMissing,
   isSqliteUniqueConstraintOnColumns,
   type ReorderProjectResult,
@@ -382,6 +384,31 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       projectId,
     });
     return context.json(plan.defaultView);
+  });
+
+  get(routes.workspaceSettings, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    return context.json(getProjectWorkspaceSettings(deps.db, projectId));
+  });
+
+  patch(routes.updateWorkspaceSettings, (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const current = getProjectWorkspaceSettings(deps.db, projectId);
+    return context.json(
+      upsertProjectWorkspaceSettings(deps.db, deps.hub, {
+        projectId,
+        runScript:
+          payload.runScript === undefined
+            ? current.runScript
+            : payload.runScript,
+        setupScript:
+          payload.setupScript === undefined
+            ? current.setupScript
+            : payload.setupScript,
+      }),
+    );
   });
 
   get(routes.promptHistory, (context, query) => {

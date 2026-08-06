@@ -1252,6 +1252,59 @@ function repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
 
 const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
 
+interface StagedProjectWorkspaceSettingsRow {
+  projectId: string;
+  runScript: string | null;
+  setupScript: string | null;
+  updatedAt: number;
+}
+
+function stageExistingProjectWorkspaceSettings(
+  db: DbConnection,
+  migrationsFolder: string,
+): StagedProjectWorkspaceSettingsRow[] | null {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "project_workspace_settings")
+  ) {
+    return null;
+  }
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0086_lush_crusher_hogan",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return null;
+  }
+  const rows = db.$client
+    .prepare<[], StagedProjectWorkspaceSettingsRow>(
+      `SELECT
+         project_id AS projectId,
+         run_script AS runScript,
+         setup_script AS setupScript,
+         updated_at AS updatedAt
+       FROM project_workspace_settings`,
+    )
+    .all();
+  db.$client.prepare("DROP TABLE project_workspace_settings").run();
+  return rows;
+}
+
+function restoreStagedProjectWorkspaceSettings(
+  db: DbConnection,
+  rows: readonly StagedProjectWorkspaceSettingsRow[],
+): void {
+  if (!tableExists(db, "project_workspace_settings")) return;
+  const insert = db.$client.prepare(
+    `INSERT OR REPLACE INTO project_workspace_settings
+       (project_id, run_script, setup_script, updated_at)
+     VALUES (?, ?, ?, ?)`,
+  );
+  for (const row of rows) {
+    insert.run(row.projectId, row.runScript, row.setupScript, row.updatedAt);
+  }
+}
+
 function stageExistingConnectMachineIdColumn(
   db: DbConnection,
   migrationsFolder: string,
@@ -1493,6 +1546,8 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
+    const stagedProjectWorkspaceSettings =
+      stageExistingProjectWorkspaceSettings(db, migrationsFolder);
     const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
       db,
       migrationsFolder,
@@ -1501,6 +1556,12 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+      if (stagedProjectWorkspaceSettings) {
+        restoreStagedProjectWorkspaceSettings(
+          db,
+          stagedProjectWorkspaceSettings,
+        );
+      }
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);

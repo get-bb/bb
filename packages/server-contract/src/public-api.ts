@@ -117,6 +117,7 @@ import type {
   ProjectListQuery,
   ProjectPathsQuery,
   ProjectResponse,
+  ProjectWorkspaceSettingsResponse,
   ProjectSkillsQuery,
   DeleteSkillRequest,
   SkillListResponse,
@@ -125,6 +126,7 @@ import type {
   SkillContentResponse,
   SkillFilesResponse,
   UpdateSkillRequest,
+  UpdateProjectWorkspaceSettingsRequest,
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
@@ -257,6 +259,7 @@ import {
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
+  updateProjectWorkspaceSettingsRequestSchema,
   projectSkillsQuerySchema,
   deleteSkillRequestSchema,
   projectSkillContentQuerySchema,
@@ -374,6 +377,21 @@ export const publicApiRoutes = {
         projectDefaultExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<ProjectExecutionDefaults | null>(),
+    }),
+    workspaceSettings: defineRoute({
+      path: "/projects/:id/workspace-settings",
+      method: "get",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectWorkspaceSettingsResponse>(),
+    }),
+    updateWorkspaceSettings: defineRoute({
+      path: "/projects/:id/workspace-settings",
+      method: "patch",
+      request: jsonRequest<
+        PathProjectId,
+        UpdateProjectWorkspaceSettingsRequest
+      >(updateProjectWorkspaceSettingsRequestSchema),
+      response: jsonResponse<ProjectWorkspaceSettingsResponse>(),
     }),
     promptHistory: defineRoute({
       path: "/projects/:id/prompt-history",

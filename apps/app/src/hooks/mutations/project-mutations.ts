@@ -5,6 +5,7 @@ import type {
   ProjectResponse,
   ReorderProjectRequest,
   UpdateProjectRequest,
+  UpdateProjectWorkspaceSettingsRequest,
   UploadedPromptAttachment,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
@@ -21,6 +22,7 @@ import {
   invalidateProjectSourceQueries,
   invalidateProjectUpdateQueries,
 } from "../cache-owners/mutation-cache-effects";
+import { projectWorkspaceSettingsQueryKey } from "../queries/query-keys";
 
 interface AddLocalProjectSourceRequest {
   projectId: string;
@@ -50,6 +52,28 @@ interface ReorderProjectMutationRequest extends ReorderProjectRequest {
 interface UploadPromptAttachmentRequest {
   projectId: string;
   file: File;
+}
+
+interface UpdateProjectWorkspaceSettingsMutationRequest extends UpdateProjectWorkspaceSettingsRequest {
+  projectId: string;
+}
+
+export function useUpdateProjectWorkspaceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update workspace scripts.",
+      showErrorToast: false,
+    },
+    mutationFn: (request: UpdateProjectWorkspaceSettingsMutationRequest) =>
+      sdk.projects.updateWorkspaceSettings(request),
+    onSuccess: (settings, variables) => {
+      queryClient.setQueryData(
+        projectWorkspaceSettingsQueryKey(variables.projectId),
+        settings,
+      );
+    },
+  });
 }
 
 export function useCreateProject() {
