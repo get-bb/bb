@@ -63,6 +63,18 @@ export const environmentChangeKindSchema = z.enum(ENVIRONMENT_CHANGE_KINDS);
 export const hostChangeKindSchema = z.enum(HOST_CHANGE_KINDS);
 export const systemChangeKindSchema = z.enum(SYSTEM_CHANGE_KINDS);
 
+/** Inclusive upper bound for plugin realtime channel names (chars). */
+export const PLUGIN_REALTIME_CHANNEL_MAX_LENGTH = 128;
+
+/**
+ * Channel name for `bb.realtime.publish` / `plugin-channel` subscriptions.
+ * Bound is shared by the subscription target schema and server publish path.
+ */
+export const pluginRealtimeChannelSchema = z
+  .string()
+  .min(1)
+  .max(PLUGIN_REALTIME_CHANNEL_MAX_LENGTH);
+
 export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -111,6 +123,13 @@ export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("system"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("plugin-channel"),
+      pluginId: z.string().min(1),
+      channel: pluginRealtimeChannelSchema,
     })
     .strict(),
 ]);
@@ -162,6 +181,14 @@ export function realtimeSubscriptionTargetKey(
       return "host-list";
     case "system":
       return "system";
+    case "plugin-channel":
+      // JSON tuple key: collision-proof for pluginId/channel containing
+      // delimiters that would break colon/slash concatenation.
+      return JSON.stringify([
+        "plugin-channel",
+        target.pluginId,
+        target.channel,
+      ]);
     default:
       return assertUnhandledRealtimeSubscriptionTarget(target);
   }

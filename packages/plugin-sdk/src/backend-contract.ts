@@ -202,9 +202,12 @@ export interface PluginRpc {
 export interface PluginRealtime {
   /**
    * Broadcast an ephemeral `plugin-signal` WS message
-   * `{ pluginId, channel, payload }` to every connected client (V1 has no
-   * per-channel subscriptions). `payload` must be JSON-serializable;
-   * `undefined` is normalized to `null`. Nothing is persisted.
+   * `{ pluginId, channel, payload }`. Unrestricted local-owner clients receive
+   * every signal (V1 broadcast). Scoped Work Together clients receive only
+   * signals for exact `plugin-channel` subscriptions they authorized.
+   * `channel` must be a string of 1..128 characters. `payload` must be
+   * JSON-serializable; `undefined` is normalized to `null`. Nothing is
+   * persisted.
    */
   publish(channel: string, payload: unknown): void;
 }

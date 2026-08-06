@@ -822,6 +822,7 @@ describe("realtime and status", () => {
     expect(() => bb.realtime.publish("bad", { boom: 1n })).toThrow(
       "not JSON-serializable",
     );
+    expect(() => bb.realtime.publish("x".repeat(129), null)).toThrow("1..128");
 
     bb.status.needsConfiguration("");
     bb.status.needsConfiguration("set a token");

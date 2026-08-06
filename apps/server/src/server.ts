@@ -67,9 +67,8 @@ import {
 } from "./ws/daemon-protocol.js";
 import { roundDurationMs } from "./services/lib/duration.js";
 import {
-  onTerminalSocketClose,
-  onTerminalSocketMessage,
-  onTerminalSocketOpen,
+  createTerminalSocketProtocol,
+  type TerminalSocketClock,
 } from "./ws/terminal-protocol.js";
 import {
   createBbAppArtifactService,
@@ -129,12 +128,14 @@ interface CreateAppOptions {
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
   /**
-   * Private test seam for deterministic client-socket timers and recheck
-   * cadence. Production omits this (10s recheck, wall clock). Invalid or
-   * >15_000ms intervals are rejected by the protocol factory.
+   * Private test seam for deterministic client-socket and terminal-socket
+   * timers and recheck cadence. Production omits this (10s recheck, wall
+   * clock). Invalid or >15_000ms intervals are rejected by the protocol
+   * factories. Client and terminal sockets share this runtime so recheck /
+   * authorize budgets stay aligned with the S2.1 ≤14s production objective.
    */
   clientSocketRuntime?: {
-    readonly clock?: Partial<ClientSocketClock>;
+    readonly clock?: Partial<ClientSocketClock & TerminalSocketClock>;
     readonly membershipRecheckIntervalMs?: number;
   };
 }
@@ -535,6 +536,19 @@ export function createApp(
       options?.clientSocketRuntime?.membershipRecheckIntervalMs,
   });
 
+  // Terminal human WebSockets: same immutable session capture and security
+  // timer budget as /ws. Scoped open authorizes before attach; unrestricted
+  // preserves stock attach/error without timers.
+  const terminalSocketProtocol = createTerminalSocketProtocol({
+    deps: {
+      terminalSessions: deps.terminalSessions,
+      db: deps.db,
+    },
+    clock: options?.clientSocketRuntime?.clock,
+    membershipRecheckIntervalMs:
+      options?.clientSocketRuntime?.membershipRecheckIntervalMs,
+  });
+
   app.use("/ws", resolveWebSocketPrincipal);
   app.get(
     "/ws",
@@ -574,26 +588,16 @@ export function createApp(
           false,
         );
       }
+      // Capture the same immutable ClientSocketSession after Origin validation.
+      // Bind path terminalId forever — no in-band retarget.
+      const clientSocketSession = requireClientSocketSession(context);
       const terminalId = context.req.param("terminalId");
       return {
         onOpen: (_event, socket) =>
-          onTerminalSocketOpen(deps, {
-            socket,
-            terminalId,
-            threadId: null,
-          }),
+          terminalSocketProtocol.open(socket, clientSocketSession, terminalId),
         onMessage: (event, socket) =>
-          onTerminalSocketMessage(deps, {
-            raw: event.data,
-            socket,
-            terminalId,
-            threadId: null,
-          }),
-        onClose: (_event, socket) =>
-          onTerminalSocketClose(deps, {
-            socket,
-            terminalId,
-          }),
+          terminalSocketProtocol.message(socket, event.data),
+        onClose: (_event, socket) => terminalSocketProtocol.close(socket),
       };
     }),
   );

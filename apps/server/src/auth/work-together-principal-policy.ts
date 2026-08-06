@@ -14,6 +14,7 @@ import {
   type WorkTogetherMembershipVerifier,
 } from "./work-together-membership.js";
 import { isRegistryIssuedClientWebsocketAuthorization } from "./client-websocket-authorization.js";
+import { isRegistryIssuedTerminalWebsocketAuthorization } from "./terminal-websocket-authorization.js";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
 import { decidePublicHttpAuthorization } from "./public-http-authorization.js";
 import {
@@ -196,10 +197,15 @@ function createValidatedWorkTogetherPrincipalPolicy(
                 return { allowed: false, reason: "forbidden" };
               }
               // Registry-issued client-WS pairs (reauthorize + exact standard
-              // detail targets) are allowed for both owner and member after
-              // membership/revision recheck. Public HTTP stays unchanged.
+              // detail / plugin-channel targets) and terminal-WS open pairs are
+              // allowed for both owner and member after membership/revision
+              // recheck. Public HTTP stays unchanged.
               if (
-                isRegistryIssuedClientWebsocketAuthorization(action, resource)
+                isRegistryIssuedClientWebsocketAuthorization(
+                  action,
+                  resource,
+                ) ||
+                isRegistryIssuedTerminalWebsocketAuthorization(action, resource)
               ) {
                 return { allowed: true };
               }

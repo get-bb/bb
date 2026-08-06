@@ -232,7 +232,8 @@ export function requirePrincipalSession(
 
 /**
  * Fail-closed frozen client-socket session (principal + authorize + metadata).
- * Used only for `/ws` upgrade capture. Missing attachment fails closed.
+ * Used for `/ws` and `/ws/terminals/:terminalId` upgrade capture. Missing
+ * attachment fails closed.
  */
 export function requireClientSocketSession(
   context: object,

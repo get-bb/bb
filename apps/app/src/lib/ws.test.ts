@@ -58,6 +58,11 @@ const THREAD_TARGET = {
 const PROJECT_TARGET = {
   kind: "project-list",
 } satisfies RealtimeSubscriptionTarget;
+const PLUGIN_CHANNEL_TARGET = {
+  kind: "plugin-channel",
+  pluginId: "linear",
+  channel: "issues",
+} satisfies RealtimeSubscriptionTarget;
 
 interface ConnectedManager {
   manager: WebSocketManager;
@@ -171,6 +176,34 @@ describe("WebSocketManager subscriptions", () => {
         type: "subscribe",
         target: PROJECT_TARGET,
       },
+    ]);
+  });
+
+  it("ref-counts exact plugin-channel subscribe/unsubscribe and resends on reconnect", () => {
+    const { manager, socket } = createConnectedManager();
+
+    manager.subscribe(PLUGIN_CHANNEL_TARGET);
+    manager.subscribe(PLUGIN_CHANNEL_TARGET);
+    expect(readClientMessages(socket)).toEqual([
+      { type: "subscribe", target: PLUGIN_CHANNEL_TARGET },
+    ]);
+
+    manager.unsubscribe(PLUGIN_CHANNEL_TARGET);
+    expect(readClientMessages(socket)).toEqual([
+      { type: "subscribe", target: PLUGIN_CHANNEL_TARGET },
+    ]);
+
+    socket.sentMessages.length = 0;
+    socket.close();
+    socket.open();
+    expect(readClientMessages(socket)).toEqual([
+      { type: "subscribe", target: PLUGIN_CHANNEL_TARGET },
+    ]);
+
+    manager.unsubscribe(PLUGIN_CHANNEL_TARGET);
+    expect(readClientMessages(socket)).toEqual([
+      { type: "subscribe", target: PLUGIN_CHANNEL_TARGET },
+      { type: "unsubscribe", target: PLUGIN_CHANNEL_TARGET },
     ]);
   });
 });

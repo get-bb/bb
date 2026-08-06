@@ -574,6 +574,21 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
+  it("bb.realtime.publish rejects oversized channel names", async () => {
+    const response = await rpc(harness, "publish", {
+      channel: "x".repeat(129),
+      payload: null,
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: "handler_error",
+        message: expect.stringContaining("1..128"),
+      },
+    });
+  });
+
   it("rpc resolves the handler after the body arrives, so a reload during the body read never runs a stale handler", async () => {
     // The handler closes over its load generation: a binding resolved
     // before the body read (and invalidated by the mid-read reload) would

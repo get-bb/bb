@@ -2496,8 +2496,8 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
         provider: z$1.ZodNullable<z$1.ZodEnum<{
-            codex: "codex";
             "claude-code": "claude-code";
+            codex: "codex";
         }>>;
         scope: z$1.ZodEnum<{
             plugin: "plugin";
@@ -2856,8 +2856,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2888,8 +2888,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -9385,8 +9385,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            codex: "codex";
             "claude-code": "claude-code";
+            codex: "codex";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;
@@ -12437,9 +12437,12 @@ interface PluginRpc {
 interface PluginRealtime {
     /**
      * Broadcast an ephemeral `plugin-signal` WS message
-     * `{ pluginId, channel, payload }` to every connected client (V1 has no
-     * per-channel subscriptions). `payload` must be JSON-serializable;
-     * `undefined` is normalized to `null`. Nothing is persisted.
+     * `{ pluginId, channel, payload }`. Unrestricted local-owner clients receive
+     * every signal (V1 broadcast). Scoped Work Together clients receive only
+     * signals for exact `plugin-channel` subscriptions they authorized.
+     * `channel` must be a string of 1..128 characters. `payload` must be
+     * JSON-serializable; `undefined` is normalized to `null`. Nothing is
+     * persisted.
      */
     publish(channel: string, payload: unknown): void;
 }

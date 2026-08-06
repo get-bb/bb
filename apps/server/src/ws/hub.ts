@@ -36,9 +36,9 @@ interface HubSocket {
 
 /**
  * Internal client delivery mode. Scoped sockets only receive thread ephemera
- * for exact authorized `thread-detail` keys and never receive plugin signals
- * until channel capabilities land in S2.2. Default unrestricted preserves
- * local-owner and existing tests.
+ * for exact authorized `thread-detail` keys and plugin signals for exact
+ * authorized `plugin-channel` keys. Default unrestricted preserves local-owner
+ * and existing tests.
  */
 export type ClientDeliveryMode = "unrestricted" | "scoped";
 
@@ -670,8 +670,9 @@ export class NotificationHub implements DbNotifier {
 
   /**
    * Deliver an ephemeral plugin realtime signal (`bb.realtime.publish`).
-   * Unrestricted sockets keep broadcast behavior; scoped sockets receive none
-   * pending S2.2 channel capabilities.
+   * Unrestricted sockets keep V1 all-plugin broadcast behavior; scoped sockets
+   * receive only when subscribed to the exact `plugin-channel` key for this
+   * pluginId + channel pair (A/x must not receive A/y or B/x).
    */
   notifyPluginSignal(
     pluginId: string,
@@ -686,9 +687,14 @@ export class NotificationHub implements DbNotifier {
         payload,
       }),
     );
+    const channelKey = subscriptionKey({
+      kind: "plugin-channel",
+      pluginId,
+      channel,
+    });
     let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      if (this.deliveryModeFor(socket) === "scoped") {
+    for (const [socket, keys] of this.clientKeysBySocket) {
+      if (this.deliveryModeFor(socket) === "scoped" && !keys.has(channelKey)) {
         continue;
       }
       socket.send(message);

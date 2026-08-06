@@ -1,13 +1,15 @@
 import {
   getEnvironment,
+  getInstalledPlugin,
   getProject,
   getThread,
   type DbConnection,
 } from "@bb/db";
-import type {
-  PolicyAction,
-  PolicyResource,
-  RealtimeSubscriptionTarget,
+import {
+  PLUGIN_REALTIME_CHANNEL_MAX_LENGTH,
+  type PolicyAction,
+  type PolicyResource,
+  type RealtimeSubscriptionTarget,
 } from "@bb/domain";
 
 /** Namespaced action prefix for registry-issued client WebSocket operations. */
@@ -20,6 +22,10 @@ export const CLIENT_WS_REAUTHORIZE_ACTION_NAME =
 /** Fixed action name for authorizing an exact detail subscription target. */
 export const CLIENT_WS_SUBSCRIBE_ACTION_NAME =
   `${CLIENT_WS_ACTION_PREFIX}subscribe` as const;
+
+/** Fixed action name for authorizing an exact plugin realtime channel. */
+export const CLIENT_WS_SUBSCRIBE_PLUGIN_CHANNEL_ACTION_NAME =
+  `${CLIENT_WS_ACTION_PREFIX}subscribePluginChannel` as const;
 
 /**
  * Module-private identity registry. Only pairs returned by this module's
@@ -92,12 +98,13 @@ function denySubscribe(): ResolvedClientWebsocketSubscribeAuthorization {
 }
 
 function issueSubscribe(
+  actionName: string,
   resourceKind: string,
   resourceId: string,
   target: RealtimeSubscriptionTarget,
 ): ResolvedClientWebsocketSubscribeAuthorization {
   const pair = issuePair(
-    { name: CLIENT_WS_SUBSCRIBE_ACTION_NAME },
+    { name: actionName },
     { kind: resourceKind, id: resourceId },
   );
   return {
@@ -111,11 +118,13 @@ function issueSubscribe(
 /**
  * Map a parsed realtime subscription target to a registry-issued authorize
  * pair, or a non-enumerating denial. Only exact standard-project detail
- * targets that exist in the database are issued.
+ * targets that exist in the database, and exact plugin-channel targets for
+ * existing enabled non-removed plugins, are issued.
  *
  * Denial covers: missing entities, personal projects, every list target, host
- * detail/list, system, and any other unmapped kind. Callers must not use the
- * denial reason to distinguish existence.
+ * detail/list, system, missing/disabled/removed plugins, and any other
+ * unmapped kind. Callers must not use the denial reason to distinguish
+ * existence.
  */
 export function resolveClientWebsocketSubscribeAuthorization(
   db: DbConnection,
@@ -138,7 +147,12 @@ export function resolveClientWebsocketSubscribeAuthorization(
       if (project === null || project.kind !== "standard") {
         return denySubscribe();
       }
-      return issueSubscribe("threadEvents", target.threadId, target);
+      return issueSubscribe(
+        CLIENT_WS_SUBSCRIBE_ACTION_NAME,
+        "threadEvents",
+        target.threadId,
+        target,
+      );
     }
     case "project-detail": {
       if (typeof target.projectId !== "string" || target.projectId.length < 1) {
@@ -148,7 +162,12 @@ export function resolveClientWebsocketSubscribeAuthorization(
       if (project === null || project.kind !== "standard") {
         return denySubscribe();
       }
-      return issueSubscribe("project", target.projectId, target);
+      return issueSubscribe(
+        CLIENT_WS_SUBSCRIBE_ACTION_NAME,
+        "project",
+        target.projectId,
+        target,
+      );
     }
     case "environment-detail": {
       if (
@@ -165,7 +184,34 @@ export function resolveClientWebsocketSubscribeAuthorization(
       if (project === null || project.kind !== "standard") {
         return denySubscribe();
       }
-      return issueSubscribe("environment", target.environmentId, target);
+      return issueSubscribe(
+        CLIENT_WS_SUBSCRIBE_ACTION_NAME,
+        "environment",
+        target.environmentId,
+        target,
+      );
+    }
+    case "plugin-channel": {
+      if (
+        typeof target.pluginId !== "string" ||
+        target.pluginId.length < 1 ||
+        typeof target.channel !== "string" ||
+        target.channel.length < 1 ||
+        target.channel.length > PLUGIN_REALTIME_CHANNEL_MAX_LENGTH
+      ) {
+        return denySubscribe();
+      }
+      const plugin = getInstalledPlugin(db, target.pluginId);
+      // getInstalledPlugin already excludes removed rows.
+      if (plugin === undefined || plugin.enabled !== true) {
+        return denySubscribe();
+      }
+      return issueSubscribe(
+        CLIENT_WS_SUBSCRIBE_PLUGIN_CHANNEL_ACTION_NAME,
+        "plugin",
+        target.pluginId,
+        target,
+      );
     }
     case "thread-list":
     case "project-list":

@@ -4,6 +4,7 @@ import {
   changedMessageLenientSchema,
   changedMessageSchema,
   gitBranchNameSchema,
+  pluginRealtimeChannelSchema,
 } from "@bb/domain";
 import type { GitBranchName } from "@bb/domain";
 
@@ -174,19 +175,19 @@ export const serverMessageLenientSchema = changedMessageLenientSchema;
 
 /**
  * Ephemeral server→client WebSocket message carrying a plugin's
- * `bb.realtime.publish(channel, payload)` signal. V1 broadcasts to every
- * connected client — there is no per-channel subscription yet (client-side
- * consumption lands with the plugin frontend runtime). Nothing is persisted;
- * clients that predate this message type ignore it. `payload` is a
- * JSON-serializable value (publish normalizes `undefined` to `null`). Strict
- * schema guards the server's outgoing boundary (mirrors the thread-open signal
- * in threads.ts).
+ * `bb.realtime.publish(channel, payload)` signal. Unrestricted local-owner
+ * sockets still receive every signal (V1 broadcast). Scoped sockets receive
+ * only exact authorized `plugin-channel` subscriptions. Nothing is persisted;
+ * clients that predate this message type ignore it. `channel` is 1..128
+ * characters. `payload` is a JSON-serializable value (publish normalizes
+ * `undefined` to `null`). Strict schema guards the server's outgoing boundary
+ * (mirrors the thread-open signal in threads.ts).
  */
 export const pluginSignalSchema = z
   .object({
     type: z.literal("plugin-signal"),
     pluginId: z.string().min(1),
-    channel: z.string().min(1),
+    channel: pluginRealtimeChannelSchema,
     payload: z.unknown(),
   })
   .strict();
@@ -195,12 +196,13 @@ export type PluginSignal = z.infer<typeof pluginSignalSchema>;
 /**
  * Lenient counterpart of {@link pluginSignalSchema} for INBOUND parsing on
  * clients (mirrors threadOpenSignalLenientSchema): unknown fields from a
- * newer server are stripped instead of dropping the whole signal.
+ * newer server are stripped instead of dropping the whole signal. Channel
+ * max length is enforced so oversized values from a buggy peer do not pass.
  */
 export const pluginSignalLenientSchema = z.object({
   type: z.literal("plugin-signal"),
   pluginId: z.string().min(1),
-  channel: z.string().min(1),
+  channel: pluginRealtimeChannelSchema,
   payload: z.unknown(),
 });
 

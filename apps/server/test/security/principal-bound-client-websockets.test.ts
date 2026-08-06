@@ -10,6 +10,7 @@ import {
   createThread,
   ensurePersonalProject,
   upsertHost,
+  upsertInstalledPlugin,
 } from "@bb/db";
 import type {
   PolicyAction,
@@ -407,6 +408,88 @@ describe("principal-bound client WebSockets (real transport)", () => {
     server.hub.notifyThread(thread.id, ["events-appended"]);
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(messages).toHaveLength(1);
+  });
+
+  it("delivers scoped plugin signals only for exact plugin-channel and closes missing plugin subscribe", async () => {
+    const policyState: MutablePolicyState = {
+      allowAuthorize: true,
+      expiresAtMs: Date.now() + 60_000,
+    };
+    server = await startTestServer(
+      {},
+      {
+        principalPolicy: createMutableScopedPolicy(policyState),
+        principalMode: "work-together",
+      },
+    );
+    seedWorkspace(server);
+    upsertInstalledPlugin(server.db, {
+      id: "linear",
+      source: "path:/plugins/linear",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/linear" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/linear",
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const socket = await openWebSocket(websocketUrl(server.baseUrl, "/ws"));
+    sockets.add(socket);
+    socket.send(
+      JSON.stringify({
+        type: "subscribe",
+        target: {
+          kind: "plugin-channel",
+          pluginId: "linear",
+          channel: "issues",
+        },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const messagePromise = waitForMessage(socket);
+    server.hub.notifyPluginSignal("linear", "issues", { n: 1 });
+    await expect(messagePromise).resolves.toMatchObject({
+      type: "plugin-signal",
+      pluginId: "linear",
+      channel: "issues",
+    });
+
+    // Cross channel/plugin must not deliver.
+    const leaked: unknown[] = [];
+    socket.on("message", (data) => {
+      leaked.push(JSON.parse(String(data)));
+    });
+    server.hub.notifyPluginSignal("linear", "other", { n: 2 });
+    server.hub.notifyPluginSignal("other", "issues", { n: 3 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(leaked).toHaveLength(0);
+
+    const denied = await openWebSocket(websocketUrl(server.baseUrl, "/ws"));
+    sockets.add(denied);
+    const closed = waitForClose(denied);
+    denied.send(
+      JSON.stringify({
+        type: "subscribe",
+        target: {
+          kind: "plugin-channel",
+          pluginId: "missing-plugin",
+          channel: "issues",
+        },
+      }),
+    );
+    await expect(closed).resolves.toEqual({
+      code: 1008,
+      reason: CLIENT_SOCKET_POLICY_CLOSE_REASON,
+    });
   });
 
   it("binds a signed WT assertion, rejects its replay, and closes after membership removal", async () => {

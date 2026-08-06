@@ -132,7 +132,8 @@ export class WebSocketManager {
     }
 
     // Ephemeral plugin realtime signal (bb.realtime.publish). Not buffered:
-    // only live useRealtime subscribers care, and V1 has no replay.
+    // only live useRealtime subscribers care (exact plugin-channel
+    // subscribe/unsubscribe is refcounted separately). No server-side replay.
     const pluginSignal = pluginSignalLenientSchema.safeParse(parsed);
     if (pluginSignal.success) {
       for (const cb of this.pluginSignalCallbacks) {

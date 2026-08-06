@@ -7,6 +7,7 @@ import {
   migrate,
   noopNotifier,
   upsertHost,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -649,5 +650,93 @@ describe("client socket session manager", () => {
       { code: 1008, reason: CLIENT_SOCKET_POLICY_CLOSE_REASON },
     ]);
     expect(watchInterests.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("authorizes plugin-channel before hub registration and closes missing plugin", async () => {
+    const db = createTestDb();
+    upsertInstalledPlugin(db, {
+      id: "linear",
+      source: "path:/plugins/linear",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/linear" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/linear",
+      version: "1.0.0",
+      enabled: true,
+    });
+    const hub = new NotificationHub();
+    const watchInterests = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      releaseSocket: vi.fn(),
+    };
+    let authorizeCalls = 0;
+    let releaseAuthorize!: (decision: { allowed: true }) => void;
+    const authorizeGate = new Promise<{ allowed: true }>((resolve) => {
+      releaseAuthorize = resolve;
+    });
+    const protocol = createClientSocketProtocol({
+      hub,
+      watchInterests,
+      db,
+    });
+    const socket = createMockHubSocket();
+    protocol.open(
+      socket,
+      scopedSession({
+        expiresAtMs: Date.now() + 60_000,
+        authorize: async () => {
+          authorizeCalls += 1;
+          return authorizeGate;
+        },
+      }),
+    );
+    protocol.message(
+      socket,
+      JSON.stringify({
+        type: "subscribe",
+        target: {
+          kind: "plugin-channel",
+          pluginId: "linear",
+          channel: "issues",
+        },
+      }),
+    );
+    await flush();
+    expect(authorizeCalls).toBe(1);
+    expect(watchInterests.subscribe).not.toHaveBeenCalled();
+    releaseAuthorize({ allowed: true });
+    await flush();
+    expect(watchInterests.subscribe).toHaveBeenCalledTimes(1);
+
+    hub.notifyPluginSignal("linear", "issues", { ok: true });
+    expect(socket.messages).toHaveLength(1);
+    hub.notifyPluginSignal("linear", "other", { ok: false });
+    expect(socket.messages).toHaveLength(1);
+
+    const missing = createMockHubSocket();
+    protocol.open(missing, scopedSession({ expiresAtMs: Date.now() + 60_000 }));
+    protocol.message(
+      missing,
+      JSON.stringify({
+        type: "subscribe",
+        target: {
+          kind: "plugin-channel",
+          pluginId: "missing",
+          channel: "issues",
+        },
+      }),
+    );
+    await flush();
+    expect(missing.closed).toEqual([
+      { code: 1008, reason: CLIENT_SOCKET_POLICY_CLOSE_REASON },
+    ]);
   });
 });

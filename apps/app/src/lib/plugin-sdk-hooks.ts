@@ -244,14 +244,25 @@ export function useRealtime(
   useEffect(() => {
     handlerRef.current = handler;
   });
-  useEffect(
-    () =>
-      wsManager.onPluginSignal((signal) => {
-        if (signal.pluginId !== pluginId || signal.channel !== channel) return;
-        handlerRef.current(signal.payload);
-      }),
-    [pluginId, channel],
-  );
+  useEffect(() => {
+    // Exact pluginId+channel subscription with WebSocketManager refcounting
+    // so duplicate hooks and reconnects share one server subscribe.
+    const target = {
+      kind: "plugin-channel" as const,
+      pluginId,
+      channel,
+    };
+    wsManager.subscribe(target);
+    const unsubscribeSignal = wsManager.onPluginSignal((signal) => {
+      // Retain client-side filtering even under unrestricted V1 broadcast.
+      if (signal.pluginId !== pluginId || signal.channel !== channel) return;
+      handlerRef.current(signal.payload);
+    });
+    return () => {
+      unsubscribeSignal();
+      wsManager.unsubscribe(target);
+    };
+  }, [pluginId, channel]);
 }
 
 /** Exposes the lifecycle of the same socket that backs `useRealtime`. */

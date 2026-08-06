@@ -14,6 +14,7 @@ import {
 import { CompactSign, exportJWK, generateKeyPair } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { getClientWebsocketReauthorizePair } from "../../src/auth/client-websocket-authorization.js";
+import { getTerminalWebsocketReauthorizePair } from "../../src/auth/terminal-websocket-authorization.js";
 import { createWorkTogetherMembershipMemoryFake } from "../../src/auth/work-together-membership-memory.js";
 import { WorkTogetherMembershipLookupError } from "../../src/auth/work-together-membership.js";
 import { WorkTogetherPrincipalAssertionError } from "../../src/auth/work-together-principal-assertion-error.js";
@@ -360,7 +361,8 @@ describe("work-together principal policy", () => {
     );
 
     const parts = valid.split(".");
-    const badSig = `${parts[0]}.${parts[1]}.${parts[2]!.replace(/[A-Za-z]/, "A")}`;
+    const signature = parts[2]!;
+    const badSig = `${parts[0]}.${parts[1]}.${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}`;
     await expectAssertionRejected(
       () => policy.resolve(requestFrom({ token: badSig })),
       [SUBJECT, KID],
@@ -776,12 +778,28 @@ describe("work-together principal policy", () => {
     await expect(
       session.authorize(reauthorize.action, reauthorize.resource),
     ).resolves.toEqual({ allowed: true });
+    const terminalReauthorize = getTerminalWebsocketReauthorizePair();
+    await expect(
+      session.authorize(
+        terminalReauthorize.action,
+        terminalReauthorize.resource,
+      ),
+    ).resolves.toEqual({ allowed: true });
 
     // Structural forgeries of the reauthorize pair are denied.
     await expect(
       session.authorize(
         { name: reauthorize.action.name },
         { kind: reauthorize.resource.kind, id: reauthorize.resource.id },
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
+    await expect(
+      session.authorize(
+        { name: terminalReauthorize.action.name },
+        {
+          kind: terminalReauthorize.resource.kind,
+          id: terminalReauthorize.resource.id,
+        },
       ),
     ).resolves.toEqual({ allowed: false, reason: "forbidden" });
 

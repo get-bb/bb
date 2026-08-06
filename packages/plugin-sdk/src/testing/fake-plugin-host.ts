@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
+import { PLUGIN_REALTIME_CHANNEL_MAX_LENGTH } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   BbPluginApi,
@@ -282,7 +283,6 @@ export interface FakeAgentToolRecord {
     ctx: PluginAgentToolContext,
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
-
 
 export interface FakeMentionProviderRecord {
   id: string;
@@ -1307,8 +1307,14 @@ function createFakePluginHostInternal(
   const realtime: PluginRealtime = {
     publish(channel, payload) {
       assertLive();
-      if (typeof channel !== "string" || channel.length === 0) {
-        throw new Error("realtime channel must be a non-empty string");
+      if (
+        typeof channel !== "string" ||
+        channel.length < 1 ||
+        channel.length > PLUGIN_REALTIME_CHANNEL_MAX_LENGTH
+      ) {
+        throw new Error(
+          `realtime channel must be a string of 1..${PLUGIN_REALTIME_CHANNEL_MAX_LENGTH} characters`,
+        );
       }
       const normalized =
         payload === undefined

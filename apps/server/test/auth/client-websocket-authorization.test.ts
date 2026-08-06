@@ -4,9 +4,12 @@ import {
   createProject,
   createThread,
   ensurePersonalProject,
+  markInstalledPluginRemoved,
   migrate,
   noopNotifier,
+  setInstalledPluginEnabled,
   upsertHost,
+  upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -14,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CLIENT_WS_REAUTHORIZE_ACTION_NAME,
   CLIENT_WS_SUBSCRIBE_ACTION_NAME,
+  CLIENT_WS_SUBSCRIBE_PLUGIN_CHANNEL_ACTION_NAME,
   getClientWebsocketReauthorizePair,
   isRegistryIssuedClientWebsocketAuthorization,
   resolveClientWebsocketSubscribeAuthorization,
@@ -127,12 +131,108 @@ describe("client WebSocket authorization registry", () => {
       { kind: "host-detail" as const, hostId: "host-client-ws" },
       { kind: "host-list" as const },
       { kind: "system" as const },
+      {
+        kind: "plugin-channel" as const,
+        pluginId: "missing-plugin",
+        channel: "x",
+      },
     ];
     for (const target of deniedTargets) {
       expect(resolveClientWebsocketSubscribeAuthorization(db, target)).toEqual({
         kind: "denied",
       });
     }
+  });
+
+  it("issues plugin-channel only for existing enabled non-removed plugins", () => {
+    const db = createTestDb();
+    upsertInstalledPlugin(db, {
+      id: "linear",
+      source: "path:/plugins/linear",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/linear" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/linear",
+      version: "1.0.0",
+      enabled: true,
+    });
+    upsertInstalledPlugin(db, {
+      id: "disabled-plugin",
+      source: "path:/plugins/disabled",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/disabled" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/disabled",
+      version: "1.0.0",
+      enabled: true,
+    });
+    setInstalledPluginEnabled(db, "disabled-plugin", false);
+    upsertInstalledPlugin(db, {
+      id: "removed-plugin",
+      source: "path:/plugins/removed",
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: "/plugins/removed" },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/removed",
+      version: "1.0.0",
+      enabled: true,
+    });
+    markInstalledPluginRemoved(db, "removed-plugin");
+
+    const issued = resolveClientWebsocketSubscribeAuthorization(db, {
+      kind: "plugin-channel",
+      pluginId: "linear",
+      channel: "issues",
+    });
+    expect(issued.kind).toBe("issued");
+    if (issued.kind === "issued") {
+      expect(issued.action.name).toBe(
+        CLIENT_WS_SUBSCRIBE_PLUGIN_CHANNEL_ACTION_NAME,
+      );
+      expect(issued.resource).toEqual({ kind: "plugin", id: "linear" });
+      expect(
+        isRegistryIssuedClientWebsocketAuthorization(
+          issued.action,
+          issued.resource,
+        ),
+      ).toBe(true);
+    }
+
+    expect(
+      resolveClientWebsocketSubscribeAuthorization(db, {
+        kind: "plugin-channel",
+        pluginId: "disabled-plugin",
+        channel: "issues",
+      }),
+    ).toEqual({ kind: "denied" });
+    expect(
+      resolveClientWebsocketSubscribeAuthorization(db, {
+        kind: "plugin-channel",
+        pluginId: "removed-plugin",
+        channel: "issues",
+      }),
+    ).toEqual({ kind: "denied" });
   });
 
   it("denies structural forgeries and mismatched issued pairs", () => {

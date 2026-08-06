@@ -12,6 +12,7 @@ import {
 } from "@bb/db";
 import {
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  PLUGIN_REALTIME_CHANNEL_MAX_LENGTH,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -277,7 +278,6 @@ export interface PluginMentionProviderRecord {
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
 }
-
 
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
@@ -869,8 +869,14 @@ export function createPluginApi(options: {
   const realtime: PluginRealtime = {
     publish(channel, payload) {
       assertLive();
-      if (typeof channel !== "string" || channel.length === 0) {
-        throw new Error("realtime channel must be a non-empty string");
+      if (
+        typeof channel !== "string" ||
+        channel.length < 1 ||
+        channel.length > PLUGIN_REALTIME_CHANNEL_MAX_LENGTH
+      ) {
+        throw new Error(
+          `realtime channel must be a string of 1..${PLUGIN_REALTIME_CHANNEL_MAX_LENGTH} characters`,
+        );
       }
       // JSON round-trip up front: enforces serializability with a clear
       // error at the publish site and strips prototypes/getters before the

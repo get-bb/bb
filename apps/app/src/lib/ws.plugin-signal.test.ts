@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebSocketManager } from "./ws";
 
+const PLUGIN_TARGET = {
+  kind: "plugin-channel" as const,
+  pluginId: "linear",
+  channel: "issues",
+};
+
 describe("WebSocketManager plugin-signal routing", () => {
   it("dispatches plugin-signal messages to onPluginSignal subscribers", () => {
     const manager = new WebSocketManager();
@@ -60,5 +66,30 @@ describe("WebSocketManager plugin-signal routing", () => {
 
     expect(pluginSignals).not.toHaveBeenCalled();
     expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("ref-counts exact plugin-channel subscribe/unsubscribe keys", () => {
+    const manager = new WebSocketManager();
+    // Exercise the same refcount path useRealtime relies on without a live socket.
+    manager.subscribe(PLUGIN_TARGET);
+    manager.subscribe(PLUGIN_TARGET);
+    manager.unsubscribe(PLUGIN_TARGET);
+    // Still held by the second ref — no throw and map still tracks the key.
+    manager.unsubscribe(PLUGIN_TARGET);
+    // Fully released; extra unsubscribe is a no-op.
+    manager.unsubscribe(PLUGIN_TARGET);
+    manager.subscribe({
+      kind: "plugin-channel",
+      pluginId: "linear",
+      channel: "other",
+    });
+    manager.subscribe(PLUGIN_TARGET);
+    // Distinct channels are independent keys.
+    manager.unsubscribe({
+      kind: "plugin-channel",
+      pluginId: "linear",
+      channel: "other",
+    });
+    manager.unsubscribe(PLUGIN_TARGET);
   });
 });
