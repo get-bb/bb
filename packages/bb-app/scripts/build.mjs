@@ -73,7 +73,7 @@ await copyBuildOutput({
 });
 // Builtin plugins are bundled at packaging time (not in @bb/server's build,
 // which source checkouts don't need — the registry falls back to the repo's
-// builtin-plugins/<name> there). Runs in apps/server so tsx + workspace imports
+// plugins/<name> there). Runs in apps/server so tsx + workspace imports
 // resolve; writes straight into the packaged server dist.
 await execFileAsync(
   "node",
