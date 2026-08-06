@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type {
+  ActorStamp,
   ClientTurnRequestId,
   PromptInput,
   ThreadEvent,
@@ -48,6 +49,10 @@ import { createEventId } from "../ids.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
+  actorStampColumnsOrNull,
+  encodeActorStampColumns,
+} from "../actor-stamp-columns.js";
+import {
   upsertThreadSearchSegments,
   type UpsertThreadSearchSegmentInput,
 } from "./threads.js";
@@ -65,7 +70,18 @@ const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
 )`;
 const isEnvironmentDirectoryUpdateEventData = sql`json_extract(${events.data}, '$.operation') = 'environment_directory_update'`;
 
+/**
+ * Low-level event insert input.
+ *
+ * `actor` is optional only as a legacy/raw seam for tests and pre-actor
+ * fixtures: omitting it stores an all-null triple. Production service writers
+ * must pass an explicit ActorStamp via appendStoredThreadEvent / daemon append.
+ */
 export interface InsertEventInput {
+  /**
+   * Server-derived actor snapshot. Omit only for legacy/raw test inserts.
+   */
+  actor?: ActorStamp | null;
   threadId: string;
   environmentId?: string | null;
   scope: ThreadEventScope;
@@ -84,6 +100,8 @@ export interface InsertEventsResult {
 }
 
 export interface AppendDaemonEventInput {
+  /** Server-derived exact-thread-agent stamp; never from daemon transport. */
+  actor: ActorStamp;
   data: string;
   environmentId: string | null;
   itemId: string | null;
@@ -133,6 +151,8 @@ export type AppendStoredThreadEventArgs<
   TType extends ThreadEventType = ThreadEventType,
 > = {
   [TEventType in TType]: {
+    /** Required server-derived actor snapshot for new stored event writes. */
+    actor: ActorStamp;
     data: StoredThreadEventDataForType<TEventType>;
     environmentId?: string | null;
     providerThreadId?: string | null;
@@ -194,9 +214,10 @@ export function insertEvents(
     const id = createEventId();
     const createdAt = input.createdAt ?? Date.now();
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
+    const actorColumns = actorStampColumnsOrNull(input.actor);
     const result = db.run(
-      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
-          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.data}, ${createdAt})`,
+      sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, actor_principal_id, actor_kind, actor_display_name, data, created_at)
+          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${actorColumns.actorPrincipalId}, ${actorColumns.actorKind}, ${actorColumns.actorDisplayName}, ${input.data}, ${createdAt})`,
     );
     if (result.changes > 0) {
       insertedCount++;
@@ -485,9 +506,10 @@ export function appendDaemonEventsInTransaction(
       throw new Error(`Missing event sequence for thread: ${input.threadId}`);
     }
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
+    const actorColumns = encodeActorStampColumns(input.actor);
     db.run(
       sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
+        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, actor_principal_id, actor_kind, actor_display_name, data, created_at)
         VALUES (
           ${createEventId()},
           ${input.threadId},
@@ -499,6 +521,9 @@ export function appendDaemonEventsInTransaction(
           ${input.type},
           ${input.itemId},
           ${input.itemKind},
+          ${actorColumns.actorPrincipalId},
+          ${actorColumns.actorKind},
+          ${actorColumns.actorDisplayName},
           ${input.data},
           ${now}
         )`,
@@ -583,10 +608,11 @@ export function appendStoredThreadEventsInTransaction(
       itemId: "itemId" in args.data ? args.data.itemId : undefined,
     });
     const turnId = getThreadEventScopeTurnId(args.scope) ?? null;
+    const actorColumns = encodeActorStampColumns(args.actor);
 
     db.run(
       sql`INSERT INTO events
-        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
+        (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, actor_principal_id, actor_kind, actor_display_name, data, created_at)
         VALUES (
           ${createEventId()},
           ${args.threadId},
@@ -598,6 +624,9 @@ export function appendStoredThreadEventsInTransaction(
           ${args.type},
           ${itemFields.itemId},
           ${itemFields.itemKind},
+          ${actorColumns.actorPrincipalId},
+          ${actorColumns.actorKind},
+          ${actorColumns.actorDisplayName},
           ${JSON.stringify(args.data)},
           ${now}
         )`,
@@ -688,6 +717,9 @@ export interface ListEventsOptions {
 }
 
 const storedEventRowFields = {
+  actorDisplayName: events.actorDisplayName,
+  actorKind: events.actorKind,
+  actorPrincipalId: events.actorPrincipalId,
   createdAt: events.createdAt,
   data: events.data,
   id: events.id,
@@ -1473,8 +1505,25 @@ export function getLatestThreadInterruptedReason(
   db: DbQueryConnection,
   args: GetLatestThreadInterruptedReasonArgs,
 ): SystemThreadInterruptedReason | null {
+  return getLatestThreadInterruptedState(db, args)?.reason ?? null;
+}
+
+export interface LatestThreadInterruptedState {
+  actorDisplayName: string | null;
+  actorKind: string | null;
+  actorPrincipalId: string | null;
+  reason: SystemThreadInterruptedReason;
+}
+
+export function getLatestThreadInterruptedState(
+  db: DbQueryConnection,
+  args: GetLatestThreadInterruptedReasonArgs,
+): LatestThreadInterruptedState | null {
   const row = db
     .select({
+      actorDisplayName: events.actorDisplayName,
+      actorKind: events.actorKind,
+      actorPrincipalId: events.actorPrincipalId,
       reason: sql<string>`json_extract(${events.data}, '$.reason')`,
     })
     .from(events)
@@ -1490,7 +1539,10 @@ export function getLatestThreadInterruptedReason(
   if (!row) {
     return null;
   }
-  return systemThreadInterruptedReasonSchema.parse(row.reason);
+  return {
+    ...row,
+    reason: systemThreadInterruptedReasonSchema.parse(row.reason),
+  };
 }
 
 export function listStoredTurnStartedRowsByTurnIdsUpToSequence(

@@ -12,6 +12,7 @@ import {
   promptHistoryEntries,
   upsertHost,
 } from "@bb/db";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { PromptHistoryScope, PromptInput } from "@bb/domain";
 import {
   listProjectPromptHistory,
@@ -399,6 +400,7 @@ describe("prompt history service", () => {
       input: textInput("Add regression coverage"),
     });
     createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("Add regression coverage"),
       model: "gpt-5",

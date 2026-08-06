@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  actorStampSchema,
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
   jsonValueSchema,
+  LEGACY_SYSTEM_ACTOR_STAMP,
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
   promptTextMentionSchema,
@@ -110,6 +112,8 @@ export const timelineUserConversationRowSchema =
     role: z.literal("user"),
     initiator: threadTurnInitiatorSchema,
     senderThreadId: z.string().nullable(),
+    // Server-derived actor snapshot. Defaulted for pre-actor serialized servers.
+    actor: actorStampSchema.default(LEGACY_SYSTEM_ACTOR_STAMP),
     // Family-B taxonomy fields, required on the read model. `systemMessageKind`
     // is non-nullable (legacy rows project to `unlabeled`); `systemMessageSubject`
     // is nullable (null = no thread subject, e.g. an `unlabeled` legacy row).

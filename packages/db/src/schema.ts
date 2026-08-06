@@ -21,6 +21,7 @@ import type {
   HostType,
   PendingInteractionStatus,
   PermissionMode,
+  PrincipalKind,
   PromptHistoryScope,
   ProjectSourceType,
   ReasoningLevel,
@@ -645,6 +646,11 @@ export const events = sqliteTable(
     type: text("type").$type<ThreadEventType>().notNull(),
     itemId: text("item_id"),
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
+    // Server-derived ActorStamp snapshot. Application writes are complete;
+    // pre-actor / migrated rows remain fully null and decode explicitly.
+    actorPrincipalId: text("actor_principal_id"),
+    actorKind: text("actor_kind").$type<PrincipalKind>(),
+    actorDisplayName: text("actor_display_name"),
     data: text("data").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
   },
@@ -754,6 +760,11 @@ export const queuedThreadMessages = sqliteTable(
       .references(() => threads.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     senderThreadId: text("sender_thread_id"),
+    // Server-derived ActorStamp snapshot retained through queue dispatch.
+    // Application writes are complete; migrated legacy rows remain null.
+    actorPrincipalId: text("actor_principal_id"),
+    actorKind: text("actor_kind").$type<PrincipalKind>(),
+    actorDisplayName: text("actor_display_name"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
@@ -885,6 +896,12 @@ export const pendingInteractions = sqliteTable(
     payload: text("payload").notNull(),
     resolution: text("resolution"),
     statusReason: text("status_reason"),
+    // First resolver's ActorStamp. Written on the pending→resolving transition
+    // so resolving/resolved timeline events keep the original human actor.
+    // Application writes are complete; unresolved or legacy rows remain null.
+    resolutionActorPrincipalId: text("resolution_actor_principal_id"),
+    resolutionActorKind: text("resolution_actor_kind").$type<PrincipalKind>(),
+    resolutionActorDisplayName: text("resolution_actor_display_name"),
     createdAt: integer("created_at").notNull(),
     expiresAt: integer("expires_at"),
     resolvedAt: integer("resolved_at"),

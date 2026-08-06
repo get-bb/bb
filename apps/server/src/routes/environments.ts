@@ -16,6 +16,7 @@ import {
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
+import { requireRequestActorStamp } from "../services/actor-stamp.js";
 import {
   COMMAND_TIMEOUT_MS,
   DIFF_FILE_PATCH_MAX_BYTES,
@@ -312,7 +313,10 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       );
     }
 
-    const archivedThreadIds = archiveEnvironmentThreads(deps, { environment });
+    const archivedThreadIds = archiveEnvironmentThreads(deps, {
+      actor: requireRequestActorStamp(context),
+      environment,
+    });
     return context.json({
       ok: true,
       archivedThreadIds,

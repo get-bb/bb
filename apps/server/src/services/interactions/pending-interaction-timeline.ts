@@ -10,6 +10,7 @@ import type {
   UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import {
+  SYSTEM_ACTOR_STAMP,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
@@ -17,13 +18,44 @@ import {
   turnScope,
   threadScope,
   isPluginPendingInteraction,
+  type ActorStamp,
 } from "@bb/domain";
-import { getThread, type DbNotifier, type DbTransaction } from "@bb/db";
+import {
+  decodeActorStampFromColumns,
+  getPendingInteraction,
+  getThread,
+  type DbNotifier,
+  type DbQueryConnection,
+  type DbTransaction,
+} from "@bb/db";
 import type { AppDeps } from "../../types.js";
 import {
   appendThreadEvent,
   appendThreadEventInTransaction,
 } from "../threads/thread-events.js";
+
+/**
+ * For resolving/resolved interaction events, retain the first resolver's
+ * stamp from pending_interactions. Pending/interrupted lifecycle events use
+ * the stable system stamp (no human resolver yet).
+ */
+function actorStampForInteractionTimelineEvent(
+  db: DbQueryConnection,
+  interaction: PendingInteraction,
+): ActorStamp {
+  if (interaction.status !== "resolving" && interaction.status !== "resolved") {
+    return SYSTEM_ACTOR_STAMP;
+  }
+  const row = getPendingInteraction(db, interaction.id);
+  if (!row) {
+    return SYSTEM_ACTOR_STAMP;
+  }
+  return decodeActorStampFromColumns({
+    actorPrincipalId: row.resolutionActorPrincipalId,
+    actorKind: row.resolutionActorKind,
+    actorDisplayName: row.resolutionActorDisplayName,
+  });
+}
 
 interface PendingInteractionTimelineTransactionDeps {
   db: DbTransaction;
@@ -74,6 +106,7 @@ function appendPermissionGrantTimelineEvent(
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEvent(deps, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: "system/permissionGrant/lifecycle",
@@ -97,6 +130,7 @@ function appendPermissionGrantTimelineEventInTransaction(
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEventInTransaction(deps.db, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: "system/permissionGrant/lifecycle",
@@ -125,6 +159,7 @@ function appendUserQuestionTimelineEvent(
   }
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEvent(deps, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: "system/userQuestion/lifecycle",
@@ -150,6 +185,7 @@ function appendUserQuestionTimelineEventInTransaction(
   }
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEventInTransaction(deps.db, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: "system/userQuestion/lifecycle",
@@ -174,6 +210,7 @@ function appendApprovalItemEvent(
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEvent(deps, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: item.status === "pending" ? "item/started" : "item/completed",
@@ -193,6 +230,7 @@ function appendApprovalItemEventInTransaction(
 ): void {
   const thread = getThread(deps.db, interaction.threadId);
   appendThreadEventInTransaction(deps.db, {
+    actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
     threadId: interaction.threadId,
     environmentId: thread?.environmentId ?? null,
     type: item.status === "pending" ? "item/started" : "item/completed",
@@ -411,6 +449,7 @@ export function appendPendingInteractionTimelineEvent(
   if (isPluginPendingInteraction(interaction)) {
     const thread = getThread(deps.db, interaction.threadId);
     appendThreadEvent(deps, {
+      actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
       threadId: interaction.threadId,
       environmentId: thread?.environmentId ?? null,
       type: "system/operation",
@@ -454,6 +493,7 @@ export function appendPendingInteractionTimelineEventInTransaction(
   if (isPluginPendingInteraction(interaction)) {
     const thread = getThread(deps.db, interaction.threadId);
     appendThreadEventInTransaction(deps.db, {
+      actor: actorStampForInteractionTimelineEvent(deps.db, interaction),
       threadId: interaction.threadId,
       environmentId: thread?.environmentId ?? null,
       type: "system/operation",

@@ -13,6 +13,7 @@ import {
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
   setPendingInteractionResolved,
+  setPendingInteractionResolving,
 } from "../../src/data/pending-interactions.js";
 import { createThread } from "../../src/data/threads.js";
 
@@ -76,6 +77,59 @@ function fileChangeApprovalPayload(itemId: string): string {
 }
 
 describe("pending interactions", () => {
+  it("retains the first resolver actor through later completion", () => {
+    const { db, thread } = setup();
+    const created = createPendingInteraction(db, {
+      threadId: thread.id,
+      turnId: "turn-actor",
+      providerId: "codex",
+      providerThreadId: "provider-thread-actor",
+      providerRequestId: "request-actor",
+      payload: commandApprovalPayload("git status", "item-actor"),
+    });
+    const alice = {
+      principalId: "user_alice",
+      principalKind: "human" as const,
+      displayName: "Alice",
+    };
+
+    expect(
+      setPendingInteractionResolving(db, {
+        id: created.id,
+        resolution: JSON.stringify({ decision: "allow_once" }),
+        resolutionActor: alice,
+      }),
+    ).toMatchObject({
+      resolutionActorPrincipalId: "user_alice",
+      resolutionActorKind: "human",
+      resolutionActorDisplayName: "Alice",
+      status: "resolving",
+    });
+    expect(
+      setPendingInteractionResolving(db, {
+        id: created.id,
+        resolution: JSON.stringify({ decision: "deny" }),
+        resolutionActor: {
+          principalId: "user_bob",
+          principalKind: "human",
+          displayName: "Bob",
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      setPendingInteractionResolved(db, {
+        id: created.id,
+        resolution: JSON.stringify({ decision: "allow_once" }),
+      }),
+    ).toMatchObject({
+      resolutionActorPrincipalId: "user_alice",
+      resolutionActorKind: "human",
+      resolutionActorDisplayName: "Alice",
+      status: "resolved",
+    });
+  });
+
   it("creates and looks up provider-correlated pending interactions", () => {
     const { db, thread } = setup();
 

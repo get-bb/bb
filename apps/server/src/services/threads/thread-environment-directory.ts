@@ -7,7 +7,7 @@ import {
   getThread,
   updateThread,
 } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP, turnScope } from "@bb/domain";
 import type {
   DynamicTool,
   Environment,
@@ -173,6 +173,7 @@ function attachReadyEnvironment(
         environmentId: args.targetEnvironment.id,
       });
       appendThreadEventInTransaction(tx, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: latestThread.id,
         environmentId: args.targetEnvironment.id,
         type: "system/operation",

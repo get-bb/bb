@@ -1,4 +1,5 @@
 import {
+  LEGACY_SYSTEM_ACTOR_STAMP,
   type PromptInput,
   type PromptTextMention,
   type ThreadEvent,
@@ -307,6 +308,7 @@ function buildClientUserMessage({
       : { scope: decoded.scope }),
     initiator,
     senderThreadId,
+    actor: rowMeta.actor ?? LEGACY_SYSTEM_ACTOR_STAMP,
     // Legacy defaulting lives in `storedTurnRequestEventDataSchema`, so decoded
     // rows always carry concrete values at runtime. These `??` fallbacks only
     // satisfy the base in-flight schema's `.optional()` static type; they never

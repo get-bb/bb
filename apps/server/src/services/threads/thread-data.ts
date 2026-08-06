@@ -1,4 +1,5 @@
 import {
+  decodeActorStampFromColumns,
   findStoredEventRow as findStoredEventRowRecord,
   getLatestThreadOutputEventRow,
   getLatestThreadSystemErrorEventRow,
@@ -105,6 +106,11 @@ export function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
     threadId: row.threadId,
     seq: row.sequence,
     createdAt: row.createdAt,
+    actor: decodeActorStampFromColumns({
+      actorPrincipalId: row.actorPrincipalId,
+      actorKind: row.actorKind,
+      actorDisplayName: row.actorDisplayName,
+    }),
     event: parseStoredEvent(row),
   });
 }

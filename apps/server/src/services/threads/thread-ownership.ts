@@ -6,10 +6,12 @@ import {
   updateThread,
 } from "@bb/db";
 import type {
+  ActorStamp,
   PromptInput,
   SystemMessageSubject,
   Thread,
 } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
@@ -45,16 +47,19 @@ interface QueueParentSystemMessageBestEffortArgs {
 }
 
 interface HandleThreadOwnershipChangeArgs {
+  actor?: ActorStamp;
   previousThread: Thread;
   queueParentMessages: boolean;
   updatedThread: Thread;
 }
 
 interface ReleaseUnarchivedChildrenFromArchivedThreadArgs {
+  actor: ActorStamp;
   parentThreadId: string;
 }
 
 interface ArchiveThreadAndReleaseChildrenArgs {
+  actor?: ActorStamp;
   threadId: string;
 }
 
@@ -120,6 +125,7 @@ export async function handleThreadOwnershipChange(
   }
 
   appendThreadOwnershipChangeEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.updatedThread.id,
     environmentId: args.updatedThread.environmentId,
     previousParentThreadId: args.previousThread.parentThreadId,
@@ -174,6 +180,7 @@ function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
       continue;
     }
     appendThreadOwnershipChangeEventInTransaction(deps, {
+      actor: args.actor,
       threadId: updatedThread.id,
       environmentId: updatedThread.environmentId,
       previousParentThreadId: childThread.parentThreadId,
@@ -204,6 +211,7 @@ export function archiveThreadAndReleaseChildren(
           hub: notificationBuffer,
         },
         {
+          actor: args.actor ?? SYSTEM_ACTOR_STAMP,
           parentThreadId: archivedThread.id,
         },
       );

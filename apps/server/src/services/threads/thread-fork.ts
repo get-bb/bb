@@ -1,5 +1,11 @@
 import { getEnvironment, getThread } from "@bb/db";
-import type { Environment, PromptInput, Thread } from "@bb/domain";
+import {
+  SYSTEM_ACTOR_STAMP,
+  type ActorStamp,
+  type Environment,
+  type PromptInput,
+  type Thread,
+} from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
 import type { EnvironmentArgs, ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -86,6 +92,7 @@ function resolveForkEnvironment(
 export async function createThreadForkFromRequest(
   deps: ThreadForkDeps,
   request: ForkThreadRequest,
+  actor: ActorStamp = SYSTEM_ACTOR_STAMP,
 ) {
   const sourceThread = requireForkSourceThread(deps, request.sourceThreadId);
   requireForkCapableProvider(sourceThread);
@@ -131,6 +138,9 @@ export async function createThreadForkFromRequest(
       ...(request.title === undefined ? {} : { title: request.title }),
       visibility: request.visibility,
     },
-    isSeedOnlyIdleFork ? { providerInput: [] } : {},
+    {
+      actor,
+      ...(isSeedOnlyIdleFork ? { providerInput: [] } : {}),
+    },
   );
 }

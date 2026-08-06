@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
@@ -54,6 +55,7 @@ describe("queued thread messages", () => {
   it("creates a queued message", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -73,6 +75,7 @@ describe("queued thread messages", () => {
   it("gets a queued message by ID", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -89,6 +92,7 @@ describe("queued thread messages", () => {
   it("lists queued messages by thread", () => {
     const { db, thread } = setup();
     createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -97,6 +101,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -111,6 +116,7 @@ describe("queued thread messages", () => {
   it("updates queued message content without changing its identity or position", () => {
     const { db, thread } = setup();
     const first = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -119,6 +125,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const second = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -162,6 +169,7 @@ describe("queued thread messages", () => {
   it("rejects a second update based on the same queued message version", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -197,6 +205,7 @@ describe("queued thread messages", () => {
     try {
       const { db, thread } = setup();
       const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         content: defaultInput,
         model: "gpt-5",
@@ -224,6 +233,7 @@ describe("queued thread messages", () => {
   it("does not update a queued message that is already claimed for sending", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -249,6 +259,7 @@ describe("queued thread messages", () => {
   it("deletes a queued message", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -265,6 +276,7 @@ describe("queued thread messages", () => {
   it("claims a queued message and hides it from the queue until the claim is released", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -293,6 +305,7 @@ describe("queued thread messages", () => {
   it("does not release or consume a queued message claimed by another owner", () => {
     const { db, thread } = setup();
     const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -361,6 +374,7 @@ describe("queued thread messages", () => {
     try {
       nowSpy.mockReturnValue(1_000);
       const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         content: defaultInput,
         model: "gpt-5",
@@ -398,6 +412,7 @@ describe("queued thread messages", () => {
         db,
         noopNotifier,
         {
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.id,
           content: defaultInput,
           model: "gpt-5",
@@ -410,6 +425,7 @@ describe("queued thread messages", () => {
         db,
         noopNotifier,
         {
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.id,
           content: altInput,
           model: "gpt-5",
@@ -460,6 +476,7 @@ describe("queued thread messages", () => {
     try {
       nowSpy.mockReturnValueOnce(1_000);
       const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         content: defaultInput,
         model: "gpt-5",
@@ -469,6 +486,7 @@ describe("queued thread messages", () => {
       });
       nowSpy.mockReturnValueOnce(2_000);
       const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         content: altInput,
         model: "gpt-5",
@@ -490,6 +508,7 @@ describe("queued thread messages", () => {
   it("persists the contiguous lead group boundary", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -498,6 +517,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -506,6 +526,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -541,6 +562,7 @@ describe("queued thread messages", () => {
   it("rejects a group boundary when the expected prefix is stale", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -549,6 +571,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -557,6 +580,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -602,6 +626,7 @@ describe("queued thread messages", () => {
   it("claims the contiguous lead group together", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -610,6 +635,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -618,6 +644,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -654,6 +681,7 @@ describe("queued thread messages", () => {
   it("claims only the selected message when sending outside the lead group", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -662,6 +690,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -670,6 +699,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -706,6 +736,7 @@ describe("queued thread messages", () => {
   it("clears the previous group edge when deleting a grouped follower", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -714,6 +745,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -722,6 +754,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -763,6 +796,7 @@ describe("queued thread messages", () => {
   it("clears the previous group edge when claiming a grouped follower", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -771,6 +805,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -779,6 +814,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -817,6 +853,7 @@ describe("queued thread messages", () => {
   it("clears the claimed follower group edge when releasing a failed direct send", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -825,6 +862,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -833,6 +871,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -883,6 +922,7 @@ describe("queued thread messages", () => {
   it("rejects grouped prefixes that mix sender attribution", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -891,6 +931,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       senderThreadId: "thr_sender",
@@ -926,6 +967,7 @@ describe("queued thread messages", () => {
   it("rejects grouped prefixes that mix execution options", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -934,6 +976,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5.5",
@@ -968,6 +1011,7 @@ describe("queued thread messages", () => {
   it("does not consume any grouped claim when batch deletion is stale", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -976,6 +1020,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -1025,6 +1070,7 @@ describe("queued thread messages", () => {
   it("reorders queued messages to the front, middle, and end", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -1033,6 +1079,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -1041,6 +1088,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -1098,6 +1146,7 @@ describe("queued thread messages", () => {
   it("claims the reordered first queued message", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -1106,6 +1155,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -1139,6 +1189,7 @@ describe("queued thread messages", () => {
   it("rolls back a reorder when the requested group boundary is invalid", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -1147,6 +1198,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       senderThreadId: "thr_sender",
@@ -1156,6 +1208,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -1191,6 +1244,7 @@ describe("queued thread messages", () => {
   it("clears grouping when reorder-only would regroup different messages", () => {
     const { db, thread } = setup();
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -1199,6 +1253,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -1207,6 +1262,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -1260,6 +1316,7 @@ describe("queued thread messages", () => {
       providerId: "codex",
     });
     const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: defaultInput,
       model: "gpt-5",
@@ -1268,6 +1325,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: altInput,
       model: "gpt-5",
@@ -1276,6 +1334,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       content: textInput("third"),
       model: "gpt-5",
@@ -1284,6 +1343,7 @@ describe("queued thread messages", () => {
       serviceTier: "default",
     });
     const otherQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: otherThread.id,
       content: defaultInput,
       model: "gpt-5",

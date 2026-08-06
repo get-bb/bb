@@ -1,4 +1,4 @@
-import { turnScope } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP, turnScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
 import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.js";
@@ -48,6 +48,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
     ...messageBase(args),
     kind: "user",
     initiator: args.initiator ?? "user",
+    actor: SYSTEM_ACTOR_STAMP,
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,

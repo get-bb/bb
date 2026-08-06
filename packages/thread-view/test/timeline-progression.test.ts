@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineCommandWorkRow,
@@ -60,6 +61,7 @@ function userRow(text: string): TimelineConversationRow {
     mentions: [],
     attachments: null,
     initiator: "user",
+    actor: SYSTEM_ACTOR_STAMP,
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
@@ -333,6 +335,7 @@ describe("findTimelineFrontierRow", () => {
         mentions: [],
         attachments: null,
         initiator: "user",
+        actor: SYSTEM_ACTOR_STAMP,
         senderThreadId: null,
         systemMessageKind: "unlabeled",
         systemMessageSubject: null,

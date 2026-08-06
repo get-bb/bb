@@ -16,6 +16,7 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import {
+  decodeActorStampFromColumns,
   findTimelineWindowBudgetFloorSequence,
   getEnvironment,
   findUnfinishedTurnCoveringSequence,
@@ -266,6 +267,11 @@ export function toThreadEventWithMeta(
       id: row.id,
       seq: row.sequence,
       createdAt: row.createdAt,
+      actor: decodeActorStampFromColumns({
+        actorPrincipalId: row.actorPrincipalId,
+        actorKind: row.actorKind,
+        actorDisplayName: row.actorDisplayName,
+      }),
     },
   };
 }

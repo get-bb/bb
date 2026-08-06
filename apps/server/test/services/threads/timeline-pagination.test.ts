@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   TimelineRow,
   TimelineUserConversationRow,
@@ -24,6 +25,7 @@ function userRow(args: {
     mentions: [],
     attachments: null,
     initiator: "user",
+    actor: SYSTEM_ACTOR_STAMP,
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,

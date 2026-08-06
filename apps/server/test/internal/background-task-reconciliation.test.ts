@@ -1,6 +1,6 @@
 import { closeSession, getThread, listEvents } from "@bb/db";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { threadScope, turnScope } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP, threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
@@ -471,6 +471,17 @@ describe("active thread disconnect reconciliation triggers", () => {
       expect(JSON.parse(rows[2]!.data)).toEqual({
         reason: "host-daemon-restarted",
       });
+      expect(
+        rows.map((row) => ({
+          principalId: row.actorPrincipalId,
+          principalKind: row.actorKind,
+          displayName: row.actorDisplayName,
+        })),
+      ).toEqual([
+        SYSTEM_ACTOR_STAMP,
+        SYSTEM_ACTOR_STAMP,
+        SYSTEM_ACTOR_STAMP,
+      ]);
     });
   });
 

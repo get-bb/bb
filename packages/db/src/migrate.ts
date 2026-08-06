@@ -196,6 +196,24 @@ const pendingInteractionColumns: ExpectedColumn[] = [
     notNull: false,
     primaryKey: false,
   },
+  {
+    name: "resolution_actor_principal_id",
+    type: "text",
+    notNull: false,
+    primaryKey: false,
+  },
+  {
+    name: "resolution_actor_kind",
+    type: "text",
+    notNull: false,
+    primaryKey: false,
+  },
+  {
+    name: "resolution_actor_display_name",
+    type: "text",
+    notNull: false,
+    primaryKey: false,
+  },
   { name: "created_at", type: "integer", notNull: true, primaryKey: false },
   { name: "expires_at", type: "integer", notNull: false, primaryKey: false },
   { name: "resolved_at", type: "integer", notNull: false, primaryKey: false },
@@ -1177,6 +1195,87 @@ function applyQueuedMessageGroupingSchema(db: DbConnection): void {
     .run();
 }
 
+const actorStampColumnsByTable = {
+  events: ["actor_principal_id", "actor_kind", "actor_display_name"],
+  pending_interactions: [
+    "resolution_actor_principal_id",
+    "resolution_actor_kind",
+    "resolution_actor_display_name",
+  ],
+  queued_thread_messages: [
+    "actor_principal_id",
+    "actor_kind",
+    "actor_display_name",
+  ],
+} as const;
+
+interface StagedActorStampColumn {
+  column: string;
+  stagedColumn: string;
+  table: string;
+}
+
+/**
+ * Development and compatibility tests can rewind the migration ledger while
+ * retaining a newer table shape. Temporarily move any already-present actor
+ * columns aside so additive migration 0087 can replay, then merge them back.
+ */
+function stageExistingActorStampColumns(
+  db: DbConnection,
+  migrationsFolder: string,
+): StagedActorStampColumn[] {
+  if (!tableExists(db, "__drizzle_migrations")) return [];
+
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0087_damp_mockingbird",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) return [];
+
+  const staged: StagedActorStampColumn[] = [];
+  for (const [table, columns] of Object.entries(actorStampColumnsByTable)) {
+    if (!tableExists(db, table)) continue;
+    for (const column of columns) {
+      if (!columnExists(db, table, column)) continue;
+      const stagedColumn = `_bb_${column}_pending`;
+      db.$client.exec(
+        `ALTER TABLE ${table} RENAME COLUMN ${column} TO ${stagedColumn}`,
+      );
+      staged.push({ column, stagedColumn, table });
+    }
+  }
+  return staged;
+}
+
+function restoreStagedActorStampColumns(
+  db: DbConnection,
+  staged: readonly StagedActorStampColumn[],
+): void {
+  for (const { column, stagedColumn, table } of staged) {
+    if (!columnExists(db, table, stagedColumn)) continue;
+    if (!columnExists(db, table, column)) {
+      db.$client.exec(
+        `ALTER TABLE ${table} RENAME COLUMN ${stagedColumn} TO ${column}`,
+      );
+      continue;
+    }
+    db.$client.exec(
+      `UPDATE ${table} SET ${column} = ${stagedColumn}; ALTER TABLE ${table} DROP COLUMN ${stagedColumn};`,
+    );
+  }
+}
+
+function applyActorStampColumnsSchema(db: DbConnection): void {
+  for (const [table, columns] of Object.entries(actorStampColumnsByTable)) {
+    if (!tableExists(db, table)) continue;
+    for (const column of columns) {
+      if (!columnExists(db, table, column)) {
+        db.$client.exec(`ALTER TABLE ${table} ADD COLUMN ${column} text`);
+      }
+    }
+  }
+}
+
 function applyInitialThreadSectionSchema(db: DbConnection): void {
   if (!tableExists(db, "thread_folders")) {
     db.$client
@@ -1497,13 +1596,19 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
+    const stagedActorStampColumns = stageExistingActorStampColumns(
+      db,
+      migrationsFolder,
+    );
     try {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+      restoreStagedActorStampColumns(db, stagedActorStampColumns);
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
+    applyActorStampColumnsSchema(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

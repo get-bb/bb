@@ -136,9 +136,15 @@ describe("internal event append ownership", () => {
         { sequence: 3 },
         {
           sequence: 4,
+          actorPrincipalId: `agent:thread/${thread.id}`,
+          actorKind: "agent",
+          actorDisplayName: "Thread agent",
         },
         {
           sequence: 5,
+          actorPrincipalId: `agent:thread/${thread.id}`,
+          actorKind: "agent",
+          actorDisplayName: "Thread agent",
         },
       ]);
     } finally {

@@ -86,6 +86,8 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
+  /** Server-derived actor snapshot for this user conversation seed. */
+  actor: import("@bb/domain").ActorStamp;
   // Family-B taxonomy fields carried from the decoded `client/turn/requested`
   // event. Legacy events lacking them project as `unlabeled` / `null`.
   systemMessageKind: SystemMessageKind;

@@ -44,6 +44,7 @@ import {
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
+import { requireRequestActorStamp } from "../../services/actor-stamp.js";
 import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
@@ -263,15 +264,23 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (payload.sectionId) {
       requireThreadSection(deps, payload.sectionId);
     }
-    const thread = await createThreadFromRequest(deps, {
-      ...payload,
-      origin: payload.origin,
-    });
+    const thread = await createThreadFromRequest(
+      deps,
+      {
+        ...payload,
+        origin: payload.origin,
+      },
+      { actor: requireRequestActorStamp(context) },
+    );
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
   post(routes.fork, async (context, payload) => {
-    const thread = await createThreadForkFromRequest(deps, payload);
+    const thread = await createThreadForkFromRequest(
+      deps,
+      payload,
+      requireRequestActorStamp(context),
+    );
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
@@ -373,6 +382,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       payload.parentThreadId !== thread.parentThreadId
     ) {
       await handleThreadOwnershipChange(deps, {
+        actor: requireRequestActorStamp(context),
         previousThread: thread,
         queueParentMessages: true,
         updatedThread: updated,
@@ -405,7 +415,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const environment = requireEnvironment(deps.db, thread.environmentId);
     // Deletion finalization owns non-runtime cleanup; only active runtime work
     // needs a daemon stop request here.
-    requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
+    requestActiveRuntimeThreadStopIfNeeded(
+      deps,
+      thread,
+      environment,
+      requireRequestActorStamp(context),
+    );
     finalizeStoppedThread(deps, {
       threadId: thread.id,
     });

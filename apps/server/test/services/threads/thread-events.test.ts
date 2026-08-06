@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { events, getThread, threads } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP, threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendClientTurnEvent,
@@ -46,6 +46,7 @@ describe("thread event appends", () => {
     try {
       expect(() =>
         appendThreadEvent(harness.deps, {
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.id,
           environmentId: environment.id,
           type: "system/error",
@@ -72,6 +73,7 @@ describe("thread event appends", () => {
       expect(() =>
         harness.db.transaction((tx) =>
           appendThreadEventInTransaction(tx, {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.id,
             environmentId: environment.id,
             type: "system/error",
@@ -97,6 +99,7 @@ describe("thread event appends", () => {
       await createThreadEventTestContext();
     try {
       const sequence = appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "system/error",
@@ -122,6 +125,7 @@ describe("thread event appends", () => {
       await createThreadEventTestContext();
     try {
       appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-turn-a",
@@ -132,6 +136,7 @@ describe("thread event appends", () => {
 
       expect(() =>
         appendThreadEvent(harness.deps, {
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.id,
           environmentId: environment.id,
           type: "system/error",
@@ -159,6 +164,7 @@ describe("thread event appends", () => {
         harness.db.transaction((tx) =>
           appendThreadEventsInTransaction(tx, [
             {
+              actor: SYSTEM_ACTOR_STAMP,
               threadId: thread.id,
               environmentId: environment.id,
               type: "system/error",
@@ -188,6 +194,7 @@ describe("thread event appends", () => {
         harness.db.transaction((tx) =>
           appendThreadEventsInTransaction(tx, [
             {
+              actor: SYSTEM_ACTOR_STAMP,
               threadId: thread.id,
               environmentId: environment.id,
               type: "system/error",
@@ -195,6 +202,7 @@ describe("thread event appends", () => {
               data: { message: "Ordered batch failure" },
             },
             {
+              actor: SYSTEM_ACTOR_STAMP,
               threadId: thread.id,
               environmentId: environment.id,
               providerThreadId: "provider-late-start",
@@ -224,6 +232,7 @@ describe("thread event appends", () => {
       const sequences = harness.db.transaction((tx) =>
         appendThreadEventsInTransaction(tx, [
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.id,
             environmentId: environment.id,
             providerThreadId: "provider-batched-turn",
@@ -232,6 +241,7 @@ describe("thread event appends", () => {
             data: { providerThreadId: "provider-batched-turn" },
           },
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.id,
             environmentId: environment.id,
             type: "system/error",
@@ -272,6 +282,7 @@ describe("thread event appends", () => {
       const notifyThreadSpy = vi.spyOn(harness.deps.hub, "notifyThread");
 
       appendClientTurnEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "client/turn/requested",
@@ -321,6 +332,7 @@ describe("thread event appends", () => {
       const notifyThreadSpy = vi.spyOn(harness.deps.hub, "notifyThread");
 
       appendClientTurnEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "client/turn/requested",
@@ -349,5 +361,4 @@ describe("thread event appends", () => {
       await harness.cleanup();
     }
   });
-
 });

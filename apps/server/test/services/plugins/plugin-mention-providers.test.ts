@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import { type PromptInput } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP, type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -347,6 +347,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     const { environment, thread } = seedColdIdleThreadFixture(harness, 1);
 
     await sendThreadMessage(harness.deps, {
+      actor: SYSTEM_ACTOR_STAMP,
       environment,
       payload: {
         input: pluginMentionInput({
@@ -452,6 +453,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
 
     await expect(
       sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: pluginMentionInput({
@@ -498,6 +500,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     await harness.pluginService.setEnabled("mentions", false);
     await expect(
       sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           ...basePayload,
@@ -519,6 +522,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
 
     await expect(
       sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           ...basePayload,
@@ -538,6 +542,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     // non-string context) also blocks.
     await expect(
       sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           ...basePayload,

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  actorStampSchema,
+  LEGACY_SYSTEM_ACTOR_STAMP,
+  type ActorStamp,
+} from "./actor-stamp.js";
 import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
@@ -31,6 +36,12 @@ interface ThreadEventRowBase {
   threadId: string;
   seq: number;
   createdAt: number;
+  /**
+   * Server-derived actor snapshot for this stored event. Pre-actor / older
+   * serialized servers omit this field; parsers default to the explicit legacy
+   * system stamp rather than guessing a human.
+   */
+  actor?: ActorStamp;
 }
 
 interface ThreadEventRowInput extends ThreadEventRowBase {
@@ -76,6 +87,8 @@ const threadEventRowInputSchema = z.object({
   type: threadEventTypeSchema,
   data: z.record(z.string(), z.unknown()),
   createdAt: z.number(),
+  // Defaulted for rows serialized by pre-actor servers.
+  actor: actorStampSchema.default(LEGACY_SYSTEM_ACTOR_STAMP),
 });
 
 const storedTurnRequestTypeSet = new Set<ThreadEventType>([
@@ -179,6 +192,7 @@ function parseThreadEventRowInput(row: ThreadEventRowInput): ThreadEventRow {
     threadId: row.threadId,
     seq: row.seq,
     createdAt: row.createdAt,
+    actor: row.actor,
     event: parseStoredThreadEvent({
       type: row.type,
       data: row.data,

@@ -4,6 +4,7 @@ import {
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   USER_QUESTION_MAX_SELECTED,
 } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { PendingInteractionCreate } from "@bb/domain";
 import type {
   PendingInteractionResolution,
@@ -833,6 +834,7 @@ describe("public thread interaction routes", () => {
         status: "idle",
       });
       const queuedMessage = createQueuedThreadMessage(harness.db, harness.hub, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         content: textInput("Queued message"),
         model: "gpt-5",
@@ -1167,6 +1169,7 @@ describe("public thread interaction routes", () => {
         thread: { status: "active" },
       });
       appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "turn/started",
@@ -1249,6 +1252,7 @@ describe("public thread interaction routes", () => {
         thread: { status: "active" },
       });
       appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "turn/started",
@@ -1331,6 +1335,7 @@ describe("public thread interaction routes", () => {
         thread: { status: "active" },
       });
       appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "turn/started",
@@ -1393,6 +1398,7 @@ describe("public thread interaction routes", () => {
         thread: { status: "active" },
       });
       appendThreadEvent(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         environmentId: environment.id,
         type: "turn/started",

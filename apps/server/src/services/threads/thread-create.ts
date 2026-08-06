@@ -12,6 +12,7 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -84,6 +85,7 @@ interface ExistingUnmanagedEnvironmentIntentResult {
 }
 
 interface CreateProvisioningThreadArgs {
+  actor: import("@bb/domain").ActorStamp;
   environmentId: string | null;
   executionDefaults: Parameters<
     typeof buildExecutionOptions
@@ -490,6 +492,7 @@ async function createProvisioningThread(
       "client/turn/requested",
     );
     context = requestThreadProvision(deps, {
+      actor: args.actor,
       thread,
       environmentIntent: args.environmentIntent,
       execution,
@@ -550,6 +553,8 @@ export async function createThreadFromRequest(
   deps: ThreadCreateDeps,
   rawRequestInput: ThreadCreateServiceRequestInput,
   options: {
+    /** Verified request actor; direct service callers default to system. */
+    actor?: import("@bb/domain").ActorStamp;
     /** Provider-facing input when it differs from the persisted start seed. */
     providerInput?: ThreadCreateServiceRequestInput["input"];
   } = {},
@@ -849,6 +854,7 @@ export async function createThreadFromRequest(
   }
 
   const thread = await createProvisioningThread(deps, {
+    actor: options.actor ?? SYSTEM_ACTOR_STAMP,
     environmentId,
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,

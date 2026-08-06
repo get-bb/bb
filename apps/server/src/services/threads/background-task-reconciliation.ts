@@ -4,6 +4,7 @@ import {
   type OpenBackgroundTaskItemRow,
 } from "@bb/db";
 import {
+  SYSTEM_ACTOR_STAMP,
   backgroundTaskItemStatus,
   isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
@@ -78,6 +79,7 @@ export function settleDanglingBackgroundTasks(
           : "stopped";
         appendThreadEventsInTransaction(tx, [
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: row.threadId,
             environmentId: row.environmentId,
             providerThreadId,

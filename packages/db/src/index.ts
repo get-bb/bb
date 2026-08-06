@@ -11,6 +11,11 @@ export type {
 
 export * from "./schema.js";
 export {
+  actorStampColumnsOrNull,
+  decodeActorStampFromColumns,
+  encodeActorStampColumns,
+} from "./actor-stamp-columns.js";
+export {
   createQueuedThreadMessageClaimToken,
   createQueuedThreadMessageId,
   createEnvironmentId,

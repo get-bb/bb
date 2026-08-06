@@ -11,7 +11,7 @@ import {
   notInArray,
   or,
 } from "drizzle-orm";
-import type { PermissionMode, PromptInput } from "@bb/domain";
+import type { ActorStamp, PermissionMode, PromptInput } from "@bb/domain";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -20,12 +20,15 @@ import type {
 import type { DbNotifier } from "../notifier.js";
 import { queuedThreadMessages, threads } from "../schema.js";
 import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
+import { encodeActorStampColumns } from "../actor-stamp-columns.js";
 import {
   createOrderKeyAfter,
   createOrderKeyBetween,
 } from "./order-keys.js";
 
 export interface CreateQueuedThreadMessageInput {
+  /** Server-derived actor snapshot retained through later dispatch. */
+  actor: ActorStamp;
   threadId: string;
   content: PromptInput[];
   senderThreadId?: string | null;
@@ -217,6 +220,9 @@ function queuedMessageGroupingEnvelopeMatches(
   return (
     firstQueuedMessage !== null &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
+    queuedMessage.actorPrincipalId === firstQueuedMessage.actorPrincipalId &&
+    queuedMessage.actorKind === firstQueuedMessage.actorKind &&
+    queuedMessage.actorDisplayName === firstQueuedMessage.actorDisplayName &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
@@ -478,6 +484,7 @@ export function createQueuedThreadMessage(
 ) {
   const now = Date.now();
   const id = createQueuedThreadMessageId();
+  const actorColumns = encodeActorStampColumns(input.actor);
   const row = db.transaction(
     (tx) => {
       const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
@@ -491,6 +498,9 @@ export function createQueuedThreadMessage(
           threadId: input.threadId,
           content: JSON.stringify(input.content),
           senderThreadId: input.senderThreadId ?? null,
+          actorPrincipalId: actorColumns.actorPrincipalId,
+          actorKind: actorColumns.actorKind,
+          actorDisplayName: actorColumns.actorDisplayName,
           model: input.model,
           reasoningLevel: input.reasoningLevel,
           permissionMode: input.permissionMode,

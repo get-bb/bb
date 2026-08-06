@@ -5,6 +5,7 @@ import {
 } from "@bb/db";
 import type { DbConnection, DbTransaction } from "@bb/db";
 import type {
+  ActorStamp,
   ClientTurnRequestId,
   Environment,
   PromptInput,
@@ -69,6 +70,11 @@ type SendThreadMessagePayload = SendMessageRequest & {
 };
 
 export interface SendThreadMessageArgs {
+  /**
+   * Server-derived actor for the durable turn request. Required for human/agent
+   * sends; auto-dispatch of queued messages must pass the queued stamp.
+   */
+  actor: ActorStamp;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
   payload: SendThreadMessagePayload;
@@ -115,6 +121,7 @@ interface SendThreadMessageQueueRequest {
 }
 
 interface AppendAndQueueSendThreadMessageArgs {
+  actor: ActorStamp;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   db: DbConnection;
   environmentId: string | null;
@@ -315,6 +322,7 @@ function captureUserMessageSentTelemetry(
 }
 
 function appendAndQueueSendThreadMessageInTransaction({
+  actor,
   beforeAppendInTransaction,
   db,
   environmentId,
@@ -336,6 +344,7 @@ function appendAndQueueSendThreadMessageInTransaction({
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
           {
+            actor,
             threadId: thread.id,
             environmentId,
             type: "client/turn/requested",
@@ -468,6 +477,7 @@ export async function sendThreadMessage(
 
   if (
     await dispatchTurnDuringReprovision({
+      actor: args.actor,
       beforeRequestAppendInTransaction: args.beforeAppendInTransaction,
       deps,
       environment,
@@ -522,6 +532,7 @@ export async function sendThreadMessage(
       syncGeneratedTitle: false,
     });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+      actor: args.actor,
       beforeAppendInTransaction: ({ tx }) => {
         args.beforeAppendInTransaction?.({ tx });
         ensureThreadCanStartRequest(thread);
@@ -618,6 +629,7 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+    actor: args.actor,
     beforeAppendInTransaction: args.beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,

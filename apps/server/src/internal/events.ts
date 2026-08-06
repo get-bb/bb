@@ -33,6 +33,7 @@ import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../types.js";
+import { exactThreadAgentActorStamp } from "../services/actor-stamp.js";
 import {
   isActivePruneTriggerThreadEventType,
   maybePruneActiveThreadEventHistory,
@@ -265,7 +266,11 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
 function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
   const envelope = args.envelope;
   const { scope, type, threadId, ...data } = envelope.event;
+  // Daemon transport is a machine Principal, but provider/thread payloads it
+  // carries are stamped with the server-derived exact thread agent — never the
+  // machine caller and never any actor field from daemon input (there is none).
   return {
+    actor: exactThreadAgentActorStamp(envelope.threadId),
     threadId: envelope.threadId,
     environmentId: args.environmentId,
     ...resolveProviderIdentifiers(envelope.event),

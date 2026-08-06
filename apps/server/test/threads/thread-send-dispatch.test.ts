@@ -7,6 +7,7 @@ import {
   updateThread,
 } from "@bb/db";
 import {
+  SYSTEM_ACTOR_STAMP,
   threadScope,
   turnScope,
   type Environment,
@@ -204,6 +205,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("telemetry user send"),
@@ -241,6 +243,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("telemetry agent send"),
@@ -269,6 +272,7 @@ describe("idle cold-start activation", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: textInput("cold start from idle"),
@@ -357,6 +361,7 @@ describe("idle cold-start activation", () => {
       }
 
       await sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment: targetEnvironment,
         payload: {
           input: textInput("start after switch"),

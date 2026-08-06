@@ -16,6 +16,7 @@ import {
 import {
   CLIENT_TURN_REQUEST_ID_ALPHABET,
   CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH,
+  SYSTEM_ACTOR_STAMP,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
@@ -25,6 +26,7 @@ import {
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
 import type {
+  ActorStamp,
   ClientTurnRequestId,
   ClientTurnLifecycleEventData,
   PromptInput,
@@ -59,6 +61,8 @@ interface ThreadEventTransactionDeps {
 }
 
 export interface ClientTurnRequestedEventArgs {
+  /** Server-derived actor for this durable turn request. */
+  actor: ActorStamp;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
@@ -83,6 +87,7 @@ export interface PreparedClientTurnRequestedEventArgs extends ClientTurnRequeste
 }
 
 export interface ClientTurnLifecycleEventArgs {
+  actor: ActorStamp;
   environmentId: string | null;
   initiator: ThreadTurnInitiator;
   requestMethod: "thread/start" | "turn/start";
@@ -108,6 +113,7 @@ export interface AppendedClientTurnRequestWithNotification extends AppendedClien
 export type ThreadOwnershipChangeAction = "assign" | "release" | "transfer";
 
 export interface AppendThreadOwnershipChangeEventArgs {
+  actor?: ActorStamp;
   environmentId?: string | null;
   nextParentThreadId: string | null;
   previousParentThreadId: string | null;
@@ -115,6 +121,7 @@ export interface AppendThreadOwnershipChangeEventArgs {
 }
 
 export interface AppendSystemErrorEventArgs {
+  actor?: ActorStamp;
   code: string;
   detail?: string;
   environmentId?: string | null;
@@ -126,6 +133,7 @@ export interface AppendSystemErrorEventArgs {
 }
 
 export interface AppendThreadProvisioningEventArgs {
+  actor?: ActorStamp;
   entries: ProvisioningTranscriptEntry[];
   environmentId: string;
   provisioningId: string;
@@ -139,6 +147,11 @@ export interface BuildCwdBranchEntriesArgs {
 }
 
 export interface AppendThreadInterruptedEventArgs {
+  /**
+   * Defaults to the stable system stamp. Human stop/interrupt passes the
+   * request Principal so the interruption event retains the admitted actor.
+   */
+  actor?: ActorStamp;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -298,6 +311,7 @@ function appendBuiltClientTurnRequestedEvent(
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequest {
   const sequence = append({
+    actor: args.actor,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: args.type,
@@ -315,6 +329,7 @@ function appendBuiltClientTurnEvent(
     case "client/thread/start":
     case "client/turn/start":
       return append({
+        actor: args.actor,
         threadId: args.threadId,
         environmentId: args.environmentId,
         type: args.type,
@@ -602,6 +617,7 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequestWithNotification {
   const eventArgs: AppendThreadEventArgs = {
+    actor: args.actor,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: args.type,
@@ -702,6 +718,7 @@ export function appendThreadProvisioningEvent(
   args: AppendThreadProvisioningEventArgs,
 ): number {
   return appendThreadEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: "system/thread-provisioning",
@@ -720,6 +737,7 @@ export function appendThreadProvisioningEventInTransaction(
   args: AppendThreadProvisioningEventArgs,
 ): number {
   return appendThreadEventInTransaction(db, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId,
     type: "system/thread-provisioning",
@@ -763,6 +781,7 @@ export function appendSystemErrorEvent(
   args: AppendSystemErrorEventArgs,
 ): number {
   return appendThreadEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId ?? null,
     type: "system/error",
@@ -776,6 +795,7 @@ export function appendSystemErrorEventInTransaction(
   args: AppendSystemErrorEventArgs,
 ): number {
   const sequence = appendThreadEventInTransaction(deps.db, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId ?? null,
     type: "system/error",
@@ -811,6 +831,7 @@ export function appendThreadInterruptedEventInTransaction(
   args: AppendThreadInterruptedEventArgs,
 ): number {
   return appendThreadEventInTransaction(db, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     type: "system/thread/interrupted",
     scope: threadScope(),
@@ -885,6 +906,7 @@ export function appendThreadOwnershipChangeEvent(
   );
 
   return appendThreadEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId ?? null,
     type: "system/operation",
@@ -924,6 +946,7 @@ export function appendThreadOwnershipChangeEventInTransaction(
   );
 
   const sequence = appendThreadEventInTransaction(deps.db, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     environmentId: args.environmentId ?? null,
     type: "system/operation",

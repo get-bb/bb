@@ -8,6 +8,7 @@ import {
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
+  decodeActorStampFromColumns,
 } from "@bb/db";
 import type {
   PromptInput,
@@ -349,7 +350,13 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       if (!consumed) {
         throw createQueuedMessageClaimLostError();
       }
+      const originalQueuedRow = args.queuedMessages[0]!;
       const request = appendClientTurnEventInTransaction(tx, {
+        actor: decodeActorStampFromColumns({
+          actorPrincipalId: originalQueuedRow.actorPrincipalId,
+          actorKind: originalQueuedRow.actorKind,
+          actorDisplayName: originalQueuedRow.actorDisplayName,
+        }),
         environmentId: thread.environmentId,
         execution,
         initiator,
@@ -440,7 +447,13 @@ async function sendClaimedQueuedMessageForThread(
   const environment = await requireThreadCommandEnvironment(deps, {
     thread: args.thread,
   });
+  const originalQueuedRow = args.queuedMessages[0]!;
   await sendThreadMessage(deps, {
+    actor: decodeActorStampFromColumns({
+      actorPrincipalId: originalQueuedRow.actorPrincipalId,
+      actorKind: originalQueuedRow.actorKind,
+      actorDisplayName: originalQueuedRow.actorDisplayName,
+    }),
     beforeAppendInTransaction: ({ tx }) => {
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,
@@ -454,7 +467,7 @@ async function sendClaimedQueuedMessageForThread(
       ...sendQueuedMessagePayload(
         { ...queuedMessage, content: input },
         args.mode,
-        args.queuedMessages[0]!.senderThreadId,
+        originalQueuedRow.senderThreadId,
       ),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
     },

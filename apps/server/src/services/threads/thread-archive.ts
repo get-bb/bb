@@ -3,7 +3,7 @@ import {
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
 } from "@bb/db";
-import type { Environment, Thread } from "@bb/domain";
+import type { ActorStamp, Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
   requestEnvironmentCleanup,
@@ -23,6 +23,7 @@ import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
+  actor?: ActorStamp;
   environment: {
     hostId: string;
     id: string;
@@ -31,10 +32,12 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
 }
 
 interface ArchiveEnvironmentThreadsArgs {
+  actor?: ActorStamp;
   environment: Environment;
 }
 
 interface ArchiveThreadAndChildrenArgs {
+  actor?: ActorStamp;
   parentThread: Thread;
 }
 
@@ -43,6 +46,7 @@ export function archiveThreadWithLifecycleEffects(
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
   const archivedThread = archiveThreadAndReleaseChildren(deps, {
+    actor: args.actor,
     threadId: args.thread.id,
   });
   if (!archivedThread) {
@@ -58,6 +62,7 @@ export function archiveThreadWithLifecycleEffects(
     deps,
     archivedThread,
     args.environment,
+    args.actor,
   );
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: archivedThread.id,
@@ -90,6 +95,7 @@ export function archiveThreadAndHiddenSourceForks(
     sourceThreadId: archivedThread.id,
   })) {
     archiveThreadWithLifecycleEffects(deps, {
+      actor: args.actor,
       environment: requireThreadHostCommandEnvironment({
         db: deps.db,
         thread: fork,
@@ -111,6 +117,7 @@ export function archiveEnvironmentThreads(
 
   for (const thread of threads) {
     const result = archiveThreadWithLifecycleEffects(deps, {
+      actor: args.actor,
       environment: args.environment,
       thread,
     });
@@ -165,6 +172,7 @@ export function archiveThreadAndChildren(
       thread,
     });
     const result = archiveThreadWithLifecycleEffects(deps, {
+      actor: args.actor,
       environment,
       thread,
     });

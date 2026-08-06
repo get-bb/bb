@@ -22,6 +22,7 @@ import {
   threadScope,
   turnScope,
 } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PermissionMode,
@@ -247,6 +248,7 @@ export function seedQueuedMessage(
   },
 ) {
   return createQueuedThreadMessage(deps.db, deps.hub, {
+    actor: SYSTEM_ACTOR_STAMP,
     threadId: args.threadId,
     content: args.content,
     model: args.model ?? "gpt-5",

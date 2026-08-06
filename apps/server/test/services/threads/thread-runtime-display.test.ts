@@ -18,6 +18,7 @@ import {
 } from "@bb/db";
 import {
   formatClientTurnRequestIdSuffix,
+  SYSTEM_ACTOR_STAMP,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -412,6 +413,7 @@ describe("thread runtime display", () => {
     });
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: activePlan.thread.id,
       scope: threadScope(),
       type: "client/turn/requested",
@@ -421,6 +423,7 @@ describe("thread runtime display", () => {
       }),
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: activePlan.thread.id,
       scope: turnScope("turn-active-plan"),
       providerThreadId: "provider-active-plan",
@@ -432,6 +435,7 @@ describe("thread runtime display", () => {
     });
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: completedPlan.thread.id,
       scope: threadScope(),
       type: "client/turn/requested",
@@ -441,6 +445,7 @@ describe("thread runtime display", () => {
       }),
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: completedPlan.thread.id,
       scope: turnScope("turn-completed-plan"),
       providerThreadId: "provider-completed-plan",
@@ -451,6 +456,7 @@ describe("thread runtime display", () => {
       },
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: completedPlan.thread.id,
       scope: turnScope("turn-completed-plan"),
       providerThreadId: "provider-completed-plan",
@@ -462,6 +468,7 @@ describe("thread runtime display", () => {
     });
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: activeGoal.thread.id,
       scope: threadScope(),
       providerThreadId: "provider-active-goal",
@@ -476,6 +483,7 @@ describe("thread runtime display", () => {
       },
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: clearedGoal.thread.id,
       scope: threadScope(),
       providerThreadId: "provider-cleared-goal",
@@ -490,6 +498,7 @@ describe("thread runtime display", () => {
       },
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: clearedGoal.thread.id,
       scope: threadScope(),
       providerThreadId: "provider-cleared-goal",
@@ -511,12 +520,14 @@ describe("thread runtime display", () => {
       ],
     ] as const) {
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: target.thread.id,
         scope: threadScope(),
         type: "client/turn/requested",
         data: turnRequestData({ input: planPromptInput, requestId }),
       });
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: target.thread.id,
         scope: turnScope(turnId),
         providerThreadId,
@@ -525,6 +536,7 @@ describe("thread runtime display", () => {
       });
     }
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: concurrentPlanGoal.thread.id,
       scope: threadScope(),
       providerThreadId: "provider-concurrent-plan-goal",

@@ -18,9 +18,11 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import {
+  SYSTEM_ACTOR_STAMP,
   isApprovalPendingInteractionPayload,
   isPluginPendingInteractionPayload,
   isPluginPendingInteraction,
+  type ActorStamp,
   type JsonValue,
   type PendingInteraction,
   type PendingInteractionCreate,
@@ -71,12 +73,14 @@ interface RegisterPendingInteractionArgs {
 interface ResolvePendingInteractionArgs {
   interactionId: string;
   resolution: PendingInteractionResolution;
+  resolutionActor?: ActorStamp;
   threadId: string;
 }
 
 interface QueueInteractionResolutionCommandArgs {
   interaction: PendingInteraction;
   resolution: PendingInteractionResolution;
+  resolutionActor: ActorStamp;
 }
 
 interface CompleteResolvingInteractionArgs {
@@ -526,6 +530,7 @@ export class PendingInteractionLifecycle {
 
   respondToPluginInteraction(args: {
     interactionId: string;
+    resolutionActor?: ActorStamp;
     threadId: string;
     value: JsonValue;
   }): PendingInteraction {
@@ -537,6 +542,7 @@ export class PendingInteractionLifecycle {
     const updated = setPendingInteractionResolved(this.deps.db, {
       id: current.id,
       resolution: JSON.stringify({ kind: "plugin_submitted" }),
+      resolutionActor: args.resolutionActor ?? SYSTEM_ACTOR_STAMP,
     });
     if (!updated)
       throw buildResolveConflictError(this.requireInteraction(current.id));
@@ -612,6 +618,7 @@ export class PendingInteractionLifecycle {
     const updated = this.queueInteractionResolutionCommand({
       interaction: current,
       resolution: args.resolution,
+      resolutionActor: args.resolutionActor ?? SYSTEM_ACTOR_STAMP,
     });
     if (!updated) {
       const latest = this.getThreadInteraction({
@@ -818,6 +825,7 @@ export class PendingInteractionLifecycle {
       const resolving = setPendingInteractionResolving(tx, {
         id: args.interaction.id,
         resolution: resolutionJson,
+        resolutionActor: args.resolutionActor,
       });
       if (resolving) {
         return resolving;

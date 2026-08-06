@@ -4,6 +4,7 @@ import {
   LOCAL_BASH_TASK_TYPE,
   LOCAL_SUBAGENT_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
+  SYSTEM_ACTOR_STAMP,
   threadScope,
   turnScope,
   type PromptInput,
@@ -89,6 +90,7 @@ const threadEventFields = {
 };
 
 const daemonThreadEventFields = {
+  actor: SYSTEM_ACTOR_STAMP,
   ...threadEventFields,
   environmentId: null,
   providerThreadId: null,
@@ -100,6 +102,7 @@ interface CreateTurnEventFieldsArgs {
 
 function createTurnEventFields(args: CreateTurnEventFieldsArgs) {
   return {
+    actor: SYSTEM_ACTOR_STAMP,
     ...emptyItemFields,
     scope: turnScope(args.turnId),
   };
@@ -1531,6 +1534,7 @@ describe("events", () => {
     const { db, thread } = setup();
 
     const firstSequence = appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: threadScope(),
       type: "client/turn/requested",
@@ -1556,6 +1560,7 @@ describe("events", () => {
     const secondSequence = db.transaction(
       (tx) =>
         appendStoredThreadEventInTransaction(tx, {
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.id,
           scope: turnScope("turn_1"),
           providerThreadId: "provider_thr_1",
@@ -1578,6 +1583,7 @@ describe("events", () => {
     });
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("turn_1"),
       providerThreadId: "provider_thr_1",
@@ -1589,6 +1595,7 @@ describe("events", () => {
     });
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("turn_1"),
       providerThreadId: "provider_thr_1",
@@ -1604,6 +1611,7 @@ describe("events", () => {
     const { db, thread } = setup();
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: threadScope(),
       providerThreadId: "provider_old",
@@ -1615,6 +1623,7 @@ describe("events", () => {
     expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: threadScope(),
       type: "system/operation",
@@ -1632,6 +1641,7 @@ describe("events", () => {
       },
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("turn_1"),
       providerThreadId: "provider_old",
@@ -1644,6 +1654,7 @@ describe("events", () => {
     expect(getLastStoredProviderThreadId(db, thread.id)).toBeNull();
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: threadScope(),
       providerThreadId: "provider_new",
@@ -1659,6 +1670,7 @@ describe("events", () => {
     const { db, thread } = setup();
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("root_turn"),
       providerThreadId: "provider_thr_1",
@@ -1668,6 +1680,7 @@ describe("events", () => {
       },
     });
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("child_turn"),
       providerThreadId: "provider_thr_1",
@@ -1681,6 +1694,7 @@ describe("events", () => {
     expect(getActiveStoredTurnId(db, thread.id)).toBe("root_turn");
 
     appendStoredThreadEvent(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
       scope: turnScope("root_turn"),
       providerThreadId: "provider_thr_1",
@@ -1705,6 +1719,7 @@ describe("events", () => {
       (tx) =>
         appendStoredThreadEventsInTransaction(tx, [
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.id,
             scope: turnScope("turn_1"),
             providerThreadId: "provider_thr_1",
@@ -1714,6 +1729,7 @@ describe("events", () => {
             },
           },
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.id,
             scope: turnScope("turn_1"),
             providerThreadId: "provider_thr_1",
@@ -1724,6 +1740,7 @@ describe("events", () => {
             },
           },
           {
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: otherThread.id,
             scope: threadScope(),
             type: "system/thread/interrupted",
@@ -1744,6 +1761,31 @@ describe("events", () => {
         (event) => event.sequence,
       ),
     ).toEqual([1]);
+  });
+
+  it("rolls back the actor stamp with its event when the transaction fails", () => {
+    const { db, thread } = setup();
+
+    expect(() =>
+      db.transaction(
+        (tx) => {
+          appendStoredThreadEventInTransaction(tx, {
+            actor: {
+              principalId: "user_alice",
+              principalKind: "human",
+              displayName: "Alice",
+            },
+            threadId: thread.id,
+            scope: threadScope(),
+            type: "system/error",
+            data: { message: "must roll back" },
+          });
+          throw new Error("abort after append");
+        },
+        { behavior: "immediate" },
+      ),
+    ).toThrow("abort after append");
+    expect(listEvents(db, { threadId: thread.id })).toHaveLength(0);
   });
 
   it("lists completed turns for a specific thread set", () => {

@@ -1,3 +1,4 @@
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -1413,6 +1414,7 @@ describe("migrate", () => {
         status: "idle",
       });
       const workspaceWriteQueue = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: regularThread.id,
         content: [
           { type: "text", text: "legacy workspace write", mentions: [] },
@@ -1423,6 +1425,7 @@ describe("migrate", () => {
         serviceTier: "default",
       });
       const inheritedQueue = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: sideChatWithHistory.id,
         content: [{ type: "text", text: "legacy side chat", mentions: [] }],
         model: "gpt-5",
@@ -1431,6 +1434,7 @@ describe("migrate", () => {
         serviceTier: "default",
       });
       const fallbackQueue = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: sideChatWithoutHistory.id,
         content: [{ type: "text", text: "legacy fallback", mentions: [] }],
         model: "gpt-5",
@@ -3522,6 +3526,9 @@ describe("migrate", () => {
         "item_kind",
         "data",
         "created_at",
+        "actor_principal_id",
+        "actor_kind",
+        "actor_display_name",
       ]);
       const eventIndexNames = readIndexNames({
         db,

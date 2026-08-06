@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import {
   createConnection,
   createEnvironment,
@@ -95,6 +96,7 @@ describe("thread provisioning state", () => {
     const context = requestThreadReprovision(
       { db, hub },
       {
+        actor: SYSTEM_ACTOR_STAMP,
         thread,
         environment,
         provisionEventSequence: 0,

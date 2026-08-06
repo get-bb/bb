@@ -72,7 +72,7 @@ describe("db rebuild schema", () => {
       )
       .all();
 
-    expect(columns).toHaveLength(17);
+    expect(columns).toHaveLength(20);
     expect(columns).toEqual(
       expect.arrayContaining([
         { name: "id", type: "text", notNull: 1, primaryKey: 1 },
@@ -93,6 +93,24 @@ describe("db rebuild schema", () => {
         { name: "payload", type: "text", notNull: 1, primaryKey: 0 },
         { name: "resolution", type: "text", notNull: 0, primaryKey: 0 },
         { name: "status_reason", type: "text", notNull: 0, primaryKey: 0 },
+        {
+          name: "resolution_actor_principal_id",
+          type: "text",
+          notNull: 0,
+          primaryKey: 0,
+        },
+        {
+          name: "resolution_actor_kind",
+          type: "text",
+          notNull: 0,
+          primaryKey: 0,
+        },
+        {
+          name: "resolution_actor_display_name",
+          type: "text",
+          notNull: 0,
+          primaryKey: 0,
+        },
         { name: "created_at", type: "integer", notNull: 1, primaryKey: 0 },
         { name: "expires_at", type: "integer", notNull: 0, primaryKey: 0 },
         { name: "resolved_at", type: "integer", notNull: 0, primaryKey: 0 },

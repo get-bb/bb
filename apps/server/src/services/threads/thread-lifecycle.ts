@@ -10,10 +10,11 @@ import {
 } from "drizzle-orm";
 import {
   deleteThread,
+  decodeActorStampFromColumns,
   environments,
   events,
   getEnvironment,
-  getLatestThreadInterruptedReason,
+  getLatestThreadInterruptedState,
   getThread,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -24,6 +25,7 @@ import {
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
 import {
+  SYSTEM_ACTOR_STAMP,
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
   type Thread,
@@ -212,6 +214,7 @@ interface HasProviderTurnCompletedEventAtOrAfterArgs {
 }
 
 export interface RequestThreadStopArgs extends ThreadStopCommandArgs {
+  actor?: import("@bb/domain").ActorStamp;
   interruptionReason: SystemThreadInterruptedReason;
 }
 
@@ -245,6 +248,7 @@ interface FinalizeStoppedThreadArgs {
 }
 
 interface InterruptActiveTurnForThreadArgs {
+  actor: import("@bb/domain").ActorStamp;
   environmentId: string | null;
   reason: SystemThreadInterruptedReason;
   threadId: string;
@@ -424,6 +428,7 @@ interface FinalizeStoppedThreadTransactionDeps extends ThreadLifecycleTransactio
 }
 
 interface ApplyActiveTurnInterruptionArgs {
+  actor: import("@bb/domain").ActorStamp;
   activeTurnId: string;
   environmentId: string | null;
   providerThreadId: string | null;
@@ -432,6 +437,7 @@ interface ApplyActiveTurnInterruptionArgs {
 }
 
 interface MarkThreadStopRequestedWithEventArgs {
+  actor?: import("@bb/domain").ActorStamp;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -507,6 +513,7 @@ function appendThreadInterruptedEventIfMissingInTransaction(
     return false;
   }
   appendThreadInterruptedEventInTransaction(deps.db, {
+    actor: args.actor,
     threadId: args.threadId,
     reason: args.reason,
   });
@@ -535,6 +542,7 @@ function markThreadStoppingWithEventInTransaction(
   }
   deps.hub.notifyThread(args.threadId, ["status-changed"]);
   appendThreadInterruptedEventInTransaction(deps.db, {
+    actor: args.actor,
     threadId: args.threadId,
     reason: args.reason,
   });
@@ -549,6 +557,7 @@ function applyActiveTurnInterruptionInTransaction(
   args: ApplyActiveTurnInterruptionArgs,
 ): boolean {
   appendThreadEventInTransaction(deps.db, {
+    actor: args.actor,
     threadId: args.threadId,
     environmentId: args.environmentId,
     providerThreadId: args.providerThreadId,
@@ -716,6 +725,7 @@ function recordEmptyThreadStartProviderSessionInTransaction(
     return;
   }
   appendThreadEventInTransaction(args.deps.db, {
+    actor: SYSTEM_ACTOR_STAMP,
     threadId: args.thread.id,
     environmentId: args.command.environmentId,
     providerThreadId: args.report.result.providerThreadId,
@@ -1180,6 +1190,7 @@ export function requestThreadStop(
           hub: notificationBuffer,
         },
         {
+          actor: args.actor,
           reason: args.interruptionReason,
           threadId: args.threadId,
         },
@@ -1235,6 +1246,7 @@ function dispatchThreadStopCommand(
 function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
+  actor: import("@bb/domain").ActorStamp = SYSTEM_ACTOR_STAMP,
 ): void {
   const notificationBuffer = new NotificationBuffer();
   const result: RequestPreStartThreadStopResult = deps.db.transaction(
@@ -1269,6 +1281,7 @@ function requestPreStartThreadStop(
 
       if (currentThread.status !== "stopping") {
         markThreadStoppingWithEventInTransaction(txDeps, {
+          actor,
           reason: "manual-stop",
           threadId: currentThread.id,
         });
@@ -1340,6 +1353,7 @@ export function requestThreadStopForCurrentState(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
   environment: RequestThreadStopForCurrentStateEnvironment | null,
+  actor: import("@bb/domain").ActorStamp = SYSTEM_ACTOR_STAMP,
 ): void {
   // An active thread (or one with a live start RPC in flight) stops via the
   // runtime stop RPC; a stopping thread with a live turn re-dispatches that
@@ -1354,6 +1368,7 @@ export function requestThreadStopForCurrentState(
       return;
     }
     requestThreadStop(deps, {
+      actor,
       environmentId: environment.id,
       hostId: environment.hostId,
       interruptionReason: "manual-stop",
@@ -1367,7 +1382,7 @@ export function requestThreadStopForCurrentState(
     thread.status === "stopping" ||
     hasActiveThreadProvisioningContext(thread.id)
   ) {
-    requestPreStartThreadStop(deps, thread);
+    requestPreStartThreadStop(deps, thread, actor);
   }
 }
 
@@ -1382,11 +1397,13 @@ export function requestActiveRuntimeThreadStopIfNeeded(
     hostId: string;
     id: string;
   },
+  actor: import("@bb/domain").ActorStamp = SYSTEM_ACTOR_STAMP,
 ): void {
   if (thread.status !== "active" && !hasLiveThreadStartInFlight(thread.id)) {
     return;
   }
   requestThreadStop(deps, {
+    actor,
     environmentId: environment.id,
     hostId: environment.hostId,
     interruptionReason: "manual-stop",
@@ -1407,6 +1424,7 @@ function interruptActiveTurnForThreadInTransaction(
 
   const appendedThreadInterruptedEvent =
     applyActiveTurnInterruptionInTransaction(deps, {
+      actor: args.actor,
       activeTurnId,
       environmentId: args.environmentId,
       providerThreadId,
@@ -1460,6 +1478,7 @@ export function interruptActiveThreads(
 
         if (activeTurnId !== null) {
           eventArgs.push({
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.threadId,
             environmentId: thread.environmentId,
             providerThreadId,
@@ -1474,6 +1493,7 @@ export function interruptActiveThreads(
 
         if (failureMessage !== null) {
           eventArgs.push({
+            actor: SYSTEM_ACTOR_STAMP,
             threadId: thread.threadId,
             environmentId: thread.environmentId,
             providerThreadId,
@@ -1489,6 +1509,7 @@ export function interruptActiveThreads(
         }
 
         eventArgs.push({
+          actor: SYSTEM_ACTOR_STAMP,
           threadId: thread.threadId,
           type: "system/thread/interrupted",
           scope: threadScope(),
@@ -1600,10 +1621,17 @@ export function finalizeStoppedThreadInTransaction(
     return true;
   }
 
-  const interruptionReason =
-    getLatestThreadInterruptedReason(deps.db, {
-      threadId: currentThread.id,
-    }) ?? "manual-stop";
+  const interruptionState = getLatestThreadInterruptedState(deps.db, {
+    threadId: currentThread.id,
+  });
+  const interruptionReason = interruptionState?.reason ?? "manual-stop";
+  const interruptionActor = interruptionState
+    ? decodeActorStampFromColumns({
+        actorPrincipalId: interruptionState.actorPrincipalId,
+        actorKind: interruptionState.actorKind,
+        actorDisplayName: interruptionState.actorDisplayName,
+      })
+    : SYSTEM_ACTOR_STAMP;
   let appendedThreadInterruptedEvent = false;
   // A thread reaches finalize from `active` (the daemon/stop path interrupts a
   // running turn) or `stopping` (a stop was requested and is now settling); in
@@ -1616,6 +1644,7 @@ export function finalizeStoppedThreadInTransaction(
     appendedThreadInterruptedEvent = interruptActiveTurnForThreadInTransaction(
       deps,
       {
+        actor: interruptionActor,
         environmentId: currentThread.environmentId,
         threadId: currentThread.id,
         reason: interruptionReason,

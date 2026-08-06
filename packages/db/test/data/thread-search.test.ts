@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
+  SYSTEM_ACTOR_STAMP,
   threadScope,
   turnScope,
   type PromptInput,
@@ -211,12 +212,14 @@ describe("thread search data", () => {
         title: "Active thread",
       });
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: activeThread.id,
         type: "client/turn/requested",
         scope: threadScope(),
         data: turnRequestData([textInput("livewriterneedle")]),
       });
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: activeThread.id,
         type: "item/completed",
         scope: turnScope("turn-1"),
@@ -231,6 +234,7 @@ describe("thread search data", () => {
         },
       });
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: activeThread.id,
         type: "client/turn/requested",
         scope: threadScope(),
@@ -377,6 +381,7 @@ describe("thread search data", () => {
         title: "alpha split title",
       });
       appendStoredThreadEvent(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: thread.id,
         type: "client/turn/requested",
         scope: threadScope(),

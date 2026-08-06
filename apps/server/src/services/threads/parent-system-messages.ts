@@ -4,6 +4,7 @@ import {
   requireThreadLifecycleEventApplied,
   type DbTransaction,
 } from "@bb/db";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   PromptInput,
   PromptMentionResource,
@@ -225,6 +226,7 @@ function queueActiveParentSystemMessageInTransaction(
 
   const expectedSteerTurnId = getActiveTurnId({ db: tx }, args.thread.id);
   const request = appendClientTurnEventInTransaction(tx, {
+    actor: SYSTEM_ACTOR_STAMP,
     threadId: args.thread.id,
     environmentId: args.environment.id,
     type: "client/turn/requested",
@@ -355,6 +357,7 @@ async function queueReadyParentSystemMessage(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
       appendPreparedClientTurnRequestedEventInTransaction(tx, {
+        actor: SYSTEM_ACTOR_STAMP,
         threadId: args.thread.id,
         environmentId: args.environment.id,
         type: "client/turn/requested",
@@ -437,6 +440,7 @@ export async function queueParentSystemMessage(
   );
   if (
     await dispatchTurnDuringReprovision({
+      actor: SYSTEM_ACTOR_STAMP,
       deps,
       environment,
       execution,

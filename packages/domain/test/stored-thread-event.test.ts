@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "../src/actor-stamp.js";
 import {
   parseStoredThreadEvent,
   parseThreadEventRow,
@@ -31,6 +32,20 @@ describe("parseStoredThreadEvent", () => {
         createdAt: 1,
       }),
     ).toThrow(/scope/);
+  });
+
+  it("maps a pre-actor stored row to the explicit legacy system stamp", () => {
+    const row = parseThreadEventRow({
+      id: "evt-legacy",
+      type: "thread/started",
+      threadId: "thread-1",
+      seq: 1,
+      scope: threadScope(),
+      data: {},
+      createdAt: 1,
+    });
+
+    expect(row.actor).toEqual(LEGACY_SYSTEM_ACTOR_STAMP);
   });
 
   it("defaults missing senderThreadId on pre-existing client/turn/requested rows", () => {

@@ -1,4 +1,5 @@
 import type {
+  ActorStamp,
   Environment,
   PromptInput,
   ResolvedThreadExecutionOptions,
@@ -37,6 +38,7 @@ export interface ReadyThreadEnvironment extends Environment {
 }
 
 export interface DispatchTurnDuringReprovisionArgs {
+  actor: ActorStamp;
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
   deps: LoggedPendingInteractionWorkSessionDeps;
   environment: Environment;
@@ -171,6 +173,7 @@ export async function dispatchTurnDuringReprovision(
     {
       beforeProvisionCommandStart: () => {
         requestThreadReprovision(args.deps, {
+          actor: args.actor,
           beforeRequestAppendInTransaction:
             args.beforeRequestAppendInTransaction,
           thread: args.thread,

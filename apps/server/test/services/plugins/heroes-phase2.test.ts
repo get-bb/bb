@@ -1,7 +1,10 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  SYSTEM_ACTOR_STAMP,
+} from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
 import { buildThreadStartCommand } from "../../../src/services/threads/thread-commands.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME } from "../../../src/services/threads/thread-environment-directory.js";
@@ -235,6 +238,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
       },
     ];
     await sendThreadMessage(harness.deps, {
+      actor: SYSTEM_ACTOR_STAMP,
       environment,
       payload: {
         input,
@@ -272,6 +276,7 @@ describe("hero plugin: agent-enrichment (Phase 2 surfaces)", () => {
     const { environment, thread } = seedThreadFixture(4);
     await expect(
       sendThreadMessage(harness.deps, {
+        actor: SYSTEM_ACTOR_STAMP,
         environment,
         payload: {
           input: [

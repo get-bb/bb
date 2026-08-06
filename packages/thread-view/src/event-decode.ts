@@ -1,5 +1,5 @@
 import { buildThreadEvent, getThreadEventScopeTurnId } from "@bb/domain";
-import type { ThreadEvent, ThreadEventRow } from "@bb/domain";
+import type { ActorStamp, ThreadEvent, ThreadEventRow } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 
 /** Extract the optional turnId from any decoded ThreadEvent. */
@@ -116,6 +116,8 @@ export interface EventMeta {
   id: string;
   seq: number;
   createdAt: number;
+  /** Server-derived actor snapshot; legacy rows decode to the explicit system stamp. */
+  actor?: ActorStamp;
 }
 
 function buildEventMeta(row: ThreadEventRow): EventMeta {
@@ -123,6 +125,7 @@ function buildEventMeta(row: ThreadEventRow): EventMeta {
     id: row.id,
     seq: row.seq,
     createdAt: row.createdAt,
+    actor: row.actor,
   };
 }
 

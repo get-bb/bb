@@ -1,8 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import type { PendingInteractionStatus } from "@bb/domain";
+import type { ActorStamp, PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { createPendingInteractionId } from "../ids.js";
+import { encodeActorStampColumns } from "../actor-stamp-columns.js";
 import { pendingInteractions } from "../schema.js";
 
 type PendingInteractionWriteConnection = DbConnection | DbTransaction;
@@ -47,6 +48,11 @@ export interface SetPendingInteractionTerminalStateArgs {
   allowedCurrentStatuses?: readonly PendingInteractionStatus[];
   id: string;
   resolution: string | null;
+  /**
+   * When set, written only if the row still has a null resolution actor
+   * (pending→resolved). Does not overwrite an existing first-resolver stamp.
+   */
+  resolutionActor?: ActorStamp;
   resolvedAt?: number;
   status: "interrupted" | "resolved";
   statusReason: string | null;
@@ -55,6 +61,11 @@ export interface SetPendingInteractionTerminalStateArgs {
 export interface SetPendingInteractionResolvingArgs {
   id: string;
   resolution: string;
+  /**
+   * First human resolver. Written only on pending→resolving so later
+   * resolving/resolved timeline events retain the original actor.
+   */
+  resolutionActor: ActorStamp;
 }
 
 export interface InterruptPendingInteractionsForThreadsArgs {
@@ -110,6 +121,10 @@ function updatePendingInteractionTerminalState(
   args: SetPendingInteractionTerminalStateArgs,
 ): PendingInteractionRow | null {
   const now = Date.now();
+  const resolutionActorColumns =
+    args.resolutionActor !== undefined
+      ? encodeActorStampColumns(args.resolutionActor)
+      : null;
 
   return (
     db
@@ -120,6 +135,15 @@ function updatePendingInteractionTerminalState(
         statusReason: args.statusReason,
         resolvedAt: args.resolvedAt ?? now,
         updatedAt: now,
+        ...(resolutionActorColumns !== null
+          ? {
+              resolutionActorPrincipalId:
+                resolutionActorColumns.actorPrincipalId,
+              resolutionActorKind: resolutionActorColumns.actorKind,
+              resolutionActorDisplayName:
+                resolutionActorColumns.actorDisplayName,
+            }
+          : {}),
       })
       .where(
         and(
@@ -274,12 +298,23 @@ export function setPendingInteractionResolved(
   args: {
     id: string;
     resolution: string;
+    /**
+     * First resolver when resolving from pending directly (e.g. plugin
+     * respond). Omit when completing a resolving row that already stamped the
+     * actor on the pending→resolving transition.
+     */
+    resolutionActor?: ActorStamp;
   },
 ): PendingInteractionRow | null {
   return updatePendingInteractionTerminalState(db, {
     id: args.id,
-    allowedCurrentStatuses: ["pending", "resolving"],
+    // A supplied actor is a direct pending→resolved first resolver (plugin
+    // submission). Resolving→resolved completion must omit it so the original
+    // pending→resolving actor can never be overwritten.
+    allowedCurrentStatuses:
+      args.resolutionActor === undefined ? ["pending", "resolving"] : ["pending"],
     resolution: args.resolution,
+    resolutionActor: args.resolutionActor,
     status: "resolved",
     statusReason: null,
   });
@@ -290,6 +325,7 @@ export function setPendingInteractionResolving(
   args: SetPendingInteractionResolvingArgs,
 ): PendingInteractionRow | null {
   const now = Date.now();
+  const resolutionActorColumns = encodeActorStampColumns(args.resolutionActor);
 
   return (
     db
@@ -298,6 +334,9 @@ export function setPendingInteractionResolving(
         status: "resolving",
         resolution: args.resolution,
         statusReason: null,
+        resolutionActorPrincipalId: resolutionActorColumns.actorPrincipalId,
+        resolutionActorKind: resolutionActorColumns.actorKind,
+        resolutionActorDisplayName: resolutionActorColumns.actorDisplayName,
         updatedAt: now,
       })
       .where(

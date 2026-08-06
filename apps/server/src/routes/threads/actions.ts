@@ -25,9 +25,10 @@ import {
   type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { Thread, ThreadQueuedMessage } from "@bb/domain";
+import type { ActorStamp, Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { requireRequestActorStamp } from "../../services/actor-stamp.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   requestEnvironmentCleanup,
@@ -184,6 +185,7 @@ function assertPinnedThreadOrderResult(
 }
 
 interface CreateQueuedMessageForThreadArgs {
+  actor: ActorStamp;
   payload: CreateQueuedMessageRequest;
   thread: Thread;
 }
@@ -216,7 +218,7 @@ async function createQueuedMessageForThread(
   deps: AppDeps,
   args: CreateQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
-  const { payload, thread } = args;
+  const { actor, payload, thread } = args;
   ensureThreadIsWritable(thread);
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
@@ -235,7 +237,10 @@ async function createQueuedMessageForThread(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
+  // Actor is always the verified request Principal. senderThreadId only
+  // formats agent-origin content — it cannot override attribution.
   const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
+    actor,
     threadId: thread.id,
     content: payload.input,
     senderThreadId,
@@ -274,9 +279,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const actor = requireRequestActorStamp(context);
     if (payload.mode === "queue-if-active" && thread.status === "active") {
       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
       await createQueuedMessageForThread(deps, {
+        actor,
         payload: queuedMessagePayloadFromSendRequest(payload),
         thread,
       });
@@ -286,6 +293,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     await sendThreadMessage(deps, {
+      actor,
       environment,
       payload,
       thread,
@@ -297,6 +305,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.createQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const queuedMessage = await createQueuedMessageForThread(deps, {
+      actor: requireRequestActorStamp(context),
       payload,
       thread,
     });
@@ -412,7 +421,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             db: deps.db,
             thread,
           });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    requestThreadStopForCurrentState(
+      deps,
+      thread,
+      environment,
+      requireRequestActorStamp(context),
+    );
     return context.json({ ok: true });
   });
 
@@ -596,6 +610,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
+      actor: requireRequestActorStamp(context),
       environment,
       thread,
     });
@@ -616,6 +631,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.archiveAll, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const archivedThreadIds = archiveThreadAndChildren(deps, {
+      actor: requireRequestActorStamp(context),
       parentThread: thread,
     });
     return context.json({

@@ -10,6 +10,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
+import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import {
@@ -46,6 +47,7 @@ import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
+  actor?: import("@bb/domain").ActorStamp;
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   // Non-null ⇒ provision this thread by cloning the source provider session
@@ -64,6 +66,7 @@ interface RequestThreadProvisionArgs {
 }
 
 interface RequestThreadReprovisionArgs {
+  actor: import("@bb/domain").ActorStamp;
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
   environment: Environment;
   provisionEventSequence: number;
@@ -257,6 +260,7 @@ export function requestThreadProvision(
   const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
   const target: TurnRequestTarget = { kind: "thread-start" };
   const request = appendClientTurnEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.thread.id,
     environmentId: args.thread.environmentId,
     type: "client/turn/requested",
@@ -276,6 +280,7 @@ export function requestThreadProvision(
     requestSequence: request.sequence,
   });
   appendClientTurnEvent(deps, {
+    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.thread.id,
     environmentId: args.thread.environmentId,
     type: "client/thread/start",
@@ -309,6 +314,7 @@ export function requestThreadReprovision(
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
           {
+            actor: args.actor,
             threadId: args.thread.id,
             environmentId: args.environment.id,
             type: "client/turn/requested",
