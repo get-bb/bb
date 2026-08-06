@@ -261,6 +261,7 @@ export {
   getEnvironment,
   findProjectEnvironmentByHostPath,
   listEnvironments,
+  listEnvironmentsByHostPath,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,
   updateEnvironmentMetadata,

@@ -1264,6 +1264,76 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("refuses to switch into another project's managed worktree", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const worktreePath = "/tmp/bb-worktrees/env_owner/repo";
+      const { project: owner } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owning Project",
+      });
+      // Cleanup of this environment deletes the directory, so no other project
+      // may attach to it in place.
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: owner.id,
+        path: worktreePath,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Aliasing Project",
+        path: "/tmp/aliasing-project",
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/aliasing-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-managed-alias"),
+        data: { providerThreadId: "provider-tool-call" },
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-managed-alias",
+        tool: "update_environment_directory",
+        arguments: { path: worktreePath },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "bb-managed workspace owned by another project",
+            ),
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        currentEnvironment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
+    });
+  });
+
   it("rejects relative update_environment_directory paths without changing the thread", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

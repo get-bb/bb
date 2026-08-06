@@ -93,6 +93,23 @@ export function findProjectEnvironmentByHostPath(
   );
 }
 
+/**
+ * Every environment pointing at one physical directory, across all projects.
+ * Use this for safety questions about the directory itself; use
+ * {@link findProjectEnvironmentByHostPath} to resolve a project's own handle.
+ */
+export function listEnvironmentsByHostPath(
+  db: DbConnection,
+  hostId: string,
+  path: string,
+) {
+  return db
+    .select()
+    .from(environments)
+    .where(and(eq(environments.hostId, hostId), eq(environments.path, path)))
+    .all();
+}
+
 export function listEnvironments(db: DbConnection, projectId?: string) {
   if (projectId) {
     return db

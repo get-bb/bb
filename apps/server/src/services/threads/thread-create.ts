@@ -3,7 +3,6 @@ import {
   findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
-  hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
 import type {
   ProjectExecutionDefaults,
@@ -17,6 +16,10 @@ import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
+import {
+  foreignManagedEnvironmentAtHostPath,
+  hasLiveThreadAtHostPath,
+} from "./workspace-path-claims.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
@@ -383,6 +386,48 @@ async function resolveManagedDefaultBaseBranchForCreate(
   }
 }
 
+interface AssertUnmanagedHostPathIsAttachableArgs {
+  branch: UnmanagedBranchSpec | undefined;
+  hostId: string;
+  path: string;
+  projectId: string;
+}
+
+/**
+ * The environment claim on a path is project-scoped, but the directory is
+ * physical and shared. Guard the two things that scoping cannot: attaching in
+ * place to another project's bb-managed worktree, and rewriting the working
+ * tree while another project works in the same folder.
+ */
+function assertUnmanagedHostPathIsAttachable(
+  deps: ThreadCreateDeps,
+  args: AssertUnmanagedHostPathIsAttachableArgs,
+): void {
+  const foreignManaged = foreignManagedEnvironmentAtHostPath(deps.db, {
+    hostId: args.hostId,
+    path: args.path,
+    projectId: args.projectId,
+  });
+  if (foreignManaged) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Workspace path is a bb-managed workspace owned by another project",
+    );
+  }
+
+  if (
+    args.branch &&
+    hasLiveThreadAtHostPath(deps.db, { hostId: args.hostId, path: args.path })
+  ) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Cannot checkout branch while another thread is using this workspace",
+    );
+  }
+}
+
 function existingUnmanagedEnvironmentIntentByHostPath(
   deps: ThreadCreateDeps,
   args: ExistingUnmanagedEnvironmentIntentByHostPathArgs,
@@ -420,18 +465,6 @@ function existingUnmanagedEnvironmentIntentByHostPath(
       409,
       "invalid_request",
       `Cannot checkout branch while the workspace environment is in ${existing.status} state`,
-    );
-  }
-
-  if (
-    hasNonTerminalThreadInEnvironment(deps.db, {
-      environmentId: existing.id,
-    })
-  ) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Cannot checkout branch while another thread is using this workspace",
     );
   }
 
@@ -772,6 +805,12 @@ export async function createThreadFromRequest(
             "Validated unmanaged host request is missing a workspace path",
           );
         }
+        assertUnmanagedHostPathIsAttachable(deps, {
+          branch: workspace.branch,
+          hostId,
+          path: resolvedEnvironment.unmanagedPath,
+          projectId: request.projectId,
+        });
         const existingIntent = existingUnmanagedEnvironmentIntentByHostPath(
           deps,
           {

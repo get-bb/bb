@@ -461,6 +461,9 @@ export const environments = sqliteTable(
       table.hostId,
       table.path,
     ),
+    // Host-leading lookups: every environment on a host, and every project's
+    // environment for one physical directory.
+    index("environments_host_path_lookup_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
   ],
