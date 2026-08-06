@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,6 +18,25 @@ const experimentState = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => experimentState.enabled,
+}));
+
+// Bypass the lazy() wrapper in tests — jsdom cannot resolve dynamic import().
+vi.mock("@/components/diff/LazyWorkerPoolProvider", () => ({
+  LazyWorkerPoolProvider: ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => children,
+}));
+
+// Stub the lazy worker pool provider so the thread view renders without
+// loading @pierre/diffs and the Shiki engine at test time.
+vi.mock("./ThreadDetailWorkerPoolProvider", () => ({
+  ThreadDetailWorkerPoolProvider: ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => children,
 }));
 
 // The heavy thread view is stubbed to a marker so the test observes only the
@@ -91,7 +110,7 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea single-pane parity", () => {
-  it("renders the pre-split page and preserves a stored layout when the experiment is off", () => {
+  it("renders the pre-split page and preserves a stored layout when the experiment is off", async () => {
     experimentState.enabled = false;
     const layout: SplitLayout = {
       root: {
@@ -102,12 +121,16 @@ describe("SplitThreadArea single-pane parity", () => {
       },
       focusedPaneId: "pane-1",
     };
-    const { container, getAllByTestId, store, storedLayout } =
+    const { container, findAllByTestId, store, storedLayout } =
       renderArea(layout);
 
-    expect(container.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
-    expect(getAllByTestId("thread-view")).toHaveLength(1);
-    expect(getAllByTestId("thread-view")[0]?.dataset.thread).toBe("page");
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
+    });
+
+    const views = await findAllByTestId("thread-view");
+    expect(views).toHaveLength(1);
+    expect(views[0]?.dataset.thread).toBe("page");
     expect(store.get(splitLayoutAtom)).toStrictEqual(storedLayout);
     expect(
       window.localStorage.getItem(SPLIT_LAYOUT_STORAGE_KEY),

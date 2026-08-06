@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { LazyWorkerPoolProvider } from "@/components/diff/LazyWorkerPoolProvider";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -784,12 +784,12 @@ export function RootComposeRoute() {
   }
 
   return (
-    <WorkerPoolContextProvider
+    <LazyWorkerPoolProvider
       poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
       highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
     >
       <RootComposeView />
-    </WorkerPoolContextProvider>
+    </LazyWorkerPoolProvider>
   );
 }
 

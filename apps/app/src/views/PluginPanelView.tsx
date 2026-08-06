@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { LazyWorkerPoolProvider } from "@/components/diff/LazyWorkerPoolProvider";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -84,12 +84,12 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
     typeof Worker === "undefined" ? (
       slotMount
     ) : (
-      <WorkerPoolContextProvider
+      <LazyWorkerPoolProvider
         poolOptions={WORKER_POOL_OPTIONS}
         highlighterOptions={HIGHLIGHTER_OPTIONS}
       >
         {slotMount}
-      </WorkerPoolContextProvider>
+      </LazyWorkerPoolProvider>
     );
 
   // Full-bleed: the negative margins undo the app layout's `p-4 md:p-5`

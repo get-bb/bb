@@ -4,6 +4,8 @@ import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -95,7 +97,17 @@ import {
   reconcileLayoutForContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
-import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
+/**
+ * Lazy-loaded to keep the Shiki syntax-highlighting engine (~80KB core +
+ * language registry) out of the critical rendering path. The thread view
+ * renders immediately without it; diff/file-preview components suspend
+ * only when first needed.
+ */
+const ThreadDetailWorkerPoolProvider = lazy(() =>
+  import("./ThreadDetailWorkerPoolProvider").then(
+    (m) => ({ default: m.ThreadDetailWorkerPoolProvider }),
+  ),
+);
 import {
   getBbDesktopInfo,
   MACOS_WINDOW_NO_DRAG_CLASS,
@@ -215,9 +227,11 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
 
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
-    <ThreadDetailWorkerPoolProvider>
-      <SplitThreadAreaContent {...props} />
-    </ThreadDetailWorkerPoolProvider>
+    <Suspense fallback={null}>
+      <ThreadDetailWorkerPoolProvider>
+        <SplitThreadAreaContent {...props} />
+      </ThreadDetailWorkerPoolProvider>
+    </Suspense>
   );
 }
 

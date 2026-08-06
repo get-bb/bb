@@ -20,6 +20,9 @@ export const sharedViteConfig = {
   build: {
     // Skip compressed-size calculation to keep production app builds fast.
     reportCompressedSize: false,
+    // Cap at 800KB — the largest remaining chunk (workspace-checkout-display
+    // at ~1.7MB) is a known issue tracked in fix/mobile-bundle-optimization.
+    chunkSizeWarningLimit: 800,
   },
   optimizeDeps: {
     // The terminal imports xterm lazily when the panel mounts. Pre-optimize

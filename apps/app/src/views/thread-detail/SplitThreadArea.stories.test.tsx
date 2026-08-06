@@ -2,8 +2,27 @@
 
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+
+// Bypass lazy imports from @pierre/diffs in test.
+vi.mock("@/components/diff/LazyWorkerPoolProvider", () => ({
+  LazyWorkerPoolProvider: ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => children,
+}));
+
+// Bypass the lazy() wrapper for ThreadDetailWorkerPoolProvider.
+vi.mock("./ThreadDetailWorkerPoolProvider", () => ({
+  ThreadDetailWorkerPoolProvider: ({
+    children,
+  }: {
+    children: React.ReactNode;
+  }) => children,
+}));
+
 import { ActiveAndIdle } from "./SplitThreadArea.stories";
 
 afterEach(cleanup);
@@ -22,8 +41,12 @@ describe("SplitThreadArea stories", () => {
         </div>,
       );
 
+      // Wait for lazy-loaded providers to resolve.
+      await waitFor(() => {
+        const panes = view.container.querySelectorAll("[data-split-pane-id]");
+        expect(panes).toHaveLength(2);
+      });
       const panes = view.container.querySelectorAll("[data-split-pane-id]");
-      expect(panes).toHaveLength(2);
       const idlePane = panes[0];
       const activePane = panes[1];
       if (
