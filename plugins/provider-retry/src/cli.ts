@@ -7,6 +7,12 @@ function jsonResult(value: unknown) {
 }
 
 function textView(view: ProviderRetryView): string {
+  if (view.phase === "waiting-for-host") {
+    return `${view.threadId}\t${view.phase}\t${view.providerId}\twaiting for host`;
+  }
+  if (view.phase === "retry-failed") {
+    return `${view.threadId}\t${view.phase}\t${view.providerId}\t${view.continuationError ?? "automatic continuation failed"}`;
+  }
   const due =
     view.dueAtMs === null
       ? "no automatic reset"

@@ -473,7 +473,12 @@ describe("provider retry scheduler", () => {
   it("retains a job while the host is unavailable and retries on host change", async () => {
     const continueAfterRateLimit = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Host is not connected"))
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Host is not connected"), {
+          code: "host_unavailable",
+          status: 502,
+        }),
+      )
       .mockResolvedValueOnce({ ok: true, requestId: "continuation-request" });
     const subscription = {
       hostChanged: null as
@@ -514,6 +519,8 @@ describe("provider retry scheduler", () => {
         threadId: "thread-host",
       }),
     ).toMatchObject({ view: { phase: "waiting-for-host" } });
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+    expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
     expect(subscription.hostChanged).not.toBeNull();
     subscription.hostChanged?.(["host-disconnected"]);
     await vi.advanceTimersByTimeAsync(0);
@@ -524,6 +531,65 @@ describe("provider retry scheduler", () => {
 
     running.controller.abort();
     await running.done;
+    await host.harness.dispose();
+  });
+
+  it("stops automatic retries after a non-host continuation failure", async () => {
+    const continueAfterRateLimit = vi.fn(async () => {
+      throw Object.assign(
+        new Error("This thread is awaiting user interaction"),
+        {
+          code: "awaiting_user_interaction",
+          status: 409,
+        },
+      );
+    });
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-failed", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-failed",
+      }),
+    ).resolves.toMatchObject({
+      view: {
+        phase: "retry-failed",
+        dueAtMs: null,
+        continuationError: "This thread is awaiting user interaction",
+      },
+    });
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-failed", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
+
+    await expect(
+      host.harness.callRpc("providerRetryNow", {
+        threadId: "thread-failed",
+      }),
+    ).resolves.toMatchObject({
+      started: false,
+      view: { phase: "retry-failed" },
+    });
+    expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
     await host.harness.dispose();
   });
 

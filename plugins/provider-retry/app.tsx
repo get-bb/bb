@@ -45,6 +45,9 @@ function limitDescription(view: ProviderRetryView): string {
   if (view.phase === "waiting-for-host") {
     return `${provider}${window} usage limit reset passed. This thread will continue when its host reconnects, while this bb server remains running.`;
   }
+  if (view.phase === "retry-failed") {
+    return `${provider}${window} usage is available, but bb could not continue automatically${view.continuationError ? `: ${view.continuationError}` : ""}. Resolve the issue, then retry.`;
+  }
   if (view.phase === "releasing") {
     return `${provider}${window} usage is available. Continuing this thread…`;
   }
@@ -120,7 +123,11 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
         } else if (action === "now") {
           const result = await rpc.call("providerRetryNow", { threadId });
           setView(result.view);
-          if (!result.started) {
+          if (
+            !result.started &&
+            result.view?.phase !== "retry-failed" &&
+            result.view?.phase !== "waiting-for-host"
+          ) {
             setActionError("This turn is no longer safe to continue.");
           }
         } else {

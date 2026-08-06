@@ -22,6 +22,7 @@ const waitingView: ProviderRetryView = {
   reachedReason: "rate_limit_reached",
   overageReason: null,
   recoveryReason: "eligible",
+  continuationError: null,
   refreshError: null,
 };
 
@@ -125,6 +126,36 @@ describe("provider retry app", () => {
     expect(
       await slot.findByText(/There is no automatic reset time/i),
     ).toBeTruthy();
+  });
+
+  it("explains when automatic continuation stops after an error", async () => {
+    const failedView: ProviderRetryView = {
+      ...waitingView,
+      phase: "retry-failed",
+      dueAtMs: null,
+      continuationError: "This thread is awaiting user interaction",
+    };
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thread-one" } },
+        rpc: {
+          providerRetryStatus: () => ({ view: failedView }),
+          providerRetryNow: () => ({ started: false, view: failedView }),
+          providerRetryCancel: () => ({ cancelled: true }),
+          providerRetryRefresh: () => ({ view: failedView }),
+        },
+      },
+    );
+
+    expect(
+      await slot.findByText(/bb could not continue automatically/i),
+    ).toBeTruthy();
+    expect(
+      slot.getByText(/This thread is awaiting user interaction/i),
+    ).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
   });
 
   it("keeps the banner when cancellation loses to an in-progress release", async () => {

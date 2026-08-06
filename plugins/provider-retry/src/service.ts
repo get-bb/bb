@@ -13,7 +13,6 @@ type ProviderUsage = ProviderUsageResponse[keyof ProviderUsageResponse];
 export const RESET_BUFFER_MS = 15_000;
 export const RESET_JITTER_MS = 30_000;
 export const RELEASE_PACE_MS = 1_000;
-export const HOST_RETRY_MS = 30_000;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 const REALTIME_CHANNEL = "provider-retry";
 
@@ -35,6 +34,15 @@ interface ScopeQueue {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isHostUnavailableError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "host_unavailable"
+  );
 }
 
 function refreshSupported(providerId: string): boolean {
@@ -85,6 +93,7 @@ function recoveryView(args: {
     reachedReason: rateLimits?.reachedReason ?? null,
     overageReason: rateLimits?.overageReason ?? null,
     recoveryReason: args.status.reason,
+    continuationError: null,
     refreshError: null,
   };
 }
@@ -212,15 +221,19 @@ export class ProviderRetryService {
 
     let dueAtMs: number | null = null;
     let phase: ProviderRetryPhase = "blocked";
-    if (candidate.automatic && candidate.resetsAtMs !== null) {
-      const sameCandidate =
-        existing?.candidate?.failedRequestId === candidate.failedRequestId &&
-        existing.candidate.resetsAtMs === candidate.resetsAtMs;
-      if (status.rateLimits?.status === "allowed") {
-        dueAtMs = this.sources.now();
-      } else if (sameCandidate && existing.view.phase === "waiting-for-host") {
+    let continuationError: string | null = null;
+    const sameCandidate =
+      existing?.candidate?.failedRequestId === candidate.failedRequestId &&
+      existing.candidate.resetsAtMs === candidate.resetsAtMs;
+    if (sameCandidate && existing.view.phase === "retry-failed") {
+      phase = "retry-failed";
+      continuationError = existing.view.continuationError;
+    } else if (candidate.automatic && candidate.resetsAtMs !== null) {
+      if (sameCandidate && existing.view.phase === "waiting-for-host") {
         dueAtMs = existing.view.dueAtMs;
         phase = "waiting-for-host";
+      } else if (status.rateLimits?.status === "allowed") {
+        dueAtMs = this.sources.now();
       } else if (sameCandidate && existing.view.dueAtMs !== null) {
         dueAtMs = existing.view.dueAtMs;
       } else {
@@ -229,11 +242,12 @@ export class ProviderRetryService {
           RESET_BUFFER_MS +
           Math.floor(this.sources.random() * RESET_JITTER_MS);
       }
-      if (phase !== "waiting-for-host") phase = "waiting-for-reset";
+      if (phase === "blocked") phase = "waiting-for-reset";
     }
+    const view = recoveryView({ candidate, dueAtMs, phase, status, threadId });
     this.upsert(threadId, {
       candidate,
-      view: recoveryView({ candidate, dueAtMs, phase, status, threadId }),
+      view: { ...view, continuationError },
     });
     return this.status(threadId);
   }
@@ -343,7 +357,11 @@ export class ProviderRetryService {
     const now = this.sources.now();
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
-      if (!entry?.candidate?.automatic || entry.view.phase === "releasing") {
+      if (
+        !entry?.candidate?.automatic ||
+        entry.view.phase === "releasing" ||
+        entry.view.phase === "retry-failed"
+      ) {
         continue;
       }
       entry.view = {
@@ -365,7 +383,11 @@ export class ProviderRetryService {
       Math.floor(this.sources.random() * RESET_JITTER_MS);
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
-      if (!entry?.candidate?.automatic || entry.view.phase === "releasing") {
+      if (
+        !entry?.candidate?.automatic ||
+        entry.view.phase === "releasing" ||
+        entry.view.phase === "retry-failed"
+      ) {
         continue;
       }
       entry.view = { ...entry.view, dueAtMs, resetsAtMs: resetAtMs };
@@ -532,25 +554,36 @@ export class ProviderRetryService {
           `Provider retry status refresh for thread ${threadId} failed: ${errorMessage(inspectionError)}`,
         );
       }
-      if (status?.candidate?.failedRequestId !== failedRequestId) {
+      if (
+        status !== null &&
+        status.candidate?.failedRequestId !== failedRequestId
+      ) {
         this.remove(threadId);
         return false;
       }
       const current = this.entries.get(threadId);
       if (!current) return false;
-      current.candidate = status.candidate;
+      if (status !== null) current.candidate = status.candidate;
+      const waitingForHost =
+        current.candidate?.automatic === true && isHostUnavailableError(error);
+      const refreshedView =
+        status === null
+          ? current.view
+          : recoveryView({
+              candidate: status.candidate,
+              dueAtMs: null,
+              phase: waitingForHost ? "waiting-for-host" : "retry-failed",
+              status,
+              threadId,
+            });
       current.view = {
-        ...recoveryView({
-          candidate: status.candidate,
-          dueAtMs: this.sources.now() + HOST_RETRY_MS,
-          phase: "waiting-for-host",
-          status,
-          threadId,
-        }),
+        ...refreshedView,
+        dueAtMs: null,
+        phase: waitingForHost ? "waiting-for-host" : "retry-failed",
+        continuationError: waitingForHost ? null : errorMessage(error),
         refreshError: current.view.refreshError,
       };
       this.publish(threadId);
-      this.schedule(current.view.scopeKey);
       return false;
     }
   }
