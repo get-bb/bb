@@ -52,7 +52,12 @@ export type PrincipalTransport = "http" | "websocket";
  */
 export type PrincipalRequest = {
   readonly method: string;
-  readonly path: string;
+  /**
+   * Origin-form request target: path plus optional query, never an origin.
+   * Adapters that need a canonical form must validate via the shared
+   * server-contract helper; raw boundary metadata is passed through as-is.
+   */
+  readonly target: string;
   readonly transport: PrincipalTransport;
   readonly getHeader: (name: string) => string | undefined;
 };

@@ -9,11 +9,8 @@ import {
 
 function createRejectingPolicy(): PrincipalPolicy {
   return {
-    async principal() {
+    async resolve() {
       throw new Error("rejected");
-    },
-    async authorize() {
-      return { allowed: false, reason: "forbidden" };
     },
   };
 }
@@ -95,11 +92,13 @@ describe("principal resolution middleware", () => {
     const app = new Hono();
     let handlerReached = false;
     const invalidPolicy: PrincipalPolicy = {
-      async principal() {
-        return undefined as never;
-      },
-      async authorize() {
-        return { allowed: true };
+      async resolve() {
+        return {
+          principal: undefined as never,
+          async authorize() {
+            return { allowed: true };
+          },
+        };
       },
     };
     app.use("*", createResolvePrincipalMiddleware(invalidPolicy, "http"));
@@ -114,21 +113,76 @@ describe("principal resolution middleware", () => {
     expect(handlerReached).toBe(false);
   });
 
+  it("fails closed when resolve returns a missing authorize", async () => {
+    const app = new Hono();
+    let handlerReached = false;
+    const invalidPolicy: PrincipalPolicy = {
+      async resolve() {
+        return {
+          principal: {
+            id: "missing-authorize",
+            kind: "human",
+            displayName: "Missing Authorize",
+          },
+        } as never;
+      },
+    };
+    app.use("*", createResolvePrincipalMiddleware(invalidPolicy, "http"));
+    app.get("/api/v1/projects", () => {
+      handlerReached = true;
+      return new Response(null, { status: 204 });
+    });
+
+    const response = await app.request("/api/v1/projects");
+
+    expect(response.status).toBe(401);
+    expect(handlerReached).toBe(false);
+  });
+
+  it("fails closed when resolve returns a non-callable authorize", async () => {
+    const app = new Hono();
+    let handlerReached = false;
+    const invalidPolicy: PrincipalPolicy = {
+      async resolve() {
+        return {
+          principal: {
+            id: "bad-authorize",
+            kind: "human",
+            displayName: "Bad Authorize",
+          },
+          authorize: "not-a-function" as never,
+        };
+      },
+    };
+    app.use("*", createResolvePrincipalMiddleware(invalidPolicy, "http"));
+    app.get("/api/v1/projects", () => {
+      handlerReached = true;
+      return new Response(null, { status: 204 });
+    });
+
+    const response = await app.request("/api/v1/projects");
+
+    expect(response.status).toBe(401);
+    expect(handlerReached).toBe(false);
+  });
+
   it("fails closed instead of replacing a Principal on duplicate resolution", async () => {
     const app = new Hono();
     let handlerReached = false;
     let duplicatePolicyCalled = false;
     const duplicatePolicy: PrincipalPolicy = {
-      async principal() {
+      async resolve() {
         duplicatePolicyCalled = true;
         return {
-          id: "replacement",
-          kind: "human",
-          displayName: "Replacement",
+          principal: {
+            id: "replacement",
+            kind: "human",
+            displayName: "Replacement",
+          },
+          async authorize() {
+            return { allowed: true };
+          },
         };
-      },
-      async authorize() {
-        return { allowed: true };
       },
     };
     app.use(

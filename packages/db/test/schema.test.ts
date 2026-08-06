@@ -103,6 +103,41 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
+  it("creates principal assertion replays with jti primary key and expires_at index", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+
+    try {
+      const columns = db.$client
+        .prepare(
+          'SELECT name, lower(type) AS type, "notnull" AS "notNull", pk AS "primaryKey" FROM pragma_table_info(\'principal_assertion_replays\')',
+        )
+        .all();
+
+      expect(columns).toHaveLength(3);
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          { name: "jti", type: "text", notNull: 1, primaryKey: 1 },
+          { name: "expires_at", type: "integer", notNull: 1, primaryKey: 0 },
+          { name: "consumed_at", type: "integer", notNull: 1, primaryKey: 0 },
+        ]),
+      );
+
+      const indexNames = db.$client
+        .prepare<[], { name: string }>(
+          "SELECT name FROM pragma_index_list('principal_assertion_replays')",
+        )
+        .all()
+        .map((row) => row.name);
+
+      expect(indexNames).toContain(
+        "principal_assertion_replays_expires_at_idx",
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("does not persist terminal runtime-only columns", () => {
     const db = createConnection(":memory:");
     migrate(db);

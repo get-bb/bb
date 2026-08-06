@@ -8,56 +8,62 @@ describe("local-owner principal policy", () => {
   it("resolves one stable owner Principal for any trusted request", async () => {
     const policy = createLocalOwnerPrincipalPolicy();
 
-    const first = await policy.principal({
+    const first = await policy.resolve({
       method: "GET",
-      path: "/api/v1/projects",
+      target: "/api/v1/projects",
       transport: "http",
       getHeader: () => undefined,
     });
-    const second = await policy.principal({
+    const second = await policy.resolve({
       method: "POST",
-      path: "/ws",
+      target: "/ws",
       transport: "websocket",
       getHeader: (name) => (name === "authorization" ? "Bearer x" : undefined),
     });
 
-    expect(first).toEqual(LOCAL_OWNER_PRINCIPAL);
-    expect(second).toBe(first);
-    expect(first).toEqual({
+    expect(first.principal).toEqual(LOCAL_OWNER_PRINCIPAL);
+    expect(second.principal).toBe(first.principal);
+    expect(first.principal).toEqual({
       id: "local-owner",
       kind: "human",
       displayName: "Local Owner",
     });
-    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.principal)).toBe(true);
   });
 
-  it("explicitly allows actions for the local owner", async () => {
+  it("explicitly allows actions for the local owner session", async () => {
     const policy = createLocalOwnerPrincipalPolicy();
-    const principal = await policy.principal({
+    const session = await policy.resolve({
       method: "GET",
-      path: "/api/v1/threads",
+      target: "/api/v1/threads",
       transport: "http",
       getHeader: () => undefined,
     });
 
     await expect(
-      policy.authorize(
-        principal,
+      session.authorize(
         { name: "thread.read" },
         { kind: "thread", id: "thr_1" },
       ),
     ).resolves.toEqual({ allowed: true });
   });
 
-  it("does not authorize a Principal the adapter did not issue", async () => {
+  it("binds authorize to the issued local-owner session without a Principal argument", async () => {
     const policy = createLocalOwnerPrincipalPolicy();
+    const session = await policy.resolve({
+      method: "GET",
+      target: "/api/v1/threads",
+      transport: "http",
+      getHeader: () => undefined,
+    });
 
+    expect(session.principal).toEqual(LOCAL_OWNER_PRINCIPAL);
+    expect(session.authorize.length).toBe(2);
     await expect(
-      policy.authorize(
-        { id: "someone-else", kind: "human", displayName: "Someone Else" },
-        { name: "thread.read" },
-        { kind: "thread", id: "thr_1" },
+      session.authorize(
+        { name: "thread.write" },
+        { kind: "thread", id: "thr_2" },
       ),
-    ).resolves.toEqual({ allowed: false, reason: "unauthenticated" });
+    ).resolves.toEqual({ allowed: true });
   });
 });

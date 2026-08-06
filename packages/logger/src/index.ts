@@ -15,6 +15,20 @@ export interface CreateLoggerOptions {
   transportMode?: LoggerTransportMode;
 }
 
+const SENSITIVE_HEADER_PARENT_PATHS = [
+  "headers",
+  "req.headers",
+  "request.headers",
+  "http.request.headers",
+  "httpRequest.headers",
+  "*.headers",
+] as const;
+
+// Header names are case-insensitive and new credential-bearing headers can be
+// introduced outside this package. Redact the complete header container so a
+// casing variation or future header cannot silently bypass a name allowlist.
+const SENSITIVE_LOG_PATHS = [...SENSITIVE_HEADER_PARENT_PATHS];
+
 function sanitizeComponentName(component: string): string {
   const trimmed = component.trim();
   if (!trimmed) {
@@ -39,6 +53,10 @@ export function createLogger(options: CreateLoggerOptions): Logger {
     serializers: {
       err: pino.stdSerializers.errWithCause,
       error: pino.stdSerializers.errWithCause,
+    },
+    redact: {
+      paths: SENSITIVE_LOG_PATHS,
+      censor: "[Redacted]",
     },
   } satisfies pino.LoggerOptions;
   const transportMode = options.transportMode ?? "worker";

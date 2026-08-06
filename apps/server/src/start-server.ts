@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
 import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
+import {
+  closeServerPrincipalRuntimeBestEffort,
+  createServerListenOptions,
+  createServerPrincipalRuntime,
+} from "./auth/server-principal-runtime.js";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
@@ -36,6 +41,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
   });
+  const principalRuntime = await createServerPrincipalRuntime({ db });
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -139,7 +145,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       watchInterests,
       sharedPorts,
     },
-    { staticDir },
+    {
+      principalPolicy: principalRuntime.principalPolicy,
+      staticDir,
+    },
   );
   const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
 
@@ -161,16 +170,22 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger.error({ err: error }, "Startup recovery sweep failed");
   });
 
-  const server = serve({
+  const listenOptions = createServerListenOptions({
     port: serverConfig.BB_SERVER_PORT,
     fetch: app.fetch,
+    principalRuntime,
   });
+  const server = serve(listenOptions);
   injectWebSocket(server);
 
   logger.info(
     {
       port: serverConfig.BB_SERVER_PORT,
       dataDir: serverConfig.BB_DATA_DIR,
+      principalMode: principalRuntime.principalMode,
+      ...(principalRuntime.hostname !== undefined
+        ? { hostname: principalRuntime.hostname }
+        : {}),
     },
     "Server listening",
   );
@@ -197,22 +212,26 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
-      eventLoopStallMonitor.stop();
-      clearInterval(sweepInterval);
-      await pluginService.stop().catch((error: unknown) => {
-        logger.warn({ err: error }, "Plugin shutdown failed");
-      });
-      const closeServer = new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
+      try {
+        eventLoopStallMonitor.stop();
+        clearInterval(sweepInterval);
+        await pluginService.stop().catch((error: unknown) => {
+          logger.warn({ err: error }, "Plugin shutdown failed");
         });
-      });
-      await closeWebSockets();
-      await closeServer;
+        const closeServer = new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+        await closeWebSockets();
+        await closeServer;
+      } finally {
+        await closeServerPrincipalRuntimeBestEffort(principalRuntime);
+      }
     })();
     return shutdownPromise;
   };

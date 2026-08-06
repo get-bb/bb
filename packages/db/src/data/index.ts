@@ -474,6 +474,12 @@ export type {
   SetPendingInteractionResolvingArgs,
 } from "./pending-interactions.js";
 
+export { consumePrincipalAssertionReplay } from "./principal-assertion-replays.js";
+export type {
+  ConsumePrincipalAssertionReplayArgs,
+  ConsumePrincipalAssertionReplayResult,
+} from "./principal-assertion-replays.js";
+
 export {
   openSession,
   closeSession,

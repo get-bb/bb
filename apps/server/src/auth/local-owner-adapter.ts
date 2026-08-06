@@ -4,7 +4,7 @@ import type {
   PolicyResource,
   Principal,
 } from "@bb/domain";
-import type { PrincipalPolicy } from "./principal-policy.js";
+import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
 
 export const LOCAL_OWNER_PRINCIPAL_ID = "local-owner";
 
@@ -15,29 +15,35 @@ export const LOCAL_OWNER_PRINCIPAL: Principal = Object.freeze({
   displayName: "Local Owner",
 });
 
+function isLocalOwnerPrincipal(principal: Principal): boolean {
+  return (
+    principal.id === LOCAL_OWNER_PRINCIPAL.id &&
+    principal.kind === LOCAL_OWNER_PRINCIPAL.kind &&
+    principal.displayName === LOCAL_OWNER_PRINCIPAL.displayName
+  );
+}
+
 /**
- * Stock PrincipalPolicy: one owner Principal and explicit allow for all actions.
- * Preserves ordinary upstream BB behavior until a signed multiplayer adapter is
- * configured.
+ * Stock PrincipalPolicy: one owner Principal and a session authorize closure
+ * that explicitly allows only that sanitized local owner. Preserves ordinary
+ * upstream BB behavior until a signed multiplayer adapter is configured.
  */
 export function createLocalOwnerPrincipalPolicy(): PrincipalPolicy {
   return {
-    async principal(): Promise<Principal> {
-      return LOCAL_OWNER_PRINCIPAL;
-    },
-    async authorize(
-      principal: Principal,
-      _action: PolicyAction,
-      _resource: PolicyResource,
-    ): Promise<PolicyDecision> {
-      if (
-        principal.id !== LOCAL_OWNER_PRINCIPAL.id ||
-        principal.kind !== LOCAL_OWNER_PRINCIPAL.kind ||
-        principal.displayName !== LOCAL_OWNER_PRINCIPAL.displayName
-      ) {
-        return { allowed: false, reason: "unauthenticated" };
-      }
-      return { allowed: true };
+    async resolve(): Promise<ResolvedPrincipal> {
+      const principal = LOCAL_OWNER_PRINCIPAL;
+      return {
+        principal,
+        async authorize(
+          _action: PolicyAction,
+          _resource: PolicyResource,
+        ): Promise<PolicyDecision> {
+          if (!isLocalOwnerPrincipal(principal)) {
+            return { allowed: false, reason: "unauthenticated" };
+          }
+          return { allowed: true };
+        },
+      };
     },
   };
 }

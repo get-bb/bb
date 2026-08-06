@@ -15,8 +15,6 @@ import type { Context, MiddlewareHandler, Next } from "hono";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
-const PRINCIPAL_CONTEXT_KEY = "bbPrincipal";
-const PRINCIPAL_POLICY_CONTEXT_KEY = "bbPrincipalPolicy";
 export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
 export const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
 export type GateAuthKind = "machine" | "session";
@@ -29,25 +27,35 @@ export interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
 }
 
-interface PrincipalContextReader {
-  get(key: typeof PRINCIPAL_CONTEXT_KEY): Principal | undefined;
+interface PrincipalAuthSession {
+  authorize(
+    action: PolicyAction,
+    resource: PolicyResource,
+  ): Promise<PolicyDecision>;
 }
 
-interface PrincipalAuthorizationContext {
-  get(key: typeof PRINCIPAL_CONTEXT_KEY): Principal | undefined;
-  get(key: typeof PRINCIPAL_POLICY_CONTEXT_KEY): PrincipalPolicy | undefined;
+function freezePrincipalAuthSession(
+  authorize: PrincipalAuthSession["authorize"],
+): PrincipalAuthSession {
+  return Object.freeze({ authorize });
 }
 
-interface PrincipalContextWriter {
-  get(key: typeof PRINCIPAL_CONTEXT_KEY): Principal | undefined;
-  set(key: typeof PRINCIPAL_CONTEXT_KEY, value: Principal): void;
+interface AttachedPrincipalSession {
+  readonly principal: Principal;
+  readonly authorization: PrincipalAuthSession;
 }
+
+// Module-private object identity is the authority boundary. A handler can set
+// arbitrary Hono context variables, but it cannot discover or replace this
+// WeakMap entry with a caller-manufactured Principal/session.
+const attachedPrincipalSessions = new WeakMap<
+  object,
+  AttachedPrincipalSession
+>();
 
 declare module "hono" {
   interface ContextVariableMap {
     [TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY]: string | undefined;
-    [PRINCIPAL_CONTEXT_KEY]: Principal | undefined;
-    [PRINCIPAL_POLICY_CONTEXT_KEY]: PrincipalPolicy | undefined;
   }
 }
 
@@ -108,46 +116,53 @@ function freezePrincipal(principal: Principal): Principal {
 }
 
 /**
- * Attach exactly one immutable Principal to the request. Refuses to replace an
- * identity that is already present.
+ * Attach exactly one immutable Principal and its authorize session. Refuses to
+ * replace an identity or session that is already present.
  */
-function attachPrincipal(
-  context: PrincipalContextWriter,
+function attachResolvedPrincipal(
+  context: object,
   principal: Principal,
+  session: PrincipalAuthSession,
 ): void {
-  if (context.get(PRINCIPAL_CONTEXT_KEY) !== undefined) {
+  if (attachedPrincipalSessions.has(context)) {
     throw new Error("Principal already attached to request");
   }
-  context.set(PRINCIPAL_CONTEXT_KEY, freezePrincipal(principal));
+  attachedPrincipalSessions.set(
+    context,
+    Object.freeze({
+      principal: freezePrincipal(principal),
+      authorization: session,
+    }),
+  );
 }
 
 /**
  * Fail-closed Principal accessor for handlers. Throws when middleware did not
  * resolve an identity.
  */
-export function requirePrincipal(context: PrincipalContextReader): Principal {
-  const principal = context.get(PRINCIPAL_CONTEXT_KEY);
-  if (principal === undefined) {
+export function requirePrincipal(context: object): Principal {
+  const attached = attachedPrincipalSessions.get(context);
+  if (attached === undefined) {
     throw new Error("Principal is not attached to request");
   }
-  return principal;
+  return attached.principal;
 }
 
 /**
- * Authorize an action against the request Principal. Missing identity fails
- * closed as unauthenticated without consulting an adapter.
+ * Authorize an action via the request-scoped session closure. Missing session
+ * fails closed as unauthenticated without consulting an adapter or accepting a
+ * Principal argument.
  */
 export async function authorize(
-  context: PrincipalAuthorizationContext,
+  context: object,
   action: PolicyAction,
   resource: PolicyResource,
 ): Promise<PolicyDecision> {
-  const principal = context.get(PRINCIPAL_CONTEXT_KEY);
-  const policy = context.get(PRINCIPAL_POLICY_CONTEXT_KEY);
-  if (principal === undefined || policy === undefined) {
+  const attached = attachedPrincipalSessions.get(context);
+  if (attached === undefined) {
     return { allowed: false, reason: "unauthenticated" };
   }
-  return policy.authorize(principal, action, resource);
+  return attached.authorization.authorize(action, resource);
 }
 
 function unauthorizedPrincipalResponse(): Response {
@@ -161,27 +176,60 @@ function unauthorizedPrincipalResponse(): Response {
 }
 
 /**
- * Resolve and attach a Principal from the injected policy before handlers or
- * WebSocket upgrade callbacks run. Adapter rejection/throw fails closed with
- * 401 and does not attach an identity.
+ * Read the origin-form request target (path + optional query) from the Node
+ * adapter's raw incoming URL when present. Fall back for direct Hono tests to
+ * pathname + search from the Fetch URL. Hono/Node types stay private here.
+ */
+function readPrincipalRequestTarget(context: Context): string {
+  const env = context.env as
+    | {
+        server?: { incoming?: { url?: string } };
+        incoming?: { url?: string };
+      }
+    | null
+    | undefined;
+  const incomingUrl = env?.server?.incoming?.url ?? env?.incoming?.url;
+  if (typeof incomingUrl === "string" && incomingUrl.length > 0) {
+    return incomingUrl;
+  }
+  const url = new URL(context.req.url);
+  return `${url.pathname}${url.search}`;
+}
+
+/**
+ * Resolve and attach a Principal session from the injected policy before
+ * handlers or WebSocket upgrade callbacks run. Adapter rejection/throw or an
+ * invalid resolved session fails closed with 401 and does not attach an
+ * identity.
  */
 export function createResolvePrincipalMiddleware(
   policy: PrincipalPolicy,
   transport: PrincipalTransport,
 ): MiddlewareHandler {
   return async (context: Context, next: Next) => {
-    if (context.get(PRINCIPAL_CONTEXT_KEY) !== undefined) {
+    if (attachedPrincipalSessions.has(context)) {
       return unauthorizedPrincipalResponse();
     }
     try {
-      const principal = await policy.principal({
+      const resolved = await policy.resolve({
         method: context.req.method,
-        path: context.req.path,
+        target: readPrincipalRequestTarget(context),
         transport,
         getHeader: (name) => context.req.header(name),
       });
-      attachPrincipal(context, principal);
-      context.set(PRINCIPAL_POLICY_CONTEXT_KEY, policy);
+      if (
+        resolved === null ||
+        typeof resolved !== "object" ||
+        typeof resolved.authorize !== "function"
+      ) {
+        return unauthorizedPrincipalResponse();
+      }
+      const resolvedAuthorize = resolved.authorize.bind(resolved);
+      attachResolvedPrincipal(
+        context,
+        resolved.principal,
+        freezePrincipalAuthSession(resolvedAuthorize),
+      );
     } catch {
       return unauthorizedPrincipalResponse();
     }

@@ -916,3 +916,15 @@ export const pendingInteractions = sqliteTable(
     ),
   ],
 );
+
+export const principalAssertionReplays = sqliteTable(
+  "principal_assertion_replays",
+  {
+    jti: text("jti").primaryKey(),
+    expiresAt: integer("expires_at").notNull(),
+    consumedAt: integer("consumed_at").notNull(),
+  },
+  (table) => [
+    index("principal_assertion_replays_expires_at_idx").on(table.expiresAt),
+  ],
+);

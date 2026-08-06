@@ -353,4 +353,71 @@ describe("createLogger", () => {
       },
     });
   });
+
+  it("redacts HTTP, WebSocket, and BB credential headers from structured logs", async () => {
+    const dataDir = createTempDir();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_DATA_DIR", dataDir);
+
+    const { createLogger } = await importFreshLogger();
+    const logger = createLogger({
+      component: "server",
+      transportMode: "stream",
+    });
+    const logDir = path.join(dataDir, "logs");
+    const assertion = `assertion-secret-${Date.now()}`;
+    const websocketProtocol = `websocket-secret-${Date.now()}`;
+    const authorization = `authorization-secret-${Date.now()}`;
+
+    logger.error(
+      {
+        headers: { authorization },
+        req: {
+          headers: {
+            "sec-websocket-protocol": websocketProtocol,
+            "x-work-together-principal": assertion,
+          },
+        },
+        request: {
+          headers: {
+            cookie: "cookie-secret",
+            "x-bb-plugin-token": "plugin-secret",
+          },
+        },
+        httpRequest: {
+          headers: {
+            Authorization: "mixed-case-secret",
+            "x-future-credential": "future-secret",
+          },
+        },
+      },
+      "credential redaction",
+    );
+
+    await waitFor(() => readComponentLogLines(logDir, "server").length === 1);
+    const raw = fs.readFileSync(
+      path.join(logDir, getComponentLogFiles(logDir, "server")[0]!),
+      "utf8",
+    );
+    expect(raw).not.toContain(assertion);
+    expect(raw).not.toContain(websocketProtocol);
+    expect(raw).not.toContain(authorization);
+    expect(raw).not.toContain("cookie-secret");
+    expect(raw).not.toContain("plugin-secret");
+    expect(raw).not.toContain("mixed-case-secret");
+    expect(raw).not.toContain("future-secret");
+
+    expect(readComponentLogLines(logDir, "server")[0]).toMatchObject({
+      headers: "[Redacted]",
+      req: {
+        headers: "[Redacted]",
+      },
+      request: {
+        headers: "[Redacted]",
+      },
+      httpRequest: {
+        headers: "[Redacted]",
+      },
+    });
+  });
 });

@@ -236,13 +236,18 @@ const latestMigrationWhen = Math.max(
   ).entries.map((entry) => entry.when),
 );
 
+function dropPrincipalAssertionReplaysTable(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS principal_assertion_replays").run();
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
   // tables (added by 0039/0041), app_theme (added by 0042), the thread section
-  // schema (thread section columns + thread_sections table), thread tabs, and
-  // normalized plugin persistence tables.
+  // schema (thread section columns + thread_sections table), thread tabs,
+  // normalized plugin persistence tables, and principal assertion replays.
+  dropPrincipalAssertionReplaysTable(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -589,6 +594,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
   dropProjectGitRemoteUrlColumn(db);
+  dropPrincipalAssertionReplaysTable(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
     DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
@@ -1209,6 +1215,9 @@ describe("migrate", () => {
     // Rewind 0085 so it replays against an install that already has a project —
     // exactly what an upgrading user's database looks like.
     dropOnboardingCompletedAtColumn(db);
+    // 0086 lands after 0085; clearing `created_at >= 0085` also clears 0086's
+    // ledger row, so drop its table before the forward remigrate recreates it.
+    dropPrincipalAssertionReplaysTable(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1495,6 +1504,7 @@ describe("migrate", () => {
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropPrincipalAssertionReplaysTable(db);
 
       migrate(db);
 
@@ -1891,6 +1901,7 @@ describe("migrate", () => {
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropPrincipalAssertionReplaysTable(db);
 
       expect(
         db.$client
@@ -1984,6 +1995,7 @@ describe("migrate", () => {
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropPrincipalAssertionReplaysTable(db);
 
       expect(() => migrate(db)).not.toThrow();
 
