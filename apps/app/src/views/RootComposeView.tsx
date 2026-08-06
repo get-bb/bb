@@ -2008,7 +2008,9 @@ export function RootComposeView() {
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
-      enabled: rootPanelTerminalTarget?.kind === "environment",
+      enabled:
+        isPersistedSecondaryPanelOpen &&
+        rootPanelTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
@@ -2022,7 +2024,9 @@ export function RootComposeView() {
         }
       : null,
     {
-      enabled: rootPanelTerminalTarget?.kind === "host_path",
+      enabled:
+        isPersistedSecondaryPanelOpen &&
+        rootPanelTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
@@ -2927,6 +2931,7 @@ export function RootComposeView() {
     activeTerminalId && rootPanelTerminalTarget ? (
       <ThreadTerminalPanel
         canCreateTerminal={canCreateRootTerminal}
+        isPanelOpen={isSecondaryPanelOpen}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}

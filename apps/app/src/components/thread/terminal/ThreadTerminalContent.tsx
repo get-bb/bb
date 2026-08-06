@@ -59,6 +59,12 @@ export function ThreadTerminalContent({
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
+  // Keep the terminal UI entirely unmounted while its panel is hidden. In
+  // particular, mounting ThreadTerminalView initializes xterm and its socket.
+  if (!controller.isPanelOpen) {
+    return null;
+  }
+
   if (controller.hasTerminalQueryError) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive-text">

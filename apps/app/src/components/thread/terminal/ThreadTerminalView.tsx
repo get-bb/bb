@@ -6,7 +6,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
-import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
+import type {
+  IDisposable,
+  ITerminalAddon,
+  ITheme,
+  Terminal as XTermTerminal,
+} from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type {
   TerminalServerMessage,
@@ -29,6 +34,33 @@ const TERMINAL_FONT_FAMILY =
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 type TerminalFitScheduler = () => void;
+
+interface WebglRendererAddon extends ITerminalAddon {
+  onContextLoss: (listener: () => void) => IDisposable;
+}
+
+type TerminalAddonLoader = Pick<XTermTerminal, "loadAddon">;
+
+export function loadTerminalWebglRenderer(
+  terminal: TerminalAddonLoader,
+  createAddon: () => WebglRendererAddon,
+): boolean {
+  let addon: WebglRendererAddon | null = null;
+  let contextLossDisposable: IDisposable | null = null;
+  try {
+    addon = createAddon();
+    contextLossDisposable = addon.onContextLoss(() => {
+      contextLossDisposable?.dispose();
+      addon?.dispose();
+    });
+    terminal.loadAddon(addon);
+    return true;
+  } catch {
+    contextLossDisposable?.dispose();
+    addon?.dispose();
+    return false;
+  }
+}
 
 interface TerminalSelectionAnchorPoint {
   x: number;
@@ -509,12 +541,17 @@ export function ThreadTerminalView({
     async function mountTerminal(
       containerElement: HTMLDivElement,
     ): Promise<void> {
-      const [{ Terminal }, { FitAddon: LoadedFitAddon }, { WebLinksAddon }] =
-        await Promise.all([
-          import("@xterm/xterm"),
-          import("@xterm/addon-fit"),
-          import("@xterm/addon-web-links"),
-        ]);
+      const [
+        { Terminal },
+        { FitAddon: LoadedFitAddon },
+        { WebLinksAddon },
+        { WebglAddon },
+      ] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+        import("@xterm/addon-web-links"),
+        import("@xterm/addon-webgl"),
+      ]);
       if (disposed) {
         return;
       }
@@ -540,6 +577,10 @@ export function ThreadTerminalView({
           });
         }),
       );
+      // The DOM renderer measures every newly encountered glyph with
+      // synchronous layout reads. Register WebGL before opening xterm so the
+      // DOM renderer is never created when WebGL is available.
+      loadTerminalWebglRenderer(terminal, () => new WebglAddon());
       terminal.open(containerElement);
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
