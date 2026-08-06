@@ -276,7 +276,7 @@ export function App() {
               including auth callback, which renders no app shell. */}
           <ProviderCliInstallLogDialogHost />
           {/* First-run onboarding. Outside <Routes> so it is not tied to a
-              page, and self-gating on the persisted completion timestamp. */}
+              page. It self-gates on the experiment and completion timestamp. */}
           <OnboardingHost />
         </RouteNavigationProvider>
       </AppCommandProvider>

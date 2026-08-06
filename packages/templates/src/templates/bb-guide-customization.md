@@ -66,10 +66,13 @@ follow-up; when disabled, those actions are reversed.
   bb settings version [--force]
   bb settings reload
 
-`bb settings replay-onboarding` clears `onboardingCompletedAt` so the first-run
-setup guide (agent detection, then adding projects) shows again on the next app
-load. The same button lives in Settings → General → Setup guide.
+`bb settings replay-onboarding` enables the `newOnboarding` experiment and
+clears `onboardingCompletedAt`. The first-run setup guide then shows again on
+the next app load. The same button lives in Settings → General → Setup guide
+while the experiment is on.
 
+The `newOnboarding` experiment exposes the first-run agent and project setup
+guide.
 The `toolsHub` experiment exposes Extensions for managing skills and plugins.
 Automations stays in the Plugins section beside threads. It does not enable or
 disable installed skills, automation execution, plugin runtimes, CLI commands,

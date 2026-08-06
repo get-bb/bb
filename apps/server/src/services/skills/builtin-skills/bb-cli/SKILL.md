@@ -77,6 +77,10 @@ message agents, or inspect projects, providers, and environments.
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools.
+- The default-off `newOnboarding` experiment exposes the first-run agent and
+  project setup guide. Change it with
+  `bb settings experiment newOnboarding <true|false>`. Use
+  `bb settings replay-onboarding` to enable it and show the guide again.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole

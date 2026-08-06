@@ -187,6 +187,7 @@ export interface GeneralSettingsSectionProps {
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
+  replayOnboardingAvailable: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
 }
@@ -210,7 +211,9 @@ export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
+  newOnboardingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onToolsHubEnabledChange: (enabled: boolean) => void;
   toolsHubEnabled: boolean;
 }
@@ -781,6 +784,7 @@ export function GeneralSettingsSection({
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
+  replayOnboardingAvailable,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
   onReplayOnboarding,
@@ -826,15 +830,17 @@ export function GeneralSettingsSection({
           onEnabledChange={onRewriteLocalhostLinksChange}
         />
 
-        <ReplayOnboardingSettingsControl onReplay={onReplayOnboarding} />
+        {replayOnboardingAvailable ? (
+          <ReplayOnboardingSettingsControl onReplay={onReplayOnboarding} />
+        ) : null}
       </div>
     </SettingsSection>
   );
 }
 
 /**
- * Clearing `onboardingCompletedAt` is all it takes: the onboarding host gates
- * purely on that timestamp, so the flow reopens on the spot.
+ * The parent only shows this control when the new-onboarding experiment is on.
+ * Clearing `onboardingCompletedAt` then reopens the flow on the spot.
  */
 function ReplayOnboardingSettingsControl({
   onReplay,
@@ -947,11 +953,14 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
+  newOnboardingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onNewOnboardingEnabledChange,
   onToolsHubEnabledChange,
   toolsHubEnabled,
 }: ExperimentsSettingsSectionProps) {
@@ -971,6 +980,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={NEW_ONBOARDING_EXPERIMENT_LABEL}
+          description="Enable the new first-run guide for agent setup and project selection."
+        >
+          <Switch
+            checked={newOnboardingEnabled}
+            disabled={disabled}
+            onCheckedChange={onNewOnboardingEnabledChange}
+            aria-label={NEW_ONBOARDING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1142,6 +1163,13 @@ export function SettingsView() {
             claudeCodeMockCliTraffic: enabled,
           })
         }
+        newOnboardingEnabled={experiments.newOnboarding}
+        onNewOnboardingEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            newOnboarding: enabled,
+          })
+        }
         onToolsHubEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
@@ -1174,6 +1202,7 @@ export function SettingsView() {
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
+          replayOnboardingAvailable={experiments.newOnboarding}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           steerActiveThreadOnEnterDisabled={
             systemConfigQuery.data === undefined ||

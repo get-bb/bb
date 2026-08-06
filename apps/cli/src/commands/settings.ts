@@ -82,6 +82,7 @@ function updateExperiment(
   const enabled = parseBoolean(value);
   switch (key) {
     case "claudeCodeMockCliTraffic":
+    case "newOnboarding":
     case "toolsHub":
       return experimentsSchema.parse({ ...experiments, [key]: enabled });
     default:
@@ -137,8 +138,12 @@ export function registerSettingsCommands(
       action(async (opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const config = await sdk.system.config();
-        // Clearing the timestamp is the whole trigger: the app gates the flow
-        // on this field alone.
+        if (!config.experiments.newOnboarding) {
+          await sdk.system.updateExperiments({
+            ...config.experiments,
+            newOnboarding: true,
+          });
+        }
         const result = await sdk.system.updateGeneralSettings({
           ...config.generalSettings,
           onboardingCompletedAt: null,

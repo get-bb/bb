@@ -15,6 +15,10 @@ export const experimentsSchema = z.object({
    */
   claudeCodeMockCliTraffic: z.boolean(),
   /**
+   * New onboarding: shows the first-run agent and project setup guide.
+   */
+  newOnboarding: z.boolean(),
+  /**
    * Extensions: exposes skills and plugin management. Automations remain a
    * plugin-owned page in the Plugins sidebar section. This is a presentation
    * gate only; it does not load or unload extensions.
@@ -25,5 +29,6 @@ export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
+  newOnboarding: false,
   toolsHub: false,
 };
