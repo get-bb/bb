@@ -259,7 +259,7 @@ export type {
 export {
   createEnvironment,
   getEnvironment,
-  findEnvironmentByHostPath,
+  findProjectEnvironmentByHostPath,
   listEnvironments,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,

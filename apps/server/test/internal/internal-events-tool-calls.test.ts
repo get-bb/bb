@@ -1181,6 +1181,89 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("switches into a directory another project already uses", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const sharedPath = "/tmp/shared-with-another-project";
+      // Another project already holds an environment for the folder.
+      const { project: otherProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Other Project",
+        path: sharedPath,
+      });
+      const otherEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: otherProject.id,
+        path: sharedPath,
+      });
+
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/switching-project",
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/switching-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-shared-directory"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
+
+      const responsePromise = postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-shared-directory",
+        tool: "update_environment_directory",
+        arguments: { path: sharedPath },
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.workspaceProvisionType === "unmanaged" &&
+          command.path === sharedPath,
+      );
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: sharedPath,
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+        transcript: [],
+      });
+
+      await expect(readJson(await responsePromise)).resolves.toMatchObject({
+        success: true,
+      });
+      // The switching project gets its own environment; the other project's
+      // claim on the folder is untouched.
+      const switched = getThread(harness.db, thread.id)?.environmentId;
+      expect(switched).not.toBe(otherEnvironment.id);
+      expect(getEnvironment(harness.db, switched ?? "")).toMatchObject({
+        path: sharedPath,
+        projectId: project.id,
+      });
+      expect(getEnvironment(harness.db, otherEnvironment.id)).toMatchObject({
+        path: sharedPath,
+        projectId: otherProject.id,
+      });
+    });
+  });
+
   it("rejects relative update_environment_directory paths without changing the thread", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

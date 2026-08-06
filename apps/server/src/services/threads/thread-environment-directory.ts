@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   createEnvironment,
   createEventId,
-  findEnvironmentByHostPath,
+  findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
   updateThread,
@@ -286,8 +286,9 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     );
   }
 
-  const existingEnvironment = findEnvironmentByHostPath(
+  const existingEnvironment = findProjectEnvironmentByHostPath(
     deps.db,
+    args.thread.projectId,
     args.currentEnvironment.hostId,
     normalizedPath,
   );
@@ -295,11 +296,6 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   let targetEnvironment: ReadyEnvironment;
 
   if (existingEnvironment) {
-    if (existingEnvironment.projectId !== args.thread.projectId) {
-      return toolCallFailure(
-        "An environment for this host/path already exists on a different project.",
-      );
-    }
     const failure = readyEnvironmentFailure(existingEnvironment);
     if (failure) {
       return toolCallFailure(failure);

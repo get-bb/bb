@@ -72,8 +72,9 @@ export function getEnvironment(db: EnvironmentReadConnection, id: string) {
   );
 }
 
-export function findEnvironmentByHostPath(
+export function findProjectEnvironmentByHostPath(
   db: DbConnection,
+  projectId: string,
   hostId: string,
   path: string,
 ) {
@@ -81,7 +82,13 @@ export function findEnvironmentByHostPath(
     db
       .select()
       .from(environments)
-      .where(and(eq(environments.hostId, hostId), eq(environments.path, path)))
+      .where(
+        and(
+          eq(environments.projectId, projectId),
+          eq(environments.hostId, hostId),
+          eq(environments.path, path),
+        ),
+      )
       .get() ?? null
   );
 }

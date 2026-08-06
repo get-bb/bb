@@ -1,6 +1,6 @@
 import {
   deleteThread,
-  findEnvironmentByHostPath,
+  findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
   hasNonTerminalThreadInEnvironment,
@@ -387,17 +387,14 @@ function existingUnmanagedEnvironmentIntentByHostPath(
   deps: ThreadCreateDeps,
   args: ExistingUnmanagedEnvironmentIntentByHostPathArgs,
 ): ExistingUnmanagedEnvironmentIntentResult | null {
-  const existing = findEnvironmentByHostPath(deps.db, args.hostId, args.path);
+  const existing = findProjectEnvironmentByHostPath(
+    deps.db,
+    args.request.projectId,
+    args.hostId,
+    args.path,
+  );
   if (!existing) {
     return null;
-  }
-
-  if (existing.projectId !== args.request.projectId) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Workspace path is already attached to a different project",
-    );
   }
 
   if (!args.branch) {
