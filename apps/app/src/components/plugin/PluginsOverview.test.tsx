@@ -152,7 +152,7 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
             ...AUTOMATIONS_PLUGIN,
             id: "github",
             source: GITHUB_CATALOG_ENTRY.source,
-            rootDir: "/official-plugins/github",
+            rootDir: "/plugins/github",
             name: GITHUB_CATALOG_ENTRY.displayName,
             description: GITHUB_CATALOG_ENTRY.description,
             icon: GITHUB_CATALOG_ENTRY.icon,

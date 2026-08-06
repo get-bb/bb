@@ -158,7 +158,7 @@ async function copyBuiltinPlugin(args: {
 export async function copyBuiltinPlugins(args: {
   bbVersion: string;
   build?: boolean;
-  plugins?: readonly Pick<BundledPluginDefinition, "name" | "repoDirectory">[];
+  plugins?: readonly Pick<BundledPluginDefinition, "name">[];
   sourceModuleDir?: string;
   targetRoot?: string;
 }): Promise<void> {
@@ -181,7 +181,6 @@ export async function copyBuiltinPlugins(args: {
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
         moduleDir: resolvedSourceModuleDir,
         name: plugin.name,
-        repoDirectory: plugin.repoDirectory,
       }),
       targetRoot: resolvedTargetRoot,
     });

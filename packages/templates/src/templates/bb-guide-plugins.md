@@ -424,7 +424,8 @@ in a checkout). The builtin `inline-vis` plugin renders
 `::inline-vis{file="demo.html" height="480"}` through the sidebar's
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
-The `official-plugins/` directory contains the BB Official GitHub, Docs,
-Memory, and Tasks plugins. The remaining `examples/plugins/` reference plugins
+The `plugins/` directory contains every bundled plugin: the auto-installed
+builtins and the store-only BB Official GitHub, Docs, Memory, Tasks, and T3
+Sidebar plugins. The `examples/plugins/` reference plugins
 cover slack-bot (webhook bot), agent-enrichment (agent surfaces), and
 composer-customization (all composer regions).

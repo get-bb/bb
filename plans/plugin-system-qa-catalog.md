@@ -17,7 +17,7 @@ not. Read the older sections with these substitutions:
 | Written as | Read as |
 | --- | --- |
 | Settings → Experiments → Plugins | Settings → Experiments → Extensions (`toolsHub`) |
-| `marketplace/plugins/github` | [`official-plugins/github`](../official-plugins/github) |
+| `marketplace/plugins/github` | [`plugins/github`](../plugins/github) |
 | `examples/plugins/small-ux-pack` | deleted; use another example for thread actions |
 | `examples/plugins/linear` | deleted (see P3.5 below) |
 

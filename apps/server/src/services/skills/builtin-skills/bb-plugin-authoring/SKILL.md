@@ -1353,7 +1353,7 @@ only `definePluginApp` + the hooks):
   React context on every plugin surface; add `@pierre/diffs` to
   devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
   when your patch source (e.g. the GitHub REST API) omits it — see
-  `official-plugins/github/app.tsx`.
+  `plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
@@ -1365,7 +1365,7 @@ only `definePluginApp` + the hooks):
   tokens, never hardcoded grays.
 - The old bb extras (`EmptyState`, `Markdown`, `PageBody`, `Spinner`) are
   gone — write your own (each is a few lines; see
-  `official-plugins/github/components/` for reference implementations).
+  `plugins/github/components/` for reference implementations).
 
 One deviation from stock shadcn: `Dialog` renders as a bottom drawer on
 compact viewports (the host's responsive behavior) — same API.
@@ -1505,7 +1505,7 @@ them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
 mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
 per-window instances. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
-`thread.idle` reply), `official-plugins/docs/app.test.tsx` (nav
+`thread.idle` reply), `plugins/docs/app.test.tsx` (nav
 panel list over rpc + create/open navigation assertions).
 
 Fidelity boundaries: HTTP auth is recorded but not enforced; services and
@@ -1530,7 +1530,7 @@ application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
 - Keep pure logic in plain functions/modules so it is unit-testable without
   a bb server; the factory file should mostly wire registrations.
 
-BB Official plugins in `official-plugins/` (a bb checkout):
+BB Official plugins in `plugins/` (a bb checkout):
 
 - `github` — a gh-CLI-backed issue/PR browser in a single navPanel (with
   `headerContent`), subPath-based sub-navigation, shared-ui
