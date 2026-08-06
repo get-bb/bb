@@ -852,7 +852,7 @@ async function prepareSessionEnv(
   };
 }
 
-function parseClaudePermissionUpdates(
+function parseClaudeSuggestedPermissionUpdates(
   value: unknown,
 ): ClaudeSuggestedPermissionUpdate[] | undefined {
   if (!Array.isArray(value)) {
@@ -1105,7 +1105,9 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       });
     }
 
-    const suggestions = parseClaudePermissionUpdates(options.suggestions);
+    const suggestions = parseClaudeSuggestedPermissionUpdates(
+      options.suggestions,
+    );
 
     const requestContext: ClaudeCanUseToolDecisionContext = {
       toolName,
