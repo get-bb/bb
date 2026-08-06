@@ -59,6 +59,7 @@ import type {
   CreateThreadSectionRequest,
   CreateThreadRequest,
   ForkThreadRequest,
+  RestartTerminalRequest,
   DeleteThreadSectionRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
@@ -222,6 +223,7 @@ import {
   createThreadSectionRequestSchema,
   deleteThreadSectionRequestSchema,
   createTerminalRequestSchema,
+  restartTerminalRequestSchema,
   createProjectRequestSchema,
   createHostJoinCodeRequestSchema,
   createProjectSourceRequestSchema,
@@ -710,6 +712,14 @@ export const publicApiRoutes = {
         updateTerminalRequestSchema,
       ),
       response: jsonResponse<TerminalSession>(),
+    }),
+    restart: defineRoute({
+      path: "/terminals/:terminalId/restart",
+      method: "post",
+      request: jsonRequest<PathTerminal, RestartTerminalRequest>(
+        restartTerminalRequestSchema,
+      ),
+      response: jsonResponse<TerminalSession>({ status: 201 }),
     }),
     close: defineRoute({
       path: "/terminals/:terminalId/close",

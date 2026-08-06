@@ -1038,11 +1038,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 76 lets the daemon report live workspace metadata. Pi model
-  // discovery now also carries the requested workspace path. The bump moves
-  // an enrolled machine onto the new wire contract.
-  it("uses protocol version 77 for workspace-aware Pi model discovery", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(77);
+  // Version 78 preserves version 77's workspace-aware Pi model discovery and
+  // adds byte-preserving terminal input plus bounded replay metadata. The bump
+  // updates enrolled daemons before they receive the new terminal wire contract.
+  it("uses protocol version 78 for reliable terminal transport", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(78);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -3579,6 +3579,23 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.attach",
+        requestId: "request-1",
+        terminalId: "term_123",
+        sinceSeq: 12,
+        tailBytes: 512 * 1024,
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.attach",
+        requestId: "request-1",
+        terminalId: "term_123",
+        sinceSeq: 12,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.input",
         terminalId: "term_123",
         dataBase64: maxPayload,
@@ -3601,6 +3618,7 @@ describe("host-daemon session schemas", () => {
             dataBase64: oversizedDecodedPayload,
           },
         ],
+        replayStartSeq: 0,
         nextSeq: 1,
       }).success,
     ).toBe(false);

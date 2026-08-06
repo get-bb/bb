@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Command } from "commander";
+import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import {
   BbHttpError,
   type BbSdk,
@@ -192,12 +193,18 @@ export function registerTerminalCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (terminalId: string, opts: TerminalSendOptions) => {
-        const text = await resolveSendText(opts);
+        const data = await resolveSendData(opts);
         const sdk = createCliBbSdk(getUrl());
-        const session = await sdk.terminals.input({
-          terminalId,
-          dataBase64: Buffer.from(text, "utf8").toString("base64"),
-        });
+        let session: TerminalSession | null = null;
+        for (const chunk of chunkTerminalInput(data)) {
+          session = await sdk.terminals.input({
+            terminalId,
+            dataBase64: chunk.toString("base64"),
+          });
+        }
+        if (session === null) {
+          throw new CliExitError("Terminal input cannot be empty", 1);
+        }
         if (outputJson(opts, session)) return;
         console.log(`Sent input to terminal ${terminalId}`);
       }),
@@ -441,24 +448,28 @@ function parseRequiredPositiveInteger(value: string, label: string): number {
   return parsed;
 }
 
-async function resolveSendText(opts: TerminalSendOptions): Promise<string> {
+export async function resolveSendData(
+  opts: TerminalSendOptions,
+  stdin: NodeJS.ReadableStream = process.stdin,
+): Promise<Buffer> {
   if (opts.text !== undefined && opts.stdin) {
     throw new Error("Provide only one of --text or --stdin");
   }
   if (opts.text === undefined && !opts.stdin) {
     throw new Error("Provide one of --text or --stdin");
   }
-  const baseText =
-    opts.text ??
-    (await new Promise<string>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
-      process.stdin.on("error", reject);
-      process.stdin.on("end", () =>
-        resolve(Buffer.concat(chunks).toString("utf8")),
-      );
-    }));
-  return opts.enter ? `${baseText}\n` : baseText;
+  const baseData =
+    opts.text !== undefined
+      ? Buffer.from(opts.text, "utf8")
+      : await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stdin.on("error", reject);
+          stdin.on("end", () => resolve(Buffer.concat(chunks)));
+        });
+  return opts.enter
+    ? Buffer.concat([baseData, Buffer.from("\n", "utf8")])
+    : baseData;
 }
 
 function terminalOutputQuery(opts: TerminalOutputOptions) {
@@ -620,16 +631,32 @@ async function attachTerminal(args: {
   });
 }
 
-function sendTerminalInput(
-  socket: { send(data: string): void },
-  chunk: Buffer,
-) {
-  socket.send(
-    JSON.stringify({
-      type: "input",
-      dataBase64: chunk.toString("base64"),
-    }),
-  );
+function chunkTerminalInput(data: Buffer): Buffer[] {
+  const chunks: Buffer[] = [];
+  for (
+    let offset = 0;
+    offset < data.byteLength;
+    offset += TERMINAL_DATA_MAX_BYTES
+  ) {
+    chunks.push(
+      data.subarray(
+        offset,
+        Math.min(offset + TERMINAL_DATA_MAX_BYTES, data.byteLength),
+      ),
+    );
+  }
+  return chunks;
+}
+
+function sendTerminalInput(socket: { send(data: string): void }, data: Buffer) {
+  for (const chunk of chunkTerminalInput(data)) {
+    socket.send(
+      JSON.stringify({
+        type: "input",
+        dataBase64: chunk.toString("base64"),
+      }),
+    );
+  }
 }
 
 async function waitForTerminal(args: {

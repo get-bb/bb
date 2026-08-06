@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import {
@@ -502,10 +503,21 @@ export function createApp(
         );
       }
       const terminalId = context.req.param("terminalId");
+      const query = terminalWebSocketQuerySchema.safeParse({
+        sinceSeq: context.req.query("sinceSeq"),
+      });
+      if (!query.success) {
+        throw new ApiError(
+          400,
+          "invalid_terminal_socket_query",
+          "Terminal websocket sinceSeq must be a non-negative integer",
+        );
+      }
       return {
         onOpen: (_event, socket) =>
           onTerminalSocketOpen(deps, {
             socket,
+            sinceSeq: query.data.sinceSeq,
             terminalId,
             threadId: null,
           }),

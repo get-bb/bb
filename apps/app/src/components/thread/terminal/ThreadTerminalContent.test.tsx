@@ -36,6 +36,7 @@ function controller(isPanelOpen: boolean): ThreadTerminalController {
     canCreateTerminal: true,
     closingTerminalId: null,
     emptyTerminalMessage: "No terminals",
+    handleActiveTerminalSessionChange: () => undefined,
     handleActiveTerminalTitleChange: () => undefined,
     handleActiveTerminalUserInput: () => undefined,
     handleClosePanel: () => undefined,

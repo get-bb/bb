@@ -16,6 +16,7 @@ import type { ProtocolSelfUpdater } from "./protocol-self-update.js";
 import { createNodeWebSocketConstructor } from "./websocket-constructor.js";
 
 export interface ReconnectingWebSocketLike {
+  readonly bufferedAmount?: number;
   readonly readyState: number;
   onopen: ((event: any) => void) | null;
   onmessage: ((event: any) => void) | null;

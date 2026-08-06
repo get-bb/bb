@@ -129,6 +129,7 @@ export function ThreadTerminalContent({
       isPanelOpen={controller.isPanelOpen}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSessionChange={controller.handleActiveTerminalSessionChange}
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}
