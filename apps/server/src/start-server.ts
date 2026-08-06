@@ -31,6 +31,14 @@ import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
+import {
+  createWorkTogetherRoomResourceProvisioner,
+  type WorkTogetherRoomResourceProvisioner,
+} from "./room-distribution/room-resource-provisioner.js";
+import {
+  loadWorkTogetherRoomResourceRegistry,
+  WORK_TOGETHER_ROOM_RESOURCE_REGISTRY_ENV,
+} from "./room-distribution/room-resource-registry.js";
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
@@ -128,26 +136,45 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     config: runtimeConfig,
     logger,
   });
+  const appDeps = {
+    appVersion,
+    bbAppManagedConfig,
+    config: runtimeConfig,
+    db,
+    hub,
+    lifecycleDedupers,
+    logger,
+    machineAuth,
+    pendingInteractions,
+    skillTreeRegistry,
+    telemetry,
+    terminalSessions,
+    watchInterests,
+    sharedPorts,
+  };
+  let roomResourceProvisioner: WorkTogetherRoomResourceProvisioner | undefined;
+  try {
+    roomResourceProvisioner =
+      principalRuntime.principalMode === "work-together"
+        ? createWorkTogetherRoomResourceProvisioner(
+            appDeps,
+            loadWorkTogetherRoomResourceRegistry(
+              process.env[WORK_TOGETHER_ROOM_RESOURCE_REGISTRY_ENV],
+            ),
+          )
+        : undefined;
+  } catch (error) {
+    await closeServerPrincipalRuntimeBestEffort(principalRuntime);
+    throw error;
+  }
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
-    {
-      appVersion,
-      bbAppManagedConfig,
-      config: runtimeConfig,
-      db,
-      hub,
-      lifecycleDedupers,
-      logger,
-      machineAuth,
-      pendingInteractions,
-      skillTreeRegistry,
-      telemetry,
-      terminalSessions,
-      watchInterests,
-      sharedPorts,
-    },
+    appDeps,
     {
       principalPolicy: principalRuntime.principalPolicy,
       principalMode: principalRuntime.principalMode,
+      ...(roomResourceProvisioner !== undefined
+        ? { roomResourceProvisioner }
+        : {}),
       staticDir,
     },
   );
