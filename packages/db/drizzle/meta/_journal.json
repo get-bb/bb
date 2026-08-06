@@ -624,6 +624,13 @@
       "when": 1786007229742,
       "tag": "0088_living_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "6",
+      "when": 1786009643917,
+      "tag": "0089_thread_command_admissions",
+      "breakpoints": true
     }
   ]
 }

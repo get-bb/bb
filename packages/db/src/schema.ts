@@ -28,6 +28,10 @@ import type {
   ServiceTier,
   TerminalSessionCloseReason,
   TerminalSessionStatus,
+  ClientTurnRequestId,
+  ThreadCommandRequestFingerprint,
+  ThreadCommandAdmissionDisposition,
+  ThreadCommandKind,
   ThreadDynamicContextFileStatus,
   ThreadSearchSourceKind,
   ThreadEventItemType,
@@ -939,6 +943,51 @@ export const pendingInteractions = sqliteTable(
       table.pluginId,
       table.status,
       table.createdAt,
+    ),
+  ],
+);
+
+export const threadCommandAdmissions = sqliteTable(
+  "thread_command_admissions",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    requestId: text("request_id").$type<ClientTurnRequestId>().notNull(),
+    commandKind: text("command_kind").$type<ThreadCommandKind>().notNull(),
+    requestFingerprint: text("request_fingerprint")
+      .$type<ThreadCommandRequestFingerprint>()
+      .notNull(),
+    admissionSequence: integer("admission_sequence").notNull(),
+    actorPrincipalId: text("actor_principal_id").notNull(),
+    actorKind: text("actor_kind").$type<PrincipalKind>().notNull(),
+    actorDisplayName: text("actor_display_name").notNull(),
+    resultDisposition: text("result_disposition")
+      .$type<ThreadCommandAdmissionDisposition>()
+      .notNull(),
+    resultEventSequence: integer("result_event_sequence"),
+    resultQueuedMessageId: text("result_queued_message_id"),
+    resultExpectedTurnId: text("result_expected_turn_id"),
+    createdAt: integer("created_at").notNull(),
+    completedAt: integer("completed_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.threadId, table.requestId] }),
+    uniqueIndex("thread_command_admissions_thread_sequence_idx").on(
+      table.threadId,
+      table.admissionSequence,
+    ),
+    check(
+      "thread_command_admissions_result_shape_check",
+      sql`(
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL)
+        OR
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL)
+        OR
+        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL)
+        OR
+        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL)
+      )`,
     ),
   ],
 );

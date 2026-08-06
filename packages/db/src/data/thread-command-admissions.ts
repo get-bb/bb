@@ -1,0 +1,368 @@
+import { and, eq, max } from "drizzle-orm";
+import {
+  actorStampSchema,
+  clientTurnRequestIdSchema,
+  parsePersistedThreadCommandAdmission,
+  parseThreadCommandAdmissionResultForKind,
+  threadCommandRequestFingerprintSchema,
+  threadCommandAdmissionDispositionSchema,
+  threadCommandAdmissionIdentityFromActor,
+  threadCommandAdmissionIdentitiesEqual,
+  threadCommandKindSchema,
+  type ActorStamp,
+  type ClientTurnRequestId,
+  type PersistedThreadCommandAdmission,
+  type ThreadCommandRequestFingerprint,
+  type ThreadCommandAdmissionDisposition,
+  type ThreadCommandAdmissionIdentity,
+  type ThreadCommandAdmissionResult,
+  type ThreadCommandKind,
+} from "@bb/domain";
+import type { DbConnection, DbTransaction } from "../connection.js";
+import {
+  decodeActorStampFromColumns,
+  encodeActorStampColumns,
+} from "../actor-stamp-columns.js";
+import { threadCommandAdmissions } from "../schema.js";
+
+export class ThreadCommandAdmissionCorruptionError extends Error {
+  readonly name = "ThreadCommandAdmissionCorruptionError";
+}
+
+export interface AdmitThreadCommandExecuteArgs {
+  admissionSequence: number;
+  tx: DbTransaction;
+}
+
+export type AdmitThreadCommandExecute = (
+  args: AdmitThreadCommandExecuteArgs,
+) => ThreadCommandAdmissionResult;
+
+export interface AdmitThreadCommandArgs {
+  actor: ActorStamp;
+  commandKind: ThreadCommandKind;
+  db: DbConnection;
+  execute: AdmitThreadCommandExecute;
+  nowMs: number;
+  requestFingerprint: ThreadCommandRequestFingerprint;
+  requestId: ClientTurnRequestId;
+  threadId: string;
+}
+
+export type AdmitThreadCommandAcceptedOutcome = {
+  kind: "accepted";
+  admission: PersistedThreadCommandAdmission;
+};
+
+export type AdmitThreadCommandReplayedOutcome = {
+  kind: "replayed";
+  admission: PersistedThreadCommandAdmission;
+};
+
+export type AdmitThreadCommandIdentityConflictOutcome = {
+  kind: "identity-conflict";
+  existing: ThreadCommandAdmissionIdentity;
+};
+
+export type AdmitThreadCommandOutcome =
+  | AdmitThreadCommandAcceptedOutcome
+  | AdmitThreadCommandReplayedOutcome
+  | AdmitThreadCommandIdentityConflictOutcome;
+
+type ThreadCommandAdmissionRow = typeof threadCommandAdmissions.$inferSelect;
+
+function isFiniteSafeNonnegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function assertAdmitThreadCommandArgs(args: AdmitThreadCommandArgs): void {
+  if (typeof args.threadId !== "string" || args.threadId.length === 0) {
+    throw new Error("Invalid thread command admission threadId");
+  }
+  clientTurnRequestIdSchema.parse(args.requestId);
+  threadCommandKindSchema.parse(args.commandKind);
+  threadCommandRequestFingerprintSchema.parse(args.requestFingerprint);
+  actorStampSchema.parse(args.actor);
+  if (!isFiniteSafeNonnegativeInteger(args.nowMs)) {
+    throw new Error("Invalid thread command admission nowMs");
+  }
+  if (typeof args.execute !== "function") {
+    throw new Error("Invalid thread command admission execute callback");
+  }
+}
+
+function decodeResultFromRow(
+  row: ThreadCommandAdmissionRow,
+): ThreadCommandAdmissionResult {
+  const disposition = threadCommandAdmissionDispositionSchema.parse(
+    row.resultDisposition,
+  );
+
+  switch (disposition) {
+    case "started": {
+      if (row.resultEventSequence === null) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: started result missing event sequence",
+        );
+      }
+      return parseThreadCommandAdmissionResultForKind("message.send", {
+        disposition: "started",
+        eventSequence: row.resultEventSequence,
+      });
+    }
+    case "queued": {
+      if (row.resultQueuedMessageId === null) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: queued result missing queued message id",
+        );
+      }
+      return parseThreadCommandAdmissionResultForKind("message.send", {
+        disposition: "queued",
+        queuedMessageId: row.resultQueuedMessageId,
+      });
+    }
+    case "steered": {
+      if (
+        row.resultEventSequence === null ||
+        row.resultExpectedTurnId === null
+      ) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: steered result missing event sequence or expected turn id",
+        );
+      }
+      return parseThreadCommandAdmissionResultForKind("message.steer", {
+        disposition: "steered",
+        eventSequence: row.resultEventSequence,
+        expectedTurnId: row.resultExpectedTurnId,
+      });
+    }
+    case "interrupted": {
+      if (
+        row.resultEventSequence === null ||
+        row.resultExpectedTurnId === null
+      ) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: interrupted result missing event sequence or expected turn id",
+        );
+      }
+      return parseThreadCommandAdmissionResultForKind("thread.interrupt", {
+        disposition: "interrupted",
+        eventSequence: row.resultEventSequence,
+        expectedTurnId: row.resultExpectedTurnId,
+      });
+    }
+    default: {
+      const _exhaustive: never = disposition;
+      throw new ThreadCommandAdmissionCorruptionError(
+        `Corrupt thread command admission: unknown disposition ${String(_exhaustive)}`,
+      );
+    }
+  }
+}
+
+function decodeAdmissionFromRow(
+  row: ThreadCommandAdmissionRow,
+): PersistedThreadCommandAdmission {
+  const actor = decodeActorStampFromColumns({
+    actorPrincipalId: row.actorPrincipalId,
+    actorKind: row.actorKind,
+    actorDisplayName: row.actorDisplayName,
+  });
+  const result = decodeResultFromRow(row);
+
+  return parsePersistedThreadCommandAdmission({
+    threadId: row.threadId,
+    requestId: row.requestId,
+    commandKind: row.commandKind,
+    requestFingerprint: row.requestFingerprint,
+    admissionSequence: row.admissionSequence,
+    actor,
+    result,
+    createdAt: row.createdAt,
+    completedAt: row.completedAt,
+  });
+}
+
+function identityFromRow(
+  row: ThreadCommandAdmissionRow,
+): ThreadCommandAdmissionIdentity {
+  return threadCommandAdmissionIdentityFromActor({
+    threadId: row.threadId,
+    requestId: clientTurnRequestIdSchema.parse(row.requestId),
+    commandKind: threadCommandKindSchema.parse(row.commandKind),
+    requestFingerprint: threadCommandRequestFingerprintSchema.parse(
+      row.requestFingerprint,
+    ),
+    actor: decodeActorStampFromColumns({
+      actorPrincipalId: row.actorPrincipalId,
+      actorKind: row.actorKind,
+      actorDisplayName: row.actorDisplayName,
+    }),
+  });
+}
+
+function encodeResultColumns(
+  commandKind: ThreadCommandKind,
+  result: ThreadCommandAdmissionResult,
+): {
+  resultDisposition: ThreadCommandAdmissionDisposition;
+  resultEventSequence: number | null;
+  resultQueuedMessageId: string | null;
+  resultExpectedTurnId: string | null;
+} {
+  const parsed = parseThreadCommandAdmissionResultForKind(commandKind, result);
+  switch (parsed.disposition) {
+    case "started":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: parsed.eventSequence,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+      };
+    case "queued":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: null,
+        resultQueuedMessageId: parsed.queuedMessageId,
+        resultExpectedTurnId: null,
+      };
+    case "steered":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: parsed.eventSequence,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: parsed.expectedTurnId,
+      };
+    case "interrupted":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: parsed.eventSequence,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: parsed.expectedTurnId,
+      };
+    default: {
+      const _exhaustive: never = parsed;
+      throw new Error(
+        `Unexpected thread command admission result disposition: ${String(_exhaustive)}`,
+      );
+    }
+  }
+}
+
+function allocateAdmissionSequence(
+  tx: DbTransaction,
+  threadId: string,
+): number {
+  const maxSequence =
+    tx
+      .select({ value: max(threadCommandAdmissions.admissionSequence) })
+      .from(threadCommandAdmissions)
+      .where(eq(threadCommandAdmissions.threadId, threadId))
+      .get()?.value ?? 0;
+  return maxSequence + 1;
+}
+
+function admitThreadCommandInTransaction(
+  tx: DbTransaction,
+  args: Omit<AdmitThreadCommandArgs, "db">,
+): AdmitThreadCommandOutcome {
+  const requestedIdentity = threadCommandAdmissionIdentityFromActor({
+    threadId: args.threadId,
+    requestId: args.requestId,
+    commandKind: args.commandKind,
+    requestFingerprint: args.requestFingerprint,
+    actor: args.actor,
+  });
+
+  const existingRow = tx
+    .select()
+    .from(threadCommandAdmissions)
+    .where(
+      and(
+        eq(threadCommandAdmissions.threadId, args.threadId),
+        eq(threadCommandAdmissions.requestId, args.requestId),
+      ),
+    )
+    .get();
+
+  if (existingRow !== undefined) {
+    const existingIdentity = identityFromRow(existingRow);
+    if (
+      threadCommandAdmissionIdentitiesEqual(requestedIdentity, existingIdentity)
+    ) {
+      return {
+        kind: "replayed",
+        admission: decodeAdmissionFromRow(existingRow),
+      };
+    }
+    return {
+      kind: "identity-conflict",
+      existing: existingIdentity,
+    };
+  }
+
+  const admissionSequence = allocateAdmissionSequence(tx, args.threadId);
+  const result = parseThreadCommandAdmissionResultForKind(
+    args.commandKind,
+    args.execute({ tx, admissionSequence }),
+  );
+  const actorColumns = encodeActorStampColumns(args.actor);
+  const resultColumns = encodeResultColumns(args.commandKind, result);
+
+  tx.insert(threadCommandAdmissions)
+    .values({
+      threadId: args.threadId,
+      requestId: args.requestId,
+      commandKind: args.commandKind,
+      requestFingerprint: args.requestFingerprint,
+      admissionSequence,
+      actorPrincipalId: actorColumns.actorPrincipalId,
+      actorKind: actorColumns.actorKind,
+      actorDisplayName: actorColumns.actorDisplayName,
+      ...resultColumns,
+      createdAt: args.nowMs,
+      completedAt: args.nowMs,
+    })
+    .run();
+
+  const insertedRow = tx
+    .select()
+    .from(threadCommandAdmissions)
+    .where(
+      and(
+        eq(threadCommandAdmissions.threadId, args.threadId),
+        eq(threadCommandAdmissions.requestId, args.requestId),
+      ),
+    )
+    .get();
+  if (insertedRow === undefined) {
+    throw new Error("Thread command admission insert did not persist");
+  }
+
+  return {
+    kind: "accepted",
+    admission: decodeAdmissionFromRow(insertedRow),
+  };
+}
+
+/**
+ * Atomically admits a thread command under (threadId, requestId), allocates a
+ * per-thread admission sequence, and persists the terminal result from a single
+ * execute callback. Identical replays return the original admission; mismatched
+ * identity fields fail closed as conflict without running the callback.
+ */
+export function admitThreadCommand(
+  args: AdmitThreadCommandArgs,
+): AdmitThreadCommandOutcome {
+  assertAdmitThreadCommandArgs(args);
+
+  return args.db.transaction(
+    (tx) => admitThreadCommandInTransaction(tx, args),
+    { behavior: "immediate" },
+  );
+}

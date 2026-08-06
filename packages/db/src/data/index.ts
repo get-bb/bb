@@ -478,6 +478,20 @@ export type {
   SetPendingInteractionResolvingArgs,
 } from "./pending-interactions.js";
 
+export {
+  admitThreadCommand,
+  ThreadCommandAdmissionCorruptionError,
+} from "./thread-command-admissions.js";
+export type {
+  AdmitThreadCommandAcceptedOutcome,
+  AdmitThreadCommandArgs,
+  AdmitThreadCommandExecute,
+  AdmitThreadCommandExecuteArgs,
+  AdmitThreadCommandIdentityConflictOutcome,
+  AdmitThreadCommandOutcome,
+  AdmitThreadCommandReplayedOutcome,
+} from "./thread-command-admissions.js";
+
 export { consumePrincipalAssertionReplay } from "./principal-assertion-replays.js";
 export type {
   ConsumePrincipalAssertionReplayArgs,
