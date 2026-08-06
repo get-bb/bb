@@ -12,7 +12,9 @@ describe("internal skill tree routes", () => {
       const { host } = seedHostSession(harness.deps, { id: "host-skill-tree" });
       const rootPath = path.join(harness.config.dataDir, "tree-route-skill");
       await mkdir(rootPath, { recursive: true });
-      await writeFile(path.join(rootPath, "SKILL.md"), "tree route bytes\n");
+      await writeFile(path.join(rootPath, "SKILL.md"), "tree route bytes\n", {
+        mode: 0o644,
+      });
       const manifest = readSkillTreeManifest(rootPath);
       harness.deps.skillTreeRegistry.register(manifest.treeHash, rootPath);
 
