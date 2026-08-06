@@ -2527,7 +2527,6 @@ describe("claude-code provider adapter", () => {
             expect.objectContaining({
               providerKey: "seven_day_fable",
               label: null,
-              modelIds: [],
             }),
           ],
         }),

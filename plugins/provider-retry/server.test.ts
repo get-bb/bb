@@ -22,16 +22,12 @@ function rateLimits(
         providerKey: "primary",
         label: "Current session",
         status,
-        usedPercent: status === "blocked" ? 100 : 25,
         resetsAtMs: RESET_AT_MS,
-        modelIds: [],
       },
     ],
     reachedReason: status === "blocked" ? "rate_limit_reached" : null,
     overageStatus: null,
     overageReason: null,
-    observedAtMs: NOW_MS,
-    source: "codex-account",
   } as const;
 }
 

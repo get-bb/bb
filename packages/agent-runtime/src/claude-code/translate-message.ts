@@ -414,9 +414,7 @@ function normalizeClaudeRateLimits(
         providerKey,
         label: claudeRateLimitLabel(info.rateLimitType),
         status: windowStatus,
-        usedPercent: null,
         resetsAtMs: info.resetsAt === undefined ? null : info.resetsAt * 1_000,
-        modelIds: [],
       },
     ],
     reachedReason:
@@ -425,8 +423,6 @@ function normalizeClaudeRateLimits(
         : null,
     overageStatus,
     overageReason: info.overageDisabledReason ?? null,
-    observedAtMs: Date.now(),
-    source: "claude-rate-limit",
   };
 }
 

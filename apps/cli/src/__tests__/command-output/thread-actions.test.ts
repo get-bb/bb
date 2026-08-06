@@ -304,8 +304,6 @@ describe("bb thread action command output", () => {
           reachedReason: null,
           overageStatus: null,
           overageReason: null,
-          observedAtMs: 1,
-          source: "codex-account",
         },
       },
     }));

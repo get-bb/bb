@@ -46,6 +46,14 @@ interface CodexLastTokenUsage {
   totalTokens: number;
 }
 
+export interface CodexEventTranslationState {
+  rateLimits: CodexRateLimitSnapshot | null;
+}
+
+export function createCodexEventTranslationState(): CodexEventTranslationState {
+  return { rateLimits: null };
+}
+
 function clampRateLimitPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
@@ -66,10 +74,61 @@ function normalizeCodexRateLimitWindow(
     providerKey: key,
     label: key === "primary" ? "Current session" : "Weekly limit",
     status: codexWindowStatus(usedPercent),
-    usedPercent,
     resetsAtMs: window.resetsAt === null ? null : window.resetsAt * 1_000,
-    modelIds: [],
   };
+}
+
+function codexReachedReasonIsActive(
+  snapshot: CodexRateLimitSnapshot,
+  reachedReason: string,
+): boolean {
+  if (reachedReason === "rate_limit_reached") {
+    return [snapshot.primary, snapshot.secondary].some(
+      (window) => window !== null && window.usedPercent >= 100,
+    );
+  }
+  if (reachedReason.includes("credits_depleted")) {
+    return (
+      snapshot.credits !== null &&
+      !snapshot.credits.unlimited &&
+      !snapshot.credits.hasCredits
+    );
+  }
+  if (reachedReason.includes("usage_limit_reached")) {
+    return (
+      snapshot.individualLimit !== null &&
+      snapshot.individualLimit.remainingPercent <= 0
+    );
+  }
+  return false;
+}
+
+function mergeCodexRateLimitSnapshot(
+  previous: CodexRateLimitSnapshot | null,
+  update: CodexRateLimitSnapshot,
+): CodexRateLimitSnapshot {
+  if (previous === null) {
+    return update;
+  }
+
+  const merged: CodexRateLimitSnapshot = {
+    limitId: update.limitId ?? previous.limitId,
+    limitName: update.limitName ?? previous.limitName,
+    primary: update.primary ?? previous.primary,
+    secondary: update.secondary ?? previous.secondary,
+    credits: update.credits ?? previous.credits,
+    individualLimit: update.individualLimit ?? previous.individualLimit,
+    planType: update.planType ?? previous.planType,
+    rateLimitReachedType: update.rateLimitReachedType,
+  };
+  if (
+    merged.rateLimitReachedType === null &&
+    previous.rateLimitReachedType !== null &&
+    codexReachedReasonIsActive(merged, previous.rateLimitReachedType)
+  ) {
+    merged.rateLimitReachedType = previous.rateLimitReachedType;
+  }
+  return merged;
 }
 
 function normalizeCodexRateLimits(
@@ -88,25 +147,29 @@ function normalizeCodexRateLimits(
       providerKey: "individual-limit",
       label: "Spend control",
       status: codexWindowStatus(usedPercent),
-      usedPercent,
       resetsAtMs: snapshot.individualLimit.resetsAt * 1_000,
-      modelIds: [],
     });
   }
 
   const reachedReason = snapshot.rateLimitReachedType;
   const kind =
-    reachedReason?.includes("credits_depleted") ||
-    (snapshot.credits !== null &&
-      !snapshot.credits.unlimited &&
-      !snapshot.credits.hasCredits)
-      ? "credits"
-      : reachedReason?.includes("usage_limit_reached") ||
-          snapshot.individualLimit !== null
-        ? "spend-control"
-        : snapshot.primary !== null || snapshot.secondary !== null
-          ? "subscription-window"
-          : "unknown";
+    reachedReason === "rate_limit_reached"
+      ? "subscription-window"
+      : reachedReason?.includes("credits_depleted")
+        ? "credits"
+        : reachedReason?.includes("usage_limit_reached")
+          ? "spend-control"
+          : reachedReason !== null
+            ? "unknown"
+            : snapshot.credits !== null &&
+                !snapshot.credits.unlimited &&
+                !snapshot.credits.hasCredits
+              ? "credits"
+              : snapshot.individualLimit !== null
+                ? "spend-control"
+                : snapshot.primary !== null || snapshot.secondary !== null
+                  ? "subscription-window"
+                  : "unknown";
   const status =
     reachedReason !== null
       ? "blocked"
@@ -126,8 +189,6 @@ function normalizeCodexRateLimits(
     reachedReason,
     overageStatus: null,
     overageReason: null,
-    observedAtMs: Date.now(),
-    source: "codex-account",
   };
 }
 
@@ -666,6 +727,7 @@ function translateCodexItem(
 
 export function translateCodexEvent(
   event: ProviderRuntimeEvent,
+  state: CodexEventTranslationState,
 ): ThreadEvent[] {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
   if (!envelope.success) {
@@ -687,16 +749,22 @@ export function translateCodexEvent(
 
   const handledEvent: CodexHandledEvent = parsed.data;
   switch (handledEvent.method) {
-    case "account/rateLimits/updated":
+    case "account/rateLimits/updated": {
+      const rateLimits = mergeCodexRateLimitSnapshot(
+        state.rateLimits,
+        handledEvent.params.rateLimits,
+      );
+      state.rateLimits = rateLimits;
       return [
         {
           type: "provider/rateLimits/updated",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
           scope: threadScope(),
-          rateLimits: normalizeCodexRateLimits(handledEvent.params.rateLimits),
+          rateLimits: normalizeCodexRateLimits(rateLimits),
         },
       ];
+    }
     case "turn/started":
       return [
         {

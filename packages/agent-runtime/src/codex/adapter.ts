@@ -62,7 +62,10 @@ import type {
   ProviderRuntimeEvent,
 } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
-import { translateCodexEvent } from "./event-translation.js";
+import {
+  createCodexEventTranslationState,
+  translateCodexEvent,
+} from "./event-translation.js";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
@@ -1093,6 +1096,7 @@ export function createCodexProviderAdapter(
     opts?.additionalWorkspaceWriteRoots ?? [];
   const providerInfo = getBuiltInAgentProviderInfo("codex");
   const capabilities = providerInfo.capabilities;
+  const eventTranslationState = createCodexEventTranslationState();
   const nativeTurnStartClientRequestIdsByProviderThreadId = new Map<
     string,
     ClientTurnRequestId[]
@@ -2086,9 +2090,10 @@ export function createCodexProviderAdapter(
         return applyRecoveredCommandOutput(subAgentActivityEvents);
       }
 
-      const translatedEvents = translateCodexEvent(event).flatMap(
-        attachAcceptedUserMessageCorrelation,
-      );
+      const translatedEvents = translateCodexEvent(
+        event,
+        eventTranslationState,
+      ).flatMap(attachAcceptedUserMessageCorrelation);
       const parentLinkedEvents =
         attachCodexDelegationParentLinks(translatedEvents);
       const completedSubAgentEvents =

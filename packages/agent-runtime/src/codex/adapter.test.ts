@@ -5064,20 +5064,145 @@ describe("codex provider adapter", () => {
           status: "blocked",
           kind: "subscription-window",
           reachedReason: "rate_limit_reached",
-          source: "codex-account",
           windows: [
             {
               providerKey: "primary",
               label: "Current session",
               status: "blocked",
-              usedPercent: 100,
               resetsAtMs: 1_781_120_400_000,
-              modelIds: [],
             },
           ],
         }),
       }),
     ]);
+  });
+
+  it("uses Codex's reached reason before credit and spend metadata", () => {
+    const adapter = createCodexProviderAdapter();
+    const [event] = adapter.translateEvent(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
+          secondary: null,
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          individualLimit: {
+            limit: "100",
+            used: "100",
+            remainingPercent: 0,
+            resetsAt: 1_781_120_400,
+          },
+          planType: "pro",
+          rateLimitReachedType: "rate_limit_reached",
+        },
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        reachedReason: "rate_limit_reached",
+      },
+    });
+  });
+
+  it("merges sparse Codex rolling rate-limit updates", () => {
+    const adapter = createCodexProviderAdapter();
+    adapter.translateEvent(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          primary: {
+            usedPercent: 20,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
+          secondary: {
+            usedPercent: 100,
+            windowDurationMins: 10_080,
+            resetsAt: 1_781_720_400,
+          },
+          credits: null,
+          individualLimit: null,
+          planType: "pro",
+          rateLimitReachedType: "rate_limit_reached",
+        },
+      }),
+    );
+
+    const [sparseEvent] = adapter.translateEvent(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: {
+          limitId: null,
+          limitName: null,
+          primary: {
+            usedPercent: 25,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
+          secondary: null,
+          credits: null,
+          individualLimit: null,
+          planType: null,
+          rateLimitReachedType: null,
+        },
+      }),
+    );
+    expect(sparseEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        reachedReason: "rate_limit_reached",
+        windows: [
+          { providerKey: "primary", status: "allowed" },
+          {
+            providerKey: "secondary",
+            status: "blocked",
+            resetsAtMs: 1_781_720_400_000,
+          },
+        ],
+      },
+    });
+
+    const [resetEvent] = adapter.translateEvent(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: {
+          limitId: null,
+          limitName: null,
+          primary: null,
+          secondary: {
+            usedPercent: 30,
+            windowDurationMins: 10_080,
+            resetsAt: 1_781_720_400,
+          },
+          credits: null,
+          individualLimit: null,
+          planType: null,
+          rateLimitReachedType: null,
+        },
+      }),
+    );
+    expect(resetEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "allowed",
+        kind: "subscription-window",
+        reachedReason: null,
+      },
+    });
   });
 
   it("translateEvent ignores remote control status changes", () => {

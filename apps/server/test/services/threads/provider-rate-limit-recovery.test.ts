@@ -34,16 +34,12 @@ const RATE_LIMITS: ProviderRateLimitState = {
       providerKey: "primary",
       label: "Current session",
       status: "blocked",
-      usedPercent: 100,
       resetsAtMs: RESET_AT_MS,
-      modelIds: [],
     },
   ],
   reachedReason: "rate_limit_reached",
   overageStatus: null,
   overageReason: null,
-  observedAtMs: Date.now(),
-  source: "codex-account",
 };
 
 function seedFailedRateLimitedTurn(
@@ -354,9 +350,7 @@ describe("provider rate-limit recovery", () => {
         windows: RATE_LIMITS.windows.map((window) => ({
           ...window,
           status: "allowed",
-          usedPercent: 0,
         })),
-        observedAtMs: Date.now() + 1,
       };
       seedEvent(harness.deps, {
         threadId: fixture.thread.id,

@@ -866,14 +866,7 @@ function createAgentRuntimeInternal(
           sourceThreadId: args.sourceThreadId,
         });
 
-      // Codex publishes account rate-limit snapshots without a thread id.
-      // Preserve the account-wide signal for every resident thread instead of
-      // dropping it when a multiplexed provider process owns several threads.
-      const targetThreadIds = resolvedBbThreadId
-        ? [resolvedBbThreadId]
-        : event.type === "provider/rateLimits/updated"
-          ? [...args.proc.identity.threadIds]
-          : [];
+      const targetThreadIds = resolvedBbThreadId ? [resolvedBbThreadId] : [];
 
       if (targetThreadIds.length === 0) {
         options.onStderr?.(
