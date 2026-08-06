@@ -39,8 +39,11 @@ import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
 } from "./internal/auth.js";
+import { createLocalOwnerPrincipalPolicy } from "./auth/local-owner-adapter.js";
+import type { PrincipalPolicy } from "./auth/principal-policy.js";
 import {
   captureTrustedRemoteAddress,
+  createResolvePrincipalMiddleware,
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
@@ -110,6 +113,7 @@ function normalizeInternalAuthPath(path: string): string {
 
 interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
+  principalPolicy?: PrincipalPolicy;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -304,6 +308,16 @@ export function createApp(
   });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
+  const principalPolicy =
+    options?.principalPolicy ?? createLocalOwnerPrincipalPolicy();
+  const resolveHttpPrincipal = createResolvePrincipalMiddleware(
+    principalPolicy,
+    "http",
+  );
+  const resolveWebSocketPrincipal = createResolvePrincipalMiddleware(
+    principalPolicy,
+    "websocket",
+  );
   const bbAppArtifactService =
     options?.bbAppArtifactService ??
     createBbAppArtifactService({
@@ -362,6 +376,7 @@ export function createApp(
       },
     });
   });
+  app.use("/api/v1/*", resolveHttpPrincipal);
   app.use("/api/v1/*", async (context, next) => {
     const startedAt = performance.now();
     await next();
@@ -468,6 +483,7 @@ export function createApp(
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
+  app.use("/ws", resolveWebSocketPrincipal);
   app.get(
     "/ws",
     upgradeWebSocket((context) => {
@@ -489,6 +505,7 @@ export function createApp(
     }),
   );
 
+  app.use("/ws/terminals/*", resolveWebSocketPrincipal);
   app.get(
     "/ws/terminals/:terminalId",
     upgradeWebSocket((context) => {
