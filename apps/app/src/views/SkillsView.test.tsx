@@ -345,6 +345,64 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("automations")).toBeTruthy();
   });
 
+  // The "user" bucket is a fallthrough — every scope that is not bb-builtin or
+  // plugin lands in it. Exercising only a bb-user fixture would leave that
+  // claim untested for the claude-*/codex-* scopes, which is exactly where the
+  // old code returned null and let skills bypass the Type filter entirely.
+  // This also covers AND-across-groups, which no other test does.
+  it("puts every non-builtin, non-plugin scope in the User bucket", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "claude-authored",
+            provider: "claude-code",
+            scope: "claude-user",
+          }),
+          makeSkill({
+            name: "codex-authored",
+            provider: "codex",
+            scope: "codex-project",
+          }),
+          makeSkill({
+            name: "official-skill",
+            provider: null,
+            scope: "bb-builtin",
+            manageable: false,
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /^Filters/ });
+    fireEvent.pointerDown(trigger);
+    // Provider defaults to `bb`, which would hide both fixtures before the
+    // Type filter is reached — clear it so this test observes Type alone.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+
+    // Both provider-scoped skills reach the User bucket; the builtin does not.
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.getByText("codex-authored")).toBeTruthy();
+    expect(screen.queryByText("official-skill")).toBeNull();
+
+    // Groups combine as AND: narrowing Provider to Claude Code drops the
+    // codex-scoped skill while the User type selection still holds.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Claude Code" }));
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.queryByText("codex-authored")).toBeNull();
+    expect(screen.queryByText("official-skill")).toBeNull();
+
+    // Clearing Type leaves the Provider selection filtering on its own.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.queryByText("codex-authored")).toBeNull();
+  });
+
   it("toggles BB Official independently from Included in plugin", async () => {
     renderDom(
       <SkillsOverview

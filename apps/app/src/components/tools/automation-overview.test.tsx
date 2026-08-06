@@ -175,7 +175,7 @@ describe("AutomationOverviewView", () => {
   });
 
   it("keeps project and status selections independent in the merged menu", () => {
-    render(
+    const { container } = render(
       <AutomationOverviewView
         entries={INSTALLED_AUTOMATIONS}
         error={null}
@@ -187,12 +187,22 @@ describe("AutomationOverviewView", () => {
         onModeChange={() => {}}
       />,
     );
+    const rowTitles = () =>
+      Array.from(
+        container.querySelectorAll<HTMLElement>("[data-resource-row]"),
+        (row) => row.querySelector("button")?.textContent,
+      );
+
+    expect(rowTitles()).toEqual(["Nightly digest"]);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Filters" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     expect(
       screen.getByRole("menuitemcheckbox", { name: "bb" }).ariaChecked,
     ).toBe("true");
+    // The project selection on its own still matches the fixture.
+    expect(rowTitles()).toEqual(["Nightly digest"]);
+
     // Picking a Status option must not clear the Projects selection.
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Paused" }));
     expect(
@@ -204,6 +214,13 @@ describe("AutomationOverviewView", () => {
     expect(
       screen.getByRole("menuitemcheckbox", { name: "Active" }).ariaChecked,
     ).toBe("false");
+    // Groups AND together: the fixture is enabled, so "bb" and "Paused" cannot
+    // both be satisfied and the list empties rather than falling back to the
+    // union of the two selections.
+    expect(rowTitles()).toEqual([]);
+    expect(
+      screen.getByText("No automations match these filters."),
+    ).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(
@@ -211,6 +228,18 @@ describe("AutomationOverviewView", () => {
         name: "Filters: Projects: bb; Status: Paused",
       }),
     ).toBeTruthy();
+
+    // Clearing just the status selection restores the row under the still-set
+    // project filter.
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Paused" }));
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "bb" }).ariaChecked,
+    ).toBe("true");
+    expect(rowTitles()).toEqual(["Nightly digest"]);
+    expect(
+      screen.queryByText("No automations match these filters."),
+    ).toBeNull();
   });
 
   it("gives filter and sort triggers the same resting, open, and engaged states", () => {

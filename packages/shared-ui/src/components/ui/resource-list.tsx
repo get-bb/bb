@@ -14,8 +14,6 @@ export {
   type ResourceCreateTemplate,
   type ResourceFilterGroup,
   ResourceFilterMenu,
-  RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
-  RESOURCE_MENU_TRIGGER_RESTING_CLASS,
   ResourceMultiSelectMenu,
   type ResourceOption,
   ResourceOptionMenu,

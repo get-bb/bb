@@ -156,6 +156,24 @@ function automationProjectFilterId(
   return `project:${projectId}`;
 }
 
+// The filter menu hands back plain strings, so both selections are narrowed on
+// the way in rather than cast. A cast would keep type-checking while silently
+// admitting a value the rest of the component cannot map back to a project or
+// a status.
+function isAutomationProjectFilter(
+  value: string,
+): value is AutomationProjectFilter {
+  return value.startsWith("project:");
+}
+
+function isAutomationStatusFilter(
+  value: string,
+): value is AutomationStatusFilter {
+  return AUTOMATION_STATUS_FILTER_OPTIONS.some(
+    (option) => option.id === value,
+  );
+}
+
 function applyAutomationSortDirection(
   result: number,
   direction: AutomationSortDirection,
@@ -497,7 +515,7 @@ export function AutomationOverviewView({
                         selectedValues: projectFilters,
                         onChange: (values) =>
                           setProjectFilters(
-                            values as AutomationProjectFilter[],
+                            values.filter(isAutomationProjectFilter),
                           ),
                       },
                       {
@@ -506,7 +524,9 @@ export function AutomationOverviewView({
                         options: AUTOMATION_STATUS_FILTER_OPTIONS,
                         selectedValues: statusFilters,
                         onChange: (values) =>
-                          setStatusFilters(values as AutomationStatusFilter[]),
+                          setStatusFilters(
+                            values.filter(isAutomationStatusFilter),
+                          ),
                       },
                     ]}
                   />

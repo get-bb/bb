@@ -89,9 +89,6 @@ export function BrowsePluginsTab({
                   compact
                   selectedValues={categories}
                   options={categoryOptions}
-                  selectedLabel={(options) =>
-                    options.map((option) => option.label).join(", ")
-                  }
                   onChange={setCategories}
                 />
               ) : null}

@@ -395,17 +395,16 @@ describe("BrowsePluginsTab", () => {
     ]) {
       expect(installedClasses.has(variantClass)).toBe(true);
     }
-    expect(installed.className).toContain(
-      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).not.toContain("text-success-foreground");
-    expect(installed.className).toContain(
-      "hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).toContain(
-      "focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).not.toContain("hover:text-foreground");
+    // Tokenized for the same reason as the border/bg checks above: the resting
+    // tint IS the feature here, and `toContain` would be satisfied by the
+    // hover:/focus-visible: twins alone, leaving it unverified.
+    const successTint =
+      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]";
+    expect(installedClasses.has(successTint)).toBe(true);
+    expect(installedClasses.has(`hover:${successTint}`)).toBe(true);
+    expect(installedClasses.has(`focus-visible:${successTint}`)).toBe(true);
+    expect(installedClasses.has("text-success-foreground")).toBe(false);
+    expect(installedClasses.has("hover:text-foreground")).toBe(false);
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     fireEvent.click(installed);
     expect(

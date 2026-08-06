@@ -38,11 +38,24 @@ type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
-const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
-  "bb",
-  "claude-code",
-  "codex",
-];
+// Keyed by the filter union rather than listed as an array, so adding a member
+// to `SkillProvider` is a typecheck error here instead of a silent gap. A plain
+// `readonly ResourceProviderFilter[]` permits a subset, which would leave the
+// new provider's skills unreachable under any non-empty Provider selection
+// while still compiling. The Type side gets the same guarantee from
+// `skillSourceFilterLabel`'s exhaustive switch.
+const RESOURCE_PROVIDER_FILTER_ORDER: Record<ResourceProviderFilter, number> = {
+  bb: 0,
+  "claude-code": 1,
+  codex: 2,
+};
+
+const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
+  Object.keys(RESOURCE_PROVIDER_FILTER_ORDER) as ResourceProviderFilter[]
+).sort(
+  (left, right) =>
+    RESOURCE_PROVIDER_FILTER_ORDER[left] - RESOURCE_PROVIDER_FILTER_ORDER[right],
+);
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
   "included",
@@ -90,9 +103,10 @@ function isResourceSkillSourceFilter(
 }
 
 // The filter menu hands back plain strings, so both selections are narrowed on
-// the way in rather than cast. A cast would keep type-checking after a provider
-// is added to or removed from `RESOURCE_PROVIDER_FILTERS` while silently
-// admitting a value the rest of the component cannot map to a skill.
+// the way in rather than cast: this rejects any value that is not a rendered
+// provider option, where a cast would wave it through into state. What keeps
+// the option list itself complete is `RESOURCE_PROVIDER_FILTER_ORDER` being
+// keyed by the union, not this guard.
 function isResourceProviderFilter(
   value: string,
 ): value is ResourceProviderFilter {
@@ -399,11 +413,16 @@ export function SkillsOverview({
     <ResourceListState
       state="empty"
       message={
-        normalizedQuery !== ""
-          ? `No skills match "${query}"`
-          : skills.length === 0
+        // Naming only the query would misattribute the empty result when a
+        // filter is what emptied it — clearing the search would still show
+        // nothing.
+        normalizedQuery === ""
+          ? skills.length === 0
             ? "No skills in your library."
             : "No skills match these filters."
+          : sourceFilters.length > 0 || providerFilters.length > 0
+            ? `No skills match "${query}" with these filters.`
+            : `No skills match "${query}"`
       }
     />
   ) : (

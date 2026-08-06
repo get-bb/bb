@@ -1,4 +1,4 @@
-import { Fragment, useId, useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Button } from "../button";
 import {
   DropdownMenu,
@@ -127,7 +127,7 @@ function ResourceOptionContent({
  * toolbar filters on it means "selected" reads identically everywhere instead
  * of this surface inventing its own language.
  */
-export const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
+const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
 
 /**
@@ -137,7 +137,7 @@ export const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
  * cluster. `--background` is `var(--canvas)`, so custom palettes get their own
  * paper colour rather than a hardcoded white.
  */
-export const RESOURCE_MENU_TRIGGER_RESTING_CLASS =
+const RESOURCE_MENU_TRIGGER_RESTING_CLASS =
   "border border-input bg-background";
 
 /**
@@ -238,6 +238,33 @@ export function ResourceOptionMenu({
   );
 }
 
+/**
+ * The one add/remove computation behind every multi-select filter here.
+ *
+ * Two rules, shared by {@link ResourceMultiSelectMenu} and
+ * {@link ResourceFilterMenu} so the two primitives cannot drift:
+ *
+ * - A disabled option is never toggled, so a disabled value can never be added.
+ * - Values the caller already holds are never pruned. The caller owns its
+ *   selection, and a disabled option can legitimately still be selected (a
+ *   project that stopped matching the current search, say). Dropping it while
+ *   the user toggles an unrelated sibling would silently change their filter.
+ */
+function nextSelectedValues(
+  option: ResourceOption,
+  checked: boolean,
+  selectedValues: readonly string[],
+): string[] | null {
+  if (option.disabled) return null;
+  const next = new Set(selectedValues);
+  if (checked) {
+    next.add(option.id);
+  } else {
+    next.delete(option.id);
+  }
+  return [...next];
+}
+
 export function ResourceMultiSelectMenu({
   label,
   icon,
@@ -262,10 +289,9 @@ export function ResourceMultiSelectMenu({
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
-  const enabledOptions = options.filter((option) => !option.disabled);
-  const activeOptions = enabledOptions.filter((option) =>
-    selected.has(option.id),
-  );
+  // Disabled options count as active when selected: they are still filtering,
+  // so the trigger, summary, and checkbox all have to say so.
+  const activeOptions = options.filter((option) => selected.has(option.id));
   const activeSelectedCount = activeOptions.length;
   const selectionSummary =
     activeSelectedCount === 0
@@ -280,17 +306,9 @@ export function ResourceMultiSelectMenu({
     selectedTooltip?.(activeOptions) ?? `${label}: ${selectionSummary}`;
 
   function updateValue(option: ResourceOption, checked: boolean) {
-    if (option.disabled) return;
-    const next = new Set(selectedValues);
-    if (checked) {
-      next.add(option.id);
-    } else {
-      next.delete(option.id);
-    }
-    const enabledOptionIds = new Set(
-      options.filter((candidate) => !candidate.disabled).map(({ id }) => id),
-    );
-    onChange([...next].filter((id) => enabledOptionIds.has(id)));
+    const next = nextSelectedValues(option, checked, selectedValues);
+    if (next === null) return;
+    onChange(next);
   }
 
   return (
@@ -332,7 +350,14 @@ export function ResourceMultiSelectMenu({
   );
 }
 
-/** One filterable dimension inside a {@link ResourceFilterMenu}. */
+/**
+ * One filterable dimension inside a {@link ResourceFilterMenu}.
+ *
+ * Contract: a disabled option may still appear in `selectedValues`. The menu
+ * preserves that value — it renders as checked, counts toward the active
+ * summary, and survives toggling any sibling — rather than silently dropping it
+ * from the caller's state. The menu only refuses to *add* a disabled value.
+ */
 export interface ResourceFilterGroup {
   id: string;
   label: string;
@@ -360,17 +385,24 @@ export function ResourceFilterMenu({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // Namespaces the per-group heading ids so `aria-labelledby` still resolves
-  // when two filter menus are mounted on one page.
-  const groupLabelIdBase = useId();
-  const activeGroups = groups.map((group) => {
-    const selected = new Set(group.selectedValues);
-    const activeOptions = group.options.filter(
-      (option) => !option.disabled && selected.has(option.id),
-    );
-    return { group, selected, activeOptions };
-  });
-  const activeSummaries = activeGroups
+  // A group with no options would render as a bare heading over an empty
+  // `role="group"` — and a separator above it. Callers legitimately pass empty
+  // groups (a facet derived from a collection that is still loading, or that
+  // has nothing in it), so drop them before anything else reads the list. The
+  // summaries below are derived from the same filtered list, so the trigger and
+  // the open menu can never disagree about which groups exist.
+  const renderedGroups = groups
+    .filter((group) => group.options.length > 0)
+    .map((group) => {
+      const selected = new Set(group.selectedValues);
+      // Disabled options still count when selected: they are filtering, so the
+      // summary has to name them.
+      const activeOptions = group.options.filter((option) =>
+        selected.has(option.id),
+      );
+      return { group, selected, activeOptions };
+    });
+  const activeSummaries = renderedGroups
     .filter(({ activeOptions }) => activeOptions.length > 0)
     .map(
       ({ group, activeOptions }) =>
@@ -395,7 +427,7 @@ export function ResourceFilterMenu({
         mobileTitle={label}
         className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
       >
-        {activeGroups.map(({ group, selected }, groupIndex) => (
+        {renderedGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
             {/*
@@ -403,12 +435,16 @@ export function ResourceFilterMenu({
               load-bearing: without the group wrapper a screen reader reads
               "bb Official, checkbox" with no hint of which dimension it
               belongs to, and "Type" arrives as an unrelated preceding item.
+
+              The name is spelled out with `aria-label` rather than pointed at
+              the visible heading with `aria-labelledby`: DropdownMenuLabel does
+              not forward arbitrary props on every viewport, so an id set on it
+              can fail to reach the DOM and the reference would dangle — leaving
+              the group with no accessible name at all, which is worse than
+              naming it directly. The heading stays for sighted readers.
             */}
-            <DropdownMenuGroup
-              aria-labelledby={`${groupLabelIdBase}-${group.id}`}
-            >
+            <DropdownMenuGroup aria-label={group.label}>
               <DropdownMenuLabel
-                id={`${groupLabelIdBase}-${group.id}`}
                 className={cn(
                   "text-xs font-normal text-subtle-foreground",
                   compact && "md:px-1.5 md:py-1",
@@ -424,18 +460,13 @@ export function ResourceFilterMenu({
                   className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
                   onSelect={(event) => event.preventDefault()}
                   onCheckedChange={(checked) => {
-                    if (option.disabled) return;
-                    const next = new Set(group.selectedValues);
-                    if (checked === true) next.add(option.id);
-                    else next.delete(option.id);
-                    const selectableIds = new Set(
-                      group.options
-                        .filter((candidate) => !candidate.disabled)
-                        .map(({ id }) => id),
+                    const next = nextSelectedValues(
+                      option,
+                      checked === true,
+                      group.selectedValues,
                     );
-                    group.onChange(
-                      [...next].filter((id) => selectableIds.has(id)),
-                    );
+                    if (next === null) return;
+                    group.onChange(next);
                   }}
                 >
                   <ResourceOptionContent option={option} compact={compact} />

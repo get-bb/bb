@@ -24,6 +24,7 @@ import {
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
+import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
 import {
   usePluginList,
   type PluginProvenance,
@@ -49,13 +50,13 @@ const PLUGIN_TYPE_FILTER_OPTIONS = PLUGIN_TYPE_FILTERS.map((type) => ({
 }));
 
 function pluginTypeFilterId(provenance: PluginProvenance): PluginTypeFilter {
-  return provenance === "builtin" || provenance === "catalog"
-    ? "bb-official"
-    : "user";
+  return isOfficialProvenance(provenance) ? "bb-official" : "user";
 }
 
+// Membership, not repeated literals: a new entry in PLUGIN_TYPE_FILTERS is
+// selectable the moment it renders instead of being silently dropped here.
 function isPluginTypeFilter(value: string): value is PluginTypeFilter {
-  return value === "bb-official" || value === "user";
+  return PLUGIN_TYPE_FILTERS.some((filter) => filter === value);
 }
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
@@ -130,10 +131,8 @@ export function PluginsOverview() {
           const enabledResult = Number(!left.enabled) - Number(!right.enabled);
           if (enabledResult !== 0) return enabledResult;
           if (left.enabled) {
-            const leftOfficial =
-              left.provenance === "builtin" || left.provenance === "catalog";
-            const rightOfficial =
-              right.provenance === "builtin" || right.provenance === "catalog";
+            const leftOfficial = isOfficialProvenance(left.provenance);
+            const rightOfficial = isOfficialProvenance(right.provenance);
             const provenanceResult =
               Number(!leftOfficial) - Number(!rightOfficial);
             if (provenanceResult !== 0) return provenanceResult;
@@ -225,9 +224,6 @@ export function PluginsOverview() {
                   compact
                   selectedValues={typeFilters}
                   options={PLUGIN_TYPE_FILTER_OPTIONS}
-                  selectedLabel={(options) =>
-                    options.map((option) => option.label).join(", ")
-                  }
                   onChange={(values) =>
                     setTypeFilters(values.filter(isPluginTypeFilter))
                   }
@@ -273,9 +269,11 @@ export function PluginsOverview() {
           <ResourceListState
             state="empty"
             message={
-              normalizedInstalledQuery !== ""
-                ? `No plugins match "${installedQuery}"`
-                : "No plugins match these filters."
+              normalizedInstalledQuery === ""
+                ? "No plugins match these filters."
+                : typeFilters.length > 0
+                  ? `No plugins match "${installedQuery}" with these filters.`
+                  : `No plugins match "${installedQuery}"`
             }
           />
         ) : (
