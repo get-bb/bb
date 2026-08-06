@@ -777,6 +777,20 @@
   --diffs-dark-deletion-color: var(--diff-removed);
 }
 
+@layer components {
+  .workspace-file-editor {
+    --diffs-gap-style: 1px solid var(--border-seam);
+  }
+
+  :root:not(.dark) .workspace-file-editor {
+    --diffs-fg-number-override: color-mix(
+      in oklch,
+      var(--ink) 42%,
+      var(--canvas)
+    );
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -180,6 +180,7 @@ function LoadedEditor({
       <div className="min-h-0 flex-1 overflow-auto bg-background">
         <EditProvider createEditor={session.createEditor}>
           <File
+            className="workspace-file-editor"
             file={{ name: path, contents: file.contents }}
             edit
             options={{ disableFileHeader: true }}
