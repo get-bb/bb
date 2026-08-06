@@ -8,7 +8,11 @@ import {
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
 } from "@bb/domain";
-import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
+import {
+  WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX,
+  workspaceDirectoryEntrySchema,
+  workspaceResolutionFailureSchema,
+} from "@bb/host-daemon-contract";
 import { apiErrorSchema } from "../errors.js";
 import {
   branchListQuerySchema,
@@ -45,6 +49,39 @@ export const environmentPathsQuerySchema = z.object({
   includeDirectories: pathListIncludeQueryValueSchema,
 });
 export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
+
+export const environmentDirectoryQuerySchema = z.object({
+  path: z.string().max(4096).optional(),
+  cursor: z.string().max(8192).optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+});
+export type EnvironmentDirectoryQuery = z.infer<
+  typeof environmentDirectoryQuerySchema
+>;
+
+export const environmentDirectoryResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        directory: z.string(),
+        entries: z.array(workspaceDirectoryEntrySchema),
+        nextCursor: z.string().nullable(),
+      })
+      .strict(),
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
+export type EnvironmentDirectoryResponse = z.infer<
+  typeof environmentDirectoryResponseSchema
+>;
+export { WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX };
 
 export const environmentDiffBranchesQuerySchema = branchListQuerySchema.extend({
   selectedBranch: gitBranchNameSchema.optional(),

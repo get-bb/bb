@@ -315,6 +315,37 @@ describe("bb environment command output", () => {
     ]);
   });
 
+  it("bb environment directory forwards literal paging options", async () => {
+    const get = vi.fn(async () => ({
+      outcome: "available",
+      directory: ".git",
+      entries: [{ kind: "file", name: "HEAD", path: ".git/HEAD" }],
+      nextCursor: "next-page",
+    }));
+    stubServerApi({ "v1.environments.:id.directory.$get": get });
+
+    await runCommand(
+      [
+        "environment",
+        "directory",
+        "env-1",
+        "--path",
+        ".git",
+        "--cursor",
+        "cursor-1",
+        "--limit",
+        "25",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "env-1" },
+      query: { cursor: "cursor-1", limit: "25", path: ".git" },
+    });
+  });
+
   it("bb environment diff prints summary, full diff, and truncation", async () => {
     const get = vi.fn(async () => ({
       outcome: "available",

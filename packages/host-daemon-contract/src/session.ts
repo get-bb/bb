@@ -397,6 +397,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   [
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
+    onlineRpcResponseSuccessSchemaFor("workspace.list_directory"),
     onlineRpcResponseSuccessSchemaFor("host.mkdir"),
     onlineRpcResponseSuccessSchemaFor("host.move_path"),
     onlineRpcResponseSuccessSchemaFor("host.remove_path"),

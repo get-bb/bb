@@ -44,6 +44,13 @@ interface EnvironmentPathsCommandOptions {
   query?: string;
 }
 
+interface EnvironmentDirectoryCommandOptions {
+  cursor?: string;
+  json?: boolean;
+  limit?: string;
+  path?: string;
+}
+
 interface EnvironmentDiffCommandOptions {
   json?: boolean;
   mergeBaseBranch?: string;
@@ -432,6 +439,36 @@ export function registerEnvironmentCommands(
           console.log(`${entry.kind}\t${entry.path}`);
         }
         if (result.truncated) console.log("(results truncated)");
+      }),
+    );
+
+  environment
+    .command("directory <id>")
+    .description("List one literal workspace directory")
+    .option("--path <path>", "Workspace-relative directory path")
+    .option("--cursor <cursor>", "Continue after a previous page")
+    .option("--limit <count>", "Maximum direct entries")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentDirectoryCommandOptions) => {
+        validateLimit(opts.limit);
+        const result = await createCliBbSdk(getUrl()).environments.directory({
+          environmentId: id,
+          ...(opts.path !== undefined ? { path: opts.path } : {}),
+          ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        if (result.outcome === "unavailable") {
+          console.log(`Directory unavailable: ${result.failure.message}`);
+          return;
+        }
+        for (const entry of result.entries) {
+          console.log(`${entry.kind}\t${entry.path}`);
+        }
+        if (result.nextCursor) {
+          console.log(`Next cursor: ${result.nextCursor}`);
+        }
       }),
     );
 

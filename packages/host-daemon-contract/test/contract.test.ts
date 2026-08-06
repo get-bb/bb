@@ -192,6 +192,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "workspace.list_directory": {
+    outcome: "available",
+    directory: "",
+    entries: [
+      { kind: "directory", name: ".git", path: ".git" },
+      { kind: "file", name: "README.md", path: "README.md" },
+    ],
+    nextCursor: null,
+  },
   "host.mkdir": { ok: true },
   "host.move_path": { ok: true },
   "host.remove_path": { ok: true },
@@ -708,6 +717,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
+  "hostDaemonOnlineRpcCommandSchema.cursor":
+    "workspace.list_directory omits cursor for the first lexical page.",
   "hostDaemonOnlineRpcCommandSchema.mode":
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
@@ -1036,13 +1047,16 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 74 prefixes the provider onto every Pi model id, so an aggregator
+  // Version 75 adds the literal, paged workspace directory command. An older
+  // daemon cannot serve the All files tree safely, so the version must force
+  // an update before the server exposes that endpoint. Version 74 also
+  // prefixes the provider onto every Pi model id, so an aggregator
   // model reads `openrouter/deepseek/deepseek-v4-flash` rather than
   // `deepseek/deepseek-v4-flash`. A daemon on 73 answers `model.list` with the
   // old unprefixed ids, which the server resolves to a different provider, so
   // the bump forces an update before the server trusts either side.
-  it("uses protocol version 74 for provider-prefixed Pi model ids", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(74);
+  it("uses protocol version 75 for paged workspace directory listing", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

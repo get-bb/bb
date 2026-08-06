@@ -12,6 +12,8 @@ import type {
   EnvironmentArchiveThreadsResponse,
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDirectoryQuery,
+  EnvironmentDirectoryResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffPatchRequest,
@@ -113,9 +115,15 @@ export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   signal?: AbortSignal;
 }
 
+export interface EnvironmentDirectoryArgs extends EnvironmentDirectoryQuery {
+  environmentId: string;
+  signal?: AbortSignal;
+}
+
 export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
 export type EnvironmentCommitResult = CommitActionResponse;
 export type EnvironmentDiffResult = EnvironmentDiffResponse;
+export type EnvironmentDirectoryResult = EnvironmentDirectoryResponse;
 export type EnvironmentDiffBranchesResult = EnvironmentDiffBranchesResponse;
 export type EnvironmentDiffFileResult = EnvironmentDiffFileResponse;
 export type EnvironmentDiffFilesResult = EnvironmentDiffFilesResponse;
@@ -146,6 +154,9 @@ export interface EnvironmentsArea {
   diffPatch(
     args: EnvironmentDiffPatchArgs,
   ): Promise<EnvironmentDiffPatchResult>;
+  directory(
+    args: EnvironmentDirectoryArgs,
+  ): Promise<EnvironmentDirectoryResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
   markPullRequestDraft(
@@ -327,6 +338,18 @@ export function createEnvironmentsArea(
             },
           },
           ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async directory(input) {
+      const { environmentId, signal, ...query } = input;
+      return transport.readJson(
+        transport.api.v1.environments[":id"].directory.$get(
+          {
+            param: { id: environmentId },
+            query,
+          },
+          ...signalRequestArgs(signal),
         ),
       );
     },

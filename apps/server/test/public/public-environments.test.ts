@@ -7,6 +7,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
+  seedHost,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
@@ -268,6 +269,105 @@ describe("public environments", () => {
       );
 
       expect(response.status).toBe(409);
+    });
+  });
+
+  it("lists one literal workspace directory page", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-directory",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/literal-workspace",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const directoryPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/directory?path=.git&cursor=SEVBRA&limit=25`,
+      );
+      const directoryCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.list_directory" &&
+          command.environmentId === environment.id,
+      );
+      expect(directoryCommand.command).toMatchObject({
+        cursor: "SEVBRA",
+        environmentId: environment.id,
+        limit: 25,
+        path: ".git",
+        workspaceContext: {
+          workspacePath: "/tmp/literal-workspace",
+        },
+      });
+      await reportQueuedCommandSuccess(harness, directoryCommand, {
+        outcome: "available",
+        directory: ".git",
+        entries: [{ kind: "file", name: "HEAD", path: ".git/HEAD" }],
+        nextCursor: null,
+      });
+
+      const response = await directoryPromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        outcome: "available",
+        directory: ".git",
+        entries: [{ kind: "file", name: "HEAD", path: ".git/HEAD" }],
+        nextCursor: null,
+      });
+    });
+  });
+
+  it("rejects escaped workspace directory paths", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-directory-invalid",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/directory?path=../outside`,
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+      });
+    });
+  });
+
+  it("reports an offline directory host separately from an empty directory", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, {
+        id: "host-environment-directory-offline",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/directory`,
+      );
+
+      expect(response.status).toBe(502);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "host_unavailable",
+      });
     });
   });
 });

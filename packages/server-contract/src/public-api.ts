@@ -67,6 +67,8 @@ import type {
   EnvironmentArchiveThreadsResponse,
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDirectoryQuery,
+  EnvironmentDirectoryResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffFilesResponse,
@@ -234,6 +236,7 @@ import {
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
+  environmentDirectoryQuerySchema,
   environmentDiffFileQuerySchema,
   environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
@@ -788,6 +791,14 @@ export const publicApiRoutes = {
         environmentStatusQuerySchema,
       ),
       response: jsonResponse<EnvironmentStatusResponse>(),
+    }),
+    directory: defineRoute({
+      path: "/environments/:id/directory",
+      method: "get",
+      request: optionalQueryRequest<PathId, EnvironmentDirectoryQuery>(
+        environmentDirectoryQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDirectoryResponse>(),
     }),
     pullRequest: defineRoute({
       path: "/environments/:id/pull-request",
