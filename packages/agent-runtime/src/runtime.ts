@@ -186,6 +186,8 @@ interface RequireProviderRequestPlanArgs {
   providerId: string;
 }
 
+type TurnStartRuntimeCommand = Extract<AdapterCommand, { type: "turn/start" }>;
+
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
@@ -193,6 +195,8 @@ const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
   new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
   /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
+const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
+  /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
@@ -741,6 +745,66 @@ function createAgentRuntimeInternal(
     await shutdownThreadScopedCodexProcessIfIdle(proc);
   }
 
+  function isCodexArchivedSessionError(
+    providerId: string,
+    error: unknown,
+  ): error is Error {
+    return (
+      providerId === CODEX_PROVIDER_ID &&
+      error instanceof Error &&
+      CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(error.message)
+    );
+  }
+
+  async function runWithCodexArchivedSessionRecovery<TResult>(args: {
+    operation: () => Promise<TResult>;
+    providerId: string;
+    providerThreadId: string;
+    threadId: string;
+  }): Promise<TResult> {
+    try {
+      return await args.operation();
+    } catch (error) {
+      if (!isCodexArchivedSessionError(args.providerId, error)) {
+        throw error;
+      }
+
+      options.onStderr?.(
+        `Codex session "${args.providerThreadId}" is archived; unarchiving before retrying thread "${args.threadId}".`,
+      );
+      await archiveOrUnarchiveThread({
+        commandType: "thread/unarchive",
+        providerId: args.providerId,
+        providerThreadId: args.providerThreadId,
+        threadId: args.threadId,
+      });
+      return args.operation();
+    }
+  }
+
+  async function sendTurnStartCommand(args: {
+    command: TurnStartRuntimeCommand;
+    cmd: ProviderRequestCommandPlan;
+    proc: ProviderProcess;
+  }): Promise<void> {
+    const { command, proc } = args;
+    const preparedTurnStart = proc.adapter.prepareTurnStart(command);
+    pendingTurnStartThreadIds.add(command.threadId);
+    markProviderSessionNotIdle(command.threadId);
+    try {
+      await sendCommand({
+        proc,
+        message: args.cmd,
+        resultSchema: ignoredJsonRpcResultSchema,
+      });
+    } catch (error) {
+      pendingTurnStartThreadIds.delete(command.threadId);
+      markHostedProviderSessionIdle(command.threadId);
+      preparedTurnStart?.rollback();
+      throw error;
+    }
+  }
+
   async function reconfigureThreadIfNeeded(
     args: ReconfigureThreadIfNeededArgs,
   ): Promise<void> {
@@ -795,10 +859,16 @@ function createAgentRuntimeInternal(
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
     if (plan.kind === "request") {
-      const result = await sendCommand({
-        proc,
-        message: plan,
-        resultSchema: threadIdentityResultSchema,
+      const result = await runWithCodexArchivedSessionRecovery({
+        operation: () =>
+          sendCommand({
+            proc,
+            message: plan,
+            resultSchema: threadIdentityResultSchema,
+          }),
+        providerId: currentConfig.providerId,
+        providerThreadId: adapterCommand.providerThreadId,
+        threadId: args.threadId,
       });
       const providerThreadId = resolveThreadIdentityResult({
         result,
@@ -1252,10 +1322,16 @@ function createAgentRuntimeInternal(
           }
           const cmd = plan;
 
-          const result = await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: threadIdentityResultSchema,
+          const result = await runWithCodexArchivedSessionRecovery({
+            operation: () =>
+              sendCommand({
+                proc,
+                message: cmd,
+                resultSchema: threadIdentityResultSchema,
+              }),
+            providerId,
+            providerThreadId: adapterCommand.providerThreadId,
+            threadId,
           });
           const resolvedId =
             resolveThreadIdentityResult({ result, threadId }) ??
@@ -1327,22 +1403,17 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          const preparedTurnStart =
-            proc.adapter.prepareTurnStart(adapterCommand);
-          pendingTurnStartThreadIds.add(threadId);
-          markProviderSessionNotIdle(threadId);
-          try {
-            await sendCommand({
-              proc,
-              message: cmd,
-              resultSchema: ignoredJsonRpcResultSchema,
-            });
-          } catch (error) {
-            pendingTurnStartThreadIds.delete(threadId);
-            markHostedProviderSessionIdle(threadId);
-            preparedTurnStart?.rollback();
-            throw error;
-          }
+          await runWithCodexArchivedSessionRecovery({
+            operation: () =>
+              sendTurnStartCommand({
+                cmd,
+                command: adapterCommand,
+                proc,
+              }),
+            providerId: pid,
+            providerThreadId: adapterCommand.providerThreadId,
+            threadId,
+          });
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
@@ -1413,10 +1484,16 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
+          await runWithCodexArchivedSessionRecovery({
+            operation: () =>
+              sendCommand({
+                proc,
+                message: cmd,
+                resultSchema: ignoredJsonRpcResultSchema,
+              }),
+            providerId: pid,
+            providerThreadId: adapterCommand.providerThreadId,
+            threadId,
           });
           emitAcceptedCommandEvents({
             command: adapterCommand,
