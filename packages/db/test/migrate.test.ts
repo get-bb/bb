@@ -240,6 +240,73 @@ const latestMigrationWhen = Math.max(
 function dropLateAdmissionTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS principal_assertion_replays").run();
   db.$client.prepare("DROP TABLE IF EXISTS thread_command_admissions").run();
+  dropQueuedMessageAdmissionReferenceSchema(db);
+}
+
+/**
+ * Migration 0090 rebuilds `queued_thread_messages` with optional admission
+ * identity columns, a completeness CHECK, and a per-thread sequence unique
+ * index. Rewind helpers that clear 0090's ledger row must restore the pre-0090
+ * table shape so remigrate can re-apply the rebuild.
+ */
+function dropQueuedMessageAdmissionReferenceSchema(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all()
+    .map((row) => row.name);
+  if (
+    !columns.includes("request_id") &&
+    !columns.includes("request_fingerprint") &&
+    !columns.includes("admission_sequence")
+  ) {
+    return;
+  }
+
+  db.$client.exec(`
+    DROP INDEX IF EXISTS queued_thread_messages_thread_admission_sequence_idx;
+    DROP INDEX IF EXISTS queued_thread_messages_thread_created_idx;
+    DROP INDEX IF EXISTS queued_thread_messages_thread_sort_idx;
+    PRAGMA foreign_keys=OFF;
+    CREATE TABLE __rewind_queued_thread_messages (
+      id text PRIMARY KEY NOT NULL,
+      thread_id text NOT NULL,
+      content text NOT NULL,
+      sender_thread_id text,
+      actor_principal_id text,
+      actor_kind text,
+      actor_display_name text,
+      model text NOT NULL,
+      reasoning_level text NOT NULL,
+      permission_mode text NOT NULL,
+      service_tier text NOT NULL,
+      group_with_next integer DEFAULT false NOT NULL,
+      claimed_at integer,
+      claim_token text,
+      sort_key text NOT NULL,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      FOREIGN KEY (thread_id) REFERENCES threads(id) ON UPDATE no action ON DELETE cascade
+    );
+    INSERT INTO __rewind_queued_thread_messages (
+      id, thread_id, content, sender_thread_id,
+      actor_principal_id, actor_kind, actor_display_name,
+      model, reasoning_level, permission_mode, service_tier,
+      group_with_next, claimed_at, claim_token, sort_key, created_at, updated_at
+    )
+    SELECT
+      id, thread_id, content, sender_thread_id,
+      actor_principal_id, actor_kind, actor_display_name,
+      model, reasoning_level, permission_mode, service_tier,
+      group_with_next, claimed_at, claim_token, sort_key, created_at, updated_at
+    FROM queued_thread_messages;
+    DROP TABLE queued_thread_messages;
+    ALTER TABLE __rewind_queued_thread_messages RENAME TO queued_thread_messages;
+    CREATE INDEX queued_thread_messages_thread_created_idx
+      ON queued_thread_messages (thread_id, created_at, id);
+    CREATE INDEX queued_thread_messages_thread_sort_idx
+      ON queued_thread_messages (thread_id, sort_key, id);
+    PRAGMA foreign_keys=ON;
+  `);
 }
 
 function dropRewindAddedTables(db: DbConnection): void {
@@ -501,6 +568,7 @@ function dropSteerActiveThreadOnEnterColumn(db: DbConnection): void {
 
 // Journal `when` for 0085, used to rewind exactly that migration.
 const onboardingMigrationWhen = 1785947206119;
+const queuedMessageAdmissionReferenceMigrationWhen = 1786010963661;
 
 // Migration 0085 adds the onboarding completion timestamp. Rewind scenarios
 // that clear its migration row must drop the column before replay, for the same
@@ -1270,6 +1338,111 @@ describe("migrate", () => {
     expect(row?.onboarding_completed_at).toBeNull();
 
     closeConnection(db);
+  });
+
+  it("rewinds and reapplies queued message admission reference columns", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        name: "queued-admission-migration-host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "queued-admission-migration-project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/queued-admission-migration",
+        },
+      });
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const groupedLead = createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
+        threadId: thread.id,
+        content: [{ type: "text", text: "grouped lead", mentions: [] }],
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      });
+      createQueuedThreadMessage(db, noopNotifier, {
+        actor: SYSTEM_ACTOR_STAMP,
+        threadId: thread.id,
+        content: [{ type: "text", text: "grouped follower", mentions: [] }],
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      });
+      db.$client
+        .prepare(
+          "UPDATE queued_thread_messages SET group_with_next = 1 WHERE id = ?",
+        )
+        .run(groupedLead.id);
+      const columnsBefore = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+        .all()
+        .map((row) => row.name);
+      expect(columnsBefore).toEqual(
+        expect.arrayContaining([
+          "request_id",
+          "request_fingerprint",
+          "admission_sequence",
+        ]),
+      );
+      expect(
+        readIndexNames({ db, tableName: "queued_thread_messages" }),
+      ).toContain("queued_thread_messages_thread_admission_sequence_idx");
+
+      dropQueuedMessageAdmissionReferenceSchema(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(queuedMessageAdmissionReferenceMigrationWhen);
+
+      const columnsRewound = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+        .all()
+        .map((row) => row.name);
+      expect(columnsRewound).not.toContain("request_id");
+      expect(columnsRewound).not.toContain("request_fingerprint");
+      expect(columnsRewound).not.toContain("admission_sequence");
+
+      migrate(db);
+
+      const columnsAfter = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+        .all()
+        .map((row) => row.name);
+      expect(columnsAfter).toEqual(
+        expect.arrayContaining([
+          "request_id",
+          "request_fingerprint",
+          "admission_sequence",
+        ]),
+      );
+      expect(
+        readIndexNames({ db, tableName: "queued_thread_messages" }),
+      ).toContain("queued_thread_messages_thread_admission_sequence_idx");
+      expect(
+        db.$client
+          .prepare<
+            [string],
+            { groupWithNext: number }
+          >("SELECT group_with_next AS groupWithNext FROM queued_thread_messages WHERE id = ?")
+          .get(groupedLead.id)?.groupWithNext,
+      ).toBe(1);
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
+        queuedMessageAdmissionReferenceMigrationWhen,
+      );
+    } finally {
+      closeConnection(db);
+    }
   });
 
   it("adopts legacy side chats as the side-chat plugin's hidden forks", () => {

@@ -113,6 +113,12 @@ function toQueuedMessageOrderResponse(
         "invalid_request",
         "Queued messages with different execution options cannot be grouped",
       );
+    case "invalid_admission_grouping":
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Admitted queued messages cannot be grouped with other queued messages",
+      );
   }
 }
 
@@ -148,6 +154,12 @@ function toQueuedMessageGroupBoundaryResponse(
         409,
         "invalid_request",
         "Queued messages with different execution options cannot be grouped",
+      );
+    case "invalid_admission_grouping":
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Admitted queued messages cannot be grouped with other queued messages",
       );
   }
 }

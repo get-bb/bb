@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { PromptInput } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  parseThreadCommandRequestFingerprint,
+} from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -10,6 +14,7 @@ import {
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessage,
   createQueuedThreadMessage,
+  decodeQueuedThreadMessageAdmissionReference,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteClaimedQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageInTransaction,
@@ -1411,5 +1416,204 @@ describe("queued thread messages", () => {
         nextQueuedMessageId: secondQueuedMessage.id,
       }).kind,
     ).toBe("stale_neighbor");
+  });
+});
+
+describe("queued thread message admission references", () => {
+  const fingerprintA =
+    `sha256:${"a".repeat(64)}` as const;
+
+  function admissionFor(value: number, sequence: number) {
+    return {
+      requestId: encodeClientTurnRequestIdNumber({ value }),
+      requestFingerprint: parseThreadCommandRequestFingerprint(fingerprintA),
+      admissionSequence: sequence,
+    };
+  }
+
+  it("stores a complete admission reference and leaves legacy rows all-null", () => {
+    const { db, thread } = setup();
+    const admission = admissionFor(11, 1);
+    const admitted = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      admission,
+    });
+    const legacy = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+
+    expect(admitted).toMatchObject({
+      requestId: admission.requestId,
+      requestFingerprint: admission.requestFingerprint,
+      admissionSequence: 1,
+    });
+    expect(decodeQueuedThreadMessageAdmissionReference(admitted)).toEqual(
+      admission,
+    );
+    expect(legacy.requestId).toBeNull();
+    expect(legacy.requestFingerprint).toBeNull();
+    expect(legacy.admissionSequence).toBeNull();
+    expect(decodeQueuedThreadMessageAdmissionReference(legacy)).toBeNull();
+  });
+
+  it("rejects partial admission triples and duplicate live sequences at SQLite", () => {
+    const { db, thread } = setup();
+    const admission = admissionFor(12, 2);
+    createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      admission,
+    });
+
+    expect(() =>
+      db.$client
+        .prepare(
+          `
+            INSERT INTO queued_thread_messages (
+              id, thread_id, content, model, reasoning_level, permission_mode,
+              service_tier, group_with_next, sort_key, created_at, updated_at,
+              request_id
+            ) VALUES (?, ?, '[]', 'gpt-5', 'medium', 'full', 'default', 0, 'W', 1, 1, ?)
+          `,
+        )
+        .run("qmsg_partial01", thread.id, admission.requestId),
+    ).toThrow(/CHECK|constraint/i);
+
+    expect(() =>
+      db.$client
+        .prepare(
+          `
+            INSERT INTO queued_thread_messages (
+              id, thread_id, content, model, reasoning_level, permission_mode,
+              service_tier, group_with_next, sort_key, created_at, updated_at,
+              request_id, request_fingerprint, admission_sequence
+            ) VALUES (?, ?, '[]', 'gpt-5', 'medium', 'full', 'default', 0, 'X', 1, 1, ?, ?, ?)
+          `,
+        )
+        .run(
+          "qmsg_dupseq01",
+          thread.id,
+          encodeClientTurnRequestIdNumber({ value: 99 }),
+          fingerprintA,
+          2,
+        ),
+    ).toThrow(/UNIQUE|constraint/i);
+  });
+
+  it("rejects a corrupt partial triple at the decode boundary", () => {
+    expect(() =>
+      decodeQueuedThreadMessageAdmissionReference({
+        requestId: encodeClientTurnRequestIdNumber({ value: 44 }),
+        requestFingerprint: null,
+        admissionSequence: null,
+      }),
+    ).toThrow(/incomplete/i);
+  });
+
+  it("refuses to group any admitted row while legacy grouping still works", () => {
+    const { db, thread } = setup();
+    const admitted = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: defaultInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      admission: admissionFor(21, 1),
+    });
+    const following = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: altInput,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    expect(
+      setQueuedThreadMessageGroupBoundary({
+        db,
+        notifier: noopNotifier,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [admitted.id, following.id],
+        groupBoundaryQueuedMessageId: following.id,
+      }).kind,
+    ).toBe("invalid_admission_grouping");
+
+    // Even with a corrupt group_with_next edge, automatic claim stops at the
+    // admitted lead instead of swallowing the next row's identity.
+    db.$client
+      .prepare(
+        "UPDATE queued_thread_messages SET group_with_next = 1 WHERE id = ?",
+      )
+      .run(admitted.id);
+    const claimedAdmitted = claimNextQueuedThreadMessageGroup(
+      db,
+      noopNotifier,
+      thread.id,
+    );
+    expect(claimedAdmitted?.map((row) => row.id)).toEqual([admitted.id]);
+    releaseQueuedMessageClaim(db, noopNotifier, {
+      id: claimedAdmitted![0]!.id,
+      claimToken: claimedAdmitted![0]!.claimToken,
+    });
+    deleteQueuedThreadMessage(db, noopNotifier, admitted.id);
+
+    const legacyFirst = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: textInput("legacy-a"),
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    const legacySecond = createQueuedThreadMessage(db, noopNotifier, {
+      actor: SYSTEM_ACTOR_STAMP,
+      threadId: thread.id,
+      content: textInput("legacy-b"),
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+    });
+    // Clear the leftover non-admitted row from the earlier setup so the legacy
+    // pair is contiguous at the lead.
+    deleteQueuedThreadMessage(db, noopNotifier, following.id);
+    expect(
+      setQueuedThreadMessageGroupBoundary({
+        db,
+        notifier: noopNotifier,
+        threadId: thread.id,
+        expectedGroupedPrefixQueuedMessageIds: [
+          legacyFirst.id,
+          legacySecond.id,
+        ],
+        groupBoundaryQueuedMessageId: legacySecond.id,
+      }).kind,
+    ).toBe("updated");
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([legacyFirst.id, legacySecond.id]);
   });
 });

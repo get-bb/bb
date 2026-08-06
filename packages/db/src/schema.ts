@@ -778,6 +778,13 @@ export const queuedThreadMessages = sqliteTable(
     actorPrincipalId: text("actor_principal_id"),
     actorKind: text("actor_kind").$type<PrincipalKind>(),
     actorDisplayName: text("actor_display_name"),
+    // Optional admitted message.send identity. Legacy/direct rows keep all
+    // three null; newly admitted rows store the complete triple.
+    requestId: text("request_id").$type<ClientTurnRequestId>(),
+    requestFingerprint: text(
+      "request_fingerprint",
+    ).$type<ThreadCommandRequestFingerprint>(),
+    admissionSequence: integer("admission_sequence"),
     model: text("model").notNull(),
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
@@ -801,6 +808,20 @@ export const queuedThreadMessages = sqliteTable(
       table.threadId,
       table.sortKey,
       table.id,
+    ),
+    // SQLite UNIQUE treats NULLs as distinct, so legacy all-null rows remain
+    // compatible while live admitted sequences stay unique per thread.
+    uniqueIndex("queued_thread_messages_thread_admission_sequence_idx").on(
+      table.threadId,
+      table.admissionSequence,
+    ),
+    check(
+      "queued_thread_messages_admission_reference_check",
+      sql`(
+        (${table.requestId} IS NULL AND ${table.requestFingerprint} IS NULL AND ${table.admissionSequence} IS NULL)
+        OR
+        (${table.requestId} IS NOT NULL AND ${table.requestFingerprint} IS NOT NULL AND ${table.admissionSequence} IS NOT NULL)
+      )`,
     ),
   ],
 );

@@ -8,7 +8,8 @@ import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
   systemMessageSubjectSchema,
-  turnRequestEventDataSchema,
+  refineTurnRequestAdmissionMetadataPair,
+  turnRequestEventDataObjectSchema,
   turnRequestTargetSchema,
 } from "./thread-events.js";
 import {
@@ -104,15 +105,17 @@ const LEGACY_TURN_REQUEST_TARGET = {
 // rows load without a backfill migration. `initiator` was already always
 // written by every call site (the prior `.optional()` was schema slack),
 // so it does not need a default.
-const storedTurnRequestEventDataSchema = turnRequestEventDataSchema.extend({
-  senderThreadId: z.string().nullable().default(null),
-  target: turnRequestTargetSchema.default(LEGACY_TURN_REQUEST_TARGET),
-  // Family-B taxonomy fields are new, so pre-change rows lack them. Default to
-  // the generic `unlabeled` / no-subject shape here so old rows load without a
-  // backfill migration — same pattern as `senderThreadId`.
-  systemMessageKind: systemMessageKindSchema.default("unlabeled"),
-  systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
-});
+const storedTurnRequestEventDataSchema = turnRequestEventDataObjectSchema
+  .extend({
+    senderThreadId: z.string().nullable().default(null),
+    target: turnRequestTargetSchema.default(LEGACY_TURN_REQUEST_TARGET),
+    // Family-B taxonomy fields are new, so pre-change rows lack them. Default to
+    // the generic `unlabeled` / no-subject shape here so old rows load without a
+    // backfill migration — same pattern as `senderThreadId`.
+    systemMessageKind: systemMessageKindSchema.default("unlabeled"),
+    systemMessageSubject: systemMessageSubjectSchema.nullable().default(null),
+  })
+  .superRefine(refineTurnRequestAdmissionMetadataPair);
 
 function parseStoredTurnRequestEventData(
   args: StoredThreadEventParseArgs,

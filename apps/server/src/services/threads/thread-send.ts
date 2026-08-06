@@ -11,6 +11,7 @@ import type {
   PromptInput,
   ResolvedThreadExecutionOptions,
   Thread,
+  ThreadCommandAdmissionReference,
   ThreadTurnInitiator,
   TurnRequestTarget,
 } from "@bb/domain";
@@ -78,6 +79,12 @@ export interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
   payload: SendThreadMessagePayload;
+  /**
+   * Optional preserved admission identity from an admitted queued row. When
+   * present, the durable event and daemon command reuse this request ID and
+   * include sequence/fingerprint on the event. Absent for legacy direct sends.
+   */
+  preservedAdmission?: ThreadCommandAdmissionReference;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
 }
@@ -129,6 +136,7 @@ interface AppendAndQueueSendThreadMessageArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  preservedAdmission?: ThreadCommandAdmissionReference;
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
@@ -330,6 +338,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   initiator,
   input,
   inputGroups,
+  preservedAdmission,
   queueInTransaction,
   requestId,
   senderThreadId,
@@ -357,6 +366,12 @@ function appendAndQueueSendThreadMessageInTransaction({
             source: "tell",
             target,
             requestId,
+            ...(preservedAdmission !== undefined
+              ? {
+                  admissionSequence: preservedAdmission.admissionSequence,
+                  requestFingerprint: preservedAdmission.requestFingerprint,
+                }
+              : {}),
           },
         );
       recordAcceptedPromptHistoryEntry(
@@ -507,7 +522,8 @@ export async function sendThreadMessage(
     };
   }
 
-  const requestId = createClientTurnRequestId();
+  const requestId =
+    args.preservedAdmission?.requestId ?? createClientTurnRequestId();
 
   if (mode === "start") {
     const command = await prepareReadyThreadTurnCommand(deps, {
@@ -543,6 +559,9 @@ export async function sendThreadMessage(
       initiator,
       input,
       inputGroups,
+      ...(args.preservedAdmission !== undefined
+        ? { preservedAdmission: args.preservedAdmission }
+        : {}),
       queueInTransaction: ({ tx }) => {
         const dispatchKind = prepareReadyThreadTurnDispatch({
           command,
@@ -637,6 +656,9 @@ export async function sendThreadMessage(
     initiator,
     input,
     inputGroups,
+    ...(args.preservedAdmission !== undefined
+      ? { preservedAdmission: args.preservedAdmission }
+      : {}),
     queueInTransaction: () => {
       return { threadBecameActive: false };
     },

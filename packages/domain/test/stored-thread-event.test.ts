@@ -80,6 +80,8 @@ describe("parseStoredThreadEvent", () => {
       initiator: "user",
       senderThreadId: null,
     });
+    expect(event).not.toHaveProperty("admissionSequence");
+    expect(event).not.toHaveProperty("requestFingerprint");
   });
 
   it.each(["workspace-write", "readonly"] as const)(

@@ -1,6 +1,7 @@
 import {
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
+  decodeQueuedThreadMessageAdmissionReference,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getQueuedThreadMessage,
   getEnvironment,
@@ -13,6 +14,7 @@ import {
 import type {
   PromptInput,
   Thread,
+  ThreadCommandAdmissionReference,
   ThreadQueuedMessage,
   ThreadTurnInitiator,
 } from "@bb/domain";
@@ -42,8 +44,11 @@ import {
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
-import { appendClientTurnEventInTransaction } from "./thread-events.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  appendPreparedClientTurnRequestedEventInTransaction,
+  createClientTurnRequestId,
+  getLastProviderThreadId,
+} from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
@@ -64,6 +69,31 @@ type ClaimedQueuedMessage = Exclude<
   ReturnType<typeof claimQueuedThreadMessageGroup>,
   null
 >[number];
+
+function preservedAdmissionFromClaimedQueuedMessages(
+  queuedMessages: readonly ClaimedQueuedMessage[],
+): ThreadCommandAdmissionReference | undefined {
+  const first = queuedMessages[0];
+  if (!first) {
+    return undefined;
+  }
+  // Admitted rows cannot group, so the lead row is the only identity that may
+  // be reused. Decode fails closed on a corrupt partial triple.
+  const admission = decodeQueuedThreadMessageAdmissionReference(first);
+  if (admission !== null && queuedMessages.length > 1) {
+    throw new Error(
+      "Admitted queued message cannot be dispatched as part of a grouped claim",
+    );
+  }
+  for (const queuedMessage of queuedMessages.slice(1)) {
+    if (decodeQueuedThreadMessageAdmissionReference(queuedMessage) !== null) {
+      throw new Error(
+        "Grouped queued claim included an admitted message identity",
+      );
+    }
+  }
+  return admission ?? undefined;
+}
 
 interface SendClaimedQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -342,6 +372,10 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     thread,
   });
 
+  const preservedAdmission = preservedAdmissionFromClaimedQueuedMessages(
+    args.queuedMessages,
+  );
+
   const command = deps.db.transaction(
     (tx) => {
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
@@ -351,7 +385,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         throw createQueuedMessageClaimLostError();
       }
       const originalQueuedRow = args.queuedMessages[0]!;
-      const request = appendClientTurnEventInTransaction(tx, {
+      const request = appendPreparedClientTurnRequestedEventInTransaction(tx, {
         actor: decodeActorStampFromColumns({
           actorPrincipalId: originalQueuedRow.actorPrincipalId,
           actorKind: originalQueuedRow.actorKind,
@@ -368,6 +402,13 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         target: { kind: "new-turn" },
         threadId: thread.id,
         type: "client/turn/requested",
+        requestId: preservedAdmission?.requestId ?? createClientTurnRequestId(),
+        ...(preservedAdmission !== undefined
+          ? {
+              admissionSequence: preservedAdmission.admissionSequence,
+              requestFingerprint: preservedAdmission.requestFingerprint,
+            }
+          : {}),
       });
       recordAcceptedPromptHistoryEntry(
         { db: tx },
@@ -448,6 +489,9 @@ async function sendClaimedQueuedMessageForThread(
     thread: args.thread,
   });
   const originalQueuedRow = args.queuedMessages[0]!;
+  const preservedAdmission = preservedAdmissionFromClaimedQueuedMessages(
+    args.queuedMessages,
+  );
   await sendThreadMessage(deps, {
     actor: decodeActorStampFromColumns({
       actorPrincipalId: originalQueuedRow.actorPrincipalId,
@@ -471,6 +515,7 @@ async function sendClaimedQueuedMessageForThread(
       ),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
     },
+    ...(preservedAdmission !== undefined ? { preservedAdmission } : {}),
     thread: args.thread,
     trigger: "auto-dispatch",
   });

@@ -45,6 +45,7 @@ import type {
   ThreadTurnInitiator,
   ThreadChangeKind,
   ThreadChangeMetadata,
+  ThreadCommandRequestFingerprint,
 } from "@bb/domain";
 import { ApiError, TurnStartGuardError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -68,6 +69,12 @@ export interface ClientTurnRequestedEventArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  /**
+   * Optional admitted-queue identity metadata. When present, both fields must
+   * be set together; `requestId` on the prepared args is the admitted ID.
+   */
+  admissionSequence?: number;
+  requestFingerprint?: ThreadCommandRequestFingerprint;
   requestMethod: "thread/start" | "turn/start";
   senderThreadId: string | null;
   source: "spawn" | "tell";
@@ -252,7 +259,7 @@ function buildClientTurnRequestedEventData(
   args: ClientTurnRequestedEventArgs,
   requestId: ClientTurnRequestId,
 ): TurnRequestEventData {
-  return {
+  return turnRequestEventDataSchema.parse({
     ...buildClientTurnBaseEventData(args),
     requestId,
     senderThreadId: args.senderThreadId,
@@ -265,13 +272,19 @@ function buildClientTurnRequestedEventData(
     ...(args.systemMessageSubject !== undefined
       ? { systemMessageSubject: args.systemMessageSubject }
       : {}),
+    ...(args.admissionSequence !== undefined
+      ? { admissionSequence: args.admissionSequence }
+      : {}),
+    ...(args.requestFingerprint !== undefined
+      ? { requestFingerprint: args.requestFingerprint }
+      : {}),
     input: args.input,
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
       : {}),
     target: args.target,
     execution: args.execution,
-  };
+  });
 }
 
 type AppendClientTurnEvent = (args: AppendThreadEventArgs) => number;

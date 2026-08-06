@@ -12,6 +12,7 @@ import {
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+import { threadCommandRequestFingerprintSchema } from "./thread-command-admission.js";
 
 export const systemEventTypeValues = [
   "client/thread/start",
@@ -129,7 +130,7 @@ export type ClientTurnLifecycleEventData = z.infer<
   typeof clientTurnLifecycleEventDataSchema
 >;
 
-export const turnRequestEventDataSchema = z.object({
+const turnRequestEventDataObjectSchema = z.object({
   direction: z.literal("outbound"),
   requestId: clientTurnRequestIdSchema,
   source: z.enum(["spawn", "tell"]),
@@ -144,6 +145,10 @@ export const turnRequestEventDataSchema = z.object({
   // projection defaults absent values to `unlabeled` / `null`.
   systemMessageKind: systemMessageKindSchema.optional(),
   systemMessageSubject: systemMessageSubjectSchema.nullable().optional(),
+  // Optional admitted-queue identity metadata. Legacy direct sends omit both;
+  // admitted dispatch includes both. Partial pairs are rejected below.
+  admissionSequence: z.number().int().positive().optional(),
+  requestFingerprint: threadCommandRequestFingerprintSchema.optional(),
   input: z.array(promptInputSchema),
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
   target: turnRequestTargetSchema,
@@ -153,7 +158,37 @@ export const turnRequestEventDataSchema = z.object({
   }),
   execution: turnRequestOptionsSchema,
 });
+
+function refineTurnRequestAdmissionMetadataPair(
+  value: {
+    admissionSequence?: number;
+    requestFingerprint?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const hasAdmissionSequence = value.admissionSequence !== undefined;
+  const hasRequestFingerprint = value.requestFingerprint !== undefined;
+  if (hasAdmissionSequence !== hasRequestFingerprint) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "admissionSequence and requestFingerprint must be provided together",
+    });
+  }
+}
+
+export const turnRequestEventDataSchema =
+  turnRequestEventDataObjectSchema.superRefine(
+    refineTurnRequestAdmissionMetadataPair,
+  );
 export type TurnRequestEventData = z.infer<typeof turnRequestEventDataSchema>;
+
+// Object shape without the admission-pair refine, so the stored-event boundary
+// can `.extend()` read-path defaults and then re-apply the same refine.
+export {
+  turnRequestEventDataObjectSchema,
+  refineTurnRequestAdmissionMetadataPair,
+};
 
 export const systemErrorEventDataSchema = z
   .object({

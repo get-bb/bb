@@ -11,7 +11,13 @@ import {
   notInArray,
   or,
 } from "drizzle-orm";
-import type { ActorStamp, PermissionMode, PromptInput } from "@bb/domain";
+import {
+  parseThreadCommandAdmissionReference,
+  type ActorStamp,
+  type PermissionMode,
+  type PromptInput,
+  type ThreadCommandAdmissionReference,
+} from "@bb/domain";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -36,6 +42,16 @@ export interface CreateQueuedThreadMessageInput {
   reasoningLevel: string;
   permissionMode: PermissionMode;
   serviceTier: string;
+  /**
+   * Optional complete admission identity for an admitted `message.send`.
+   * Omitted (or undefined) persists a legacy/direct row with all-null columns.
+   */
+  admission?: ThreadCommandAdmissionReference;
+}
+
+export interface CreateQueuedThreadMessageInTransactionInput
+  extends CreateQueuedThreadMessageInput {
+  nowMs?: number;
 }
 
 export interface UpdateQueuedThreadMessageInput {
@@ -147,6 +163,10 @@ export interface QueuedThreadMessageGroupBoundaryInvalidExecutionOptions {
   kind: "invalid_execution_options";
 }
 
+export interface QueuedThreadMessageGroupBoundaryInvalidAdmissionGrouping {
+  kind: "invalid_admission_grouping";
+}
+
 export interface QueuedThreadMessageGroupBoundaryStaleOrder {
   kind: "stale_neighbor";
 }
@@ -159,7 +179,8 @@ export type ReorderQueuedThreadMessageResult =
   | ReorderQueuedThreadMessageStaleNeighbor
   | ReorderQueuedThreadMessageInvalidNeighborOrder
   | QueuedThreadMessageGroupBoundaryInvalidSender
-  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions;
+  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions
+  | QueuedThreadMessageGroupBoundaryInvalidAdmissionGrouping;
 
 export type SetQueuedThreadMessageGroupBoundaryResult =
   | QueuedThreadMessageGroupBoundarySuccess
@@ -167,6 +188,7 @@ export type SetQueuedThreadMessageGroupBoundaryResult =
   | QueuedThreadMessageGroupBoundaryNotFound
   | QueuedThreadMessageGroupBoundaryInvalidSender
   | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions
+  | QueuedThreadMessageGroupBoundaryInvalidAdmissionGrouping
   | QueuedThreadMessageGroupBoundaryStaleOrder
   | ReorderQueuedThreadMessageClaimed;
 
@@ -184,17 +206,64 @@ class ReorderQueuedThreadMessageRollback extends Error {
   }
 }
 
+function queuedMessageHasAdmissionColumns(
+  queuedMessage: QueuedThreadMessageRow,
+): boolean {
+  return (
+    queuedMessage.requestId !== null ||
+    queuedMessage.requestFingerprint !== null ||
+    queuedMessage.admissionSequence !== null
+  );
+}
+
+/**
+ * Decode the optional admission identity on a queued row. Legacy/direct rows
+ * return null. Partial triples fail closed — never invent request identity.
+ */
+export function decodeQueuedThreadMessageAdmissionReference(
+  row: Pick<
+    QueuedThreadMessageRow,
+    "requestId" | "requestFingerprint" | "admissionSequence"
+  >,
+): ThreadCommandAdmissionReference | null {
+  const hasRequestId = row.requestId !== null;
+  const hasFingerprint = row.requestFingerprint !== null;
+  const hasSequence = row.admissionSequence !== null;
+  if (!hasRequestId && !hasFingerprint && !hasSequence) {
+    return null;
+  }
+  if (!hasRequestId || !hasFingerprint || !hasSequence) {
+    throw new Error(
+      "Queued thread message admission reference is incomplete; refusing to infer request identity",
+    );
+  }
+  return parseThreadCommandAdmissionReference({
+    requestId: row.requestId,
+    requestFingerprint: row.requestFingerprint,
+    admissionSequence: row.admissionSequence,
+  });
+}
+
 function collectLeadGroupIds(
   queuedMessages: readonly QueuedThreadMessageRow[],
 ): string[] {
   const ids: string[] = [];
   const firstQueuedMessage = queuedMessages[0] ?? null;
+  if (!firstQueuedMessage) {
+    return ids;
+  }
+  // An admitted row is one durable command with a single runtime request
+  // identity — never group it with another admitted or legacy row.
+  if (queuedMessageHasAdmissionColumns(firstQueuedMessage)) {
+    return [firstQueuedMessage.id];
+  }
   for (const [index, queuedMessage] of queuedMessages.entries()) {
     ids.push(queuedMessage.id);
     if (!queuedMessage.groupWithNext) break;
     const nextQueuedMessage = queuedMessages[index + 1];
     if (
       !nextQueuedMessage ||
+      queuedMessageHasAdmissionColumns(nextQueuedMessage) ||
       !queuedMessageGroupingEnvelopeMatches(firstQueuedMessage, nextQueuedMessage)
     ) {
       break;
@@ -408,6 +477,9 @@ function applyQueuedThreadMessageGroupBoundary(
   if (boundaryIndex > 0) {
     const firstQueuedMessage = queuedMessages[0] ?? null;
     const groupedMessages = queuedMessages.slice(0, boundaryIndex + 1);
+    if (groupedMessages.some(queuedMessageHasAdmissionColumns)) {
+      return { kind: "invalid_admission_grouping" };
+    }
     const hasMixedSender = groupedMessages.some(
       (queuedMessage) =>
         queuedMessage.senderThreadId !== firstQueuedMessage?.senderThreadId,
@@ -477,44 +549,55 @@ function applyPreservedLeadGroupAfterReorder(
     : queuedMessages;
 }
 
+export function createQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  input: CreateQueuedThreadMessageInTransactionInput,
+): QueuedThreadMessageRow {
+  const now = input.nowMs ?? Date.now();
+  const id = createQueuedThreadMessageId();
+  const actorColumns = encodeActorStampColumns(input.actor);
+  const admission = input.admission
+    ? parseThreadCommandAdmissionReference(input.admission)
+    : null;
+  const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
+  const sortKey = lastQueuedMessage
+    ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
+    : createOrderKeyBetween({ previousKey: null, nextKey: null });
+  return tx
+    .insert(queuedThreadMessages)
+    .values({
+      id,
+      threadId: input.threadId,
+      content: JSON.stringify(input.content),
+      senderThreadId: input.senderThreadId ?? null,
+      actorPrincipalId: actorColumns.actorPrincipalId,
+      actorKind: actorColumns.actorKind,
+      actorDisplayName: actorColumns.actorDisplayName,
+      requestId: admission?.requestId ?? null,
+      requestFingerprint: admission?.requestFingerprint ?? null,
+      admissionSequence: admission?.admissionSequence ?? null,
+      model: input.model,
+      reasoningLevel: input.reasoningLevel,
+      permissionMode: input.permissionMode,
+      serviceTier: input.serviceTier,
+      groupWithNext: false,
+      claimedAt: null,
+      claimToken: null,
+      sortKey,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+}
+
 export function createQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
   input: CreateQueuedThreadMessageInput,
 ) {
-  const now = Date.now();
-  const id = createQueuedThreadMessageId();
-  const actorColumns = encodeActorStampColumns(input.actor);
   const row = db.transaction(
-    (tx) => {
-      const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
-      const sortKey = lastQueuedMessage
-        ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
-        : createOrderKeyBetween({ previousKey: null, nextKey: null });
-      return tx
-        .insert(queuedThreadMessages)
-        .values({
-          id,
-          threadId: input.threadId,
-          content: JSON.stringify(input.content),
-          senderThreadId: input.senderThreadId ?? null,
-          actorPrincipalId: actorColumns.actorPrincipalId,
-          actorKind: actorColumns.actorKind,
-          actorDisplayName: actorColumns.actorDisplayName,
-          model: input.model,
-          reasoningLevel: input.reasoningLevel,
-          permissionMode: input.permissionMode,
-          serviceTier: input.serviceTier,
-          groupWithNext: false,
-          claimedAt: null,
-          claimToken: null,
-          sortKey,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-    },
+    (tx) => createQueuedThreadMessageInTransaction(tx, input),
     { behavior: "immediate" },
   );
   notifier.notifyThread(input.threadId, ["queue-changed"]);
@@ -882,6 +965,9 @@ export function reorderQueuedThreadMessage({
             if (groupResult.kind === "invalid_execution_options") {
               return { kind: "invalid_execution_options" };
             }
+            if (groupResult.kind === "invalid_admission_grouping") {
+              return { kind: "invalid_admission_grouping" };
+            }
             if (groupResult.kind === "updated") {
               return {
                 kind: "reordered",
@@ -943,6 +1029,11 @@ export function reorderQueuedThreadMessage({
           if (groupResult.kind === "invalid_execution_options") {
             throw new ReorderQueuedThreadMessageRollback({
               kind: "invalid_execution_options",
+            });
+          }
+          if (groupResult.kind === "invalid_admission_grouping") {
+            throw new ReorderQueuedThreadMessageRollback({
+              kind: "invalid_admission_grouping",
             });
           }
           if (groupResult.kind === "updated") {

@@ -1195,6 +1195,107 @@ function applyQueuedMessageGroupingSchema(db: DbConnection): void {
     .run();
 }
 
+/**
+ * Migration 0090 rebuilds `queued_thread_messages`. On upgrades the live table
+ * already has `group_with_next` (applied post-migrate by
+ * `applyQueuedMessageGroupingSchema`), so rebuild here first and preserve those
+ * flags before the journal SQL runs. Fresh installs have no table yet; the
+ * journal SQL uses `0` for `group_with_next` because that column is still
+ * added outside the additive migration chain.
+ */
+function applyQueuedMessageAdmissionReferenceMigrationForUpgrade(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+  if (!tableExists(db, "queued_thread_messages")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const migration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0090_overjoyed_sway",
+  );
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  if (appliedCreatedAts.has(migration.createdAt)) {
+    return;
+  }
+
+  // Only early-apply when every prior journal migration is already present.
+  // Otherwise marking 0090 applied would make Drizzle skip older pending
+  // migrations during rewind/remigrate tests.
+  const priorMigrationsPending = expectedMigrations.some(
+    (candidate) =>
+      candidate.createdAt < migration.createdAt &&
+      !appliedCreatedAts.has(candidate.createdAt),
+  );
+  if (priorMigrationsPending) {
+    return;
+  }
+
+  applyQueuedMessageGroupingSchema(db);
+
+  db.$client.exec(`
+    PRAGMA foreign_keys=OFF;
+    CREATE TABLE __new_queued_thread_messages (
+      id text PRIMARY KEY NOT NULL,
+      thread_id text NOT NULL,
+      content text NOT NULL,
+      sender_thread_id text,
+      actor_principal_id text,
+      actor_kind text,
+      actor_display_name text,
+      request_id text,
+      request_fingerprint text,
+      admission_sequence integer,
+      model text NOT NULL,
+      reasoning_level text NOT NULL,
+      permission_mode text NOT NULL,
+      service_tier text NOT NULL,
+      group_with_next integer DEFAULT false NOT NULL,
+      claimed_at integer,
+      claim_token text,
+      sort_key text NOT NULL,
+      created_at integer NOT NULL,
+      updated_at integer NOT NULL,
+      FOREIGN KEY (thread_id) REFERENCES threads(id) ON UPDATE no action ON DELETE cascade,
+      CONSTRAINT "queued_thread_messages_admission_reference_check" CHECK((
+        ("__new_queued_thread_messages"."request_id" IS NULL AND "__new_queued_thread_messages"."request_fingerprint" IS NULL AND "__new_queued_thread_messages"."admission_sequence" IS NULL)
+        OR
+        ("__new_queued_thread_messages"."request_id" IS NOT NULL AND "__new_queued_thread_messages"."request_fingerprint" IS NOT NULL AND "__new_queued_thread_messages"."admission_sequence" IS NOT NULL)
+      ))
+    );
+    INSERT INTO __new_queued_thread_messages (
+      id, thread_id, content, sender_thread_id,
+      actor_principal_id, actor_kind, actor_display_name,
+      request_id, request_fingerprint, admission_sequence,
+      model, reasoning_level, permission_mode, service_tier,
+      group_with_next, claimed_at, claim_token, sort_key, created_at, updated_at
+    )
+    SELECT
+      id, thread_id, content, sender_thread_id,
+      actor_principal_id, actor_kind, actor_display_name,
+      NULL, NULL, NULL,
+      model, reasoning_level, permission_mode, service_tier,
+      group_with_next, claimed_at, claim_token, sort_key, created_at, updated_at
+    FROM queued_thread_messages;
+    DROP TABLE queued_thread_messages;
+    ALTER TABLE __new_queued_thread_messages RENAME TO queued_thread_messages;
+    PRAGMA foreign_keys=ON;
+    CREATE INDEX queued_thread_messages_thread_created_idx
+      ON queued_thread_messages (thread_id, created_at, id);
+    CREATE INDEX queued_thread_messages_thread_sort_idx
+      ON queued_thread_messages (thread_id, sort_key, id);
+    CREATE UNIQUE INDEX queued_thread_messages_thread_admission_sequence_idx
+      ON queued_thread_messages (thread_id, admission_sequence);
+  `);
+
+  markMigrationApplied(db, migration);
+}
+
 const actorStampColumnsByTable = {
   events: ["actor_principal_id", "actor_kind", "actor_display_name"],
   pending_interactions: [
@@ -1589,6 +1690,10 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     );
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
     repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
+      db,
+      migrationsFolder,
+    );
+    applyQueuedMessageAdmissionReferenceMigrationForUpgrade(
       db,
       migrationsFolder,
     );

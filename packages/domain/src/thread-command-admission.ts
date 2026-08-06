@@ -165,6 +165,28 @@ export type PersistedThreadCommandAdmission = z.infer<
   typeof persistedThreadCommandAdmissionSchema
 >;
 
+/**
+ * Durable identity carried on an admitted queued `message.send` row so later
+ * dispatch can reuse the original request ID, fingerprint, and per-thread
+ * admission sequence. All three fields are required together.
+ */
+export const threadCommandAdmissionReferenceSchema = z
+  .object({
+    requestId: clientTurnRequestIdSchema,
+    requestFingerprint: threadCommandRequestFingerprintSchema,
+    admissionSequence: z.number().int().positive(),
+  })
+  .strict();
+export type ThreadCommandAdmissionReference = z.infer<
+  typeof threadCommandAdmissionReferenceSchema
+>;
+
+export function parseThreadCommandAdmissionReference(
+  value: unknown,
+): ThreadCommandAdmissionReference {
+  return threadCommandAdmissionReferenceSchema.parse(value);
+}
+
 export function parseThreadCommandRequestFingerprint(
   value: unknown,
 ): ThreadCommandRequestFingerprint {

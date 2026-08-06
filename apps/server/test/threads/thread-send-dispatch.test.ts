@@ -1,14 +1,19 @@
 import {
   archiveThread,
+  createQueuedThreadMessage,
   getQueuedThreadMessage,
   getThread,
+  listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
   updateThread,
 } from "@bb/db";
 import {
+  encodeClientTurnRequestIdNumber,
+  parseThreadCommandRequestFingerprint,
   SYSTEM_ACTOR_STAMP,
   threadScope,
+  turnRequestEventDataSchema,
   turnScope,
   type Environment,
   type Thread,
@@ -387,6 +392,209 @@ describe("idle cold-start activation", () => {
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
+    });
+  });
+});
+
+describe("queued message admission identity preservation", () => {
+  const fingerprint = parseThreadCommandRequestFingerprint(
+    `sha256:${"c".repeat(64)}`,
+  );
+  const admittedActor = {
+    principalId: "human:admitted-actor",
+    principalKind: "human" as const,
+    displayName: "Admitted Actor",
+  };
+
+  function seedAdmittedQueuedMessage(args: {
+    harness: TestAppHarness;
+    threadId: string;
+    requestValue: number;
+    admissionSequence: number;
+    content?: ReturnType<typeof textInput>;
+  }) {
+    return createQueuedThreadMessage(args.harness.db, args.harness.hub, {
+      actor: admittedActor,
+      threadId: args.threadId,
+      content: args.content ?? textInput("admitted queued"),
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full",
+      serviceTier: "default",
+      admission: {
+        requestId: encodeClientTurnRequestIdNumber({
+          value: args.requestValue,
+        }),
+        requestFingerprint: fingerprint,
+        admissionSequence: args.admissionSequence,
+      },
+    });
+  }
+
+  function readLatestTurnRequestedEvent(
+    harness: TestAppHarness,
+    threadId: string,
+  ) {
+    const rows = listEvents(harness.db, { threadId }).filter(
+      (event) => event.type === "client/turn/requested",
+    );
+    const row = rows.at(-1);
+    expect(row).toBeDefined();
+    return {
+      row: row!,
+      data: turnRequestEventDataSchema.parse(JSON.parse(row!.data)),
+      priorCount: rows.length - 1,
+    };
+  }
+
+  it("preserves admitted identity on the idle-provider queued fast path", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedIdleProviderThreadFixture({ harness, value: 21 });
+      const requestId = encodeClientTurnRequestIdNumber({ value: 2101 });
+      const queued = seedAdmittedQueuedMessage({
+        harness,
+        threadId: thread.id,
+        requestValue: 2101,
+        admissionSequence: 4,
+      });
+
+      await sendQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      const turnSubmit = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (turnSubmit.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit");
+      }
+      expect(turnSubmit.command.requestId).toBe(requestId);
+
+      const { row, data } = readLatestTurnRequestedEvent(harness, thread.id);
+      expect(data.requestId).toBe(requestId);
+      expect(data.admissionSequence).toBe(4);
+      expect(data.requestFingerprint).toBe(fingerprint);
+      expect(row.actorPrincipalId).toBe(admittedActor.principalId);
+      expect(row.actorKind).toBe(admittedActor.principalKind);
+      expect(row.actorDisplayName).toBe(admittedActor.displayName);
+      expect(getQueuedThreadMessage(harness.db, queued.id)).toBeNull();
+    });
+  });
+
+  it("preserves admitted identity on the general sendThreadMessage queued path", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedColdIdleThreadFixture({ harness, value: 22 });
+      const requestId = encodeClientTurnRequestIdNumber({ value: 2202 });
+      const queued = seedAdmittedQueuedMessage({
+        harness,
+        threadId: thread.id,
+        requestValue: 2202,
+        admissionSequence: 5,
+        content: textInput("admitted cold queue"),
+      });
+
+      await sendQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      const threadStart = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "thread.start" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (threadStart.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(threadStart.command.requestId).toBe(requestId);
+
+      const { row, data } = readLatestTurnRequestedEvent(harness, thread.id);
+      expect(data.requestId).toBe(requestId);
+      expect(data.admissionSequence).toBe(5);
+      expect(data.requestFingerprint).toBe(fingerprint);
+      expect(row.actorPrincipalId).toBe(admittedActor.principalId);
+    });
+  });
+
+  it("rolls back a failed claimed deletion without minting a new request identity", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedIdleProviderThreadFixture({ harness, value: 23 });
+      const requestId = encodeClientTurnRequestIdNumber({ value: 2303 });
+      const queued = seedAdmittedQueuedMessage({
+        harness,
+        threadId: thread.id,
+        requestValue: 2303,
+        admissionSequence: 6,
+      });
+      const turnRequestedBefore = listEvents(harness.db, {
+        threadId: thread.id,
+      }).filter((event) => event.type === "client/turn/requested").length;
+
+      archiveThread(harness.db, harness.hub, thread.id);
+
+      await expect(
+        sendQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          queuedMessageId: queued.id,
+          mode: "auto",
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "queued_message_claim_lost" },
+      });
+
+      const remaining = getQueuedThreadMessage(harness.db, queued.id);
+      expect(remaining).toMatchObject({
+        requestId,
+        requestFingerprint: fingerprint,
+        admissionSequence: 6,
+      });
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).filter(
+          (event) => event.type === "client/turn/requested",
+        ),
+      ).toHaveLength(turnRequestedBefore);
+      expect(
+        listQueuedThreadCommands(harness, "turn.submit", thread.id),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("legacy queued dispatch mints a fresh request id without admission metadata", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedIdleProviderThreadFixture({ harness, value: 24 });
+      const queued = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("legacy queued"),
+      });
+
+      await sendQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      const turnSubmit = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (turnSubmit.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit");
+      }
+      expect(turnSubmit.command.requestId).toMatch(/^creq_/);
+
+      const { data } = readLatestTurnRequestedEvent(harness, thread.id);
+      expect(data.requestId).toBe(turnSubmit.command.requestId);
+      expect(data.admissionSequence).toBeUndefined();
+      expect(data.requestFingerprint).toBeUndefined();
     });
   });
 });

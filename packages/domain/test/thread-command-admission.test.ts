@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parsePersistedThreadCommandAdmission,
+  parseThreadCommandAdmissionReference,
   parseThreadCommandAdmissionResultForKind,
   parseThreadCommandAdmissionResult,
   threadCommandRequestFingerprintSchema,
@@ -8,6 +9,7 @@ import {
   threadCommandAdmissionResultSchema,
 } from "../src/thread-command-admission.js";
 import { encodeClientTurnRequestIdNumber } from "../src/protocol-ids.js";
+import { turnRequestEventDataSchema } from "../src/thread-events.js";
 
 const FINGERPRINT_A = threadCommandRequestFingerprintSchema.parse(
   `sha256:${"a".repeat(64)}`,
@@ -147,6 +149,33 @@ describe("thread command admission schemas", () => {
     ).toThrow();
   });
 
+  it("parses and rejects incomplete admission references", () => {
+    const requestId = encodeClientTurnRequestIdNumber({ value: 7 });
+    expect(
+      parseThreadCommandAdmissionReference({
+        requestId,
+        requestFingerprint: FINGERPRINT_A,
+        admissionSequence: 3,
+      }),
+    ).toEqual({
+      requestId,
+      requestFingerprint: FINGERPRINT_A,
+      admissionSequence: 3,
+    });
+    expect(() =>
+      parseThreadCommandAdmissionReference({
+        requestId,
+        requestFingerprint: FINGERPRINT_A,
+      }),
+    ).toThrow();
+    expect(() =>
+      parseThreadCommandAdmissionReference({
+        requestId,
+        admissionSequence: 1,
+      }),
+    ).toThrow();
+  });
+
   it("compares admission identity without display names", () => {
     const requestId = encodeClientTurnRequestIdNumber({ value: 1 });
     const base = {
@@ -170,6 +199,53 @@ describe("thread command admission schemas", () => {
         ...base,
         actorPrincipalId: "human:bob",
       }),
+    ).toBe(false);
+  });
+
+  it("requires admissionSequence and requestFingerprint together on turn requests", () => {
+    const requestId = encodeClientTurnRequestIdNumber({ value: 9 });
+    const base = {
+      direction: "outbound" as const,
+      requestId,
+      source: "tell" as const,
+      initiator: "user" as const,
+      senderThreadId: null,
+      input: [{ type: "text" as const, text: "hi", mentions: [] }],
+      target: { kind: "new-turn" as const },
+      request: { method: "turn/start" as const, params: {} },
+      execution: {
+        model: "gpt-5",
+        serviceTier: "default" as const,
+        reasoningLevel: "medium" as const,
+        permissionMode: "full" as const,
+        source: "client/turn/requested" as const,
+      },
+    };
+
+    expect(
+      turnRequestEventDataSchema.parse(base).admissionSequence,
+    ).toBeUndefined();
+    expect(
+      turnRequestEventDataSchema.parse({
+        ...base,
+        admissionSequence: 2,
+        requestFingerprint: FINGERPRINT_A,
+      }),
+    ).toMatchObject({
+      admissionSequence: 2,
+      requestFingerprint: FINGERPRINT_A,
+    });
+    expect(
+      turnRequestEventDataSchema.safeParse({
+        ...base,
+        admissionSequence: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      turnRequestEventDataSchema.safeParse({
+        ...base,
+        requestFingerprint: FINGERPRINT_A,
+      }).success,
     ).toBe(false);
   });
 });
