@@ -40,6 +40,20 @@ interface WebglRendererAddon extends ITerminalAddon {
 }
 
 type TerminalAddonLoader = Pick<XTermTerminal, "loadAddon">;
+interface TerminalWebglAddonModule {
+  WebglAddon: new () => WebglRendererAddon;
+}
+type TerminalWebglAddonImporter = () => Promise<TerminalWebglAddonModule>;
+
+export async function loadOptionalTerminalWebglAddon(
+  importAddon: TerminalWebglAddonImporter,
+): Promise<TerminalWebglAddonModule | null> {
+  try {
+    return await importAddon();
+  } catch {
+    return null;
+  }
+}
 
 export function loadTerminalWebglRenderer(
   terminal: TerminalAddonLoader,
@@ -541,17 +555,17 @@ export function ThreadTerminalView({
     async function mountTerminal(
       containerElement: HTMLDivElement,
     ): Promise<void> {
-      const [
-        { Terminal },
-        { FitAddon: LoadedFitAddon },
-        { WebLinksAddon },
-        { WebglAddon },
-      ] = await Promise.all([
+      const requiredModulesPromise = Promise.all([
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
         import("@xterm/addon-web-links"),
-        import("@xterm/addon-webgl"),
       ]);
+      const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
+        () => import("@xterm/addon-webgl"),
+      );
+      const [{ Terminal }, { FitAddon: LoadedFitAddon }, { WebLinksAddon }] =
+        await requiredModulesPromise;
+      const webglAddonModule = await webglAddonModulePromise;
       if (disposed) {
         return;
       }
@@ -580,7 +594,12 @@ export function ThreadTerminalView({
       // The DOM renderer measures every newly encountered glyph with
       // synchronous layout reads. Register WebGL before opening xterm so the
       // DOM renderer is never created when WebGL is available.
-      loadTerminalWebglRenderer(terminal, () => new WebglAddon());
+      if (webglAddonModule !== null) {
+        loadTerminalWebglRenderer(
+          terminal,
+          () => new webglAddonModule.WebglAddon(),
+        );
+      }
       terminal.open(containerElement);
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,

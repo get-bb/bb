@@ -39,6 +39,7 @@ export type ThreadTerminalTarget =
 export interface ThreadTerminalControllerArgs {
   canCreateTerminal: boolean;
   isPanelOpen: boolean;
+  isPanelPersistedOpen: boolean;
   panelStateId?: string;
   target: ThreadTerminalTarget;
 }
@@ -118,6 +119,16 @@ export function shouldAutoCloseCleanTerminalSession({
   );
 }
 
+export function shouldAutoCloseCleanTerminalSessionsForPanel({
+  isPanelOpen,
+  isPanelPersistedOpen,
+}: {
+  isPanelOpen: boolean;
+  isPanelPersistedOpen: boolean;
+}): boolean {
+  return !isPanelOpen && !isPanelPersistedOpen;
+}
+
 function pickActiveTerminalId(
   sessions: readonly TerminalSession[],
   preferredTerminalId: string | null,
@@ -147,6 +158,7 @@ export function terminalStatusLabel(session: TerminalSession): string {
 export function useThreadTerminalController({
   canCreateTerminal,
   isPanelOpen,
+  isPanelPersistedOpen,
   panelStateId,
   target,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
@@ -484,7 +496,12 @@ export function useThreadTerminalController({
   );
 
   useEffect(() => {
-    if (isPanelOpen) {
+    if (
+      !shouldAutoCloseCleanTerminalSessionsForPanel({
+        isPanelOpen,
+        isPanelPersistedOpen,
+      })
+    ) {
       return;
     }
     for (const session of visibleSessions) {
@@ -518,6 +535,7 @@ export function useThreadTerminalController({
   }, [
     closeTerminal,
     isPanelOpen,
+    isPanelPersistedOpen,
     removeFixedTerminalTab,
     visibleSessions,
   ]);

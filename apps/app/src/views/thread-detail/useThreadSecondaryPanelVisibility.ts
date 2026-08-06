@@ -33,6 +33,7 @@ export type ThreadSecondaryPanelHostFileOpenHandler = (
 
 export interface UseThreadSecondaryPanelVisibilityArgs {
   closePersistedPanel: () => void;
+  drawerVisibility: ThreadSecondaryPanelDrawerVisibility;
   isCompactViewport: boolean;
   isPersistedOpen: boolean;
   openPersistedCommitDiff: ThreadSecondaryPanelCommitDiffOpenHandler;
@@ -42,8 +43,19 @@ export interface UseThreadSecondaryPanelVisibilityArgs {
   openPersistedPanel: ThreadSecondaryPanelOpenHandler;
   openPersistedStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
   openPersistedWorkspaceFile: ThreadSecondaryPanelWorkspaceFileOpenHandler;
-  threadId: ThreadSecondaryPanelThreadId;
   togglePersistedPanel: () => void;
+}
+
+export interface UseThreadSecondaryPanelDrawerVisibilityArgs {
+  isCompactViewport: boolean;
+  threadId: ThreadSecondaryPanelThreadId;
+}
+
+export interface ThreadSecondaryPanelDrawerVisibility {
+  closeDrawer: () => void;
+  isDrawerVisible: boolean;
+  openDrawer: () => void;
+  toggleDrawer: () => void;
 }
 
 export interface ThreadSecondaryPanelVisibility {
@@ -66,20 +78,10 @@ function hasThreadId(
   return threadId !== undefined && threadId.length > 0;
 }
 
-export function useThreadSecondaryPanelVisibility({
-  closePersistedPanel,
+export function useThreadSecondaryPanelDrawerVisibility({
   isCompactViewport,
-  isPersistedOpen,
-  openPersistedCommitDiff,
-  openPersistedDiffFile,
-  openPersistedDiffPanel,
-  openPersistedHostFile,
-  openPersistedPanel,
-  openPersistedStorageFile,
-  openPersistedWorkspaceFile,
   threadId,
-  togglePersistedPanel,
-}: UseThreadSecondaryPanelVisibilityArgs): ThreadSecondaryPanelVisibility {
+}: UseThreadSecondaryPanelDrawerVisibilityArgs): ThreadSecondaryPanelDrawerVisibility {
   const [openDrawerThreadId, setOpenDrawerThreadId] = useState<string | null>(
     null,
   );
@@ -107,7 +109,7 @@ export function useThreadSecondaryPanelVisibility({
     );
   }, [threadId]);
 
-  const openCompactDrawer = useCallback(() => {
+  const openDrawer = useCallback(() => {
     if (!isCompactViewport) {
       return;
     }
@@ -115,7 +117,57 @@ export function useThreadSecondaryPanelVisibility({
   }, [isCompactViewport, openDrawerForCurrentThread]);
 
   const isDrawerVisible =
-    hasThreadId(threadId) && openDrawerThreadId === threadId;
+    isCompactViewport &&
+    hasThreadId(threadId) &&
+    openDrawerThreadId === threadId;
+
+  const toggleDrawer = useCallback(() => {
+    if (!isCompactViewport) {
+      return;
+    }
+    if (isDrawerVisible) {
+      closeDrawerForCurrentThread();
+      return;
+    }
+    openDrawerForCurrentThread();
+  }, [
+    closeDrawerForCurrentThread,
+    isCompactViewport,
+    isDrawerVisible,
+    openDrawerForCurrentThread,
+  ]);
+
+  return useMemo(
+    () => ({
+      closeDrawer: closeDrawerForCurrentThread,
+      isDrawerVisible,
+      openDrawer,
+      toggleDrawer,
+    }),
+    [closeDrawerForCurrentThread, isDrawerVisible, openDrawer, toggleDrawer],
+  );
+}
+
+export function useThreadSecondaryPanelVisibility({
+  closePersistedPanel,
+  drawerVisibility,
+  isCompactViewport,
+  isPersistedOpen,
+  openPersistedCommitDiff,
+  openPersistedDiffFile,
+  openPersistedDiffPanel,
+  openPersistedHostFile,
+  openPersistedPanel,
+  openPersistedStorageFile,
+  openPersistedWorkspaceFile,
+  togglePersistedPanel,
+}: UseThreadSecondaryPanelVisibilityArgs): ThreadSecondaryPanelVisibility {
+  const {
+    closeDrawer,
+    isDrawerVisible,
+    openDrawer: openCompactDrawer,
+    toggleDrawer,
+  } = drawerVisibility;
   const isOpen = isCompactViewport ? isDrawerVisible : isPersistedOpen;
 
   const openPanel = useCallback<ThreadSecondaryPanelOpenHandler>(
@@ -178,29 +230,19 @@ export function useThreadSecondaryPanelVisibility({
 
   const closePanel = useCallback(() => {
     if (isCompactViewport) {
-      closeDrawerForCurrentThread();
+      closeDrawer();
       return;
     }
     closePersistedPanel();
-  }, [closeDrawerForCurrentThread, closePersistedPanel, isCompactViewport]);
+  }, [closeDrawer, closePersistedPanel, isCompactViewport]);
 
   const togglePanel = useCallback(() => {
     if (!isCompactViewport) {
       togglePersistedPanel();
       return;
     }
-    if (isDrawerVisible) {
-      closeDrawerForCurrentThread();
-      return;
-    }
-    openDrawerForCurrentThread();
-  }, [
-    closeDrawerForCurrentThread,
-    isCompactViewport,
-    isDrawerVisible,
-    openDrawerForCurrentThread,
-    togglePersistedPanel,
-  ]);
+    toggleDrawer();
+  }, [isCompactViewport, toggleDrawer, togglePersistedPanel]);
 
   return useMemo(
     () => ({

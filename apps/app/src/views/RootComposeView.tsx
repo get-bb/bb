@@ -223,7 +223,10 @@ import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
 } from "./thread-detail/threadSecondaryPanelSelection";
-import { useThreadSecondaryPanelVisibility } from "./thread-detail/useThreadSecondaryPanelVisibility";
+import {
+  useThreadSecondaryPanelDrawerVisibility,
+  useThreadSecondaryPanelVisibility,
+} from "./thread-detail/useThreadSecondaryPanelVisibility";
 import type { ThreadSecondaryPanelHostFileOpenHandler } from "./thread-detail/useThreadSecondaryPanelVisibility";
 import {
   buildOpenInEditorHandler,
@@ -1906,6 +1909,14 @@ export function RootComposeView() {
     rawActiveRootStorageFileTab?.threadId ??
     (rawActiveRootStorageFileTab ? rootPanelThreadId : null);
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const secondaryPanelDrawerVisibility =
+    useThreadSecondaryPanelDrawerVisibility({
+      isCompactViewport: renderSecondaryPanelAsDrawer,
+      threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    });
+  const isSecondaryPanelOpen = renderSecondaryPanelAsDrawer
+    ? secondaryPanelDrawerVisibility.isDrawerVisible
+    : isPersistedSecondaryPanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
@@ -2009,8 +2020,7 @@ export function RootComposeView() {
     rootPanelEnvironmentId ?? "",
     {
       enabled:
-        isPersistedSecondaryPanelOpen &&
-        rootPanelTerminalTarget?.kind === "environment",
+        isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
@@ -2025,8 +2035,7 @@ export function RootComposeView() {
       : null,
     {
       enabled:
-        isPersistedSecondaryPanelOpen &&
-        rootPanelTerminalTarget?.kind === "host_path",
+        isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
@@ -2175,13 +2184,13 @@ export function RootComposeView() {
   }, [closeRootSecondaryPanel, isPersistedSecondaryPanelOpen, openTab]);
   const {
     closePanel: closeSecondaryPanel,
-    isOpen: isSecondaryPanelOpen,
     openCompactDrawer,
     openPanel: openSecondaryPanel,
     openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeRootSecondaryPanel,
+    drawerVisibility: secondaryPanelDrawerVisibility,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     openPersistedCommitDiff: () => undefined,
@@ -2191,7 +2200,6 @@ export function RootComposeView() {
     openPersistedPanel: openRootSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
   // Click handler for inserted mention pills in the root composer: threads
@@ -2932,6 +2940,7 @@ export function RootComposeView() {
       <ThreadTerminalPanel
         canCreateTerminal={canCreateRootTerminal}
         isPanelOpen={isSecondaryPanelOpen}
+        isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}

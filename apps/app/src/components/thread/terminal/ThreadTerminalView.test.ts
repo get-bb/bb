@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildTerminalThemeFromCssColors,
+  loadOptionalTerminalWebglAddon,
   loadTerminalWebglRenderer,
 } from "./ThreadTerminalView";
 
@@ -16,6 +17,14 @@ describe("buildTerminalThemeFromCssColors", () => {
 });
 
 describe("loadTerminalWebglRenderer", () => {
+  it("continues without WebGL when the optional module fails to load", async () => {
+    const importAddon = vi.fn().mockRejectedValue(new Error("chunk failed"));
+
+    await expect(
+      loadOptionalTerminalWebglAddon(importAddon),
+    ).resolves.toBeNull();
+  });
+
   it("loads the accelerated renderer and falls back when its context is lost", () => {
     let onContextLoss = () => {};
     const addon = {

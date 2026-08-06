@@ -116,6 +116,7 @@ import {
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
+  useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
   type ThreadSecondaryPanelHostFileOpenHandler,
   type ThreadSecondaryPanelStorageFileOpenHandler,
@@ -473,6 +474,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const secondaryPanelDrawerVisibility =
+    useThreadSecondaryPanelDrawerVisibility({
+      isCompactViewport: renderSecondaryPanelAsDrawer,
+      threadId,
+    });
+  const isSecondaryPanelOpen = renderSecondaryPanelAsDrawer
+    ? secondaryPanelDrawerVisibility.isDrawerVisible
+    : isPersistedSecondaryPanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     threadId,
     threadId,
@@ -576,7 +585,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId,
   });
   const terminalsListQuery = useThreadTerminals(threadId ?? "", {
-    enabled: isPersistedSecondaryPanelOpen,
+    enabled: isSecondaryPanelOpen,
   });
   const {
     activeBrowserTab,
@@ -967,7 +976,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const {
     closePanel: closeSecondaryPanel,
-    isOpen: isSecondaryPanelOpen,
     openCommitDiff: openSecondaryPanelCommitDiff,
     openCompactDrawer,
     openDiffFile: openSecondaryPanelDiffFile,
@@ -979,6 +987,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
+    drawerVisibility: secondaryPanelDrawerVisibility,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedCommitDiff,
@@ -988,7 +997,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedPanel: openPersistedSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
   const handleOpenTimelinePluginPanel =
@@ -2397,6 +2405,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
       isPanelOpen={isSecondaryPanelOpen}
+      isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
       onOpenLink={handleOpenTimelineLink}
       onSelectionAddToChat={handleSelectionAddToChat}
       target={{ kind: "thread", threadId: thread.id }}
