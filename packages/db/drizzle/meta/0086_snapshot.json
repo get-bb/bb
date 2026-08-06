@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a2a687c5-4f95-4c62-bbe1-67f880a46f3f",
+  "id": "80568e5f-e06c-4717-896b-cb3979994aec",
   "prevId": "287914a2-89cc-45a3-856d-ffbdca0e7343",
   "tables": {
     "app_settings": {
@@ -557,6 +557,14 @@
             "path"
           ],
           "isUnique": true
+        },
+        "environments_host_path_lookup_idx": {
+          "name": "environments_host_path_lookup_idx",
+          "columns": [
+            "host_id",
+            "path"
+          ],
+          "isUnique": false
         },
         "environments_project_idx": {
           "name": "environments_project_idx",

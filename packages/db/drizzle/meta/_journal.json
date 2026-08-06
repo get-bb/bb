@@ -607,15 +607,8 @@
     {
       "idx": 86,
       "version": "6",
-      "when": 1785985525145,
+      "when": 1785996189362,
       "tag": "0086_project_scoped_environment_path",
-      "breakpoints": true
-    },
-    {
-      "idx": 87,
-      "version": "6",
-      "when": 1785987730207,
-      "tag": "0087_host_leading_environment_path_index",
       "breakpoints": true
     }
   ]
