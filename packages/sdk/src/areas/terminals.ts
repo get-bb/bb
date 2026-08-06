@@ -64,6 +64,7 @@ export interface TerminalCreateArgs {
   cols: number;
   rows: number;
   scope: TerminalCreateScope;
+  purpose?: CreateTerminalRequest["purpose"];
   start?: CreateTerminalRequest["start"];
   title?: string;
 }
@@ -235,6 +236,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
         json: {
           cols: input.cols,
           rows: input.rows,
+          purpose: input.purpose,
           start: input.start,
           target: terminalCreateTarget(input.scope),
           title: input.title,
@@ -302,6 +304,7 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
         cols: current.cols,
         rows: current.rows,
         scope: restartScope(current),
+        purpose: current.purpose ?? undefined,
         start: { mode: "shell" },
         title: current.title,
       });

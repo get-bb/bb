@@ -19,6 +19,7 @@ List and create require exactly one explicit scope:
 
   bb terminal create --thread <thread-id> --command "pnpm dev"
   bb terminal create --environment <environment-id>
+    --purpose <setup|run|shell>            Reattachable environment role
   bb terminal create --machine <id-or-name> [--cwd <path>]
     --host <id-or-name>                   Alias for --machine
     --title <title>                       Display title

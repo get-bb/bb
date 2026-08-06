@@ -69,6 +69,8 @@ describe("bb environment command output", () => {
       failedCount: 0,
       pendingCount: 0,
     },
+    checkItems: [],
+    comments: [],
     review: {
       state: "review_required",
       reviewRequestCount: 1,

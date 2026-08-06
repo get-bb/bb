@@ -42,6 +42,7 @@ interface TerminalStartOptions
   command?: string;
   cols?: string;
   rows?: string;
+  purpose?: string;
   title?: string;
 }
 
@@ -119,6 +120,10 @@ export function registerTerminalCommands(
       )
       .option("--cols <n>", "Initial terminal columns")
       .option("--rows <n>", "Initial terminal rows")
+      .option(
+        "--purpose <purpose>",
+        "Reserved environment purpose: setup, run, or shell",
+      )
       .option("--attach", "Attach after creating")
       .option("--json", "Print machine-readable JSON output"),
   ).action(
@@ -131,6 +136,7 @@ export function registerTerminalCommands(
       const session = await sdk.terminals.create({
         cols: parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols"),
         rows: parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows"),
+        purpose: parseTerminalPurpose(opts.purpose),
         scope: await resolveTerminalCreateScope(opts, getUrl()),
         title: opts.title,
         start:
@@ -321,6 +327,17 @@ export function registerTerminalCommands(
         console.log(`Closed terminal ${terminalId}`);
       }),
     );
+}
+
+function parseTerminalPurpose(
+  value: string | undefined,
+): "setup" | "run" | "shell" | undefined {
+  if (value === undefined) return undefined;
+  if (value === "setup" || value === "run" || value === "shell") return value;
+  throw new CliExitError(
+    `Invalid --purpose value: ${value}. Expected setup, run, or shell.`,
+    2,
+  );
 }
 
 function addTerminalScopeOptions(command: Command): Command {

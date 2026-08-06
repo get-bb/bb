@@ -4,6 +4,7 @@ import {
   terminalDataBase64Schema,
   terminalRowsSchema,
   terminalSessionCloseReasonSchema,
+  terminalSessionPurposeSchema,
   terminalSessionStatusSchema,
 } from "@bb/domain";
 
@@ -13,6 +14,7 @@ export const terminalSessionSchema = z.object({
   environmentId: z.string().min(1).nullable(),
   hostId: z.string().min(1),
   title: z.string().min(1),
+  purpose: terminalSessionPurposeSchema.nullable().optional(),
   initialCwd: z.string().min(1),
   cols: terminalColsSchema,
   rows: terminalRowsSchema,
@@ -103,9 +105,19 @@ export const createTerminalRequestSchema = z
       ])
       .optional(),
     target: terminalCreateTargetSchema,
+    purpose: terminalSessionPurposeSchema.optional(),
     title: z.string().trim().min(1).max(200).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    if (request.purpose && request.target.kind !== "environment") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A reserved terminal purpose requires an environment target",
+        path: ["purpose"],
+      });
+    }
+  });
 export type CreateTerminalRequest = z.infer<typeof createTerminalRequestSchema>;
 
 export const closeTerminalRequestSchema = z

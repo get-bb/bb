@@ -121,6 +121,7 @@ describe("bb terminal command output", () => {
         json: {
           cols: 80,
           rows: 24,
+          purpose: undefined,
           title: undefined,
           start: { mode: "command", command: "echo hi" },
           target,
@@ -128,6 +129,32 @@ describe("bb terminal command output", () => {
       });
     },
   );
+
+  it("creates a reserved Run terminal for an environment", async () => {
+    const create = vi.fn(async () => makeTerminalSession({ purpose: "run" }));
+    stubServerApi({ "v1.terminals.$post": create });
+
+    await runCommand(
+      [
+        "terminal",
+        "create",
+        "--environment",
+        "env-1",
+        "--purpose",
+        "run",
+        "--command",
+        "pnpm dev",
+      ],
+      register,
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        purpose: "run",
+        target: { kind: "environment", environmentId: "env-1" },
+      }),
+    });
+  });
 
   it("creates a machine terminal at host home with an explicit host ID", async () => {
     const hosts = vi.fn(async () => [makeHost()]);
@@ -149,6 +176,7 @@ describe("bb terminal command output", () => {
       json: {
         cols: 80,
         rows: 24,
+        purpose: undefined,
         title: undefined,
         start: { mode: "shell" },
         target: { kind: "host_path", hostId: "host-1", cwd: null },

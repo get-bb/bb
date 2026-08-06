@@ -26,6 +26,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
+  TerminalSessionPurpose,
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
   ThreadSearchSourceKind,
@@ -851,6 +852,7 @@ export const terminalSessions = sqliteTable(
       { onDelete: "set null" },
     ),
     title: text("title").notNull(),
+    purpose: text("purpose").$type<TerminalSessionPurpose>(),
     initialCwd: text("initial_cwd").notNull(),
     cols: integer("cols").notNull(),
     rows: integer("rows").notNull(),
@@ -869,6 +871,11 @@ export const terminalSessions = sqliteTable(
     ),
     index("terminal_sessions_environment_status_idx").on(
       table.environmentId,
+      table.status,
+    ),
+    index("terminal_sessions_environment_purpose_status_idx").on(
+      table.environmentId,
+      table.purpose,
       table.status,
     ),
     index("terminal_sessions_host_status_idx").on(table.hostId, table.status),

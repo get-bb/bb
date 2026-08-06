@@ -1,0 +1,2 @@
+ALTER TABLE `terminal_sessions` ADD `purpose` text;--> statement-breakpoint
+CREATE INDEX `terminal_sessions_environment_purpose_status_idx` ON `terminal_sessions` (`environment_id`,`purpose`,`status`);

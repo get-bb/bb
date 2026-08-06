@@ -574,6 +574,14 @@ describe("public terminal contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      createTerminalRequestSchema.safeParse({
+        cols: 80,
+        rows: 24,
+        purpose: "run",
+        target: { kind: "thread", threadId: "thr_123" },
+      }).success,
+    ).toBe(false);
+    expect(
       terminalClientMessageSchema.safeParse({
         type: "resize",
         cols: TERMINAL_COLS_MAX,

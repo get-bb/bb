@@ -1259,6 +1259,57 @@ interface StagedProjectWorkspaceSettingsRow {
   updatedAt: number;
 }
 
+interface StagedTerminalPurposeRow {
+  id: string;
+  purpose: "setup" | "run" | "shell" | null;
+}
+
+function stageExistingTerminalPurpose(
+  db: DbConnection,
+  migrationsFolder: string,
+): StagedTerminalPurposeRow[] | null {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "terminal_sessions") ||
+    !columnExists(db, "terminal_sessions", "purpose")
+  ) {
+    return null;
+  }
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0087_terminal_session_purpose",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return null;
+  }
+  const rows = db.$client
+    .prepare<
+      [],
+      StagedTerminalPurposeRow
+    >("SELECT id, purpose FROM terminal_sessions WHERE purpose IS NOT NULL")
+    .all();
+  db.$client
+    .prepare(
+      "DROP INDEX IF EXISTS terminal_sessions_environment_purpose_status_idx",
+    )
+    .run();
+  db.$client.prepare("ALTER TABLE terminal_sessions DROP COLUMN purpose").run();
+  return rows;
+}
+
+function restoreStagedTerminalPurpose(
+  db: DbConnection,
+  rows: readonly StagedTerminalPurposeRow[],
+): void {
+  if (!columnExists(db, "terminal_sessions", "purpose")) return;
+  const update = db.$client.prepare(
+    "UPDATE terminal_sessions SET purpose = ? WHERE id = ?",
+  );
+  for (const row of rows) {
+    update.run(row.purpose, row.id);
+  }
+}
+
 function stageExistingProjectWorkspaceSettings(
   db: DbConnection,
   migrationsFolder: string,
@@ -1548,6 +1599,10 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     );
     const stagedProjectWorkspaceSettings =
       stageExistingProjectWorkspaceSettings(db, migrationsFolder);
+    const stagedTerminalPurpose = stageExistingTerminalPurpose(
+      db,
+      migrationsFolder,
+    );
     const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
       db,
       migrationsFolder,
@@ -1556,6 +1611,9 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       drizzleMigrate(db, { migrationsFolder });
     } finally {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
+      if (stagedTerminalPurpose) {
+        restoreStagedTerminalPurpose(db, stagedTerminalPurpose);
+      }
       if (stagedProjectWorkspaceSettings) {
         restoreStagedProjectWorkspaceSettings(
           db,
