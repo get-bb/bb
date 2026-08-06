@@ -1,7 +1,13 @@
+import { useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@bb/plugin-sdk";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
+import type {
+  MarkdownLinkRouting,
+  MarkdownLocalFileLinkRouting,
+} from "@/components/ui/markdown-link-routing";
+import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
@@ -66,5 +72,32 @@ export const pluginSdkAppImplementation = {
  * (lightbox, link routing, thread mentions) stay host-internal.
  */
 function PluginMarkdown({ content, className }: MarkdownProps) {
-  return <MarkdownPreview content={content} className={className} />;
+  const timelineNavigation = useThreadTimelineNavigation();
+  const onOpenLink = timelineNavigation?.onOpenLink;
+  const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
+  const workspaceRootPath = timelineNavigation?.workspaceRootPath;
+  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
+    if (onOpenLink === undefined || onOpenLocalFileLink === undefined) {
+      return undefined;
+    }
+    const localFile: MarkdownLocalFileLinkRouting = {
+      absoluteLinks: { kind: "trusted-host" },
+      onOpenLink: onOpenLocalFileLink,
+    };
+    if (workspaceRootPath !== undefined) {
+      localFile.relativeLinks = {
+        baseDir: workspaceRootPath,
+        rootPath: workspaceRootPath,
+      };
+    }
+    return { localFile, onOpenLink };
+  }, [onOpenLink, onOpenLocalFileLink, workspaceRootPath]);
+
+  return (
+    <MarkdownPreview
+      content={content}
+      className={className}
+      linkRouting={linkRouting}
+    />
+  );
 }

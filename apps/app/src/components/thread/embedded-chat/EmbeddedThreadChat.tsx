@@ -44,6 +44,8 @@ import {
   ThreadTimelineSurface,
   type ThreadTimelineAddToChatHandler,
   type ThreadTimelineConsumerMessageAction,
+  type ThreadTimelineLinkHandler,
+  type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineRowFilter,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineSurfaceProps,
@@ -203,7 +205,11 @@ interface EmbeddedThreadChatSharedProps {
   draftModeTimelineRows?: readonly TimelineRow[];
   labels?: Partial<EmbeddedThreadChatLabels>;
   showLoadOlderRows?: boolean;
+  onOpenLink?: ThreadTimelineLinkHandler;
+  onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
+  /** Workspace root used to resolve relative links in timeline Markdown. */
+  workspaceRootPath?: string;
   /**
    * "contained" (default) fills and scrolls inside a bounded parent;
    * "document" grows with its content and defers scrolling to the page (no
@@ -301,7 +307,10 @@ function EmbeddedThreadChatWithComposer({
   draftModeTimelineRows,
   labels: labelOverrides,
   showLoadOlderRows = true,
+  onOpenLink,
+  onOpenLocalFileLink,
   onSendToMainMessage,
+  workspaceRootPath,
   layout = "contained",
   measure = "panel",
   surfaceTone = "background",
@@ -1333,16 +1342,20 @@ function EmbeddedThreadChatWithComposer({
         consumerMessageActions={consumerMessageActions}
         includePluginMessageActions={includePluginMessageActions}
         missingThreadLabel={labels.missingThread}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
         onSendToMainMessage={onSendToMainMessage}
         onMessageAddToChat={handleAddToChat}
         onSelectionAddToChat={handleAddToChat}
         projectId={projectId}
         provisioningLabel={labels.provisioning}
+        resolveMentionLink={resolveMentionLink}
         rowFilter={rowFilter}
         showLoadOlderRows={showLoadOlderRows}
         threadId={threadId}
         timeline={timeline}
         timelineErrorLabel={labels.timelineError}
+        workspaceRootPath={workspaceRootPath}
       />
     ) : (
       <ThreadTimelineSurface
@@ -1352,10 +1365,13 @@ function EmbeddedThreadChatWithComposer({
         timelineError={false}
         showOngoingIndicator={isTurnSubmitting}
         ongoingIndicatorLabel={labels.draftSubmitting}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+        resolveMentionLink={resolveMentionLink}
         timelineRows={draftModeTimelineRows ? [...draftModeTimelineRows] : []}
         threadId={surfaceKey}
         threadRuntimeDisplayStatus="starting"
-        workspaceRootPath={undefined}
+        workspaceRootPath={workspaceRootPath}
       />
     );
 

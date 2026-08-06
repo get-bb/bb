@@ -145,6 +145,7 @@ import {
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
+import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@bb/shared-ui/icon";
@@ -2442,7 +2443,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       threadId={thread.id}
     />
   ) : activePluginPanelTab ? (
-    <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
+    <ThreadTimelineNavigationProvider
+      environmentId={thread.environmentId}
+      onOpenLink={handleOpenTimelineLink}
+      onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+      resolveMentionLink={resolveMentionLink}
+      workspaceRootPath={environment?.path ?? undefined}
+    >
+      <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
+    </ThreadTimelineNavigationProvider>
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const threadDetailContent = (
