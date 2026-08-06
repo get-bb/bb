@@ -63,6 +63,11 @@ export type ServerPrincipalRuntime = {
     | typeof PRINCIPAL_MODE_LOCAL_OWNER
     | typeof PRINCIPAL_MODE_WORK_TOGETHER;
   readonly hostname: string | undefined;
+  readonly workTogetherRoomTaskRuntime: Readonly<{
+    pool: ServerPrincipalPgPool;
+    cellId: string;
+    workspaceId: string;
+  }> | null;
   readonly close: () => Promise<void>;
 };
 
@@ -123,6 +128,7 @@ export async function createServerPrincipalRuntime(
       principalPolicy: createLocalOwnerPrincipalPolicy(),
       principalMode: PRINCIPAL_MODE_LOCAL_OWNER,
       hostname: undefined,
+      workTogetherRoomTaskRuntime: null,
       close: async () => undefined,
     });
   }
@@ -178,6 +184,11 @@ export async function createServerPrincipalRuntime(
       principalPolicy,
       principalMode: PRINCIPAL_MODE_WORK_TOGETHER,
       hostname: WORK_TOGETHER_LISTEN_HOSTNAME,
+      workTogetherRoomTaskRuntime: Object.freeze({
+        pool,
+        cellId: config.cellId,
+        workspaceId: config.workspaceId,
+      }),
       close,
     });
   } catch {

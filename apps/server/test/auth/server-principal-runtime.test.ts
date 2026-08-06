@@ -108,6 +108,7 @@ describe("createServerPrincipalRuntime local-owner", () => {
     expect(createPool).not.toHaveBeenCalled();
     expect(runtime.principalMode).toBe("local-owner");
     expect(runtime.hostname).toBeUndefined();
+    expect(runtime.workTogetherRoomTaskRuntime).toBeNull();
     expect(Object.isFrozen(runtime)).toBe(true);
 
     const resolved = await runtime.principalPolicy.resolve({
@@ -216,6 +217,12 @@ describe("createServerPrincipalRuntime work-together", () => {
     expect(runtime.hostname).toBe("127.0.0.1");
     expect(Object.isFrozen(runtime)).toBe(true);
     expect(runtime.principalPolicy).toBe(policySpy.mock.results[0]!.value);
+    expect(runtime.workTogetherRoomTaskRuntime).toEqual({
+      pool: recording.pool,
+      cellId: CELL_ID,
+      workspaceId: WORKSPACE_ID,
+    });
+    expect(Object.isFrozen(runtime.workTogetherRoomTaskRuntime)).toBe(true);
 
     await runtime.close();
     await runtime.close();
@@ -466,6 +473,7 @@ describe("server principal listen options and close helper", () => {
         },
         principalMode: "work-together",
         hostname: "127.0.0.1",
+        workTogetherRoomTaskRuntime: null,
         close,
       }),
     ).resolves.toBeUndefined();
@@ -491,6 +499,8 @@ describe("start-server principal wiring", () => {
       "principalPolicy: principalRuntime.principalPolicy",
     );
     expect(source).toContain("principalMode: principalRuntime.principalMode");
+    expect(source).toContain("createBindingBackedRoomDistributionV1(");
+    expect(source).toContain("createWorkTogetherRoomTaskProjection(");
     expect(source).toContain("createServerListenOptions({");
     expect(source).toContain(
       "closeServerPrincipalRuntimeBestEffort(principalRuntime)",

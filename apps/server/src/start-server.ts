@@ -39,6 +39,9 @@ import {
   loadWorkTogetherRoomResourceRegistry,
   WORK_TOGETHER_ROOM_RESOURCE_REGISTRY_ENV,
 } from "./room-distribution/room-resource-registry.js";
+import { createWorkTogetherRoomTaskProjection } from "./room-distribution/work-together-room-task-projection.js";
+import { createBindingBackedRoomDistributionV1 } from "./room-distribution/binding-backed-room-distribution.js";
+import type { WorkTogetherRoomDistributionV1 } from "./room-distribution/room-distribution-port.js";
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
@@ -153,6 +156,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     sharedPorts,
   };
   let roomResourceProvisioner: WorkTogetherRoomResourceProvisioner | undefined;
+  let roomDistribution: WorkTogetherRoomDistributionV1 | undefined;
   try {
     roomResourceProvisioner =
       principalRuntime.principalMode === "work-together"
@@ -163,6 +167,15 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
             ),
           )
         : undefined;
+    roomDistribution =
+      principalRuntime.workTogetherRoomTaskRuntime === null
+        ? undefined
+        : createBindingBackedRoomDistributionV1(
+            appDeps,
+            createWorkTogetherRoomTaskProjection(
+              principalRuntime.workTogetherRoomTaskRuntime,
+            ),
+          );
   } catch (error) {
     await closeServerPrincipalRuntimeBestEffort(principalRuntime);
     throw error;
@@ -175,6 +188,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       ...(roomResourceProvisioner !== undefined
         ? { roomResourceProvisioner }
         : {}),
+      ...(roomDistribution !== undefined ? { roomDistribution } : {}),
       staticDir,
     },
   );
