@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DisplayComment } from "../../shared/contract.js";
 import {
+  commentActorDisplayName,
   commentByline,
   formatFileSize,
   formatRelativeTime,
@@ -49,7 +50,7 @@ describe("splitSystemBody", () => {
   });
 });
 
-describe("commentByline", () => {
+describe("commentActorDisplayName and commentByline", () => {
   const base: DisplayComment = {
     id: "01HZZZZZZZZZZZZZZZZZZZZZC1",
     taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
@@ -77,7 +78,104 @@ describe("commentByline", () => {
     });
   });
 
-  it("falls back to the author name when the thread title is unresolved", () => {
+  it("uses modern human actor display for user bylines", () => {
+    const comment: DisplayComment = {
+      ...base,
+      kind: "user",
+      authorName: "legacy-author",
+      threadId: null,
+      threadTitle: null,
+      provider: null,
+      actor: {
+        principalId: "user_alice",
+        principalKind: "human",
+        displayName: "Alice",
+      },
+    };
+    expect(commentActorDisplayName(comment)).toBe("Alice");
+    expect(commentByline(comment)).toEqual({ kind: "text", name: "Alice" });
+  });
+
+  it("uses modern system actor display for system events", () => {
+    const comment: DisplayComment = {
+      ...base,
+      kind: "system",
+      authorName: "Tasks",
+      threadId: null,
+      threadTitle: null,
+      provider: null,
+      actor: {
+        principalId: "user_alice",
+        principalKind: "human",
+        displayName: "Alice",
+      },
+    };
+    expect(commentActorDisplayName(comment)).toBe("Alice");
+    expect(
+      splitSystemBody(
+        "Status changed to Done by Alice",
+        commentActorDisplayName(comment),
+      ),
+    ).toEqual([
+      { text: "Status changed to Done by ", bold: false },
+      { text: "Alice", bold: true },
+    ]);
+  });
+
+  it("falls back to authorName for explicit system:legacy actors", () => {
+    const comment: DisplayComment = {
+      ...base,
+      kind: "user",
+      authorName: "Stored legacy name",
+      threadId: null,
+      threadTitle: null,
+      provider: null,
+    };
+    expect(commentActorDisplayName(comment)).toBe("Stored legacy name");
+    expect(commentByline(comment)).toEqual({
+      kind: "text",
+      name: "Stored legacy name",
+    });
+  });
+
+  it("does not treat a colliding system:legacy id as a legacy actor", () => {
+    const comment: DisplayComment = {
+      ...base,
+      kind: "user",
+      authorName: "must-not-win",
+      threadId: null,
+      threadTitle: null,
+      provider: null,
+      actor: {
+        principalId: "system:legacy",
+        principalKind: "human",
+        displayName: "Authenticated Legacy-Named Human",
+      },
+    };
+    expect(commentActorDisplayName(comment)).toBe(
+      "Authenticated Legacy-Named Human",
+    );
+  });
+
+  it("labels unresolved modern agents so they cannot look like humans", () => {
+    const comment: DisplayComment = {
+      ...base,
+      threadTitle: null,
+      authorName: "should-not-win",
+      actor: {
+        principalId: "agent:thread/thr_worker",
+        principalKind: "agent",
+        displayName: "Thread agent",
+      },
+    };
+    expect(commentActorDisplayName(comment)).toBe("Agent · Thread agent");
+    expect(commentByline(comment)).toEqual({
+      kind: "text",
+      name: "Agent · Thread agent",
+    });
+  });
+
+  it("falls back to authorName for unresolved legacy agents", () => {
     expect(commentByline({ ...base, threadTitle: null })).toEqual({
       kind: "text",
       name: "agent (thr_worker)",
@@ -97,8 +195,13 @@ describe("commentByline", () => {
         kind: "user",
         authorName: "You",
         threadTitle: "Should be ignored",
+        actor: {
+          principalId: "local-owner",
+          principalKind: "human",
+          displayName: "Local Owner",
+        },
       }),
-    ).toEqual({ kind: "text", name: "You" });
+    ).toEqual({ kind: "text", name: "Local Owner" });
   });
 });
 

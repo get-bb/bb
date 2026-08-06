@@ -8,8 +8,17 @@ import {
 } from "../../../src/services/plugins/plugin-commands-skill.js";
 import { resolveInjectedSkillSources } from "../../../src/services/skills/injected-skills.js";
 import {
+  seedEnvironment,
+  seedHostSession,
+  seedPrimaryHost,
+  seedProjectWithSource,
+  seedThread,
+} from "../../helpers/seed.js";
+import {
   createTestAppHarness,
+  startTestServer,
   testLogger,
+  type RunningTestServer,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
 
@@ -47,6 +56,7 @@ const CLI_SOURCE = `
             argv,
             ctx: requestContext,
             signalAborted: signal?.aborted,
+            principal: bb.experimental_currentPrincipal(),
           }),
         };
       },
@@ -139,8 +149,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     const response = await runCli(harness, "acme", {
       argv: ["issues", "--team", "ENG"],
       cwd: "/tmp/somewhere",
-      threadId: "thr_123",
-      projectId: "proj_456",
     });
     expect(response.status).toBe(200);
     const result = (await response.json()) as {
@@ -154,10 +162,13 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       argv: ["issues", "--team", "ENG"],
       ctx: {
         cwd: "/tmp/somewhere",
-        threadId: "thr_123",
-        projectId: "proj_456",
       },
       signalAborted: false,
+      principal: {
+        id: "local-owner",
+        kind: "human",
+        displayName: "Local Owner",
+      },
     });
   });
 
@@ -398,5 +409,241 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
       `${BASE}/api/v1/plugins/nope/logs`,
     );
     expect(missing.status).toBe(404);
+  });
+});
+
+describe("plugin CLI local-owner thread-agent derivation", () => {
+  let harness: TestAppHarness;
+  let rootDir: string;
+  let projectId: string;
+  let threadId: string;
+
+  beforeEach(async () => {
+    harness = await createTestAppHarness();
+    const { host } = seedHostSession(harness.deps);
+    seedPrimaryHost(harness.deps, host.id);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+      path: "/tmp/plugin-cli-derivation",
+    });
+    projectId = project.id;
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/plugin-cli-derivation",
+    });
+    const thread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      projectId: project.id,
+      status: "idle",
+    });
+    threadId = thread.id;
+
+    rootDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
+      name: "bb-plugin-acme",
+      serverSource: CLI_SOURCE,
+    });
+    const entry = await harness.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+  });
+
+  afterEach(async () => {
+    await harness.pluginService.stop();
+    await harness.cleanup();
+  });
+
+  it("derives an exact thread-agent Principal for local-owner + real thread", async () => {
+    const response = await runCli(harness, "acme", {
+      argv: ["probe"],
+      threadId,
+      projectId,
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    };
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ctx: { threadId, projectId },
+      principal: {
+        id: `agent:thread/${threadId}`,
+        kind: "agent",
+        displayName: "Thread agent",
+      },
+    });
+  });
+
+  it("fills projectId from the DB thread when the caller omits it", async () => {
+    const response = await runCli(harness, "acme", {
+      argv: ["probe"],
+      threadId,
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stdout: string;
+    };
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ctx: { threadId, projectId },
+      principal: {
+        id: `agent:thread/${threadId}`,
+        kind: "agent",
+      },
+    });
+  });
+
+  it("rejects a nonexistent thread for local-owner derivation", async () => {
+    const response = await runCli(harness, "acme", {
+      argv: ["probe"],
+      threadId: "thr_missing_for_cli",
+      projectId,
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stderr: string;
+    };
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("thread not found");
+  });
+
+  it("rejects a projectId that does not match the resolved thread", async () => {
+    const response = await runCli(harness, "acme", {
+      argv: ["probe"],
+      threadId,
+      projectId: "proj_other_mismatch",
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stderr: string;
+    };
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("project mismatch");
+  });
+
+  it("keeps local-owner human when no threadId is supplied", async () => {
+    const response = await runCli(harness, "acme", {
+      argv: ["probe"],
+      projectId,
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stdout: string;
+    };
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ctx: { projectId },
+      principal: {
+        id: "local-owner",
+        kind: "human",
+        displayName: "Local Owner",
+      },
+    });
+  });
+});
+
+describe("plugin CLI signed-human session retention", () => {
+  let server: RunningTestServer;
+  let rootDir: string;
+  let projectId: string;
+  let threadId: string;
+
+  beforeEach(async () => {
+    server = await startTestServer(
+      {},
+      {
+        principalMode: "work-together",
+        principalPolicy: {
+          async resolve(request) {
+            const selected = request.getHeader("x-test-user");
+            const principal =
+              selected === "bob"
+                ? {
+                    id: "user_bob",
+                    kind: "human" as const,
+                    displayName: "Bob",
+                  }
+                : {
+                    id: "user_alice",
+                    kind: "human" as const,
+                    displayName: "Alice",
+                  };
+            return {
+              principal,
+              expiresAtMs: Date.now() + 60_000,
+              clientRealtimeScope: "scoped" as const,
+              async authorize() {
+                return { allowed: true };
+              },
+            };
+          },
+        },
+      },
+    );
+    const { host } = seedHostSession(server.deps);
+    seedPrimaryHost(server.deps, host.id);
+    const { project } = seedProjectWithSource(server.deps, {
+      hostId: host.id,
+      path: "/tmp/plugin-cli-signed-human",
+    });
+    projectId = project.id;
+    const environment = seedEnvironment(server.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      path: "/tmp/plugin-cli-signed-human",
+    });
+    const thread = seedThread(server.deps, {
+      environmentId: environment.id,
+      projectId: project.id,
+      status: "idle",
+    });
+    threadId = thread.id;
+
+    rootDir = await writePlugin(join(server.config.dataDir, "fixtures"), {
+      name: "bb-plugin-acme",
+      serverSource: CLI_SOURCE,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+  });
+
+  afterEach(async () => {
+    await server.pluginService.stop();
+    await server.close();
+  });
+
+  it("never replaces a signed human with a thread agent because threadId was supplied", async () => {
+    const response = await fetch(`${server.baseUrl}/api/v1/plugins/acme/cli`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-user": "alice",
+      },
+      body: JSON.stringify({
+        argv: ["probe"],
+        threadId,
+        projectId,
+      }),
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      exitCode: number;
+      stdout: string;
+    };
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ctx: { threadId, projectId },
+      principal: {
+        id: "user_alice",
+        kind: "human",
+        displayName: "Alice",
+      },
+    });
   });
 });

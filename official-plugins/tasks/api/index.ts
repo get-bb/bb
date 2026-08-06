@@ -326,14 +326,14 @@ function labelChangeBody(
 function writeSystemComments(
   store: TasksApiStore,
   taskId: string,
-  authorName: string,
+  actorDisplayName: string,
   bodies: readonly string[],
 ): void {
   for (const body of bodies) {
     store.tasks.createComment({
       taskId,
       kind: "system",
-      authorName,
+      authorName: actorDisplayName,
       body,
       notifiedCount: 0,
     });
@@ -798,27 +798,29 @@ export function registerHandlers(
           }
 
           const bodies: string[] = [];
+          const actorDisplayName =
+            bb.experimental_currentPrincipal().displayName;
           if (updated.status !== current.status) {
             bodies.push(
-              `Status changed to ${statusName(updated.status)} by ${input.authorName}`,
+              `Status changed to ${statusName(updated.status)} by ${actorDisplayName}`,
             );
           }
           if (updated.priority !== current.priority) {
             bodies.push(
-              `Priority changed to ${priorityName(updated.priority)} by ${input.authorName}`,
+              `Priority changed to ${priorityName(updated.priority)} by ${actorDisplayName}`,
             );
           }
           if (updated.dueDate !== current.dueDate) {
             bodies.push(
               updated.dueDate === null
-                ? `Due date removed by ${input.authorName}`
-                : `Due date changed to ${updated.dueDate} by ${input.authorName}`,
+                ? `Due date removed by ${actorDisplayName}`
+                : `Due date changed to ${updated.dueDate} by ${actorDisplayName}`,
             );
           }
           if (input.labelIds && labelsChanged(beforeLabelIds, input.labelIds)) {
-            bodies.push(labelChangeBody(store, current.id, input.authorName));
+            bodies.push(labelChangeBody(store, current.id, actorDisplayName));
           }
-          writeSystemComments(store, current.id, input.authorName, bodies);
+          writeSystemComments(store, current.id, actorDisplayName, bodies);
           return {
             task: apiTask(store, updated),
             systemCommentsWritten: bodies.length,
@@ -874,8 +876,10 @@ export function registerHandlers(
         });
         const statusChanged = moved.status !== current.status;
         if (statusChanged) {
-          writeSystemComments(store, current.id, input.authorName, [
-            `Status changed to ${statusName(moved.status)} by ${input.authorName}`,
+          const actorDisplayName =
+            bb.experimental_currentPrincipal().displayName;
+          writeSystemComments(store, current.id, actorDisplayName, [
+            `Status changed to ${statusName(moved.status)} by ${actorDisplayName}`,
           ]);
         }
         return { task: apiTask(store, moved), statusChanged };
@@ -907,10 +911,16 @@ export function registerHandlers(
       return { labels: store.tasks.listLabels(input.projectId) };
     },
     async createComment(input) {
+      const principal = bb.experimental_currentPrincipal();
+      if (principal.kind !== "human") {
+        throw new Error(
+          "createComment requires an active human Principal; agents use the Tasks CLI comment path",
+        );
+      }
       const comment = await createComment(bb, store, {
         taskId: input.taskId,
         kind: "user",
-        authorName: "You",
+        authorName: principal.displayName,
         presetName: null,
         threadId: null,
         body: input.body,

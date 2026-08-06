@@ -95,7 +95,8 @@ const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--parent <key-or-id> | --no-parent] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
 const COMMENT_HELP =
-  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--machine <id-or-name>] [--notify] [--json]";
+  "Usage: bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--author <name>] [--machine <id-or-name>] [--notify] [--json]\n" +
+  "  --author is only allowed for the exact derived thread-agent Principal and aliases the legacy display name.";
 const LABEL_HELP = `Usage:
   bb tasks label create --project <prefix-or-id> --name <name> [--color <color>] [--json]
   bb tasks label list --project <prefix-or-id> [--json]
@@ -522,8 +523,16 @@ function projectTable(
   );
 }
 
-function taskAuthor(ctx: PluginCliContext): string {
-  return ctx.threadId ? `agent (${ctx.threadId})` : "cli";
+/** Exact derived thread-agent: kind agent, ctx.threadId set, id matches. */
+function exactThreadAgentPrincipal(
+  principal: ReturnType<BbPluginApi["experimental_currentPrincipal"]>,
+  threadId: string | undefined,
+): boolean {
+  return (
+    principal.kind === "agent" &&
+    threadId !== undefined &&
+    principal.id === `agent:thread/${threadId}`
+  );
 }
 
 async function runProject(
@@ -1287,7 +1296,6 @@ async function runUpdate(
             ? undefined
             : (parent?.id ?? null),
         labelIds: labelsChanged ? [...nextLabels] : undefined,
-        authorName: taskAuthor(ctx),
       }),
     ),
   );
@@ -1330,12 +1338,46 @@ async function runComment(
   if (body === undefined)
     throw new CliError("missing required --body or --body-file");
   if (!body.trim()) throw new CliError("comment body must not be blank");
+
+  const principal = bb.experimental_currentPrincipal();
+  const authorAlias = option(args, "author");
+  const isExactAgent = exactThreadAgentPrincipal(principal, ctx.threadId);
+
+  if (authorAlias !== undefined && !isExactAgent) {
+    throw new CliError(
+      "--author is only allowed for the exact derived thread-agent Principal",
+    );
+  }
+
+  if (isExactAgent) {
+    const comment = await createComment(bb, store, {
+      taskId: task.id,
+      kind: "agent",
+      authorName: authorAlias ?? principal.displayName,
+      presetName: null,
+      threadId: ctx.threadId!,
+      body,
+      notify: args.flags.has("notify"),
+    });
+    return args.flags.has("json")
+      ? json({ comment })
+      : `Commented on ${task.key}  ${comment.id}`;
+  }
+
+  if (principal.kind !== "human") {
+    throw new CliError(
+      `cannot attribute comment: active Principal kind "${principal.kind}" is not an exact thread agent or human`,
+    );
+  }
+
+  // Authenticated humans always write user comments with no thread, even if
+  // an untrusted CLI context still carries a threadId.
   const comment = await createComment(bb, store, {
     taskId: task.id,
-    kind: ctx.threadId ? "agent" : "user",
-    authorName: option(args, "author") ?? taskAuthor(ctx),
+    kind: "user",
+    authorName: principal.displayName,
     presetName: null,
-    threadId: ctx.threadId ?? null,
+    threadId: null,
     body,
     notify: args.flags.has("notify"),
   });

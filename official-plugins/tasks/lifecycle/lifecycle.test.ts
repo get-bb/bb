@@ -25,6 +25,11 @@ function trackedThreadFixture(
 ): TrackedThreadFixture {
   const host = createFakePluginHost({
     pluginId: "tasks",
+    executionPrincipal: {
+      id: "system:plugin-background/tasks/thread-event/thread.deleted",
+      kind: "system",
+      displayName: "Plugin background",
+    },
     sdk: {
       threads: {
         get: async () =>
@@ -85,6 +90,12 @@ describe("task thread lifecycle", () => {
         presetName: "GPT-5.6 · high",
         threadId: "thr_worker",
         body: 'Thread "Lifecycle worker" completed — final message posted · thr_worker',
+        actor: {
+          principalId:
+            "system:plugin-background/tasks/thread-event/thread.deleted",
+          principalKind: "system",
+          displayName: "Plugin background",
+        },
       }),
     );
     expect(fixture.harness.realtimeSignals).toEqual([

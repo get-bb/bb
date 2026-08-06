@@ -134,7 +134,19 @@ describe("Tasks RPC domain API", () => {
     );
 
     expect(result.comment.notifiedCount).toBe(1);
-    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(1);
+    expect(result.comment.actor).toEqual({
+      principalId: "local-owner",
+      principalKind: "human",
+      displayName: "Local Owner",
+    });
+    expect(store.tasks.getComment(result.comment.id)).toMatchObject({
+      notifiedCount: 1,
+      actor: {
+        principalId: "local-owner",
+        principalKind: "human",
+        displayName: "Local Owner",
+      },
+    });
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [expect.objectContaining({ threadId: "thr_two" })],
     ]);
@@ -142,6 +154,141 @@ describe("Tasks RPC domain API", () => {
       channel: "comments:changed",
       payload: { taskId: task.id, notifiedCount: 1 },
     });
+    await harness.dispose();
+  });
+
+  it("rejects caller identity fields and attributes mutations from the active Principal", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      executionPrincipal: {
+        id: "user_alice",
+        kind: "human",
+        displayName: "Alice",
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Spoof",
+      prefix: "SPF",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "No spoofing",
+    });
+
+    await expect(
+      harness.callRpc("updateTask", {
+        taskId: task.id,
+        status: "todo",
+        authorName: "Attacker",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    await expect(
+      harness.callRpc("boardMove", {
+        taskId: task.id,
+        status: "done",
+        authorName: "Attacker",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    await expect(
+      harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "hello",
+        notify: false,
+        authorName: "Attacker",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    await expect(
+      harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "hello",
+        notify: false,
+        kind: "agent",
+        threadId: "thr_spoof",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+
+    const updated = tasksRpcContract.updateTask.output.parse(
+      await harness.callRpc("updateTask", {
+        taskId: task.id,
+        status: "in_progress",
+      }),
+    );
+    expect(updated).toMatchObject({ ok: true });
+    expect(store.tasks.listComments(task.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "system",
+          authorName: "Alice",
+          body: "Status changed to In Progress by Alice",
+          actor: {
+            principalId: "user_alice",
+            principalKind: "human",
+            displayName: "Alice",
+          },
+        }),
+      ]),
+    );
+
+    const comment = tasksRpcContract.createComment.output.parse(
+      await harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "Authenticated note",
+        notify: false,
+      }),
+    );
+    expect(comment.comment).toMatchObject({
+      kind: "user",
+      authorName: "Alice",
+      threadId: null,
+      actor: {
+        principalId: "user_alice",
+        principalKind: "human",
+        displayName: "Alice",
+      },
+    });
+
+    await harness.dispose();
+  });
+
+  it("rejects ordinary comment RPC writes from an agent Principal", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      executionPrincipal: {
+        id: "agent:thread/thr_rpc_agent",
+        kind: "agent",
+        displayName: "Thread agent",
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Agent RPC rejection",
+      prefix: "ARP",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Use the CLI path",
+    });
+
+    await expect(
+      harness.callRpc("createComment", {
+        taskId: task.id,
+        body: "Attempted agent RPC comment",
+        notify: false,
+      }),
+    ).rejects.toMatchObject({
+      code: "handler_error",
+      message: expect.stringContaining("requires an active human Principal"),
+    });
+    expect(store.tasks.listComments(task.id)).toEqual([]);
+
     await harness.dispose();
   });
 
@@ -814,6 +961,11 @@ describe("Tasks RPC domain API", () => {
     expect(store.tasks.getComment(result.comment.id)).toMatchObject({
       body: "This comment must survive delivery failures.",
       notifiedCount: 0,
+      actor: {
+        principalId: "local-owner",
+        principalKind: "human",
+        displayName: "Local Owner",
+      },
     });
     expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
     expect(harness.logEntries).toEqual(
@@ -980,7 +1132,6 @@ describe("Tasks RPC domain API", () => {
         priority: "high",
         dueDate: "2026-07-20",
         labelIds: [labelResult.label.id],
-        authorName: "Sawyer",
       }),
     );
     expect(updateResult).toMatchObject({
@@ -991,21 +1142,26 @@ describe("Tasks RPC domain API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "system",
-          authorName: "Sawyer",
-          body: "Status changed to In Review by Sawyer",
+          authorName: "Local Owner",
+          body: "Status changed to In Review by Local Owner",
           notifiedCount: 0,
+          actor: {
+            principalId: "local-owner",
+            principalKind: "human",
+            displayName: "Local Owner",
+          },
         }),
         expect.objectContaining({
           kind: "system",
-          body: "Priority changed to High by Sawyer",
+          body: "Priority changed to High by Local Owner",
         }),
         expect.objectContaining({
           kind: "system",
-          body: "Due date changed to 2026-07-20 by Sawyer",
+          body: "Due date changed to 2026-07-20 by Local Owner",
         }),
         expect.objectContaining({
           kind: "system",
-          body: "Labels changed to Backend by Sawyer",
+          body: "Labels changed to Backend by Local Owner",
         }),
       ]),
     );
@@ -1014,7 +1170,6 @@ describe("Tasks RPC domain API", () => {
       await harness.callRpc("boardMove", {
         taskId: createResult.task.id,
         status: "done",
-        authorName: "Sawyer",
       }),
     );
     expect(moveResult).toMatchObject({ ok: true, task: { status: "done" } });

@@ -222,11 +222,16 @@ describe("bb tasks CLI", () => {
     expect(JSON.parse(stdout(commentResult))).toMatchObject({
       comment: {
         taskId: createPayload.task.id,
-        kind: "agent",
-        authorName: "agent (thr_cli_worker)",
-        threadId: "thr_cli_worker",
+        kind: "user",
+        authorName: "Local Owner",
+        threadId: null,
         body: "Ready for review.",
         notifiedCount: 0,
+        actor: {
+          principalId: "local-owner",
+          principalKind: "human",
+          displayName: "Local Owner",
+        },
       },
     });
 
@@ -237,17 +242,17 @@ describe("bb tasks CLI", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "system",
-          body: "Status changed to In Progress by cli",
+          body: "Status changed to In Progress by Local Owner",
         }),
         expect.objectContaining({
           kind: "system",
-          body: "Priority changed to High by cli",
+          body: "Priority changed to High by Local Owner",
         }),
         expect.objectContaining({
-          kind: "agent",
+          kind: "user",
           body: "Ready for review.",
-          threadTitle: "CLI provider worker",
-          provider: { id: "codex", name: "Codex", logoUrl: null },
+          authorName: "Local Owner",
+          threadId: null,
         }),
       ]),
     );
@@ -255,17 +260,252 @@ describe("bb tasks CLI", () => {
     const updatedShowTable = stdout(
       await harness.runCli(["show", createPayload.task.id]),
     );
-    expect(updatedShowTable).toContain(
-      "TIME                      KIND    AUTHOR               PROVIDER  BODY",
-    );
-    const agentRow = updatedShowTable
+    expect(updatedShowTable).toContain("KIND");
+    expect(updatedShowTable).toContain("AUTHOR");
+    expect(updatedShowTable).toContain("PROVIDER");
+    expect(updatedShowTable).toContain("BODY");
+    const userRow = updatedShowTable
       .split("\n")
       .find((line) => line.includes("Ready for review."));
-    expect(agentRow).toContain("agent");
-    expect(agentRow).toContain("CLI provider worker");
-    expect(agentRow).toContain("Codex");
+    expect(userRow).toContain("user");
+    expect(userRow).toContain("Local Owner");
 
     await harness.dispose();
+  });
+
+  it("attributes exact thread-agent CLI comments and allows --author as a display alias", async () => {
+    const threadId = "thr_cli_agent";
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      executionPrincipal: {
+        id: `agent:thread/${threadId}`,
+        kind: "agent",
+        displayName: "Thread agent",
+      },
+      sdk: {
+        threads: {
+          get: async ({ threadId: id }) =>
+            makeThreadResponse({
+              id,
+              title: "Agent comment worker",
+              providerId: "codex",
+            }),
+          send: async () => undefined,
+        },
+      },
+    });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Agent comments",
+        "--prefix",
+        "AGC",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "AGC",
+        "--title",
+        "Agent attribution",
+      ]),
+    );
+
+    const aliased = JSON.parse(
+      stdout(
+        await harness.runCli(
+          [
+            "comment",
+            "AGC-1",
+            "--body",
+            "From the exact agent.",
+            "--author",
+            "Custom CLI agent",
+            "--json",
+          ],
+          { threadId, projectId: "proj_bb" },
+        ),
+      ),
+    ).comment;
+    expect(aliased).toMatchObject({
+      kind: "agent",
+      authorName: "Custom CLI agent",
+      threadId,
+      body: "From the exact agent.",
+      actor: {
+        principalId: `agent:thread/${threadId}`,
+        principalKind: "agent",
+        displayName: "Thread agent",
+      },
+    });
+
+    const plain = JSON.parse(
+      stdout(
+        await harness.runCli(
+          ["comment", "AGC-1", "--body", "Default agent display.", "--json"],
+          { threadId, projectId: "proj_bb" },
+        ),
+      ),
+    ).comment;
+    expect(plain).toMatchObject({
+      kind: "agent",
+      authorName: "Thread agent",
+      threadId,
+      actor: {
+        principalId: `agent:thread/${threadId}`,
+        principalKind: "agent",
+        displayName: "Thread agent",
+      },
+    });
+
+    await harness.dispose();
+  });
+
+  it("rejects --author for humans and mismatched agent/thread comment contexts", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    stdout(
+      await harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Spoof",
+        "--prefix",
+        "SPF",
+      ]),
+    );
+    stdout(
+      await harness.runCli([
+        "create",
+        "--project",
+        "SPF",
+        "--title",
+        "No spoofing",
+      ]),
+    );
+
+    await expect(
+      harness.runCli(
+        ["comment", "SPF-1", "--body", "spoof", "--author", "Not me", "--json"],
+        { threadId: "thr_whatever" },
+      ),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "--author is only allowed for the exact derived thread-agent Principal",
+      ),
+    });
+
+    await harness.dispose();
+
+    const mismatched = createFakePluginHost({
+      pluginId: "tasks",
+      executionPrincipal: {
+        id: "agent:thread/thr_other",
+        kind: "agent",
+        displayName: "Thread agent",
+      },
+    });
+    await plugin(mismatched.bb);
+    stdout(
+      await mismatched.harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Mismatch",
+        "--prefix",
+        "MIS",
+      ]),
+    );
+    stdout(
+      await mismatched.harness.runCli([
+        "create",
+        "--project",
+        "MIS",
+        "--title",
+        "Ambiguous agent",
+      ]),
+    );
+    await expect(
+      mismatched.harness.runCli(
+        ["comment", "MIS-1", "--body", "wrong thread", "--json"],
+        { threadId: "thr_not_mine" },
+      ),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        'active Principal kind "agent" is not an exact thread agent or human',
+      ),
+    });
+    await mismatched.harness.dispose();
+
+    const signed = createFakePluginHost({
+      pluginId: "tasks",
+      executionPrincipal: {
+        id: "user_alice",
+        kind: "human",
+        displayName: "Alice",
+      },
+    });
+    await plugin(signed.bb);
+    stdout(
+      await signed.harness.runCli([
+        "project",
+        "create",
+        "--name",
+        "Signed",
+        "--prefix",
+        "SIG",
+      ]),
+    );
+    stdout(
+      await signed.harness.runCli([
+        "create",
+        "--project",
+        "SIG",
+        "--title",
+        "Human comment",
+      ]),
+    );
+    await expect(
+      signed.harness.runCli([
+        "comment",
+        "SIG-1",
+        "--body",
+        "hello",
+        "--author",
+        "Attacker",
+        "--json",
+      ]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining(
+        "--author is only allowed for the exact derived thread-agent Principal",
+      ),
+    });
+    const humanComment = JSON.parse(
+      stdout(
+        await signed.harness.runCli(
+          ["comment", "SIG-1", "--body", "hello", "--json"],
+          { threadId: "thr_untrusted", projectId: "proj_x" },
+        ),
+      ),
+    ).comment;
+    expect(humanComment).toMatchObject({
+      kind: "user",
+      authorName: "Alice",
+      threadId: null,
+      actor: {
+        principalId: "user_alice",
+        principalKind: "human",
+        displayName: "Alice",
+      },
+    });
+    await signed.harness.dispose();
   });
 
   it("assigns and promotes task parents by key or ID with stable JSON output", async () => {
@@ -923,8 +1163,14 @@ describe("bb tasks CLI", () => {
   });
 
   it("self-attaches through BB_THREAD_ID and lists the live thread status", async () => {
+    const senderThreadId = "thr_cli_sender";
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
+      executionPrincipal: {
+        id: `agent:thread/${senderThreadId}`,
+        kind: "agent",
+        displayName: "Thread agent",
+      },
       sdk: {
         threads: {
           get: async () => ({
@@ -1001,7 +1247,7 @@ describe("bb tasks CLI", () => {
             "--notify",
             "--json",
           ],
-          { threadId: "thr_cli_sender", projectId: "proj_bb" },
+          { threadId: senderThreadId, projectId: "proj_bb" },
         ),
       ),
     ).comment;
@@ -1009,15 +1255,25 @@ describe("bb tasks CLI", () => {
       taskId: threads.task.id,
       kind: "agent",
       authorName: "Custom CLI agent",
-      threadId: "thr_cli_sender",
+      threadId: senderThreadId,
       body: "Include the new edge case.",
       notifiedCount: 1,
+      actor: {
+        principalId: `agent:thread/${senderThreadId}`,
+        principalKind: "agent",
+        displayName: "Thread agent",
+      },
     });
     expect(taskStore.getComment(notified.id)).toMatchObject({
       kind: "agent",
       authorName: "Custom CLI agent",
-      threadId: "thr_cli_sender",
+      threadId: senderThreadId,
       notifiedCount: 1,
+      actor: {
+        principalId: `agent:thread/${senderThreadId}`,
+        principalKind: "agent",
+        displayName: "Thread agent",
+      },
     });
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [

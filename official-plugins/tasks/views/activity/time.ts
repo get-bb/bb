@@ -1,16 +1,41 @@
 import { useEffect, useState } from "react";
-import type { DisplayComment } from "../../shared/contract.js";
+import {
+  LEGACY_SYSTEM_TASK_ACTOR,
+  type DisplayComment,
+} from "../../shared/contract.js";
 
 export type CommentByline =
   | { kind: "thread-link"; threadId: string; title: string }
   | { kind: "text"; name: string };
 
 /**
+ * Authoritative display name for bylines, avatars, and system-event actor
+ * highlighting. Modern actor snapshots win; explicit `system:legacy` rows fall
+ * back to stored `authorName`. Unresolved modern agents are labeled so they
+ * cannot be mistaken for humans.
+ */
+export function commentActorDisplayName(comment: DisplayComment): string {
+  if (
+    comment.actor.principalId === LEGACY_SYSTEM_TASK_ACTOR.principalId &&
+    comment.actor.principalKind === LEGACY_SYSTEM_TASK_ACTOR.principalKind &&
+    comment.actor.displayName === LEGACY_SYSTEM_TASK_ACTOR.displayName
+  ) {
+    return comment.authorName;
+  }
+  if (
+    comment.kind === "agent" &&
+    (comment.threadId === null || comment.threadTitle === null)
+  ) {
+    return `Agent · ${comment.actor.displayName}`;
+  }
+  return comment.actor.displayName;
+}
+
+/**
  * How a comment's byline should render. Agent comments whose authoring thread
  * is still resolvable link to that chat by its human title; every other case
- * (users, system events, legacy agent comments with no thread, and deleted,
- * hidden, or inaccessible threads) falls back to the stored author name so the
- * byline is never blank and no unresolved thread is exposed.
+ * uses {@link commentActorDisplayName} so modern snapshots win and legacy /
+ * unresolved agents stay correctly labeled.
  */
 export function commentByline(comment: DisplayComment): CommentByline {
   if (
@@ -24,7 +49,7 @@ export function commentByline(comment: DisplayComment): CommentByline {
       title: comment.threadTitle,
     };
   }
-  return { kind: "text", name: comment.authorName };
+  return { kind: "text", name: commentActorDisplayName(comment) };
 }
 
 /** "just now" / "4m ago" / "3h ago" / "2d ago" — matches the mock's cadence. */
@@ -46,19 +71,19 @@ export interface SystemBodySegment {
 
 /**
  * Splits a system-event body so the actor name renders bold-ish. Server
- * system comments end with "by <authorName>" ("Status changed to Done by
- * You"); anything else renders as one plain segment.
+ * system comments end with "by <displayName>"; the display name follows the
+ * same modern/legacy selection as bylines.
  */
 export function splitSystemBody(
   body: string,
-  authorName: string,
+  actorDisplayName: string,
 ): SystemBodySegment[] {
-  const suffix = `by ${authorName}`;
-  if (authorName.trim() !== "" && body.endsWith(suffix)) {
-    const prefix = body.slice(0, body.length - authorName.length);
+  const suffix = `by ${actorDisplayName}`;
+  if (actorDisplayName.trim() !== "" && body.endsWith(suffix)) {
+    const prefix = body.slice(0, body.length - actorDisplayName.length);
     return [
       { text: prefix, bold: false },
-      { text: authorName, bold: true },
+      { text: actorDisplayName, bold: true },
     ];
   }
   return [{ text: body, bold: false }];

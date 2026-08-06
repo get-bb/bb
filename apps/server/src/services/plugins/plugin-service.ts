@@ -33,6 +33,7 @@ import {
   deleteInstalledPlugin,
   deletePluginSchedules,
   getInstalledPlugin,
+  getThread,
   listDuePluginSchedules,
   listInstalledPlugins,
   listPluginSchedules,
@@ -41,6 +42,7 @@ import {
   setInstalledPluginEnabled,
   type InstalledPluginRow,
 } from "@bb/db";
+import { isLocalOwnerPrincipal } from "../../auth/local-owner-adapter.js";
 import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
@@ -1774,19 +1776,62 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         id,
         `cli ${registration.name}`,
         async () => {
-          const result = await registration.run(argv, ctx);
-          if (typeof result?.exitCode !== "number") {
+          const run = async (cliCtx: PluginCliContext) => {
+            const result = await registration.run(argv, cliCtx);
+            if (typeof result?.exitCode !== "number") {
+              throw new Error(
+                "cli run() must return { exitCode: number, stdout?, stderr? }",
+              );
+            }
+            return enforcePluginCliOutputLimit(
+              {
+                exitCode: result.exitCode,
+                stdout: typeof result.stdout === "string" ? result.stdout : "",
+                stderr: typeof result.stderr === "string" ? result.stderr : "",
+              },
+              argv.includes("--json"),
+            );
+          };
+
+          // Isolated plugin-service tests omit internalExecution and keep the
+          // caller's ctx as-is. Server-backed dispatch may mint a thread-agent
+          // Principal only for the exact stock local-owner + a real DB thread.
+          const execution = deps.internalExecution;
+          if (execution === undefined || ctx.threadId === undefined) {
+            return run(ctx);
+          }
+
+          const principal = execution.authority.currentPrincipal();
+          if (!isLocalOwnerPrincipal(principal)) {
+            // Signed Work Together humans keep their human session even when
+            // the request body supplies threadId — never replace with an agent.
+            return run(ctx);
+          }
+
+          const thread = getThread(deps.db, ctx.threadId);
+          if (!thread) {
+            throw new Error(`thread not found: ${ctx.threadId}`);
+          }
+          if (
+            ctx.projectId !== undefined &&
+            ctx.projectId !== thread.projectId
+          ) {
             throw new Error(
-              "cli run() must return { exitCode: number, stdout?, stderr? }",
+              `project mismatch: request projectId ${ctx.projectId} does not match thread project ${thread.projectId}`,
             );
           }
-          return enforcePluginCliOutputLimit(
-            {
-              exitCode: result.exitCode,
-              stdout: typeof result.stdout === "string" ? result.stdout : "",
-              stderr: typeof result.stderr === "string" ? result.stderr : "",
-            },
-            argv.includes("--json"),
+
+          const resolvedCtx: PluginCliContext = {
+            ...ctx,
+            threadId: thread.id,
+            projectId: thread.projectId,
+          };
+          return execution.authority.runWithDerivedSession(
+            execution.sessions.createThreadAgentSession({
+              threadId: thread.id,
+              projectId: thread.projectId,
+            }),
+            () => run(resolvedCtx),
           );
         },
       );

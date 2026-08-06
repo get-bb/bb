@@ -346,7 +346,6 @@ const updateTaskInputSchema = z
     dueDate: dueDateSchema.nullable().optional(),
     parentTaskId: idSchema.nullable().optional(),
     labelIds: taskLabelsSchema.optional(),
-    authorName: nonBlankStringSchema.default("You"),
   })
   .strict()
   .refine(
@@ -583,7 +582,6 @@ export const tasksRpcContract = defineRpcContract({
         status: taskStatusSchema,
         beforeTaskId: idSchema.nullable().optional(),
         afterTaskId: idSchema.nullable().optional(),
-        authorName: nonBlankStringSchema.default("You"),
       })
       .strict(),
     output: taskMutationResultSchema,

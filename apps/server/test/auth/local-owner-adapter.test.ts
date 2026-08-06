@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   LOCAL_OWNER_PRINCIPAL,
   createLocalOwnerPrincipalPolicy,
+  isLocalOwnerPrincipal,
 } from "../../src/auth/local-owner-adapter.js";
 
 describe("local-owner principal policy", () => {
@@ -33,6 +34,31 @@ describe("local-owner principal policy", () => {
     expect(first.clientRealtimeScope).toBe("unrestricted");
     expect(second.expiresAtMs).toBeNull();
     expect(second.clientRealtimeScope).toBe("unrestricted");
+  });
+
+  it("exact local-owner predicate requires id, kind, and display name", () => {
+    expect(isLocalOwnerPrincipal(LOCAL_OWNER_PRINCIPAL)).toBe(true);
+    expect(
+      isLocalOwnerPrincipal({
+        id: "local-owner",
+        kind: "human",
+        displayName: "Impostor",
+      }),
+    ).toBe(false);
+    expect(
+      isLocalOwnerPrincipal({
+        id: "user_alice",
+        kind: "human",
+        displayName: "Local Owner",
+      }),
+    ).toBe(false);
+    expect(
+      isLocalOwnerPrincipal({
+        id: "local-owner",
+        kind: "agent",
+        displayName: "Local Owner",
+      }),
+    ).toBe(false);
   });
 
   it("explicitly allows actions for the local owner session", async () => {

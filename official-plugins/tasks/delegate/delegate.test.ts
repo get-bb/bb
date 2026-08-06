@@ -103,6 +103,11 @@ describe("task delegation", () => {
           presetName: "Test worker",
           threadId: "thr_delegated",
           body: "Status changed to In Progress · dispatched to Test worker",
+          actor: {
+            principalId: "local-owner",
+            principalKind: "human",
+            displayName: "Local Owner",
+          },
         }),
         expect.objectContaining({
           kind: "system",
@@ -110,6 +115,11 @@ describe("task delegation", () => {
           presetName: "Test worker",
           threadId: "thr_delegated",
           body: "Dispatched to Test worker",
+          actor: {
+            principalId: "local-owner",
+            principalKind: "human",
+            displayName: "Local Owner",
+          },
         }),
       ]),
     );

@@ -38,6 +38,7 @@ import type {
   DisplayComment,
 } from "../../shared/contract.js";
 import {
+  commentActorDisplayName,
   formatFileSize,
   formatRelativeTime,
   splitSystemBody,
@@ -218,7 +219,14 @@ export function AttachmentTracks({
   );
 }
 
-function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
+function SystemEvent({
+  comment,
+  nowMs,
+}: {
+  comment: DisplayComment;
+  nowMs: number;
+}) {
+  const actorName = commentActorDisplayName(comment);
   return (
     <div className="relative z-[1] my-2 flex items-center gap-2 text-xs text-muted-foreground">
       <span
@@ -226,15 +234,14 @@ function SystemEvent({ comment, nowMs }: { comment: Comment; nowMs: number }) {
         className="mx-[7px] size-2 shrink-0 rounded-full border-2 border-muted bg-card"
       />
       <span className="min-w-0 truncate">
-        {splitSystemBody(comment.body, comment.authorName).map(
-          (segment, index) =>
-            segment.bold ? (
-              <span key={index} className="font-medium text-foreground/80">
-                {segment.text}
-              </span>
-            ) : (
-              <span key={index}>{segment.text}</span>
-            ),
+        {splitSystemBody(comment.body, actorName).map((segment, index) =>
+          segment.bold ? (
+            <span key={index} className="font-medium text-foreground/80">
+              {segment.text}
+            </span>
+          ) : (
+            <span key={index}>{segment.text}</span>
+          ),
         )}
         <span className="text-muted-foreground/70">
           {" · "}
@@ -250,12 +257,13 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
   const agent = comment.kind === "agent";
   const navigate = useBbNavigate();
   const [lightbox, setLightbox] = useState<Attachment | null>(null);
+  const avatarName = commentActorDisplayName(comment);
   return (
     <div className="relative mb-3.5 flex gap-2.5">
       {agent ? (
         <CommentProviderAvatar provider={comment.provider} />
       ) : (
-        <UserAvatar name={comment.authorName} />
+        <UserAvatar name={avatarName} />
       )}
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-baseline gap-1.5 text-xs">
@@ -277,7 +285,10 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
           onOpenThread={(threadId) => navigate.toThread(threadId)}
         />
         {attachments.length > 0 ? (
-          <AttachmentTracks attachments={attachments} onOpenImage={setLightbox} />
+          <AttachmentTracks
+            attachments={attachments}
+            onOpenImage={setLightbox}
+          />
         ) : null}
         {lightbox ? (
           <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />

@@ -15,7 +15,8 @@ export const LOCAL_OWNER_PRINCIPAL: Principal = Object.freeze({
   displayName: "Local Owner",
 });
 
-function isLocalOwnerPrincipal(principal: Principal): boolean {
+/** Exact stock local-owner match: id, kind, and display name all equal. */
+export function isLocalOwnerPrincipal(principal: Principal): boolean {
   return (
     principal.id === LOCAL_OWNER_PRINCIPAL.id &&
     principal.kind === LOCAL_OWNER_PRINCIPAL.kind &&
