@@ -1,6 +1,7 @@
 import {
   createEnvironment,
   getEnvironment,
+  getProjectWorkspaceSettings,
   getThread,
   type CreateEnvironmentInput,
   type DbNotifier,
@@ -239,6 +240,7 @@ interface ManagedEnvironmentPlanArgs {
   baseBranch: BaseBranchSpec;
   thread: Thread;
   workspaceProvisionType: "managed-worktree";
+  setupScript: string | null;
 }
 
 interface PersonalEnvironmentPlanArgs {
@@ -485,8 +487,7 @@ async function resolveMetadataIfNeeded(
           if (
             !titledThread ||
             !environment ||
-            (titledThread.status !== "active" &&
-              titledThread.status !== "idle")
+            (titledThread.status !== "active" && titledThread.status !== "idle")
           ) {
             return;
           }
@@ -704,14 +705,10 @@ function createPreparedProvisioningEnvironment(
         );
       }
 
-      const environment = createEnvironment(
-        tx,
-        deps.hub,
-        {
-          ...args.environmentInput,
-          status: "ready",
-        },
-      );
+      const environment = createEnvironment(tx, deps.hub, {
+        ...args.environmentInput,
+        status: "ready",
+      });
       if (args.thread.environmentId !== environment.id) {
         updateThread(tx, deps.hub, args.thread.id, {
           environmentId: environment.id,
@@ -865,6 +862,7 @@ function buildManagedEnvironmentPlan(
         }),
         workspaceProvisionType: args.workspaceProvisionType,
         setupTimeoutMs: SETUP_TIMEOUT_MS,
+        setupScript: args.setupScript,
       });
 
       return buildDirectEnvironmentProvisionRequest({
@@ -927,6 +925,8 @@ async function resolveEnvironmentCreationPlan(
         baseBranch: args.intent.baseBranch,
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
+        setupScript: getProjectWorkspaceSettings(deps.db, args.thread.projectId)
+          .setupScript,
       });
     }
     case "direct-personal": {
@@ -994,13 +994,14 @@ function requestCheckoutUnmanagedEnvironmentProvision(
         threadId: args.thread.id,
         context,
       });
-      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-        { db: tx, logger: deps.logger },
-        {
-          environmentId: args.environment.id,
-          event: { type: "provision.requested" },
-        },
-      );
+      const requestedOutcome =
+        applyLoggedEnvironmentLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          {
+            environmentId: args.environment.id,
+            event: { type: "provision.requested" },
+          },
+        );
       if (requestedOutcome.applied) {
         deps.hub.notifyEnvironment(
           args.environment.id,
@@ -1102,13 +1103,14 @@ async function requestPreparedEnvironmentProvision(
         context,
         environment,
       });
-      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-        { db: tx, logger: deps.logger },
-        {
-          environmentId: environment.id,
-          event: { type: "provision.requested" },
-        },
-      );
+      const requestedOutcome =
+        applyLoggedEnvironmentLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          {
+            environmentId: environment.id,
+            event: { type: "provision.requested" },
+          },
+        );
       if (requestedOutcome.applied) {
         deps.hub.notifyEnvironment(environment.id, requestedOutcome.changes);
       }

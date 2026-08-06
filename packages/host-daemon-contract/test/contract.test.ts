@@ -722,6 +722,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.setupScript":
+    "older queued environment.provision commands omit the project setup command and retain the .bb-env-setup.sh fallback.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1056,7 +1058,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 75 adds the literal, paged workspace directory command. An older
+  // Version 77 adds project-configured setup commands. Version 76 adds detailed
+  // pull-request checks and comments. Version 75 adds the literal, paged
+  // workspace directory command. An older
   // daemon cannot serve the All files tree safely, so the version must force
   // an update before the server exposes that endpoint. Version 74 also
   // prefixes the provider onto every Pi model id, so an aggregator
@@ -1064,8 +1068,8 @@ describe("host-daemon command schemas", () => {
   // `deepseek/deepseek-v4-flash`. A daemon on 73 answers `model.list` with the
   // old unprefixed ids, which the server resolves to a different provider, so
   // the bump forces an update before the server trusts either side.
-  it("uses protocol version 76 for detailed pull-request data", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(76);
+  it("uses protocol version 77 for project-configured setup commands", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(77);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

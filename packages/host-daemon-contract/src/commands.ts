@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 76 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 77 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -948,6 +948,8 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
   baseBranch: gitBranchNameSchema.nullable(),
   /** Maximum time in ms to wait for the setup script */
   setupTimeoutMs: z.number().int().positive(),
+  /** Project-configured setup command. Null or omission keeps the fallback. */
+  setupScript: z.string().trim().min(1).max(10_000).nullable().optional(),
 });
 
 const managedWorktreeEnvironmentProvisionCommandSchema =

@@ -216,6 +216,7 @@ describe("environment command dispatch", () => {
         branchName: "bb/test",
         baseBranch: "main",
         setupTimeoutMs: 900000,
+        setupScript: null,
       },
       harness.dispatchOptions(),
     );
@@ -613,6 +614,7 @@ describe("environment command dispatch", () => {
           branchName: "bb/failure",
           baseBranch: "main",
           setupTimeoutMs: 900000,
+          setupScript: null,
         },
         makeDispatchOptions({
           runtimeManager: manager,

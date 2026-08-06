@@ -1,9 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import type {
-  ProvisioningTranscriptEntry,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
 import type {
   CommitOptions,
   CommitResult,
@@ -93,6 +90,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
   setupPath?: string;
+  /** Project-configured command. Omitted to use .bb-env-setup.sh when present. */
+  setupScript?: string;
 }
 
 export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {

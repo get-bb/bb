@@ -56,6 +56,7 @@ export interface CreateWorkspaceArgs {
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
   setupPath?: string;
+  setupScript?: string;
   onProgress?: ProgressCallback;
   pruneEmptyParent?: boolean;
   signal?: AbortSignal;
@@ -66,6 +67,7 @@ export interface RunSetupScriptArgs {
   timeoutMs: number;
   /** Resolved user-shell PATH. Falls back to the daemon process PATH. */
   setupPath?: string;
+  setupScript?: string;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }
@@ -84,7 +86,8 @@ interface SetupScriptCommand {
 
 interface BuildSetupScriptCommandArgs {
   platform: NodeJS.Platform;
-  scriptPath: string;
+  scriptPath?: string;
+  scriptText?: string;
 }
 
 interface KillSetupScriptProcessArgs {
@@ -196,6 +199,22 @@ async function resolveSetupScriptPath(
 export function buildSetupScriptCommand(
   args: BuildSetupScriptCommandArgs,
 ): SetupScriptCommand {
+  if (args.scriptText !== undefined) {
+    return args.platform === "win32"
+      ? {
+          command: "cmd.exe",
+          args: ["/d", "/s", "/c", args.scriptText],
+          text: "project setup script",
+        }
+      : {
+          command: "env",
+          args: ["bash", "-lc", args.scriptText],
+          text: "project setup script",
+        };
+  }
+  if (args.scriptPath === undefined) {
+    throw new WorkspaceError("setup_script_failed", "Setup script is missing");
+  }
   if (args.platform === "win32") {
     throw new WorkspaceError(
       "setup_script_failed",
@@ -408,6 +427,7 @@ export async function createWorktree(
       workspacePath: args.targetPath,
       timeoutMs: args.timeoutMs,
       setupPath: args.setupPath,
+      setupScript: args.setupScript,
       onProgress: args.onProgress,
       signal: args.signal,
     });
@@ -523,21 +543,27 @@ export async function runSetupScript(
   args: RunSetupScriptArgs,
 ): Promise<{ ran: boolean; exitCode?: number; output?: string }> {
   throwIfProvisionAborted(args.signal);
-  const scriptPath = await resolveSetupScriptPath(args.workspacePath);
-  if (!scriptPath) {
+  const scriptPath = args.setupScript
+    ? undefined
+    : await resolveSetupScriptPath(args.workspacePath);
+  if (!args.setupScript && !scriptPath) {
     return { ran: false };
   }
 
   throwIfProvisionAborted(args.signal);
   const command = buildSetupScriptCommand({
     platform: process.platform,
-    scriptPath,
+    scriptPath: scriptPath ?? undefined,
+    scriptText: args.setupScript,
   });
+  const setupLabel = args.setupScript
+    ? "project setup script"
+    : ".bb-env-setup.sh";
   const startedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
     key: "setup-started",
-    text: "Running .bb-env-setup.sh",
+    text: `Running ${setupLabel}`,
     status: "started",
     startedAt,
   });
@@ -622,7 +648,7 @@ export async function runSetupScript(
       emitStep({
         onProgress: args.onProgress,
         key: "setup-cancelled",
-        text: ".bb-env-setup.sh cancelled",
+        text: `${setupLabel} cancelled`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
@@ -634,14 +660,14 @@ export async function runSetupScript(
       emitStep({
         onProgress: args.onProgress,
         key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        text: `${setupLabel} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script timed out after ${timeoutMs}ms: ${scriptPath}`,
+        `Setup script timed out after ${timeoutMs}ms: ${command.text}`,
       );
     }
 
@@ -649,14 +675,14 @@ export async function runSetupScript(
       emitStep({
         onProgress: args.onProgress,
         key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        text: `${setupLabel} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script exited via signal ${result.signal}: ${scriptPath}`,
+        `Setup script exited via signal ${result.signal}: ${command.text}`,
       );
     }
 
@@ -664,21 +690,21 @@ export async function runSetupScript(
       emitStep({
         onProgress: args.onProgress,
         key: "setup-failed",
-        text: ".bb-env-setup.sh failed",
+        text: `${setupLabel} failed`,
         status: "failed",
         startedAt,
         metadata: { durationMs },
       });
       throw new WorkspaceError(
         "setup_script_failed",
-        `Setup script failed with exit code ${result.exitCode}: ${scriptPath}`,
+        `Setup script failed with exit code ${result.exitCode}: ${command.text}`,
       );
     }
 
     emitStep({
       onProgress: args.onProgress,
       key: "setup-completed",
-      text: ".bb-env-setup.sh finished",
+      text: `${setupLabel} finished`,
       status: "completed",
       startedAt,
       metadata: { durationMs },

@@ -199,6 +199,7 @@ export function toProvisionWorkspaceOptions(
         branchName: command.branchName,
         baseBranch: command.baseBranch,
         timeoutMs: command.setupTimeoutMs,
+        ...(command.setupScript ? { setupScript: command.setupScript } : {}),
         onProgress,
       };
     }
