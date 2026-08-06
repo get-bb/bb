@@ -548,6 +548,22 @@ database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
+### Provider retry plugin
+
+The builtin Provider retry plugin is disabled on fresh installations. Enable
+it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
+automatically waits for structured Codex and Claude Code subscription-window
+resets only when the failed turn was accepted, the provider has stopped its own
+retries, and no output or possible side effects were observed. Recovery sends
+one agent-only `Please continue.` turn on the existing provider conversation.
+
+Pending waits are coordinated by machine/provider subscription and live only
+in the current server/plugin process. Restarting bb, reloading the plugin, or
+disabling it clears the timers without changing the original failed thread.
+Inspect or control them with `bb provider-retry status`, `refresh`, `now`, and
+`cancel`; `bb thread retry` remains the guarded manual recovery path. Credit or
+spend-control exhaustion without a reset time is never retried automatically.
+
 ### Workflows plugin
 
 The builtin Workflows plugin is disabled on fresh installations. Enable it
