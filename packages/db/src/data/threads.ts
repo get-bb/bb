@@ -44,6 +44,7 @@ import { createThreadId } from "../ids.js";
 import {
   createOrderKeyBetween,
 } from "./order-keys.js";
+import { syncLocalOwnerReadStateCompatibilityRow } from "./thread-principal-read-state.js";
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
 
@@ -1663,6 +1664,15 @@ export function updateThread(
       threadId: updated.id,
       title: updated.title,
       titleFallback: updated.titleFallback,
+      updatedAt: now,
+    });
+  }
+  // Compatibility: callers that still mutate global lastReadAt via updateThread
+  // keep the local-owner principal row synchronized when present/useful.
+  if (updated && "lastReadAt" in input) {
+    syncLocalOwnerReadStateCompatibilityRow(db, {
+      threadId: updated.id,
+      lastReadAt: updated.lastReadAt,
       updatedAt: now,
     });
   }

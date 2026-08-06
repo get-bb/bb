@@ -159,6 +159,23 @@ export type {
 } from "./threads.js";
 
 export {
+  THREAD_READ_STATE_LOCAL_OWNER_PRINCIPAL_ID,
+  getThreadLastReadAtForPrincipal,
+  getThreadPrincipalReadStateRow,
+  isLocalOwnerThreadReadPrincipal,
+  listThreadLastReadAtByThreadIdsForPrincipal,
+  setThreadReadStateForPrincipal,
+  syncLocalOwnerReadStateCompatibilityRow,
+} from "./thread-principal-read-state.js";
+export type {
+  GetThreadLastReadAtForPrincipalArgs,
+  ListThreadLastReadAtByThreadIdsForPrincipalArgs,
+  SetThreadReadStateForPrincipalArgs,
+  SetThreadReadStateForPrincipalResult,
+  ThreadPrincipalReadStateRow,
+} from "./thread-principal-read-state.js";
+
+export {
   getAppKeybindingOverrides,
   getAppSettings,
   setAppKeybindingOverrides,

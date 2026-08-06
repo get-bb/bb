@@ -10,7 +10,7 @@ import {
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
-  updateThread,
+  setThreadReadStateForPrincipal,
   type StoredTurnRequestEventRow,
 } from "@bb/db";
 import {
@@ -364,11 +364,11 @@ function isThreadReadStateUpdate(
   return result !== null;
 }
 
-// A user-initiated turn request implies the user has eyes on the thread, so
-// `lastReadAt` advances alongside the event. Without this, the unread divider
-// would later be placed against a stale read floor: the user's own message
-// would land past the cutoff when the thread eventually
-// replies and re-arms the snapshot.
+// A user-initiated turn request implies the initiating ActorStamp Principal
+// has eyes on the thread, so only that Principal's read state advances
+// alongside the event. Identity always comes from the server-derived actor —
+// never from event payload principal fields. Without this, the unread divider
+// would later be placed against a stale read floor for that actor.
 function applyUserTurnReadForEvent(
   db: DbTransaction,
   args: AppendThreadEventArgs,
@@ -380,18 +380,19 @@ function applyUserTurnReadForEvent(
     return null;
   }
 
-  const previousThread = getThread(db, args.threadId);
-  const updatedThread = updateThread(db, noopNotifier, args.threadId, {
+  const result = setThreadReadStateForPrincipal(db, noopNotifier, {
+    threadId: args.threadId,
+    principalId: args.actor.principalId,
     lastReadAt: Date.now(),
   });
-  if (!previousThread || !updatedThread) {
+  if (!result) {
     return null;
   }
 
   return {
-    changed: updatedThread.lastReadAt !== previousThread.lastReadAt,
-    projectId: updatedThread.projectId,
-    threadId: updatedThread.id,
+    changed: result.changed,
+    projectId: result.projectId,
+    threadId: result.threadId,
   };
 }
 

@@ -250,6 +250,10 @@ function dropLateAdmissionTables(db: DbConnection): void {
  * table shape so remigrate can re-apply the rebuild.
  */
 function dropQueuedMessageAdmissionReferenceSchema(db: DbConnection): void {
+  // 0091 follows the 0090 queue rebuild. Any rewind that makes 0090
+  // re-applicable also makes 0091 re-applicable, so remove its additive table
+  // before Drizzle replays the forward chain.
+  db.$client.prepare("DROP TABLE IF EXISTS thread_principal_read_state").run();
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all()
@@ -316,7 +320,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   // tables (added by 0039/0041), app_theme (added by 0042), the thread section
   // schema (thread section columns + thread_sections table), thread tabs,
   // normalized plugin persistence tables, principal assertion replays, and thread
-  // command admissions.
+  // command admissions, and principal-scoped thread read state.
   dropLateAdmissionTables(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
@@ -1437,9 +1441,8 @@ describe("migrate", () => {
           >("SELECT group_with_next AS groupWithNext FROM queued_thread_messages WHERE id = ?")
           .get(groupedLead.id)?.groupWithNext,
       ).toBe(1);
-      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
-        queuedMessageAdmissionReferenceMigrationWhen,
-      );
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
+      expect(readTableNames(db)).toContain("thread_principal_read_state");
     } finally {
       closeConnection(db);
     }

@@ -2,11 +2,14 @@ import {
   getEnvironment,
   getLatestSessionForHost,
   getSessionById,
+  getThreadLastReadAtForPrincipal,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestSessionsForHosts,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestRowsByKeys,
+  listThreadLastReadAtByThreadIdsForPrincipal,
+  THREAD_READ_STATE_LOCAL_OWNER_PRINCIPAL_ID,
   type DbConnection,
   type HostDaemonSessionRow,
   type StoredEventRow,
@@ -58,6 +61,13 @@ interface ResolveThreadRuntimeStateFromLatestSessionArgs {
 
 interface ToThreadResponseFromThreadArgs {
   now?: number;
+  /**
+   * Authenticated request Principal id whose read state is projected into the
+   * public scalar `lastReadAt`. Internal/plugin callers without a request
+   * Principal must pass the local-owner id for global-column compatibility —
+   * never invent a signed human.
+   */
+  principalId: string;
   thread: Thread;
 }
 
@@ -67,16 +77,26 @@ interface ToThreadResponseWithHostArgs extends ToThreadResponseFromThreadArgs {
 
 interface ToThreadListEntryResponsesArgs {
   now?: number;
+  /**
+   * Authenticated request Principal id for batch read-state overlay.
+   * See `ToThreadResponseFromThreadArgs.principalId`.
+   */
+  principalId: string;
   threads: readonly ThreadWithPendingInteractionState[];
 }
 
 interface ToThreadListEntryResponseFromLatestSessionArgs {
   activity: ThreadActivityState;
   hostConnected: boolean;
+  lastReadAt: number | null;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
   thread: ThreadWithPendingInteractionState;
 }
+
+/** Explicit local-owner compatibility principal for non-request-backed paths. */
+export const LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID =
+  THREAD_READ_STATE_LOCAL_OWNER_PRINCIPAL_ID;
 
 interface PromptBannerActivityState extends Pick<
   ThreadActivityState,
@@ -140,7 +160,7 @@ function hasOpenDaemonSessionForHost(
   return session?.hostId === hostId && session.status === "active";
 }
 
-function toPublicThread(thread: Thread): Thread {
+function toPublicThread(thread: Thread, lastReadAt: number | null): Thread {
   return {
     id: thread.id,
     projectId: thread.projectId,
@@ -159,11 +179,22 @@ function toPublicThread(thread: Thread): Thread {
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
     deletedAt: thread.deletedAt,
-    lastReadAt: thread.lastReadAt,
+    lastReadAt,
     latestAttentionAt: thread.latestAttentionAt,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
+}
+
+function resolvePublicLastReadAt(
+  deps: ThreadRuntimeDisplayDeps,
+  args: { principalId: string; thread: Thread },
+): number | null {
+  return getThreadLastReadAtForPrincipal(deps.db, {
+    threadId: args.thread.id,
+    principalId: args.principalId,
+    globalLastReadAt: args.thread.lastReadAt,
+  });
 }
 
 export function resolveThreadRuntimeState(
@@ -235,7 +266,13 @@ export function toThreadResponseWithHost(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadResponseWithHostArgs,
 ): ThreadWithRuntime {
-  const thread = toPublicThread(args.thread);
+  const thread = toPublicThread(
+    args.thread,
+    resolvePublicLastReadAt(deps, {
+      principalId: args.principalId,
+      thread: args.thread,
+    }),
+  );
   return {
     ...thread,
     runtime: resolveThreadRuntimeState(deps, {
@@ -374,9 +411,20 @@ export function toThreadListEntryResponses(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadListEntryResponsesArgs,
 ): ThreadListEntry[] {
+  const threadIds = args.threads.map((thread) => thread.id);
+  const lastReadAtByThreadId = listThreadLastReadAtByThreadIdsForPrincipal(
+    deps.db,
+    {
+      principalId: args.principalId,
+      threadIds,
+      globalLastReadAtByThreadId: new Map(
+        args.threads.map((thread) => [thread.id, thread.lastReadAt]),
+      ),
+    },
+  );
   const backgroundTaskActivityByThreadId = new Map(
     listActiveBackgroundTaskCountsByThreadIds(deps.db, {
-      threadIds: args.threads.map((thread) => thread.id),
+      threadIds,
     }).map((activity) => [activity.threadId, activity]),
   );
   const promptBannerActivityByThreadId =
@@ -425,6 +473,7 @@ export function toThreadListEntryResponses(
       hostConnected:
         thread.environmentHostId !== null &&
         connectedActiveHostIds.has(thread.environmentHostId),
+      lastReadAt: lastReadAtByThreadId.get(thread.id) ?? null,
       latestSession:
         thread.environmentHostId === null
           ? null
@@ -438,7 +487,7 @@ export function toThreadListEntryResponses(
 function toThreadListEntryResponseFromLatestSession(
   args: ToThreadListEntryResponseFromLatestSessionArgs,
 ): ThreadListEntry {
-  const thread = toPublicThread(args.thread);
+  const thread = toPublicThread(args.thread, args.lastReadAt);
   return {
     ...thread,
     activity: args.activity,

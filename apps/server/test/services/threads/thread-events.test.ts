@@ -1,9 +1,15 @@
 import { eq } from "drizzle-orm";
-import { events, getThread, threads } from "@bb/db";
+import {
+  events,
+  getThread,
+  getThreadLastReadAtForPrincipal,
+  threads,
+} from "@bb/db";
 import { SYSTEM_ACTOR_STAMP, threadScope, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendClientTurnEvent,
+  appendClientTurnEventInTransaction,
   appendThreadEvent,
   appendThreadEventInTransaction,
   appendThreadEventsInTransaction,
@@ -280,9 +286,14 @@ describe("thread event appends", () => {
         .run();
       vi.spyOn(Date, "now").mockReturnValue(2_000);
       const notifyThreadSpy = vi.spyOn(harness.deps.hub, "notifyThread");
+      const localOwnerActor = {
+        principalId: "local-owner",
+        principalKind: "human" as const,
+        displayName: "Local Owner",
+      };
 
       appendClientTurnEvent(harness.deps, {
-        actor: SYSTEM_ACTOR_STAMP,
+        actor: localOwnerActor,
         threadId: thread.id,
         environmentId: environment.id,
         type: "client/turn/requested",
@@ -357,6 +368,132 @@ describe("thread event appends", () => {
         ["events-appended"],
         { eventTypes: ["client/turn/requested"] },
       );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("advances only the ActorStamp principal read state for a user turn", async () => {
+    const { environment, harness, thread } =
+      await createThreadEventTestContext();
+    try {
+      harness.db
+        .update(threads)
+        .set({
+          lastReadAt: 1_000,
+          latestAttentionAt: 1_000,
+          updatedAt: 1_000,
+        })
+        .where(eq(threads.id, thread.id))
+        .run();
+      vi.spyOn(Date, "now").mockReturnValue(2_000);
+
+      const alice = {
+        principalId: "user_alice",
+        principalKind: "human" as const,
+        displayName: "Alice",
+      };
+      appendClientTurnEvent(harness.deps, {
+        actor: alice,
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "client/turn/requested",
+        input: textInput("alice turn"),
+        target: { kind: "new-turn" },
+        execution: {
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        initiator: "user",
+        senderThreadId: null,
+        requestMethod: "turn/start",
+        source: "tell",
+      });
+
+      // Signed actor must not mutate global compatibility.
+      expect(getThread(harness.db, thread.id)?.lastReadAt).toBe(1_000);
+      expect(
+        getThreadLastReadAtForPrincipal(harness.db, {
+          threadId: thread.id,
+          principalId: alice.principalId,
+          globalLastReadAt: getThread(harness.db, thread.id)!.lastReadAt,
+        }),
+      ).toBe(2_000);
+      expect(
+        getThreadLastReadAtForPrincipal(harness.db, {
+          threadId: thread.id,
+          principalId: "user_bob",
+          globalLastReadAt: getThread(harness.db, thread.id)!.lastReadAt,
+        }),
+      ).toBeNull();
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("leaves read state unchanged when the event transaction fails", async () => {
+    const { environment, harness, thread } =
+      await createThreadEventTestContext();
+    try {
+      harness.db
+        .update(threads)
+        .set({
+          lastReadAt: 1_000,
+          latestAttentionAt: 1_000,
+          updatedAt: 1_000,
+        })
+        .where(eq(threads.id, thread.id))
+        .run();
+      vi.spyOn(Date, "now").mockReturnValue(2_000);
+      const alice = {
+        principalId: "user_alice",
+        principalKind: "human" as const,
+        displayName: "Alice",
+      };
+
+      expect(() =>
+        harness.db.transaction((tx) => {
+          appendClientTurnEventInTransaction(tx, {
+            actor: alice,
+            threadId: thread.id,
+            environmentId: environment.id,
+            type: "client/turn/requested",
+            input: textInput("rolled back"),
+            target: { kind: "new-turn" },
+            execution: {
+              model: "gpt-5",
+              reasoningLevel: "medium",
+              permissionMode: "full",
+              serviceTier: "default",
+              source: "client/turn/requested",
+            },
+            initiator: "user",
+            senderThreadId: null,
+            requestMethod: "turn/start",
+            source: "tell",
+          });
+          throw new Error("forced transaction failure");
+        }),
+      ).toThrow("forced transaction failure");
+
+      expect(getThread(harness.db, thread.id)?.lastReadAt).toBe(1_000);
+      expect(
+        getThreadLastReadAtForPrincipal(harness.db, {
+          threadId: thread.id,
+          principalId: alice.principalId,
+          globalLastReadAt: getThread(harness.db, thread.id)!.lastReadAt,
+        }),
+      ).toBeNull();
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toHaveLength(0);
     } finally {
       await harness.cleanup();
     }

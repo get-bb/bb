@@ -17,7 +17,10 @@ import {
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
-import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
+import {
+  LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID,
+  toThreadResponseFromThread,
+} from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
   loadPluginBrandingAssets,
@@ -698,9 +701,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function buildThreadDto(thread: Thread) {
+    // Plugins are not request-principal-backed; project local-owner global
+    // compatibility so stock plugin consumers keep scalar lastReadAt behavior.
     return toThreadResponseFromThread(
       { db: deps.db, hub: deps.hub },
-      { thread },
+      {
+        principalId: LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID,
+        thread,
+      },
     );
   }
 

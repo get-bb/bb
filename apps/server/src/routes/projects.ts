@@ -48,6 +48,7 @@ import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
+import { requirePrincipal } from "../request-context.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
 import {
@@ -196,16 +197,19 @@ function parseProjectListIncludes(
 function buildProjectsWithThreadsResponse(
   deps: AppDeps,
   options: ProjectListOptions,
+  principalId: string,
 ): ProjectWithThreadsResponse[] {
   return buildProjectsWithThreadsResponseFromRows(
     deps,
     listDiscoverableProjects(deps, options),
+    principalId,
   );
 }
 
 function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
   projectRows: ProjectResponseRow[],
+  principalId: string,
 ): ProjectWithThreadsResponse[] {
   const projects = buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);
@@ -214,6 +218,7 @@ function buildProjectsWithThreadsResponseFromRows(
     { archived: false, projectIds },
   );
   const threadResponses = toThreadListEntryResponses(deps, {
+    principalId,
     threads: threadRows,
   });
   const threadsByProjectId = new Map<
@@ -242,7 +247,7 @@ function buildProjectsWithThreadsResponseFromRows(
   }));
 }
 
-function buildSidebarBootstrapResponse(deps: AppDeps) {
+function buildSidebarBootstrapResponse(deps: AppDeps, principalId: string) {
   const personalProject = getPersonalProject(deps.db);
   if (!personalProject) {
     throw new ApiError(
@@ -254,6 +259,7 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
   const personalProjectResponse = buildProjectsWithThreadsResponseFromRows(
     deps,
     [personalProject],
+    principalId,
   )[0];
   if (!personalProjectResponse) {
     throw new ApiError(
@@ -267,6 +273,7 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
     projects: buildProjectsWithThreadsResponseFromRows(
       deps,
       listPublicProjects(deps.db),
+      principalId,
     ),
     personalProject: personalProjectResponse,
   };
@@ -335,7 +342,13 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       includePersonal: query.includePersonal === "true",
     };
     if (includes.has("threads")) {
-      return context.json(buildProjectsWithThreadsResponse(deps, options));
+      return context.json(
+        buildProjectsWithThreadsResponse(
+          deps,
+          options,
+          requirePrincipal(context).id,
+        ),
+      );
     }
     return context.json(
       buildProjectResponsesFromRows(
@@ -346,7 +359,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.sidebarBootstrap, (context) =>
-    context.json(buildSidebarBootstrapResponse(deps)),
+    context.json(
+      buildSidebarBootstrapResponse(deps, requirePrincipal(context).id),
+    ),
   );
 
   post(routes.create, async (context, payload) => {

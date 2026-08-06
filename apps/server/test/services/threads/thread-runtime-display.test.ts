@@ -30,6 +30,7 @@ import type {
 } from "@bb/domain";
 import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
 import {
+  LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID,
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
 } from "../../../src/services/threads/thread-runtime-display.js";
@@ -354,6 +355,7 @@ describe("thread runtime display", () => {
       { db, hub },
       {
         now,
+        principalId: LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID,
         threads: [
           createThreadListEntry({
             environmentHostId: hostId,
@@ -554,6 +556,7 @@ describe("thread runtime display", () => {
     const entries = toThreadListEntryResponses(
       { db, hub },
       {
+        principalId: LOCAL_OWNER_THREAD_READ_PRINCIPAL_ID,
         threads: [
           createThreadListEntry({
             environmentHostId: hostId,

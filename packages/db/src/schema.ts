@@ -1024,3 +1024,28 @@ export const principalAssertionReplays = sqliteTable(
     index("principal_assertion_replays_expires_at_idx").on(table.expiresAt),
   ],
 );
+
+/**
+ * Per-principal durable thread read state for multiplayer. The stock
+ * `local-owner` Principal continues to treat `threads.last_read_at` as the
+ * compatibility authority; signed principals project only their own row.
+ */
+export const threadPrincipalReadState = sqliteTable(
+  "thread_principal_read_state",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    principalId: text("principal_id").notNull(),
+    lastReadAt: integer("last_read_at"),
+    readCursor: text("read_cursor"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.threadId, table.principalId] }),
+    index("thread_principal_read_state_principal_updated_idx").on(
+      table.principalId,
+      table.updatedAt,
+    ),
+  ],
+);

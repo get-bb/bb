@@ -12,7 +12,8 @@ import {
   unarchiveThread,
   unpinThread,
   updateQueuedThreadMessage,
-  updateThread,
+  setThreadReadStateForPrincipal,
+  getThread,
   type ReorderPinnedThreadResult,
   type ReorderQueuedThreadMessageResult,
   type SetQueuedThreadMessageGroupBoundaryResult,
@@ -34,6 +35,7 @@ import {
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requireRequestActorStamp } from "../../services/actor-stamp.js";
+import { requirePrincipal } from "../../request-context.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   requestEnvironmentCleanup,
@@ -179,8 +181,10 @@ function toQueuedMessageGroupBoundaryResponse(
 
 function buildActivePinnedThreadRootListResponse(
   deps: AppDeps,
+  principalId: string,
 ): ThreadListResponse {
   return toThreadListEntryResponses(deps, {
+    principalId,
     threads: listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
       deps.db,
     ),
@@ -642,24 +646,30 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.pin, (context) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    const principalId = requirePrincipal(context).id;
     const thread = pinThread(deps.db, deps.hub, {
       threadId: publicThread.id,
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+    );
   });
 
   post(routes.unpin, (context) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    const principalId = requirePrincipal(context).id;
     const thread = unpinThread(deps.db, deps.hub, {
       threadId: publicThread.id,
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+    );
   });
 
   patch(routes.pinOrder, (context, payload) => {
@@ -673,7 +683,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         nextThreadId: payload.nextThreadId,
       }),
     );
-    return context.json(buildActivePinnedThreadRootListResponse(deps));
+    return context.json(
+      buildActivePinnedThreadRootListResponse(
+        deps,
+        requirePrincipal(context).id,
+      ),
+    );
   });
 
   post(routes.archive, async (context) => {
@@ -745,24 +760,42 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.read, (context) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    const thread = updateThread(deps.db, deps.hub, context.req.param("id"), {
+    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    const principalId = requirePrincipal(context).id;
+    const result = setThreadReadStateForPrincipal(deps.db, deps.hub, {
+      threadId: publicThread.id,
+      principalId,
       lastReadAt: Date.now(),
     });
+    if (!result) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    const thread = getThread(deps.db, publicThread.id);
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+    );
   });
 
   post(routes.unread, (context) => {
-    requirePublicThread(deps.db, context.req.param("id"));
-    const thread = updateThread(deps.db, deps.hub, context.req.param("id"), {
+    const publicThread = requirePublicThread(deps.db, context.req.param("id"));
+    const principalId = requirePrincipal(context).id;
+    const result = setThreadReadStateForPrincipal(deps.db, deps.hub, {
+      threadId: publicThread.id,
+      principalId,
       lastReadAt: null,
     });
+    if (!result) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    const thread = getThread(deps.db, publicThread.id);
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
-    return context.json(toThreadResponseFromThread(deps, { thread }));
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+    );
   });
 }

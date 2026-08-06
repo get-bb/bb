@@ -45,6 +45,7 @@ import {
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
 import { createThreadForkFromRequest } from "../../services/threads/thread-fork.js";
 import { requireRequestActorStamp } from "../../services/actor-stamp.js";
+import { requirePrincipal } from "../../request-context.js";
 import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
@@ -68,6 +69,7 @@ function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
 
 interface BuildThreadResponseArgs {
   includes: Set<ThreadIncludeOption>;
+  principalId: string;
   thread: Thread;
 }
 
@@ -75,11 +77,13 @@ type ThreadSearchResultGroupResponse = ThreadSearchResponse["active"];
 
 interface BuildThreadSearchGroupResponseArgs {
   group: DbThreadSearchResultGroup;
+  principalId: string;
 }
 
 interface BuildThreadSearchResponseArgs {
   active: DbThreadSearchResultGroup;
   archived: DbThreadSearchResultGroup;
+  principalId: string;
 }
 
 function resolveIncludedThreadEnvironment(
@@ -99,6 +103,7 @@ function buildThreadResponse(
   const response: ThreadWithIncludesResponse = toThreadResponseFromThread(
     deps,
     {
+      principalId: args.principalId,
       thread: args.thread,
     },
   );
@@ -162,6 +167,7 @@ function buildThreadSearchGroupResponse(
   args: BuildThreadSearchGroupResponseArgs,
 ): ThreadSearchResultGroupResponse {
   const threadEntries = toThreadListEntryResponses(deps, {
+    principalId: args.principalId,
     threads: args.group.results.map((result) => result.thread),
   });
   const threadEntriesById = new Map(
@@ -185,8 +191,14 @@ function buildThreadSearchResponse(
   args: BuildThreadSearchResponseArgs,
 ): ThreadSearchResponse {
   return {
-    active: buildThreadSearchGroupResponse(deps, { group: args.active }),
-    archived: buildThreadSearchGroupResponse(deps, { group: args.archived }),
+    active: buildThreadSearchGroupResponse(deps, {
+      group: args.active,
+      principalId: args.principalId,
+    }),
+    archived: buildThreadSearchGroupResponse(deps, {
+      group: args.archived,
+      principalId: args.principalId,
+    }),
   };
 }
 
@@ -236,7 +248,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(offset !== undefined ? { offset } : {}),
     });
     return context.json(
-      toThreadListEntryResponses(deps, { threads }) satisfies ThreadListEntry[],
+      toThreadListEntryResponses(deps, {
+        principalId: requirePrincipal(context).id,
+        threads,
+      }) satisfies ThreadListEntry[],
     );
   });
 
@@ -252,6 +267,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const limitPerGroup = parseSearchLimitPerGroup(query.limitPerGroup);
     return context.json(
       buildThreadSearchResponse(deps, {
+        principalId: requirePrincipal(context).id,
         ...searchThreadsWithPendingInteractionState(deps.db, {
           query: searchQuery,
           limitPerGroup,
@@ -264,6 +280,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (payload.sectionId) {
       requireThreadSection(deps, payload.sectionId);
     }
+    const principalId = requirePrincipal(context).id;
     const thread = await createThreadFromRequest(
       deps,
       {
@@ -272,16 +289,23 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       },
       { actor: requireRequestActorStamp(context) },
     );
-    return context.json(toThreadResponseFromThread(deps, { thread }), 201);
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+      201,
+    );
   });
 
   post(routes.fork, async (context, payload) => {
+    const principalId = requirePrincipal(context).id;
     const thread = await createThreadForkFromRequest(
       deps,
       payload,
       requireRequestActorStamp(context),
     );
-    return context.json(toThreadResponseFromThread(deps, { thread }), 201);
+    return context.json(
+      toThreadResponseFromThread(deps, { principalId, thread }),
+      201,
+    );
   });
 
   get(routes.get, (context, query) => {
@@ -289,6 +313,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildThreadResponse(deps, {
         includes: parseThreadIncludes(query),
+        principalId: requirePrincipal(context).id,
         thread,
       }),
     );
@@ -389,7 +414,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       });
     }
 
-    return context.json(toThreadResponseFromThread(deps, { thread: updated }));
+    return context.json(
+      toThreadResponseFromThread(deps, {
+        principalId: requirePrincipal(context).id,
+        thread: updated,
+      }),
+    );
   });
 
   del(routes.delete, async (context, payload) => {
