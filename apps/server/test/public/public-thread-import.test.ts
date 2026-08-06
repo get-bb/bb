@@ -68,6 +68,7 @@ describe("public thread import route", () => {
         providerId: "acp-omp",
         providerSessionId: "external-omp-session-1",
         hostId: host.id,
+        cwd: SOURCE_PATH,
       });
 
       expect(response.status).toBe(201);
@@ -90,6 +91,23 @@ describe("public thread import route", () => {
       expect(queued.command.sessionImport).toEqual({
         providerThreadId: "external-omp-session-1",
       });
+    });
+  });
+
+  it("refuses an import request with no cwd", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+
+      const response = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "external-omp-session-no-cwd",
+        hostId: host.id,
+      });
+
+      // cwd is a required assertion, not a defaulted field: bb cannot read
+      // the external session's actual working directory back from it.
+      expect(response.status).toBe(400);
     });
   });
 
@@ -123,6 +141,7 @@ describe("public thread import route", () => {
         providerId: "codex",
         providerSessionId: "external-codex-session",
         hostId: host.id,
+        cwd: SOURCE_PATH,
       });
 
       expect(response.status).toBe(400);
@@ -141,6 +160,7 @@ describe("public thread import route", () => {
         providerId: "acp-omp",
         providerSessionId,
         hostId: host.id,
+        cwd: SOURCE_PATH,
       });
       expect(firstResponse.status).toBe(201);
       const firstThread = threadResponseSchema.parse(
@@ -186,6 +206,7 @@ describe("public thread import route", () => {
         providerId: "acp-omp",
         providerSessionId,
         hostId: host.id,
+        cwd: SOURCE_PATH,
       });
 
       expect(secondResponse.status).toBe(409);
@@ -209,6 +230,7 @@ describe("public thread import route", () => {
         providerId: "acp-omp",
         providerSessionId: "external-omp-session-no-load",
         hostId: host.id,
+        cwd: SOURCE_PATH,
       });
 
       expect(response.status).toBe(400);

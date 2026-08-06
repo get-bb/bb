@@ -19,6 +19,7 @@ import type {
   ProviderAdapter,
   ProviderCommandPlan,
   ProviderInteractiveResponse,
+  ProviderTranslationContext,
 } from "../provider-adapter.js";
 import {
   flattenPromptInputGroups,
@@ -298,7 +299,10 @@ function toFakeEventMessage(
   };
 }
 
-function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
+function translateEventMessage(
+  event: ProviderRuntimeEvent,
+  context?: ProviderTranslationContext,
+): ThreadEvent[] {
   const message = toFakeEventMessage(event);
   if (!message) {
     return [];
@@ -312,6 +316,10 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
     typeof message.params.providerThreadId === "string"
       ? message.params.providerThreadId
       : "";
+  // Mirrors the ACP adapter's markHistoricalTurnFraming: replayed history
+  // from an imported session is stamped historical so neither the runtime
+  // nor the server applies turn-lifecycle side effects to it.
+  const historical = context?.historical === true;
 
   switch (message.method) {
     case "thread/identity":
@@ -330,6 +338,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
           threadId,
           providerThreadId,
           scope: turnScope(turnId),
+          ...(historical ? { historical } : {}),
         },
       ];
     case "turn/completed": {
@@ -344,6 +353,7 @@ function translateEventMessage(event: ProviderRuntimeEvent): ThreadEvent[] {
             status === "failed" || status === "interrupted"
               ? status
               : "completed",
+          ...(historical ? { historical } : {}),
         },
       ];
     }
@@ -496,8 +506,8 @@ export function createFakeAdapter(
       args: buildNodeScriptArgs(options.scriptPath ?? fakeProviderScriptPath),
       command: "node",
     },
-    translateEvent(event) {
-      return translateEventMessage(event);
+    translateEvent(event, context) {
+      return translateEventMessage(event, context);
     },
     translateAcceptedCommand() {
       return [];

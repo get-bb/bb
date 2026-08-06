@@ -10,7 +10,7 @@ interface ThreadImportCommandOptions {
   provider: string;
   providerSession: string;
   host?: string;
-  cwd?: string;
+  cwd: string;
   json?: boolean;
   permissionMode?: string;
   title?: string;
@@ -36,9 +36,10 @@ export function registerImportCommand(
       "External provider session ID to import",
     )
     .option("--host <id>", "Host the session lives on (default: primary host)")
-    .option(
+    .requiredOption(
       "--cwd <path>",
-      "Working directory the session ran in (default: the project source path)",
+      "Working directory the session ran in; must match the project source " +
+        "path or an existing workspace of the project",
     )
     .option("--title <title>", "Thread title")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
@@ -60,7 +61,7 @@ export function registerImportCommand(
             providerSessionId: opts.providerSession,
             origin: "cli",
             ...(opts.host === undefined ? {} : { hostId: opts.host }),
-            ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
+            cwd: opts.cwd,
             ...(opts.title === undefined ? {} : { title: opts.title }),
             ...(permissionMode === undefined ? {} : { permissionMode }),
             ...(visibility === undefined ? {} : { visibility }),

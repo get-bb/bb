@@ -28,11 +28,13 @@ type ThreadImportDeps = LoggedPendingInteractionWorkSessionDeps;
  * primitive; whether this specific agent binary actually implements it is
  * only knowable from its live `initialize` handshake
  * (agentCapabilities.loadSession). Ask the daemon for that live capability
- * (the same probe model discovery already performs) for known built-in ACP
- * agents so an agent that doesn't support it is refused here instead of
- * silently provisioning an environment and dispatching a doomed thread.start.
- * Best-effort: any probe failure or an agent bb has no static launch spec for
- * falls back to the static family check, with the bridge's own refusal
+ * (the same probe model discovery already performs, including for agents
+ * whose model list comes from a CLI command rather than ACP-native session
+ * discovery) for known built-in ACP agents so an agent that doesn't support
+ * it is refused here instead of silently provisioning an environment and
+ * dispatching a doomed thread.start. Best-effort: any probe failure or an
+ * agent bb has no static launch spec for falls back to the static family
+ * check, with the bridge's own refusal
  * (packages/agent-runtime/src/acp/bridge/bridge.ts) as the final backstop.
  */
 async function probeAcpSupportsSessionImport(
@@ -111,24 +113,24 @@ function requireUnboundProviderSession(
 }
 
 /**
- * Resolve the workspace path the imported session ran in. The external
- * session's cwd must match the project source path (the default) or an
- * existing workspace already attached to this project; anything else is
- * refused so the imported conversation cannot be bound to an unrelated
- * project.
+ * Validate the caller-asserted working directory the imported session ran
+ * in. bb cannot read this back from the external session itself (ACP has no
+ * such query), so `requestedCwd` is an assertion, not a verified fact: it
+ * must match the project source path or an existing workspace already
+ * attached to this project; anything else is refused so the imported
+ * conversation cannot be bound to an unrelated project. A mismatch the
+ * caller doesn't catch here may still surface later as an agent-side
+ * session/load failure (packages/agent-runtime/src/acp/bridge/bridge.ts).
  */
 function resolveImportCwd(
   deps: Pick<ThreadImportDeps, "db">,
   args: {
     hostId: string;
     projectId: string;
-    requestedCwd: string | undefined;
+    requestedCwd: string;
     sourcePath: string;
   },
 ): string {
-  if (args.requestedCwd === undefined) {
-    return args.sourcePath;
-  }
   const cwd = normalizeProjectPathInput(args.requestedCwd);
   if (cwd === normalizeProjectPathInput(args.sourcePath)) {
     return cwd;

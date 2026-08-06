@@ -1362,6 +1362,51 @@ describe("acp adapter historical replay translation", () => {
     ]);
   });
 
+  it("replaces a non-text replayed user message chunk with a placeholder instead of dropping it", () => {
+    const adapter = createAdapter();
+
+    adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "base64-data", mimeType: "image/png" },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+    const completedEvents = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: {
+          threadId: "thread-1",
+          stopReason: "end_turn",
+          historical: true,
+        },
+      },
+      HISTORICAL_CONTEXT,
+    );
+    expect(completedEvents).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "userMessage",
+          id: "acp-user-1",
+          content: [{ type: "text", text: "[unsupported content: image]" }],
+        },
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+        historical: true,
+      },
+    ]);
+  });
+
   it("keeps live user_message_chunk updates as unhandled provider events", () => {
     const adapter = createAdapter();
     startTurn(adapter);

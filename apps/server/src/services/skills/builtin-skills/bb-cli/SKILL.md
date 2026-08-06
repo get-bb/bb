@@ -162,13 +162,15 @@ message agents, or inspect projects, providers, and environments.
 isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   the source thread unless explicitly overridden.
 - Use `bb thread import --project <id> --provider <acp-provider>
-  --provider-session <external-session-id>` to import an existing external ACP
-  agent session (for example an `omp acp` session) as a bb thread. The agent
-  must support ACP `session/load`; bb replays the session's history into the
-  thread timeline and the thread lands idle, ready for follow-up turns. The
-  session's working directory must match the project source path — pass
-  `--cwd` when it ran in another workspace already attached to the project,
-  and `--host` when the session lives on a non-primary machine.
+  --provider-session <external-session-id> --cwd <path>` to import an
+  existing external ACP agent session (for example an `omp acp` session) as a
+  bb thread. The agent must support ACP `session/load`; bb replays the
+  session's history into the thread timeline and the thread lands idle, ready
+  for follow-up turns. `--cwd` is required: it is the caller's assertion of
+  the working directory the session ran in (bb has no way to read this back
+  from the external session), and must match the project source path or an
+  existing workspace already attached to the project — anything else is
+  refused. Pass `--host` when the session lives on a non-primary machine.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention. `bb thread list` excludes them by

@@ -1269,6 +1269,87 @@ rl.on("line", (line) => {
     });
   });
 
+  describe("session import historical replay bypass", () => {
+    it("persists historical replay without touching turn state, then runs a live turn normally", async () => {
+      const events: ThreadEvent[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (e) => events.push(e),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(scriptPath),
+      });
+
+      const { providerThreadId } = await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-import",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        sessionImport: { providerThreadId: "external-sess-1" },
+      });
+      expect(providerThreadId).toBe("external-sess-1");
+
+      await waitForThreadTurnStarted({
+        events,
+        threadId: "t-import",
+        turnId: "historical-turn-1",
+        runtime,
+      });
+
+      // (a) the replayed turn/started reached onEvent, stamped historical.
+      const turnStartedEvents = events.filter(
+        (e) => e.type === "turn/started" && e.threadId === "t-import",
+      );
+      expect(turnStartedEvents).toHaveLength(1);
+      expect(turnStartedEvents[0]).toMatchObject({ historical: true });
+
+      // (b) the replayed turn/started was never fed to turn state (no active
+      // turn), even though it was persisted for display above. A regression
+      // that lets historical events fall through to the live turn-observer
+      // path would report "historical-turn-1" as active here.
+      expect(runtime.getActiveTurnId("t-import")).toBeNull();
+
+      // (c) a subsequent live turn behaves normally: turn state, replay
+      // filtering, and completion all still work after the historical
+      // bypass, proving it didn't leave those state machines confused.
+      await runtime.runTurn({
+        clientRequestId: "creq_333333334i",
+        threadId: "t-import",
+        input: [promptTextInput({ text: "delay:500" })],
+        options: fullRuntimeOptions,
+      });
+
+      await waitForThreadTurnStarted({
+        events,
+        threadId: "t-import",
+        turnId: "turn-1",
+        runtime,
+      });
+      expect(runtime.getActiveTurnId("t-import")).toBe("turn-1");
+
+      await waitForThreadTurnCompleted({
+        events,
+        threadId: "t-import",
+        turnId: "turn-1",
+        runtime,
+      });
+      expect(runtime.getActiveTurnId("t-import")).toBeNull();
+
+      const liveTurnStartedEvents = events.filter(
+        (e) => e.type === "turn/started" && e.threadId === "t-import",
+      );
+      expect(liveTurnStartedEvents).toHaveLength(2);
+      expect(liveTurnStartedEvents[1]).not.toMatchObject({
+        historical: true,
+      });
+
+      await runtime.shutdown();
+    });
+  });
+
   describe("models", () => {
     it("lists models", async () => {
       const runtime = createAgentRuntimeWithAdapters({

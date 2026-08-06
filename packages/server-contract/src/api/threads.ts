@@ -216,11 +216,14 @@ export const importThreadRequestSchema = z
     /** Host the imported session lives on; defaults to the primary host. */
     hostId: z.string().min(1).optional(),
     /**
-     * Working directory the external session ran in. Must match the project
-     * source path (the default) or the path of an existing workspace already
-     * attached to the project; anything else is refused.
+     * Working directory the caller asserts the external session ran in. ACP
+     * has no way for bb to read this back from the session itself, so it is
+     * not independently verified — only checked against the project source
+     * path or the path of an existing workspace already attached to the
+     * project; anything else is refused. Required so an import can never
+     * silently bind to the wrong directory by omission.
      */
-    cwd: z.string().min(1).optional(),
+    cwd: z.string().min(1),
     title: z.string().min(1).optional(),
     permissionMode: permissionModeInputSchema.optional(),
     visibility: threadVisibilitySchema.default("visible"),

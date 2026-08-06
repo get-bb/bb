@@ -578,17 +578,20 @@ export function createAcpProviderAdapter(
     };
   }
 
-  function buildModelDiscoveryAgentCommand():
-    | {
-        command: string;
-        args: string[];
-        cwd?: string;
-        envVars?: Record<string, string>;
-      }
-    | undefined {
-    if (buildModelListCommand() !== undefined) {
-      return undefined;
-    }
+  /**
+   * The agent's own launch command, sent alongside `model/list` regardless of
+   * whether `buildModelListCommand` also supplies a CLI list command. When
+   * there's no CLI list, the bridge uses this to discover models from a
+   * throwaway ACP session; when there is one, the bridge still uses it for a
+   * bare `initialize` handshake to learn the live `session/load` capability
+   * (agentCapabilities.loadSession) that the CLI list can't report.
+   */
+  function buildModelDiscoveryAgentCommand(): {
+    command: string;
+    args: string[];
+    cwd?: string;
+    envVars?: Record<string, string>;
+  } {
     return {
       command: profile.agentCommand.command,
       args: [...profile.agentCommand.args],
@@ -1029,12 +1032,19 @@ export function createAcpProviderAdapter(
           });
         }
         const parsed = acpUserMessageChunkUpdateSchema.safeParse(update);
-        const text = parsed.success
-          ? extractAcpContentText(parsed.data.content)
-          : undefined;
-        if (text === undefined) {
+        if (!parsed.success) {
           return [];
         }
+        // `user_message_chunk` is classified as noise for visibility
+        // purposes (it's replay-only), so routing a non-text block through
+        // buildUnhandledProviderEvents like the live branch above would
+        // still resolve to a no-op here — falling back to a placeholder
+        // instead keeps the block from being silently and permanently lost
+        // (a later resume deliberately drops replay, so this is the only
+        // chance to persist it).
+        const text =
+          extractAcpContentText(parsed.data.content) ??
+          `[unsupported content: ${parsed.data.content.type}]`;
         ensureAcpTurnStarted({
           events,
           state,
@@ -1048,7 +1058,7 @@ export function createAcpProviderAdapter(
         // user_message_chunk. A messageId change closes the open message
         // instead of merging into it; agents that never send messageId keep
         // the prior concatenation behavior.
-        const messageId = parsed.success ? parsed.data.messageId : undefined;
+        const messageId = parsed.data.messageId;
         if (
           messageId !== undefined &&
           state.openUserMessageId !== undefined &&
@@ -1467,7 +1477,7 @@ export function createAcpProviderAdapter(
             method: "model/list",
             params: {
               ...(listCommand !== undefined ? { listCommand } : {}),
-              ...(agent !== undefined ? { agent } : {}),
+              agent,
               primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
               ...buildReasoningCliParam(),
               ...buildNativeReasoningParam(),

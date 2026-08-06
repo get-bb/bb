@@ -79,13 +79,13 @@ Forking:
 
 Importing:
 
-  bb thread import --project <id> --provider <acp-provider> --provider-session <external-session-id> [options]
+  bb thread import --project <id> --provider <acp-provider> --provider-session <external-session-id> --cwd <path> [options]
 
     --project <id>                 Project the imported thread belongs to (required)
     --provider <acp-provider>      ACP provider that owns the session, e.g. acp-omp (required)
     --provider-session <id>        External provider session ID to import (required)
+    --cwd <path>                   Working directory the session ran in (required)
     --host <id>                    Host the session lives on (default: primary host)
-    --cwd <path>                   Working directory the session ran in (default: the project source path)
     --title <title>                Thread title
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --visibility <visibility>      visible (default) or hidden
@@ -95,10 +95,13 @@ Importing:
   session) as a bb thread bound to the caller-supplied provider session ID.
   The agent must support ACP session/load; bb replays the session's full
   history into the thread timeline as read-only historical events (no live
-  turn runs) and the thread lands idle, ready for follow-up turns. The
-  session's working directory must match the project source path — pass
-  --cwd when it ran in another workspace already attached to the project.
-  Importing a provider session another live thread already binds is refused.
+  turn runs) and the thread lands idle, ready for follow-up turns. --cwd is
+  required: it is your assertion of the working directory the session ran
+  in (bb cannot read this back from the external session itself) and must
+  match the project source path or an existing workspace already attached
+  to the project — anything else is refused. A cwd the agent itself detects
+  as wrong surfaces as a thread start failure. Importing a provider session
+  another live thread already binds is refused.
 
 Listing:
 

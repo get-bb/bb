@@ -855,6 +855,90 @@ async function loadSessionDiscoveredModels(
 }
 
 /**
+ * Populate the session/load capability cache with a bare `initialize`
+ * handshake, no `session/new`. For agents whose model list comes from a CLI
+ * command (loadAgentModelCatalog), the full session-discovery flow in
+ * loadSessionDiscoveredModels is never run (the catalog already has the
+ * models), so without this the capability cache never gets populated for
+ * them and model/list silently omits supportsSessionImport forever. A no-op
+ * when the cache already has a fresh entry for this exact agent launch.
+ */
+async function probeAcpAgentSupportsSessionImportOnly(
+  agent: AcpBridgeAgentCommand,
+): Promise<void> {
+  const key = JSON.stringify(agent);
+  if (
+    cachedAcpAgentSupportsSessionImport?.key === key &&
+    Date.now() - cachedAcpAgentSupportsSessionImport.fetchedAt <
+      SESSION_MODEL_DISCOVERY_TTL_MS
+  ) {
+    return;
+  }
+  const connection = createAcpAgentConnection({
+    command: agent.command,
+    args: agent.args,
+    cwd: agent.cwd ?? process.cwd(),
+    env: {
+      ...withoutBridgeRuntimeEnv(process.env),
+      ...(agent.envVars ?? {}),
+    },
+    onNotification: () => {},
+    onRequest: (_method, _params, responder) => {
+      responder.error(-32601, "ACP model discovery does not support requests");
+    },
+    onExit: () => {},
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      connection.kill();
+      reject(
+        new Error(
+          `ACP session/load capability probe timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, MODEL_LIST_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([
+      connection
+        .request({
+          method: "initialize",
+          params: {
+            protocolVersion: ACP_PROTOCOL_VERSION,
+            clientInfo: { name: "bb", version: "1.0.0" },
+            clientCapabilities: {
+              fs: { readTextFile: false, writeTextFile: false },
+              terminal: false,
+            },
+          },
+          resultSchema: acpInitializeResultSchema,
+        })
+        .then((initializeResult) => {
+          cachedAcpAgentSupportsSessionImport = {
+            key,
+            supportsSessionImport:
+              initializeResult.agentCapabilities?.loadSession ?? false,
+            fetchedAt: Date.now(),
+          };
+        }),
+      timeoutReached,
+    ]);
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: session/load capability probe for "${agent.command}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    connection.kill();
+  }
+}
+
+/**
  * The loadSession capability learned from the most recent `initialize`
  * handshake for this exact agent launch, if it's still within the model
  * discovery TTL. Undefined when no live handshake has happened yet (or it's
@@ -1629,6 +1713,15 @@ async function startAgentSession(
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
     if (request.kind !== "start" && supportsLoadSession) {
+      // Checked before the session/load request goes out (the reused id is
+      // already known from params): a session this bb thread will not end
+      // up bound to must not emit history/turn framing for it first. The
+      // outer catch below closes any historical replay that still slips
+      // through a race on the re-check after session/load resolves.
+      assertProviderSessionUnboundElsewhere(
+        bbThreadId,
+        request.params.providerThreadId,
+      );
       session.loading = true;
       try {
         const configState = await connection.request({
@@ -1645,18 +1738,6 @@ async function startAgentSession(
         sessionId = request.params.providerThreadId;
       } catch (error) {
         if (request.kind === "import") {
-          if (session.historicalReplayForwarded) {
-            // The agent replayed (and this forwarded) at least one
-            // session/update before session/load failed; the adapter has
-            // already opened a synthetic historical turn from it, so close
-            // that turn before reporting the failure or it stays open
-            // forever.
-            sendNotification(ACP_TURN_COMPLETED_METHOD, {
-              threadId: bbThreadId,
-              stopReason: "cancelled",
-              historical: true,
-            });
-          }
           throw new Error(
             `ACP agent "${agentLabel}" failed to load session ` +
               `"${request.params.providerThreadId}": ` +
@@ -1667,9 +1748,8 @@ async function startAgentSession(
       } finally {
         session.loading = false;
       }
-      // Checked before any notification goes out for this (reused) provider
-      // session id: a session this bb thread will not end up bound to must
-      // not emit history/turn framing for it first.
+      // Re-checked here for races: another import could have bound this
+      // provider session id while session/load was in flight.
       if (sessionId !== undefined) {
         assertProviderSessionUnboundElsewhere(bbThreadId, sessionId);
       }
@@ -1730,6 +1810,16 @@ async function startAgentSession(
     });
     return session;
   } catch (error) {
+    if (session.historicalReplayForwarded) {
+      // A replay was already forwarded (and the adapter opened a synthetic
+      // historical turn from it) before this failure; close that turn here
+      // regardless of which throw triggered it, or it stays open forever.
+      sendNotification(ACP_TURN_COMPLETED_METHOD, {
+        threadId: bbThreadId,
+        stopReason: "cancelled",
+        historical: true,
+      });
+    }
     session.stopping = true;
     connection.kill();
     removeSession(session);
@@ -1905,20 +1995,35 @@ async function handleRequest(
       return;
 
     case "model/list": {
-      const catalog = request.params.listCommand
-        ? await loadAgentModelCatalog(request.params.listCommand)
-        : null;
+      // Run concurrently: the CLI list exec and the ACP capability probe are
+      // independent. Without the probe, an agent with a CLI model list would
+      // never reach the session-discovery code below (the catalog already
+      // satisfies the request) and so would never get its live
+      // supportsSessionImport learned.
+      const [catalog] = await Promise.all([
+        request.params.listCommand
+          ? loadAgentModelCatalog(request.params.listCommand)
+          : Promise.resolve(null),
+        request.params.listCommand && request.params.agent
+          ? probeAcpAgentSupportsSessionImportOnly(request.params.agent)
+          : Promise.resolve(),
+      ]);
       if (catalog) {
-        sendResult(
-          request.id,
-          splitPrimaryModels(
+        const supportsSessionImport = request.params.agent
+          ? getCachedAcpAgentSupportsSessionImport(request.params.agent)
+          : undefined;
+        sendResult(request.id, {
+          ...splitPrimaryModels(
             applyConfiguredReasoningToModels(catalog.models, {
               reasoningCli: request.params.reasoningCli,
               nativeReasoning: request.params.nativeReasoning,
             }),
             request.params.primaryModels,
           ),
-        );
+          ...(supportsSessionImport !== undefined
+            ? { supportsSessionImport }
+            : {}),
+        });
         return;
       }
       const sessionDiscoveredModels =

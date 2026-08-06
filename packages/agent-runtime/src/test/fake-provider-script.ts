@@ -421,6 +421,44 @@ function startOrResumeThread(
   }
 }
 
+function importThread(message: JsonRecord): void {
+  const params = getParams(message);
+  const threadId = getString(params.threadId, "unknown");
+  // Unlike thread/start or thread/resume, the caller already owns the
+  // provider session id being imported, so it's an input, not a fresh id.
+  const providerThreadId =
+    getString(params.providerThreadId) || `imported-${nextProviderThreadId++}`;
+
+  threads.set(threadId, {
+    activeTurn: null,
+    providerThreadId,
+    turnCount: 0,
+    userMessageCount: 0,
+  });
+
+  send({
+    jsonrpc: "2.0",
+    id: getJsonRpcId(message.id) ?? 0,
+    result: { providerThreadId },
+  });
+
+  // Replay a bit of imported history as a historical turn/started, mirroring
+  // real ACP agents (e.g. omp) that replay session/update notifications
+  // before session/load answers. Deliberately left open (no matching
+  // turn/completed) so tests can assert the runtime's historical bypass
+  // never lets a replayed turn register as active.
+  send({
+    jsonrpc: "2.0",
+    method: "turn/started",
+    params: {
+      threadId,
+      turnId: "historical-turn-1",
+      providerThreadId,
+      historical: true,
+    },
+  });
+}
+
 function handleToolResult(message: JsonRecord): boolean {
   const messageId = getJsonRpcId(message.id);
   if (messageId === undefined || typeof message.method === "string") {
@@ -530,6 +568,11 @@ function handleMessage(message: JsonRecord): void {
 
   if (method === "thread/resume") {
     startOrResumeThread(message, "resume");
+    return;
+  }
+
+  if (method === "thread/import") {
+    importThread(message);
     return;
   }
 

@@ -436,6 +436,30 @@ describe("acp bridge", () => {
     });
   });
 
+  it("reports the live loadSession handshake capability for a CLI model-list agent too", async () => {
+    // An agent with a CLI model list (e.g. acp-grok) never runs the
+    // session-discovery path below (the catalog already satisfies the
+    // request), so the capability must be probed separately or it never gets
+    // learned for these agents.
+    const modelListId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: ["-e", 'console.log("cli-model - CLI Model")'],
+      },
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [{ id: "cli-model", displayName: "CLI Model", isDefault: true }],
+      supportsSessionImport: true,
+    });
+  });
+
   it("discovers ACP-native models from session models state", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {
@@ -1845,12 +1869,29 @@ describe("acp bridge", () => {
       permissionMode: "full",
       permissionEscalation: null,
       workspaceWriteRoots: [workspaceDir],
-      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+      // A replaying agent must never get the chance to forward history for a
+      // provider session id this second import is rejected for: the dup
+      // check runs before session/load, not after.
+      envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_REPLAY_UPDATES: "1" },
     });
     const secondResponse = await waitForResponse(secondImportId);
     expect(secondResponse.error?.message).toMatch(
       /already bound to bb thread "thread-import-dup-1"/,
     );
+    // No history was replayed and no historical turn was opened (let alone
+    // left open) for the rejected thread.
+    const rejectedUpdates = notifications("acp/update").filter(
+      (message) =>
+        (message.params as { threadId?: string } | undefined)?.threadId ===
+        "thread-import-dup-2",
+    );
+    expect(rejectedUpdates).toHaveLength(0);
+    const rejectedCompletions = notifications("acp/turn/completed").filter(
+      (message) =>
+        (message.params as { threadId?: string } | undefined)?.threadId ===
+        "thread-import-dup-2",
+    );
+    expect(rejectedCompletions).toHaveLength(0);
     // The first thread's binding is untouched: a turn/start against the
     // shared provider session id still routes to the first bb thread.
     const turnId = sendRequest("turn/start", {
