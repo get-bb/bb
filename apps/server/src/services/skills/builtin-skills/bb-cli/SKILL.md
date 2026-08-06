@@ -72,9 +72,13 @@ message agents, or inspect projects, providers, and environments.
   exposes raw provider events that bb does not yet understand in packaged
   builds. Development builds always show those diagnostic rows. Update it with
   `bb settings general showUnhandledProviderEvents <true|false>`.
-- The `steerActiveThreadOnEnter` General preference defaults to false. Enable
-  it to make Enter steer a running thread and Command+Enter queue a
-  follow-up; when disabled, those actions are reversed. Update it with
+- The `steerActiveThreadOnEnter` General preference defaults to false. Outside
+  an open composer typeahead menu, enable it to make Enter steer a running
+  thread and Command+Enter queue a follow-up; when disabled, those actions are
+  reversed. Shift+Enter inserts a newline, while zen mode also makes
+  unmodified Enter insert one. On coarse-pointer touch devices, the software
+  keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
+  shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while

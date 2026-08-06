@@ -46,8 +46,13 @@ every window and client sees the same value.
 
 - `steerActiveThreadOnEnter` defaults to false. Set it with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
-- When disabled, Enter queues a follow-up and Command+Enter steers the
-  active turn. When enabled, those actions are reversed.
+- Outside an open composer typeahead menu, disabling it makes Enter queue a
+  follow-up and Command+Enter steer the active turn. When enabled, those
+  actions are reversed.
+- Shift+Enter inserts a newline. Zen mode also makes unmodified Enter insert a
+  newline. On coarse-pointer touch devices, the software-keyboard Return path
+  stays a newline; iPadOS WebKit preserves the Enter shortcuts for a connected
+  Magic Keyboard.
 
 ## New onboarding
 

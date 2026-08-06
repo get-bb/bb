@@ -1051,6 +1051,38 @@ function focusEditorAtEnd(editor: Editor): void {
   editor.view.focus();
 }
 
+const SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS = 500;
+
+function isIPadOSWebKit(): boolean {
+  if (typeof navigator === "undefined") return false;
+
+  const isAppleWebKit =
+    /Apple Computer/u.test(navigator.vendor) &&
+    /\bAppleWebKit\//u.test(navigator.userAgent);
+  const isIPad =
+    navigator.platform === "iPad" ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 2);
+  return isAppleWebKit && isIPad;
+}
+
+/**
+ * Holds the keydown events that the iPadOS hook refused as an IME candidate
+ * confirmation, so the normal key handler refuses them too. The set is keyed on
+ * the event object, so entries disappear with the events themselves.
+ */
+function usePostCompositionKeyDownEvents(): WeakSet<KeyboardEvent> {
+  const ref = useRef<WeakSet<KeyboardEvent> | null>(null);
+  ref.current ??= new WeakSet<KeyboardEvent>();
+  return ref.current;
+}
+
+function isIPadHardwareEnterCandidate(event: KeyboardEvent): boolean {
+  return (
+    event.key === "Enter" &&
+    (event.code === "Enter" || event.code === "NumpadEnter")
+  );
+}
+
 export function PromptBoxInternal({
   id,
   value,
@@ -1118,7 +1150,11 @@ export function PromptBoxInternal({
     resetOnSubmit: resetZenModeOnSubmit = false,
   } = zenMode;
   const isPointerCoarse = usePointerCoarse();
-  const canSubmitWithEnterKey = !isPointerCoarse;
+  // Legacy iPads report an iPad platform; current iPadOS WebKit uses a
+  // desktop-like MacIntel platform with touch points distinguishing it from
+  // macOS. The value is stable for the lifetime of the page, so it does not
+  // need another media-query listener.
+  const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
@@ -1155,9 +1191,11 @@ export function PromptBoxInternal({
   const skipEditorChangeRef = useRef(false);
   const editorValueKeyRef = useRef("");
   const triggerKeyRef = useRef("");
-  const handleEditorKeyDownRef = useRef<(event: KeyboardEvent) => boolean>(
-    () => false,
-  );
+  const handleEditorKeyDownRef = useRef<
+    (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
+  >(() => false);
+  const compositionEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const postCompositionKeyDownEvents = usePostCompositionKeyDownEvents();
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   // The TipTap editor is created once; its `onUpdate`/`onSelectionUpdate`/click
   // handlers close over the first `syncTriggerState`. `syncTriggerState`
@@ -1506,6 +1544,56 @@ export function PromptBoxInternal({
               removeEmptyBlockquotes(currentEditor);
             });
             return false;
+          },
+          compositionend: (_view, event) => {
+            // ProseMirror records this timestamp only while it considers
+            // itself composing. Record it on the same condition, or a
+            // `compositionend` outside a composition would suppress a real
+            // Magic Keyboard Enter for the next 500 ms.
+            if (!_view.composing) return false;
+            compositionEndedAtRef.current = event.timeStamp;
+            return false;
+          },
+          keydown: (_view, event) => {
+            if (
+              !_view.editable ||
+              !isIPadOSWebKitDevice ||
+              !isIPadHardwareEnterCandidate(event) ||
+              _view.composing ||
+              event.isComposing ||
+              event.keyCode === 229
+            ) {
+              return false;
+            }
+
+            // Match ProseMirror's Safari compositionend -> keydown safeguard.
+            // This custom DOM hook runs before ProseMirror's own keydown
+            // handler, so bypassing it here would otherwise submit an IME
+            // candidate confirmation.
+            if (
+              Math.abs(event.timeStamp - compositionEndedAtRef.current) <
+              SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS
+            ) {
+              compositionEndedAtRef.current = Number.NEGATIVE_INFINITY;
+              postCompositionKeyDownEvents.add(event);
+              return false;
+            }
+
+            // ProseMirror delays iOS Enter handling and later passes a
+            // synthetic Enter to handleKeyDown so the software keyboard can
+            // finish its DOM mutation. Only on the affected iPadOS WebKit path
+            // do we use the original event's physical code to handle a Magic
+            // Keyboard Enter before that fallback. Other platforms, including
+            // Android and coarse-pointer hybrids, stay entirely on
+            // ProseMirror's normal path.
+            //
+            // A handled event stops ProseMirror's own `keydown` handler, which
+            // is also where ProseMirror flushes its DOM observer. That is safe
+            // here: every deferred-flush path in ProseMirror needs either IE11
+            // or an active composition, and the composition check above already
+            // excludes the second one. So the observer has flushed already and
+            // the submit reads a current document.
+            return handleEditorKeyDownRef.current(event, true);
           },
           click: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
@@ -2486,7 +2574,17 @@ export function PromptBoxInternal({
   );
 
   const handleEditorKeyDown = useCallback(
-    (event: KeyboardEvent): boolean => {
+    (event: KeyboardEvent, isOriginalIPadHardwareEnter = false): boolean => {
+      // An IME keystroke must reach neither an app chord nor a submit. The
+      // WeakSet carries the iPadOS hook's decision, because that hook runs
+      // before ProseMirror's own post-composition safeguard.
+      if (
+        event.isComposing ||
+        event.keyCode === 229 ||
+        postCompositionKeyDownEvents.has(event)
+      ) {
+        return false;
+      }
       // App keybindings win over the editor's own keymap. TipTap cancels the
       // chords it knows (Mod+Shift+B for a blockquote, Mod+B, Mod+Shift+7/8 for
       // lists), and the window listener skips a canceled event — so without
@@ -2494,6 +2592,8 @@ export function PromptBoxInternal({
       if (dispatchAppCommandKey(event)) {
         return true;
       }
+      const canSubmitWithEnterKey =
+        !isPointerCoarse || isOriginalIPadHardwareEnter;
       const currentEditor = editorRef.current;
       const selection = currentEditor?.state.selection;
       const hasCollapsedSelection = Boolean(selection?.empty);
@@ -2724,17 +2824,18 @@ export function PromptBoxInternal({
       applyHistoryDraft,
       applyTrigger,
       canLoadMoreCommands,
-      canSubmitWithEnterKey,
       commandError,
       commandHasMore,
       commandIsLoadingMore,
       dispatchAppCommandKey,
       history,
+      isPointerCoarse,
       isZenMode,
       loadMoreCommands,
       onCommandQueryChange,
       onMentionQueryChange,
       onModifierSubmit,
+      postCompositionKeyDownEvents,
       resetHistorySession,
       selectedIndex,
       setPendingCommandSubmit,
@@ -2745,7 +2846,7 @@ export function PromptBoxInternal({
     ],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     handleEditorKeyDownRef.current = handleEditorKeyDown;
   }, [handleEditorKeyDown]);
 
