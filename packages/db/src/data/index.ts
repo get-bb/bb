@@ -269,6 +269,7 @@ export {
   createEnvironment,
   getEnvironment,
   findEnvironmentByHostPath,
+  listActiveManagedWorktreeNames,
   listEnvironments,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,

@@ -36,6 +36,7 @@ import {
   requestThreadProvision,
 } from "../../src/services/threads/thread-provisioning.js";
 import { generateThreadMetadataWithOutcome } from "../../src/services/threads/title-generation.js";
+import { CAPITAL_CITY_WORKTREE_NAMES } from "../../src/services/threads/worktree-paths.js";
 
 const piAiMocks = vi.hoisted(() => ({
   complete: vi.fn(),
@@ -140,6 +141,15 @@ describe("generated managed branch names", () => {
         requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
       expect(managedCommand.command.branchName).toBe(
         `bb/improve-branch-names-${thread.id}`,
+      );
+      const environment = getEnvironment(
+        harness.db,
+        managedCommand.command.environmentId,
+      );
+      expect(environment?.name).toBeTruthy();
+      expect(CAPITAL_CITY_WORKTREE_NAMES).toContain(environment?.name);
+      expect(managedCommand.command.targetPath).toContain(
+        `/worktrees/${environment?.name}/`,
       );
       expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
     });

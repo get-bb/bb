@@ -3,6 +3,7 @@ import {
   getEnvironment,
   getProjectWorkspaceSettings,
   getThread,
+  listActiveManagedWorktreeNames,
   type CreateEnvironmentInput,
   type DbNotifier,
   type DbTransaction,
@@ -77,6 +78,7 @@ import {
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import {
+  allocateCapitalCityWorktreeName,
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
 } from "./worktree-paths.js";
@@ -187,6 +189,20 @@ interface ThreadProvisioningResult {
   context: ThreadProvisionContext;
   environment: Environment;
   provisionRequest?: EnvironmentProvisionRequest | null;
+}
+
+function allocateManagedWorktreeIdentity(
+  db: DbTransaction,
+  input: CreateEnvironmentInput,
+  threadId: string,
+): CreateEnvironmentInput {
+  if (input.workspaceProvisionType !== "managed-worktree") return input;
+
+  const usedNames = listActiveManagedWorktreeNames(db, input.hostId);
+  return {
+    ...input,
+    name: allocateCapitalCityWorktreeName({ seed: threadId, usedNames }),
+  };
 }
 
 interface ResolveEnvironmentCreationPlanArgs {
@@ -642,7 +658,11 @@ function createProvisioningEnvironment(
       const environment = createEnvironment(
         tx,
         deps.hub,
-        args.environmentInput,
+        allocateManagedWorktreeIdentity(
+          tx,
+          args.environmentInput,
+          args.thread.id,
+        ),
       );
       if (args.thread.environmentId !== environment.id) {
         updateThread(tx, deps.hub, args.thread.id, {
@@ -706,7 +726,11 @@ function createPreparedProvisioningEnvironment(
       }
 
       const environment = createEnvironment(tx, deps.hub, {
-        ...args.environmentInput,
+        ...allocateManagedWorktreeIdentity(
+          tx,
+          args.environmentInput,
+          args.thread.id,
+        ),
         status: "ready",
       });
       if (args.thread.environmentId !== environment.id) {
@@ -857,8 +881,8 @@ function buildManagedEnvironmentPlan(
         sourcePath: args.sourcePath,
         targetPath: resolveManagedTargetPath({
           dataDir: args.dataDir,
-          environmentId: environment.id,
           sourcePath: args.sourcePath,
+          worktreeName: environment.name ?? environment.id,
         }),
         workspaceProvisionType: args.workspaceProvisionType,
         setupTimeoutMs: SETUP_TIMEOUT_MS,

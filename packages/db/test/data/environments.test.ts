@@ -5,6 +5,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   createEnvironment,
+  listActiveManagedWorktreeNames,
   listRetiredLoadedEnvironmentIdsOnHost,
   recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
@@ -38,6 +39,40 @@ function createNotifierSpy(): DbNotifier {
 }
 
 describe("environments", () => {
+  it("lists active managed worktree names across projects on one host", () => {
+    const { db, host, project } = setup();
+    const { project: secondProject } = createProject(db, noopNotifier, {
+      name: "second-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/second" },
+    });
+    createEnvironment(db, noopNotifier, {
+      name: "canberra",
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      status: "ready",
+    });
+    createEnvironment(db, noopNotifier, {
+      name: "wellington",
+      projectId: secondProject.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      status: "provisioning",
+    });
+    createEnvironment(db, noopNotifier, {
+      name: "retired-city",
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      status: "destroyed",
+    });
+
+    expect(listActiveManagedWorktreeNames(db, host.id).sort()).toEqual([
+      "canberra",
+      "wellington",
+    ]);
+  });
+
   it("emits metadata-changed when merge base branch changes", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {

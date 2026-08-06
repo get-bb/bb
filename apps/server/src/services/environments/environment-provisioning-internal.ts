@@ -1088,8 +1088,8 @@ export async function dispatchManagedEnvironmentReprovision(
             args.environment.path ??
             resolveManagedTargetPath({
               dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
               sourcePath: source.path,
+              worktreeName: args.environment.name ?? args.environment.id,
             });
           const branchName =
             args.environment.branchName ??
