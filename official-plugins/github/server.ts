@@ -611,12 +611,19 @@ export default async function plugin(bb: BbPluginApi) {
   // something to show without a live gh call per view.
   async function syncRepo(repo: string): Promise<CachedItem[]> {
     const fields = "number,title,state,author,labels,assignees,url,body,updatedAt";
+    // A repo with GitHub Issues disabled must not abort the whole sync —
+    // PRs still exist and should be cached.
+    const ghIssuesTolerant = (args: string[]) =>
+      gh(args).catch((error: unknown) => {
+        if (String(error).includes("disabled issues")) return "[]";
+        throw error;
+      });
     const [openIssues, closedIssues, openPrs, closedPrs] = await Promise.all([
-      gh([
+      ghIssuesTolerant([
         "issue", "list", "-R", repo, "--state", "open",
         "--limit", String(ISSUE_PAGE), "--json", fields,
       ]),
-      gh([
+      ghIssuesTolerant([
         "issue", "list", "-R", repo, "--state", "closed",
         "--limit", String(CLOSED_ISSUE_PAGE), "--json", fields,
       ]),
