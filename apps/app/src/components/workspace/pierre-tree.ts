@@ -21,6 +21,7 @@ export interface ProgressiveTreeAdapter {
   dispose: () => void;
   markDirectoryResolved: (path: string) => void;
   releaseDirectoryRequest: (path: string) => void;
+  reset: () => void;
 }
 
 function asDirectoryPath(path: string): string {
@@ -67,6 +68,11 @@ export function createProgressiveTreeAdapter(
     releaseDirectoryRequest: (path) => {
       requestedDirectories.delete(asDirectoryPath(path));
       inspectExpandedDirectories();
+    },
+    reset: () => {
+      knownPaths.clear();
+      requestedDirectories.clear();
+      resolvedDirectories.clear();
     },
   };
 }

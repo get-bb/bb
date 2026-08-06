@@ -76,4 +76,19 @@ describe("createProgressiveTreeAdapter", () => {
     expect(requestChildren).toHaveBeenCalledOnce();
     expect(requestChildren).toHaveBeenCalledWith("src/");
   });
+
+  it("can reset loaded and requested state for a full refresh", () => {
+    const { model, publish } = createModel();
+    const requestChildren = vi.fn();
+    const adapter = createProgressiveTreeAdapter(model, requestChildren);
+    adapter.appendPaths(["src/"]);
+    adapter.markDirectoryResolved("src/");
+
+    adapter.reset();
+    adapter.appendPaths(["src/"]);
+    publish([{ isExpanded: true, kind: "directory", path: "src/" }]);
+
+    expect(model.batch).toHaveBeenCalledTimes(2);
+    expect(requestChildren).toHaveBeenCalledWith("src/");
+  });
 });
