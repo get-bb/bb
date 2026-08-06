@@ -564,10 +564,15 @@ export function AppLayout({ children }: AppLayoutProps) {
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);
   const animationFrameRef = useRef<number | null>(null);
+  // Plugin panel routes hand their header to the split workspace, which draws a
+  // pane header per pane. Compact viewports render the route as a single page
+  // surface with no pane chrome (see SplitThreadArea), so the shared header must
+  // come back — it reserves the sidebar trigger footprint, and without it the
+  // trigger overlays the panel body.
   const showHeader =
     !isThreadView &&
     !isRootView &&
-    !(threadSplitsEnabled && pluginPanelMatch !== null);
+    !(threadSplitsEnabled && !isCompactViewport && pluginPanelMatch !== null);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
