@@ -42,6 +42,8 @@ const claudePermissionRuleValueSchema = z.object({
   ruleContent: z.string().optional(),
 });
 
+// Updates bb sends back to Claude. bb never writes a user's settings files, so
+// an outgoing update is always scoped to the session.
 export const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("addRules"),
@@ -57,6 +59,40 @@ export const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
 ]);
 export type ClaudePermissionUpdate = z.infer<
   typeof claudePermissionUpdateSchema
+>;
+
+// Suggestions Claude sends to bb. Claude picks the destination it would use for
+// its own prompt, and that is frequently not "session": the sandbox network
+// prompt suggests a "localSettings" rule. The destination describes where Claude
+// would persist the grant, not what the grant covers, so bb accepts every
+// destination here and re-scopes its answer to the session above. Dropping a
+// suggestion costs the prompt its grant and leaves the user unable to allow it.
+const claudePermissionUpdateDestinationSchema = z.enum([
+  "userSettings",
+  "projectSettings",
+  "localSettings",
+  "session",
+  "cliArg",
+]);
+
+export const claudeSuggestedPermissionUpdateSchema = z.discriminatedUnion(
+  "type",
+  [
+    z.object({
+      type: z.literal("addRules"),
+      rules: z.array(claudePermissionRuleValueSchema).min(1),
+      behavior: z.literal("allow"),
+      destination: claudePermissionUpdateDestinationSchema,
+    }),
+    z.object({
+      type: z.literal("addDirectories"),
+      directories: z.array(z.string()).min(1),
+      destination: claudePermissionUpdateDestinationSchema,
+    }),
+  ],
+);
+export type ClaudeSuggestedPermissionUpdate = z.infer<
+  typeof claudeSuggestedPermissionUpdateSchema
 >;
 
 const claudeNetworkPermissionsInputSchema = z.object({
@@ -81,7 +117,7 @@ const claudeRequestedPermissionProfileInputSchema = z
   );
 interface ClaudePermissionRequestProfileArgs {
   blockedPath: string | undefined;
-  suggestions: ClaudePermissionUpdate[] | undefined;
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
   toolName: string;
 }
 
@@ -102,7 +138,16 @@ const CLAUDE_FILE_PERMISSION_KIND_BY_TOOL_NAME = new Map<
   ["Bash", "read_write"],
 ]);
 
-const CLAUDE_NETWORK_PERMISSION_TOOL_NAMES = new Set(["WebFetch", "WebSearch"]);
+// Claude asks with this pseudo tool when a sandboxed command opens an outbound
+// connection. It carries no file path, so the tool name is the only signal that
+// the prompt grants network access.
+export const CLAUDE_SANDBOX_NETWORK_TOOL_NAME = "SandboxNetworkAccess";
+
+const CLAUDE_NETWORK_PERMISSION_TOOL_NAMES = new Set([
+  "WebFetch",
+  "WebSearch",
+  CLAUDE_SANDBOX_NETWORK_TOOL_NAME,
+]);
 
 function getClaudeFilePermissionKind(
   toolName: string,
@@ -115,7 +160,7 @@ export function isClaudeConcreteFileChangeToolName(toolName: string): boolean {
 }
 
 function getSuggestedDirectories(
-  suggestions: ClaudePermissionUpdate[] | undefined,
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined,
 ): string[] {
   return (suggestions ?? []).flatMap((suggestion) =>
     suggestion.type === "addDirectories" ? suggestion.directories : [],
@@ -173,7 +218,7 @@ export function toPendingInteractionPermissionProfile(
 interface ShouldRequestClaudePermissionApprovalArgs {
   blockedPath: string | undefined;
   decisionReason: string | undefined;
-  suggestions: ClaudePermissionUpdate[] | undefined;
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
   toolName: string;
 }
 

@@ -204,7 +204,14 @@ function validateGrantedPermissions(
     );
   }
 
-  if (!hasGrantedPermissions(permissions)) {
+  // An empty grant is only wrong when the request had something to grant.
+  // A provider can ask about an action it cannot describe as a permission, and
+  // that prompt still reaches the user. Rejecting the empty grant there would
+  // leave the prompt unanswerable, so the approval stands on its own.
+  if (
+    !hasGrantedPermissions(permissions) &&
+    hasGrantedPermissions(requestedPermissions)
+  ) {
     throw new ApiError(
       400,
       "invalid_request",
