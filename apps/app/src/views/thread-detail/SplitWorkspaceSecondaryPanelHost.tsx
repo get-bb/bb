@@ -177,13 +177,21 @@ export function SplitWorkspaceSecondaryPanelHost({
     setPanelWidthPercent(lastEmptyPanelSizeRef.current);
   };
   const handleEmptyPanelCollapse = () => {
+    // A panel that mounts at zero width reports that first layout as a
+    // collapse. Honoring it would turn the "adopt the first publisher's state"
+    // sentinel into a hard closed, and the next thread would lose its
+    // persisted-open panel. Only a collapse after a real width is the user's.
+    if (lastEmptyPanelSizeRef.current <= 0) return;
     setIsPanelVisible(false);
   };
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   // An open pane panel carries the toggle in its own chrome, and a full-screen
-  // pane hides it. The empty state has no chrome, so it keeps the corner.
-  const pinsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  // pane hides it. The empty state has no chrome, so it keeps the button.
+  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  // The button only lands on a pane header while the panel is closed. Once any
+  // panel opens, it sits over that panel, so no pane header reserves for it.
+  const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),
     [isOpen, isPaneMaximized, pinsCornerToggle],
@@ -205,7 +213,7 @@ export function SplitWorkspaceSecondaryPanelHost({
             // (its px-4 edge padding), so the gap to Close pane matches the
             // gaps inside that row instead of reading 6px wider.
             "absolute right-4 top-2.5 z-40",
-            !pinsCornerToggle && "hidden",
+            !showsCornerToggle && "hidden",
             // This overlay already owns positioning and stacking. Use only
             // the raw app-region token: MACOS_WINDOW_NO_DRAG_CLASS adds
             // `relative z-50`, which tailwind-merge would resolve against

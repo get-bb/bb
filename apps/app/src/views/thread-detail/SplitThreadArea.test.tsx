@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -52,6 +53,13 @@ const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
+const panelCallbacks = vi.hoisted(
+  () =>
+    new Map<
+      string,
+      { onCollapse?: () => void; onResize?: (size: number) => void }
+    >(),
+);
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
@@ -151,9 +159,26 @@ vi.mock("react-resizable-panels", async () => {
     return <div data-testid="workspace-panel-group">{children}</div>;
   });
   PanelGroup.displayName = "MockPanelGroup";
-  const Panel = ({ children }: { children?: ReactNode }) => (
-    <div data-testid="workspace-panel">{children}</div>
-  );
+  // Record each panel's lifecycle callbacks so a test can fire the ones the
+  // real library fires on its own, such as the initial-layout collapse.
+  const Panel = ({
+    children,
+    id,
+    onCollapse,
+    onResize,
+  }: {
+    children?: ReactNode;
+    id?: string;
+    onCollapse?: () => void;
+    onResize?: (size: number) => void;
+  }) => {
+    if (id !== undefined) panelCallbacks.set(id, { onCollapse, onResize });
+    return (
+      <div data-testid="workspace-panel" data-panel-id={id}>
+        {children}
+      </div>
+    );
+  };
   const PanelResizeHandle = ({
     className,
     id,
@@ -524,6 +549,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   threadStore.clear();
+  panelCallbacks.clear();
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
   window.localStorage.clear();
@@ -1314,6 +1340,59 @@ describe("SplitThreadArea", () => {
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("ignores the empty panel's initial collapse so a thread keeps its open panel", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-2";
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout,
+      routeAwareContent: true,
+    });
+
+    await screen.findByTestId("split-workspace-empty-panel-state");
+    // react-resizable-panels reports the zero-width first layout as a
+    // collapse. Honoring it would harden the "adopt the first publisher's
+    // state" sentinel into closed before any pane published.
+    act(() => {
+      panelCallbacks
+        .get("split-workspace-empty-secondary-panel")
+        ?.onCollapse?.();
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
+    expect(await screen.findByTestId("hosted-panel-thr-a")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Hide right panel" }),
+    ).toBeTruthy();
+  });
+
+  it("drops the corner reserve while the open empty panel holds the toggle", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-2";
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout,
+      routeAwareContent: true,
+    });
+
+    // pane-2 is the plugin pane at the right edge. Closed, the toggle sits on
+    // its header row, so the header keeps that corner free.
+    await screen.findByTestId("split-workspace-empty-panel-state");
+    const close = screen.getByRole("button", { name: "Close pane" });
+    expect(close.nextElementSibling?.tagName).toBe("SPAN");
+
+    // Open, the toggle moves over the panel and the header reclaims the slot.
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Close pane" }).nextElementSibling,
+      ).toBeNull(),
+    );
+    expect(
+      screen.getByTestId("split-workspace-panel-toggle").classList,
+    ).not.toContain("hidden");
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
