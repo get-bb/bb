@@ -624,14 +624,17 @@ type PiModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
  * slashes (`openrouter/deepseek/deepseek-v4-flash`), so the provider comes from
  * the first segment only.
  *
- * A bare provider-native model id (`deepseek/deepseek-v4-flash`) also resolves.
- * CLI and SDK callers type that form, and selections stored before bb applied
- * the provider prefix to aggregator models still use it.
+ * The named provider is authoritative. A model reaches exactly the vendor the
+ * user picked, even when that vendor has no credentials, because substituting
+ * another vendor would send workspace content and billing somewhere the user
+ * never chose.
  *
- * Both readings can match different models, because an aggregator lists the
- * same model under a name that a direct provider also uses. A provider the user
- * has authenticated then wins, so a bare aggregator id runs through the
- * aggregator instead of a direct provider the user cannot reach.
+ * A bare provider-native model id (`deepseek/deepseek-v4-flash-0731`) resolves
+ * only when the first segment names no provider that serves the rest. CLI and
+ * SDK callers type that form, and selections stored before bb applied the
+ * provider prefix to aggregator models still use it. Two providers can list the
+ * same id, and nothing in the string says which one was meant, so an ambiguous
+ * match is an error rather than a guess.
  */
 function resolveConfiguredModel(
   modelRuntime: ModelRuntime,
@@ -642,26 +645,26 @@ function resolveConfiguredModel(
   }
 
   const slashIdx = modelStr.indexOf("/");
-  const prefixed =
-    slashIdx > 0
-      ? modelRuntime.getModel(
-          modelStr.slice(0, slashIdx),
-          modelStr.slice(slashIdx + 1),
-        )
-      : undefined;
-  if (prefixed && modelRuntime.hasConfiguredAuth(prefixed.provider)) {
-    return prefixed;
+  if (slashIdx > 0) {
+    const prefixed = modelRuntime.getModel(
+      modelStr.slice(0, slashIdx),
+      modelStr.slice(slashIdx + 1),
+    );
+    if (prefixed) {
+      return prefixed;
+    }
   }
 
   const bare = modelRuntime
     .getModels()
     .filter((candidate) => candidate.id === modelStr);
-  const model =
-    bare.find((candidate) =>
-      modelRuntime.hasConfiguredAuth(candidate.provider),
-    ) ??
-    prefixed ??
-    bare[0];
+  if (bare.length > 1) {
+    const providers = bare.map((candidate) => candidate.provider).join(", ");
+    throw new Error(
+      `Ambiguous Pi model "${modelStr}": served by ${providers}. Prefix it with the provider you want.`,
+    );
+  }
+  const model = bare[0];
   if (!model) {
     throw new Error(`Failed to resolve Pi model "${modelStr}"`);
   }

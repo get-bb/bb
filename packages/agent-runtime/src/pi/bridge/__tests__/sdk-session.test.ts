@@ -338,23 +338,16 @@ describe("PiSdkSession", () => {
     );
   });
 
-  it("resolves a bare aggregator model id through an authenticated provider", async () => {
-    // Selections stored before bb prefixed aggregator models keep this shape,
-    // and it also names a model on the direct DeepSeek provider.
-    mockGetModel.mockReturnValue({
-      id: "deepseek-v4-flash",
-      provider: "deepseek",
-    });
+  it("resolves a bare model id that names no provider", async () => {
+    // Selections stored before bb prefixed aggregator models keep this shape.
+    mockGetModel.mockReturnValue(undefined);
     mockGetModels.mockReturnValue([
-      { id: "deepseek/deepseek-v4-flash", provider: "openrouter" },
+      { id: "deepseek/deepseek-v4-flash-0731", provider: "openrouter" },
     ]);
-    mockHasConfiguredAuth.mockImplementation(
-      (provider: string) => provider === "openrouter",
-    );
     const session = new PiSdkSession(
       {
         cwd: "/tmp/project",
-        model: "deepseek/deepseek-v4-flash",
+        model: "deepseek/deepseek-v4-flash-0731",
       },
       vi.fn(),
       vi.fn(),
@@ -365,25 +358,30 @@ describe("PiSdkSession", () => {
     expect(mockCreateAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
         model: {
-          id: "deepseek/deepseek-v4-flash",
+          id: "deepseek/deepseek-v4-flash-0731",
           provider: "openrouter",
         },
       }),
     );
   });
 
-  it("prefers the prefixed provider when both readings are authenticated", async () => {
+  it("never substitutes another vendor for the named provider", async () => {
+    // The named provider has no credentials, and two aggregators serve the same
+    // id. Routing there would bill and expose a vendor the user never chose.
     mockGetModel.mockReturnValue({
-      id: "deepseek-v4-flash",
-      provider: "deepseek",
+      id: "claude-sonnet-5",
+      provider: "anthropic",
     });
     mockGetModels.mockReturnValue([
-      { id: "deepseek/deepseek-v4-flash", provider: "openrouter" },
+      { id: "anthropic/claude-sonnet-5", provider: "openrouter" },
     ]);
+    mockHasConfiguredAuth.mockImplementation(
+      (provider: string) => provider === "openrouter",
+    );
     const session = new PiSdkSession(
       {
         cwd: "/tmp/project",
-        model: "deepseek/deepseek-v4-flash",
+        model: "anthropic/claude-sonnet-5",
       },
       vi.fn(),
       vi.fn(),
@@ -393,9 +391,30 @@ describe("PiSdkSession", () => {
 
     expect(mockCreateAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: { id: "deepseek-v4-flash", provider: "deepseek" },
+        model: { id: "claude-sonnet-5", provider: "anthropic" },
       }),
     );
+  });
+
+  it("refuses to guess when two providers serve one bare model id", async () => {
+    mockGetModel.mockReturnValue(undefined);
+    mockGetModels.mockReturnValue([
+      { id: "anthropic/claude-opus-4.8", provider: "openrouter" },
+      { id: "anthropic/claude-opus-4.8", provider: "vercel-ai-gateway" },
+    ]);
+    const session = new PiSdkSession(
+      {
+        cwd: "/tmp/project",
+        model: "anthropic/claude-opus-4.8",
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await expect(session.start()).rejects.toThrow(
+      /Ambiguous Pi model "anthropic\/claude-opus-4\.8": served by openrouter, vercel-ai-gateway/,
+    );
+    expect(mockCreateAgentSession).not.toHaveBeenCalled();
   });
 
   it("rejects unresolved explicit models before opening a Pi session", async () => {

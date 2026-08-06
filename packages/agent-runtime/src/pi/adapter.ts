@@ -1607,15 +1607,17 @@ function resolvePiModelContextWindow(
 
   // Pi reports the provider and the provider-native model id separately, and an
   // aggregator model id such as "deepseek/deepseek-v4-flash" also names a
-  // direct provider's model. Match the pair first so the two do not swap.
+  // direct provider's model. A known provider therefore decides the answer on
+  // its own. Falling back to the id alone would hand a model another provider's
+  // window whenever the catalog lacks the pair, which happens for models the
+  // network refresh added and for custom models.
   const providerId = toOptionalString(lastAssistant?.provider);
   if (providerId) {
-    const contextWindow = modelContextWindowLookup.byCanonicalId.get(
-      toCanonicalPiModelId(providerId, modelId),
+    return (
+      modelContextWindowLookup.byCanonicalId.get(
+        toCanonicalPiModelId(providerId, modelId),
+      ) ?? null
     );
-    if (contextWindow !== undefined) {
-      return contextWindow;
-    }
   }
 
   return modelContextWindowLookup.byModelId.get(modelId) ?? null;

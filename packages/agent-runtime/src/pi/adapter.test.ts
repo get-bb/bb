@@ -2098,5 +2098,11 @@ describe("pi provider adapter", () => {
       resolveContextWindow(assistant(undefined, "deepseek-v4-flash")),
     ).toBe(1_000_000);
     expect(resolveContextWindow(assistant("openrouter", "unknown"))).toBeNull();
+    // A known provider that the catalog does not cover reports nothing rather
+    // than borrowing the window another provider published for the same id.
+    // The network refresh and custom models both produce this case.
+    expect(
+      resolveContextWindow(assistant("openrouter", "deepseek-v4-flash")),
+    ).toBeNull();
   });
 });
