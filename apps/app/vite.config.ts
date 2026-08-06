@@ -4,6 +4,7 @@ import { defineConfig, type UserConfig } from "vite";
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { bundleStats } from "./vite-bundle-stats.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,8 @@ export const sharedViteConfig = {
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss(),
+    // Build-only: writes bundle-stats.json for the boot-payload budget check.
+    bundleStats(),
   ],
   // Keep app and Ladle dep optimization metadata from clobbering each other.
   cacheDir: "node_modules/.vite/app",

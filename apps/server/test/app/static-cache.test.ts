@@ -112,6 +112,16 @@ describe("production static cache headers", () => {
       expect(JSON.parse(apiMissBody)).toMatchObject({
         code: "not_found",
       });
+
+      // A missing hashed asset is a stale reference, not a client route. The
+      // single-page-app fallback would answer it with index.html at status
+      // 200, and the browser would report a MIME type error for a script
+      // instead of the missing file.
+      const assetMissResponse = await serverApp.app.request(
+        "/assets/does-not-exist.js",
+      );
+      expect(assetMissResponse.status).toBe(404);
+      expect(await assetMissResponse.text()).not.toContain("index-test.js");
     } finally {
       await serverApp.closeWebSockets();
       await harness.cleanup();

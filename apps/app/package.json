@@ -9,11 +9,12 @@
     "dev": "node scripts/generate-pwa-icons.mjs && vite --config vite.dev.config.ts --configLoader runner",
     "build": "node scripts/generate-pwa-icons.mjs && vite build --logLevel warn && node ../../scripts/precompress-app-dist.mjs dist",
     "preview": "vite preview",
-    "clean": "rimraf dist",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "clean": "rimraf dist bundle-stats.json",
     "storybook": "ladle serve",
     "storybook:build": "ladle build",
-    "lint": "eslint src --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit",
+    "lint": "eslint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-shared-ui-seam.ts --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
   },
   "dependencies": {

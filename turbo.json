@@ -22,6 +22,31 @@
         "dist/**"
       ]
     },
+    // Mirrors "build" but also caches bundle-stats.json, which the
+    // bb:bundle-stats Vite plugin writes beside dist for the boot-payload
+    // budget check. Without it a cache hit would leave CI checking a stale
+    // file, or none at all.
+    "@bb/app#build": {
+      "dependsOn": [
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/build-node-entry.mjs",
+        "$TURBO_ROOT$/scripts/build-package.mjs",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/scripts/precompress-app-dist.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": [
+        "bundle-stats.json",
+        "dist/**"
+      ]
+    },
     "build": {
       "dependsOn": [
         "topo"

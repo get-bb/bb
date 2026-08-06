@@ -609,6 +609,14 @@ export function createApp(
       } catch {
         // File not found — fall through to SPA fallback
       }
+      // /assets/ holds content-hashed build output, never a client route, so
+      // a miss there is a stale reference rather than a page to render. The
+      // single-page-app fallback would answer it with index.html at status
+      // 200, and the browser would report a confusing MIME type error for a
+      // script instead of a plain 404. Mirrors the /api/v1/* guard above.
+      if (urlPath.startsWith("/assets/")) {
+        return context.notFound();
+      }
       const indexHtml = await readFile(join(root, "index.html"), "utf8");
       return new Response(indexHtml, {
         headers: createStaticResponseHeaders({

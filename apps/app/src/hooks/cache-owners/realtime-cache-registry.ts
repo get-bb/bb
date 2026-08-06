@@ -97,7 +97,7 @@ import {
   allPluginSourceQueryKeyPrefix,
 } from "../queries/plugin-catalog-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
-import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
+import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,

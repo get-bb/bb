@@ -35,6 +35,12 @@ jobs:
       - name: Build, typecheck, and lint
         run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
 
+      # Guards the JavaScript that blocks first paint in the web app. Heavy
+      # editor, diff and math code reaches that path through barrel re-exports,
+      # which typecheck and lint cannot see.
+      - name: Check app boot-payload budget
+        run: node apps/app/scripts/check-bundle-budget.mjs
+
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.
