@@ -11,6 +11,7 @@ import {
   InternalPrincipalAuthorityError,
   createInternalPrincipalAuthority as createUnboundInternalPrincipalAuthority,
 } from "../../src/auth/internal-principal-authority.js";
+import { createInternalExecutionSessions } from "../../src/auth/internal-execution-sessions.js";
 import type { PrincipalPolicy } from "../../src/auth/principal-policy.js";
 
 const SYSTEM_PRINCIPAL: Principal = Object.freeze({
@@ -852,5 +853,323 @@ describe("createInternalPrincipalAuthority", () => {
       expect(String(error)).not.toContain(token);
       return true;
     });
+  });
+});
+
+describe("InternalPrincipalAuthority derived sessions", () => {
+  const issuedSessions = createInternalExecutionSessions({
+    mode: "local-owner",
+  });
+  const createSystemDerivedSession = () =>
+    issuedSessions.createPluginBackgroundSession({
+      pluginId: "workflows",
+      callbackCategory: "service",
+      callbackName: "worker",
+    });
+  const createAgentDerivedSession = () =>
+    issuedSessions.createThreadAgentSession({
+      threadId: "thread_1",
+      projectId: "project_1",
+    });
+  const AGENT_PRINCIPAL: Principal = Object.freeze({
+    id: "agent:thread/thread_1",
+    kind: "agent",
+    displayName: "Thread agent",
+  });
+
+  const HUMAN_PRINCIPAL: Principal = Object.freeze({
+    id: "local-owner",
+    kind: "human",
+    displayName: "Local Owner",
+  });
+
+  const MACHINE_PRINCIPAL: Principal = Object.freeze({
+    id: "host_1",
+    kind: "machine",
+    displayName: "Host daemon",
+  });
+
+  it("replaces an active request scope and restores it afterward", async () => {
+    const fallback = createFallbackSpy();
+    const seenKinds: string[] = [];
+    let authority!: ReturnType<typeof createInternalPrincipalAuthority>;
+    authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        const credential = headers.get(
+          INTERNAL_PRINCIPAL_CREDENTIAL_HEADER_NAME,
+        );
+        if (credential === null) {
+          throw new Error("missing internal credential in test fetch");
+        }
+        const url =
+          typeof input === "string"
+            ? new URL(input)
+            : input instanceof URL
+              ? input
+              : new URL(String((input as Request).url));
+        const resolved = await authority.principalPolicy.resolve({
+          method: "GET",
+          target: `${url.pathname}${url.search}`,
+          transport: "http",
+          getHeader: (name) =>
+            name.toLowerCase() === INTERNAL_PRINCIPAL_CREDENTIAL_HEADER_NAME
+              ? credential
+              : name.toLowerCase() === "host"
+                ? url.host
+                : undefined,
+        });
+        seenKinds.push(resolved.principal.kind);
+        return new Response(null, { status: 204 });
+      },
+    });
+    const requestSession = createSession(HUMAN_PRINCIPAL);
+    const derivedSession = createSystemDerivedSession();
+
+    await authority.runWithSession(requestSession, async () => {
+      await authority.fetch("http://127.0.0.1/api/v1/outer");
+      await authority.runWithDerivedSession(derivedSession, async () => {
+        await authority.fetch("http://127.0.0.1/api/v1/derived");
+      });
+      await authority.fetch("http://127.0.0.1/api/v1/restored");
+    });
+
+    expect(seenKinds).toEqual(["human", "system", "human"]);
+  });
+
+  it("replaces an inactive inherited request scope", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+
+    let afterSettle!: Promise<string>;
+    await authority.runWithSession(createSession(HUMAN_PRINCIPAL), () => {
+      afterSettle = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          void authority
+            .runWithDerivedSession(createSystemDerivedSession(), async () => {
+              await authority.fetch("http://127.0.0.1/api/v1/projects");
+              return "derived-ok";
+            })
+            .then(resolve, reject);
+        }, 0);
+      });
+    });
+
+    await expect(afterSettle).resolves.toBe("derived-ok");
+    expect(underlying).toHaveBeenCalledOnce();
+  });
+
+  it("deactivates async derived scopes so leaked descendants cannot fetch", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+
+    let leakedFetch!: Promise<Response>;
+    await authority.runWithDerivedSession(createSystemDerivedSession(), () => {
+      leakedFetch = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          void authority
+            .fetch("http://127.0.0.1/api/v1/projects")
+            .then(resolve, reject);
+        }, 0);
+      });
+      return "done";
+    });
+
+    await expect(leakedFetch).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+    expect(underlying).not.toHaveBeenCalled();
+  });
+
+  it("deactivates sync derived scopes so leaked descendants cannot replace", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    let leaked!: Promise<string>;
+    authority.runWithDerivedSessionSync(createAgentDerivedSession(), () => {
+      leaked = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          void authority
+            .runWithDerivedSession(
+              createSystemDerivedSession(),
+              async () => "nested",
+            )
+            .then(resolve, reject);
+        }, 0);
+      });
+      return "sync-done";
+    });
+
+    await expect(leaked).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+  });
+
+  it("deactivates sync derived scopes so leaked descendants cannot fetch", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+
+    let leakedFetch!: Promise<Response>;
+    authority.runWithDerivedSessionSync(createSystemDerivedSession(), () => {
+      leakedFetch = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          void authority
+            .fetch("http://127.0.0.1/api/v1/projects")
+            .then(resolve, reject);
+        }, 0);
+      });
+      return "done";
+    });
+
+    await expect(leakedFetch).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+    expect(underlying).not.toHaveBeenCalled();
+  });
+
+  it("rejects every unissued structural Principal for derived scopes", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    await expect(
+      authority.runWithDerivedSession(
+        createSession(HUMAN_PRINCIPAL),
+        async () => "nope",
+      ),
+    ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+    await expect(
+      authority.runWithDerivedSession(
+        createSession(MACHINE_PRINCIPAL),
+        async () => "nope",
+      ),
+    ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+    await expect(
+      authority.runWithDerivedSession(
+        createSession(SYSTEM_PRINCIPAL),
+        async () => "nope",
+      ),
+    ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+    await expect(
+      authority.runWithDerivedSession(
+        createSession(AGENT_PRINCIPAL),
+        async () => "nope",
+      ),
+    ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+    expect(() =>
+      authority.runWithDerivedSessionSync(
+        createSession(HUMAN_PRINCIPAL),
+        () => "nope",
+      ),
+    ).toThrow(InternalPrincipalAuthorityError);
+    expect(() =>
+      authority.runWithDerivedSessionSync(
+        createSession(MACHINE_PRINCIPAL),
+        () => "nope",
+      ),
+    ).toThrow(InternalPrincipalAuthorityError);
+  });
+
+  it("installs a derived scope with no inherited request scope", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+
+    await expect(
+      authority.runWithDerivedSession(
+        createSystemDerivedSession(),
+        async () => {
+          await authority.fetch("http://127.0.0.1/api/v1/projects");
+          return "fresh";
+        },
+      ),
+    ).resolves.toBe("fresh");
+    expect(
+      authority.runWithDerivedSessionSync(
+        createAgentDerivedSession(),
+        () => "sync-fresh",
+      ),
+    ).toBe("sync-fresh");
+    expect(underlying).toHaveBeenCalledOnce();
+  });
+
+  it("rejects thenable returns from the sync derived API", () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    expect(() =>
+      authority.runWithDerivedSessionSync(createSystemDerivedSession(), () =>
+        Promise.resolve("async"),
+      ),
+    ).toThrow(InternalPrincipalAuthorityError);
+    expect(() =>
+      authority.runWithDerivedSessionSync(
+        createSystemDerivedSession(),
+        () =>
+          ({
+            then(resolve: (value: string) => void) {
+              resolve("thenable");
+            },
+          }) as unknown as string,
+      ),
+    ).toThrow(InternalPrincipalAuthorityError);
+  });
+
+  it("keeps runWithSession rejection of inactive and different replacements", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    let inactiveReplacement!: Promise<string>;
+    await authority.runWithSession(createSession(HUMAN_PRINCIPAL), () => {
+      inactiveReplacement = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          void authority
+            .runWithSession(
+              createSession(HUMAN_PRINCIPAL),
+              async () => "replaced",
+            )
+            .then(resolve, reject);
+        }, 0);
+      });
+    });
+    await expect(inactiveReplacement).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+
+    await expect(
+      authority.runWithSession(createSession(HUMAN_PRINCIPAL), async () => {
+        await authority.runWithSession(
+          createSession(SYSTEM_PRINCIPAL),
+          async () => "nested",
+        );
+      }),
+    ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
   });
 });

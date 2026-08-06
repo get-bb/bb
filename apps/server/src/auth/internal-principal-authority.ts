@@ -9,6 +9,7 @@ import type {
   PrincipalRequest,
 } from "@bb/domain";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
+import { isIssuedInternalDerivedSession } from "./internal-execution-sessions.js";
 
 /** Fixed header carrying an opaque one-use internal Principal grant. */
 export const INTERNAL_PRINCIPAL_CREDENTIAL_HEADER_NAME =
@@ -55,6 +56,22 @@ export type InternalPrincipalAuthority = {
     session: InternalPrincipalSession,
     fn: () => T | Promise<T>,
   ): Promise<T>;
+  /**
+   * Temporarily replace an active or inactive inherited scope with a
+   * system/agent session. Restores the outer ALS scope when `fn` settles.
+   */
+  runWithDerivedSession<T>(
+    session: InternalPrincipalSession,
+    fn: () => T | Promise<T>,
+  ): Promise<T>;
+  /**
+   * Sync derived-scope entry. Rejects thenable returns so the scope cannot
+   * deactivate while async work continues.
+   */
+  runWithDerivedSessionSync<T>(
+    session: InternalPrincipalSession,
+    fn: () => T,
+  ): T;
   readonly fetch: FetchImplementation;
 };
 
@@ -69,6 +86,8 @@ type BoundSession = {
 type ExecutionScope = {
   readonly session: BoundSession;
   active: boolean;
+  /** True when installed by a derived transition, not a request session. */
+  readonly derived: boolean;
 };
 
 type OutstandingGrant = {
@@ -164,6 +183,20 @@ function samePrincipal(left: Principal, right: Principal): boolean {
     left.id === right.id &&
     left.kind === right.kind &&
     left.displayName === right.displayName
+  );
+}
+
+function assertDerivedPrincipalKind(principal: Principal): void {
+  if (principal.kind !== "system" && principal.kind !== "agent") {
+    rejectInternalPrincipalAuthority();
+  }
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
   );
 }
 
@@ -420,11 +453,90 @@ export function createInternalPrincipalAuthority(
     const scope: ExecutionScope = {
       session: bound,
       active: true,
+      derived: false,
     };
 
     return executionScopes.run(scope, async () => {
       try {
         return await fn();
+      } finally {
+        scope.active = false;
+      }
+    });
+  }
+
+  function assertDerivedReplacementAllowed(
+    current: ExecutionScope | undefined,
+  ): void {
+    if (current === undefined) {
+      return;
+    }
+    // Active scopes may be temporarily replaced. Inactive request leftovers may
+    // also be replaced for background/plugin transitions. Inactive derived
+    // leftovers must not — that would let leaked descendants re-elevate.
+    if (current.active) {
+      return;
+    }
+    if (!current.derived) {
+      return;
+    }
+    rejectInternalPrincipalAuthority();
+  }
+
+  async function runWithDerivedSession<T>(
+    session: InternalPrincipalSession,
+    fn: () => T | Promise<T>,
+  ): Promise<T> {
+    if (typeof fn !== "function") {
+      rejectInternalPrincipalAuthority();
+    }
+    if (!isIssuedInternalDerivedSession(session)) {
+      rejectInternalPrincipalAuthority();
+    }
+    assertDerivedReplacementAllowed(executionScopes.getStore());
+    const bound = bindSession(session);
+    assertDerivedPrincipalKind(bound.principal);
+    const scope: ExecutionScope = {
+      session: bound,
+      active: true,
+      derived: true,
+    };
+    // Derived scopes intentionally replace any inherited active or inactive
+    // request scope. ALS restores the outer store when this run settles.
+    return executionScopes.run(scope, async () => {
+      try {
+        return await fn();
+      } finally {
+        scope.active = false;
+      }
+    });
+  }
+
+  function runWithDerivedSessionSync<T>(
+    session: InternalPrincipalSession,
+    fn: () => T,
+  ): T {
+    if (typeof fn !== "function") {
+      rejectInternalPrincipalAuthority();
+    }
+    if (!isIssuedInternalDerivedSession(session)) {
+      rejectInternalPrincipalAuthority();
+    }
+    assertDerivedReplacementAllowed(executionScopes.getStore());
+    const bound = bindSession(session);
+    assertDerivedPrincipalKind(bound.principal);
+    const scope: ExecutionScope = {
+      session: bound,
+      active: true,
+      derived: true,
+    };
+    return executionScopes.run(scope, () => {
+      try {
+        const result = fn();
+        if (isThenable(result)) {
+          rejectInternalPrincipalAuthority();
+        }
+        return result;
       } finally {
         scope.active = false;
       }
@@ -525,6 +637,8 @@ export function createInternalPrincipalAuthority(
     bindLoopbackOrigin,
     principalPolicy,
     runWithSession,
+    runWithDerivedSession,
+    runWithDerivedSessionSync,
     fetch: internalFetch,
   });
 }
