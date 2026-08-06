@@ -18,7 +18,7 @@ import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
-import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { findHostDataDir } from "../lib/entity-lookup.js";
 import { unmanagedAttachRefusal } from "./workspace-path-claims.js";
 
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
@@ -290,12 +290,9 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
 
   // The claim is project-scoped, but attaching in place to another project's
   // bb-managed worktree is unsafe: its cleanup deletes the directory.
-  const hostSession = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.currentEnvironment.hostId,
-  });
   const refusal = unmanagedAttachRefusal(deps.db, {
     checksOutBranch: false,
-    dataDir: hostSession.dataDir,
+    dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
     hostId: args.currentEnvironment.hostId,
     path: normalizedPath,
     projectId: args.thread.projectId,
