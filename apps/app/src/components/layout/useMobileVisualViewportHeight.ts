@@ -6,6 +6,10 @@ function getVisualViewportBottom(visualViewport: VisualViewport) {
   return Math.round(visualViewport.offsetTop + visualViewport.height);
 }
 
+function getVisualViewportPageTop(visualViewport: VisualViewport) {
+  return Math.round(window.scrollY + visualViewport.offsetTop);
+}
+
 function isKeyboardFocusTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -23,12 +27,11 @@ function isKeyboardFocusTarget(target: EventTarget | null): boolean {
  * not end up behind the keyboard. iOS can pan the visual viewport while the
  * keyboard opens, so both its height and its layout-relative offset matter.
  *
- * Safari also reveals a newly focused editor by panning the page, computed
- * against the shell's pre-shrink geometry. Once the shell fits the visible
- * viewport that pan is obsolete — it pins the composer to the top of the
- * screen mid-animation and leaves the header hidden after the keyboard
- * settles — so undo it whenever the page is not pinch-zoomed. Pinch-zoom
- * pans (scale > 1) are intentional and must survive.
+ * Safari also reveals a newly focused editor by panning the page. Compensate
+ * for that pan directly when the page is not pinch-zoomed. `scrollTo()` does
+ * not always reset a visual-viewport-only pan in an iOS standalone PWA. The
+ * shell must move to the visual viewport's page-relative top and use its
+ * visible height. Pinch-zoom pans (scale > 1) are intentional and must survive.
  */
 export function useMobileVisualViewportHeight(
   shellRef: RefObject<AppShellElement | null>,
@@ -42,12 +45,18 @@ export function useMobileVisualViewportHeight(
     let animationFrame: number | null = null;
     const updateHeight = () => {
       animationFrame = null;
-      if (
-        visualViewport.scale === 1 &&
-        (visualViewport.offsetTop > 0 || window.scrollY > 0)
-      ) {
-        window.scrollTo(0, 0);
+      if (visualViewport.scale === 1) {
+        if (visualViewport.offsetTop > 0 || window.scrollY > 0) {
+          // Reset a regular layout-viewport scroll when possible. The `top`
+          // compensation below also handles an iOS visual-viewport-only pan.
+          window.scrollTo(0, 0);
+        }
+        shell.style.top = `${getVisualViewportPageTop(visualViewport)}px`;
+        shell.style.height = `${Math.round(visualViewport.height)}px`;
+        return;
       }
+
+      shell.style.removeProperty("top");
       shell.style.height = `${getVisualViewportBottom(visualViewport)}px`;
     };
     const scheduleUpdate = () => {
@@ -70,6 +79,7 @@ export function useMobileVisualViewportHeight(
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
       }
+      shell.style.removeProperty("top");
       shell.style.removeProperty("height");
     };
     const handleFocusIn = (event: FocusEvent) => {
@@ -93,6 +103,7 @@ export function useMobileVisualViewportHeight(
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
+      shell.style.removeProperty("top");
       shell.style.removeProperty("height");
     };
   }, [enabled, shellRef]);

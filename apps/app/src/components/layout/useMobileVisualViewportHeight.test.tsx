@@ -74,20 +74,22 @@ describe("useMobileVisualViewportHeight", () => {
     await withFakeVisualViewport(visualViewport, async () => {
       const { rerender } = render(<VisualViewportShell enabled />);
       const shell = screen.getByTestId("shell");
-      expect(shell.style.height).toBe("520px");
+      expect(shell.style.top).toBe("20px");
+      expect(shell.style.height).toBe("500px");
 
       act(() => {
         visualViewport.height = 300;
         visualViewport.dispatchEvent(new Event("resize"));
       });
-      await waitFor(() => expect(shell.style.height).toBe("320px"));
+      await waitFor(() => expect(shell.style.height).toBe("300px"));
 
       rerender(<VisualViewportShell enabled={false} />);
+      expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
     });
   });
 
-  it("undoes Safari's focus-reveal pan when the page is not pinch-zoomed", async () => {
+  it("compensates when Safari leaves the visual viewport panned", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
@@ -99,6 +101,8 @@ describe("useMobileVisualViewportHeight", () => {
         visualViewport.dispatchEvent(new Event("scroll"));
       });
       await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
+      expect(screen.getByTestId("shell").style.top).toBe("340px");
+      expect(screen.getByTestId("shell").style.height).toBe("500px");
     });
   });
 
@@ -132,6 +136,7 @@ describe("useMobileVisualViewportHeight", () => {
       act(() => {
         editor.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
       });
+      expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
     });
   });
@@ -149,6 +154,7 @@ describe("useMobileVisualViewportHeight", () => {
         visualViewport.dispatchEvent(new Event("scroll"));
       });
       await waitFor(() => expect(shell.style.height).toBe("840px"));
+      expect(shell.style.top).toBe("");
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
   });
