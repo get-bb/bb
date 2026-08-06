@@ -14,6 +14,7 @@ import {
 import { CompactSign, exportJWK, generateKeyPair } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { getClientWebsocketReauthorizePair } from "../../src/auth/client-websocket-authorization.js";
+import { issueRoomDistributionAuthorization } from "../../src/auth/room-distribution-authorization.js";
 import { getTerminalWebsocketReauthorizePair } from "../../src/auth/terminal-websocket-authorization.js";
 import { createWorkTogetherMembershipMemoryFake } from "../../src/auth/work-together-membership-memory.js";
 import { WorkTogetherMembershipLookupError } from "../../src/auth/work-together-membership.js";
@@ -785,6 +786,13 @@ describe("work-together principal policy", () => {
         terminalReauthorize.resource,
       ),
     ).resolves.toEqual({ allowed: true });
+    const roomEvents = issueRoomDistributionAuthorization({
+      bindingId: "99999999-aaaa-4bbb-8ccc-dddddddddddd",
+      operation: "events",
+    });
+    await expect(
+      session.authorize(roomEvents.action, roomEvents.resource),
+    ).resolves.toEqual({ allowed: true });
 
     // Structural forgeries of the reauthorize pair are denied.
     await expect(
@@ -792,6 +800,9 @@ describe("work-together principal policy", () => {
         { name: reauthorize.action.name },
         { kind: reauthorize.resource.kind, id: reauthorize.resource.id },
       ),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
+    await expect(
+      session.authorize({ ...roomEvents.action }, { ...roomEvents.resource }),
     ).resolves.toEqual({ allowed: false, reason: "forbidden" });
     await expect(
       session.authorize(

@@ -14,6 +14,7 @@ import {
   type WorkTogetherMembershipVerifier,
 } from "./work-together-membership.js";
 import { isRegistryIssuedClientWebsocketAuthorization } from "./client-websocket-authorization.js";
+import { isRegistryIssuedRoomDistributionAuthorization } from "./room-distribution-authorization.js";
 import { isRegistryIssuedTerminalWebsocketAuthorization } from "./terminal-websocket-authorization.js";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
 import { decidePublicHttpAuthorization } from "./public-http-authorization.js";
@@ -205,7 +206,11 @@ function createValidatedWorkTogetherPrincipalPolicy(
                   action,
                   resource,
                 ) ||
-                isRegistryIssuedTerminalWebsocketAuthorization(action, resource)
+                isRegistryIssuedTerminalWebsocketAuthorization(
+                  action,
+                  resource,
+                ) ||
+                isRegistryIssuedRoomDistributionAuthorization(action, resource)
               ) {
                 return { allowed: true };
               }
