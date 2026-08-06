@@ -4,7 +4,7 @@ import {
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   type PluginSidebarThread,
 } from "@bb/plugin-sdk/app";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "./lib/utils";
 
 /**
  * This sidebar's own right-click menu.
@@ -36,10 +36,14 @@ export function RowContextMenu({
             Open in split
           </Item>
           <Separator />
-          <Item onSelect={() => void actions.setRead(thread.id, thread.isUnread)}>
+          <Item
+            onSelect={() => void actions.setRead(thread.id, thread.isUnread)}
+          >
             {thread.isUnread ? "Mark read" : "Mark unread"}
           </Item>
-          <Item onSelect={() => void actions.setPinned(thread.id, !thread.isPinned)}>
+          <Item
+            onSelect={() => void actions.setPinned(thread.id, !thread.isPinned)}
+          >
             {thread.isPinned ? "Unpin" : "Pin"}
           </Item>
           <Separator />

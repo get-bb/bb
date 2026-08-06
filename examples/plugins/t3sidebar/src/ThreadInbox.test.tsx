@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@bb/plugin-sdk";
 
@@ -10,7 +16,9 @@ import type { PluginSidebarThread } from "@bb/plugin-sdk";
 const app = await loadPluginApp(() => import("../app"));
 const inbox = app.threadLists[0]!;
 
-function thread(overrides: Partial<PluginSidebarThread> = {}): PluginSidebarThread {
+function thread(
+  overrides: Partial<PluginSidebarThread> = {},
+): PluginSidebarThread {
   return {
     id: "thr_1",
     projectId: "proj_1",
@@ -52,9 +60,10 @@ const listProps = {
   searchQuery: "",
 };
 
-function render(threads: PluginSidebarThread[], projects = [
-  { id: "proj_1", name: "bb", isPersonal: false },
-]) {
+function render(
+  threads: PluginSidebarThread[],
+  projects = [{ id: "proj_1", name: "bb", isPersonal: false }],
+) {
   return renderSlot(inbox, listProps, {
     sidebarThreads: { status: "ready", threads, projects },
     // The lifecycle store is the plugin's own backend; an empty one means
@@ -188,7 +197,6 @@ describe("ThreadInbox", () => {
     expect(screen.getByText("In other")).toBeDefined();
   });
 
-
   it("hides archived threads", () => {
     render([thread({ id: "a", isArchived: true })]);
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
@@ -202,29 +210,25 @@ describe("ThreadInbox", () => {
 
 describe("parking threads", () => {
   it("moves a settled thread to the Settled shelf", async () => {
-    renderSlot(
-      inbox,
-      listProps,
-      {
-        sidebarThreads: {
-          status: "ready",
-          threads: [thread({ id: "thr_done", title: "Finished work" })],
-          projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
-        },
-        rpc: {
-          listLifecycle: () => ({
-            rows: [
-              {
-                threadId: "thr_done",
-                settledAt: 200,
-                snoozedUntil: null,
-                snoozedAt: null,
-              },
-            ],
-          }),
-        },
+    renderSlot(inbox, listProps, {
+      sidebarThreads: {
+        status: "ready",
+        threads: [thread({ id: "thr_done", title: "Finished work" })],
+        projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
       },
-    );
+      rpc: {
+        listLifecycle: () => ({
+          rows: [
+            {
+              threadId: "thr_done",
+              settledAt: 200,
+              snoozedUntil: null,
+              snoozedAt: null,
+            },
+          ],
+        }),
+      },
+    });
     // The shelf renders once the lifecycle read resolves.
     const shelf = await screen.findByRole("region", { name: "Settled" });
     expect(within(shelf).getByText(/Settled \(1\)/)).toBeDefined();
@@ -235,43 +239,39 @@ describe("parking threads", () => {
   });
 
   it("keeps a working thread out of the shelves and offers no park action", async () => {
-    renderSlot(
-      inbox,
-      listProps,
-      {
-        sidebarThreads: {
-          status: "ready",
-          threads: [
-            thread({
-              id: "thr_busy",
-              title: "Still running",
-              indicator: "runtime",
-              activity: {
-                workflows: 0,
-                backgroundAgents: 0,
-                backgroundCommands: 0,
-                planMode: 0,
-                goals: 0,
-              },
-            }),
-          ],
-          projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
-        },
-        // Settled in the store, but still working: it must stay visible.
-        rpc: {
-          listLifecycle: () => ({
-            rows: [
-              {
-                threadId: "thr_busy",
-                settledAt: 200,
-                snoozedUntil: null,
-                snoozedAt: null,
-              },
-            ],
+    renderSlot(inbox, listProps, {
+      sidebarThreads: {
+        status: "ready",
+        threads: [
+          thread({
+            id: "thr_busy",
+            title: "Still running",
+            indicator: "runtime",
+            activity: {
+              workflows: 0,
+              backgroundAgents: 0,
+              backgroundCommands: 0,
+              planMode: 0,
+              goals: 0,
+            },
           }),
-        },
+        ],
+        projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
       },
-    );
+      // Settled in the store, but still working: it must stay visible.
+      rpc: {
+        listLifecycle: () => ({
+          rows: [
+            {
+              threadId: "thr_busy",
+              settledAt: 200,
+              snoozedUntil: null,
+              snoozedAt: null,
+            },
+          ],
+        }),
+      },
+    });
     expect(await screen.findByText("Still running")).toBeDefined();
     expect(screen.queryByRole("region", { name: "Settled" })).toBeNull();
     expect(screen.queryByLabelText("Settle thread")).toBeNull();
@@ -307,29 +307,25 @@ describe("parking threads", () => {
 
   it("shows the wake countdown on a snoozed row", async () => {
     const wakeAt = Date.now() + 2 * 60 * 60 * 1000;
-    renderSlot(
-      inbox,
-      listProps,
-      {
-        sidebarThreads: {
-          status: "ready",
-          threads: [thread({ id: "thr_snz", title: "Later" })],
-          projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
-        },
-        rpc: {
-          listLifecycle: () => ({
-            rows: [
-              {
-                threadId: "thr_snz",
-                settledAt: null,
-                snoozedUntil: wakeAt,
-                snoozedAt: Date.now(),
-              },
-            ],
-          }),
-        },
+    renderSlot(inbox, listProps, {
+      sidebarThreads: {
+        status: "ready",
+        threads: [thread({ id: "thr_snz", title: "Later" })],
+        projects: [{ id: "proj_1", name: "bb", isPersonal: false }],
       },
-    );
+      rpc: {
+        listLifecycle: () => ({
+          rows: [
+            {
+              threadId: "thr_snz",
+              settledAt: null,
+              snoozedUntil: wakeAt,
+              snoozedAt: Date.now(),
+            },
+          ],
+        }),
+      },
+    });
     const shelf = await screen.findByRole("region", { name: "Snoozed" });
     fireEvent.click(within(shelf).getByRole("button"));
     expect(within(shelf).getByText("2h")).toBeDefined();
@@ -349,13 +345,7 @@ describe("row context menu", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual([
-      "Open in split",
-      "Mark unread",
-      "Pin",
-      "Archive",
-      "Delete",
-    ]);
+    ).toEqual(["Open in split", "Mark unread", "Pin", "Archive", "Delete"]);
   });
 
   it("routes deletion through the host's confirmation", async () => {

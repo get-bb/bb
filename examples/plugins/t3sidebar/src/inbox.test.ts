@@ -12,7 +12,9 @@ import {
   visibleInboxThreads,
 } from "./inbox";
 
-function thread(overrides: Partial<PluginSidebarThread> = {}): PluginSidebarThread {
+function thread(
+  overrides: Partial<PluginSidebarThread> = {},
+): PluginSidebarThread {
   return {
     id: "thr_1",
     projectId: "proj_1",
@@ -78,7 +80,10 @@ describe("sortByCreatedAtDescending", () => {
   });
 
   it("does not mutate its input", () => {
-    const input = [thread({ id: "a", createdAt: 1 }), thread({ id: "b", createdAt: 2 })];
+    const input = [
+      thread({ id: "a", createdAt: 1 }),
+      thread({ id: "b", createdAt: 2 }),
+    ];
     sortByCreatedAtDescending(input);
     expect(input.map((t) => t.id)).toEqual(["a", "b"]);
   });
@@ -90,9 +95,9 @@ describe("threadDisplayTitle", () => {
     expect(
       threadDisplayTitle(thread({ title: null, titleFallback: "Fallback" })),
     ).toBe("Fallback");
-    expect(threadDisplayTitle(thread({ title: null, titleFallback: null }))).toBe(
-      "Untitled thread",
-    );
+    expect(
+      threadDisplayTitle(thread({ title: null, titleFallback: null })),
+    ).toBe("Untitled thread");
   });
 
   it("treats a whitespace-only title as absent", () => {

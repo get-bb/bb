@@ -126,14 +126,6 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
-  // Replaces the standard sidebar, so users install it deliberately instead
-  // of receiving a disabled registration by default.
-  {
-    name: "t3sidebar",
-    pluginId: "t3sidebar",
-    defaultEnabled: false,
-    category: "Interface",
-  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,

@@ -17,7 +17,9 @@ const quiet: ThreadActivitySignals = {
   latestAttentionAt: 0,
 };
 
-const row = (overrides: Partial<ThreadLifecycleRow> = {}): ThreadLifecycleRow => ({
+const row = (
+  overrides: Partial<ThreadLifecycleRow> = {},
+): ThreadLifecycleRow => ({
   threadId: "thr_1",
   settledAt: null,
   snoozedUntil: null,
@@ -52,7 +54,11 @@ describe("resolveShelf", () => {
 
   it("brings a settled thread back when it starts working", () => {
     expect(
-      resolveShelf(row({ settledAt: 500 }), { ...quiet, isWorking: true }, 1_000),
+      resolveShelf(
+        row({ settledAt: 500 }),
+        { ...quiet, isWorking: true },
+        1_000,
+      ),
     ).toBe("active");
   });
 

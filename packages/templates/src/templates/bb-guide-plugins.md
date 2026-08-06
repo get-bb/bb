@@ -138,8 +138,7 @@ added/updated/unchanged counts.
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks,
-                                 t3sidebar), a local
+                                 (github, docs, memory, tasks), a local
                                  path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
@@ -195,14 +194,13 @@ added/updated/unchanged counts.
 
 BB Official plugins
 
-BB's official plugins — GitHub, Docs, Memory, Tasks, and T3 Sidebar — ship
-bundled inside the app itself. They appear in Extensions → Plugins → Browse
+BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
+the app itself. They appear in Extensions → Plugins → Browse
 and install with one click from the local bundled copy: no network, no
 download, no separate release. Install from the CLI by bare name
-(`bb plugin install github`, `bb plugin install docs`,
-`bb plugin install memory`, `bb plugin install tasks`, or
-`bb plugin install t3sidebar`). Installed official plugins are pinned to the
-bundled copy and update automatically when the BB app updates.
+(`bb plugin install github`, `bb plugin install docs`, `bb plugin install
+memory`, or `bb plugin install tasks`). Installed official plugins are pinned
+to the bundled copy and update automatically when the BB app updates.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.
@@ -427,7 +425,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
-builtins and the store-only BB Official GitHub, Docs, Memory, Tasks, and T3
-Sidebar plugins. The `examples/plugins/` reference plugins
-cover slack-bot (webhook bot), agent-enrichment (agent surfaces), and
-composer-customization (all composer regions).
+builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
+plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
+bot), agent-enrichment (agent surfaces), composer-customization (all composer
+regions), and t3sidebar (a replacement sidebar thread list).

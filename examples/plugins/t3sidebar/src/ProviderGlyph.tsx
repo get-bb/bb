@@ -1,4 +1,4 @@
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "./lib/utils";
 import { TRAILING_GLYPH_BOX_CLASS } from "./StatusSlot";
 
 /**

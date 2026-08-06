@@ -3,6 +3,13 @@
 An inbox-style replacement for bb's sidebar thread list, and the reference
 example for `app.slots.experimental_threadList`.
 
+This plugin is an example. BB does not bundle it or list it in the official
+plugin catalog. Install it from a BB checkout:
+
+```sh
+bb plugin install ./examples/plugins/t3sidebar
+```
+
 Turn it on in **Settings → Appearance → Sidebar**. bb's own list stays the
 default, and comes back the moment you switch away or disable this plugin.
 
@@ -31,6 +38,7 @@ Three shelves:
   for a failure, the circle-question for a raised hand, the spinner for live
   work, and a blue notification dot for a thread that finished while you were
   not looking. Both lists sit in the same window, so they speak one language.
+
 - **Snoozed** — hidden until a wake time you chose. A snoozed thread comes
   back early if it starts working or asks you something.
 - **Settled** — work you are done with, collapsed to one line each.
@@ -56,22 +64,24 @@ header shows no parent chip.
 
 ## What it demonstrates
 
-| Plugin API | Used for |
-| --- | --- |
-| `experimental_threadList` | the sidebar's scrolling list (bb keeps the New-thread button, search, nav rows, and footer) |
-| `experimental_threadHeaderAction` | the two header chips: children on a parent, and the way back on a child |
-| `experimental_useSidebarThreads` | live threads and projects, from the host's own cache |
-| `experimental_useSidebarThreadActions` | open, open-in-split, new thread |
-| `experimental_useSidebarThreadSplit` | dragging a card out to a split pane |
-| `experimental_useSidebarThreadPullRequest` | the `#412` badge, coloured by bb's attention state |
-| `@radix-ui/react-context-menu` (shimmed) | this plugin's own right-click menu, built on the action hook |
-| `bb.storage.database()` + `bb.rpc` + `bb.realtime` | the settled/snoozed store |
+| Plugin API                                         | Used for                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `experimental_threadList`                          | the sidebar's scrolling list (bb keeps the New-thread button, search, nav rows, and footer) |
+| `experimental_threadHeaderAction`                  | the two header chips: children on a parent, and the way back on a child                     |
+| `experimental_useSidebarThreads`                   | live threads and projects, from the host's own cache                                        |
+| `experimental_useSidebarThreadActions`             | open, open-in-split, new thread                                                             |
+| `experimental_useSidebarThreadSplit`               | dragging a card out to a split pane                                                         |
+| `experimental_useSidebarThreadPullRequest`         | the `#412` badge, coloured by bb's attention state                                          |
+| `@radix-ui/react-context-menu` (shimmed)           | this plugin's own right-click menu, built on the action hook                                |
+| `bb.storage.database()` + `bb.rpc` + `bb.realtime` | the settled/snoozed store                                                                   |
 
 The plugin API ships **no components**. Status glyphs and the right-click menu
 are both this plugin's own: `indicator` arrives as data, and every menu item is
 one call on `experimental_useSidebarThreadActions`. Choosing them is the point
 of a replaced sidebar. Deletion still routes through `requestDelete`, so BB
 shows its confirmation dialog rather than a plugin deleting a subtree silently.
+The small icon and select components also live in this example. The example
+does not import BB's private shared UI package.
 
 ## Where the lifecycle lives
 

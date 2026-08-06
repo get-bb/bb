@@ -4,8 +4,8 @@ import {
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   type PluginSidebarThread,
 } from "@bb/plugin-sdk/app";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon, type IconName } from "./components/Icon";
+import { cn } from "./lib/utils";
 import { RowContextMenu } from "./RowContextMenu";
 import { ProviderGlyph } from "./ProviderGlyph";
 import { STATUS_SLOT_CLASS, StatusOrTime } from "./StatusSlot";
@@ -182,7 +182,7 @@ function ParkButton({
   onActivate,
 }: {
   label: string;
-  icon: "Clock" | "Check";
+  icon: Extract<IconName, "Clock" | "Check">;
   onActivate: () => void;
 }) {
   return (

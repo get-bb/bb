@@ -95,7 +95,9 @@ export default function plugin(bb: BbPluginApi) {
   };
 
   const clear = (threadId: string): void => {
-    db.prepare(`DELETE FROM thread_lifecycle WHERE thread_id = ?`).run(threadId);
+    db.prepare(`DELETE FROM thread_lifecycle WHERE thread_id = ?`).run(
+      threadId,
+    );
     bb.realtime.publish(LIFECYCLE_CHANNEL, { threadId });
   };
 

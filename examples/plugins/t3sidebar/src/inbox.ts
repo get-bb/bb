@@ -12,7 +12,8 @@ export function sortByCreatedAtDescending<
   T extends { readonly id: string; readonly createdAt: number },
 >(threads: readonly T[]): T[] {
   return [...threads].sort(
-    (left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id),
+    (left, right) =>
+      right.createdAt - left.createdAt || left.id.localeCompare(right.id),
   );
 }
 
@@ -34,7 +35,6 @@ export function searchThreadsByTitle(
     threadDisplayTitle(thread).toLowerCase().includes(normalized),
   );
 }
-
 
 export interface ProjectScope {
   /** Project id, or null for "all projects". */

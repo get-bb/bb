@@ -41,7 +41,9 @@ export interface LifecycleApi {
  * move its row without waiting for an unrelated re-render, and re-reading the
  * clock during render would make the classification unstable.
  */
-export function useLifecycle(threads: readonly PluginSidebarThread[]): LifecycleApi {
+export function useLifecycle(
+  threads: readonly PluginSidebarThread[],
+): LifecycleApi {
   const rpc = useRpc<typeof t3sidebarRpcContract>();
   const [rows, setRows] = useState<ReadonlyMap<string, ThreadLifecycleRow>>(
     () => new Map(),

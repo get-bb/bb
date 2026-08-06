@@ -1559,6 +1559,8 @@ Remaining reference examples in `examples/plugins/`:
   `experimental_NewThreadComposer`, plus a thin index backend (kv layout
   state, background service + realtime), pure row projection, and a
   bare-letter keymap that coexists with a dozen live composers.
+- `t3sidebar` — an inbox-style replacement for the sidebar thread list, with
+  header chips for child threads and plugin-owned settled and snoozed state.
 
 ## Gotchas
 

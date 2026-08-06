@@ -7,7 +7,9 @@ import type { PluginSidebarThread } from "@bb/plugin-sdk";
 // Load through the harness so the plugin's `@bb/plugin-sdk/app` import binds
 // to the test runtime.
 const app = await loadPluginApp(() => import("../app"));
-const parentChip = app.threadHeaderActions.find((slot) => slot.id === "parent")!;
+const parentChip = app.threadHeaderActions.find(
+  (slot) => slot.id === "parent",
+)!;
 
 function thread(
   overrides: Partial<PluginSidebarThread> = {},

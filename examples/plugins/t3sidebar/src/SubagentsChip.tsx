@@ -5,7 +5,7 @@ import {
   type PluginSidebarThread,
   type PluginThreadHeaderActionProps,
 } from "@bb/plugin-sdk/app";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn } from "./lib/utils";
 import { Disc } from "./Disc";
 import { StatusGlyph } from "./StatusGlyph";
 import { childrenOf, threadDisplayTitle } from "./inbox";

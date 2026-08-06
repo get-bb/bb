@@ -1,6 +1,6 @@
 import type { PluginSidebarThreadIndicator } from "@bb/plugin-sdk";
-import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { Icon } from "./components/Icon";
+import { cn } from "./lib/utils";
 
 /**
  * This plugin's status glyphs, matching bb's own sidebar shape for shape: the
@@ -60,7 +60,11 @@ export function StatusGlyph({
   switch (indicator) {
     case "unread-error":
       return (
-        <Icon name="CircleX" aria-label={aria} className={cn(shared, "text-destructive")} />
+        <Icon
+          name="CircleX"
+          aria-label={aria}
+          className={cn(shared, "text-destructive")}
+        />
       );
     case "waiting-for-input":
       return (
@@ -91,7 +95,11 @@ export function StatusGlyph({
     case "draft":
     case "working-draft":
       return (
-        <Icon name="Edit" aria-label={aria} className={cn(shared, "text-muted-foreground")} />
+        <Icon
+          name="Edit"
+          aria-label={aria}
+          className={cn(shared, "text-muted-foreground")}
+        />
       );
     case "unread-success":
       // The notification dot, in a box the size of every other glyph, the way
