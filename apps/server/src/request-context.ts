@@ -282,7 +282,7 @@ function unauthorizedPrincipalResponse(): Response {
  * adapter's raw incoming URL when present. Fall back for direct Hono tests to
  * pathname + search from the Fetch URL. Hono/Node types stay private here.
  */
-function readPrincipalRequestTarget(context: Context): string {
+export function readPrincipalRequestTarget(context: Context): string {
   const env = context.env as
     | {
         server?: { incoming?: { url?: string } };

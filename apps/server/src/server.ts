@@ -51,6 +51,7 @@ import {
   captureTrustedRemoteAddress,
   createInternalPrincipalExecutionScopeMiddleware,
   createResolvePrincipalMiddleware,
+  readPrincipalRequestTarget,
   requireClientSocketSession,
   resolveRequestAppSurface,
 } from "./request-context.js";
@@ -81,6 +82,13 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
+import { registerRoomDistributionHttpRoutes } from "./room-distribution/room-distribution-http.js";
+import type { WorkTogetherRoomDistributionV1 } from "./room-distribution/room-distribution-port.js";
+import { parseRoomDistributionTarget } from "./room-distribution/room-distribution-target.js";
+import {
+  createRoomDistributionSocketProtocol,
+  type RoomDistributionSocketClock,
+} from "./room-distribution/room-distribution-websocket.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -125,6 +133,8 @@ interface CreateAppOptions {
    * Defaults to local-owner; start-server forwards principalRuntime.principalMode.
    */
   principalMode?: InternalExecutionPrincipalMode;
+  /** Work Together-only closed Room distribution; never mounted in stock mode. */
+  roomDistribution?: WorkTogetherRoomDistributionV1;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
   /**
@@ -135,7 +145,9 @@ interface CreateAppOptions {
    * authorize budgets stay aligned with the S2.1 ≤14s production objective.
    */
   clientSocketRuntime?: {
-    readonly clock?: Partial<ClientSocketClock & TerminalSocketClock>;
+    readonly clock?: Partial<
+      ClientSocketClock & TerminalSocketClock & RoomDistributionSocketClock
+    >;
     readonly membershipRecheckIntervalMs?: number;
   };
 }
@@ -333,6 +345,9 @@ export function createApp(
   const fallbackPrincipalPolicy =
     options?.principalPolicy ?? createLocalOwnerPrincipalPolicy();
   const principalMode = options?.principalMode ?? "local-owner";
+  if (options?.roomDistribution && principalMode !== "work-together") {
+    throw new Error("Room distribution requires work-together principal mode");
+  }
   const internalPrincipalAuthority = createInternalPrincipalAuthority({
     fallbackPolicy: fallbackPrincipalPolicy,
   });
@@ -515,6 +530,19 @@ export function createApp(
     throw new ApiError(404, "not_found", "Not found");
   });
 
+  if (options?.roomDistribution) {
+    app.use("/api/bb-rooms/v1/*", (context, next) =>
+      context.req.path.endsWith("/subscribe")
+        ? next()
+        : resolveHttpPrincipal(context, next),
+    );
+    app.use("/api/bb-rooms/v1/*", (context, next) =>
+      context.req.path.endsWith("/subscribe")
+        ? next()
+        : runInternalPrincipalExecutionScope(context, next),
+    );
+    registerRoomDistributionHttpRoutes(app, options.roomDistribution);
+  }
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
   registerInternalSessionRoutes(internalApi, deps);
@@ -547,6 +575,56 @@ export function createApp(
     clock: options?.clientSocketRuntime?.clock,
     membershipRecheckIntervalMs:
       options?.clientSocketRuntime?.membershipRecheckIntervalMs,
+  });
+  const roomDistributionSocketProtocol = options?.roomDistribution
+    ? createRoomDistributionSocketProtocol({
+        distribution: options.roomDistribution,
+        clock: options.clientSocketRuntime?.clock,
+        membershipRecheckIntervalMs:
+          options.clientSocketRuntime?.membershipRecheckIntervalMs,
+      })
+    : null;
+
+  if (roomDistributionSocketProtocol !== null) {
+    app.use(
+      "/api/bb-rooms/v1/rooms/:bindingId/subscribe",
+      resolveWebSocketPrincipal,
+    );
+    app.get(
+      "/api/bb-rooms/v1/rooms/:bindingId/subscribe",
+      upgradeWebSocket((context) => {
+        let target;
+        try {
+          target = parseRoomDistributionTarget({
+            method: context.req.method,
+            target: readPrincipalRequestTarget(context),
+            transport: "websocket",
+          });
+        } catch {
+          throw new ApiError(404, "not_found", "Not found");
+        }
+        if (target.operation !== "subscribe") {
+          throw new ApiError(404, "not_found", "Not found");
+        }
+        const session = requireClientSocketSession(context);
+        return {
+          onOpen: (_event, socket) =>
+            roomDistributionSocketProtocol.open(
+              socket,
+              session,
+              target.bindingId,
+              target.cursor,
+            ),
+          onMessage: (_event, socket) =>
+            roomDistributionSocketProtocol.message(socket),
+          onClose: (_event, socket) =>
+            roomDistributionSocketProtocol.close(socket),
+        };
+      }),
+    );
+  }
+  app.use("/api/bb-rooms/v1/*", () => {
+    throw new ApiError(404, "not_found", "Not found");
   });
 
   app.use("/ws", resolveWebSocketPrincipal);
