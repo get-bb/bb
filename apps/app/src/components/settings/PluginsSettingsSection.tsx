@@ -574,7 +574,9 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const frontendDiagnostic = frontendDiagnostics.get(plugin.id);
   const frontendFailure = frontendDiagnostic?.lastFailure;
   const frontendSettingsPending =
-    plugin.app.bundle !== null && frontendDiagnostic === undefined;
+    plugin.status === "running" &&
+    plugin.app.bundle !== null &&
+    frontendDiagnostic === undefined;
   const provenanceLine =
     plugin.provenance === "catalog"
       ? "official catalog"
@@ -640,9 +642,22 @@ export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
             ) : null}
             <PluginUpdateBanner plugin={plugin} />
             <PluginUpdatesSourceCard plugin={plugin} />
-            {plugin.hasSettings ? (
+            {!pluginSurfacesAvailable ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <p className="text-xs text-muted-foreground">
+                  Settings are unavailable while the plugin is {plugin.status}.
+                </p>
+              </div>
+            ) : plugin.hasSettings ? (
               <div className="rounded-lg border border-border bg-card px-4 py-3.5">
                 <PluginSettingsForm pluginId={plugin.id} />
+              </div>
+            ) : frontendFailure !== null && frontendFailure !== undefined ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <p className="text-xs text-muted-foreground">
+                  Plugin settings are unavailable because its frontend did not
+                  load.
+                </p>
               </div>
             ) : !hasSettingsSections && !frontendSettingsPending ? (
               <div className="rounded-lg border border-border bg-card px-4 py-3.5">

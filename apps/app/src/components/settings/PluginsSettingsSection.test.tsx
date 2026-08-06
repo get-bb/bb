@@ -25,6 +25,7 @@ import {
 } from "@/lib/plugin-slots";
 import {
   PluginSettingsDetail,
+  PluginSettingsDetailSection,
   PluginSettingsForm,
   PluginsSettingsSection,
 } from "./PluginsSettingsSection";
@@ -409,22 +410,112 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
-  it("shows the no-settings state for an enabled errored plugin", () => {
+  it("shows unavailable settings for an enabled errored plugin", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
         <PluginSettingsDetail
-          plugin={{ ...rowPlugin("error"), hasSettings: false }}
+          plugin={{
+            ...rowPlugin("error"),
+            hasSettings: false,
+            app: {
+              hasApp: true,
+              bundle: {
+                jsUrl: "/api/v1/plugins/linear/app.js",
+                cssUrl: null,
+                hash: "stale-linear-app",
+                sdkMajor: 0,
+                sdkVersion: "0.4.1",
+                compatible: true,
+              },
+            },
+          }}
         />
       </MemoryRouter>,
       { wrapper },
     );
     expect(screen.queryByLabelText("Greeting")).toBeNull();
-    expect(screen.getByText("This plugin declares no settings.")).toBeDefined();
+    expect(
+      screen.getByText("Settings are unavailable while the plugin is error."),
+    ).toBeDefined();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the optimistic toggle state until the plugin list refetches", async () => {
+    const requests: RecordedRequest[] = [];
+    let finishListRefetch: (response: Response) => void = () => {
+      throw new Error("Plugin list refetch did not start");
+    };
+    const listRefetch = new Promise<Response>((resolve) => {
+      finishListRefetch = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method === "POST") {
+          return jsonOk({
+            ok: true,
+            plugin: serverPlugin({ enabled: true, status: "running" }),
+          });
+        }
+        return listRefetch;
+      }),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(pluginListQueryKey(true), {
+      plugins: [
+        {
+          ...rowPlugin("disabled"),
+          enabled: false,
+          hasSettings: false,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetailSection pluginId="linear" />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Enable linear" }));
+    await vi.waitFor(() => {
+      expect(requests.some((request) => request.init?.method === "POST")).toBe(
+        true,
+      );
+      expect(
+        requests.some((request) => request.init?.method !== "POST"),
+      ).toBe(true);
+    });
+
+    const pendingSwitch = screen.getByRole("switch", {
+      name: "Disable linear",
+    });
+    expect(pendingSwitch.getAttribute("aria-checked")).toBe("true");
+    expect((pendingSwitch as HTMLButtonElement).disabled).toBe(true);
+
+    finishListRefetch(
+      jsonOk({
+        plugins: [
+          serverPlugin({
+            enabled: true,
+            status: "running",
+            hasSettings: false,
+          }),
+        ],
+      }),
+    );
+    await vi.waitFor(() => {
+      const settledSwitch = screen.getByRole("switch", {
+        name: "Disable linear",
+      });
+      expect((settledSwitch as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it("removes a stale builtin plugin from its detail page", async () => {
