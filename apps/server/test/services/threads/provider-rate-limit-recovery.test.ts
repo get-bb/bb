@@ -1,4 +1,4 @@
-import { getThread, listEvents } from "@bb/db";
+import { getEnvironment, getThread, listEvents } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
   parseStoredThreadEvent,
@@ -23,6 +23,7 @@ import {
 } from "../../helpers/test-app.js";
 
 const FAILED_REQUEST_ID = encodeClientTurnRequestIdNumber({ value: 41 });
+const STEER_REQUEST_ID = encodeClientTurnRequestIdNumber({ value: 42 });
 const RESET_AT_MS = Date.now() + 5 * 60 * 60 * 1_000;
 const RATE_LIMITS: ProviderRateLimitState = {
   providerId: "codex",
@@ -48,8 +49,11 @@ const RATE_LIMITS: ProviderRateLimitState = {
 function seedFailedRateLimitedTurn(
   harness: TestAppHarness,
   options: {
+    environmentStatus?: "ready" | "retiring";
     rateLimits?: ProviderRateLimitState;
+    steeredAfterOutput?: boolean;
     withOutput?: boolean;
+    withoutRateLimitError?: boolean;
     willRetry?: boolean;
   } = {},
 ) {
@@ -60,6 +64,7 @@ function seedFailedRateLimitedTurn(
   const environment = seedEnvironment(harness.deps, {
     hostId: host.id,
     projectId: project.id,
+    status: options.environmentStatus,
   });
   const thread = seedThread(harness.deps, {
     environmentId: environment.id,
@@ -121,36 +126,90 @@ function seedFailedRateLimitedTurn(
     scope: turnScope(turnId),
     data: { providerThreadId, clientRequestId: FAILED_REQUEST_ID },
   });
+  let nextSequence = 5;
+  if (options.steeredAfterOutput) {
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId,
+      sequence: nextSequence,
+      type: "turn/plan/updated",
+      scope: turnScope(turnId),
+      data: {
+        providerThreadId,
+        plan: [{ step: "Started work", status: "active" }],
+      },
+    });
+    nextSequence += 1;
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence: nextSequence,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      data: {
+        direction: "outbound",
+        requestId: STEER_REQUEST_ID,
+        source: "tell",
+        initiator: "user",
+        senderThreadId: null,
+        input: [{ type: "text", text: "Also run tests", mentions: [] }],
+        target: { kind: "steer", expectedTurnId: turnId },
+        request: { method: "turn/start", params: {} },
+        execution: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          source: "client/turn/requested",
+        },
+      },
+    });
+    nextSequence += 1;
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId,
+      sequence: nextSequence,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      data: { providerThreadId, clientRequestId: STEER_REQUEST_ID },
+    });
+    nextSequence += 1;
+  }
   seedEvent(harness.deps, {
     threadId: thread.id,
     environmentId: environment.id,
     providerThreadId,
-    sequence: 5,
+    sequence: nextSequence,
     type: "provider/rateLimits/updated",
     scope: threadScope(),
     data: { providerThreadId, rateLimits },
   });
-  seedEvent(harness.deps, {
-    threadId: thread.id,
-    environmentId: environment.id,
-    providerThreadId,
-    sequence: 6,
-    type: "provider/error",
-    scope: turnScope(turnId),
-    data: {
+  nextSequence += 1;
+  if (!options.withoutRateLimitError) {
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
       providerThreadId,
-      message: "Usage limit reached",
-      ...(options.willRetry === undefined
-        ? {}
-        : { willRetry: options.willRetry }),
-      errorInfo: {
-        category: "rate-limit",
-        providerCode: "usage_limit_reached",
-        httpStatusCode: 429,
+      sequence: nextSequence,
+      type: "provider/error",
+      scope: turnScope(turnId),
+      data: {
+        providerThreadId,
+        message: "Usage limit reached",
+        ...(options.willRetry === undefined
+          ? {}
+          : { willRetry: options.willRetry }),
+        errorInfo: {
+          category: "rate-limit",
+          providerCode: "usage_limit_reached",
+          httpStatusCode: 429,
+        },
       },
-    },
-  });
-  let nextSequence = 7;
+    });
+    nextSequence += 1;
+  }
   if (options.withOutput) {
     seedEvent(harness.deps, {
       threadId: thread.id,
@@ -226,6 +285,36 @@ describe("provider rate-limit recovery", () => {
           thread: retryFixture.thread,
         }).reason,
       ).toBe("provider-will-retry");
+    });
+  });
+
+  it("fails closed when a steer follows earlier output in the same turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        steeredAfterOutput: true,
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }).reason,
+      ).toBe("output-or-side-effect-observed");
+    });
+  });
+
+  it("requires a terminal rate-limit error from the failed turn", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        withoutRateLimitError: true,
+      });
+
+      expect(
+        getProviderRateLimitRecoveryStatus(harness.deps, {
+          environment: fixture.environment,
+          thread: fixture.thread,
+        }).reason,
+      ).toBe("no-terminal-rate-limit-error");
     });
   });
 
@@ -385,6 +474,27 @@ describe("provider rate-limit recovery", () => {
       expect(
         listQueuedThreadCommands(harness, "turn.submit", fixture.thread.id),
       ).toHaveLength(1);
+    });
+  });
+
+  it("revives a retiring environment before continuing", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedFailedRateLimitedTurn(harness, {
+        environmentStatus: "retiring",
+      });
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.thread.id}/rate-limit-recovery/continue`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ failedRequestId: FAILED_REQUEST_ID }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(getEnvironment(harness.db, fixture.environment.id)?.status).toBe(
+        "ready",
+      );
     });
   });
 });

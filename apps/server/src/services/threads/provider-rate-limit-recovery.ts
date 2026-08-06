@@ -2,6 +2,7 @@ import {
   getEnvironment,
   getLastStoredTurnRequestEvent,
   getLatestStoredEventRowByType,
+  getRootStoredTurnStartedSequence,
   getStoredTurnRequestEventForTurn,
   getThread,
   listStoredEventRowsInRange,
@@ -50,6 +51,7 @@ import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
 } from "./thread-send.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 const CONTINUE_INPUT: PromptInput[] = [
   {
@@ -197,9 +199,17 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
     return emptyInspection(args, "superseded", observedRateLimits);
   }
 
+  const turnStartedSequence = getRootStoredTurnStartedSequence(args.db, {
+    threadId: args.thread.id,
+    turnId,
+  });
+  if (turnStartedSequence === null) {
+    return emptyInspection(args, "no-failed-turn", observedRateLimits);
+  }
+
   const rows = listStoredEventRowsInRange(args.db, {
     threadId: args.thread.id,
-    seqStart: requestRow.sequence,
+    seqStart: turnStartedSequence,
     seqEnd: completedRow.sequence,
   });
   const events = rows.map(parseStoredEvent);
@@ -234,11 +244,17 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
       event.type === "provider/error" &&
       event.errorInfo?.category === "rate-limit",
   );
-  if (
-    rateLimitErrors.some((event) => event.willRetry === true) &&
-    !rateLimitErrors.some((event) => event.willRetry !== true)
-  ) {
-    return emptyInspection(args, "provider-will-retry", turnRateLimits);
+  const hasTerminalRateLimitError = rateLimitErrors.some(
+    (event) => event.willRetry !== true,
+  );
+  if (!hasTerminalRateLimitError) {
+    return emptyInspection(
+      args,
+      rateLimitErrors.length > 0
+        ? "provider-will-retry"
+        : "no-terminal-rate-limit-error",
+      turnRateLimits,
+    );
   }
   if (hasOutputOrSideEffect(events, turnId)) {
     return emptyInspection(
@@ -315,8 +331,16 @@ export async function continueThreadAfterProviderRateLimit(
 ): Promise<ContinueAfterProviderRateLimitResponse> {
   ensureThreadIsWritable(args.thread);
   ensureThreadIsNotAwaitingUserInteraction(deps, args.thread.id);
+  const currentEnvironment =
+    getEnvironment(deps.db, args.environment.id) ?? args.environment;
+  if (currentEnvironment.status === "retiring") {
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: currentEnvironment.id,
+      event: { type: "retire.cancelled" },
+    });
+  }
   const readyEnvironment = requireReadyThreadEnvironment(
-    getEnvironment(deps.db, args.environment.id) ?? args.environment,
+    getEnvironment(deps.db, args.environment.id) ?? currentEnvironment,
   );
   const initial = inspectRecovery({
     db: deps.db,

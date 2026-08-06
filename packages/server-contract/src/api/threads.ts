@@ -224,6 +224,7 @@ export const providerRateLimitRecoveryReasonSchema = z.enum([
   "no-failed-turn",
   "input-not-accepted",
   "no-rate-limit-state",
+  "no-terminal-rate-limit-error",
   "provider-will-retry",
   "manual-only",
   "output-or-side-effect-observed",

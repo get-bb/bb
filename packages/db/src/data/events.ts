@@ -808,6 +808,11 @@ export interface GetStoredTurnRequestEventForTurnArgs {
   turnId: string;
 }
 
+export interface GetRootStoredTurnStartedSequenceArgs {
+  threadId: string;
+  turnId: string;
+}
+
 export interface ListStoredThreadProvisioningRowsByProvisioningIdArgs {
   provisioningId: string;
   threadId: string;
@@ -1913,6 +1918,28 @@ export function hasRootStoredTurnStarted(
     .get();
 
   return row !== undefined;
+}
+
+export function getRootStoredTurnStartedSequence(
+  db: DbQueryConnection,
+  args: GetRootStoredTurnStartedSequenceArgs,
+): number | null {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/started"),
+        eq(events.turnId, args.turnId),
+        isRootTurnStartedEventData,
+      ),
+    )
+    .orderBy(events.sequence)
+    .limit(1)
+    .get();
+
+  return row?.sequence ?? null;
 }
 
 export function listRecentStoredEventRows(
