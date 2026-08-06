@@ -57,6 +57,29 @@ it("uses the contribution hint when branding.icon is omitted", () => {
   expect(view.container.querySelector("img")).toBeNull();
 });
 
+it("can prefer a contribution hint over branding.icon", () => {
+  setPluginLogoUrls(
+    new Map([
+      [
+        "tasks",
+        {
+          displayName: "Tasks",
+          icon: "ListTodo",
+          compactIconUrl: null,
+          logoUrl: null,
+          logoDarkUrl: null,
+        },
+      ],
+    ]),
+  );
+
+  const view = render(
+    <PluginIcon pluginId="tasks" icon="Home" preferContributionIcon />,
+  );
+  expect(view.container.querySelector("[data-icon=Home]")).toBeTruthy();
+  expect(view.container.querySelector("[data-icon=ListTodo]")).toBeNull();
+});
+
 it("uses Zap compactly when a logo-only plugin has no contribution hint", () => {
   setPluginLogoUrls(
     new Map([

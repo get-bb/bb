@@ -33,7 +33,11 @@ function registrationSet(
   };
 }
 
-function registerPanel(pluginId: string, title: string) {
+function registerPanel(
+  pluginId: string,
+  title: string,
+  sidebarPlacement?: "top",
+) {
   setPluginSlotRegistrations(
     pluginId,
     registrationSet({
@@ -43,6 +47,7 @@ function registerPanel(pluginId: string, title: string) {
           title,
           icon: "Puzzle",
           path: "main",
+          ...(sidebarPlacement ? { sidebarPlacement } : {}),
           component: () => null,
         },
       ],
@@ -73,7 +78,7 @@ function renderSidebarItems(
   );
 }
 
-const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
+const ROW_LABELS = new Set(["Extensions", "Home", "Docs", "GitHub"]);
 
 function panelRowNames(): string[] {
   return screen
@@ -203,6 +208,23 @@ describe("PluginNavSidebarItems", () => {
     });
 
     expect(panelRowNames()).toEqual(["Extensions", "GitHub", "Docs"]);
+  });
+
+  it("pins a top-placement panel directly below the primary actions", () => {
+    registerPanel("docs", "Docs");
+    registerPanel("tasks", "Home", "top");
+
+    renderSidebarItems({
+      toolsRoutePath: "/tools/skills",
+      storedOrder: ["docs/main", "__builtin__/tools", "tasks/main"],
+    });
+
+    expect(panelRowNames()).toEqual(["Home", "Docs", "Extensions"]);
+    expect(
+      screen
+        .getByRole("button", { name: "Home" })
+        .getAttribute("aria-roledescription"),
+    ).toBeNull();
   });
 
   it("keeps a saved order when plugin frontends register after the first render", async () => {
