@@ -1,29 +1,88 @@
-import { hostTypeSchema, type HostType } from "@bb/domain";
+import { hostTypeSchema, type HostType, type Principal } from "@bb/domain";
 import { z } from "zod";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 
-interface DaemonAuthContext {
-  get(key: string): unknown;
-  set(key: string, value: unknown): void;
-}
+/** Fixed display name for host-daemon machine Principals — never caller-controlled. */
+export const MACHINE_PRINCIPAL_DISPLAY_NAME = "Host daemon";
 
 export interface AuthenticatedDaemon {
-  hostId: string;
-  hostType: HostType;
-  keyId: string;
+  readonly hostId: string;
+  readonly hostType: HostType;
+  readonly keyId: string;
+  readonly principal: Principal;
 }
+
+const machinePrincipalSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("machine"),
+    displayName: z.literal(MACHINE_PRINCIPAL_DISPLAY_NAME),
+  })
+  .strict();
 
 const authenticatedDaemonSchema = z
   .object({
     hostId: z.string().min(1),
     hostType: hostTypeSchema,
     keyId: z.string().min(1),
+    principal: machinePrincipalSchema,
   })
-  .strict();
+  .strict()
+  .refine((value) => value.principal.id === value.hostId, {
+    message: "machine Principal id must equal hostId",
+  });
 
-function isAuthenticatedDaemon(value: unknown): value is AuthenticatedDaemon {
-  return authenticatedDaemonSchema.safeParse(value).success;
+// Module-private brand: only objects minted by verifyAuthenticatedDaemon may be
+// attached. Structural clones and forged Principals cannot enter the WeakSet.
+const issuedAuthenticatedDaemons = new WeakSet<object>();
+
+// Module-private authority store. Callers can set arbitrary Hono variables, but
+// they cannot discover or replace this WeakMap entry.
+const attachedAuthenticatedDaemons = new WeakMap<object, AuthenticatedDaemon>();
+
+function freezeMachinePrincipal(hostId: string): Principal {
+  return Object.freeze({
+    id: hostId,
+    kind: "machine",
+    displayName: MACHINE_PRINCIPAL_DISPLAY_NAME,
+  });
+}
+
+function mintAuthenticatedDaemon(args: {
+  hostId: string;
+  hostType: HostType;
+  keyId: string;
+}): AuthenticatedDaemon {
+  const candidate = {
+    hostId: args.hostId,
+    hostType: args.hostType,
+    keyId: args.keyId,
+    principal: freezeMachinePrincipal(args.hostId),
+  };
+  const parsed = authenticatedDaemonSchema.parse(candidate);
+  const daemon: AuthenticatedDaemon = Object.freeze({
+    hostId: parsed.hostId,
+    hostType: parsed.hostType,
+    keyId: parsed.keyId,
+    principal: Object.freeze({
+      id: parsed.principal.id,
+      kind: parsed.principal.kind,
+      displayName: parsed.principal.displayName,
+    }),
+  });
+  issuedAuthenticatedDaemons.add(daemon);
+  return daemon;
+}
+
+function isIssuedAuthenticatedDaemon(
+  value: unknown,
+): value is AuthenticatedDaemon {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    issuedAuthenticatedDaemons.has(value)
+  );
 }
 
 export function requireBearerToken(
@@ -41,8 +100,12 @@ export function requireBearerToken(
   return token;
 }
 
+export type DaemonHostKeyVerifier = {
+  machineAuth: Pick<AppDeps["machineAuth"], "verifyDaemonHostKey">;
+};
+
 export async function verifyAuthenticatedDaemon(
-  deps: Pick<AppDeps, "machineAuth">,
+  deps: DaemonHostKeyVerifier,
   authorizationHeader: string | undefined,
 ): Promise<AuthenticatedDaemon> {
   const token = requireBearerToken(authorizationHeader);
@@ -51,25 +114,39 @@ export async function verifyAuthenticatedDaemon(
     throw new ApiError(401, "unauthorized", "Unauthorized");
   }
 
-  return {
+  return mintAuthenticatedDaemon({
     hostId: verified.metadata.hostId,
     hostType: verified.metadata.hostType,
     keyId: verified.keyId,
-  };
+  });
 }
 
+/**
+ * Attach exactly one verified authenticated-daemon identity to a request
+ * context. Refuses forged objects and duplicate/replacement attaches.
+ */
 export function setAuthenticatedDaemon(
-  context: DaemonAuthContext,
+  context: object,
   daemon: AuthenticatedDaemon,
 ): void {
-  context.set("authenticatedDaemon", daemon);
+  if (!isIssuedAuthenticatedDaemon(daemon)) {
+    throw new Error(
+      "Authenticated daemon was not issued by verifyAuthenticatedDaemon",
+    );
+  }
+  if (attachedAuthenticatedDaemons.has(context)) {
+    throw new Error("Authenticated daemon already attached to request");
+  }
+  attachedAuthenticatedDaemons.set(context, daemon);
 }
 
-export function getAuthenticatedDaemon(
-  context: DaemonAuthContext,
-): AuthenticatedDaemon {
-  const daemon = context.get("authenticatedDaemon");
-  if (!isAuthenticatedDaemon(daemon)) {
+/**
+ * Fail-closed accessor for the privately attached authenticated daemon. Ignores
+ * caller-set Hono variables.
+ */
+export function getAuthenticatedDaemon(context: object): AuthenticatedDaemon {
+  const daemon = attachedAuthenticatedDaemons.get(context);
+  if (!isIssuedAuthenticatedDaemon(daemon)) {
     throw new ApiError(
       500,
       "internal_error",

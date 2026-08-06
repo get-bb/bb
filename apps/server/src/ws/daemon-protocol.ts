@@ -1,4 +1,5 @@
 import { heartbeatSession } from "@bb/db";
+import type { Principal } from "@bb/domain";
 import {
   hasHostDaemonWebSocketProtocol,
   hostDaemonDaemonWsMessageSchema,
@@ -28,14 +29,24 @@ interface DaemonSocketMessageArgs {
   socket: DaemonSocket;
 }
 
+/** Immutable daemon WebSocket upgrade context after host-key verification. */
+export type DaemonWebSocketContext = {
+  readonly hostId: string;
+  readonly sessionId: string;
+  /** Verified transporting machine Principal (distinct from provider agent). */
+  readonly principal: Principal;
+};
+
 export async function validateDaemonWebSocket(
-  deps: Pick<AppDeps, "db" | "machineAuth">,
+  deps: Pick<AppDeps, "db"> & {
+    machineAuth: Pick<AppDeps["machineAuth"], "verifyDaemonHostKey">;
+  },
   args: {
     authorizationHeader: string | undefined;
     protocolHeader: string | undefined;
     sessionId: string | null;
   },
-): Promise<{ hostId: string; sessionId: string }> {
+): Promise<DaemonWebSocketContext> {
   const sessionId = args.sessionId;
   if (!sessionId) {
     throw new ApiError(401, "unauthorized", "Unauthorized");
@@ -57,10 +68,11 @@ export async function validateDaemonWebSocket(
     sessionId,
   });
 
-  return {
+  return Object.freeze({
     sessionId: session.id,
     hostId: session.hostId,
-  };
+    principal: verified.principal,
+  });
 }
 
 export function onDaemonSocketOpen(
