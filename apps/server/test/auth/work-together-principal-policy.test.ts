@@ -278,8 +278,8 @@ describe("work-together principal policy", () => {
     expect("membershipRevision" in session.principal).toBe(false);
     await expect(
       session.authorize(
-        { name: "thread.read" },
-        { kind: "thread", id: "thr_1" },
+        { name: "publicHttp.projects.get" },
+        { kind: "project", id: "project-1" },
       ),
     ).resolves.toEqual({ allowed: true });
   });
@@ -307,8 +307,14 @@ describe("work-together principal policy", () => {
     );
     expect(session.principal.kind).toBe("human");
     await expect(
-      session.authorize({ name: "any" }, { kind: "project", id: null }),
+      session.authorize(
+        { name: "publicHttp.projects.get" },
+        { kind: "project", id: "project-1" },
+      ),
     ).resolves.toEqual({ allowed: true });
+    await expect(
+      session.authorize({ name: "any" }, { kind: "project", id: null }),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
   });
 
   it("rejects missing, malformed, oversize, and invalid-signature tokens", async () => {

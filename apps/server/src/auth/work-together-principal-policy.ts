@@ -14,6 +14,7 @@ import {
   type WorkTogetherMembershipVerifier,
 } from "./work-together-membership.js";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
+import { decidePublicHttpAuthorization } from "./public-http-authorization.js";
 import {
   WorkTogetherPrincipalAssertionError,
   rejectWorkTogetherPrincipalAssertion,
@@ -174,8 +175,8 @@ function createValidatedWorkTogetherPrincipalPolicy(
         const session: ResolvedPrincipal = {
           principal,
           async authorize(
-            _action: PolicyAction,
-            _resource: PolicyResource,
+            action: PolicyAction,
+            resource: PolicyResource,
           ): Promise<PolicyDecision> {
             try {
               const currentResult = await membershipVerifier.currentMembership({
@@ -189,7 +190,11 @@ function createValidatedWorkTogetherPrincipalPolicy(
               if (current.membershipRevision !== expectedRevision) {
                 return { allowed: false, reason: "forbidden" };
               }
-              return { allowed: true };
+              return decidePublicHttpAuthorization({
+                role: current.role,
+                action,
+                resource,
+              });
             } catch {
               return { allowed: false, reason: "unauthenticated" };
             }

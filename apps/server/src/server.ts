@@ -41,6 +41,7 @@ import {
 } from "./internal/auth.js";
 import { createLocalOwnerPrincipalPolicy } from "./auth/local-owner-adapter.js";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
+import { createPublicHttpAuthorizationMiddleware } from "./auth/public-http-authorization.js";
 import {
   captureTrustedRemoteAddress,
   createResolvePrincipalMiddleware,
@@ -377,6 +378,10 @@ export function createApp(
     });
   });
   app.use("/api/v1/*", resolveHttpPrincipal);
+  app.use(
+    "/api/v1/*",
+    createPublicHttpAuthorizationMiddleware({ db: deps.db }),
+  );
   app.use("/api/v1/*", async (context, next) => {
     const startedAt = performance.now();
     await next();
