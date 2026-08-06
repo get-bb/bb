@@ -159,6 +159,14 @@ function assertValidResource(resource: PolicyResource): void {
   }
 }
 
+function samePrincipal(left: Principal, right: Principal): boolean {
+  return (
+    left.id === right.id &&
+    left.kind === right.kind &&
+    left.displayName === right.displayName
+  );
+}
+
 function bindSession(session: InternalPrincipalSession): BoundSession {
   if (
     session === null ||
@@ -385,14 +393,27 @@ export function createInternalPrincipalAuthority(
     session: InternalPrincipalSession,
     fn: () => T | Promise<T>,
   ): Promise<T> {
-    const current = executionScopes.getStore();
-    // An async descendant retains the ALS store even after its parent's scope
-    // is inactive. It may not replace that authority with a new session.
-    if (current !== undefined) {
-      rejectInternalPrincipalAuthority();
-    }
     if (typeof fn !== "function") {
       rejectInternalPrincipalAuthority();
+    }
+
+    const current = executionScopes.getStore();
+    if (current !== undefined) {
+      // An async descendant retains the ALS store after the parent settles.
+      // Inactive inherited scopes may never mint a replacement authority.
+      if (!current.active) {
+        rejectInternalPrincipalAuthority();
+      }
+      if (session === null || typeof session !== "object") {
+        rejectInternalPrincipalAuthority();
+      }
+      // Same already-active Principal may reenter the current scope, but any
+      // replacement authorizer is ignored so nested calls cannot widen authority.
+      const nestedPrincipal = freezePrincipal(session.principal);
+      if (!samePrincipal(nestedPrincipal, current.session.principal)) {
+        rejectInternalPrincipalAuthority();
+      }
+      return await fn();
     }
 
     const bound = bindSession(session);

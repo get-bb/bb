@@ -593,16 +593,115 @@ describe("createInternalPrincipalAuthority", () => {
     expect(underlying).not.toHaveBeenCalled();
   });
 
-  it("rejects nested scope replacement", async () => {
+  it("allows same-Principal reentrancy and ignores a replacement authorizer", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+    const outerAuthorize = vi.fn(
+      async (): Promise<PolicyDecision> => ({ allowed: true }),
+    );
+    const innerAuthorize = vi.fn(
+      async (): Promise<PolicyDecision> => ({
+        allowed: false,
+        reason: "forbidden",
+      }),
+    );
+
+    await authority.runWithSession(
+      {
+        principal: { ...SYSTEM_PRINCIPAL },
+        authorize: outerAuthorize,
+      },
+      async () => {
+        await authority.runWithSession(
+          {
+            principal: { ...SYSTEM_PRINCIPAL },
+            authorize: innerAuthorize,
+          },
+          async () => {
+            await authority.fetch("http://127.0.0.1/api/v1/projects");
+          },
+        );
+      },
+    );
+
+    expect(underlying).toHaveBeenCalledOnce();
+    expect(innerAuthorize).not.toHaveBeenCalled();
+    expect(outerAuthorize).not.toHaveBeenCalled();
+  });
+
+  it("same-Principal reentrancy cannot widen authority via nested authorize", async () => {
+    const fallback = createFallbackSpy();
+    const gate = createGateFetch();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: gate.fetch,
+    });
+    const outerAuthorize = vi.fn(
+      async (): Promise<PolicyDecision> => ({
+        allowed: false,
+        reason: "forbidden",
+      }),
+    );
+    const wideningAuthorize = vi.fn(
+      async (): Promise<PolicyDecision> => ({ allowed: true }),
+    );
+
+    const running = authority.runWithSession(
+      {
+        principal: { ...SYSTEM_PRINCIPAL },
+        authorize: outerAuthorize,
+      },
+      async () => {
+        await authority.runWithSession(
+          {
+            principal: { ...SYSTEM_PRINCIPAL },
+            authorize: wideningAuthorize,
+          },
+          async () => {
+            await authority.fetch("http://127.0.0.1/api/v1/projects");
+          },
+        );
+      },
+    );
+    const call = await gate.waitForCall();
+    const resolved = await authority.principalPolicy.resolve(
+      requestFromCall(call),
+    );
+    await expect(
+      resolved.authorize(
+        { name: "publicHttp.projects.list" },
+        { kind: "project", id: null },
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
+    expect(wideningAuthorize).not.toHaveBeenCalled();
+    expect(outerAuthorize).toHaveBeenCalledOnce();
+
+    gate.release();
+    await running;
+  });
+
+  it("rejects nested scope replacement for a different Principal", async () => {
     const fallback = createFallbackSpy();
     const authority = createInternalPrincipalAuthority({
       fallbackPolicy: fallback.policy,
       fetch: async () => new Response(null, { status: 204 }),
     });
+    const otherPrincipal: Principal = Object.freeze({
+      id: "system:other",
+      kind: "system",
+      displayName: "Other",
+    });
 
     await expect(
       authority.runWithSession(createSession(), async () => {
-        await authority.runWithSession(createSession(), async () => "nested");
+        await authority.runWithSession(
+          createSession(otherPrincipal),
+          async () => "nested",
+        );
       }),
     ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
   });

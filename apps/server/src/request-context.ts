@@ -12,6 +12,10 @@ import type {
   PrincipalTransport,
 } from "@bb/domain";
 import type { Context, MiddlewareHandler, Next } from "hono";
+import type {
+  InternalPrincipalAuthority,
+  InternalPrincipalSession,
+} from "./auth/internal-principal-authority.js";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
@@ -149,6 +153,24 @@ export function requirePrincipal(context: object): Principal {
 }
 
 /**
+ * Fail-closed immutable Principal + authorize session for handlers and the
+ * internal execution-scope middleware. Backed only by the module-private
+ * attachment; never accepts a Principal argument or Hono variables.
+ */
+export function requirePrincipalSession(
+  context: object,
+): InternalPrincipalSession {
+  const attached = attachedPrincipalSessions.get(context);
+  if (attached === undefined) {
+    throw new Error("Principal is not attached to request");
+  }
+  return Object.freeze({
+    principal: attached.principal,
+    authorize: attached.authorization.authorize,
+  });
+}
+
+/**
  * Authorize an action via the request-scoped session closure. Missing session
  * fails closed as unauthenticated without consulting an adapter or accepting a
  * Principal argument.
@@ -234,5 +256,24 @@ export function createResolvePrincipalMiddleware(
       return unauthorizedPrincipalResponse();
     }
     return next();
+  };
+}
+
+/**
+ * Propagate the request-attached Principal session through
+ * InternalPrincipalAuthority.runWithSession for the remainder of the
+ * `/api/v1/*` lifetime. Missing attachment fails closed as unauthorized.
+ */
+export function createInternalPrincipalExecutionScopeMiddleware(
+  authority: Pick<InternalPrincipalAuthority, "runWithSession">,
+): MiddlewareHandler {
+  return async (context: Context, next: Next) => {
+    let session: InternalPrincipalSession;
+    try {
+      session = requirePrincipalSession(context);
+    } catch {
+      return unauthorizedPrincipalResponse();
+    }
+    return authority.runWithSession(session, () => next());
   };
 }

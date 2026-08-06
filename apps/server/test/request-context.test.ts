@@ -1,15 +1,23 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  INTERNAL_PRINCIPAL_CREDENTIAL_HEADER_NAME,
+  createInternalPrincipalAuthority,
+} from "../src/auth/internal-principal-authority.js";
 import { createLocalOwnerPrincipalPolicy } from "../src/auth/local-owner-adapter.js";
 import type { PrincipalPolicy } from "../src/auth/principal-policy.js";
 import {
   authorize,
   captureTrustedRemoteAddress,
+  createInternalPrincipalExecutionScopeMiddleware,
   createResolvePrincipalMiddleware,
   getTrustedRemoteAddress,
   requirePrincipal,
+  requirePrincipalSession,
   TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
 } from "../src/request-context.js";
+import { createApp } from "../src/server.js";
+import { createTestAppHarness } from "./helpers/test-app.js";
 
 describe("request context", () => {
   it("captures the trusted remote address from node connection metadata", async () => {
@@ -294,5 +302,182 @@ describe("request principal context", () => {
       same: true,
       id: "local-owner",
     });
+  });
+
+  it("requirePrincipalSession fails closed when no Principal is attached", async () => {
+    const app = new Hono();
+    app.get("/", (context) => {
+      expect(() => requirePrincipalSession(context)).toThrow(/principal/i);
+      return context.json({ ok: true });
+    });
+
+    const response = await app.request("/");
+    expect(response.status).toBe(200);
+  });
+
+  it("requirePrincipalSession returns an immutable attached session", async () => {
+    const app = new Hono();
+    app.use(
+      "*",
+      createResolvePrincipalMiddleware(
+        createLocalOwnerPrincipalPolicy(),
+        "http",
+      ),
+    );
+    app.get("/", async (context) => {
+      const session = requirePrincipalSession(context);
+      expect(Object.isFrozen(session)).toBe(true);
+      expect(Object.isFrozen(session.principal)).toBe(true);
+      expect(() => {
+        (session as { principal: { id: string } }).principal = {
+          id: "attacker",
+          kind: "human",
+          displayName: "Attacker",
+        } as never;
+      }).toThrow();
+      expect(() => {
+        (
+          session as unknown as {
+            authorize: typeof session.authorize;
+          }
+        ).authorize = async (_action, _resource) => ({ allowed: true });
+      }).toThrow();
+      const decision = await session.authorize(
+        { name: "thread.read" },
+        { kind: "thread", id: "thr_1" },
+      );
+      return context.json({
+        id: session.principal.id,
+        decision,
+      });
+    });
+
+    const response = await app.request("/");
+    await expect(response.json()).resolves.toEqual({
+      id: "local-owner",
+      decision: { allowed: true },
+    });
+  });
+});
+
+describe("internal principal execution scope middleware", () => {
+  it("returns unauthorized when Principal attachment is missing", async () => {
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: createLocalOwnerPrincipalPolicy(),
+    });
+    const app = new Hono();
+    app.use("*", createInternalPrincipalExecutionScopeMiddleware(authority));
+    app.get("/", (context) => context.json({ ok: true }));
+
+    const response = await app.request("/");
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      code: "unauthorized",
+      message: "Unauthorized",
+    });
+  });
+
+  it("makes the active execution scope visible to handlers", async () => {
+    const fallback = createLocalOwnerPrincipalPolicy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback,
+      loopbackOrigin: "http://127.0.0.1",
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+    const app = new Hono();
+    app.use("*", createResolvePrincipalMiddleware(fallback, "http"));
+    app.use("*", createInternalPrincipalExecutionScopeMiddleware(authority));
+    app.get("/", async (context) => {
+      const session = requirePrincipalSession(context);
+      const nested = await authority.runWithSession(session, async () => "ok");
+      const response = await authority.fetch(
+        "http://127.0.0.1/api/v1/projects",
+      );
+      return context.json({
+        nested,
+        status: response.status,
+        principalId: session.principal.id,
+      });
+    });
+
+    const response = await app.request("/");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      nested: "ok",
+      status: 204,
+      principalId: "local-owner",
+    });
+  });
+
+  it("rejects different-Principal nesting while the request scope is active", async () => {
+    const fallback = createLocalOwnerPrincipalPolicy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback,
+    });
+    const app = new Hono();
+    app.use("*", createResolvePrincipalMiddleware(fallback, "http"));
+    app.use("*", createInternalPrincipalExecutionScopeMiddleware(authority));
+    app.get("/", async (context) => {
+      await expect(
+        authority.runWithSession(
+          {
+            principal: {
+              id: "attacker",
+              kind: "human",
+              displayName: "Attacker",
+            },
+            authorize: async () => ({ allowed: true }),
+          },
+          async () => "widened",
+        ),
+      ).rejects.toThrow(/internal principal authority/i);
+      return context.json({
+        principalId: requirePrincipal(context).id,
+      });
+    });
+
+    const response = await app.request("/");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      principalId: "local-owner",
+    });
+  });
+});
+
+describe("createApp internal principal composition", () => {
+  it("keeps local-owner public HTTP behavior without an internal credential", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const response = await harness.app.request("/api/v1/projects");
+      expect(response.status).toBe(200);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("fails closed on a forged internal credential and never falls back", async () => {
+    const harness = await createTestAppHarness();
+    const fallbackResolve = vi.fn(async () => {
+      throw new Error("fallback must not run for forged internal credentials");
+    });
+    const policy: PrincipalPolicy = { resolve: fallbackResolve };
+    const server = createApp(harness.deps, { principalPolicy: policy });
+
+    try {
+      const response = await server.app.request("/api/v1/projects", {
+        headers: {
+          [INTERNAL_PRINCIPAL_CREDENTIAL_HEADER_NAME]: "a".repeat(64),
+        },
+      });
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        code: "unauthorized",
+        message: "Unauthorized",
+      });
+      expect(fallbackResolve).not.toHaveBeenCalled();
+    } finally {
+      await server.closeWebSockets();
+      await harness.cleanup();
+    }
   });
 });

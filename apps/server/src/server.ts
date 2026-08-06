@@ -39,11 +39,13 @@ import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
 } from "./internal/auth.js";
+import { createInternalPrincipalAuthority } from "./auth/internal-principal-authority.js";
 import { createLocalOwnerPrincipalPolicy } from "./auth/local-owner-adapter.js";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
 import { createPublicHttpAuthorizationMiddleware } from "./auth/public-http-authorization.js";
 import {
   captureTrustedRemoteAddress,
+  createInternalPrincipalExecutionScopeMiddleware,
   createResolvePrincipalMiddleware,
   resolveRequestAppSurface,
 } from "./request-context.js";
@@ -309,8 +311,12 @@ export function createApp(
   });
   const slowApiRequestLogThresholdMs =
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
-  const principalPolicy =
+  const fallbackPrincipalPolicy =
     options?.principalPolicy ?? createLocalOwnerPrincipalPolicy();
+  const internalPrincipalAuthority = createInternalPrincipalAuthority({
+    fallbackPolicy: fallbackPrincipalPolicy,
+  });
+  const principalPolicy = internalPrincipalAuthority.principalPolicy;
   const resolveHttpPrincipal = createResolvePrincipalMiddleware(
     principalPolicy,
     "http",
@@ -319,6 +325,8 @@ export function createApp(
     principalPolicy,
     "websocket",
   );
+  const runInternalPrincipalExecutionScope =
+    createInternalPrincipalExecutionScopeMiddleware(internalPrincipalAuthority);
   const bbAppArtifactService =
     options?.bbAppArtifactService ??
     createBbAppArtifactService({
@@ -378,6 +386,7 @@ export function createApp(
     });
   });
   app.use("/api/v1/*", resolveHttpPrincipal);
+  app.use("/api/v1/*", runInternalPrincipalExecutionScope);
   app.use(
     "/api/v1/*",
     createPublicHttpAuthorizationMiddleware({ db: deps.db }),
