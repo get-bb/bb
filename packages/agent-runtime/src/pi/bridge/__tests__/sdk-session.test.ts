@@ -21,7 +21,16 @@ interface MockBashSpawnHook {
 }
 
 interface MockBashToolOptions {
+  commandPrefix?: string;
+  shellPath?: string;
   spawnHook?: MockBashSpawnHook;
+}
+
+interface MockCreateAgentSessionServicesOptions {
+  agentDir: string;
+  cwd: string;
+  modelRuntime?: object;
+  resourceLoaderOptions: Record<string, unknown>;
 }
 
 interface MockBashToolTextContent {
@@ -53,7 +62,7 @@ const {
   mockDefineTool,
   mockOpen,
   mockInMemory,
-  mockSettingsInMemory,
+  mockCreateAgentSessionServices,
   mockCreateAgentSession,
   mockSessionState,
   mockSessionEventListeners,
@@ -64,6 +73,8 @@ const {
   mockGetModels,
   mockHasConfiguredAuth,
   mockModelRuntime,
+  mockGetShellCommandPrefix,
+  mockGetShellPath,
 } = vi.hoisted(() => {
   const mockSessionEventListeners: MockAgentSessionEventListener[] = [];
   const mockSubscribe = vi.fn<MockSubscribe>((listener) => {
@@ -85,7 +96,14 @@ const {
   const mockSetActiveToolsByName = vi.fn<(toolNames: string[]) => void>();
   const mockOpen = vi.fn((path: string) => ({ kind: "open", path }));
   const mockInMemory = vi.fn((cwd?: string) => ({ kind: "in-memory", cwd }));
-  const mockSettingsInMemory = vi.fn(() => ({ kind: "settings" }));
+  const mockGetShellCommandPrefix = vi.fn<() => string | undefined>(
+    () => undefined,
+  );
+  const mockGetShellPath = vi.fn<() => string | undefined>(() => undefined);
+  const mockSettingsManager = {
+    getShellCommandPrefix: mockGetShellCommandPrefix,
+    getShellPath: mockGetShellPath,
+  };
   const mockCreateBashToolDefinition = vi.fn<MockCreateBashToolDefinition>(
     (_cwd, _options) => ({
       name: "bash",
@@ -136,6 +154,16 @@ const {
     getModels: mockGetModels,
     hasConfiguredAuth: mockHasConfiguredAuth,
   };
+  const mockCreateAgentSessionServices = vi.fn(
+    async (options: MockCreateAgentSessionServicesOptions) => ({
+      agentDir: options.agentDir,
+      cwd: options.cwd,
+      diagnostics: [],
+      modelRuntime: options.modelRuntime ?? mockModelRuntime,
+      resourceLoader: { options: options.resourceLoaderOptions },
+      settingsManager: mockSettingsManager,
+    }),
+  );
 
   return {
     mockGetActiveToolNames,
@@ -144,7 +172,7 @@ const {
     mockDefineTool,
     mockOpen,
     mockInMemory,
-    mockSettingsInMemory,
+    mockCreateAgentSessionServices,
     mockCreateAgentSession,
     mockSessionState,
     mockSessionEventListeners,
@@ -155,24 +183,21 @@ const {
     mockGetModels,
     mockHasConfiguredAuth,
     mockModelRuntime,
+    mockGetShellCommandPrefix,
+    mockGetShellPath,
   };
 });
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
-  createAgentSession: mockCreateAgentSession,
+  createAgentSessionFromServices: mockCreateAgentSession,
+  createAgentSessionServices: mockCreateAgentSessionServices,
   createBashToolDefinition: mockCreateBashToolDefinition,
   defineTool: mockDefineTool,
+  getAgentDir: vi.fn(() => "/tmp/pi-agent"),
   SessionManager: {
     open: mockOpen,
     inMemory: mockInMemory,
   },
-  SettingsManager: {
-    inMemory: mockSettingsInMemory,
-  },
-}));
-
-vi.mock("../model-runtime.js", () => ({
-  getPiModelRuntime: vi.fn(async () => mockModelRuntime),
 }));
 
 import { PiSdkSession } from "../sdk-session.js";
@@ -250,6 +275,20 @@ describe("PiSdkSession", () => {
     }));
     mockGetModels.mockReturnValue([]);
     mockHasConfiguredAuth.mockReturnValue(true);
+    mockGetShellCommandPrefix.mockReturnValue(undefined);
+    mockGetShellPath.mockReturnValue(undefined);
+  });
+
+  it("creates Pi services from the user and project files", async () => {
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+
+    await session.start();
+
+    expect(mockCreateAgentSessionServices).toHaveBeenCalledWith({
+      agentDir: "/tmp/pi-agent",
+      cwd: "/tmp/project",
+      resourceLoaderOptions: {},
+    });
   });
 
   it("opens a persistent session file when provided", async () => {
@@ -307,7 +346,7 @@ describe("PiSdkSession", () => {
           id: "gpt-5.5",
           provider: "openai-codex",
         },
-        modelRuntime: mockModelRuntime,
+        services: expect.objectContaining({ modelRuntime: mockModelRuntime }),
       }),
     );
   });
@@ -460,6 +499,8 @@ describe("PiSdkSession", () => {
     const previousProcessOnlyEnvValue = process.env[processOnlyEnvKey];
     delete process.env[sessionEnvKey];
     process.env[processOnlyEnvKey] = "daemon-secret";
+    mockGetShellCommandPrefix.mockReturnValue("source ~/.profile &&");
+    mockGetShellPath.mockReturnValue("/bin/zsh");
 
     try {
       const session = new PiSdkSession(
@@ -479,6 +520,13 @@ describe("PiSdkSession", () => {
       expect(process.env[sessionEnvKey]).toBeUndefined();
       expect(process.env[processOnlyEnvKey]).toBe("daemon-secret");
       expect(mockCreateBashToolDefinition).toHaveBeenCalledTimes(1);
+      expect(mockCreateBashToolDefinition).toHaveBeenCalledWith(
+        "/tmp/project",
+        expect.objectContaining({
+          commandPrefix: "source ~/.profile &&",
+          shellPath: "/bin/zsh",
+        }),
+      );
 
       const bashToolCall = mockCreateBashToolDefinition.mock.calls[0];
       if (!bashToolCall) {

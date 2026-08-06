@@ -20,55 +20,65 @@ interface MockPiResourceLoaderOptions {
 
 interface MockPiResourceLoader {
   options: MockPiResourceLoaderOptions;
-  reload: ReturnType<typeof vi.fn>;
+}
+
+interface MockCreateAgentSessionServicesOptions {
+  agentDir: string;
+  cwd: string;
+  modelRuntime?: object;
+  resourceLoaderOptions: MockPiResourceLoaderOptions;
 }
 
 const {
   mockCreateAgentSession,
-  mockDefaultResourceLoader,
+  mockCreateAgentSessionServices,
   mockInMemory,
   mockOpen,
   mockResourceLoaders,
-  mockSettingsInMemory,
   mockModelRuntime,
-  oauthRegistrationState,
 } = vi.hoisted(() => {
   const mockResourceLoaders: MockPiResourceLoader[] = [];
-
-  const mockDefaultResourceLoader = vi.fn(function defaultResourceLoader(
-    options: MockPiResourceLoaderOptions,
-  ): MockPiResourceLoader {
-    const resourceLoader = {
-      options,
-      reload: vi.fn(async () => {}),
-    };
-    mockResourceLoaders.push(resourceLoader);
-    return resourceLoader;
-  });
+  const mockSettingsManager = {
+    getShellCommandPrefix: vi.fn(() => undefined),
+    getShellPath: vi.fn(() => undefined),
+  };
+  const mockModelRuntime = {
+    getAvailable: vi.fn(async () => []),
+    getModel: vi.fn(() => undefined),
+    getModels: vi.fn(() => []),
+    hasConfiguredAuth: vi.fn(() => false),
+    refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+  };
+  const mockCreateAgentSessionServices = vi.fn(
+    async (options: MockCreateAgentSessionServicesOptions) => {
+      const resourceLoader = {
+        options: {
+          agentDir: options.agentDir,
+          cwd: options.cwd,
+          ...options.resourceLoaderOptions,
+        },
+      };
+      mockResourceLoaders.push(resourceLoader);
+      return {
+        agentDir: options.agentDir,
+        cwd: options.cwd,
+        diagnostics: [],
+        modelRuntime: options.modelRuntime ?? mockModelRuntime,
+        resourceLoader,
+        settingsManager: mockSettingsManager,
+      };
+    },
+  );
 
   return {
     mockCreateAgentSession: vi.fn(),
-    mockDefaultResourceLoader,
+    mockCreateAgentSessionServices,
     mockInMemory: vi.fn((cwd?: string) => ({ kind: "in-memory", cwd })),
     mockOpen: vi.fn((path: string) => ({ kind: "open", path })),
     mockResourceLoaders,
-    mockSettingsInMemory: vi.fn(() => ({ kind: "settings" })),
-    mockModelRuntime: {
-      getAvailable: vi.fn(async () => []),
-      getModel: vi.fn(() => undefined),
-      getModels: vi.fn(() => []),
-      hasConfiguredAuth: vi.fn(() => false),
-      refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
-    },
-    oauthRegistrationState: { registered: false },
+    mockModelRuntime,
   };
 });
-
-vi.mock("@earendil-works/pi-ai/bun-oauth", () => ({
-  registerBunOAuthFlows: () => {
-    oauthRegistrationState.registered = true;
-  },
-}));
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   // Keep the real SessionManager.forkFrom so the fork test exercises genuine
@@ -77,16 +87,13 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
   return {
-    createAgentSession: mockCreateAgentSession,
-    DefaultResourceLoader: mockDefaultResourceLoader,
+    createAgentSessionFromServices: mockCreateAgentSession,
+    createAgentSessionServices: mockCreateAgentSessionServices,
     getAgentDir: vi.fn(() => "/tmp/pi-agent"),
     SessionManager: {
       forkFrom: actual.SessionManager.forkFrom.bind(actual.SessionManager),
       open: mockOpen,
       inMemory: mockInMemory,
-    },
-    SettingsManager: {
-      inMemory: mockSettingsInMemory,
     },
   };
 });
@@ -174,10 +181,6 @@ function createAgentEndEvent(): AgentSessionEvent {
 }
 
 describe("pi bridge", () => {
-  it("registers static OAuth loaders for the standalone Pi bundle", () => {
-    expect(oauthRegistrationState.registered).toBe(true);
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockResourceLoaders.length = 0;
@@ -268,11 +271,11 @@ describe("pi bridge", () => {
         cwd: "/tmp/worktree",
         agentDir: "/tmp/pi-agent",
         systemPrompt: "Replacement prompt",
-        noExtensions: true,
-        noSkills: true,
-        noPromptTemplates: true,
-        noThemes: true,
       });
+      expect(mockResourceLoaders[0]?.options.noExtensions).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noPromptTemplates).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noThemes).toBeUndefined();
       expect(
         mockResourceLoaders[0]?.options.appendSystemPromptOverride,
       ).toBeUndefined();

@@ -26,6 +26,11 @@ const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
+const piConfigExtensionFixturePath = resolve(
+  scriptsDir,
+  "fixtures",
+  "pi-config-extension.ts",
+);
 const tempRoot = await mkdtemp(join(tmpdir(), "bb-app-tarball-"));
 const smokeProcessEnv = {
   BB_TELEMETRY: "false",
@@ -246,17 +251,6 @@ async function packTarball() {
   return join(tempRoot, entry.filename);
 }
 
-async function extractTarball(tarballPath) {
-  const extractDir = join(tempRoot, "extracted-package");
-  await mkdir(extractDir, { recursive: true });
-  await runCommand({
-    args: ["-xzf", tarballPath, "-C", extractDir],
-    command: "tar",
-    label: "extract bb-app tarball",
-  });
-  return join(extractDir, "package");
-}
-
 function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   return new Promise((resolvePromise, reject) => {
     let buffer = "";
@@ -394,8 +388,7 @@ async function smokeBridgeModelList({
   }
 }
 
-async function smokeProviderBridgeBundles(tarballPath) {
-  const packageDir = await extractTarball(tarballPath);
+async function smokeProviderBridgeBundles(packageDir) {
   await smokeBridgeModelList({
     // The packaged bridge intentionally relies on the host's Claude CLI for
     // account-scoped discovery. CI does not install that provider binary, so
@@ -417,6 +410,282 @@ async function smokeProviderBridgeBundles(tarballPath) {
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
     label: "ACP bridge model/list",
   });
+}
+
+function collectJsonRpcMessages({ childProcess, onMessage }) {
+  const messages = [];
+  let buffer = "";
+  childProcess.stdout?.on("data", (chunk) => {
+    buffer += chunk.toString("utf8");
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const message = JSON.parse(trimmed);
+      messages.push(message);
+      onMessage?.(message);
+    }
+  });
+  return messages;
+}
+
+async function waitForBridgeMessage({
+  childProcess,
+  label,
+  messages,
+  output,
+  predicate,
+}) {
+  const deadline = Date.now() + BRIDGE_WAIT_TIMEOUT_MS;
+  while (Date.now() <= deadline) {
+    const message = messages.find(predicate);
+    if (message) {
+      return message;
+    }
+    if (
+      childProcess.exitCode !== null ||
+      childProcess.signalCode !== null
+    ) {
+      throw new Error(
+        `${label} exited before the expected message\n${formatProcessOutput(output)}`,
+      );
+    }
+    await delay(10);
+  }
+  throw new Error(
+    `${label} timed out waiting for the expected message\n${formatProcessOutput(output)}`,
+  );
+}
+
+function sendBridgeRequest(childProcess, id, method, params) {
+  childProcess.stdin.write(
+    `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
+  );
+}
+
+function isSdkEvent(message, eventType) {
+  return (
+    isRecord(message) &&
+    message.method === "sdk/message" &&
+    isRecord(message.params) &&
+    isRecord(message.params.message) &&
+    message.params.message.type === eventType
+  );
+}
+
+async function smokePiUserConfiguration(packageDir) {
+  const testRoot = join(tempRoot, "pi-user-config");
+  const agentDir = join(testRoot, "agent");
+  const workspaceDir = join(testRoot, "workspace");
+  const projectConfigDir = join(workspaceDir, ".pi");
+  const extensionPath = join(testRoot, "configured-extension.ts");
+  const sessionMarkerPath = join(testRoot, "session-marker.json");
+  const toolMarkerPath = join(testRoot, "tool-marker.txt");
+  await mkdir(agentDir, { recursive: true });
+  await mkdir(projectConfigDir, { recursive: true });
+  await writeFile(
+    extensionPath,
+    await readFile(piConfigExtensionFixturePath, "utf8"),
+  );
+  await writeFile(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ extensions: [extensionPath] }, null, 2),
+  );
+  await writeFile(
+    join(projectConfigDir, "settings.json"),
+    JSON.stringify(
+      {
+        defaultModel: "bb-config-e2e-model",
+        defaultProvider: "bb-config-e2e",
+        defaultThinkingLevel: "high",
+      },
+      null,
+      2,
+    ),
+  );
+
+  const label = "Pi installed-package configuration E2E";
+  const bridgePath = join(
+    packageDir,
+    "host-daemon",
+    "dist",
+    "bb-pi-bridge.mjs",
+  );
+  const childProcess = spawn(process.execPath, [bridgePath], {
+    cwd: workspaceDir,
+    env: {
+      ...process.env,
+      BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
+      BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
+      BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
+      PI_CODING_AGENT_DIR: agentDir,
+      PI_OFFLINE: "1",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const output = collectProcessOutput(childProcess);
+  const dynamicToolCalls = [];
+  const messages = collectJsonRpcMessages({
+    childProcess,
+    onMessage(message) {
+      if (!isRecord(message) || message.method !== "item/tool/call") {
+        return;
+      }
+      dynamicToolCalls.push(message);
+      childProcess.stdin.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            contentItems: [{ type: "inputText", text: "BB tool result" }],
+            success: true,
+          },
+        })}\n`,
+      );
+    },
+  });
+
+  try {
+    sendBridgeRequest(childProcess, 101, "initialize", {
+      clientInfo: { name: "bb-app-smoke", version: "0.0.0" },
+    });
+    sendBridgeRequest(childProcess, 105, "model/list", {});
+    const modelListResponse = await waitForBridgeMessage({
+      childProcess,
+      label,
+      messages,
+      output,
+      predicate: (message) => isRecord(message) && message.id === 105,
+    });
+    if (
+      !isRecord(modelListResponse.result) ||
+      !Array.isArray(modelListResponse.result.models) ||
+      !modelListResponse.result.models.some(
+        (model) =>
+          isRecord(model) &&
+          model.id === "bb-config-e2e/bb-config-e2e-model",
+      )
+    ) {
+      throw new Error(
+        `${label} did not add the extension provider to model/list: ${JSON.stringify(modelListResponse)}`,
+      );
+    }
+    sendBridgeRequest(childProcess, 102, "thread/start", {
+      cwd: workspaceDir,
+      dynamicTools: [
+        {
+          name: "bb_dynamic_tool",
+          description: "A tool provided by BB.",
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+            required: ["value"],
+          },
+        },
+      ],
+      threadId: "pi-config-e2e-thread",
+    });
+    await waitForBridgeMessage({
+      childProcess,
+      label,
+      messages,
+      output,
+      predicate: (message) => isRecord(message) && message.id === 102,
+    });
+
+    sendBridgeRequest(childProcess, 103, "turn/start", {
+      input: [{ type: "text", text: "Run both configured tools." }],
+      threadId: "pi-config-e2e-thread",
+    });
+    await waitForBridgeMessage({
+      childProcess,
+      label,
+      messages,
+      output,
+      predicate: (message) => isSdkEvent(message, "agent_end"),
+    });
+
+    const errors = messages.filter(
+      (message) => isRecord(message) && ("error" in message || message.method === "error"),
+    );
+    if (errors.length > 0) {
+      throw new Error(`${label} emitted errors: ${JSON.stringify(errors)}`);
+    }
+    if (dynamicToolCalls.length !== 1) {
+      throw new Error(
+        `${label} expected one BB tool call, received ${dynamicToolCalls.length}`,
+      );
+    }
+    const dynamicToolCall = dynamicToolCalls[0];
+    if (
+      !isRecord(dynamicToolCall.params) ||
+      dynamicToolCall.params.tool !== "bb_dynamic_tool" ||
+      !isRecord(dynamicToolCall.params.arguments) ||
+      dynamicToolCall.params.arguments.value !== "BB tool input"
+    ) {
+      throw new Error(
+        `${label} received an invalid BB tool call: ${JSON.stringify(dynamicToolCall)}`,
+      );
+    }
+
+    const completedToolNames = messages
+      .filter((message) => isSdkEvent(message, "tool_execution_end"))
+      .map((message) => message.params.message.toolName);
+    if (
+      !completedToolNames.includes("configured_tool") ||
+      !completedToolNames.includes("bb_dynamic_tool")
+    ) {
+      throw new Error(
+        `${label} did not complete both tools: ${completedToolNames.join(", ")}`,
+      );
+    }
+
+    const sessionMarker = JSON.parse(
+      await readFile(sessionMarkerPath, "utf8"),
+    );
+    if (
+      sessionMarker.provider !== "bb-config-e2e" ||
+      sessionMarker.model !== "bb-config-e2e-model" ||
+      sessionMarker.thinkingLevel !== "high"
+    ) {
+      throw new Error(
+        `${label} did not apply project settings: ${JSON.stringify(sessionMarker)}`,
+      );
+    }
+    const toolMarker = await readFile(toolMarkerPath, "utf8");
+    if (toolMarker !== "extension tool input") {
+      throw new Error(`${label} did not execute the configured extension tool`);
+    }
+
+    sendBridgeRequest(childProcess, 104, "thread/stop", {
+      threadId: "pi-config-e2e-thread",
+    });
+    await waitForBridgeMessage({
+      childProcess,
+      label,
+      messages,
+      output,
+      predicate: (message) => isRecord(message) && message.id === 104,
+    });
+  } finally {
+    childProcess.stdin.end();
+    if (
+      childProcess.exitCode === null &&
+      childProcess.signalCode === null
+    ) {
+      const exited = await Promise.race([
+        waitForProcessExit(childProcess).then(() => true),
+        delay(PROCESS_STOP_TIMEOUT_MS).then(() => false),
+      ]);
+      if (!exited) {
+        childProcess.kill("SIGTERM");
+        await waitForProcessExit(childProcess);
+      }
+    }
+  }
 }
 
 async function smokeHelpCommands(tarballPath) {
@@ -718,10 +987,12 @@ async function smokeDaemonJoin(tarballPath) {
 
 try {
   const tarballPath = await packTarball();
-  await smokeProviderBridgeBundles(tarballPath);
   await smokeHelpCommands(tarballPath);
   await smokeConfigCommand(tarballPath);
   const sdkDir = await smokeSdkPackage(tarballPath);
+  const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
+  await smokeProviderBridgeBundles(installedPackageDir);
+  await smokePiUserConfiguration(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);
   process.stdout.write("bb-app tarball smoke passed\n");

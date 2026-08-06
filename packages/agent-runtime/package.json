@@ -40,8 +40,8 @@
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@earendil-works/pi-ai": "^0.82.0",
-    "@earendil-works/pi-coding-agent": "^0.82.0",
+    "@earendil-works/pi-ai": "0.84.0",
+    "@earendil-works/pi-coding-agent": "0.84.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -1,11 +1,10 @@
 import { dirname } from "node:path";
 import {
-  createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionServices,
   createBashToolDefinition,
   defineTool,
-  DefaultResourceLoader,
   SessionManager,
-  SettingsManager,
   getAgentDir,
   type AgentSession,
   type AgentSessionEvent,
@@ -18,7 +17,6 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { getPiModelRuntime } from "./model-runtime.js";
 
 export interface PiSdkSessionOptions {
   cwd: string;
@@ -68,14 +66,18 @@ const PI_TRANSIENT_AUTH_RETRY_DELAY_MS = 250;
 const PI_TRANSIENT_AUTH_MAX_RETRIES = 8;
 
 interface CreateBashToolWithShellEnvOverlayArgs {
+  commandPrefix?: string;
   cwd: string;
   shellEnvOverrides: ShellEnvOverrides;
+  shellPath?: string;
 }
 
 interface BuildSessionCustomToolsArgs {
+  commandPrefix?: string;
   customTools?: ToolDefinition[];
   cwd: string;
   shellEnvOverrides?: ShellEnvOverrides;
+  shellPath?: string;
 }
 
 function assertExclusivePiPromptOverrides(options: PiSdkSessionOptions): void {
@@ -118,7 +120,13 @@ function createBashToolWithShellEnvOverlay(
   // Pi exposes shell env customization through bash spawn options today. This is
   // intentionally bash-only; non-bash tools must not depend on per-thread env in
   // this shared bridge process.
-  return defineTool(createBashToolDefinition(args.cwd, { spawnHook }));
+  return defineTool(
+    createBashToolDefinition(args.cwd, {
+      commandPrefix: args.commandPrefix,
+      shellPath: args.shellPath,
+      spawnHook,
+    }),
+  );
 }
 
 function buildSessionCustomTools(
@@ -128,8 +136,10 @@ function buildSessionCustomTools(
   if (hasShellEnvOverrides(args.shellEnvOverrides)) {
     customTools.push(
       createBashToolWithShellEnvOverlay({
+        commandPrefix: args.commandPrefix,
         cwd: args.cwd,
         shellEnvOverrides: args.shellEnvOverrides,
+        shellPath: args.shellPath,
       }),
     );
   }
@@ -200,49 +210,24 @@ export class PiSdkSession {
   async start(): Promise<void> {
     assertExclusivePiPromptOverrides(this.options);
 
-    const modelRuntime =
-      this.options.modelRuntime ?? (await getPiModelRuntime());
-    const sessionOptions: CreateAgentSessionOptions = {
-      cwd: this.options.cwd,
-      modelRuntime,
-      sessionManager: this.options.sessionFilePath
-        ? SessionManager.open(
-            this.options.sessionFilePath,
-            dirname(this.options.sessionFilePath),
-          )
-        : SessionManager.inMemory(this.options.cwd),
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: true },
-        retry: { enabled: true, maxRetries: 2 },
-      }),
-    };
-
     const appendSystemPrompt = this.options.appendSystemPrompt?.trim();
     const additionalSkillPaths = this.options.additionalSkillPaths ?? [];
 
-    // Pass custom prompt overrides through ResourceLoader. systemPrompt is the
-    // replacement path; appendSystemPrompt layers BB instructions on top of Pi's
-    // normal discovered APPEND_SYSTEM.md prompt. The two are mutually exclusive
-    // in BB's bridge contract and asserted here for direct SDK-session callers.
-    if (
-      this.options.systemPrompt ||
-      appendSystemPrompt ||
-      additionalSkillPaths.length > 0
-    ) {
-      const resourceLoader = new DefaultResourceLoader({
-        cwd: this.options.cwd,
-        agentDir: getAgentDir(),
+    // Pi's service factory reads the global and project settings files. It also
+    // discovers packages, extensions, skills, prompts, themes, context files,
+    // auth, and custom models from the user's normal Pi directories.
+    const services = await createAgentSessionServices({
+      cwd: this.options.cwd,
+      agentDir: getAgentDir(),
+      ...(this.options.modelRuntime
+        ? { modelRuntime: this.options.modelRuntime }
+        : {}),
+      resourceLoaderOptions: {
         ...(additionalSkillPaths.length > 0
           ? { additionalSkillPaths: [...additionalSkillPaths] }
           : {}),
         ...(this.options.systemPrompt
-          ? {
-              systemPrompt: this.options.systemPrompt,
-              noExtensions: true,
-              ...(additionalSkillPaths.length === 0 ? { noSkills: true } : {}),
-              noPromptTemplates: true,
-              noThemes: true,
-            }
+          ? { systemPrompt: this.options.systemPrompt }
           : {}),
         ...(appendSystemPrompt
           ? {
@@ -250,30 +235,43 @@ export class PiSdkSession {
                 buildAppendSystemPromptOverride(appendSystemPrompt),
             }
           : {}),
-      });
-      await resourceLoader.reload();
-      sessionOptions.resourceLoader = resourceLoader;
+      },
+    });
+
+    const serviceErrors = services.diagnostics.filter(
+      (diagnostic) => diagnostic.type === "error",
+    );
+    if (serviceErrors.length > 0) {
+      throw new Error(serviceErrors.map((error) => error.message).join("\n"));
     }
 
     const configuredModel = resolveConfiguredModel(
-      modelRuntime,
+      services.modelRuntime,
       this.options.model,
     );
-    if (configuredModel) {
-      sessionOptions.model = configuredModel;
-    }
-    if (this.options.thinkingLevel) {
-      sessionOptions.thinkingLevel = this.options.thinkingLevel;
-    }
 
     const customTools = buildSessionCustomTools({
+      commandPrefix: services.settingsManager.getShellCommandPrefix(),
       customTools: this.options.customTools,
       cwd: this.options.cwd,
       shellEnvOverrides: this.options.shellEnvOverrides,
+      shellPath: services.settingsManager.getShellPath(),
     });
-    sessionOptions.customTools = customTools;
 
-    const { session } = await createAgentSession(sessionOptions);
+    const { session } = await createAgentSessionFromServices({
+      services,
+      sessionManager: this.options.sessionFilePath
+        ? SessionManager.open(
+            this.options.sessionFilePath,
+            dirname(this.options.sessionFilePath),
+          )
+        : SessionManager.inMemory(this.options.cwd),
+      ...(configuredModel ? { model: configuredModel } : {}),
+      ...(this.options.thinkingLevel
+        ? { thinkingLevel: this.options.thinkingLevel }
+        : {}),
+      customTools,
+    });
     this.session = session;
 
     this.ensureCustomToolsActive();

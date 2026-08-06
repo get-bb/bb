@@ -213,7 +213,7 @@ const piEventTypeSchema = z
 // fallback treats them as unknown and emits a `provider/unhandled` event, which
 // renders as "Unhandled Pi event" in the transcript.
 //
-// `agent_settled` fires after every agent run completes (Pi 0.82's
+// `agent_settled` fires after every agent run completes (Pi's
 // AgentSession._emitAgentSettled). BB already derives turn completion from
 // `agent_end` plus its `willRetry` flag, so the settle signal carries nothing
 // extra for us.
