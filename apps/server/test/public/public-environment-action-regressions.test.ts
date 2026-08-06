@@ -26,6 +26,7 @@ function rawPullRequest(
     headRefName: "bb/pr-actions",
     updatedAt: "2026-06-16T12:30:00Z",
     checks: [],
+    comments: [],
     reviewDecision: null,
     reviewRequestCount: 0,
     mergeStateStatus: "CLEAN",
@@ -467,5 +468,4 @@ describe("public environment action regressions", () => {
       });
     });
   });
-
 });

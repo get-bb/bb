@@ -51,6 +51,7 @@ function ghJson(overrides: Record<string, unknown> = {}): string {
     headRefName: "bb/add-pr-section",
     updatedAt: "2026-06-16T12:30:00Z",
     statusCheckRollup: [],
+    comments: [],
     reviewDecision: null,
     reviewRequests: [],
     mergeStateStatus: "CLEAN",
@@ -71,6 +72,7 @@ describe("parseGitHostPullRequest", () => {
       headRefName: "bb/add-pr-section",
       updatedAt: "2026-06-16T12:30:00Z",
       checks: [],
+      comments: [],
       reviewDecision: null,
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
@@ -156,6 +158,47 @@ describe("parseGitHostPullRequest", () => {
     });
   });
 
+  it("normalizes recent comments and bounds their body summaries", () => {
+    const parsed = parseGitHostPullRequest(
+      ghJson({
+        comments: [
+          {
+            author: {
+              login: "older",
+              avatarUrl: "https://avatars.example.test/older.png",
+            },
+            body: "Older comment",
+            createdAt: "2026-06-16T12:00:00Z",
+            url: "https://github.com/acme/bb/pull/42#issuecomment-1",
+          },
+          {
+            author: { login: "octocat" },
+            body: "x".repeat(700),
+            createdAt: "2026-06-16T13:00:00Z",
+            url: "not a URL",
+          },
+        ],
+      }),
+    );
+
+    expect(parsed?.comments).toEqual([
+      {
+        authorLogin: "octocat",
+        authorAvatarUrl: null,
+        bodySummary: "x".repeat(600),
+        createdAt: "2026-06-16T13:00:00Z",
+        url: null,
+      },
+      {
+        authorLogin: "older",
+        authorAvatarUrl: "https://avatars.example.test/older.png",
+        bodySummary: "Older comment",
+        createdAt: "2026-06-16T12:00:00Z",
+        url: "https://github.com/acme/bb/pull/42#issuecomment-1",
+      },
+    ]);
+  });
+
   it.each([
     ["empty output", ""],
     ["whitespace only", "   \n"],
@@ -194,11 +237,7 @@ describe("runPullRequestActionForBranch", () => {
   }
 
   it.each([
-    [
-      "ready",
-      { operation: "ready" },
-      ["pr", "ready", "--", "bb/pr-actions"],
-    ],
+    ["ready", { operation: "ready" }, ["pr", "ready", "--", "bb/pr-actions"]],
     [
       "draft",
       { operation: "draft" },
@@ -219,31 +258,30 @@ describe("runPullRequestActionForBranch", () => {
       { operation: "merge", method: "rebase" },
       ["pr", "merge", "--rebase", "--", "bb/pr-actions"],
     ],
-  ] satisfies readonly [
-    string,
-    GitHostPullRequestAction,
-    readonly string[],
-  ][])("runs gh pr %s for the branch", async (_label, action, expectedArgs) => {
-    mockGhSuccess();
+  ] satisfies readonly [string, GitHostPullRequestAction, readonly string[]][])(
+    "runs gh pr %s for the branch",
+    async (_label, action, expectedArgs) => {
+      mockGhSuccess();
 
-    await runPullRequestActionForBranch({
-      cwd: "/tmp/workspace",
-      branch: "bb/pr-actions",
-      action,
-    });
-
-    expect(execFileMock).toHaveBeenCalledWith(
-      "gh",
-      expectedArgs,
-      expect.objectContaining({
+      await runPullRequestActionForBranch({
         cwd: "/tmp/workspace",
-        encoding: "utf8",
-        maxBuffer: 16 * 1024 * 1024,
-        timeout: 60_000,
-      }),
-      expect.any(Function),
-    );
-  });
+        branch: "bb/pr-actions",
+        action,
+      });
+
+      expect(execFileMock).toHaveBeenCalledWith(
+        "gh",
+        expectedArgs,
+        expect.objectContaining({
+          cwd: "/tmp/workspace",
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 60_000,
+        }),
+        expect.any(Function),
+      );
+    },
+  );
 
   it("maps a missing gh executable to a workspace error", async () => {
     const error = Object.assign(new Error("spawn gh ENOENT"), {
@@ -336,8 +374,7 @@ describe("getPullRequestForBranch", () => {
     mockGhFailure(
       Object.assign(new Error("gh exited 4"), {
         code: 4,
-        stderr:
-          "gh: To get started with GitHub CLI, please run: gh auth login",
+        stderr: "gh: To get started with GitHub CLI, please run: gh auth login",
       }),
     );
     const result = await getPullRequestForBranch(lookupArgs);

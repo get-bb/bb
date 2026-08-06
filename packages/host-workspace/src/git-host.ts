@@ -5,6 +5,7 @@ import {
   type GitHostPullRequestCheck,
   type GitHostPullRequestCheckConclusion,
   type GitHostPullRequestCheckStatus,
+  type GitHostPullRequestComment,
   type GitHostPullRequestMergeStateStatus,
   type GitHostPullRequestMergeable,
   type GitHostPullRequestReviewDecision,
@@ -27,6 +28,9 @@ const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const GH_PR_ACTION_TIMEOUT_MS = 60_000;
 const GH_PR_ACTION_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+export const GIT_HOST_PULL_REQUEST_CHECK_LIMIT = 50;
+export const GIT_HOST_PULL_REQUEST_COMMENT_LIMIT = 20;
+export const GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT = 600;
 
 const GH_PR_VIEW_JSON_FIELDS = [
   "number",
@@ -38,6 +42,7 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "headRefName",
   "updatedAt",
   "statusCheckRollup",
+  "comments",
   "reviewDecision",
   "reviewRequests",
   "mergeStateStatus",
@@ -243,7 +248,37 @@ function normalizeChecks(value: unknown): GitHostPullRequestCheck[] {
         getNullableUrl(object, "targetUrl"),
     });
   }
-  return checks;
+  return checks.slice(0, GIT_HOST_PULL_REQUEST_CHECK_LIMIT);
+}
+
+function truncateSummary(value: string): string {
+  if (value.length <= GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT) return value;
+  return value.slice(0, GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT);
+}
+
+function normalizeComments(value: unknown): GitHostPullRequestComment[] {
+  if (!Array.isArray(value)) return [];
+  const comments: GitHostPullRequestComment[] = [];
+  for (const item of value) {
+    const object = asObject(item);
+    if (!object) continue;
+    const author = asObject(object.author);
+    const authorLogin = author ? getString(author, "login")?.trim() : null;
+    const body = getString(object, "body");
+    const createdAt = getString(object, "createdAt");
+    if (!authorLogin || body === null || createdAt === null) continue;
+    comments.push({
+      authorLogin,
+      authorAvatarUrl: author ? getNullableUrl(author, "avatarUrl") : null,
+      bodySummary: truncateSummary(body),
+      createdAt,
+      url: getNullableUrl(object, "url"),
+    });
+  }
+  return comments
+    .filter((comment) => !Number.isNaN(Date.parse(comment.createdAt)))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, GIT_HOST_PULL_REQUEST_COMMENT_LIMIT);
 }
 
 function getArrayLength(value: unknown): number {
@@ -267,6 +302,7 @@ function normalizeGitHubPullRequestView(
     headRefName: getString(object, "headRefName"),
     updatedAt: getString(object, "updatedAt"),
     checks: normalizeChecks(object.statusCheckRollup),
+    comments: normalizeComments(object.comments),
     reviewDecision: normalizeReviewDecision(object.reviewDecision),
     reviewRequestCount: getArrayLength(object.reviewRequests),
     mergeStateStatus: normalizeMergeStateStatus(object.mergeStateStatus),

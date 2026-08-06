@@ -75,6 +75,8 @@ export function makePullRequest(
     },
     attention: "ready_to_merge",
     ...overrides,
+    checkItems: overrides.checkItems ?? [],
+    comments: overrides.comments ?? [],
   };
 }
 

@@ -479,6 +479,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
           url: null,
         },
       ],
+      comments: [
+        {
+          authorLogin: "octocat",
+          authorAvatarUrl: null,
+          bodySummary: "Looks good.",
+          createdAt: "2026-06-16T13:00:00Z",
+          url: "https://github.com/acme/bb/pull/42#issuecomment-1",
+        },
+      ],
       reviewDecision: "APPROVED",
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
@@ -1055,8 +1064,8 @@ describe("host-daemon command schemas", () => {
   // `deepseek/deepseek-v4-flash`. A daemon on 73 answers `model.list` with the
   // old unprefixed ids, which the server resolves to a different provider, so
   // the bump forces an update before the server trusts either side.
-  it("uses protocol version 75 for paged workspace directory listing", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
+  it("uses protocol version 76 for detailed pull-request data", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(76);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

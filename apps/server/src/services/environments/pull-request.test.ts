@@ -15,6 +15,7 @@ function rawPullRequest(
     headRefName: "bb/add-pr-section",
     updatedAt: "2026-06-16T12:30:00Z",
     checks: [],
+    comments: [],
     reviewDecision: null,
     reviewRequestCount: 0,
     mergeStateStatus: "CLEAN",
@@ -40,6 +41,8 @@ describe("assembleThreadPullRequest", () => {
         failedCount: 0,
         pendingCount: 0,
       },
+      checkItems: [],
+      comments: [],
       review: {
         state: "none",
         reviewRequestCount: 0,
@@ -110,7 +113,27 @@ describe("assembleThreadPullRequest", () => {
         pendingCount: 0,
       },
       attention: "checks_failed",
+      checkItems: [
+        { name: "test", conclusion: "success" },
+        { name: "typecheck", conclusion: "failure" },
+      ],
     });
+  });
+
+  it("carries bounded comment projections into the product model", () => {
+    const comments = [
+      {
+        authorLogin: "octocat",
+        authorAvatarUrl: "https://avatars.example.test/octocat.png",
+        bodySummary: "Please add a regression test.",
+        createdAt: "2026-06-16T13:00:00Z",
+        url: "https://github.com/acme/bb/pull/42#issuecomment-1",
+      },
+    ];
+
+    expect(
+      assembleThreadPullRequest(rawPullRequest({ comments })),
+    ).toMatchObject({ comments });
   });
 
   it("treats unstable merge state with pending checks as checks pending", () => {

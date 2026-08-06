@@ -180,6 +180,8 @@ export function assembleThreadPullRequest(
     headRefName: raw.headRefName,
     updatedAt: raw.updatedAt,
     checks,
+    checkItems: raw.checks,
+    comments: raw.comments,
     review,
     mergeability,
     attention: assemblePullRequestAttention(
