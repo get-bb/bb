@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
@@ -28,6 +28,86 @@ export interface ScaffoldPluginArgs {
    * by `bb plugin build`). Off by default so headless plugins stay lean.
    */
   app?: boolean;
+}
+
+/** Arguments for {@link syncPluginTypes}. */
+export interface SyncPluginTypesArgs {
+  /** Plugin root directory (the one holding `package.json`). */
+  rootDir: string;
+  /**
+   * Also refresh the frontend declaration. Callers pass whether the manifest
+   * declares `bb.app`; an existing `bb-plugin-sdk-app.d.ts` refreshes either
+   * way, so a headless read of the manifest never strands a stale copy.
+   */
+  app: boolean;
+  /**
+   * Report what a write would do and touch nothing (`bb plugin types
+   * --check`, CI). Stale or missing files come back as `stale`.
+   */
+  check?: boolean;
+}
+
+/** One declaration file considered by {@link syncPluginTypes}. */
+export interface SyncedPluginTypeFile {
+  /** Path relative to the plugin root, e.g. `types/bb-plugin-sdk.d.ts`. */
+  path: string;
+  /**
+   * `written` when the file was created or its contents changed, `stale` when
+   * a check found it missing or outdated, `unchanged` when it already matches.
+   */
+  outcome: "written" | "unchanged" | "stale";
+}
+
+/**
+ * Write this build's bundled `@bb/plugin-sdk` declarations into a plugin's
+ * `types/` directory, creating it when absent.
+ *
+ * `bb plugin new` seeds these once, but the SDK surface grows with every BB
+ * release, so a copy scaffolded months ago silently under-reports the API.
+ * `bb plugin types`, `bb plugin build`, and `bb plugin dev` all call this so
+ * the local declarations track the bb that is actually running the plugin.
+ * Files are compared before writing, so an already-current plugin reports
+ * `unchanged` and keeps its mtime.
+ */
+export async function syncPluginTypes(
+  args: SyncPluginTypesArgs,
+): Promise<SyncedPluginTypeFile[]> {
+  const { rootDir, app, check = false } = args;
+  const typesDir = join(rootDir, "types");
+  const candidates: { name: string; content: string; optional: boolean }[] = [
+    { name: "bb-plugin-sdk.d.ts", content: PLUGIN_SDK_DTS, optional: false },
+    {
+      name: "bb-plugin-sdk-app.d.ts",
+      content: PLUGIN_SDK_APP_DTS,
+      // Refresh a frontend declaration the plugin already has even when the
+      // caller did not detect bb.app; never create one it never asked for.
+      optional: !app,
+    },
+  ];
+  const results: SyncedPluginTypeFile[] = [];
+  for (const candidate of candidates) {
+    const filePath = join(typesDir, candidate.name);
+    let current: string | null = null;
+    try {
+      current = await readFile(filePath, "utf8");
+    } catch {
+      current = null;
+    }
+    if (current === null && candidate.optional) continue;
+    const relativePath = `types/${candidate.name}`;
+    if (current === candidate.content) {
+      results.push({ path: relativePath, outcome: "unchanged" });
+      continue;
+    }
+    if (check) {
+      results.push({ path: relativePath, outcome: "stale" });
+      continue;
+    }
+    await mkdir(typesDir, { recursive: true });
+    await writeFile(filePath, candidate.content);
+    results.push({ path: relativePath, outcome: "written" });
+  }
+  return results;
 }
 
 /** "bb-plugin-hello" → "hello" (mirrors the server's id derivation). */
@@ -355,8 +435,19 @@ bb plugin config ${id} set greeting hi
 \`types/bb-plugin-sdk.d.ts\` (and \`types/bb-plugin-sdk-app.d.ts\` for the
 frontend) are the full, bundled BB plugin API — \`tsconfig.json\` maps
 \`@bb/plugin-sdk\` to them, so your editor and \`tsc\` see real types with no extra
-install. Ask BB to write plugins for you: the \`bb-plugin-authoring\` skill
-documents the whole surface with examples.
+install. They are readable declarations: open them for an exact signature.
+
+The SDK surface grows with every BB release, and these are a copy. Refresh
+them from the BB you are running:
+
+\`\`\`
+bb plugin types          # rewrite types/ from this BB
+bb plugin types --check  # CI: fail when they are out of date
+\`\`\`
+
+\`bb plugin build\` and \`bb plugin dev\` refresh them for you. Ask BB to write
+plugins for you: the \`bb-plugin-authoring\` skill documents the whole surface
+with examples.
 
 Confused by the API, or need something the types don't explain? Clone the BB
 repo and read the source: <https://github.com/get-bb/bb>.

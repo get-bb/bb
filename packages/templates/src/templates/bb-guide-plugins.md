@@ -179,6 +179,9 @@ added/updated/unchanged counts.
   bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
                                  --app adds a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
+  bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
+                                 into the plugin's types/ (default: cwd);
+                                 --check reports staleness and writes nothing
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
@@ -372,8 +375,12 @@ The backend entry default-exports a factory receiving the full plugin API:
 The import is type-only and erased at load; the scaffold ships the full API
 as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
-needed. Confused, or need a symbol the types don't explain? Clone the repo:
-https://github.com/get-bb/bb. The API in
+needed. Those files are ordinary readable declarations, not a minified
+bundle: read them for an exact signature. The SDK surface grows every
+release, so `bb plugin types` rewrites them from the running bb — run it in a
+cloned or older plugin, and `bb plugin types --check` in CI. `bb plugin
+build` and `bb plugin dev` refresh them for you. Need a symbol the types
+don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and

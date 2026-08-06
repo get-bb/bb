@@ -14,11 +14,8 @@ import type {
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
 import { BbHttpError } from "@bb/sdk";
-import {
-  parseDataDirEnvValue,
-  resolveProdDataDir,
-} from "@bb/config/runtime";
-import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
+import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
+import { scaffoldPlugin, syncPluginTypes } from "@bb/templates/plugin-scaffold";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -118,6 +115,52 @@ const pluginManifestSchema = z.object({
     .optional(),
 });
 const secretSettingValueSchema = z.object({ set: z.boolean().optional() });
+
+/**
+ * Read a plugin directory's manifest. Returns null when the directory has no
+ * readable `package.json`, so callers can print their own guidance.
+ */
+async function readPluginManifest(
+  rootDir: string,
+): Promise<z.infer<typeof pluginManifestSchema> | null> {
+  try {
+    const raw: unknown = JSON.parse(
+      await readFile(join(rootDir, "package.json"), "utf8"),
+    );
+    return pluginManifestSchema.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refresh `types/*.d.ts` against this CLI's bundled SDK declarations and
+ * report each file that actually changed.
+ *
+ * `bb plugin build` and `bb plugin dev` call this so an author never
+ * typechecks against declarations older than the bb they run. A failure here
+ * is reported and swallowed: a read-only or otherwise unwritable `types/`
+ * must not fail a build.
+ */
+async function refreshPluginTypes(
+  rootDir: string,
+  hasApp: boolean,
+): Promise<void> {
+  let files: Awaited<ReturnType<typeof syncPluginTypes>>;
+  try {
+    files = await syncPluginTypes({ rootDir, app: hasApp });
+  } catch (error) {
+    console.warn(
+      `Could not refresh types/ — ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  const written = files.filter((file) => file.outcome === "written");
+  if (written.length === 0) return;
+  console.log(
+    `Refreshed SDK declarations: ${written.map((file) => file.path).join(", ")}`,
+  );
+}
 
 type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
 type PluginSettingsResult = z.infer<typeof pluginSettingsResultSchema>;
@@ -736,6 +779,52 @@ export function registerPluginCommands(
     );
 
   plugin
+    .command("types [path]")
+    .description(
+      "Write this bb's @bb/plugin-sdk declarations into the plugin's types/ directory (default: cwd); the authoritative, readable API surface for editors, tsc, and agents",
+    )
+    .option("--check", "Report whether types/ is current; write nothing")
+    .action(
+      action(async (path: string | undefined, opts: { check?: boolean }) => {
+        const rootDir = resolve(process.cwd(), path ?? ".");
+        const manifest = await readPluginManifest(rootDir);
+        if (!manifest) {
+          console.error(
+            `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
+          );
+          process.exit(1);
+        }
+        if (typeof manifest.bb?.server !== "string") {
+          console.error(
+            `${rootDir} is not a bb plugin — package.json has no "bb.server" entry.`,
+          );
+          process.exit(1);
+        }
+        const hasApp = typeof manifest.bb.app === "string";
+        const files = await syncPluginTypes({
+          rootDir,
+          app: hasApp,
+          check: opts.check ?? false,
+        });
+        for (const file of files) {
+          console.log(`${file.path} ${file.outcome}`);
+        }
+        if (opts.check) {
+          if (files.some((file) => file.outcome === "stale")) {
+            console.error(
+              "Declarations are out of date — run `bb plugin types` to refresh them.",
+            );
+            process.exit(1);
+          }
+          return;
+        }
+        console.log(
+          "These declarations are the full plugin API — read them for exact signatures.",
+        );
+      }),
+    );
+
+  plugin
     .command("build [path]")
     .description(
       "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json) and, when bb.app is declared, the frontend bundle (app.js, app.css, app.meta.json); each *.meta.json stamps SDK/identity metadata; no server required",
@@ -744,22 +833,18 @@ export function registerPluginCommands(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
         const bbVersion = resolveBbCliVersion();
-        // buildPluginServer errors legibly on a missing/invalid bb.server —
-        // every plugin has one, so a headless plugin succeeds with just the
-        // backend bundle (prebuilt distribution, design §6).
+        // Read the manifest before building: buildPluginServer errors legibly
+        // on a missing/invalid bb.server, so a null manifest here is only the
+        // unreachable case where that read also fails.
+        const manifest = await readPluginManifest(rootDir);
+        const hasApp = typeof manifest?.bb?.app === "string";
+        // Keep the local declarations tracking the bb doing the build, so a
+        // plugin scaffolded against an older SDK never typechecks green
+        // against an API this bb no longer has.
+        if (manifest) await refreshPluginTypes(rootDir, hasApp);
         const toolchain = await cliBuildToolchain();
         const server = await buildPluginServer(rootDir, bbVersion, toolchain);
         const files = [server.jsPath, server.mapPath, server.metaPath];
-        let hasApp = false;
-        try {
-          const raw: unknown = JSON.parse(
-            await readFile(join(rootDir, "package.json"), "utf8"),
-          );
-          const pkg = pluginManifestSchema.parse(raw);
-          hasApp = typeof pkg.bb?.app === "string";
-        } catch {
-          // Unreachable in practice: buildPluginServer already read it.
-        }
         if (hasApp) {
           const app = await buildPluginApp(rootDir, bbVersion, toolchain);
           files.push(app.jsPath, app.cssPath, app.metaPath);
@@ -778,13 +863,8 @@ export function registerPluginCommands(
     .action(
       action(async (path: string | undefined) => {
         const rootDir = resolve(process.cwd(), path ?? ".");
-        let manifest: z.infer<typeof pluginManifestSchema>;
-        try {
-          const raw: unknown = JSON.parse(
-            await readFile(join(rootDir, "package.json"), "utf8"),
-          );
-          manifest = pluginManifestSchema.parse(raw);
-        } catch {
+        const manifest = await readPluginManifest(rootDir);
+        if (!manifest) {
           console.error(
             `No readable package.json in ${rootDir} — run from a plugin directory or pass its path.`,
           );
@@ -797,6 +877,9 @@ export function registerPluginCommands(
           process.exit(1);
         }
         const hasApp = typeof manifest.bb.app === "string";
+        // Refresh before the watcher starts, so writing types/ cannot feed
+        // the loop its own change event.
+        await refreshPluginTypes(rootDir, hasApp);
         // The dev loop drives an *installed* plugin; match this directory
         // against the server's installed rows (realpath tolerates symlinked
         // checkouts).

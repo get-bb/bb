@@ -666,6 +666,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
+  - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
+    running bb's `@bb/plugin-sdk` declarations, creating `types/` when absent.
+    Run it in a cloned or older plugin: the scaffold seeds those files once and
+    the SDK surface grows every release. `--check` reports staleness and exits
+    non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
+    refresh them automatically. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.
