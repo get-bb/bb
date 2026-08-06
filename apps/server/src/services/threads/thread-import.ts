@@ -7,14 +7,13 @@ import {
   isAcpProviderId,
   supportsProviderSessionImport,
 } from "@bb/agent-providers";
-import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { ImportThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
-import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
+import { buildAcpLaunchSpecForProviderId } from "../system/known-acp-agents.js";
 import { createThreadFromRequest } from "./thread-create.js";
 import {
   requirePublicProjectForThreadCreate,
@@ -30,19 +29,25 @@ type ThreadImportDeps = LoggedPendingInteractionWorkSessionDeps;
  * (agentCapabilities.loadSession). Ask the daemon for that live capability
  * (the same probe model discovery already performs, including for agents
  * whose model list comes from a CLI command rather than ACP-native session
- * discovery) for known built-in ACP agents so an agent that doesn't support
- * it is refused here instead of silently provisioning an environment and
- * dispatching a doomed thread.start. Best-effort: any probe failure or an
- * agent bb has no static launch spec for falls back to the static family
- * check, with the bridge's own refusal
+ * discovery), resolving the launch spec the exact same way thread.start does
+ * (buildAcpLaunchSpecForProviderId: a configured custom ACP agent shadows a
+ * built-in known agent with the same provider id) so the probed binary is
+ * the one that will actually serve the thread. An agent that doesn't
+ * support it is refused here instead of silently provisioning an
+ * environment and dispatching a doomed thread.start. Best-effort: any probe
+ * failure or a provider id with no resolvable launch spec falls back to the
+ * static family check, with the bridge's own refusal
  * (packages/agent-runtime/src/acp/bridge/bridge.ts) as the final backstop.
  */
 async function probeAcpSupportsSessionImport(
   deps: ThreadImportDeps,
   args: { hostId: string; providerId: string },
 ): Promise<boolean | undefined> {
-  const knownAgent = findKnownAcpAgentForProviderId(args.providerId);
-  if (!knownAgent) {
+  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(
+    deps.config.customAcpAgents,
+    args.providerId,
+  );
+  if (!acpLaunchSpec) {
     return undefined;
   }
   try {
@@ -52,7 +57,7 @@ async function probeAcpSupportsSessionImport(
       command: {
         type: "provider.list_models",
         providerId: args.providerId,
-        acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(knownAgent),
+        acpLaunchSpec,
       },
     });
     return result.supportsSessionImport;

@@ -657,6 +657,8 @@ export function createAcpProviderAdapter(
       args.state.agentMessageTextsByItemId.clear();
       args.state.thoughtTextsByItemId.clear();
       args.state.toolCallEventsByCallId.clear();
+      args.state.openUserMessageText = undefined;
+      args.state.openUserMessageId = undefined;
       drainAcceptedUserMessages({
         events: args.events,
         providerThreadId: "",

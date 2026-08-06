@@ -239,4 +239,105 @@ describe("public thread import route", () => {
       expect(JSON.stringify(body)).toContain("does not support session/load");
     });
   });
+
+  it("refuses importing a purely custom ACP agent whose live handshake reports no session/load support", async () => {
+    // Unlike acp-omp, "acp-mycoder" has no KNOWN_ACP_AGENTS entry: the
+    // capability gate can only probe it at all if it resolves the launch
+    // spec through the configured custom agent (the same resolution
+    // thread.start uses), not the built-in-only lookup. Without that, this
+    // provider would skip the live probe entirely and fall back to the
+    // static ACP-family allow, silently admitting the import.
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "mycoder",
+            displayName: "My Coder",
+            command: "mycoder-agent",
+            args: ["acp"],
+            env: {},
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, project } = seedImportTarget(harness);
+        setTestProviderSupportsSessionImport("acp-mycoder", false);
+
+        const response = await postImport(harness, {
+          projectId: project.id,
+          providerId: "acp-mycoder",
+          providerSessionId: "external-mycoder-session-no-load",
+          hostId: host.id,
+          cwd: SOURCE_PATH,
+        });
+
+        expect(response.status).toBe(400);
+        const body = await readJson(response);
+        expect(body).toMatchObject({ code: "invalid_request" });
+        expect(JSON.stringify(body)).toContain(
+          "does not support session/load",
+        );
+      },
+    );
+  });
+
+  it("imports a workspace whose path differs from the project source", async () => {
+    await withTestHarness(async (harness) => {
+      const WORKSPACE_PATH = "/tmp/public-thread-import-workspace";
+      const { host, project } = seedImportTarget(harness);
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: WORKSPACE_PATH,
+      });
+
+      const response = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "external-omp-session-workspace",
+        hostId: host.id,
+        cwd: WORKSPACE_PATH,
+      });
+
+      expect(response.status).toBe(201);
+      const thread = threadResponseSchema.parse(await readJson(response));
+      expect(thread).toMatchObject({
+        projectId: project.id,
+        providerId: "acp-omp",
+        status: "starting",
+      });
+    });
+  });
+
+  it("refuses a cwd matching a workspace that belongs to a different project", async () => {
+    await withTestHarness(async (harness) => {
+      const OTHER_PROJECT_WORKSPACE_PATH =
+        "/tmp/public-thread-import-other-project-workspace";
+      const { host, project } = seedImportTarget(harness);
+      const { project: otherProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/public-thread-import-other-project-source",
+      });
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: otherProject.id,
+        path: OTHER_PROJECT_WORKSPACE_PATH,
+      });
+
+      const response = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "external-omp-session-cross-project",
+        hostId: host.id,
+        cwd: OTHER_PROJECT_WORKSPACE_PATH,
+      });
+
+      expect(response.status).toBe(400);
+      const body = await readJson(response);
+      expect(body).toMatchObject({ code: "invalid_request" });
+      expect(JSON.stringify(body)).toContain(
+        "does not match the project source",
+      );
+    });
+  });
 });

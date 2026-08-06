@@ -40,6 +40,10 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
+ * - FAKE_ACP_LOAD_SESSION_DELAY_MS=<n>
+ *                            → wait n ms before responding to session/load
+ *                              (widens the in-flight window for concurrent
+ *                              import race tests)
  */
 
 import { createInterface } from "node:readline";
@@ -57,6 +61,9 @@ const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
+const loadSessionDelayMs = Number(
+  process.env.FAKE_ACP_LOAD_SESSION_DELAY_MS ?? "0",
+);
 const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
@@ -399,6 +406,9 @@ async function handleMessage(message) {
     case "session/load":
       if (!requireAuthenticated(message)) {
         return;
+      }
+      if (loadSessionDelayMs > 0) {
+        await sleep(loadSessionDelayMs);
       }
       if (loadSession && loadSessionError) {
         // A replay that then fails still needs to exercise the replayed

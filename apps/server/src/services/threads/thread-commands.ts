@@ -11,10 +11,6 @@ import {
   isAgentProviderId,
 } from "@bb/agent-providers";
 import {
-  formatCustomAcpAgentProviderId,
-  type CustomAcpAgent,
-} from "@bb/config/bb-app-managed-config";
-import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
@@ -28,11 +24,9 @@ import {
   WorkspaceProvisionType,
   promptInputHasCommandMention,
 } from "@bb/domain";
-import {
-  normalizeHostDaemonAcpLaunchSpec,
-  type HostDaemonAcpLaunchSpec,
-  type HostDaemonCommand,
-  type TurnSubmitTarget,
+import type {
+  HostDaemonCommand,
+  TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
@@ -59,7 +53,7 @@ import {
 } from "./thread-execution-plan.js";
 import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
-import { findKnownAcpAgentForProviderId } from "../system/known-acp-agents.js";
+import { buildAcpLaunchSpecForProviderId } from "../system/known-acp-agents.js";
 
 export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -201,30 +195,6 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
 }
 
-function findCustomAcpAgentForProviderId(
-  customAcpAgents: CustomAcpAgent[],
-  providerId: string,
-): CustomAcpAgent | undefined {
-  return customAcpAgents.find(
-    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
-  );
-}
-
-function buildAcpLaunchSpecForProviderId(
-  deps: Pick<AppDeps, "config">,
-  providerId: string,
-): HostDaemonAcpLaunchSpec | undefined {
-  const agent = findCustomAcpAgentForProviderId(
-    deps.config.customAcpAgents,
-    providerId,
-  );
-  if (agent) {
-    return normalizeHostDaemonAcpLaunchSpec(agent);
-  }
-  const knownAgent = findKnownAcpAgentForProviderId(providerId);
-  return knownAgent ? normalizeHostDaemonAcpLaunchSpec(knownAgent) : undefined;
-}
-
 function resolveClaudeCodeMockCliTrafficConfig(
   deps: Pick<AppDeps, "db">,
 ): ClaudeCodeMockCliTrafficConfig {
@@ -360,7 +330,10 @@ export async function buildThreadStartCommand(
     environment: args.environment,
     model: args.execution.model,
   });
-  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(deps, args.providerId);
+  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(
+    deps.config.customAcpAgents,
+    args.providerId,
+  );
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -405,7 +378,7 @@ function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
 ): PreparedTurnSubmitCommandPayload {
   const acpLaunchSpec = buildAcpLaunchSpecForProviderId(
-    args.deps,
+    args.deps.config.customAcpAgents,
     args.runtimeContext.providerId,
   );
   return {

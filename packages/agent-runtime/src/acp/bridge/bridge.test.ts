@@ -1909,6 +1909,84 @@ describe("acp bridge", () => {
     });
   });
 
+  it("refuses a concurrent second import of the same provider session before either binds", async () => {
+    // Sent back-to-back, with neither awaited before the other is sent: both
+    // requests reach the pre-load unbound check (before session/load, before
+    // any binding exists) in the same race window this regresses. The first
+    // import's session/load is delayed and replays history: the pre-load
+    // reservation must be claimed right after its own pre-load check (well
+    // before session/load returns), so the second import is refused before
+    // it can dispatch session/load at all, and the first import's delayed
+    // session/load stays the sole path to any replay.
+    const firstImportId = sendRequest("thread/import", {
+      threadId: "thread-import-race-1",
+      providerThreadId: "external-sess-race",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_REPLAY_UPDATES: "1",
+        // Widens the in-flight window so the second import's spawn +
+        // initialize reliably lands before the first import's session/load
+        // resolves, in case the reservation regresses.
+        FAKE_ACP_LOAD_SESSION_DELAY_MS: "200",
+      },
+    });
+    const secondImportId = sendRequest("thread/import", {
+      threadId: "thread-import-race-2",
+      providerThreadId: "external-sess-race",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      waitForResponse(firstImportId),
+      waitForResponse(secondImportId),
+    ]);
+
+    const candidates = [
+      { threadId: "thread-import-race-1", response: firstResponse },
+      { threadId: "thread-import-race-2", response: secondResponse },
+    ];
+    const winner = candidates.find(
+      ({ response }) => response.result !== undefined,
+    );
+    const loser = candidates.find(({ response }) => response.error !== undefined);
+    // Exactly one request wins the binding; the reservation must stop the
+    // other before it ever forwards a session/load replay, instead of both
+    // racing session/load and one persisting a partial history copy.
+    expect(winner).toBeDefined();
+    expect(loser).toBeDefined();
+    expect(winner?.response.result).toEqual({
+      providerThreadId: "external-sess-race",
+    });
+    startedProviderThreadIds.push("external-sess-race");
+    expect(loser?.response.error?.message).toMatch(
+      new RegExp(
+        `already (bound to|being loaded by) bb thread "${winner?.threadId}"`,
+      ),
+    );
+    const loserUpdates = notifications("acp/update").filter(
+      (message) =>
+        (message.params as { threadId?: string } | undefined)?.threadId ===
+        loser?.threadId,
+    );
+    expect(loserUpdates).toHaveLength(0);
+    const loserCompletions = notifications("acp/turn/completed").filter(
+      (message) =>
+        (message.params as { threadId?: string } | undefined)?.threadId ===
+        loser?.threadId,
+    );
+    expect(loserCompletions).toHaveLength(0);
+  });
+
   it("reports unexpected agent exits as a single provider error", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {

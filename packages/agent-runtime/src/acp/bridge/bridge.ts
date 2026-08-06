@@ -148,6 +148,15 @@ interface AcpThreadSession {
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
 const bbThreadIdByProviderThreadId = new Map<string, string>();
+/**
+ * Reservation table for a reused provider session id between the pre-load
+ * unbound check and the permanent bbThreadIdByProviderThreadId binding.
+ * Without this, two concurrent thread/import (or thread/resume) requests for
+ * the same provider session both pass the pre-load check (neither is bound
+ * yet) and both forward the replay. Claimed right before session/load goes
+ * out and released on any failure path or once the binding is permanent.
+ */
+const pendingProviderThreadIds = new Map<string, string>();
 const pendingRuntimeRequests = new Map<
   number,
   (response: BridgeJsonRpcResponse) => void
@@ -391,6 +400,11 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 };
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
+// Bounded well below the server's COMMAND_TIMEOUT_MS (30s): this probe runs
+// concurrently with the CLI catalog fetch on every model/list call for a
+// CLI-list agent, so a slow/hanging agent initialize must not push an
+// otherwise-fast catalog reply out to the server's timeout boundary.
+const SESSION_IMPORT_CAPABILITY_PROBE_TIMEOUT_MS = 10_000;
 const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
@@ -629,9 +643,32 @@ let cachedSessionDiscoveredModels: {
 // the static ACP-family capability constant.
 let cachedAcpAgentSupportsSessionImport: {
   key: string;
-  supportsSessionImport: boolean;
+  // undefined means the probe ran but couldn't learn the capability (agent
+  // failed to spawn, initialize errored, or the probe timed out). Still
+  // cached with a fetchedAt so a broken agent is retried at most once per
+  // TTL instead of on every model/list call.
+  supportsSessionImport: boolean | undefined;
   fetchedAt: number;
 } | null = null;
+
+/**
+ * Both caches are learned from the same `initialize`/`session/new` handshake
+ * and share the same TTL, so keep their freshness in lockstep: whenever the
+ * model cache is (re)written for `key`, re-stamp the capability cache entry
+ * for the same key so it doesn't expire first and silently degrade
+ * model/list's supportsSessionImport gate in the window between the two.
+ */
+function restampSessionImportCapabilityCache(
+  key: string,
+  fetchedAt: number,
+): void {
+  if (cachedAcpAgentSupportsSessionImport?.key === key) {
+    cachedAcpAgentSupportsSessionImport = {
+      ...cachedAcpAgentSupportsSessionImport,
+      fetchedAt,
+    };
+  }
+}
 
 function resolveAcpAuthMethodId(
   authMethods: readonly { id: string }[] | undefined,
@@ -738,6 +775,7 @@ async function loadSessionDiscoveredModels(
     Date.now() - cachedSessionDiscoveredModels.fetchedAt <
       SESSION_MODEL_DISCOVERY_TTL_MS
   ) {
+    restampSessionImportCapabilityCache(key, Date.now());
     return cachedSessionDiscoveredModels.models;
   }
 
@@ -816,11 +854,9 @@ async function loadSessionDiscoveredModels(
     }
 
     if (configOptionModels.length === 0) {
-      cachedSessionDiscoveredModels = {
-        key,
-        models: sessionModels,
-        fetchedAt: Date.now(),
-      };
+      const fetchedAt = Date.now();
+      cachedSessionDiscoveredModels = { key, models: sessionModels, fetchedAt };
+      restampSessionImportCapabilityCache(key, fetchedAt);
       return sessionModels;
     }
 
@@ -833,11 +869,9 @@ async function loadSessionDiscoveredModels(
       reasoningByModel === null
         ? configOptionModels
         : buildModelCatalogFromConfigOptions(modelOption, reasoningByModel);
-    cachedSessionDiscoveredModels = {
-      key,
-      models,
-      fetchedAt: Date.now(),
-    };
+    const fetchedAt = Date.now();
+    cachedSessionDiscoveredModels = { key, models, fetchedAt };
+    restampSessionImportCapabilityCache(key, fetchedAt);
     return models;
   } catch (error) {
     process.stderr.write(
@@ -894,10 +928,10 @@ async function probeAcpAgentSupportsSessionImportOnly(
       connection.kill();
       reject(
         new Error(
-          `ACP session/load capability probe timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+          `ACP session/load capability probe timed out after ${SESSION_IMPORT_CAPABILITY_PROBE_TIMEOUT_MS}ms`,
         ),
       );
-    }, MODEL_LIST_TIMEOUT_MS);
+    }, SESSION_IMPORT_CAPABILITY_PROBE_TIMEOUT_MS);
   });
   try {
     await Promise.race([
@@ -930,6 +964,13 @@ async function probeAcpAgentSupportsSessionImportOnly(
         error instanceof Error ? error.message : String(error)
       }\n`,
     );
+    // Cache the failure too (as "unknown"), so a broken or slow agent is
+    // probed at most once per TTL instead of respawned on every model/list.
+    cachedAcpAgentSupportsSessionImport = {
+      key,
+      supportsSessionImport: undefined,
+      fetchedAt: Date.now(),
+    };
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
@@ -1581,6 +1622,12 @@ function assertProviderSessionUnboundElsewhere(
   bbThreadId: string,
   providerThreadId: string,
 ): void {
+  const pendingOwnerThreadId = pendingProviderThreadIds.get(providerThreadId);
+  if (pendingOwnerThreadId !== undefined && pendingOwnerThreadId !== bbThreadId) {
+    throw new Error(
+      `ACP provider session "${providerThreadId}" is already being loaded by bb thread "${pendingOwnerThreadId}"`,
+    );
+  }
   const boundToOtherThreadId =
     bbThreadIdByProviderThreadId.get(providerThreadId);
   if (
@@ -1601,6 +1648,25 @@ type AcpSessionStartParams =
   | { kind: "start"; params: AcpBridgeThreadStartParams }
   | { kind: "resume"; params: AcpBridgeThreadResumeParams }
   | { kind: "import"; params: AcpBridgeThreadImportParams };
+
+/**
+ * Release a pendingProviderThreadIds claim made before session/load went
+ * out. Safe to call unconditionally on every exit path (success or
+ * failure): a no-op for "start" sessions and for a claim this bb thread no
+ * longer owns.
+ */
+function releasePendingProviderThreadIdReservation(
+  request: AcpSessionStartParams,
+  bbThreadId: string,
+): void {
+  if (request.kind === "start") {
+    return;
+  }
+  const { providerThreadId } = request.params;
+  if (pendingProviderThreadIds.get(providerThreadId) === bbThreadId) {
+    pendingProviderThreadIds.delete(providerThreadId);
+  }
+}
 
 async function startAgentSession(
   request: AcpSessionStartParams,
@@ -1722,6 +1788,7 @@ async function startAgentSession(
         bbThreadId,
         request.params.providerThreadId,
       );
+      pendingProviderThreadIds.set(request.params.providerThreadId, bbThreadId);
       session.loading = true;
       try {
         const configState = await connection.request({
@@ -1804,12 +1871,14 @@ async function startAgentSession(
     session.providerThreadId = sessionId;
     sessionsByBbThreadId.set(bbThreadId, session);
     bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
+    releasePendingProviderThreadIdReservation(request, bbThreadId);
     sendNotification("thread/identity", {
       threadId: bbThreadId,
       providerThreadId: sessionId,
     });
     return session;
   } catch (error) {
+    releasePendingProviderThreadIdReservation(request, bbThreadId);
     if (session.historicalReplayForwarded) {
       // A replay was already forwarded (and the adapter opened a synthetic
       // historical turn from it) before this failure; close that turn here

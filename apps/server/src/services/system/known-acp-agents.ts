@@ -1,6 +1,13 @@
 import { buildAcpProviderInfo } from "@bb/agent-providers";
+import {
+  formatCustomAcpAgentProviderId,
+  type CustomAcpAgent,
+} from "@bb/config/bb-app-managed-config";
 import type { ProviderInfo } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonAcpLaunchSpec,
+} from "@bb/host-daemon-contract";
 
 export interface KnownAcpAgent extends HostDaemonAcpLaunchSpec {
   id: string;
@@ -101,4 +108,33 @@ export function findKnownAcpAgentForProviderId(
   providerId: string,
 ): KnownAcpAgent | undefined {
   return KNOWN_ACP_AGENTS.find((agent) => agent.id === providerId);
+}
+
+export function findCustomAcpAgentForProviderId(
+  customAcpAgents: readonly CustomAcpAgent[],
+  providerId: string,
+): CustomAcpAgent | undefined {
+  return customAcpAgents.find(
+    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
+  );
+}
+
+/**
+ * Resolve the launch spec exactly as thread.start does: a configured custom
+ * ACP agent shadows a built-in known agent that shares its provider id, and
+ * falls back to the static KNOWN_ACP_AGENTS entry otherwise. Callers that
+ * need to probe or launch an ACP agent (thread start/resume/import) must
+ * share this resolution so what gets probed is what actually serves the
+ * thread.
+ */
+export function buildAcpLaunchSpecForProviderId(
+  customAcpAgents: readonly CustomAcpAgent[],
+  providerId: string,
+): HostDaemonAcpLaunchSpec | undefined {
+  const agent = findCustomAcpAgentForProviderId(customAcpAgents, providerId);
+  if (agent) {
+    return normalizeHostDaemonAcpLaunchSpec(agent);
+  }
+  const knownAgent = findKnownAcpAgentForProviderId(providerId);
+  return knownAgent ? normalizeHostDaemonAcpLaunchSpec(knownAgent) : undefined;
 }

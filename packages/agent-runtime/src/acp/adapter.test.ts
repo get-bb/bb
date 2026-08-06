@@ -1407,6 +1407,63 @@ describe("acp adapter historical replay translation", () => {
     ]);
   });
 
+  it("drops a stranded replayed user message instead of leaking it into a later live turn", () => {
+    const adapter = createAdapter();
+
+    // A replay opens a historical turn and accumulates an unflushed user
+    // message chunk (no messageId change or turn/completed has closed it
+    // yet).
+    adapter.translateEvent(
+      historicalUpdate({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "replayed-user" },
+      }),
+      HISTORICAL_CONTEXT,
+    );
+
+    // thread/stop tears the turn down mid-replay (e.g. another import raced
+    // ahead of the replay finishing), before the trailing turn/completed
+    // ever arrives.
+    adapter.buildCommandPlan({
+      type: "thread/stop",
+      threadId: "thread-1",
+      providerThreadId: "sess-1",
+      activeTurnId: "turn-1",
+    });
+
+    // The trailing historical turn/completed still arrives but is a no-op:
+    // no turn is open anymore.
+    const trailingCompletedEvents = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: {
+          threadId: "thread-1",
+          stopReason: "end_turn",
+          historical: true,
+        },
+      },
+      HISTORICAL_CONTEXT,
+    );
+    expect(trailingCompletedEvents).toEqual([]);
+
+    // A live turn then starts; the stranded replay text must not leak into
+    // it as a phantom userMessage item that was never actually sent.
+    const liveEvents = adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "live-agent" },
+      }),
+      THREAD_CONTEXT,
+    );
+    expect(
+      liveEvents.some(
+        (event) =>
+          event.type === "item/completed" && event.item.type === "userMessage",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps live user_message_chunk updates as unhandled provider events", () => {
     const adapter = createAdapter();
     startTurn(adapter);

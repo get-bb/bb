@@ -88,9 +88,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Import requires only project/provider/session; host and cwd default to the project's primary source, and the remaining fields select optional behaviors.",
+      "Import requires project/provider/session and an asserted cwd; hostId defaults to the primary connected host and the remaining fields select optional behaviors.",
     fields: [
-      "importThreadRequestSchema.cwd",
       "importThreadRequestSchema.hostId",
       "importThreadRequestSchema.originPluginId",
       "importThreadRequestSchema.permissionMode",
