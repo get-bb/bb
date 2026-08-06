@@ -1,6 +1,11 @@
 import { getThreadExecutionOverride, setThreadExecutionOverride } from "@bb/db";
 import { describe, expect, it } from "vitest";
-import { recoverThreadModelOverride } from "../../../src/services/threads/thread-execution-override.js";
+import {
+  applyPreparedThreadModelOverrideRecovery,
+  prepareThreadModelOverrideRecovery,
+  PreparedThreadModelOverrideRecoveryStaleError,
+  recoverThreadModelOverride,
+} from "../../../src/services/threads/thread-execution-override.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { availableModelFixture } from "../../helpers/available-models.js";
 import { registerProviderHostRpcResponder } from "../../helpers/host-rpc.js";
@@ -53,6 +58,33 @@ describe("stale model recovery", () => {
             selectedOnlyModels: [],
           },
         },
+      });
+
+      const prepared = await prepareThreadModelOverrideRecovery(harness.deps, {
+        model: "claude-opus-4-8[1m]",
+        modelSource: "explicit",
+        thread,
+      });
+      expect(prepared).not.toBeNull();
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "claude-mythos-5",
+        reasoningLevelOverride: "medium",
+      });
+      expect(() =>
+        applyPreparedThreadModelOverrideRecovery(harness.db, {
+          plan: prepared!,
+          threadId: thread.id,
+        }),
+      ).toThrow(PreparedThreadModelOverrideRecoveryStaleError);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: "claude-mythos-5",
+        reasoningLevelOverride: "medium",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "claude-mythos-5",
+        reasoningLevelOverride: "high",
       });
 
       await recoverThreadModelOverride(harness.deps, {

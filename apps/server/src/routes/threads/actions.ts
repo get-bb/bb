@@ -22,7 +22,6 @@ import {
   type CreateQueuedMessageRequest,
   type ThreadListResponse,
   type PublicApiSchema,
-  type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { ActorStamp, Thread, ThreadQueuedMessage } from "@bb/domain";
@@ -42,6 +41,8 @@ import {
   requestQueuedMessageAutoSendForThread,
   sendQueuedMessage,
 } from "../../services/threads/queued-messages.js";
+import { admitQueueIfActiveSendMessage } from "../../services/threads/admitted-send.js";
+import { createClientTurnRequestId } from "../../services/threads/thread-events.js";
 import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
@@ -202,30 +203,6 @@ interface CreateQueuedMessageForThreadArgs {
   thread: Thread;
 }
 
-function queuedMessagePayloadFromSendRequest(
-  payload: SendMessageRequest,
-): CreateQueuedMessageRequest {
-  return {
-    input: payload.input,
-    ...(payload.model !== undefined ? { model: payload.model } : {}),
-    ...(payload.serviceTier !== undefined
-      ? { serviceTier: payload.serviceTier }
-      : {}),
-    ...(payload.reasoningLevel !== undefined
-      ? { reasoningLevel: payload.reasoningLevel }
-      : {}),
-    ...(payload.permissionMode !== undefined
-      ? { permissionMode: payload.permissionMode }
-      : {}),
-    ...(payload.executionInputSources !== undefined
-      ? { executionInputSources: payload.executionInputSources }
-      : {}),
-    ...(payload.senderThreadId !== undefined
-      ? { senderThreadId: payload.senderThreadId }
-      : {}),
-  };
-}
-
 async function createQueuedMessageForThread(
   deps: AppDeps,
   args: CreateQueuedMessageForThreadArgs,
@@ -292,11 +269,16 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const actor = requireRequestActorStamp(context);
-    if (payload.mode === "queue-if-active" && thread.status === "active") {
-      ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
-      await createQueuedMessageForThread(deps, {
+    if (payload.mode === "queue-if-active") {
+      const environment = await requireThreadCommandEnvironment(deps, {
+        thread,
+      });
+      // Request IDs stay server-internal until S3.2c exposes receipts.
+      await admitQueueIfActiveSendMessage(deps, {
         actor,
-        payload: queuedMessagePayloadFromSendRequest(payload),
+        environment,
+        payload,
+        requestId: createClientTurnRequestId(),
         thread,
       });
       return context.json({ ok: true });

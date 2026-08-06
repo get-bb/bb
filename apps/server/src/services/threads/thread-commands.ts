@@ -4,6 +4,7 @@ import {
   getAppSettings,
   getExperiments,
   threads,
+  type ThreadExecutionOverride,
 } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -154,6 +155,7 @@ interface BuildExecutionOptionsArgs {
   /** Machine the work lands on; omit to read it from the thread's environment. */
   hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
+  threadExecutionOverride?: ThreadExecutionOverride;
   threadId: string;
 }
 
@@ -338,6 +340,9 @@ export async function buildExecutionOptions(
       ? { projectDefaults: args.projectDefaults }
       : {}),
     ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
+    ...(args.threadExecutionOverride !== undefined
+      ? { threadExecutionOverride: args.threadExecutionOverride }
+      : {}),
     executionSource: source,
     input: buildExistingThreadExecutionInput(request),
     threadId: args.threadId,

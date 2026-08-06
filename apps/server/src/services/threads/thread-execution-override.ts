@@ -38,9 +38,10 @@ function providerSupportsExecutionOverride(providerId: string): boolean {
 
 function listExecutionOverrideProviderIds(): string[] {
   return listBuiltInAgentProviderInfos()
-    .filter((info) =>
-      getBuiltInAgentProviderServerCapabilities(info.id)
-        .supportsExecutionOverride,
+    .filter(
+      (info) =>
+        getBuiltInAgentProviderServerCapabilities(info.id)
+          .supportsExecutionOverride,
     )
     .map((info) => info.id);
 }
@@ -99,7 +100,9 @@ export function resolveThreadExecutionOverrideUpdate(
     if (patch.model === null || patch.model === undefined) {
       nextModel = null;
     } else {
-      const target = models.find((candidate) => candidate.model === patch.model);
+      const target = models.find(
+        (candidate) => candidate.model === patch.model,
+      );
       if (!target) {
         throw new ApiError(
           400,
@@ -136,7 +139,9 @@ export function resolveThreadExecutionOverrideUpdate(
           400,
           "invalid_request",
           `Reasoning level "${patch.reasoningLevel}" is not supported by ${
-            effectiveModel ? `model "${effectiveModel}"` : `provider ${providerId}`
+            effectiveModel
+              ? `model "${effectiveModel}"`
+              : `provider ${providerId}`
           }. Supported reasoning levels: ${supportedReasoning.join(", ")}.`,
         );
       }
@@ -209,6 +214,35 @@ export async function recoverThreadModelOverride(
   deps: LoggedWorkSessionDeps,
   args: RecoverThreadModelOverrideArgs,
 ): Promise<void> {
+  const plan = await prepareThreadModelOverrideRecovery(deps, args);
+  if (plan === null) {
+    return;
+  }
+  applyPreparedThreadModelOverrideRecovery(deps.db, {
+    plan,
+    threadId: args.thread.id,
+  });
+}
+
+export type PreparedThreadModelOverrideRecovery = {
+  expectedExisting: ThreadExecutionOverride;
+  next: ThreadExecutionOverride;
+};
+
+export class PreparedThreadModelOverrideRecoveryStaleError extends Error {
+  readonly name = "PreparedThreadModelOverrideRecoveryStaleError";
+}
+
+/**
+ * Validates a sticky-model recovery without persisting. Returns null when no
+ * write is required. Callers that must keep admission atomic apply the plan
+ * inside the accepted transaction via
+ * {@link applyPreparedThreadModelOverrideRecovery}.
+ */
+export async function prepareThreadModelOverrideRecovery(
+  deps: LoggedWorkSessionDeps,
+  args: RecoverThreadModelOverrideArgs,
+): Promise<PreparedThreadModelOverrideRecovery | null> {
   const existing = getThreadExecutionOverride(deps.db, args.thread.id);
   if (
     args.model === undefined ||
@@ -217,12 +251,63 @@ export async function recoverThreadModelOverride(
     existing?.modelOverride === undefined ||
     existing.modelOverride === args.model
   ) {
-    return;
+    return null;
   }
 
-  await applyThreadExecutionOverride(deps, {
-    thread: args.thread,
+  if (!providerSupportsExecutionOverride(args.thread.providerId)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Changing the model or reasoning level of a running thread is only supported for ${listExecutionOverrideProviderIds().join(", ")} threads (this thread uses ${args.thread.providerId}). Cross-provider changes require respawning the thread.`,
+    );
+  }
+
+  const models = await loadThreadProviderModels(deps, args.thread);
+  const next = resolveThreadExecutionOverrideUpdate({
+    existing: {
+      modelOverride: existing.modelOverride,
+      reasoningLevelOverride: existing.reasoningLevelOverride ?? null,
+    },
     patch: { model: args.model },
+    models,
+    providerId: args.thread.providerId,
+    fallbackModel: resolveFallbackModel(deps, args.thread),
+  });
+
+  return {
+    expectedExisting: {
+      modelOverride: existing.modelOverride,
+      reasoningLevelOverride: existing.reasoningLevelOverride ?? null,
+    },
+    next,
+  };
+}
+
+/**
+ * Persists a previously validated sticky-model recovery. Throws when the
+ * complete expected override no longer matches (concurrent mutation).
+ */
+export function applyPreparedThreadModelOverrideRecovery(
+  db: Parameters<typeof setThreadExecutionOverride>[0],
+  args: {
+    plan: PreparedThreadModelOverrideRecovery;
+    threadId: string;
+  },
+): void {
+  const existing = getThreadExecutionOverride(db, args.threadId);
+  if (
+    existing?.modelOverride !== args.plan.expectedExisting.modelOverride ||
+    existing?.reasoningLevelOverride !==
+      args.plan.expectedExisting.reasoningLevelOverride
+  ) {
+    throw new PreparedThreadModelOverrideRecoveryStaleError(
+      "Thread execution override changed before prepared recovery was applied",
+    );
+  }
+  setThreadExecutionOverride(db, {
+    threadId: args.threadId,
+    modelOverride: args.plan.next.modelOverride,
+    reasoningLevelOverride: args.plan.next.reasoningLevelOverride,
   });
 }
 

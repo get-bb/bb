@@ -1,5 +1,9 @@
 import { getSupportedPermissionModes } from "@bb/agent-providers";
-import { getProjectExecutionDefaults, getThread } from "@bb/db";
+import {
+  getProjectExecutionDefaults,
+  getThread,
+  type ThreadExecutionOverride,
+} from "@bb/db";
 import type {
   CallerExecutionInputSource,
   PermissionMode,
@@ -62,6 +66,11 @@ export interface ResolveExistingThreadExecutionPlanArgs {
   hostId?: string | null;
   input: ExistingThreadExecutionInput;
   projectDefaults?: ProjectExecutionDefaults | null;
+  /**
+   * Prepared-but-not-yet-persisted override used by atomic admission flows.
+   * Omitted callers resolve from the current thread row as before.
+   */
+  threadExecutionOverride?: ThreadExecutionOverride;
   threadId: string;
 }
 
@@ -321,9 +330,13 @@ export async function resolveExistingThreadExecutionPlan(
     parentThread !== null
       ? getLastExecutionOptions(deps, parentThread.id)
       : null;
+  const threadExecutionOverride = args.threadExecutionOverride ?? {
+    modelOverride: thread.modelOverride ?? null,
+    reasoningLevelOverride: thread.reasoningLevelOverride ?? null,
+  };
   const model = resolveRequiredField<string>([
     args.input.model?.value,
-    thread.modelOverride ?? undefined,
+    threadExecutionOverride.modelOverride ?? undefined,
     lastExecution?.model,
     projectExecution?.model,
   ]);
@@ -353,7 +366,7 @@ export async function resolveExistingThreadExecutionPlan(
   const reasoningLevel = resolveFieldWithDefault<ReasoningLevel>(
     [
       args.input.reasoningLevel?.value,
-      thread.reasoningLevelOverride ?? undefined,
+      threadExecutionOverride.reasoningLevelOverride ?? undefined,
       lastExecution?.reasoningLevel,
       projectExecution?.reasoningLevel,
     ],
