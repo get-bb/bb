@@ -202,4 +202,35 @@ describe("Work Together Room resource provisioner", () => {
       expect(listProjects(harness.db)).toHaveLength(projectCountBefore + 1);
     });
   });
+
+  it("normalizes changed immutable launch facts to a provisioning conflict", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "101";
+      const { host } = seedHostSession(harness.deps, {
+        id: createHostId(),
+      });
+      const exactLaunch = launch(candidateHostId, providerRepositoryId);
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        registryFor(candidateHostId, providerRepositoryId, {
+          bbHostId: host.id,
+          projectName: "Immutable Room Repository",
+          providerId: "codex",
+          sourcePath: "/srv/work-together/immutable",
+        }),
+      );
+      await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+
+      await expect(
+        provisioner.provision({
+          principal: PRINCIPAL,
+          launch: { ...exactLaunch, repositoryBindingVersion: 2 },
+        }),
+      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningConflictError);
+    });
+  });
 });

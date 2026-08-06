@@ -8,6 +8,7 @@ import {
   getProjectSourceForProject,
   getThread,
   reserveWorkTogetherRoomResources,
+  WorkTogetherRoomResourceReservationConflictError,
   type ReserveWorkTogetherRoomResourcesInput,
   type WorkTogetherRoomResourceReservation,
 } from "@bb/db";
@@ -226,10 +227,15 @@ export function createWorkTogetherRoomResourceProvisioner(
         }),
       );
       ensureConfiguredHost(deps, target);
-      const reservation = reserveWorkTogetherRoomResources(
-        deps.db,
-        input.launch,
-      );
+      let reservation: WorkTogetherRoomResourceReservation;
+      try {
+        reservation = reserveWorkTogetherRoomResources(deps.db, input.launch);
+      } catch (error) {
+        if (error instanceof WorkTogetherRoomResourceReservationConflictError) {
+          throw new WorkTogetherRoomProvisioningConflictError();
+        }
+        throw error;
+      }
       ensureProject(deps, reservation, target);
       assertExistingResourceCoherence(deps, reservation, target);
 

@@ -15,6 +15,7 @@ import { CompactSign, exportJWK, generateKeyPair } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import { getClientWebsocketReauthorizePair } from "../../src/auth/client-websocket-authorization.js";
 import { issueRoomDistributionAuthorization } from "../../src/auth/room-distribution-authorization.js";
+import { issueRoomProvisioningAuthorization } from "../../src/auth/room-provisioning-authorization.js";
 import { getTerminalWebsocketReauthorizePair } from "../../src/auth/terminal-websocket-authorization.js";
 import { createWorkTogetherMembershipMemoryFake } from "../../src/auth/work-together-membership-memory.js";
 import { WorkTogetherMembershipLookupError } from "../../src/auth/work-together-membership.js";
@@ -818,6 +819,51 @@ describe("work-together principal policy", () => {
     await expect(
       session.authorize(reauthorize.action, reauthorize.resource),
     ).resolves.toEqual({ allowed: false, reason: "unauthenticated" });
+  });
+
+  it("allows registry-issued Room provisioning only for a current owner", async () => {
+    const { publicKey } = await testKeys();
+    const pair = issueRoomProvisioningAuthorization(
+      "99999999-aaaa-4bbb-8ccc-dddddddddddd",
+    );
+
+    const member = createWorkTogetherMembershipMemoryFake();
+    member.setMembership({
+      cellId: CELL_ID,
+      subject: SUBJECT,
+      role: "member",
+      membershipRevision: "1",
+    });
+    const memberSession = await createPolicy({
+      membership: member,
+      publicKey,
+    }).policy.resolve(requestFrom({ token: await signClaims(baseClaims()) }));
+    await expect(
+      memberSession.authorize(pair.action, pair.resource),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
+
+    const owner = createWorkTogetherMembershipMemoryFake();
+    owner.setMembership({
+      cellId: CELL_ID,
+      subject: SUBJECT,
+      role: "owner",
+      membershipRevision: "1",
+    });
+    const ownerSession = await createPolicy({
+      membership: owner,
+      publicKey,
+    }).policy.resolve(
+      requestFrom({
+        token: await signClaims(baseClaims({ jti: JTI_B })),
+      }),
+    );
+    await expect(
+      ownerSession.authorize(pair.action, pair.resource),
+    ).resolves.toEqual({ allowed: true });
+
+    await expect(
+      ownerSession.authorize({ ...pair.action }, { ...pair.resource }),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
   });
 
   it("authorize rechecks membership and denies after removal or revision change", async () => {

@@ -48,6 +48,7 @@ export type TestAppCreateOptions = {
   principalMode?: "local-owner" | "work-together";
   principalPolicy?: import("../../src/auth/principal-policy.js").PrincipalPolicy;
   roomDistribution?: import("../../src/room-distribution/room-distribution-port.js").WorkTogetherRoomDistributionV1;
+  roomResourceProvisioner?: import("../../src/room-distribution/room-resource-provisioner.js").WorkTogetherRoomResourceProvisioner;
   /**
    * Private test seam forwarded to createApp for deterministic client-socket
    * membership recheck / expiry timers.

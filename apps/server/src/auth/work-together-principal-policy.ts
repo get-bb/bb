@@ -15,6 +15,7 @@ import {
 } from "./work-together-membership.js";
 import { isRegistryIssuedClientWebsocketAuthorization } from "./client-websocket-authorization.js";
 import { isRegistryIssuedRoomDistributionAuthorization } from "./room-distribution-authorization.js";
+import { isRegistryIssuedRoomProvisioningAuthorization } from "./room-provisioning-authorization.js";
 import { isRegistryIssuedTerminalWebsocketAuthorization } from "./terminal-websocket-authorization.js";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
 import { decidePublicHttpAuthorization } from "./public-http-authorization.js";
@@ -202,6 +203,11 @@ function createValidatedWorkTogetherPrincipalPolicy(
               // allowed for both owner and member after membership/revision
               // recheck. Public HTTP stays unchanged.
               if (
+                (current.role === "owner" &&
+                  isRegistryIssuedRoomProvisioningAuthorization(
+                    action,
+                    resource,
+                  )) ||
                 isRegistryIssuedClientWebsocketAuthorization(
                   action,
                   resource,

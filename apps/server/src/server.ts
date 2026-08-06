@@ -89,6 +89,8 @@ import {
   createRoomDistributionSocketProtocol,
   type RoomDistributionSocketClock,
 } from "./room-distribution/room-distribution-websocket.js";
+import type { WorkTogetherRoomResourceProvisioner } from "./room-distribution/room-resource-provisioner.js";
+import { registerRoomProvisioningHttpRoute } from "./room-distribution/room-provisioning-http.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -135,6 +137,8 @@ interface CreateAppOptions {
   principalMode?: InternalExecutionPrincipalMode;
   /** Work Together-only closed Room distribution; never mounted in stock mode. */
   roomDistribution?: WorkTogetherRoomDistributionV1;
+  /** WT-only owner-authorized provisioning control plane; never public-proxied. */
+  roomResourceProvisioner?: WorkTogetherRoomResourceProvisioner;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
   /**
@@ -348,6 +352,9 @@ export function createApp(
   if (options?.roomDistribution && principalMode !== "work-together") {
     throw new Error("Room distribution requires work-together principal mode");
   }
+  if (options?.roomResourceProvisioner && principalMode !== "work-together") {
+    throw new Error("Room provisioning requires work-together principal mode");
+  }
   const internalPrincipalAuthority = createInternalPrincipalAuthority({
     fallbackPolicy: fallbackPrincipalPolicy,
   });
@@ -542,6 +549,14 @@ export function createApp(
         : runInternalPrincipalExecutionScope(context, next),
     );
     registerRoomDistributionHttpRoutes(app, options.roomDistribution);
+  }
+  if (options?.roomResourceProvisioner) {
+    app.use("/api/bb-room-provisioning/v1/*", resolveHttpPrincipal);
+    app.use(
+      "/api/bb-room-provisioning/v1/*",
+      runInternalPrincipalExecutionScope,
+    );
+    registerRoomProvisioningHttpRoute(app, options.roomResourceProvisioner);
   }
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
