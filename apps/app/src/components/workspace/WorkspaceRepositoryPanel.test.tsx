@@ -136,6 +136,46 @@ describe("WorkspaceRepositoryPanel", () => {
     expect(screen.getByText("No pull request")).toBeTruthy();
   });
 
+  it("shows the branch and commit details in Checks", () => {
+    render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus({
+          checkout: {
+            kind: "branch",
+            branchName: "agent-thread-workspace-sidebar",
+            headSha: "0123456789abcdef",
+          },
+          mergeBase: {
+            mergeBaseBranch: "main",
+            baseRef: "main",
+            aheadCount: 1,
+            behindCount: 0,
+            hasCommittedUnmergedChanges: true,
+            commits: [
+              {
+                sha: "0123456789abcdef",
+                shortSha: "01234567",
+                subject: "Refine the workspace sidebar",
+                authorName: "Oscar",
+                authoredAt: 1,
+              },
+            ],
+            files: [],
+            insertions: 0,
+            deletions: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("agent-thread-workspace-sidebar")).toBeTruthy();
+    expect(screen.getByText("01234567")).toBeTruthy();
+    expect(screen.getByText("Refine the workspace sidebar")).toBeTruthy();
+  });
+
   it("refreshes visible files when the workspace changes", () => {
     const initialStatus = makeWorkspaceStatus();
     const view = render(

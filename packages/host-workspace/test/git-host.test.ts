@@ -236,6 +236,45 @@ describe("runPullRequestActionForBranch", () => {
     );
   }
 
+  it("pushes the branch and creates a filled draft pull request", async () => {
+    mockGhSuccess();
+
+    await runPullRequestActionForBranch({
+      cwd: "/tmp/workspace",
+      branch: "feature/sidebar",
+      action: { operation: "create", baseBranch: "main", draft: true },
+    });
+
+    expect(execFileMock).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["push", "--set-upstream", "origin", "feature/sidebar"],
+      expect.objectContaining({
+        cwd: "/tmp/workspace",
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 60_000,
+      }),
+      expect.any(Function),
+    );
+    expect(execFileMock).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      [
+        "pr",
+        "create",
+        "--fill",
+        "--head",
+        "feature/sidebar",
+        "--base",
+        "main",
+        "--draft",
+      ],
+      expect.objectContaining({ cwd: "/tmp/workspace" }),
+      expect.any(Function),
+    );
+  });
+
   it.each([
     ["ready", { operation: "ready" }, ["pr", "ready", "--", "bb/pr-actions"]],
     [

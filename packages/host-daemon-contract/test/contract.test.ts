@@ -720,6 +720,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
+  "hostDaemonCommandSchema.baseBranch":
+    "pull-request creation omits the base branch when the environment has no known merge base, so GitHub uses the repository default.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.setupScript":
@@ -1058,7 +1060,8 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 77 adds project-configured setup commands. Version 76 adds detailed
+  // Version 78 adds pull-request creation. Version 77 adds project-configured
+  // setup commands. Version 76 adds detailed
   // pull-request checks and comments. Version 75 adds the literal, paged
   // workspace directory command. An older
   // daemon cannot serve the All files tree safely, so the version must force
@@ -1068,8 +1071,8 @@ describe("host-daemon command schemas", () => {
   // `deepseek/deepseek-v4-flash`. A daemon on 73 answers `model.list` with the
   // old unprefixed ids, which the server resolves to a different provider, so
   // the bump forces an update before the server trusts either side.
-  it("uses protocol version 77 for project-configured setup commands", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(77);
+  it("uses protocol version 78 for pull-request creation", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(78);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1276,6 +1279,25 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "workspace.commit",
       environmentId: "env_123",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "create",
+        baseBranch: "main",
+        draft: true,
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "create",
+      baseBranch: "main",
+      draft: true,
     });
 
     expect(

@@ -8,6 +8,7 @@ export interface WorkspaceTab {
   id: string;
   label: string;
   closeLabel?: string;
+  isDirty?: boolean;
 }
 
 interface WorkspaceTabStripProps {
@@ -17,6 +18,7 @@ interface WorkspaceTabStripProps {
   onSelectTab: (tabId: string) => void;
   panelId: string;
   tabs: readonly WorkspaceTab[];
+  trailingContent?: ReactNode;
 }
 
 interface ThreadWorkspaceShellProps {
@@ -32,9 +34,9 @@ interface ThreadWorkspaceShellProps {
   onSelectLowerTab: (tabId: string) => void;
   onSelectMainTab: (tabId: string) => void;
   onSelectUpperTab: (tabId: string) => void;
-  topBar?: ReactNode;
   upperContent: ReactNode;
   upperTabs: readonly WorkspaceTab[];
+  upperTrailingContent?: ReactNode;
 }
 
 export const WORKSPACE_SIDEBAR_WIDTH_PX = 400;
@@ -48,6 +50,7 @@ function WorkspaceTabStrip({
   onSelectTab,
   panelId,
   tabs,
+  trailingContent,
 }: WorkspaceTabStripProps) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectByKeyboard = (
@@ -72,52 +75,70 @@ function WorkspaceTabStrip({
     tabRefs.current[nextIndex]?.focus();
   };
   return (
-    <div
-      role="tablist"
-      aria-label={ariaLabel}
-      className="flex h-9 min-w-0 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border-seam bg-sidebar px-1"
-    >
-      {tabs.map((tab, index) => {
-        const isActive = tab.id === activeTabId;
-        return (
-          <div
-            key={tab.id}
-            className={cn(
-              "group flex h-7 shrink-0 items-center rounded-md",
-              isActive && "bg-accent text-accent-foreground",
-            )}
-          >
-            <button
-              ref={(element) => {
-                tabRefs.current[index] = element;
-              }}
-              type="button"
-              role="tab"
-              id={`${panelId}-tab-${index}`}
-              aria-controls={panelId}
-              aria-selected={isActive}
-              tabIndex={isActive ? 0 : -1}
-              className="h-full px-2 text-xs font-medium"
-              onClick={() => onSelectTab(tab.id)}
-              onKeyDown={(event) => selectByKeyboard(event, index)}
+    <div className="flex h-9 min-w-0 shrink-0 items-center border-b border-border-seam bg-sidebar px-1">
+      <div
+        role="tablist"
+        aria-label={ariaLabel}
+        className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+      >
+        {tabs.map((tab, index) => {
+          const isActive = tab.id === activeTabId;
+          return (
+            <div
+              key={tab.id}
+              className={cn(
+                "group flex h-7 shrink-0 items-center rounded-md px-1",
+                isActive && "bg-accent text-accent-foreground",
+              )}
             >
-              {tab.label}
-            </button>
-            {tab.closeLabel && onCloseTab ? (
-              <Button
+              <button
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
                 type="button"
-                variant="ghost"
-                size="icon"
-                className="mr-0.5 size-5 opacity-70 hover:opacity-100"
-                aria-label={tab.closeLabel}
-                onClick={() => onCloseTab(tab.id)}
+                role="tab"
+                id={`${panelId}-tab-${index}`}
+                aria-controls={panelId}
+                aria-selected={isActive}
+                aria-label={
+                  tab.isDirty ? `${tab.label}, unsaved changes` : undefined
+                }
+                tabIndex={isActive ? 0 : -1}
+                className="h-full px-1 text-xs font-medium"
+                onClick={() => onSelectTab(tab.id)}
+                onKeyDown={(event) => selectByKeyboard(event, index)}
               >
-                <Icon name="X" className="size-3" />
-              </Button>
-            ) : null}
-          </div>
-        );
-      })}
+                <span className="inline-flex items-center gap-1.5">
+                  {tab.isDirty ? (
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 shrink-0 rounded-full bg-current"
+                    />
+                  ) : null}
+                  <span>{tab.label}</span>
+                </span>
+              </button>
+              {tab.closeLabel && onCloseTab ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-5 opacity-70 hover:opacity-100"
+                  aria-label={tab.closeLabel}
+                  onClick={() => onCloseTab(tab.id)}
+                >
+                  <Icon name="X" className="size-3" />
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {trailingContent ? (
+        <div className="ml-auto flex shrink-0 items-center pl-1">
+          {trailingContent}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -135,9 +156,9 @@ export function ThreadWorkspaceShell({
   onSelectLowerTab,
   onSelectMainTab,
   onSelectUpperTab,
-  topBar,
   upperContent,
   upperTabs,
+  upperTrailingContent,
 }: ThreadWorkspaceShellProps) {
   const main = (
     <section
@@ -169,7 +190,6 @@ export function ThreadWorkspaceShell({
   if (isCompact) {
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {topBar}
         {main}
       </div>
     );
@@ -177,7 +197,6 @@ export function ThreadWorkspaceShell({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      {topBar}
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {main}
         <aside
@@ -201,6 +220,7 @@ export function ThreadWorkspaceShell({
                   onSelectTab={onSelectUpperTab}
                   panelId="thread-workspace-repository-panel"
                   tabs={upperTabs}
+                  trailingContent={upperTrailingContent}
                 />
                 <div
                   id="thread-workspace-repository-panel"

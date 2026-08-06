@@ -16,6 +16,7 @@ export interface SecondaryPanelFileTab {
   id: string;
   filename: string;
   isActive: boolean;
+  isDirty?: boolean;
   isHidden?: boolean;
   isPinned?: boolean;
   leadingVisual: ReactNode;

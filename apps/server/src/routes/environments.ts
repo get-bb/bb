@@ -5,6 +5,7 @@ import {
   resolveEnvironmentWorkspaceDisplayKind,
   type Environment,
   type ThreadPullRequest,
+  resolveEnvironmentMergeBaseBranch,
 } from "@bb/domain";
 import {
   publicApiRoutes,
@@ -190,7 +191,17 @@ async function getPullRequestForWorkspaceTarget(
   deps: AppDeps,
   target: ReturnType<typeof requireWorkspaceCommandTarget>,
 ): Promise<ThreadPullRequest | null> {
-  const result = await callHostRetryableOnlineRpc(deps, {
+  const result = await getPullRequestLookupForWorkspaceTarget(deps, target);
+  return result.outcome === "available"
+    ? assembleThreadPullRequest(result.pullRequest)
+    : null;
+}
+
+function getPullRequestLookupForWorkspaceTarget(
+  deps: AppDeps,
+  target: ReturnType<typeof requireWorkspaceCommandTarget>,
+) {
+  return callHostRetryableOnlineRpc(deps, {
     hostId: target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -199,9 +210,21 @@ async function getPullRequestForWorkspaceTarget(
       workspaceContext: target.workspaceContext,
     },
   });
-  return result.outcome === "available"
-    ? assembleThreadPullRequest(result.pullRequest)
-    : null;
+}
+
+function assertCanCreatePullRequest(
+  lookup: Awaited<ReturnType<typeof getPullRequestLookupForWorkspaceTarget>>,
+): void {
+  if (lookup.outcome === "unavailable") {
+    throw new ApiError(409, "pull_request_unavailable", lookup.message);
+  }
+  if (lookup.outcome === "available") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Pull request #${lookup.pullRequest.number} already exists`,
+    );
+  }
 }
 
 function assertCanMarkPullRequestReady(
@@ -826,6 +849,45 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           message: "Squash merge completed",
           commitSha: result.commitSha,
           commitSubject: result.commitSubject,
+        });
+      }
+      case "pull_request_create": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const lookup = await getPullRequestLookupForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanCreatePullRequest(lookup);
+        const baseBranch = resolveEnvironmentMergeBaseBranch(environment);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "create",
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+              draft: payload.options.draft,
+              ...(baseBranch ? { baseBranch } : {}),
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_create",
+          draft: payload.options.draft,
+          message: payload.options.draft
+            ? "Draft pull request created"
+            : "Pull request created",
         });
       }
       case "pull_request_ready": {

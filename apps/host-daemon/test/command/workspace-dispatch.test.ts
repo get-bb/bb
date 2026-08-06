@@ -219,6 +219,28 @@ describe("workspace command dispatch", () => {
       dispatchCommand(
         {
           type: "workspace.pull_request_action",
+          operation: "create",
+          baseBranch: "main",
+          draft: true,
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "create",
+      baseBranch: "main",
+      draft: true,
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
           operation: "ready",
           environmentId: "env-1",
           workspaceContext: {

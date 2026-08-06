@@ -206,6 +206,18 @@ function ChecksPanel({
 >) {
   const commits = workspaceStatus?.mergeBase?.commits ?? [];
   const currentCommit = commits[commits.length - 1];
+  const branchName =
+    workspaceStatus?.checkout.kind === "branch"
+      ? workspaceStatus.checkout.branchName
+      : workspaceStatus?.checkout.kind === "detached"
+        ? "Detached HEAD"
+        : "No branch";
+  const checkoutSha =
+    workspaceStatus?.checkout.kind === "branch" ||
+    workspaceStatus?.checkout.kind === "detached"
+      ? workspaceStatus.checkout.headSha
+      : null;
+  const commitSha = currentCommit?.shortSha ?? checkoutSha?.slice(0, 8) ?? "—";
   const gitStatus = workspaceStatus?.workingTree.hasUncommittedChanges
     ? "Uncommitted changes"
     : workspaceStatus
@@ -217,7 +229,14 @@ function ChecksPanel({
         <h2 className="truncate text-xs font-semibold">
           {currentCommit?.subject ?? "Current commit"}
         </h2>
-        <p className="mt-1 text-2xs text-muted-foreground">{gitStatus}</p>
+        <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-2xs">
+          <dt className="text-muted-foreground">Branch</dt>
+          <dd className="truncate font-mono text-foreground">{branchName}</dd>
+          <dt className="text-muted-foreground">Commit</dt>
+          <dd className="font-mono text-foreground">{commitSha}</dd>
+          <dt className="text-muted-foreground">Status</dt>
+          <dd className="text-foreground">{gitStatus}</dd>
+        </dl>
       </div>
       {pullRequestResponse?.outcome === "unavailable" ? (
         <p className="flex items-center gap-2 px-2 text-xs text-muted-foreground">

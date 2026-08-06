@@ -57,6 +57,7 @@ interface GetPullRequestForBranchArgs {
 export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
+  | { operation: "create"; baseBranch?: string; draft: boolean }
   | { operation: "ready" }
   | { operation: "draft" }
   | { operation: "merge"; method: GitHostPullRequestMergeMethod };
@@ -328,6 +329,12 @@ function buildPullRequestActionArgs(
   branch: string,
 ): string[] {
   switch (action.operation) {
+    case "create": {
+      const args = ["pr", "create", "--fill", "--head", branch];
+      if (action.baseBranch) args.push("--base", action.baseBranch);
+      if (action.draft) args.push("--draft");
+      return args;
+    }
     case "ready":
       return ["pr", "ready", "--", branch];
     case "draft":
@@ -346,6 +353,7 @@ function trimGhOutput(value: unknown): string {
 }
 
 function createGitHostCommandFailedError(
+  command: "gh" | "git",
   args: string[],
   error: unknown,
 ): WorkspaceError {
@@ -353,7 +361,7 @@ function createGitHostCommandFailedError(
   if (execError?.code === "ENOENT") {
     return new WorkspaceError(
       "git_host_cli_unavailable",
-      "GitHub CLI is not available",
+      command === "gh" ? "GitHub CLI is not available" : "Git is not available",
       { cause: error },
     );
   }
@@ -364,8 +372,8 @@ function createGitHostCommandFailedError(
   return new WorkspaceError(
     "git_host_command_failed",
     detail
-      ? `gh ${args.join(" ")} failed: ${detail}`
-      : `gh ${args.join(" ")} failed`,
+      ? `${command} ${args.join(" ")} failed: ${detail}`
+      : `${command} ${args.join(" ")} failed`,
     { cause: error },
   );
 }
@@ -486,6 +494,20 @@ export async function runPullRequestActionForBranch(
 ): Promise<void> {
   const ghArgs = buildPullRequestActionArgs(args.action, args.branch);
   try {
+    if (args.action.operation === "create") {
+      const pushArgs = ["push", "--set-upstream", "origin", args.branch];
+      try {
+        await execFileAsync("git", pushArgs, {
+          cwd: args.cwd,
+          encoding: "utf8",
+          env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+          timeout: GH_PR_ACTION_TIMEOUT_MS,
+          maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
+        });
+      } catch (error) {
+        throw createGitHostCommandFailedError("git", pushArgs, error);
+      }
+    }
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
@@ -494,6 +516,7 @@ export async function runPullRequestActionForBranch(
       maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
     });
   } catch (error) {
-    throw createGitHostCommandFailedError(ghArgs, error);
+    if (error instanceof WorkspaceError) throw error;
+    throw createGitHostCommandFailedError("gh", ghArgs, error);
   }
 }

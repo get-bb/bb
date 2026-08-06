@@ -929,6 +929,16 @@ describe("server-contract canonical schemas", () => {
 
     expect(
       environmentActionRequestSchema.parse({
+        action: "pull_request_create",
+        options: { draft: true },
+      }),
+    ).toMatchObject({
+      action: "pull_request_create",
+      options: { draft: true },
+    });
+
+    expect(
+      environmentActionRequestSchema.parse({
         action: "pull_request_ready",
       }),
     ).toMatchObject({

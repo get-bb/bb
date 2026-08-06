@@ -1441,6 +1441,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               id: tab.id,
               filename: filenameOf(tab.path),
               isActive: tab.id === activeFixedSecondaryTabId,
+              isDirty: dirtyWorkspaceFilePaths.has(tab.path),
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
               onSelect: () => handleActivateFileTab(tab.id),
@@ -1513,6 +1514,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   }, [
     activeFixedSecondaryTabId,
     closeTab,
+    dirtyWorkspaceFilePaths,
     handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
@@ -1545,8 +1547,45 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
     enabled: canUseGitUi && environment !== undefined,
   });
+  const refetchPullRequest = pullRequestQuery.refetch;
   const pullRequest = getEnvironmentPullRequestFromResponse(
     pullRequestQuery.data,
+  );
+  const [pullRequestPendingAction, setPullRequestPendingAction] = useState<
+    "create" | "merge" | null
+  >(null);
+  const handlePullRequestCreate = useCallback(
+    async (draft: boolean) => {
+      const environmentId = thread?.environmentId;
+      if (!environmentId) return;
+      setPullRequestPendingAction("create");
+      const toastId = appToast.loading(
+        draft ? "Creating draft pull request" : "Creating pull request",
+      );
+      try {
+        const response = await requestEnvironmentAction.mutateAsync({
+          id: environmentId,
+          action: "pull_request_create",
+          options: { draft },
+        });
+        if (response.action !== "pull_request_create") {
+          throw new Error("Expected pull request create action response.");
+        }
+        await refetchPullRequest();
+        appToast.success(response.message, { id: toastId });
+      } catch (error) {
+        appToast.error("Failed to create pull request", {
+          id: toastId,
+          description: getMutationErrorMessage({
+            error,
+            fallbackMessage: "Pull request was not created",
+          }),
+        });
+      } finally {
+        setPullRequestPendingAction(null);
+      }
+    },
+    [refetchPullRequest, requestEnvironmentAction, thread?.environmentId],
   );
   const handlePullRequestReady = useCallback(async () => {
     const environmentId = thread?.environmentId;
@@ -1605,6 +1644,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         return;
       }
       setPullRequestMergeMethod(method);
+      setPullRequestPendingAction("merge");
       const toastId = appToast.loading(getPullRequestMergeLoadingTitle(method));
       try {
         const response = await requestEnvironmentAction.mutateAsync({
@@ -1615,6 +1655,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         if (response.action !== "pull_request_merge") {
           throw new Error("Expected pull request merge action response.");
         }
+        await refetchPullRequest();
         appToast.success(response.message, { id: toastId });
       } catch (error) {
         appToast.error("Failed to merge pull request", {
@@ -1624,10 +1665,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             fallbackMessage: "Pull request was not merged",
           }),
         });
+      } finally {
+        setPullRequestPendingAction(null);
       }
     },
     [
       requestEnvironmentAction,
+      refetchPullRequest,
       setPullRequestMergeMethod,
       thread?.environmentId,
     ],
@@ -2649,7 +2693,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }}
           workspace={{
             canCreateTerminal,
+            onCreatePullRequest: handlePullRequestCreate,
+            onMergePullRequest: handlePullRequestMerge,
             onOpenBrowserUrl: openBrowserTabAndReveal,
+            pullRequestPendingAction,
             pullRequestResponse: pullRequestQuery.data,
             repositoryUrl: getGitHubRepositoryUrl(projectGitRemoteUrl),
             runScript: projectWorkspaceSettingsQuery.data?.runScript ?? null,

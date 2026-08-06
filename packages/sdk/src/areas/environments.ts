@@ -1,6 +1,7 @@
 import { environmentSchema, type Environment } from "@bb/domain";
 import {
   commitActionResponseSchema,
+  pullRequestCreateActionResponseSchema,
   pullRequestDraftActionResponseSchema,
   pullRequestMergeActionResponseSchema,
   pullRequestReadyActionResponseSchema,
@@ -25,6 +26,7 @@ import type {
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
   PullRequestMergeMethod,
+  PullRequestCreateActionResponse,
   PullRequestDraftActionResponse,
   PullRequestMergeActionResponse,
   PullRequestReadyActionResponse,
@@ -105,6 +107,11 @@ export interface EnvironmentPullRequestMergeArgs {
   method: PullRequestMergeMethod;
 }
 
+export interface EnvironmentPullRequestCreateArgs {
+  environmentId: string;
+  draft: boolean;
+}
+
 export type EnvironmentDiffPatchArgs = EnvironmentDiffPatchRequest & {
   environmentId: string;
   signal?: AbortSignal;
@@ -131,6 +138,8 @@ export type EnvironmentDiffPatchResult = EnvironmentDiffPatchResponse;
 export type EnvironmentGetResult = Environment;
 export type EnvironmentMarkPullRequestDraftResult =
   PullRequestDraftActionResponse;
+export type EnvironmentCreatePullRequestResult =
+  PullRequestCreateActionResponse;
 export type EnvironmentMarkPullRequestReadyResult =
   PullRequestReadyActionResponse;
 export type EnvironmentMergePullRequestResult = PullRequestMergeActionResponse;
@@ -159,6 +168,9 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentDirectoryResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   pullRequest(args: EnvironmentGetArgs): Promise<EnvironmentPullRequestResult>;
+  createPullRequest(
+    args: EnvironmentPullRequestCreateArgs,
+  ): Promise<EnvironmentCreatePullRequestResult>;
   markPullRequestDraft(
     args: EnvironmentActionArgs,
   ): Promise<EnvironmentMarkPullRequestDraftResult>;
@@ -373,6 +385,18 @@ export function createEnvironmentsArea(
           ...signalRequestArgs(input.signal),
         ),
       );
+    },
+    async createPullRequest(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].actions.$post({
+          param: { id: input.environmentId },
+          json: {
+            action: "pull_request_create",
+            options: { draft: input.draft },
+          },
+        }),
+      );
+      return pullRequestCreateActionResponseSchema.parse(body);
     },
     async markPullRequestDraft(input) {
       const body = await transport.readJson(

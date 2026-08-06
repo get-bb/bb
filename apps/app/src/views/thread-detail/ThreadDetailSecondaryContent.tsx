@@ -28,7 +28,10 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { useThreads } from "@/hooks/queries/thread-queries";
-import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
+import type {
+  EnvironmentPullRequestResponse,
+  PullRequestMergeMethod,
+} from "@bb/server-contract";
 import {
   ThreadWorkspaceShell,
   type WorkspaceTab,
@@ -37,7 +40,10 @@ import {
   WorkspaceRepositoryPanel,
   type WorkspaceUpperTabId,
 } from "@/components/workspace/WorkspaceRepositoryPanel";
-import { WorkspaceGitBar } from "@/components/workspace/WorkspaceGitBar";
+import {
+  WorkspacePullRequestButton,
+  type PullRequestPendingAction,
+} from "@/components/workspace/WorkspaceGitBar";
 import { WorkspaceProcessTerminal } from "@/components/workspace/terminals/WorkspaceProcessTerminal";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
@@ -95,7 +101,10 @@ interface ThreadDetailSecondaryContentProps {
   timeline: ThreadTimelinePaneProps;
   workspace: {
     canCreateTerminal: boolean;
+    onCreatePullRequest: (draft: boolean) => void;
+    onMergePullRequest: (method: PullRequestMergeMethod) => void;
     onOpenBrowserUrl: (url: string) => void;
+    pullRequestPendingAction: PullRequestPendingAction;
     pullRequestResponse: EnvironmentPullRequestResponse | undefined;
     repositoryUrl: string | null;
     runScript: string | null;
@@ -404,6 +413,7 @@ function ThreadDetailSecondaryContentBody({
         id: tab.id,
         label: tab.filename,
         closeLabel: `Close ${tab.filename}`,
+        isDirty: tab.isDirty,
       })),
     ];
     if (activeMainTabId === "thread-info") {
@@ -503,9 +513,12 @@ function ThreadDetailSecondaryContentBody({
           onSelectUpperTab={(tabId) =>
             setActiveUpperTab(tabId as WorkspaceUpperTabId)
           }
-          topBar={
-            <WorkspaceGitBar
+          upperTrailingContent={
+            <WorkspacePullRequestButton
+              onCreate={workspace.onCreatePullRequest}
+              onMerge={workspace.onMergePullRequest}
               onOpenUrl={workspace.onOpenBrowserUrl}
+              pendingAction={workspace.pullRequestPendingAction}
               pullRequestResponse={workspace.pullRequestResponse}
               repositoryUrl={workspace.repositoryUrl}
               workspaceStatus={stableMetadata.workspaceStatus}

@@ -25,6 +25,11 @@ interface EnvironmentShowCommandOptions {
   json?: boolean;
 }
 
+interface EnvironmentPullRequestCreateCommandOptions {
+  draft?: boolean;
+  json?: boolean;
+}
+
 interface EnvironmentStatusCommandOptions {
   json?: boolean;
   mergeBaseBranch?: string;
@@ -735,6 +740,29 @@ export function registerEnvironmentCommands(
   const pullRequest = environment
     .command("pull-request")
     .description("Inspect and manage an environment's pull request");
+
+  pullRequest
+    .command("create <id>")
+    .description("Create a pull request for an environment")
+    .option("--draft", "Create a draft pull request")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          opts: EnvironmentPullRequestCreateCommandOptions,
+        ) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).environments.createPullRequest({
+            environmentId: id,
+            draft: Boolean(opts.draft),
+          });
+          if (outputJson(opts, result)) return;
+          console.log(result.message);
+        },
+      ),
+    );
 
   pullRequest
     .command("show <id>")

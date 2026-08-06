@@ -404,6 +404,13 @@ const commandHandlers: CommandHandlerMap = {
       workspaceContext: command.workspaceContext,
     });
     switch (command.operation) {
+      case "create":
+        await entry.workspace.runPullRequestAction({
+          operation: "create",
+          baseBranch: command.baseBranch,
+          draft: command.draft,
+        });
+        break;
       case "ready":
         await entry.workspace.runPullRequestAction({ operation: "ready" });
         break;

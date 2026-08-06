@@ -1,10 +1,19 @@
 import type { WorkspaceStatus } from "@bb/domain";
-import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
+import type {
+  EnvironmentPullRequestResponse,
+  PullRequestMergeMethod,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { SplitButton } from "@/components/ui/split-button.js";
 
-interface WorkspaceGitBarProps {
+type PullRequestPendingAction = "create" | "merge" | null;
+
+interface WorkspacePullRequestButtonProps {
+  onCreate: (draft: boolean) => void;
+  onMerge: (method: PullRequestMergeMethod) => void;
   onOpenUrl: (url: string) => void;
+  pendingAction: PullRequestPendingAction;
   pullRequestResponse: EnvironmentPullRequestResponse | undefined;
   repositoryUrl: string | null;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -38,72 +47,147 @@ export function getGitHubRepositoryUrl(
   }
 }
 
-function headSha(status: WorkspaceStatus | undefined): string | null {
-  if (!status) return null;
-  return status.checkout.kind === "branch" ||
-    status.checkout.kind === "detached"
-    ? status.checkout.headSha
-    : null;
+function getManualPullRequestUrl(
+  repositoryUrl: string,
+  workspaceStatus: WorkspaceStatus,
+): string | null {
+  const branch = workspaceStatus.branch.currentBranch;
+  if (!branch) return null;
+  const base =
+    workspaceStatus.mergeBase?.mergeBaseBranch ??
+    workspaceStatus.branch.defaultBranch;
+  return `${repositoryUrl}/compare/${encodeURIComponent(base)}...${encodeURIComponent(branch)}?expand=1`;
 }
 
-export function WorkspaceGitBar({
+function ActionContent({
+  icon,
+  label,
+}: {
+  icon: "ExternalLink" | "GitMerge" | "GitPullRequestArrow";
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon name={icon} className="size-3.5" aria-hidden="true" />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+export function WorkspacePullRequestButton({
+  onCreate,
+  onMerge,
   onOpenUrl,
+  pendingAction,
   pullRequestResponse,
   repositoryUrl,
   workspaceStatus,
-}: WorkspaceGitBarProps) {
-  const sha = headSha(workspaceStatus);
+}: WorkspacePullRequestButtonProps) {
+  if (pullRequestResponse === undefined) {
+    return (
+      <Button type="button" variant="outline" size="sm" disabled>
+        Checking…
+      </Button>
+    );
+  }
+
+  if (pullRequestResponse.outcome === "unavailable") {
+    return (
+      <Button type="button" variant="outline" size="sm" disabled>
+        Offline
+      </Button>
+    );
+  }
+
   const pullRequest =
-    pullRequestResponse?.outcome === "available"
+    pullRequestResponse.outcome === "available"
       ? pullRequestResponse.pullRequest
       : null;
-  const remoteLabel =
-    pullRequestResponse === undefined
-      ? "Loading…"
-      : pullRequestResponse.outcome === "unavailable"
-        ? "Offline"
-        : pullRequest
-          ? `PR #${pullRequest.number}`
-          : "No pull request";
-  const githubUrl =
-    pullRequest?.url ??
-    (repositoryUrl && sha ? `${repositoryUrl}/commit/${sha}` : repositoryUrl);
 
-  return (
-    <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-seam bg-background px-3 text-xs">
-      <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-        <Icon name="GitBranch" className="size-3.5" />
-        <span className="font-mono text-foreground">
-          {sha ? sha.slice(0, 8) : "No commit"}
-        </span>
-      </span>
-      <span className="text-border">/</span>
-      <span
-        className={
-          pullRequestResponse?.outcome === "unavailable"
-            ? "text-muted-foreground"
-            : "text-foreground"
-        }
-      >
-        {remoteLabel}
-      </span>
-      {githubUrl ? (
+  if (pullRequest) {
+    const canMerge =
+      pullRequest.state === "open" &&
+      pullRequest.mergeability.state === "mergeable";
+    if (!canMerge) {
+      return (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="ml-auto h-7 gap-1 px-2 text-xs"
-          onClick={() => onOpenUrl(githubUrl)}
-          aria-label={
-            pullRequest
-              ? `Open pull request ${pullRequest.number} in BB browser`
-              : "Open current commit in BB browser"
-          }
+          onClick={() => onOpenUrl(pullRequest.url)}
         >
-          GitHub
-          <Icon name="ArrowUpRight" className="size-3.5" />
+          <ActionContent icon="ExternalLink" label="View PR" />
         </Button>
-      ) : null}
-    </header>
+      );
+    }
+
+    const label = pendingAction === "merge" ? "Merging…" : "Merge";
+    return (
+      <SplitButton
+        className="h-7 px-2 text-xs"
+        disabled={pendingAction !== null}
+        primaryAction={{
+          label,
+          onSelect: () => onMerge("merge"),
+          content: <ActionContent icon="GitMerge" label={label} />,
+        }}
+        secondaryActions={[
+          { label: "Squash and merge", onSelect: () => onMerge("squash") },
+          { label: "Rebase and merge", onSelect: () => onMerge("rebase") },
+          {
+            label: "Open pull request",
+            onSelect: () => onOpenUrl(pullRequest.url),
+            content: (
+              <ActionContent icon="ExternalLink" label="Open pull request" />
+            ),
+          },
+        ]}
+        triggerLabel="More pull request actions"
+        mobileTitle="Pull request actions"
+      />
+    );
+  }
+
+  if (!repositoryUrl || !workspaceStatus) {
+    return (
+      <Button type="button" variant="outline" size="sm" disabled>
+        Offline
+      </Button>
+    );
+  }
+
+  const manualUrl = getManualPullRequestUrl(repositoryUrl, workspaceStatus);
+  const label = pendingAction === "create" ? "Creating…" : "Create PR";
+  return (
+    <SplitButton
+      className="h-7 px-2 text-xs"
+      disabled={pendingAction !== null}
+      primaryAction={{
+        label,
+        onSelect: () => onCreate(false),
+        content: <ActionContent icon="GitPullRequestArrow" label={label} />,
+      }}
+      secondaryActions={[
+        { label: "Create draft PR", onSelect: () => onCreate(true) },
+        ...(manualUrl
+          ? [
+              {
+                label: "Create PR manually",
+                onSelect: () => onOpenUrl(manualUrl),
+                content: (
+                  <ActionContent
+                    icon="ExternalLink"
+                    label="Create PR manually"
+                  />
+                ),
+              },
+            ]
+          : []),
+      ]}
+      triggerLabel="More pull request actions"
+      mobileTitle="Create pull request"
+    />
   );
 }
+
+export type { PullRequestPendingAction };

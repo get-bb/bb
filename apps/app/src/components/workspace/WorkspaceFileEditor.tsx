@@ -6,9 +6,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { EditProvider, File } from "@pierre/diffs/react";
-import { Button } from "@bb/shared-ui/button";
 import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon } from "@bb/shared-ui/icon";
 import type { FileWriteResult } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import { useWriteWorkspaceFile } from "@/hooks/mutations/environment-mutations";
@@ -170,23 +168,7 @@ function LoadedEditor({
   }, [save]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border-seam px-3">
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {path}
-          {snapshot.dirty ? " • Unsaved" : ""}
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          className="h-7"
-          disabled={!snapshot.dirty || isSaving}
-          onClick={() => void save()}
-        >
-          {isSaving ? <Icon name="Spinner" className="animate-spin" /> : null}
-          Save
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {saveError ? (
         <div
           role="alert"
@@ -195,7 +177,7 @@ function LoadedEditor({
           {saveError}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto bg-background">
         <EditProvider createEditor={session.createEditor}>
           <File
             file={{ name: path, contents: file.contents }}

@@ -6,7 +6,12 @@ import { ThreadWorkspaceShell } from "./ThreadWorkspaceShell";
 
 const MAIN_TABS = [
   { id: "chat", label: "Chat" },
-  { id: "file:README.md", label: "README.md", closeLabel: "Close README.md" },
+  {
+    id: "file:README.md",
+    label: "README.md",
+    closeLabel: "Close README.md",
+    isDirty: true,
+  },
 ];
 const UPPER_TABS = [
   { id: "all-files", label: "All files" },
@@ -36,6 +41,7 @@ function renderShell(isCompact = false) {
       onSelectLowerTab={vi.fn()}
       onSelectMainTab={onSelectMainTab}
       onSelectUpperTab={vi.fn()}
+      upperTrailingContent={<button type="button">Open GitHub</button>}
       upperContent={<div>repository content</div>}
       upperTabs={UPPER_TABS}
     />,
@@ -61,11 +67,16 @@ describe("ThreadWorkspaceShell", () => {
     expect(
       sidebar.contains(screen.getByTestId("thread-workspace-terminal-region")),
     ).toBe(true);
+    expect(
+      sidebar.contains(screen.getByRole("button", { name: "Open GitHub" })),
+    ).toBe(true);
   });
 
   it("selects a main workspace tab", () => {
     const { onSelectMainTab } = renderShell();
-    fireEvent.click(screen.getByRole("tab", { name: "README.md" }));
+    fireEvent.click(
+      screen.getByRole("tab", { name: "README.md, unsaved changes" }),
+    );
     expect(onSelectMainTab).toHaveBeenCalledWith("file:README.md");
   });
 
@@ -75,8 +86,19 @@ describe("ThreadWorkspaceShell", () => {
     fireEvent.keyDown(chatTab, { key: "ArrowRight" });
     expect(onSelectMainTab).toHaveBeenCalledWith("file:README.md");
     expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "README.md" }),
+      screen.getByRole("tab", { name: "README.md, unsaved changes" }),
     );
+  });
+
+  it("shows the unsaved indicator before the file name", () => {
+    renderShell();
+    const tab = screen.getByRole("tab", {
+      name: "README.md, unsaved changes",
+    });
+    expect(tab.textContent).toBe("README.md");
+    expect(
+      tab.querySelector("span > span")?.nextElementSibling?.textContent,
+    ).toBe("README.md");
   });
 
   it("does not force the split sidebar into compact layouts", () => {

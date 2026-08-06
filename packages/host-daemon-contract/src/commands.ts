@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 77 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 78 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1057,6 +1057,15 @@ const workspacePullRequestCommandSchema =
 
 const pullRequestMergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
 
+const workspacePullRequestCreateCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("create"),
+    baseBranch: z.string().min(1).optional(),
+    draft: z.boolean(),
+  })
+  .strict();
+
 const workspacePullRequestReadyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.pull_request_action"),
@@ -1082,6 +1091,7 @@ const workspacePullRequestMergeCommandSchema = hostDaemonWorkspaceTargetSchema
 const workspacePullRequestActionCommandSchema = z.discriminatedUnion(
   "operation",
   [
+    workspacePullRequestCreateCommandSchema,
     workspacePullRequestReadyCommandSchema,
     workspacePullRequestDraftCommandSchema,
     workspacePullRequestMergeCommandSchema,
