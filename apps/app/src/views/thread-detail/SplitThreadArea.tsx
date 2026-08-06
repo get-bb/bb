@@ -1,4 +1,3 @@
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
@@ -24,6 +23,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   clampSplitPairFraction,
@@ -223,8 +223,8 @@ export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
 
 function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const { projectId, threadId } = useRouteState();
-  const isCompact = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();
+  const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
@@ -265,7 +265,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         ? reconcileLayoutForContent(null, currentContent)
         : null);
   const panes = layout === null ? [] : listPanes(layout.root);
-  const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
+  const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =
     layout !== null && maximizedPaneId !== null
       ? findPane(layout.root, maximizedPaneId)
@@ -570,13 +570,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
 
   // A disabled experiment and compact viewports both render the route thread as
   // single page surface (byte-identical to the pre-split page). The layout atom
-  // is preserved so the arrangement returns when the gate opens again.
-  if (
-    !threadSplitsEnabled ||
-    isCompact ||
-    layout === null ||
-    currentContent === null
-  ) {
+  // is preserved so the arrangement returns when the gate opens again. AppLayout
+  // reads the same predicate to decide whether it owns the header — see
+  // useSplitWorkspaceActive.
+  if (!splitWorkspaceActive || layout === null || currentContent === null) {
     return currentContent ? (
       <StandalonePaneContent content={currentContent} />
     ) : null;

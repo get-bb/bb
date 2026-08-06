@@ -90,6 +90,7 @@ import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 
@@ -400,6 +401,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const isCompactViewport = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();
+  const splitWorkspaceActive = useSplitWorkspaceActive();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
   useMobileVisualViewportHeight(contentShellRef, isCompactViewport);
@@ -565,14 +567,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const liveWidthRef = useRef(sidebarWidth);
   const animationFrameRef = useRef<number | null>(null);
   // Plugin panel routes hand their header to the split workspace, which draws a
-  // pane header per pane. Compact viewports render the route as a single page
-  // surface with no pane chrome (see SplitThreadArea), so the shared header must
-  // come back — it reserves the sidebar trigger footprint, and without it the
-  // trigger overlays the panel body.
+  // pane header per pane. When the workspace is inactive it draws none, so the
+  // shared header must come back — it reserves the sidebar trigger footprint,
+  // and without it the trigger overlays the panel body.
   const showHeader =
     !isThreadView &&
     !isRootView &&
-    !(threadSplitsEnabled && !isCompactViewport && pluginPanelMatch !== null);
+    !(splitWorkspaceActive && pluginPanelMatch !== null);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
