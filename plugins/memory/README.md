@@ -66,5 +66,5 @@ next turn.
 
 ```bash
 pnpm exec turbo run test typecheck --filter=bb-plugin-memory
-bb plugin dev ./official-plugins/memory
+bb plugin dev ./plugins/memory
 ```

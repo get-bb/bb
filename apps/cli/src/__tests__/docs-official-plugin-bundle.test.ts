@@ -26,7 +26,7 @@ function testToolchain() {
  * registers the installed plugin's nav panel surface.
  */
 const SIMPLE_NOTES_DIR = fileURLToPath(
-  new URL("../../../../official-plugins/docs", import.meta.url),
+  new URL("../../../../plugins/docs", import.meta.url),
 );
 
 interface SlotRegistration {

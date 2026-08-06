@@ -48,7 +48,6 @@ function officialEntry(
     pluginId: "builtin-fixture",
     autoInstall: false,
     defaultEnabled: true,
-    repoDirectory: "official-plugins",
     category: "Productivity",
     rootDir: fixtureRoot,
     ...overrides,

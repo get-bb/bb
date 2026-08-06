@@ -5,19 +5,16 @@ import {
   buildPluginServer,
   resolvePluginBuildToolchain,
 } from "../packages/plugin-build/src/index.ts";
+import { OFFICIAL_PLUGINS } from "../apps/server/src/services/plugins/builtin-registry.ts";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const pluginDirectories = new Map([
-  ["github", "official-plugins/github"],
-  ["docs", "official-plugins/docs"],
-  ["memory", "official-plugins/memory"],
-  ["tasks", "official-plugins/tasks"],
-]);
+// Derived from the registry, so a new store-only plugin needs no edit here.
+const officialNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
 
 const requested = process.argv.slice(2);
 const selected =
   requested.length === 0 || requested.includes("all")
-    ? [...pluginDirectories.keys()]
+    ? officialNames
     : requested;
 
 // Resolves from this repo's own devDependencies; no download here.
@@ -26,9 +23,9 @@ const toolchain = await resolvePluginBuildToolchain(
 );
 
 for (const plugin of selected) {
-  if (!pluginDirectories.has(plugin)) {
+  if (!officialNames.includes(plugin)) {
     throw new Error(
-      `unknown official plugin ${JSON.stringify(plugin)}; expected github, docs, memory, tasks, or all`,
+      `unknown official plugin ${JSON.stringify(plugin)}; expected ${officialNames.join(", ")}, or all`,
     );
   }
 }
@@ -44,8 +41,7 @@ if (typeof bbPackage.version !== "string") {
 }
 
 for (const plugin of selected) {
-  const relativeDirectory = pluginDirectories.get(plugin);
-  const rootDirectory = resolve(repositoryRoot, relativeDirectory);
+  const rootDirectory = resolve(repositoryRoot, "plugins", plugin);
   await rm(resolve(rootDirectory, "dist"), { recursive: true, force: true });
 
   const server = await buildPluginServer(

@@ -162,10 +162,6 @@ function createService(args: {
               name: args.builtinName ?? "fixture",
               pluginId: args.pluginId ?? args.builtinName ?? "fixture",
               autoInstall: args.autoInstall ?? true,
-              repoDirectory:
-                args.autoInstall === false
-                  ? ("official-plugins" as const)
-                  : ("plugins" as const),
               rootDir: args.rootDir ?? fixtureRoot,
               defaultEnabled: args.defaultEnabled ?? true,
             },

@@ -127,7 +127,7 @@ Lands alone. No behavior change beyond a warning.
 2. `bb plugin build` and `bb plugin dev` spawn `npm run build`. `createPluginDevLoop` (`plugin-dev-loop.ts:29`) already injects `buildApp`; swap the call at `plugin.ts:776`. Watcher, debounce, and reload POST unchanged. `bb plugin dev` stays in the CLI because it resolves the plugin id from the server's installed rows (`plugin.ts:761-770`).
 3. **Compatibility fallback, CLI *and* server.** A CLI-only fallback is insufficient: phase 4 makes the *server* run `npm run build`, and a plugin installed under phase 3 may have no build script and no builder dependency. Both `bb plugin build`/`dev` and server install/rebuild fall back to the bundled builder, with a warning naming the removal release. Phase 4 may remove it only after that period.
 4. **Migrate active git artifacts.** Existing git artifacts have no `node_modules` at all, because the current git path never runs `npm install`. Create new derived artifacts for them while the bundled builder is still available. Do not modify or replace the directories that existing rollback snapshots reference.
-4. Migrate every plugin in `official-plugins/` to the new script.
+4. Migrate every plugin in `plugins/` to the new script.
 5. Update `packages/templates/src/templates/bb-guide-plugins.md:220` and `apps/server/src/services/skills/builtin-skills/bb-plugin-authoring/SKILL.md:49`, which document automatic `path:`/`git:` builds. Add the native-dependency guidance above.
 
 ### Phase 4 — Server switches to the plugin's toolchain

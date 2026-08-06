@@ -2,7 +2,7 @@
 //
 // The automations plugin cannot import from the app bundle, and built-in
 // providers do not expose a served logo URL. This mirrors the same boundary
-// treatment used by `official-plugins/tasks/views/activity/provider-icons.tsx`.
+// treatment used by `plugins/tasks/views/activity/provider-icons.tsx`.
 
 import { formatAutomationProviderLabel } from "./model-label";
 
