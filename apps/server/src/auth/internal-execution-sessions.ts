@@ -19,7 +19,8 @@ export type InternalExecutionPrincipalMode = "local-owner" | "work-together";
 export type PluginBackgroundCallbackCategory =
   | "service"
   | "schedule"
-  | "thread-event";
+  | "thread-event"
+  | "dispose";
 
 export type CreateInternalExecutionSessionsArgs = {
   readonly mode: InternalExecutionPrincipalMode;
@@ -59,6 +60,7 @@ const CALLBACK_CATEGORIES = new Set<PluginBackgroundCallbackCategory>([
   "service",
   "schedule",
   "thread-event",
+  "dispose",
 ]);
 
 /**

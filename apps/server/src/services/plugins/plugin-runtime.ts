@@ -1260,10 +1260,28 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       // §3 order: services first (abort + bounded await), then dispose hooks,
       // then vended resources, then handle invalidation.
       await stopServices(id, plugin);
-      // LIFO, each hook isolated: one bad hook must not skip the rest.
-      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+      // LIFO by registration index, each hook isolated: one bad hook must not
+      // skip the rest. Dispose is lifecycle/background work — never inherit the
+      // human request that triggered disable/reload/remove.
+      const disposeHooks = plugin.handle.disposeHooks;
+      for (let index = disposeHooks.length - 1; index >= 0; index--) {
+        const hook = disposeHooks[index]!;
         try {
-          await hook();
+          const run = () => hook();
+          const execution = deps.internalExecution;
+          if (execution === undefined) {
+            await run();
+            continue;
+          }
+          await execution.authority.runWithDerivedSession(
+            execution.sessions.createPluginBackgroundSession({
+              pluginId: id,
+              callbackCategory: "dispose",
+              // Server-owned registration position (1-based); unique per hook.
+              callbackName: `hook-${index + 1}`,
+            }),
+            run,
+          );
         } catch (error) {
           logger.warn(
             `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,

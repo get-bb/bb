@@ -130,6 +130,27 @@ describe("createInternalExecutionSessions", () => {
     );
   });
 
+  it("accepts dispose callback category with registration-position names", () => {
+    const sessions = createInternalExecutionSessions({ mode: "local-owner" });
+    const session = sessions.createPluginBackgroundSession({
+      pluginId: PLUGIN_ID,
+      callbackCategory: "dispose",
+      callbackName: "hook-1",
+    });
+    expect(session.principal).toEqual({
+      id: "system:plugin-background/workflows/dispose/hook-1",
+      kind: "system",
+      displayName: PLUGIN_BACKGROUND_PRINCIPAL_DISPLAY_NAME,
+    });
+    expect(() =>
+      sessions.createPluginBackgroundSession({
+        pluginId: PLUGIN_ID,
+        callbackCategory: "disposal" as "dispose",
+        callbackName: "hook-1",
+      }),
+    ).toThrow(InternalExecutionSessionError);
+  });
+
   it("mints immutable deterministic thread-agent Principals with closed project scope", async () => {
     const sessions = createInternalExecutionSessions({
       mode: "work-together",

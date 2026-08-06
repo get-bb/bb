@@ -248,6 +248,115 @@ describe("plugin SDK execution — local-owner server-backed", () => {
     expect(globals.__leakedInstr).toMatchObject({ ok: false });
   });
 
+  it("allows dispose-hook SDK reads under local-owner plugin-background", async () => {
+    globals.__loDispose = undefined;
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-lo-dispose",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.onDispose(async () => {
+            try {
+              const projects = await bb.sdk.projects.list();
+              (globalThis as any).__loDispose = {
+                ok: true,
+                ids: projects.map((p: { id: string }) => p.id),
+              };
+            } catch (error) {
+              (globalThis as any).__loDispose = {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
+          });
+        }
+      `,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+    // Await the lifecycle operation so the dispose hook finishes before assert.
+    await server.pluginService.setEnabled(entry.id, false);
+    expect(globals.__loDispose).toMatchObject({ ok: true });
+  });
+
+  it("request-origin RPC and CLI inherit request scope for SDK under local-owner", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-request-origin",
+      serverSource: `
+        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { z } from "zod";
+        const rpcContract = defineRpcContract({
+          probe: {
+            input: z.object({}),
+            output: z.object({ ok: z.boolean(), count: z.number() }),
+          },
+        });
+        export default function plugin(bb: any) {
+          bb.rpc.register(rpcContract, {
+            probe: async () => {
+              const projects = await bb.sdk.projects.list();
+              return { ok: true, count: projects.length };
+            },
+          });
+          bb.cli.register({
+            name: "roprobe",
+            summary: "request-origin SDK probe",
+            commands: [],
+            async run() {
+              const projects = await bb.sdk.projects.list();
+              return {
+                exitCode: 0,
+                stdout: JSON.stringify({ ok: true, count: projects.length }),
+              };
+            },
+          });
+        }
+      `,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+
+    const rpcResponse = await fetch(
+      `${server.baseUrl}/api/v1/plugins/${entry.id}/rpc/probe`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(rpcResponse.status).toBe(200);
+    const rpcBody = (await rpcResponse.json()) as {
+      ok: boolean;
+      result?: { ok: boolean; count: number };
+    };
+    expect(rpcBody).toMatchObject({
+      ok: true,
+      result: { ok: true },
+    });
+    expect(rpcBody.result?.count).toBeGreaterThanOrEqual(1);
+
+    const cliResponse = await fetch(
+      `${server.baseUrl}/api/v1/plugins/${entry.id}/cli`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ argv: [] }),
+      },
+    );
+    expect(cliResponse.status).toBe(200);
+    const cliBody = (await cliResponse.json()) as {
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    };
+    expect(cliBody.exitCode).toBe(0);
+    const cliStdout = JSON.parse(cliBody.stdout) as {
+      ok: boolean;
+      count: number;
+    };
+    expect(cliStdout.ok).toBe(true);
+    expect(cliStdout.count).toBeGreaterThanOrEqual(1);
+  });
+
   it("bindSdk accepts only baseUrl — no caller principal/session/mode knobs", async () => {
     const { readFile } = await import("node:fs/promises");
     const { dirname, resolve } = await import("node:path");
@@ -486,6 +595,44 @@ describe("plugin SDK execution — work-together server-backed", () => {
     });
     await waitFor(() => globals.__wtConfigure !== undefined);
     expect(globals.__wtConfigure).toMatchObject({ list: "denied" });
+  });
+
+  it("HTTP-triggered dispose uses plugin-background, not surrounding request scope", async () => {
+    globals.__wtDispose = undefined;
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-wt-dispose",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.onDispose(async () => {
+            try {
+              await bb.sdk.projects.list();
+              (globalThis as any).__wtDispose = { list: "allowed" };
+            } catch (error) {
+              (globalThis as any).__wtDispose = {
+                list: "denied",
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
+          });
+        }
+      `,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+
+    // Surrounding human /api/v1 scope (local-owner fallback) allows list.
+    const projects = await fetch(`${server.baseUrl}/api/v1/projects`);
+    expect(projects.status).toBe(200);
+
+    // Disable over HTTP so dispose runs under the request ALS; the hook must
+    // still be denied by the branded plugin-background (WT deny-all) session.
+    const disable = await fetch(
+      `${server.baseUrl}/api/v1/plugins/${entry.id}/disable`,
+      { method: "POST" },
+    );
+    expect(disable.status).toBe(200);
+    // Lifecycle await already completed dispose hooks before the response.
+    expect(globals.__wtDispose).toMatchObject({ list: "denied" });
   });
 });
 
