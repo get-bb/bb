@@ -994,6 +994,58 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
+    it("fences expected-turn stop inside the serialized runtime operation", async () => {
+      const events: ThreadEvent[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(scriptPath),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222242",
+        threadId: "t1",
+        input: [promptTextInput({ text: "delay:500" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnStarted({
+        events,
+        providerId: "fake",
+        runtime,
+        threadId: "t1",
+        turnId: "turn-1",
+      });
+
+      await expect(
+        runtime.stopThread({
+          threadId: "t1",
+          expectedTurnId: "turn-newer",
+        }),
+      ).resolves.toEqual({
+        outcome: "stale",
+        activeTurnId: "turn-1",
+      });
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
+
+      await expect(
+        runtime.stopThread({ threadId: "t1", expectedTurnId: "turn-1" }),
+      ).resolves.toEqual({ outcome: "applied" });
+      expect(runtime.hasThread("t1")).toBe(false);
+      await runtime.shutdown();
+    });
+
     it("keeps the provider running after thread stop", async () => {
       const events: ThreadEvent[] = [];
       const adapter = createFakeAdapter(scriptPath);

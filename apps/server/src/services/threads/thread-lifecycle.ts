@@ -146,7 +146,8 @@ const threadStartRequestDeduper = createAsyncDeduper<string, void>();
 type InFlightThreadRpcKind =
   | "thread.start"
   | "thread.start.title-sync"
-  | "thread.stop";
+  | "thread.stop"
+  | "thread.stop.admitted-exact";
 
 /**
  * Process-local in-flight RPC dedupe, keyed threadId × kind. Deliberately not
@@ -442,6 +443,80 @@ interface MarkThreadStopRequestedWithEventArgs {
   threadId: string;
 }
 
+export type ApplyStopRequestedWithInterruptedEventResult =
+  | { applied: false }
+  | { applied: true; eventSequence: number };
+
+/**
+ * Applies `stop.requested` and appends `system/thread/interrupted` inside the
+ * caller's transaction without publishing notifications. Returns the interrupted
+ * event sequence when applied so callers (deterministic interrupt admission) can
+ * persist it in the ledger. Caller owns after-commit notifications.
+ */
+export function applyStopRequestedWithInterruptedEventInTransaction(
+  deps: {
+    db: DbTransaction;
+    logger: AppDeps["logger"];
+  },
+  args: MarkThreadStopRequestedWithEventArgs,
+): ApplyStopRequestedWithInterruptedEventResult {
+  const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+    event: { type: "stop.requested" },
+    threadId: args.threadId,
+  });
+  if (!outcome.applied) {
+    return { applied: false };
+  }
+  const eventSequence = appendThreadInterruptedEventInTransaction(deps.db, {
+    actor: args.actor,
+    threadId: args.threadId,
+    reason: args.reason,
+  });
+  return { applied: true, eventSequence };
+}
+
+function appendThreadInterruptedEventIfMissingInTransaction(
+  deps: ThreadLifecycleTransactionDeps,
+  args: MarkThreadStopRequestedWithEventArgs,
+): boolean {
+  if (hasThreadInterruptedEvent(deps, args.threadId)) {
+    return false;
+  }
+  appendThreadInterruptedEventInTransaction(deps.db, {
+    actor: args.actor,
+    threadId: args.threadId,
+    reason: args.reason,
+  });
+  deps.hub.notifyThread(args.threadId, ["events-appended"], {
+    eventTypes: ["system/thread/interrupted"],
+  });
+  return true;
+}
+
+/**
+ * Transitions the thread to `stopping` via the stop.requested lifecycle event
+ * (active/starting → stopping) and records the interruption event.
+ * A no-op when the thread is already `stopping` or in a status with no
+ * stop.requested cell (idle/error). Returns whether the transition was applied.
+ */
+function markThreadStoppingWithEventInTransaction(
+  deps: ThreadLifecycleTransactionDeps,
+  args: MarkThreadStopRequestedWithEventArgs,
+): boolean {
+  const result = applyStopRequestedWithInterruptedEventInTransaction(
+    deps,
+    args,
+  );
+  if (!result.applied) {
+    return false;
+  }
+  deps.hub.notifyThread(args.threadId, ["status-changed"]);
+  deps.hub.notifyThread(args.threadId, ["events-appended"], {
+    eventTypes: ["system/thread/interrupted"],
+  });
+  return true;
+}
+
 function hasActiveThreadProvisioningContext(threadId: string): boolean {
   return getActiveThreadProvisionContext(threadId) !== null;
 }
@@ -503,53 +578,6 @@ function appendProvisioningInterruptedEventInTransaction(
   deps.hub.notifyThread(thread.id, ["events-appended"], {
     eventTypes: ["system/thread-provisioning"],
   });
-}
-
-function appendThreadInterruptedEventIfMissingInTransaction(
-  deps: ThreadLifecycleTransactionDeps,
-  args: MarkThreadStopRequestedWithEventArgs,
-): boolean {
-  if (hasThreadInterruptedEvent(deps, args.threadId)) {
-    return false;
-  }
-  appendThreadInterruptedEventInTransaction(deps.db, {
-    actor: args.actor,
-    threadId: args.threadId,
-    reason: args.reason,
-  });
-  deps.hub.notifyThread(args.threadId, ["events-appended"], {
-    eventTypes: ["system/thread/interrupted"],
-  });
-  return true;
-}
-
-/**
- * Transitions the thread to `stopping` via the stop.requested lifecycle event
- * (active/starting → stopping) and records the interruption event.
- * A no-op when the thread is already `stopping` or in a status with no
- * stop.requested cell (idle/error). Returns whether the transition was applied.
- */
-function markThreadStoppingWithEventInTransaction(
-  deps: ThreadLifecycleTransactionDeps,
-  args: MarkThreadStopRequestedWithEventArgs,
-): boolean {
-  const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
-    event: { type: "stop.requested" },
-    threadId: args.threadId,
-  });
-  if (!outcome.applied) {
-    return false;
-  }
-  deps.hub.notifyThread(args.threadId, ["status-changed"]);
-  appendThreadInterruptedEventInTransaction(deps.db, {
-    actor: args.actor,
-    threadId: args.threadId,
-    reason: args.reason,
-  });
-  deps.hub.notifyThread(args.threadId, ["events-appended"], {
-    eventTypes: ["system/thread/interrupted"],
-  });
-  return true;
 }
 
 function applyActiveTurnInterruptionInTransaction(
@@ -891,6 +919,15 @@ export function settleTurnSubmitCommandResult(
   args: SettleTurnSubmitCommandResultArgs,
 ): CommandResultSideEffectsResult {
   if (!args.report.ok) {
+    // Exact steer is deliberately allowed to lose a race with turn completion.
+    // The daemon's stale_turn response proves it did not start a replacement
+    // turn, so this expected fence outcome must not fail the thread/newer turn.
+    if (
+      args.command.target.mode === "exact-steer" &&
+      args.report.errorCode === "stale_turn"
+    ) {
+      return emptyCommandResultSideEffects();
+    }
     return settleThreadCommandFailure({
       command: args.command,
       deps: args.deps,
@@ -998,6 +1035,19 @@ export function settleThreadStopCommandResult(
       };
     }
     return emptyCommandResultSideEffects();
+  }
+
+  // Exact-target stop that missed its turn must not interrupt a different
+  // active turn through finalize. Settle only when there is no live turn or
+  // the live turn still matches the admitted target.
+  if (
+    args.report.result.outcome === "stale" &&
+    args.command.expectedTurnId !== undefined
+  ) {
+    const activeTurnId = getActiveTurnId(args.deps, args.command.threadId);
+    if (activeTurnId !== null && activeTurnId !== args.command.expectedTurnId) {
+      return emptyCommandResultSideEffects();
+    }
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
@@ -1208,7 +1258,23 @@ export function requestThreadStop(
     return;
   }
 
-  dispatchThreadStopCommand(deps, args);
+  dispatchThreadStopCommand(deps, args, "thread.stop");
+}
+
+/**
+ * Dispatches the exact stop owned by one newly accepted interrupt admission.
+ * Admission idempotency guarantees one accepted caller; a distinct in-flight
+ * key prevents an unrelated legacy stop from suppressing the fenced command.
+ */
+export function dispatchAdmittedExactThreadStopCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: RequestThreadStopArgs & { expectedTurnId: string },
+): void {
+  const guardKind = "thread.stop.admitted-exact";
+  if (!inFlightThreadRpcGuard.claim(args.threadId, guardKind)) {
+    return;
+  }
+  dispatchThreadStopCommand(deps, args, guardKind);
 }
 
 // The stop command is dispatched once — no inline retry, no durable timer.
@@ -1226,6 +1292,10 @@ export function requestThreadStop(
 function dispatchThreadStopCommand(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
+  guardKind: Extract<
+    InFlightThreadRpcKind,
+    "thread.stop" | "thread.stop.admitted-exact"
+  >,
 ): void {
   void runLiveHostCommand(deps, {
     command: buildThreadStopCommand(args),
@@ -1239,7 +1309,7 @@ function dispatchThreadStopCommand(
       );
     })
     .finally(() => {
-      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
+      inFlightThreadRpcGuard.release(args.threadId, guardKind);
     });
 }
 

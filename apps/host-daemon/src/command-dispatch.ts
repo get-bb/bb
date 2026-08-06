@@ -266,11 +266,33 @@ const commandHandlers: CommandHandlerMap = {
       await entry.runtime.waitForActiveTurn(command.threadId, {
         timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
       });
-      await entry.runtime.stopThread({ threadId: command.threadId });
+      if (command.expectedTurnId !== undefined) {
+        const activeTurnId = entry.runtime.getActiveTurnId(command.threadId);
+        if (activeTurnId !== command.expectedTurnId) {
+          await options.eventSink.flush();
+          return { outcome: "stale" as const };
+        }
+      }
+      const stopResult = await entry.runtime.stopThread({
+        threadId: command.threadId,
+        ...(command.expectedTurnId !== undefined
+          ? { expectedTurnId: command.expectedTurnId }
+          : {}),
+      });
+      await options.eventSink.flush();
+      if (command.expectedTurnId === undefined) {
+        return {};
+      }
+      return stopResult?.outcome === "stale"
+        ? { outcome: "stale" as const }
+        : { outcome: "applied" as const };
     }
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
+    if (command.expectedTurnId !== undefined) {
+      return { outcome: "stale" as const };
+    }
     return {};
   },
   "thread.goal.clear": async (command, options) => {

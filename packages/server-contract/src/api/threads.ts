@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
+  clientTurnRequestIdSchema,
   environmentSchema,
   hostSchema,
   jsonValueSchema,
@@ -13,6 +14,10 @@ import {
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
+  threadCommandAdmissionCommandResultSchema,
+  threadCommandAdmissionEventSequenceSchema,
+  threadCommandAdmissionQueuedMessageIdSchema,
+  threadCommandKindSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -215,6 +220,158 @@ export const sendMessageRequestSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+
+/**
+ * Message intent fields shared by deterministic send/steer. Mode is omitted:
+ * send always means idle-start/active-queue; steer always means exact steer.
+ */
+export const admitMessageIntentFieldsSchema = z
+  .object({
+    input: z.array(promptInputSchema).min(1),
+    model: z.string().optional(),
+    serviceTier: serviceTierSchema.optional(),
+    reasoningLevel: reasoningLevelSchema.optional(),
+    permissionMode: permissionModeInputSchema.optional(),
+    executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
+    senderThreadId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const admitSendMessageRequestSchema = admitMessageIntentFieldsSchema
+  .extend({
+    requestId: clientTurnRequestIdSchema,
+  })
+  .strict();
+export type AdmitSendMessageRequest = z.infer<
+  typeof admitSendMessageRequestSchema
+>;
+
+export const admitSteerMessageRequestSchema = admitMessageIntentFieldsSchema
+  .extend({
+    requestId: clientTurnRequestIdSchema,
+    expectedTurnId: z.string().min(1),
+  })
+  .strict();
+export type AdmitSteerMessageRequest = z.infer<
+  typeof admitSteerMessageRequestSchema
+>;
+
+export const admitInterruptThreadRequestSchema = z
+  .object({
+    requestId: clientTurnRequestIdSchema,
+    expectedTurnId: z.string().min(1),
+  })
+  .strict();
+export type AdmitInterruptThreadRequest = z.infer<
+  typeof admitInterruptThreadRequestSchema
+>;
+
+const threadCommandAdmissionStartedResultSchema = z
+  .object({
+    disposition: z.literal("started"),
+    eventSequence: threadCommandAdmissionEventSequenceSchema,
+  })
+  .strict();
+
+const threadCommandAdmissionQueuedResultSchema = z
+  .object({
+    disposition: z.literal("queued"),
+    queuedMessageId: threadCommandAdmissionQueuedMessageIdSchema,
+  })
+  .strict();
+
+const threadCommandAdmissionSteeredResultSchema = z
+  .object({
+    disposition: z.literal("steered"),
+    eventSequence: threadCommandAdmissionEventSequenceSchema,
+    expectedTurnId: z.string().min(1),
+  })
+  .strict();
+
+const threadCommandAdmissionInterruptedResultSchema = z
+  .object({
+    disposition: z.literal("interrupted"),
+    eventSequence: threadCommandAdmissionEventSequenceSchema,
+    expectedTurnId: z.string().min(1),
+  })
+  .strict();
+
+export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
+  "disposition",
+  [
+    threadCommandAdmissionStartedResultSchema,
+    threadCommandAdmissionQueuedResultSchema,
+    threadCommandAdmissionSteeredResultSchema,
+    threadCommandAdmissionInterruptedResultSchema,
+  ],
+);
+export type ThreadCommandAdmissionReceiptResult = z.infer<
+  typeof threadCommandAdmissionReceiptResultSchema
+>;
+
+/**
+ * Browser-safe durable admission fields shared by POST receipts and lookup.
+ * Omits the normalized fingerprint.
+ */
+export const threadCommandAdmissionReceiptBodySchema = z
+  .object({
+    requestId: clientTurnRequestIdSchema,
+    commandKind: threadCommandKindSchema,
+    admissionSequence: z.number().int().positive(),
+    result: threadCommandAdmissionReceiptResultSchema,
+    createdAt: z.number().int().nonnegative(),
+    completedAt: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((admission, context) => {
+    const parsed = threadCommandAdmissionCommandResultSchema.safeParse({
+      commandKind: admission.commandKind,
+      result: admission.result,
+    });
+    if (!parsed.success) {
+      context.addIssue({
+        code: "custom",
+        message: `Result disposition ${admission.result.disposition} is invalid for ${admission.commandKind}`,
+        path: ["result", "disposition"],
+      });
+    }
+  });
+export type ThreadCommandAdmissionReceiptBody = z.infer<
+  typeof threadCommandAdmissionReceiptBodySchema
+>;
+
+/**
+ * POST command response: durable admission plus accepted vs replayed.
+ */
+export const threadCommandAdmissionReceiptSchema =
+  threadCommandAdmissionReceiptBodySchema
+    .extend({
+      kind: z.enum(["accepted", "replayed"]),
+    })
+    .strict();
+export type ThreadCommandAdmissionReceipt = z.infer<
+  typeof threadCommandAdmissionReceiptSchema
+>;
+
+export const threadCommandAdmissionLookupResponseSchema = z.discriminatedUnion(
+  "found",
+  [
+    z
+      .object({
+        found: z.literal(true),
+        admission: threadCommandAdmissionReceiptBodySchema,
+      })
+      .strict(),
+    z
+      .object({
+        found: z.literal(false),
+      })
+      .strict(),
+  ],
+);
+export type ThreadCommandAdmissionLookupResponse = z.infer<
+  typeof threadCommandAdmissionLookupResponseSchema
+>;
 
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;

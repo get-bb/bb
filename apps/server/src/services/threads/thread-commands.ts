@@ -65,6 +65,7 @@ export interface ThreadStopCommandArgs {
   environmentId: string;
   hostId: string;
   threadId: string;
+  expectedTurnId?: string;
 }
 
 interface ThreadStartCommandEnvironment {
@@ -682,5 +683,8 @@ export function buildThreadStopCommand(
     type: "thread.stop",
     environmentId: args.environmentId,
     threadId: args.threadId,
+    ...(args.expectedTurnId !== undefined
+      ? { expectedTurnId: args.expectedTurnId }
+      : {}),
   };
 }

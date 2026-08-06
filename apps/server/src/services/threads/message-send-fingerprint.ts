@@ -17,6 +17,17 @@ import {
 export const MESSAGE_SEND_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
 
 /**
+ * Format version for deterministic `message.steer` fingerprints. Includes
+ * `expectedTurnId` in addition to send intent fields.
+ */
+export const MESSAGE_STEER_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
+ * Format version for deterministic `thread.interrupt` fingerprints.
+ */
+export const THREAD_INTERRUPT_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
  * Client intent hashed for admission identity. Excludes actor, thread ID, and
  * request ID — those are separate admission identity fields. Computed before
  * plugin expansion or other volatile server context.
@@ -34,6 +45,15 @@ export type MessageSendRequestFingerprintIntent = {
     readonly permissionMode?: CallerExecutionInputSource;
   };
   readonly senderThreadId?: string;
+};
+
+export type MessageSteerRequestFingerprintIntent =
+  MessageSendRequestFingerprintIntent & {
+    readonly expectedTurnId: string;
+  };
+
+export type ThreadInterruptRequestFingerprintIntent = {
+  readonly expectedTurnId: string;
 };
 
 type JsonCanonical =
@@ -131,6 +151,77 @@ export function fingerprintMessageSendRequest(
   });
   if (normalized === undefined || typeof normalized !== "object") {
     throw new Error("Failed to normalize message.send fingerprint intent");
+  }
+  const digest = createHash("sha256")
+    .update(canonicalizeJson(normalized), "utf8")
+    .digest("hex");
+  return parseThreadCommandRequestFingerprint(
+    `${THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX}${digest}`,
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over normalized exact-steer client
+ * intent, including the required expected turn id.
+ */
+export function fingerprintMessageSteerRequest(
+  intent: MessageSteerRequestFingerprintIntent,
+): ThreadCommandRequestFingerprint {
+  if (intent.expectedTurnId.length === 0) {
+    throw new Error(
+      "exact-steer fingerprint requires a non-empty expectedTurnId",
+    );
+  }
+  const normalized = omitUndefinedDeep({
+    fingerprintFormatVersion: MESSAGE_STEER_REQUEST_FINGERPRINT_FORMAT_VERSION,
+    expectedTurnId: intent.expectedTurnId,
+    input: intent.input,
+    ...(intent.model !== undefined ? { model: intent.model } : {}),
+    ...(intent.serviceTier !== undefined
+      ? { serviceTier: intent.serviceTier }
+      : {}),
+    ...(intent.reasoningLevel !== undefined
+      ? { reasoningLevel: intent.reasoningLevel }
+      : {}),
+    ...(intent.permissionMode !== undefined
+      ? { permissionMode: intent.permissionMode }
+      : {}),
+    ...(intent.executionInputSources !== undefined
+      ? { executionInputSources: intent.executionInputSources }
+      : {}),
+    ...(intent.senderThreadId !== undefined
+      ? { senderThreadId: intent.senderThreadId }
+      : {}),
+  });
+  if (normalized === undefined || typeof normalized !== "object") {
+    throw new Error("Failed to normalize message.steer fingerprint intent");
+  }
+  const digest = createHash("sha256")
+    .update(canonicalizeJson(normalized), "utf8")
+    .digest("hex");
+  return parseThreadCommandRequestFingerprint(
+    `${THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX}${digest}`,
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over exact-interrupt client intent.
+ */
+export function fingerprintThreadInterruptRequest(
+  intent: ThreadInterruptRequestFingerprintIntent,
+): ThreadCommandRequestFingerprint {
+  if (intent.expectedTurnId.length === 0) {
+    throw new Error(
+      "thread.interrupt fingerprint requires a non-empty expectedTurnId",
+    );
+  }
+  const normalized = omitUndefinedDeep({
+    fingerprintFormatVersion:
+      THREAD_INTERRUPT_REQUEST_FINGERPRINT_FORMAT_VERSION,
+    expectedTurnId: intent.expectedTurnId,
+  });
+  if (normalized === undefined || typeof normalized !== "object") {
+    throw new Error("Failed to normalize thread.interrupt fingerprint intent");
   }
   const digest = createHash("sha256")
     .update(canonicalizeJson(normalized), "utf8")

@@ -345,6 +345,14 @@ export async function submitTurn(
           entry,
           command.target.expectedTurnId,
         );
+      case "exact-steer":
+        // Exact steer must never fall back to a new turn when the target ends
+        // after server admission but before daemon application.
+        return await steerSubmittedTurn(
+          stagedCommand,
+          entry,
+          command.target.expectedTurnId,
+        );
     }
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);

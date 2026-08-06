@@ -19,7 +19,7 @@ import type { DbConnection } from "../../src/connection.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { admitThreadCommand } from "../../src/data/thread-command-admissions.js";
+import { admitThreadCommand, getThreadCommandAdmission } from "../../src/data/thread-command-admissions.js";
 import type { AdmitThreadCommandOutcome } from "../../src/data/thread-command-admissions.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -679,4 +679,80 @@ describe("admitThreadCommand", () => {
       tempDatabase.cleanup();
     }
   }, 30_000);
+
+  it("getThreadCommandAdmission survives close/reopen of a file-backed database", () => {
+    const tempDatabase = createTempDatabasePath();
+    try {
+      const requestId = encodeClientTurnRequestIdNumber({ value: 42 });
+      let threadId = "";
+      {
+        const db = createConnection(tempDatabase.dbPath);
+        try {
+          migrate(db);
+          const host = upsertHost(db, noopNotifier, {
+            name: "reopen-host",
+            type: "persistent",
+          });
+          const { project } = createProject(db, noopNotifier, {
+            name: "reopen-project",
+            source: {
+              type: "local_path",
+              hostId: host.id,
+              path: "/tmp/reopen",
+            },
+          });
+          const thread = createThread(db, noopNotifier, {
+            projectId: project.id,
+            providerId: "codex",
+          });
+          threadId = thread.id;
+          const outcome = admitThreadCommand({
+            actor: ALICE,
+            commandKind: "message.send",
+            db,
+            nowMs: 1_700_000_000_000,
+            requestFingerprint: FINGERPRINT_A,
+            requestId,
+            threadId: thread.id,
+            execute: () => ({
+              disposition: "queued",
+              queuedMessageId: "qmsg_23456789ab",
+            }),
+          });
+          expect(outcome.kind).toBe("accepted");
+        } finally {
+          closeConnection(db);
+        }
+      }
+
+      const reopened = createConnection(tempDatabase.dbPath);
+      try {
+        migrate(reopened);
+        const found = getThreadCommandAdmission(reopened, {
+          threadId,
+          requestId,
+        });
+        expect(found).toMatchObject({
+          requestId,
+          commandKind: "message.send",
+          requestFingerprint: FINGERPRINT_A,
+          actor: ALICE,
+          result: {
+            disposition: "queued",
+            queuedMessageId: "qmsg_23456789ab",
+          },
+        });
+        expect(
+          getThreadCommandAdmission(reopened, {
+            threadId,
+            requestId: encodeClientTurnRequestIdNumber({ value: 99 }),
+          }),
+        ).toBeNull();
+      } finally {
+        closeConnection(reopened);
+      }
+    } finally {
+      tempDatabase.cleanup();
+    }
+  });
 });

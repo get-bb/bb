@@ -758,6 +758,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
+  "hostDaemonCommandSchema.expectedTurnId":
+    "thread.stop omits expectedTurnId for legacy stop-whatever-is-active behavior; presence pins the stop to an admitted exact turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
@@ -1036,13 +1038,109 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 75 makes Claude's sandbox network prompt grantable. A daemon on 74
-  // drops the "localSettings" suggestion that carries the grant, so it sends a
-  // permission_grant subject with an empty profile and the user cannot allow
-  // the prompt. The fix lives in the daemon's Claude bridge, so the bump is
-  // what moves an enrolled machine onto it.
-  it("uses protocol version 75 for grantable sandbox network prompts", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
+  // Version 76 adds exact-steer turn.submit targets and optional
+  // expectedTurnId on thread.stop so admitted interrupt cannot stop a
+  // different/newer turn.
+  it("uses protocol version 76 for exact-steer and expected-turn stop", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(76);
+  });
+
+  it("parses exact-steer targets and optional expectedTurnId on thread.stop", () => {
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "turn.submit",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        requestId: CLIENT_REQUEST_ID,
+        input: [{ type: "text", text: "exact", mentions: [] }],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "proj_123",
+          providerId: "fake",
+          providerThreadId: "provider_123",
+          instructions: "Be helpful.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "exact-steer", expectedTurnId: "turn_123" },
+      }),
+    ).toMatchObject({
+      target: { mode: "exact-steer", expectedTurnId: "turn_123" },
+    });
+    expect(
+      hostDaemonCommandSchema.safeParse({
+        type: "turn.submit",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        requestId: CLIENT_REQUEST_ID,
+        input: [{ type: "text", text: "exact", mentions: [] }],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "proj_123",
+          providerId: "fake",
+          providerThreadId: "provider_123",
+          instructions: "Be helpful.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "exact-steer", expectedTurnId: null },
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "thread.stop",
+        environmentId: "env_123",
+        threadId: "thr_123",
+      }),
+    ).toEqual({
+      type: "thread.stop",
+      environmentId: "env_123",
+      threadId: "thr_123",
+    });
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "thread.stop",
+        environmentId: "env_123",
+        threadId: "thr_123",
+        expectedTurnId: "turn_123",
+      }),
+    ).toMatchObject({ expectedTurnId: "turn_123" });
+    expect(
+      hostDaemonCommandResultSchemaByType["thread.stop"].parse({}),
+    ).toEqual({});
+    expect(
+      hostDaemonCommandResultSchemaByType["thread.stop"].parse({
+        outcome: "stale",
+      }),
+    ).toEqual({ outcome: "stale" });
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

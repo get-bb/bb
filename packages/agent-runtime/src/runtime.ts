@@ -1428,14 +1428,17 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async stopThread({ threadId }) {
+    async stopThread({ expectedTurnId, threadId }) {
       return runThreadOperation({
         threadId,
         work: async () => {
+          const activeTurnId = turnState.getActiveTurnId(threadId);
+          if (expectedTurnId !== undefined && activeTurnId !== expectedTurnId) {
+            return { outcome: "stale" as const, activeTurnId };
+          }
           const pid = resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
           const providerThreadId = requireProviderThreadId(threadId);
-          const activeTurnId = turnState.getActiveTurnId(threadId);
           const adapterCommand: AdapterCommand = {
             type: "thread/stop",
             threadId,
@@ -1452,7 +1455,9 @@ function createAgentRuntimeInternal(
             }
             forgetThreadRuntimeState(proc, threadId);
             await shutdownThreadScopedCodexProcessIfIdle(proc);
-            return;
+            return expectedTurnId === undefined
+              ? undefined
+              : { outcome: "applied" as const };
           }
 
           await sendCommand({
@@ -1467,6 +1472,9 @@ function createAgentRuntimeInternal(
           });
           forgetThreadRuntimeState(proc, threadId);
           await shutdownThreadScopedCodexProcessIfIdle(proc);
+          return expectedTurnId === undefined
+            ? undefined
+            : { outcome: "applied" as const };
         },
       });
     },

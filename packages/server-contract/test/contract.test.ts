@@ -105,6 +105,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Follow-up and queued messages may omit execution fields so the thread's current/default execution settings are reused.",
     fields: [
+      "admitSendMessageRequestSchema.model",
+      "admitSendMessageRequestSchema.permissionMode",
+      "admitSendMessageRequestSchema.reasoningLevel",
+      "admitSendMessageRequestSchema.serviceTier",
+      "admitSteerMessageRequestSchema.model",
+      "admitSteerMessageRequestSchema.permissionMode",
+      "admitSteerMessageRequestSchema.reasoningLevel",
+      "admitSteerMessageRequestSchema.serviceTier",
       "createQueuedMessageRequestSchema.model",
       "createQueuedMessageRequestSchema.reasoningLevel",
       "createQueuedMessageRequestSchema.permissionMode",
@@ -119,6 +127,16 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Execution input source metadata is omitted by legacy callers; when omitted, supplied execution values are treated as explicit.",
     fields: [
+      "admitSendMessageRequestSchema.executionInputSources",
+      "admitSendMessageRequestSchema.executionInputSources.model",
+      "admitSendMessageRequestSchema.executionInputSources.permissionMode",
+      "admitSendMessageRequestSchema.executionInputSources.reasoningLevel",
+      "admitSendMessageRequestSchema.executionInputSources.serviceTier",
+      "admitSteerMessageRequestSchema.executionInputSources",
+      "admitSteerMessageRequestSchema.executionInputSources.model",
+      "admitSteerMessageRequestSchema.executionInputSources.permissionMode",
+      "admitSteerMessageRequestSchema.executionInputSources.reasoningLevel",
+      "admitSteerMessageRequestSchema.executionInputSources.serviceTier",
       "createQueuedMessageRequestSchema.executionInputSources",
       "createQueuedMessageRequestSchema.executionInputSources.model",
       "createQueuedMessageRequestSchema.executionInputSources.permissionMode",
@@ -141,6 +159,8 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Queued and follow-up messages omit senderThreadId unless the request originates from another thread.",
     fields: [
+      "admitSendMessageRequestSchema.senderThreadId",
+      "admitSteerMessageRequestSchema.senderThreadId",
       "createQueuedMessageRequestSchema.senderThreadId",
       "sendMessageRequestSchema.senderThreadId",
     ],
@@ -1698,6 +1718,8 @@ describe("server-contract clients", () => {
   it("keeps contract optional fields on an explicit allowlist", () => {
     const optionalFieldPaths = collectOptionalFieldPaths({
       apiErrorSchema: contract.apiErrorSchema,
+      admitSendMessageRequestSchema: contract.admitSendMessageRequestSchema,
+      admitSteerMessageRequestSchema: contract.admitSteerMessageRequestSchema,
       commitActionResponseSchema: contract.commitActionResponseSchema,
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,

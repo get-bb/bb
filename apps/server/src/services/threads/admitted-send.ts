@@ -55,6 +55,7 @@ import {
   resolveMessageSenderThreadId,
 } from "./thread-send.js";
 import { fingerprintMessageSendRequest } from "./message-send-fingerprint.js";
+import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 
 const MAX_ADMISSION_ATTEMPTS = 8;
 
@@ -76,7 +77,7 @@ class AdmissionBranchFlipSentinel extends Error {
 
 export interface AdmitQueueIfActiveSendMessageArgs {
   actor: ActorStamp;
-  environment: Environment;
+  environment?: Environment;
   /**
    * Test-only hook invoked after branch preparation and before the committing
    * admission call. Used to force status flips between discovery and admit.
@@ -370,14 +371,17 @@ async function prepareAdmissionBranch(
   args: {
     actor: ActorStamp;
     branch: AdmissionBranch;
-    environment: Environment;
+    environment?: Environment;
     payload: SendMessageRequest;
     requestId: ClientTurnRequestId;
     thread: Thread;
   },
 ): Promise<PreparedAdmissionBranch> {
   if (args.branch === "start") {
-    return prepareStartBranch(deps, args);
+    const environment =
+      args.environment ??
+      (await requireThreadCommandEnvironment(deps, { thread: args.thread }));
+    return prepareStartBranch(deps, { ...args, environment });
   }
   return prepareQueueBranch(deps, {
     payload: args.payload,

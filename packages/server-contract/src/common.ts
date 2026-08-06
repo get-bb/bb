@@ -5,6 +5,9 @@ export type PathProjectId = { param: { id: string } };
 export type PathThreadAndQueuedMessage = {
   param: { id: string; queuedMessageId: string };
 };
+export type PathThreadAndRequestId = {
+  param: { id: string; requestId: string };
+};
 /**
  * Thread routes that address a workspace-relative file as a path suffix
  * (`:filePath{.+}` matches across slashes). Clients must percent-encode each

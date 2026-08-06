@@ -221,8 +221,13 @@ export interface SteerTurnStaleResult {
 export type SteerTurnResult = SteerTurnAppliedResult | SteerTurnStaleResult;
 
 export interface StopThreadArgs {
+  expectedTurnId?: string;
   threadId: string;
 }
+
+export type StopThreadResult =
+  | { outcome: "applied" }
+  | { outcome: "stale"; activeTurnId: string | null };
 
 export interface AgentRuntimeProviderSession {
   providerId: string;
@@ -292,7 +297,7 @@ export interface AgentRuntime {
    * reports `false` afterwards and the next turn must go through
    * `resumeThread`. The provider process keeps running for other threads.
    */
-  stopThread(args: StopThreadArgs): Promise<void>;
+  stopThread(args: StopThreadArgs): Promise<void | StopThreadResult>;
 
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 

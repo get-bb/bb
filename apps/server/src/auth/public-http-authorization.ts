@@ -293,6 +293,9 @@ export const PUBLIC_HTTP_MEMBER_OPERATION_NAMES = Object.freeze([
   "threads.get",
   "threads.childSummary",
   "threads.send",
+  "threads.admitSend",
+  "threads.admitSteer",
+  "threads.commandAdmission",
   "threads.composerBootstrap",
   "threads.queuedMessages",
   "threads.createQueuedMessage",
@@ -339,6 +342,7 @@ const PUBLIC_HTTP_MEMBER_ALLOWLIST = new Set<string>(
 export const PUBLIC_HTTP_WORK_TOGETHER_OWNER_OPERATION_NAMES = Object.freeze([
   ...PUBLIC_HTTP_MEMBER_OPERATION_NAMES,
   "threads.stop",
+  "threads.admitInterrupt",
   "threads.resolveInteraction",
 ]);
 

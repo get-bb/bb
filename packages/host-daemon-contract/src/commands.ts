@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 75 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 76 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -325,6 +325,10 @@ export const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
     mode: z.literal("steer"),
     expectedTurnId: z.string().min(1).nullable(),
   }),
+  z.object({
+    mode: z.literal("exact-steer"),
+    expectedTurnId: z.string().min(1),
+  }),
 ]);
 export type TurnSubmitTarget = z.infer<typeof turnSubmitTargetSchema>;
 
@@ -349,6 +353,17 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.stop"),
+    /**
+     * When present, stop only the named active turn after the event-driven
+     * wait. Absence preserves legacy stop-whatever-is-active behavior.
+     */
+    expectedTurnId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const threadStopResultSchema = z
+  .object({
+    outcome: z.enum(["applied", "stale"]).optional(),
   })
   .strict();
 
@@ -1557,7 +1572,7 @@ export const hostDaemonCommandRegistry = {
   "thread.stop": defineHostDaemonCommandDescriptor({
     type: "thread.stop",
     schema: threadStopCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: threadStopResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

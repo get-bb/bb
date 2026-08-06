@@ -480,6 +480,7 @@ export type {
 
 export {
   admitThreadCommand,
+  getThreadCommandAdmission,
   ThreadCommandAdmissionCorruptionError,
 } from "./thread-command-admissions.js";
 export type {

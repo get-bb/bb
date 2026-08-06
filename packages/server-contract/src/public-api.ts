@@ -44,6 +44,7 @@ import type {
   PathPreviewAndFilePath,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
+  PathThreadAndRequestId,
   PathTerminal,
 } from "./common.js";
 import type {
@@ -133,10 +134,15 @@ import type {
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
   RespondPluginInteractionRequest,
+  AdmitInterruptThreadRequest,
+  AdmitSendMessageRequest,
+  AdmitSteerMessageRequest,
   SendMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
+  ThreadCommandAdmissionLookupResponse,
+  ThreadCommandAdmissionReceipt,
   SidebarBootstrapResponse,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
@@ -268,6 +274,9 @@ import {
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
   respondPluginInteractionRequestSchema,
+  admitInterruptThreadRequestSchema,
+  admitSendMessageRequestSchema,
+  admitSteerMessageRequestSchema,
   sendMessageRequestSchema,
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
@@ -963,6 +972,52 @@ export const publicApiRoutes = {
         sendMessageRequestSchema,
       ),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    /**
+     * Deterministic message.send admission: idle starts a turn, active queues.
+     * Returns a durable receipt for the caller-supplied request ID.
+     */
+    admitSend: defineRoute({
+      path: "/threads/:id/commands/send",
+      method: "post",
+      request: jsonRequest<PathId, AdmitSendMessageRequest>(
+        admitSendMessageRequestSchema,
+      ),
+      response: jsonResponse<ThreadCommandAdmissionReceipt>(),
+    }),
+    /**
+     * Deterministic exact-steer admission against a required expected turn.
+     * Never falls back to starting a new turn.
+     */
+    admitSteer: defineRoute({
+      path: "/threads/:id/commands/steer",
+      method: "post",
+      request: jsonRequest<PathId, AdmitSteerMessageRequest>(
+        admitSteerMessageRequestSchema,
+      ),
+      response: jsonResponse<ThreadCommandAdmissionReceipt>(),
+    }),
+    /**
+     * Deterministic exact-interrupt admission against a required expected turn.
+     * Work Together owner-only at the HTTP authorization layer.
+     */
+    admitInterrupt: defineRoute({
+      path: "/threads/:id/commands/interrupt",
+      method: "post",
+      request: jsonRequest<PathId, AdmitInterruptThreadRequest>(
+        admitInterruptThreadRequestSchema,
+      ),
+      response: jsonResponse<ThreadCommandAdmissionReceipt>(),
+    }),
+    /**
+     * Lookup a durable command admission receipt by exact request ID.
+     * Returns found/not-found at HTTP 200; never mints a new ID.
+     */
+    commandAdmission: defineRoute({
+      path: "/threads/:id/command-admissions/:requestId",
+      method: "get",
+      request: noRequest<PathThreadAndRequestId>(),
+      response: jsonResponse<ThreadCommandAdmissionLookupResponse>(),
     }),
     /** @deprecated App code uses dedicated composer queries. */
     composerBootstrap: defineRoute({

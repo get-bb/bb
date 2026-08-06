@@ -252,9 +252,9 @@ describe("public HTTP authorization inventory", () => {
     const untyped = PUBLIC_HTTP_INVENTORY.filter(
       (entry) => entry.source === "untyped",
     );
-    expect(typed).toHaveLength(141);
+    expect(typed).toHaveLength(145);
     expect(untyped).toHaveLength(28);
-    expect(PUBLIC_HTTP_INVENTORY).toHaveLength(169);
+    expect(PUBLIC_HTTP_INVENTORY).toHaveLength(173);
     expect(UNTYPED_PUBLIC_HTTP_INVENTORY).toHaveLength(28);
 
     const names = PUBLIC_HTTP_INVENTORY.map((entry) => entry.operationName);
@@ -846,8 +846,8 @@ describe("signed Work Together public HTTP authorize", () => {
     expect(allowed.sort()).toEqual(
       [...PUBLIC_HTTP_WORK_TOGETHER_OWNER_OPERATION_NAMES].sort(),
     );
-    expect(allowed).toHaveLength(61);
-    expect(denied).toHaveLength(169 - 61);
+    expect(allowed).toHaveLength(65);
+    expect(denied).toHaveLength(173 - 65);
   });
 
   it("allows members only the conservative allowlist and denies the rest", async () => {
@@ -890,8 +890,8 @@ describe("signed Work Together public HTTP authorize", () => {
     expect(allowed.sort()).toEqual(
       [...PUBLIC_HTTP_MEMBER_OPERATION_NAMES].sort(),
     );
-    expect(allowed).toHaveLength(59);
-    expect(denied).toHaveLength(169 - 59);
+    expect(allowed).toHaveLength(62);
+    expect(denied).toHaveLength(173 - 62);
   });
 
   it("fails closed for malformed action/resource, stale revision, and removal", async () => {

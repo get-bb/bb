@@ -3,6 +3,7 @@ import {
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
+  getThreadCommandAdmission,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
@@ -24,7 +25,12 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { ActorStamp, Thread, ThreadQueuedMessage } from "@bb/domain";
+import {
+  clientTurnRequestIdSchema,
+  type ActorStamp,
+  type Thread,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requireRequestActorStamp } from "../../services/actor-stamp.js";
@@ -42,6 +48,12 @@ import {
   sendQueuedMessage,
 } from "../../services/threads/queued-messages.js";
 import { admitQueueIfActiveSendMessage } from "../../services/threads/admitted-send.js";
+import { admitExactSteerMessage } from "../../services/threads/admitted-steer.js";
+import { admitExactInterrupt } from "../../services/threads/admitted-interrupt.js";
+import {
+  threadCommandAdmissionReceiptBodyFromPersisted,
+  threadCommandAdmissionReceiptFromPersisted,
+} from "../../services/threads/thread-command-receipt.js";
 import { createClientTurnRequestId } from "../../services/threads/thread-events.js";
 import {
   ensureThreadIsNotAwaitingUserInteraction,
@@ -261,7 +273,7 @@ async function createQueuedMessageForThread(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { post, patch, del, get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -294,6 +306,83 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       trigger: "user",
     });
     return context.json({ ok: true });
+  });
+
+  post(routes.admitSend, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const actor = requireRequestActorStamp(context);
+    const result = await admitQueueIfActiveSendMessage(deps, {
+      actor,
+      payload: {
+        ...payload,
+        mode: "queue-if-active",
+      },
+      requestId: payload.requestId,
+      thread,
+    });
+    return context.json(
+      threadCommandAdmissionReceiptFromPersisted({
+        admission: result.admission,
+        kind: result.kind,
+      }),
+    );
+  });
+
+  post(routes.admitSteer, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const actor = requireRequestActorStamp(context);
+    const result = await admitExactSteerMessage(deps, {
+      actor,
+      payload,
+      thread,
+    });
+    return context.json(
+      threadCommandAdmissionReceiptFromPersisted({
+        admission: result.admission,
+        kind: result.kind,
+      }),
+    );
+  });
+
+  post(routes.admitInterrupt, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const actor = requireRequestActorStamp(context);
+    const result = await admitExactInterrupt(deps, {
+      actor,
+      payload,
+      thread,
+    });
+    return context.json(
+      threadCommandAdmissionReceiptFromPersisted({
+        admission: result.admission,
+        kind: result.kind,
+      }),
+    );
+  });
+
+  get(routes.commandAdmission, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const parsedRequestId = clientTurnRequestIdSchema.safeParse(
+      context.req.param("requestId"),
+    );
+    if (!parsedRequestId.success) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Command admission request ID is invalid",
+      );
+    }
+    const admission = getThreadCommandAdmission(deps.db, {
+      threadId: thread.id,
+      requestId: parsedRequestId.data,
+    });
+    if (admission === null) {
+      return context.json({ found: false as const });
+    }
+    return context.json({
+      found: true as const,
+      admission: threadCommandAdmissionReceiptBodyFromPersisted(admission),
+    });
   });
 
   post(routes.createQueuedMessage, async (context, payload) => {

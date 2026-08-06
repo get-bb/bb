@@ -1567,6 +1567,184 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(requestId);
   });
 
+  it("rejects exact-steer without falling back to a new turn when the target is stale", async () => {
+    const harness = createHarness();
+    const requestId = nextClientRequestId();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
+    harness.runtime.steerTurn = async (args) => ({
+      status: "stale",
+      activeTurnId: null,
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "turn.submit",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          requestId,
+          input: [textPromptInput("exact only")],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            workflowsEnabled: false,
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            workspaceContext: {
+              workspacePath: "/tmp/env-1",
+              workspaceProvisionType: "unmanaged",
+            },
+            projectId: "project-1",
+            providerId: "fake",
+            providerThreadId: "provider-1",
+            instructions: "Be a helpful coding agent.",
+            dynamicTools: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "exact-steer", expectedTurnId: "turn-old" },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toMatchObject({
+      code: "stale_turn",
+    });
+    expect(harness.runtimeState.ranTurnText).toBeUndefined();
+    expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
+  });
+
+  it("applies exact-steer when the expected turn is still active", async () => {
+    const harness = createHarness();
+    const requestId = nextClientRequestId();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
+    harness.threadControls.setActiveTurn("thread-1", "turn-1");
+
+    const result = await dispatchCommand(
+      {
+        type: "turn.submit",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        requestId,
+        input: [textPromptInput("exact steer ok")],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+        },
+        resumeContext: {
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "unmanaged",
+          },
+          projectId: "project-1",
+          providerId: "fake",
+          providerThreadId: "provider-1",
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        target: { mode: "exact-steer", expectedTurnId: "turn-1" },
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result).toEqual({ appliedAs: "steer" });
+    expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
+    expect(harness.runtimeState.steeredClientRequestId).toBe(requestId);
+  });
+
+  it("does not stop a different turn when thread.stop carries expectedTurnId", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
+    harness.threadControls.setActiveTurn("thread-1", "turn-newer");
+
+    const stale = await dispatchCommand(
+      {
+        type: "thread.stop",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-old",
+      },
+      harness.dispatchOptions(),
+    );
+    expect(stale).toEqual({ outcome: "stale" });
+    expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
+
+    const applied = await dispatchCommand(
+      {
+        type: "thread.stop",
+        environmentId: "env-1",
+        threadId: "thread-1",
+        expectedTurnId: "turn-newer",
+      },
+      harness.dispatchOptions(),
+    );
+    expect(applied).toEqual({ outcome: "applied" });
+    expect(harness.runtimeState.stoppedThreadId).toBe("thread-1");
+  });
+
+  it("reports stale when the serialized runtime stop loses the expected-turn race", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
+    harness.threadControls.setActiveTurn("thread-1", "turn-1");
+    harness.runtime.stopThread = async () => ({
+      outcome: "stale",
+      activeTurnId: "turn-newer",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.stop",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          expectedTurnId: "turn-1",
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({ outcome: "stale" });
+    expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
+  });
+
   it("starts a new turn when explicit steer has no expected turn", async () => {
     const harness = createHarness();
     const requestId = nextClientRequestId();

@@ -267,6 +267,34 @@ function allocateAdmissionSequence(
   return maxSequence + 1;
 }
 
+/**
+ * Deep read of a durable thread command admission by exact
+ * `(threadId, requestId)`. Returns null when no row exists.
+ */
+export function getThreadCommandAdmission(
+  db: DbConnection,
+  args: { threadId: string; requestId: string },
+): PersistedThreadCommandAdmission | null {
+  if (typeof args.threadId !== "string" || args.threadId.length === 0) {
+    throw new Error("Invalid thread command admission threadId");
+  }
+  const requestId = clientTurnRequestIdSchema.parse(args.requestId);
+  const row = db
+    .select()
+    .from(threadCommandAdmissions)
+    .where(
+      and(
+        eq(threadCommandAdmissions.threadId, args.threadId),
+        eq(threadCommandAdmissions.requestId, requestId),
+      ),
+    )
+    .get();
+  if (row === undefined) {
+    return null;
+  }
+  return decodeAdmissionFromRow(row);
+}
+
 function admitThreadCommandInTransaction(
   tx: DbTransaction,
   args: Omit<AdmitThreadCommandArgs, "db">,
