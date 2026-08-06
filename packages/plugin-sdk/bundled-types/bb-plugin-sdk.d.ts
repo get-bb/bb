@@ -5123,6 +5123,7 @@ declare const hostDaemonCommandRegistry: {
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
+        cwd: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         models: z$1.ZodArray<z$1.ZodObject<{
             id: z$1.ZodString;

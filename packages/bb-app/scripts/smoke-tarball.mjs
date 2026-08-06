@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -485,6 +492,9 @@ async function smokePiUserConfiguration(packageDir) {
   await mkdir(agentDir, { recursive: true });
   await mkdir(projectConfigDir, { recursive: true });
   await mkdir(maintenanceDir, { recursive: true });
+  // Pi keys trust decisions by canonical path. macOS temp paths can resolve
+  // through /private, so the raw mkdtemp path is not always the trust key.
+  const trustedWorkspaceDir = await realpath(workspaceDir);
   await writeFile(
     extensionPath,
     await readFile(piConfigExtensionFixturePath, "utf8"),
@@ -495,7 +505,7 @@ async function smokePiUserConfiguration(packageDir) {
   );
   await writeFile(
     join(agentDir, "trust.json"),
-    JSON.stringify({ [workspaceDir]: true }, null, 2),
+    JSON.stringify({ [trustedWorkspaceDir]: true }, null, 2),
   );
   await writeFile(
     join(projectConfigDir, "settings.json"),

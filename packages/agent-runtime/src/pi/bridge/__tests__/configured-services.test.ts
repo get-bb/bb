@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConfiguredPiServices } from "../configured-services.js";
@@ -80,9 +87,10 @@ describe("configured Pi services", () => {
       JSON.stringify({ defaultProjectTrust }),
     );
     if (savedDecision !== undefined) {
+      const canonicalCwd = await realpath(cwd);
       await writeFile(
         join(agentDir, "trust.json"),
-        JSON.stringify({ [cwd]: savedDecision }),
+        JSON.stringify({ [canonicalCwd]: savedDecision }),
       );
     }
 
