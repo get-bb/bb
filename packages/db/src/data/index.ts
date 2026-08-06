@@ -21,6 +21,16 @@ export type {
 } from "./projects.js";
 
 export {
+  getWorkTogetherRoomResourceReservation,
+  reserveWorkTogetherRoomResources,
+  WorkTogetherRoomResourceReservationConflictError,
+} from "./work-together-room-resource-reservations.js";
+export type {
+  ReserveWorkTogetherRoomResourcesInput,
+  WorkTogetherRoomResourceReservation,
+} from "./work-together-room-resource-reservations.js";
+
+export {
   createThreadSection,
   deleteThreadSection,
   getThreadSectionById,

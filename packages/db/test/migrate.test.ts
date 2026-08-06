@@ -238,6 +238,9 @@ const latestMigrationWhen = Math.max(
 );
 
 function dropLateAdmissionTables(db: DbConnection): void {
+  db.$client
+    .prepare("DROP TABLE IF EXISTS work_together_room_resource_reservations")
+    .run();
   db.$client.prepare("DROP TABLE IF EXISTS principal_assertion_replays").run();
   db.$client.prepare("DROP TABLE IF EXISTS thread_command_admissions").run();
   dropQueuedMessageAdmissionReferenceSchema(db);
@@ -251,8 +254,11 @@ function dropLateAdmissionTables(db: DbConnection): void {
  */
 function dropQueuedMessageAdmissionReferenceSchema(db: DbConnection): void {
   // 0091 follows the 0090 queue rebuild. Any rewind that makes 0090
-  // re-applicable also makes 0091 re-applicable, so remove its additive table
-  // before Drizzle replays the forward chain.
+  // re-applicable also makes later additive migrations re-applicable, so
+  // remove their tables before Drizzle replays the forward chain.
+  db.$client
+    .prepare("DROP TABLE IF EXISTS work_together_room_resource_reservations")
+    .run();
   db.$client.prepare("DROP TABLE IF EXISTS thread_principal_read_state").run();
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")

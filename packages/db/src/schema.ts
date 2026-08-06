@@ -1026,6 +1026,66 @@ export const principalAssertionReplays = sqliteTable(
 );
 
 /**
+ * Local recovery ledger for the Work Together Room distribution. Work Together
+ * remains authoritative for binding lifecycle; this row only reserves the BB
+ * resource identities that the cell must reuse after a retry or restart.
+ *
+ * The resource columns intentionally do not carry foreign keys: the reservation
+ * is committed before those resources are created so an uncertain response can
+ * always be reconciled against the same preallocated identities.
+ */
+export const workTogetherRoomResourceReservations = sqliteTable(
+  "work_together_room_resource_reservations",
+  {
+    bindingId: text("binding_id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    taskId: text("task_id").notNull(),
+    cellId: text("cell_id").notNull(),
+    repositoryBindingId: text("repository_binding_id").notNull(),
+    repositoryBindingVersion: integer("repository_binding_version").notNull(),
+    providerRepositoryId: text("provider_repository_id").notNull(),
+    baseBranch: text("base_branch").notNull(),
+    generatedBranch: text("generated_branch").notNull(),
+    candidateHostId: text("candidate_host_id").notNull(),
+    environmentTemplate: text("environment_template")
+      .$type<"managed-worktree">()
+      .notNull(),
+    projectId: text("project_id").notNull(),
+    projectSourceId: text("project_source_id").notNull(),
+    environmentId: text("environment_id").notNull(),
+    primaryThreadId: text("primary_thread_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("wt_room_resource_reservations_workspace_task_idx").on(
+      table.workspaceId,
+      table.taskId,
+    ),
+    uniqueIndex("wt_room_resource_reservations_project_idx").on(
+      table.projectId,
+    ),
+    uniqueIndex("wt_room_resource_reservations_project_source_idx").on(
+      table.projectSourceId,
+    ),
+    uniqueIndex("wt_room_resource_reservations_environment_idx").on(
+      table.environmentId,
+    ),
+    uniqueIndex("wt_room_resource_reservations_primary_thread_idx").on(
+      table.primaryThreadId,
+    ),
+    check(
+      "wt_room_resource_reservations_version_check",
+      sql`${table.repositoryBindingVersion} > 0`,
+    ),
+    check(
+      "wt_room_resource_reservations_template_check",
+      sql`${table.environmentTemplate} = 'managed-worktree'`,
+    ),
+  ],
+);
+
+/**
  * Per-principal durable thread read state for multiplayer. The stock
  * `local-owner` Principal continues to treat `threads.last_read_at` as the
  * compatibility authority; signed principals project only their own row.
