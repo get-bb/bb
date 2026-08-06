@@ -1302,6 +1302,37 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .all();
 }
 
+export interface HasLiveThreadAtHostPathArgs {
+  hostId: string;
+  path: string;
+}
+
+/**
+ * Whether any project has a live thread working in one physical directory.
+ * A branch checkout rewrites the working tree, so it must not run while
+ * another project's agent uses the same folder.
+ */
+export function hasLiveThreadAtHostPath(
+  db: DbConnection,
+  args: HasLiveThreadAtHostPathArgs,
+): boolean {
+  const row = db
+    .select({ id: threads.id })
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        eq(environments.path, args.path),
+        inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .get();
+
+  return row !== undefined;
+}
+
 export function listHostThreadIds(
   db: DbConnection,
   args: ListHostThreadIdsArgs,

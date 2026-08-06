@@ -164,4 +164,54 @@ describe("thread creation on a path another project already uses", () => {
       expect(listEnvironments(harness.deps.db, project.id)).toEqual([]);
     });
   });
+
+  it("refuses a managed path whose owner has not stored it yet", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-pending-managed",
+      });
+      // A managed environment stores its path only once the host reports
+      // success. Until then the row cannot defend the directory, so the
+      // workspace root has to.
+      const { project: owner } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owning Project",
+      });
+      const pending = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: owner.id,
+        path: null,
+        status: "provisioning",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Racing Project",
+        path: "/tmp/racing-project",
+      });
+
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          childOrigin: null,
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "unmanaged",
+              path: `${session.dataDir}/worktrees/${pending.id}/repo`,
+            },
+          },
+          input: textInput("Race the worktree"),
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          startedOnBehalfOf: null,
+        }),
+      ).rejects.toThrow("bb-managed workspace owned by another project");
+
+      expect(listEnvironments(harness.deps.db, project.id)).toEqual([]);
+    });
+  });
 });

@@ -144,7 +144,7 @@ export function seedEnvironment(
   args: {
     hostId: string;
     projectId: string;
-    path?: string;
+    path?: string | null;
     status?: EnvironmentStatus;
     managed?: boolean;
     workspaceProvisionType?: WorkspaceProvisionType;
@@ -159,7 +159,7 @@ export function seedEnvironment(
   return createEnvironment(deps.db, deps.hub, {
     projectId: args.projectId,
     hostId: args.hostId,
-    path: args.path ?? "/tmp/test-environment",
+    path: args.path !== undefined ? args.path : "/tmp/test-environment",
     status: args.status ?? "ready",
     managed: args.managed ?? false,
     isGitRepo: args.isGitRepo ?? args.workspaceProvisionType !== "personal",

@@ -93,21 +93,37 @@ export function findProjectEnvironmentByHostPath(
   );
 }
 
+export interface FindForeignManagedEnvironmentAtHostPathArgs {
+  hostId: string;
+  path: string;
+  projectId: string;
+}
+
 /**
- * Every environment pointing at one physical directory, across all projects.
- * Use this for safety questions about the directory itself; use
- * {@link findProjectEnvironmentByHostPath} to resolve a project's own handle.
+ * A live bb-managed workspace at this directory owned by another project.
+ * The environment claim is project-scoped, but the directory is physical:
+ * destroying a managed environment deletes it, so no other project may attach
+ * to it in place.
  */
-export function listEnvironmentsByHostPath(
+export function findForeignManagedEnvironmentAtHostPath(
   db: DbConnection,
-  hostId: string,
-  path: string,
+  args: FindForeignManagedEnvironmentAtHostPathArgs,
 ) {
-  return db
-    .select()
-    .from(environments)
-    .where(and(eq(environments.hostId, hostId), eq(environments.path, path)))
-    .all();
+  return (
+    db
+      .select()
+      .from(environments)
+      .where(
+        and(
+          eq(environments.hostId, args.hostId),
+          eq(environments.path, args.path),
+          eq(environments.managed, true),
+          ne(environments.projectId, args.projectId),
+          ne(environments.status, "destroyed"),
+        ),
+      )
+      .get() ?? null
+  );
 }
 
 export function listEnvironments(db: DbConnection, projectId?: string) {

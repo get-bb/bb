@@ -16,10 +16,7 @@ import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
-import {
-  foreignManagedEnvironmentAtHostPath,
-  hasLiveThreadAtHostPath,
-} from "./workspace-path-claims.js";
+import { unmanagedAttachRefusal } from "./workspace-path-claims.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
@@ -340,18 +337,20 @@ function requireLiveSourceThread(
   return sourceThread;
 }
 
+/** Returns the host session's data directory, or null when there is no host. */
 async function ensureCreateHostOnline(
   deps: ThreadCreateDeps,
   args: EnsureCreateHostOnlineArgs,
-): Promise<void> {
+): Promise<string | null> {
   const hostId =
     args.resolvedEnvironment.type === "reuse"
       ? args.resolvedEnvironment.environment.hostId
       : args.resolvedEnvironment.hostId;
   if (hostId === null) {
-    return;
+    return null;
   }
-  await ensureHostSessionReadyForWork(deps, { hostId });
+  const session = await ensureHostSessionReadyForWork(deps, { hostId });
+  return session.dataDir;
 }
 
 async function resolveManagedDefaultBaseBranchForCreate(
@@ -388,6 +387,7 @@ async function resolveManagedDefaultBaseBranchForCreate(
 
 interface AssertUnmanagedHostPathIsAttachableArgs {
   branch: UnmanagedBranchSpec | undefined;
+  dataDir: string | null;
   hostId: string;
   path: string;
   projectId: string;
@@ -403,28 +403,15 @@ function assertUnmanagedHostPathIsAttachable(
   deps: ThreadCreateDeps,
   args: AssertUnmanagedHostPathIsAttachableArgs,
 ): void {
-  const foreignManaged = foreignManagedEnvironmentAtHostPath(deps.db, {
+  const refusal = unmanagedAttachRefusal(deps.db, {
+    checksOutBranch: args.branch !== undefined,
+    dataDir: args.dataDir,
     hostId: args.hostId,
     path: args.path,
     projectId: args.projectId,
   });
-  if (foreignManaged) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Workspace path is a bb-managed workspace owned by another project",
-    );
-  }
-
-  if (
-    args.branch &&
-    hasLiveThreadAtHostPath(deps.db, { hostId: args.hostId, path: args.path })
-  ) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "Cannot checkout branch while another thread is using this workspace",
-    );
+  if (refusal) {
+    throw new ApiError(409, "invalid_request", refusal.message);
   }
 }
 
@@ -753,7 +740,9 @@ export async function createThreadFromRequest(
     environment: request.environment,
     projectId: request.projectId,
   });
-  await ensureCreateHostOnline(deps, { resolvedEnvironment });
+  const hostDataDir = await ensureCreateHostOnline(deps, {
+    resolvedEnvironment,
+  });
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
     deps,
     {
@@ -807,6 +796,7 @@ export async function createThreadFromRequest(
         }
         assertUnmanagedHostPathIsAttachable(deps, {
           branch: workspace.branch,
+          dataDir: hostDataDir,
           hostId,
           path: resolvedEnvironment.unmanagedPath,
           projectId: request.projectId,

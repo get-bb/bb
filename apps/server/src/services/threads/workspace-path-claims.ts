@@ -1,9 +1,10 @@
 import {
-  hasNonTerminalThreadInEnvironment,
-  listEnvironmentsByHostPath,
+  findForeignManagedEnvironmentAtHostPath,
+  findProjectEnvironmentByHostPath,
+  hasLiveThreadAtHostPath,
   type DbConnection,
 } from "@bb/db";
-import type { Environment } from "@bb/domain";
+import { isBbManagedWorkspacePath } from "./worktree-paths.js";
 
 /**
  * A workspace path is claimed per project: two projects may each hold their own
@@ -12,41 +13,88 @@ import type { Environment } from "@bb/domain";
  * answer those questions across every project.
  */
 
-interface HostPathArgs {
+export interface UnmanagedAttachRefusal {
+  reason: "foreign-managed" | "live-thread";
+  message: string;
+}
+
+export interface UnmanagedAttachCheckArgs {
+  /** Host data directory, for recognizing bb's own workspace roots. */
+  dataDir: string | null;
+  /** Set when the request also checks out a branch, which rewrites the tree. */
+  checksOutBranch: boolean;
   hostId: string;
   path: string;
+  projectId: string;
 }
 
 /**
- * A bb-managed workspace (a worktree bb created and will destroy) owned by a
- * different project. Attaching to it in place is unsafe: cleanup of the owning
- * environment deletes the directory out from under the attached thread.
+ * Why an unmanaged attach to this directory must be refused, or null when it is
+ * safe. Two hazards survive project scoping:
+ *
+ * 1. The directory is a bb-managed workspace owned by another project. Cleanup
+ *    of the owner deletes it out from under the attached thread. A managed
+ *    environment stores its path only after the host reports success, so the
+ *    row alone is not a reliable claim — bb's workspace roots close that
+ *    window.
+ * 2. A branch checkout rewrites the working tree while another project's agent
+ *    is working in the same folder.
  */
-export function foreignManagedEnvironmentAtHostPath(
+export function unmanagedAttachRefusal(
   db: DbConnection,
-  args: HostPathArgs & { projectId: string },
-): Environment | null {
-  return (
-    listEnvironmentsByHostPath(db, args.hostId, args.path).find(
-      (environment) =>
-        environment.managed &&
-        environment.status !== "destroyed" &&
-        environment.projectId !== args.projectId,
-    ) ?? null
-  );
+  args: UnmanagedAttachCheckArgs,
+): UnmanagedAttachRefusal | null {
+  const foreignManagedMessage =
+    "Workspace path is a bb-managed workspace owned by another project";
+
+  if (
+    findForeignManagedEnvironmentAtHostPath(db, {
+      hostId: args.hostId,
+      path: args.path,
+      projectId: args.projectId,
+    })
+  ) {
+    return { reason: "foreign-managed", message: foreignManagedMessage };
+  }
+
+  // A path under bb's workspace roots belongs to a managed environment even
+  // when that environment has not stored its path yet.
+  if (
+    args.dataDir !== null &&
+    isBbManagedWorkspacePath({ dataDir: args.dataDir, path: args.path }) &&
+    !findProjectOwnsPath(db, args)
+  ) {
+    return { reason: "foreign-managed", message: foreignManagedMessage };
+  }
+
+  if (
+    args.checksOutBranch &&
+    hasLiveThreadAtHostPath(db, { hostId: args.hostId, path: args.path })
+  ) {
+    return {
+      reason: "live-thread",
+      message:
+        "Cannot checkout branch while another thread is using this workspace",
+    };
+  }
+
+  return null;
 }
 
 /**
- * Whether any project has a live thread working in this directory. A branch
- * checkout rewrites the working tree, so it must not run while another
- * project's agent is using the same folder.
+ * A project may still attach to a bb-managed path it already owns — that is a
+ * plain reuse of its own workspace, not a cross-project alias.
  */
-export function hasLiveThreadAtHostPath(
+function findProjectOwnsPath(
   db: DbConnection,
-  args: HostPathArgs,
+  args: Pick<UnmanagedAttachCheckArgs, "hostId" | "path" | "projectId">,
 ): boolean {
-  return listEnvironmentsByHostPath(db, args.hostId, args.path).some(
-    (environment) =>
-      hasNonTerminalThreadInEnvironment(db, { environmentId: environment.id }),
+  return (
+    findProjectEnvironmentByHostPath(
+      db,
+      args.projectId,
+      args.hostId,
+      args.path,
+    ) !== null
   );
 }
