@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   ThreadTimelineResponse,
   TimelineCommandWorkRow,
@@ -38,6 +39,7 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     createdAt: args.sequence,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     initiator: "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",

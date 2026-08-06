@@ -1,11 +1,12 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
-import type {
-  PromptHistoryEntry,
-  ResolvedThreadExecutionOptions,
-  ThreadListEntry,
-  ThreadQueuedMessage,
-  ThreadWithRuntime,
+import {
+  LEGACY_SYSTEM_ACTOR_STAMP,
+  type PromptHistoryEntry,
+  type ResolvedThreadExecutionOptions,
+  type ThreadListEntry,
+  type ThreadQueuedMessage,
+  type ThreadWithRuntime,
 } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -604,6 +605,9 @@ function buildOptimisticUserMessageRow({
     id,
     kind: "conversation",
     role: "user",
+    // No server-admitted Principal exists yet. Keep attribution explicitly
+    // unknown until the durable server row replaces this optimistic row.
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     threadId,
     turnId: null,
     sourceSeqStart: 0,

@@ -1,3 +1,4 @@
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   TimelineConversationAttachments,
   TimelineRow,
@@ -41,6 +42,7 @@ function conversationRow({
     return {
       ...base,
       role: "user",
+      actor: LEGACY_SYSTEM_ACTOR_STAMP,
       initiator: "user",
       senderThreadId: null,
       systemMessageKind: "unlabeled",

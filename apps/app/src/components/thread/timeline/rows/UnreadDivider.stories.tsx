@@ -1,3 +1,4 @@
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
   ThreadTimelineRows,
@@ -43,6 +44,7 @@ function userRow(args: {
     createdAt: args.createdAt,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     initiator: "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",

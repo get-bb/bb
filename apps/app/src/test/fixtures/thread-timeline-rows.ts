@@ -26,10 +26,11 @@ import type {
   TimelineWebSearchWorkRow,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type {
-  SystemMessageKind,
-  SystemMessageSubject,
-  ThreadTurnInitiator,
+import {
+  LEGACY_SYSTEM_ACTOR_STAMP,
+  type SystemMessageKind,
+  type SystemMessageSubject,
+  type ThreadTurnInitiator,
 } from "@bb/domain";
 
 export interface RowBaseOverrideArgs {
@@ -434,6 +435,7 @@ export function conversationRow({
       ...rowBase,
       kind: "conversation",
       role,
+      actor: LEGACY_SYSTEM_ACTOR_STAMP,
       text,
       mentions: [],
       attachments,

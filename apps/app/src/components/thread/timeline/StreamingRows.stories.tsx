@@ -20,6 +20,7 @@
 // Each variant has its own Pause and Restart so a frame can be held for
 // inspection. All variants are paused by default.
 import { useEffect, useState, type ReactNode } from "react";
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
   ThreadTimelineRows,
@@ -183,6 +184,7 @@ function buildOptimisticUserRow(id: string): TimelineRow {
     createdAt: 0,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     initiator: "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",
@@ -305,6 +307,7 @@ function conversationRowFromStep(
     return {
       ...base,
       role: "user",
+      actor: LEGACY_SYSTEM_ACTOR_STAMP,
       initiator: "user",
       senderThreadId: null,
       systemMessageKind: "unlabeled",
@@ -448,6 +451,7 @@ function AssistantContentStreaming({
     createdAt: 0,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     initiator: "user",
     mentions: [],
     senderThreadId: null,

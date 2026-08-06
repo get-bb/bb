@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import {
+  LEGACY_SYSTEM_ACTOR_STAMP,
+  type ThreadListEntry,
+  type ThreadWithRuntime,
+} from "@bb/domain";
 import {
   act,
   cleanup,
@@ -60,6 +64,7 @@ function userConversationRow(index = 1): TimelineRow {
     createdAt: index,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     text: `Loaded after client-side navigation ${index}`,
     attachments: null,
     initiator: "user",

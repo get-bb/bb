@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { LEGACY_SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import type {
   ThreadTimelineResponse,
   TimelineUserConversationRow,
@@ -65,6 +66,7 @@ function makeUserRow(
     id,
     kind: "conversation",
     role: "user",
+    actor: LEGACY_SYSTEM_ACTOR_STAMP,
     threadId: "thread-1",
     turnId: null,
     sourceSeqStart: sourceSeq,
