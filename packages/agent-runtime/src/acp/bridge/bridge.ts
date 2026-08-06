@@ -225,6 +225,17 @@ function resolveBridgeProcessArgsForMcpServer(): string[] {
   return [...process.execArgv, entryPoint, "--mcp-stdio"];
 }
 
+function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
+  const electronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
+  if (electronRunAsNode === undefined) {
+    return [];
+  }
+
+  // The ACP agent must not inherit Electron's Node mode, but this MCP process
+  // re-executes the packaged bridge and therefore needs it restored.
+  return [{ name: "ELECTRON_RUN_AS_NODE", value: electronRunAsNode }];
+}
+
 async function forwardDynamicToolCall(args: {
   arguments: Record<string, unknown>;
   callId: string;
@@ -338,6 +349,7 @@ async function buildSessionMcpServers(
       dynamicTools,
       host: bridge.host,
       port: bridge.port,
+      runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
       threadId: params.threadId,
       token: bridge.token,
     }),

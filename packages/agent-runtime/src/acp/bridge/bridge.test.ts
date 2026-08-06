@@ -1036,6 +1036,59 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("electron-run-as-node:missing");
   });
 
+  it("preserves Electron Node mode for the dynamic-tool MCP process only", async () => {
+    vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
+    const { providerThreadId } = await startThread({
+      dynamicTools: [
+        {
+          name: "update_environment_directory",
+          description: "Move this thread to another environment directory.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-mcp-server-config", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    const configPrefix = "mcp-server-config:";
+    const configText = agentMessageTexts().find((text) =>
+      text.startsWith(configPrefix),
+    );
+    if (!configText) {
+      throw new Error("Fake ACP agent did not report MCP server config");
+    }
+    const [mcpServerConfig] = JSON.parse(
+      configText.slice(configPrefix.length),
+    ) as { env: { name: string; value: string }[] }[];
+    expect(
+      mcpServerConfig?.env.find(
+        ({ name }) => name === "ELECTRON_RUN_AS_NODE",
+      )?.value,
+    ).toBe("1");
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [
+        { type: "text", text: "echo-electron-run-as-node", mentions: [] },
+      ],
+    });
+    await waitFor(
+      () =>
+        agentMessageTexts().find(
+          (text) => text === "electron-run-as-node:missing",
+        ),
+      "agent environment report",
+    );
+  });
+
   it("warns and launches the family id when a reasoning variant is missing", async () => {
     chmodSync(FAKE_AGENT_PATH, 0o755);
     const listCommand = {
