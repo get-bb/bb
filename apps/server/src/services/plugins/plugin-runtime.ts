@@ -431,7 +431,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     service.startedAt = Date.now();
     // The async wrapper normalizes sync throws from start() into rejections.
     const current = (async () => {
-      await service.record.start(controller.signal);
+      const start = () => service.record.start(controller.signal);
+      const execution = deps.internalExecution;
+      if (execution === undefined) {
+        await start();
+        return;
+      }
+      await execution.authority.runWithDerivedSession(
+        execution.sessions.createPluginBackgroundSession({
+          pluginId: id,
+          callbackCategory: "service",
+          callbackName: service.record.name,
+        }),
+        start,
+      );
     })();
     service.current = current;
     current.then(
@@ -637,7 +650,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     handler: (payload: PluginThreadEventPayloads[E]) => void | Promise<void>,
     payload: PluginThreadEventPayloads[E],
   ): Promise<void> {
-    await invokeWrapped(id, `${event} handler`, () => handler(payload));
+    await invokeWrapped(id, `${event} handler`, () => {
+      const run = () => handler(payload);
+      const execution = deps.internalExecution;
+      if (execution === undefined) {
+        return run();
+      }
+      return execution.authority.runWithDerivedSession(
+        execution.sessions.createPluginBackgroundSession({
+          pluginId: id,
+          callbackCategory: "thread-event",
+          callbackName: event,
+        }),
+        run,
+      );
+    });
   }
 
   /**
@@ -1075,28 +1102,39 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       ownedRootUrls.add(mutableRootUrl(mutableRootDir(row.rootDir)));
     }
     try {
-      // Fresh instance per load: guarantees re-imports see current sources.
-      const jiti = createJiti(import.meta.url, {
-        moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
-      });
-      // Same jiti instance for source and prebuilt dist/server.js, so the
-      // @bb/plugin-sdk resolution applies identically to both.
-      const mod = (await jiti.import(
-        await resolveServerEntry(row, manifest),
-      )) as {
-        default?: unknown;
-      };
-      const factory = mod.default;
-      if (typeof factory !== "function") {
-        throw new Error(
-          `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
+      const loadFactory = async (): Promise<void> => {
+        // Fresh instance per load: guarantees re-imports see current sources.
+        const jiti = createJiti(import.meta.url, {
+          moduleCache: false,
+          ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+        });
+        // Same jiti instance for source and prebuilt dist/server.js, so the
+        // @bb/plugin-sdk resolution applies identically to both.
+        const mod = (await jiti.import(
+          await resolveServerEntry(row, manifest),
+        )) as {
+          default?: unknown;
+        };
+        const factory = mod.default;
+        if (typeof factory !== "function") {
+          throw new Error(
+            `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
+          );
+        }
+        await runFactoryTimeBoxed(
+          factory as (api: BbPluginApi) => unknown,
+          handle.api,
         );
+      };
+      const execution = deps.internalExecution;
+      if (execution === undefined) {
+        await loadFactory();
+      } else {
+        // A lifecycle mutation can itself run under a human request. Plugin
+        // module/factory evaluation is registration-only and must not inherit
+        // that request's authority.
+        await execution.authority.runWithoutSession(loadFactory);
       }
-      await runFactoryTimeBoxed(
-        factory as (api: BbPluginApi) => unknown,
-        handle.api,
-      );
     } catch (error) {
       // The candidate never commits, so its epoch and its CommonJS evictions
       // must not outlive it: the retained plugin keeps serving its own files.
@@ -1316,7 +1354,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function bindSdk(args: { baseUrl: string }): void {
-    boundSdk = createNodeBbSdk({ baseUrl: args.baseUrl });
+    const execution = deps.internalExecution;
+    if (execution !== undefined) {
+      // Exact origin only — one-time bind on the shared authority instance.
+      execution.authority.bindLoopbackOrigin(new URL(args.baseUrl).origin);
+      boundSdk = createNodeBbSdk({
+        baseUrl: args.baseUrl,
+        fetch: execution.authority.fetch,
+      });
+    } else {
+      boundSdk = createNodeBbSdk({ baseUrl: args.baseUrl });
+    }
     boundLoopbackBaseUrl = args.baseUrl;
   }
 

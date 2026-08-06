@@ -8,6 +8,8 @@ import {
   type PluginRuntimeStatus,
   type PluginSourceDetail,
 } from "@bb/server-contract";
+import type { InternalExecutionSessions } from "../../auth/internal-execution-sessions.js";
+import type { InternalPrincipalAuthority } from "../../auth/internal-principal-authority.js";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type { BundledPluginRegistration } from "./builtin-registry.js";
@@ -25,6 +27,23 @@ export type {
   PluginServiceEntry,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
+
+/**
+ * Optional server-owned Principal execution seam for loopback bb.sdk.
+ * Omitted by isolated plugin-service tests that keep plain SDK behavior.
+ * Callers never supply Principal/session arguments — only this pair.
+ */
+export type PluginInternalExecution = {
+  readonly authority: Pick<
+    InternalPrincipalAuthority,
+    | "bindLoopbackOrigin"
+    | "fetch"
+    | "runWithDerivedSession"
+    | "runWithDerivedSessionSync"
+    | "runWithoutSession"
+  >;
+  readonly sessions: InternalExecutionSessions;
+};
 
 /** Live state of one registered background service. */
 export type PluginServiceState = "running" | "backoff" | "stopped";
@@ -92,6 +111,11 @@ export interface PluginServiceDeps {
   dataDir: string;
   /** BB app version, checked against manifests' engines.bb range. */
   appVersion: string;
+  /**
+   * Server-backed createApp only: authority + session factory for loopback
+   * bb.sdk. Isolated plugin-service tests omit this and keep plain SDK fetch.
+   */
+  internalExecution?: PluginInternalExecution;
   /** Declared first-party plugins bundled with the app; test-only override. */
   bundledPlugins?: readonly BundledPluginRegistration[];
   /** Managed source-development only: rebuild and reload builtin frontends. */

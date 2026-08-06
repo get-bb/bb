@@ -118,6 +118,18 @@ describe("createInternalExecutionSessions", () => {
     expect(first.principal.kind).toBe("system");
   });
 
+  it("accepts canonical thread-event callback names with dots", () => {
+    const sessions = createInternalExecutionSessions({ mode: "local-owner" });
+    const session = sessions.createPluginBackgroundSession({
+      pluginId: PLUGIN_ID,
+      callbackCategory: "thread-event",
+      callbackName: "thread.created",
+    });
+    expect(session.principal.id).toBe(
+      "system:plugin-background/workflows/thread-event/thread.created",
+    );
+  });
+
   it("mints immutable deterministic thread-agent Principals with closed project scope", async () => {
     const sessions = createInternalExecutionSessions({
       mode: "work-together",

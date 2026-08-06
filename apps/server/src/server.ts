@@ -39,6 +39,10 @@ import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
 } from "./internal/auth.js";
+import {
+  createInternalExecutionSessions,
+  type InternalExecutionPrincipalMode,
+} from "./auth/internal-execution-sessions.js";
 import { createInternalPrincipalAuthority } from "./auth/internal-principal-authority.js";
 import { createLocalOwnerPrincipalPolicy } from "./auth/local-owner-adapter.js";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
@@ -117,6 +121,11 @@ function normalizeInternalAuthPath(path: string): string {
 interface CreateAppOptions {
   bbAppArtifactService?: BbAppArtifactService;
   principalPolicy?: PrincipalPolicy;
+  /**
+   * Exact mode for server-minted plugin background / thread-agent sessions.
+   * Defaults to local-owner; start-server forwards principalRuntime.principalMode.
+   */
+  principalMode?: InternalExecutionPrincipalMode;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
 }
@@ -313,8 +322,12 @@ export function createApp(
     options?.slowApiRequestLogThresholdMs ?? SLOW_API_REQUEST_LOG_THRESHOLD_MS;
   const fallbackPrincipalPolicy =
     options?.principalPolicy ?? createLocalOwnerPrincipalPolicy();
+  const principalMode = options?.principalMode ?? "local-owner";
   const internalPrincipalAuthority = createInternalPrincipalAuthority({
     fallbackPolicy: fallbackPrincipalPolicy,
+  });
+  const internalExecutionSessions = createInternalExecutionSessions({
+    mode: principalMode,
   });
   const principalPolicy = internalPrincipalAuthority.principalPolicy;
   const resolveHttpPrincipal = createResolvePrincipalMiddleware(
@@ -460,6 +473,10 @@ export function createApp(
       ),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
+    internalExecution: {
+      authority: internalPrincipalAuthority,
+      sessions: internalExecutionSessions,
+    },
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);

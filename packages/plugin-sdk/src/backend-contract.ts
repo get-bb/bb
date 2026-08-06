@@ -693,10 +693,10 @@ export interface BbPluginApi {
   readonly hosts: PluginHosts;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
-   * Bind-gated: reading this before the host binds the SDK throws. The real
-   * server binds it before loading plugins, so it is available from the
-   * moment factories run there — but isolated harnesses may not, so prefer
-   * using it from handlers, services, and timers for portability.
+   * Bind-gated: reading this before the host binds the SDK throws. Calls from
+   * factory evaluation are rejected because no execution Principal exists;
+   * use it from request handlers, services, schedules, events, or agent
+   * callbacks, where the host supplies the appropriate scoped Principal.
    * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
    * this plugin's id so spawned threads are attributed automatically.
    */

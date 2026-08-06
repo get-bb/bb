@@ -147,6 +147,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     },
     {
       principalPolicy: principalRuntime.principalPolicy,
+      principalMode: principalRuntime.principalMode,
       staticDir,
     },
   );

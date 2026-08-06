@@ -217,32 +217,83 @@ describe("plugin bb.sdk against a running server", () => {
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-spawner",
-        serverSource: `export default function plugin() {}`,
+        serverSource: `
+          export default function plugin(bb: any) {
+            bb.http.route("POST", "/sdk", async (c: any) => {
+              const body = await c.req.json();
+              const path = Array.isArray(body.path) ? body.path : [];
+              let target: any = bb.sdk;
+              for (const part of path) {
+                target = target[part];
+              }
+              if (typeof target !== "function") {
+                return c.json({ ok: false, error: "not a function" }, 400);
+              }
+              try {
+                const result = await target(...(body.args ?? []));
+                return c.json({ ok: true, result });
+              } catch (error) {
+                return c.json({
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                }, 500);
+              }
+            });
+          }
+        `,
       });
       const entry = await server.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
-      const api = requireApi(server.pluginService, "spawner");
 
-      // A plain read proves the loopback SDK reaches this server instance.
-      const projects = await api.sdk.projects.list();
+      async function pluginSdk(
+        path: string[],
+        args: unknown[] = [],
+      ): Promise<unknown> {
+        const response = await fetch(
+          `${server.baseUrl}/api/v1/plugins/spawner/http/sdk`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path, args }),
+          },
+        );
+        const body = (await response.json()) as {
+          ok: boolean;
+          result?: unknown;
+          error?: string;
+        };
+        if (!response.ok || !body.ok) {
+          throw new Error(
+            body.error ?? `sdk proxy failed (${response.status})`,
+          );
+        }
+        return body.result;
+      }
+
+      // Request-scoped HTTP inherits the /api/v1 local-owner authorizer.
+      const projects = (await pluginSdk(["projects", "list"])) as Array<{
+        id: string;
+      }>;
       expect(projects.map((p) => p.id)).toContain(project.id);
       expect(projects.map((p) => p.id)).not.toContain(PERSONAL_PROJECT_ID);
-      const projectsWithoutPersonal = await api.sdk.projects.list({
-        includePersonal: false,
-      });
+      const projectsWithoutPersonal = (await pluginSdk(
+        ["projects", "list"],
+        [{ includePersonal: false }],
+      )) as Array<{ id: string }>;
       expect(projectsWithoutPersonal.map((p) => p.id)).toEqual([project.id]);
 
-      const projectsWithPersonal = await api.sdk.projects.list({
-        includePersonal: true,
-      });
+      const projectsWithPersonal = (await pluginSdk(
+        ["projects", "list"],
+        [{ includePersonal: true }],
+      )) as Array<{ id: string }>;
       expect(projectsWithPersonal.map((p) => p.id)).toEqual([
         PERSONAL_PROJECT_ID,
         project.id,
       ]);
-      const projectsWithThreadsAndPersonal = await api.sdk.projects.list({
-        include: "threads",
-        includePersonal: true,
-      });
+      const projectsWithThreadsAndPersonal = (await pluginSdk(
+        ["projects", "list"],
+        [{ include: "threads", includePersonal: true }],
+      )) as Array<{ id: string; threads: unknown[] }>;
       expect(projectsWithThreadsAndPersonal.map((p) => p.id)).toEqual([
         PERSONAL_PROJECT_ID,
         project.id,
@@ -254,14 +305,21 @@ describe("plugin bb.sdk against a running server", () => {
         ]),
       );
 
-      // Spawn with the server-resolved default environment. The plugin api
-      // must fill in origin "plugin" + its own id without being asked.
-      const thread = await api.sdk.threads.spawn({
-        projectId: project.id,
-        prompt: "spawned from a plugin",
-        environment: { type: "project-default" },
-        visibility: "hidden",
-      });
+      const thread = (await pluginSdk(
+        ["threads", "spawn"],
+        [
+          {
+            projectId: project.id,
+            prompt: "spawned from a plugin",
+            environment: { type: "project-default" },
+            visibility: "hidden",
+          },
+        ],
+      )) as {
+        id: string;
+        originPluginId: string | null;
+        visibility: string;
+      };
       expect(thread.originPluginId).toBe("spawner");
       expect(thread.visibility).toBe("hidden");
       expect(getThread(server.db, thread.id)).toMatchObject({
@@ -269,20 +327,28 @@ describe("plugin bb.sdk against a running server", () => {
         visibility: "hidden",
       });
       await expect(
-        api.sdk.threads.get({ threadId: thread.id }),
+        pluginSdk(["threads", "get"], [{ threadId: thread.id }]),
       ).resolves.toMatchObject({ id: thread.id, visibility: "hidden" });
       await expect(
-        api.sdk.threads.wait({
-          threadId: thread.id,
-          status: "starting",
-          timeoutMs: 100,
-        }),
+        pluginSdk(
+          ["threads", "wait"],
+          [
+            {
+              threadId: thread.id,
+              status: "starting",
+              timeoutMs: 100,
+            },
+          ],
+        ),
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
-        api.sdk.threads.list({ projectId: project.id }),
+        pluginSdk(["threads", "list"], [{ projectId: project.id }]),
       ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
       await expect(
-        api.sdk.threads.list({ projectId: project.id, includeHidden: true }),
+        pluginSdk(
+          ["threads", "list"],
+          [{ projectId: project.id, includeHidden: true }],
+        ),
       ).resolves.toContainEqual(expect.objectContaining({ id: thread.id }));
 
       const operable = seedThread(server.deps, {
@@ -298,31 +364,46 @@ describe("plugin bb.sdk against a running server", () => {
         providerThreadId: "provider-hidden-plugin-thread",
         threadId: operable.id,
       });
-      const fork = await api.sdk.threads.fork({
-        sourceThreadId: operable.id,
-        workspace: "reuse",
-      });
+      const fork = await pluginSdk(
+        ["threads", "fork"],
+        [
+          {
+            sourceThreadId: operable.id,
+            workspace: "reuse",
+          },
+        ],
+      );
       expect(fork).toMatchObject({
         originKind: "fork",
         originPluginId: "spawner",
         sourceThreadId: operable.id,
       });
       await expect(
-        api.sdk.threads.wait({
-          threadId: operable.id,
-          status: "idle",
-          timeoutMs: 100,
-        }),
+        pluginSdk(
+          ["threads", "wait"],
+          [
+            {
+              threadId: operable.id,
+              status: "idle",
+              timeoutMs: 100,
+            },
+          ],
+        ),
       ).resolves.toMatchObject({ matched: true });
       await expect(
-        api.sdk.threads.send({
-          threadId: operable.id,
-          mode: "auto",
-          input: [{ type: "text", text: "Continue", mentions: [] }],
-        }),
+        pluginSdk(
+          ["threads", "send"],
+          [
+            {
+              threadId: operable.id,
+              mode: "auto",
+              input: [{ type: "text", text: "Continue", mentions: [] }],
+            },
+          ],
+        ),
       ).resolves.toEqual({ ok: true });
       await expect(
-        api.sdk.threads.stop({ threadId: operable.id }),
+        pluginSdk(["threads", "stop"], [{ threadId: operable.id }]),
       ).resolves.toEqual({ ok: true });
     } finally {
       await server.pluginService.stop();

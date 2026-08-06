@@ -111,6 +111,7 @@ export type {
   PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginInstructionContribution,
+  PluginInternalExecution,
   PluginResolvedAgentConfiguration,
   PluginListEntry,
   PluginMentionProviderContribution,
@@ -1848,14 +1849,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const knownToolIds = new Set(
           pluginTools.map(({ record }) => record.name),
         );
-        const outcome = await invokeWrapped(pluginId, "agent configure", () =>
-          normalizePluginAgentConfiguration({
+        const outcome = await invokeWrapped(pluginId, "agent configure", () => {
+          const execution = deps.internalExecution;
+          const value =
+            execution === undefined
+              ? provider(context)
+              : execution.authority.runWithDerivedSessionSync(
+                  execution.sessions.createThreadAgentSession({
+                    threadId: context.thread.id,
+                    projectId: context.project.id,
+                  }),
+                  () => provider(context),
+                );
+          return normalizePluginAgentConfiguration({
             knownSkillIds,
             knownToolIds,
             pluginId,
-            value: provider(context),
-          }),
-        );
+            value,
+          });
+        });
         if (!outcome.ok) {
           selectedSkillIdsByPlugin.set(pluginId, new Set());
           continue;
@@ -1896,7 +1908,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       )) {
         const provider = plugin.handle.instructionProvider;
         if (provider === null) continue;
-        out.push({ pluginId: id, provider });
+        out.push({
+          pluginId: id,
+          provider: (ctx) => {
+            const execution = deps.internalExecution;
+            if (execution === undefined) {
+              return provider(ctx);
+            }
+            // Sync derived runner at invocation — listing must not open a
+            // session; a leaked thenable after return fails closed.
+            return execution.authority.runWithDerivedSessionSync(
+              execution.sessions.createThreadAgentSession({
+                threadId: ctx.threadId,
+                projectId: ctx.projectId,
+              }),
+              () => provider(ctx),
+            );
+          },
+        });
       }
       return out;
     },
@@ -1924,8 +1953,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         pluginId,
         `tool ${record.name}`,
         async () => {
-          const result = await record.execute(parsed.value, ctx);
-          return normalizeAgentToolResult(record.name, result);
+          const run = async () => {
+            const result = await record.execute(parsed.value, ctx);
+            return normalizeAgentToolResult(record.name, result);
+          };
+          const execution = deps.internalExecution;
+          if (execution === undefined) {
+            return run();
+          }
+          return execution.authority.runWithDerivedSession(
+            execution.sessions.createThreadAgentSession({
+              threadId: ctx.threadId,
+              projectId: ctx.projectId,
+            }),
+            run,
+          );
         },
       );
       if (outcome.ok) return outcome.value;
@@ -2140,7 +2182,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const outcome = await invokeWrapped(
           row.pluginId,
           `schedule ${row.name}`,
-          () => schedule.fn(),
+          () => {
+            const run = () => schedule.fn();
+            const execution = deps.internalExecution;
+            if (execution === undefined) {
+              return run();
+            }
+            return execution.authority.runWithDerivedSession(
+              execution.sessions.createPluginBackgroundSession({
+                pluginId: row.pluginId,
+                callbackCategory: "schedule",
+                callbackName: row.name,
+              }),
+              run,
+            );
+          },
         );
         recordPluginScheduleResult(deps.db, {
           pluginId: row.pluginId,

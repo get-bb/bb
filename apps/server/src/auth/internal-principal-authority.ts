@@ -57,6 +57,12 @@ export type InternalPrincipalAuthority = {
     fn: () => T | Promise<T>,
   ): Promise<T>;
   /**
+   * Run a callback behind an explicit authority-suppression fence. This is
+   * used for plugin factory evaluation, which must never inherit a request or
+   * derived Principal from the lifecycle operation that triggered the load.
+   */
+  runWithoutSession<T>(fn: () => T | Promise<T>): Promise<T>;
+  /**
    * Temporarily replace an active or inactive inherited scope with a
    * system/agent session. Restores the outer ALS scope when `fn` settles.
    */
@@ -89,6 +95,20 @@ type ExecutionScope = {
   /** True when installed by a derived transition, not a request session. */
   readonly derived: boolean;
 };
+
+const SUPPRESSED_SESSION: BoundSession = Object.freeze({
+  principal: Object.freeze({
+    id: "system:internal-authority-suppressed",
+    kind: "system",
+    displayName: "Suppressed internal authority",
+  }),
+  authorize: Object.freeze(
+    async (): Promise<PolicyDecision> => ({
+      allowed: false,
+      reason: "forbidden",
+    }),
+  ),
+});
 
 type OutstandingGrant = {
   readonly host: string;
@@ -465,6 +485,20 @@ export function createInternalPrincipalAuthority(
     });
   }
 
+  async function runWithoutSession<T>(fn: () => T | Promise<T>): Promise<T> {
+    if (typeof fn !== "function") {
+      rejectInternalPrincipalAuthority();
+    }
+    const scope: ExecutionScope = {
+      session: SUPPRESSED_SESSION,
+      active: false,
+      // Treat suppressed descendants like settled derived work: they may not
+      // re-elevate themselves by entering another derived session.
+      derived: true,
+    };
+    return executionScopes.run(scope, async () => await fn());
+  }
+
   function assertDerivedReplacementAllowed(
     current: ExecutionScope | undefined,
   ): void {
@@ -637,6 +671,7 @@ export function createInternalPrincipalAuthority(
     bindLoopbackOrigin,
     principalPolicy,
     runWithSession,
+    runWithoutSession,
     runWithDerivedSession,
     runWithDerivedSessionSync,
     fetch: internalFetch,

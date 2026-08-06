@@ -161,7 +161,9 @@ function assertPluginId(value: unknown): string {
 }
 
 function assertCallbackName(value: unknown): string {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(value)) {
+  // Dots are required so thread-event callbackName can be the canonical
+  // event name (e.g. "thread.created").
+  if (typeof value !== "string" || !/^[A-Za-z0-9._-]{1,64}$/u.test(value)) {
     rejectInternalExecutionSession();
   }
   return value;

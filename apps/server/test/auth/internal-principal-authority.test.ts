@@ -707,6 +707,38 @@ describe("createInternalPrincipalAuthority", () => {
     ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
   });
 
+  it("suppresses an inherited active session and rejects re-elevation", async () => {
+    const fallback = createFallbackSpy();
+    const underlying = vi.fn(async () => new Response(null, { status: 204 }));
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: underlying,
+    });
+    const derived = createInternalExecutionSessions({
+      mode: "local-owner",
+    }).createPluginBackgroundSession({
+      pluginId: "factory",
+      callbackCategory: "service",
+      callbackName: "probe",
+    });
+
+    await authority.runWithSession(createSession(), async () => {
+      await authority.runWithoutSession(async () => {
+        await expect(
+          authority.fetch("http://127.0.0.1/api/v1/projects"),
+        ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+        await expect(
+          authority.runWithDerivedSession(derived, async () => "forged"),
+        ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
+      });
+      await expect(
+        authority.fetch("http://127.0.0.1/api/v1/projects"),
+      ).resolves.toBeInstanceOf(Response);
+    });
+
+    expect(underlying).toHaveBeenCalledOnce();
+  });
+
   it("fails leaked timer and async descendants after callback settlement", async () => {
     const fallback = createFallbackSpy();
     const underlying = vi.fn(async () => new Response(null, { status: 204 }));

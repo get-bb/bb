@@ -44,6 +44,11 @@ export interface RunningTestServer extends TestAppHarness {
   close(): Promise<void>;
 }
 
+export type TestAppCreateOptions = {
+  principalMode?: "local-owner" | "work-together";
+  principalPolicy?: import("../../src/auth/principal-policy.js").PrincipalPolicy;
+};
+
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
 };
@@ -236,11 +241,13 @@ export async function withTestHarness<T>(
 
 export async function startTestServer(
   overrides: TestAppHarnessConfigOverrides = {},
+  createAppOptions?: TestAppCreateOptions,
 ): Promise<RunningTestServer> {
   const harness = await createTestAppHarness(overrides);
   let addressInfo: AddressInfo | null = null;
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     harness.deps,
+    createAppOptions,
   );
   const server = serve(
     {

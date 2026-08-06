@@ -490,6 +490,7 @@ describe("start-server principal wiring", () => {
     expect(source).toContain(
       "principalPolicy: principalRuntime.principalPolicy",
     );
+    expect(source).toContain("principalMode: principalRuntime.principalMode");
     expect(source).toContain("createServerListenOptions({");
     expect(source).toContain(
       "closeServerPrincipalRuntimeBestEffort(principalRuntime)",
