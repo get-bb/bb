@@ -1241,6 +1241,55 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("continues startup when an optional post-initialize read is unsupported", async () => {
+    const unsupportedReadScript = join(tmpDir, "unsupported-startup-read.cjs");
+    writeFileSync(
+      unsupportedReadScript,
+      `const readline = require("readline").createInterface({ input: process.stdin });
+      readline.on("line", (line) => {
+        const msg = JSON.parse(line);
+        if (msg.method === "initialize") {
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+          return;
+        }
+        if (msg.method === "account/rateLimits/read") {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            id: msg.id,
+            error: { code: -32601, message: "Method not found" }
+          }) + "\\n");
+        }
+      });`,
+    );
+    const onResult = vi.fn();
+    const baseAdapter = createFakeAdapter(unsupportedReadScript);
+    const adapter: ProviderAdapter = {
+      ...baseAdapter,
+      buildPostInitializeRequests: () => [
+        {
+          plan: { kind: "request", method: "account/rateLimits/read" },
+          required: false,
+          onResult,
+        },
+      ],
+    };
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => adapter,
+    });
+
+    await expect(
+      runtime.ensureProvider({ providerId: "fake" }),
+    ).resolves.toBeUndefined();
+    expect(onResult).not.toHaveBeenCalled();
+    await runtime.shutdown();
+  });
+
   it("fails fast when provider crashes during initialize", async () => {
     const crashOnInitScript = join(tmpDir, "crash-on-init.cjs");
     writeFileSync(

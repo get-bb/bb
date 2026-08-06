@@ -478,6 +478,11 @@ rl.on("line", (line) => {
     return;
   }
 
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
+    return;
+  }
+
   if (message.method === "thread/start") {
     send({
       jsonrpc: "2.0",
@@ -570,6 +575,10 @@ rl.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
     send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
     return;
   }
   if (message.method === "thread/start") {
@@ -792,6 +801,10 @@ rl.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
     send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
     return;
   }
   if (message.method === "thread/start") {

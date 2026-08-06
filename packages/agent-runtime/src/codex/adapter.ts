@@ -63,6 +63,7 @@ import type {
 } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import {
+  applyCodexRateLimitUpdate,
   createCodexEventTranslationState,
   translateCodexEvent,
 } from "./event-translation.js";
@@ -72,6 +73,7 @@ import {
 } from "./interactive-requests.js";
 import {
   codexBridgeEnvelopeSchema,
+  codexRateLimitReadResponseSchema,
   codexRawResponseItemCompletedParamsSchema,
   codexThreadClosedParamsSchema,
 } from "./schemas.js";
@@ -1860,6 +1862,25 @@ export function createCodexProviderAdapter(
     process: {
       command: opts?.processCommand ?? "codex",
       args: opts?.processArgs ?? ["app-server"],
+    },
+
+    buildPostInitializeRequests() {
+      return [
+        {
+          plan: {
+            kind: "request",
+            method: "account/rateLimits/read",
+          },
+          required: false,
+          onResult(result: unknown) {
+            const response = codexRateLimitReadResponseSchema.parse(result);
+            applyCodexRateLimitUpdate(
+              eventTranslationState,
+              response.rateLimits,
+            );
+          },
+        },
+      ];
     },
 
     buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {

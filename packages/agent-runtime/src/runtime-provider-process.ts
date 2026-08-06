@@ -183,6 +183,21 @@ export class RuntimeProviderProcessManager {
           });
         }
 
+        for (const request of adapter.buildPostInitializeRequests?.() ?? []) {
+          try {
+            const result = await sendJsonRpcRequest({
+              child: providerProcess.child,
+              message: request.plan,
+              pending: providerProcess.pending,
+              getNextId: this.args.getNextRequestId,
+              resultSchema: ignoredJsonRpcResultSchema,
+            });
+            request.onResult(result);
+          } catch (error) {
+            if (request.required) throw error;
+          }
+        }
+
         const providerSkillRoots = filterSkillRootsForProvider({
           providerId: args.providerId,
           skillRoots: this.args.skillRoots,

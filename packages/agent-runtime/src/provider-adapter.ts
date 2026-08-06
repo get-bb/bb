@@ -61,6 +61,12 @@ export type ProviderCommandPlan =
   | ProviderRequestCommandPlan
   | ProviderNoopCommandPlan;
 
+export interface ProviderPostInitializeRequest {
+  plan: ProviderRequestCommandPlan;
+  required: boolean;
+  onResult(result: unknown): void;
+}
+
 export type ProviderInteractiveResponse =
   | boolean
   | number
@@ -250,6 +256,13 @@ export interface ProviderAdapter {
   process: { command: string; args: string[]; env?: Record<string, string> };
 
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
+  /**
+   * Optional provider-specific reads performed after the protocol initialize
+   * request and before any thread work starts. Best-effort requests let newer
+   * providers hydrate adapter-local state without making older provider
+   * versions unusable when they do not implement the read.
+   */
+  buildPostInitializeRequests?(): readonly ProviderPostInitializeRequest[];
   /**
    * Called immediately before a turn/start request is sent. Some providers
    * emit turn/started before the request promise resolves, so adapters that

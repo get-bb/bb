@@ -5117,49 +5117,48 @@ describe("codex provider adapter", () => {
     });
   });
 
-  it("merges sparse Codex rolling rate-limit updates", () => {
+  it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
     const adapter = createCodexProviderAdapter();
-    adapter.translateEvent(
-      codexEvent("account/rateLimits/updated", {
-        rateLimits: {
-          limitId: "codex",
-          limitName: "Codex",
-          primary: {
-            usedPercent: 20,
-            windowDurationMins: 300,
-            resetsAt: 1_781_120_400,
-          },
-          secondary: {
-            usedPercent: 100,
-            windowDurationMins: 10_080,
-            resetsAt: 1_781_720_400,
-          },
-          credits: null,
-          individualLimit: null,
-          planType: "pro",
-          rateLimitReachedType: "rate_limit_reached",
+    const requests = adapter.buildPostInitializeRequests?.() ?? [];
+    expect(requests).toHaveLength(1);
+    const [rateLimitRead] = requests;
+    if (rateLimitRead === undefined) {
+      throw new Error("Expected a Codex rate-limit hydration request");
+    }
+    expect(rateLimitRead).toMatchObject({
+      plan: { kind: "request", method: "account/rateLimits/read" },
+      required: false,
+    });
+    rateLimitRead.onResult({
+      rateLimits: {
+        limitId: "codex",
+        limitName: "Codex",
+        primary: {
+          usedPercent: 20,
+          resetsAt: 1_781_120_400,
         },
-      }),
-    );
+        secondary: {
+          usedPercent: 100,
+          windowDurationMins: 10_080,
+          resetsAt: 1_781_720_400,
+        },
+        planType: "pro",
+        rateLimitReachedType: "rate_limit_reached",
+      },
+    });
 
-    const [sparseEvent] = adapter.translateEvent(
-      codexEvent("account/rateLimits/updated", {
+    const [sparseEvent] = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: {
         rateLimits: {
-          limitId: null,
-          limitName: null,
           primary: {
             usedPercent: 25,
-            windowDurationMins: 300,
             resetsAt: 1_781_120_400,
           },
-          secondary: null,
-          credits: null,
-          individualLimit: null,
-          planType: null,
-          rateLimitReachedType: null,
         },
-      }),
-    );
+      },
+    });
     expect(sparseEvent).toMatchObject({
       type: "provider/rateLimits/updated",
       rateLimits: {
@@ -5177,24 +5176,18 @@ describe("codex provider adapter", () => {
       },
     });
 
-    const [resetEvent] = adapter.translateEvent(
-      codexEvent("account/rateLimits/updated", {
+    const [resetEvent] = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: {
         rateLimits: {
-          limitId: null,
-          limitName: null,
-          primary: null,
           secondary: {
             usedPercent: 30,
-            windowDurationMins: 10_080,
             resetsAt: 1_781_720_400,
           },
-          credits: null,
-          individualLimit: null,
-          planType: null,
-          rateLimitReachedType: null,
         },
-      }),
-    );
+      },
+    });
     expect(resetEvent).toMatchObject({
       type: "provider/rateLimits/updated",
       rateLimits: {

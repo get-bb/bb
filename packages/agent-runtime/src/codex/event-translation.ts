@@ -34,6 +34,7 @@ import {
   type CodexItemStatus,
   type CodexParsedUserInput,
   type CodexRateLimitSnapshot,
+  type CodexRateLimitSnapshotUpdate,
   type CodexTurnStatus,
 } from "./schemas.js";
 import { codexVisibilityMetadata } from "./visibility.js";
@@ -105,30 +106,37 @@ function codexReachedReasonIsActive(
 
 function mergeCodexRateLimitSnapshot(
   previous: CodexRateLimitSnapshot | null,
-  update: CodexRateLimitSnapshot,
+  update: CodexRateLimitSnapshotUpdate,
 ): CodexRateLimitSnapshot {
-  if (previous === null) {
-    return update;
-  }
-
   const merged: CodexRateLimitSnapshot = {
-    limitId: update.limitId ?? previous.limitId,
-    limitName: update.limitName ?? previous.limitName,
-    primary: update.primary ?? previous.primary,
-    secondary: update.secondary ?? previous.secondary,
-    credits: update.credits ?? previous.credits,
-    individualLimit: update.individualLimit ?? previous.individualLimit,
-    planType: update.planType ?? previous.planType,
-    rateLimitReachedType: update.rateLimitReachedType,
+    limitId: update.limitId ?? previous?.limitId ?? null,
+    limitName: update.limitName ?? previous?.limitName ?? null,
+    primary: update.primary ?? previous?.primary ?? null,
+    secondary: update.secondary ?? previous?.secondary ?? null,
+    credits: update.credits ?? previous?.credits ?? null,
+    individualLimit:
+      update.individualLimit ?? previous?.individualLimit ?? null,
+    planType: update.planType ?? previous?.planType ?? null,
+    rateLimitReachedType: update.rateLimitReachedType ?? null,
   };
   if (
     merged.rateLimitReachedType === null &&
-    previous.rateLimitReachedType !== null &&
+    previous?.rateLimitReachedType !== null &&
+    previous?.rateLimitReachedType !== undefined &&
     codexReachedReasonIsActive(merged, previous.rateLimitReachedType)
   ) {
     merged.rateLimitReachedType = previous.rateLimitReachedType;
   }
   return merged;
+}
+
+export function applyCodexRateLimitUpdate(
+  state: CodexEventTranslationState,
+  update: CodexRateLimitSnapshotUpdate,
+): CodexRateLimitSnapshot {
+  const rateLimits = mergeCodexRateLimitSnapshot(state.rateLimits, update);
+  state.rateLimits = rateLimits;
+  return rateLimits;
 }
 
 function normalizeCodexRateLimits(
@@ -750,11 +758,10 @@ export function translateCodexEvent(
   const handledEvent: CodexHandledEvent = parsed.data;
   switch (handledEvent.method) {
     case "account/rateLimits/updated": {
-      const rateLimits = mergeCodexRateLimitSnapshot(
-        state.rateLimits,
+      const rateLimits = applyCodexRateLimitUpdate(
+        state,
         handledEvent.params.rateLimits,
       );
-      state.rateLimits = rateLimits;
       return [
         {
           type: "provider/rateLimits/updated",
