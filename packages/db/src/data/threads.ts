@@ -244,6 +244,8 @@ export function upsertThreadTitleSearchSegments(
 }
 
 export interface CreateThreadInput {
+  /** Internal data API only: use a preallocated thread identity when set. */
+  id?: string;
   projectId: string;
   environmentId?: string | null;
   providerId: string;
@@ -268,7 +270,7 @@ export function createThread(
 ) {
   const visibility = input.visibility ?? "visible";
   const now = Date.now();
-  const id = createThreadId();
+  const id = input.id ?? createThreadId();
   const originKind = input.originKind ?? input.childOrigin ?? null;
   const thread = db.transaction(
     (tx) => {

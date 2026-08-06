@@ -18,6 +18,8 @@ type EnvironmentWriteConnection = DbConnection | DbTransaction;
 type EnvironmentRow = typeof environments.$inferSelect;
 
 export interface CreateEnvironmentInput {
+  /** Internal data API only: use a preallocated environment identity when set. */
+  id?: string;
   name?: string | null;
   projectId: string;
   hostId: string;
@@ -39,7 +41,7 @@ export function createEnvironment(
   input: CreateEnvironmentInput,
 ) {
   const now = Date.now();
-  const id = createEnvironmentId();
+  const id = input.id ?? createEnvironmentId();
   const row = db
     .insert(environments)
     .values({

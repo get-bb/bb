@@ -3,8 +3,11 @@ import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
+import { createEnvironmentId } from "../../src/ids.js";
 import {
   createEnvironment,
+  getEnvironment,
+  listEnvironments,
   listRetiredLoadedEnvironmentIdsOnHost,
   recordEnvironmentCurrentBranch,
   recordProvisionedEnvironmentWorkspace,
@@ -262,5 +265,49 @@ describe("environments", () => {
       otherHostEnvironment.id,
       "env_missing",
     ]);
+  });
+
+  it("uses an exact preallocated environment identity", () => {
+    const { db, host, project } = setup();
+    const environmentId = createEnvironmentId();
+
+    const environment = createEnvironment(db, noopNotifier, {
+      id: environmentId,
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      status: "ready",
+    });
+
+    expect(environment.id).toBe(environmentId);
+    expect(getEnvironment(db, environmentId)?.id).toBe(environmentId);
+  });
+
+  it("rejects duplicate preallocated environment identities", () => {
+    const { db, host, project } = setup();
+    const environmentId = createEnvironmentId();
+    createEnvironment(db, noopNotifier, {
+      id: environmentId,
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      status: "ready",
+      name: "original",
+    });
+    const beforeCount = listEnvironments(db, project.id).length;
+
+    expect(() =>
+      createEnvironment(db, noopNotifier, {
+        id: environmentId,
+        projectId: project.id,
+        hostId: host.id,
+        workspaceProvisionType: "unmanaged",
+        status: "provisioning",
+        name: "duplicate",
+      }),
+    ).toThrow();
+
+    expect(listEnvironments(db, project.id)).toHaveLength(beforeCount);
+    expect(getEnvironment(db, environmentId)?.name).toBe("original");
   });
 });

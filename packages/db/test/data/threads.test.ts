@@ -3,6 +3,7 @@ import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
+import { createThreadId } from "../../src/ids.js";
 import {
   createThread,
   countLiveThreadsInEnvironment,
@@ -1645,5 +1646,53 @@ describe("thread originKind compatibility", () => {
     });
 
     expect(own.map((thread) => thread.id)).toEqual([ownFork.id]);
+  });
+});
+
+describe("preallocated thread identities", () => {
+  it("uses an exact preallocated thread identity", () => {
+    const { db, project } = setup();
+    const threadId = createThreadId();
+
+    const thread = createThread(db, noopNotifier, {
+      id: threadId,
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    expect(thread.id).toBe(threadId);
+    expect(getThread(db, threadId)?.id).toBe(threadId);
+  });
+
+  it("rejects duplicate preallocated thread identities", () => {
+    const { db, project } = setup();
+    const threadId = createThreadId();
+    createThread(db, noopNotifier, {
+      id: threadId,
+      projectId: project.id,
+      providerId: "codex",
+      title: "original",
+    });
+    const beforeCount = listThreads(db, {
+      projectId: project.id,
+      includeHidden: true,
+    }).length;
+
+    expect(() =>
+      createThread(db, noopNotifier, {
+        id: threadId,
+        projectId: project.id,
+        providerId: "codex",
+        title: "duplicate",
+      }),
+    ).toThrow();
+
+    expect(
+      listThreads(db, {
+        projectId: project.id,
+        includeHidden: true,
+      }),
+    ).toHaveLength(beforeCount);
+    expect(getThread(db, threadId)?.title).toBe("original");
   });
 });

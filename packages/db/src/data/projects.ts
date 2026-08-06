@@ -19,10 +19,24 @@ export interface CreateProjectLocalPathSourceInput {
 
 export type CreateProjectSourceInput = CreateProjectLocalPathSourceInput;
 
-export interface CreateProjectInput {
+/**
+ * Internal data API only. When preallocating identities, both project and
+ * source IDs must be supplied together so callers cannot leave a half-bound
+ * reservation.
+ */
+export type CreateProjectInput = {
   name: string;
   source: CreateProjectSourceInput;
-}
+} & (
+  | {
+      projectId: string;
+      projectSourceId: string;
+    }
+  | {
+      projectId?: undefined;
+      projectSourceId?: undefined;
+    }
+);
 
 export type ProjectRow = typeof projects.$inferSelect;
 
@@ -126,8 +140,8 @@ export function createProject(
   input: CreateProjectInput,
 ) {
   const now = Date.now();
-  const projectId = createProjectId();
-  const sourceId = createProjectSourceId();
+  const projectId = input.projectId ?? createProjectId();
+  const sourceId = input.projectSourceId ?? createProjectSourceId();
 
   const { project, source } = db.transaction((tx) => {
     const lastProject = getLastPublicProject(tx);

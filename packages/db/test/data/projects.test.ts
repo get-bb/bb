@@ -4,6 +4,10 @@ import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
+  createProjectId,
+  createProjectSourceId,
+} from "../../src/ids.js";
+import {
   createProject,
   ensurePersonalProject,
   getProject,
@@ -13,6 +17,7 @@ import {
   reorderProject,
   setProjectGitRemoteUrlIfMissing,
 } from "../../src/data/projects.js";
+import { listProjectSources } from "../../src/data/project-sources.js";
 import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
@@ -329,5 +334,76 @@ describe("projects", () => {
         nextProjectId: null,
       }).kind,
     ).toBe("stale_neighbor");
+  });
+
+  it("uses exact preallocated project and source identities", () => {
+    const { db, host } = setup();
+    const projectId = createProjectId();
+    const projectSourceId = createProjectSourceId();
+
+    const { project, source } = createProject(db, noopNotifier, {
+      name: "preallocated-project",
+      projectId,
+      projectSourceId,
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/preallocated-project",
+      },
+    });
+
+    expect(project.id).toBe(projectId);
+    expect(source.id).toBe(projectSourceId);
+    expect(getProject(db, projectId)?.id).toBe(projectId);
+    expect(listProjectSources(db, projectId).map((row) => row.id)).toEqual([
+      projectSourceId,
+    ]);
+  });
+
+  it("rejects duplicate preallocated project identities atomically", () => {
+    const { db, host } = setup();
+    const projectId = createProjectId();
+    const projectSourceId = createProjectSourceId();
+    createProject(db, noopNotifier, {
+      name: "original-project",
+      projectId,
+      projectSourceId,
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/original-project",
+      },
+    });
+    const beforeProjectCount = listProjects(db).length;
+    const beforeSourceCount = listProjectSources(db, projectId).length;
+
+    expect(() =>
+      createProject(db, noopNotifier, {
+        name: "duplicate-project",
+        projectId,
+        projectSourceId: createProjectSourceId(),
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/duplicate-project",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      createProject(db, noopNotifier, {
+        name: "duplicate-source-project",
+        projectId: createProjectId(),
+        projectSourceId,
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/duplicate-source-project",
+        },
+      }),
+    ).toThrow();
+
+    expect(listProjects(db)).toHaveLength(beforeProjectCount);
+    expect(listProjectSources(db, projectId)).toHaveLength(beforeSourceCount);
+    expect(getProject(db, projectId)?.name).toBe("original-project");
   });
 });
