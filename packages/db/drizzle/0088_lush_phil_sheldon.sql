@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS `events_provider_thread_idx` ON `events` (`provider_thread_id`,`created_at`) WHERE "events"."provider_thread_id" IS NOT NULL;

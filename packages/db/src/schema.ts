@@ -687,6 +687,13 @@ export const events = sqliteTable(
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
+    // Serves findLiveThreadIdByProviderThreadId's reverse lookup (thread
+    // import's duplicate-binding check): most events have a null
+    // providerThreadId, so a partial index keeps it small; createdAt is
+    // included to serve the recency ordering without a separate sort.
+    index("events_provider_thread_idx")
+      .on(table.providerThreadId, table.createdAt)
+      .where(sql`${table.providerThreadId} IS NOT NULL`),
     check(
       "events_scope_shape_check",
       sql`(

@@ -2588,7 +2588,13 @@ export function findLiveThreadIdByProviderThreadId(
         isNull(threads.deletedAt),
       ),
     )
-    .orderBy(desc(events.sequence))
+    // events.sequence is a per-thread counter (events_thread_sequence_idx is
+    // unique on (threadId, sequence)), so ordering by it across threads picks
+    // whichever matching thread has logged the most events, not the one most
+    // recently touched. Order by wall-clock recency instead; events.id (a
+    // random suffix, not time-sortable) only breaks exact-timestamp ties
+    // deterministically.
+    .orderBy(desc(events.createdAt), desc(events.id))
     .limit(1)
     .get();
   return row?.threadId ?? null;

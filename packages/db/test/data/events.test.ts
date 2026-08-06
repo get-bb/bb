@@ -17,6 +17,7 @@ import {
   appendStoredThreadEvent,
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
+  findLiveThreadIdByProviderThreadId,
   findStoredEventRow,
   getActiveStoredTurnId,
   getHighWaterMarks,
@@ -4039,6 +4040,103 @@ describe("findUnfinishedTurnCoveringSequence", () => {
       findUnfinishedTurnCoveringSequence(db, {
         sequence: 1,
         threadId: thread.id,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("findLiveThreadIdByProviderThreadId", () => {
+  it("returns the thread with the most recently created event, not the one with the most events", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const host = upsertHost(db, noopNotifier, {
+      name: "import-host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "import-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+    });
+    const busyThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    const recentThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+
+    insertEvents(db, noopNotifier, [
+      // busyThread logged three events for the shared provider session, all
+      // older than recentThread's single event.
+      {
+        threadId: busyThread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        ...threadEventFields,
+        type: "thread/identity",
+        providerThreadId: "shared-provider-session",
+        data: "{}",
+        createdAt: 1_000,
+      },
+      {
+        threadId: busyThread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        ...threadEventFields,
+        type: "thread/identity",
+        providerThreadId: "shared-provider-session",
+        data: "{}",
+        createdAt: 2_000,
+      },
+      {
+        threadId: busyThread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        ...threadEventFields,
+        type: "thread/identity",
+        providerThreadId: "shared-provider-session",
+        data: "{}",
+        createdAt: 3_000,
+      },
+      {
+        threadId: recentThread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        ...threadEventFields,
+        type: "thread/identity",
+        providerThreadId: "shared-provider-session",
+        data: "{}",
+        createdAt: 4_000,
+      },
+    ]);
+
+    // events.sequence is a per-thread counter: busyThread's highest sequence
+    // (3) is larger than recentThread's (1), so ordering by sequence across
+    // threads would wrongly pick busyThread even though recentThread's event
+    // is the newest by wall-clock time.
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        hostId: host.id,
+        providerThreadId: "shared-provider-session",
+      }),
+    ).toBe(recentThread.id);
+  });
+
+  it("returns null when no live thread has recorded the provider session", () => {
+    const { db } = setup();
+
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        hostId: "nonexistent-host",
+        providerThreadId: "unbound-provider-session",
       }),
     ).toBeNull();
   });
