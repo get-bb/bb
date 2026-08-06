@@ -4,7 +4,11 @@ import {
   makeThreadResponse,
 } from "@bb/plugin-sdk/testing";
 import plugin from "./server.js";
-import { RELEASE_PACE_MS, RESET_BUFFER_MS } from "./src/service.js";
+import {
+  ProviderRetryService,
+  RELEASE_PACE_MS,
+  RESET_BUFFER_MS,
+} from "./src/service.js";
 
 const NOW_MS = Date.parse("2026-08-05T12:00:00.000Z");
 const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
@@ -89,6 +93,27 @@ afterEach(() => {
 });
 
 describe("provider retry scheduler", () => {
+  it("does not create an unhandled rejection when reconciliation fails", async () => {
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async () => {
+            throw new Error("status unavailable");
+          },
+        },
+      },
+    });
+    const service = new ProviderRetryService(host.bb);
+
+    await expect(service.reconcile("thread-error")).rejects.toThrow(
+      "status unavailable",
+    );
+    await flushPromises();
+    service.dispose();
+    await host.harness.dispose();
+  });
+
   it("waits for the reset buffer and paces threads sharing one account", async () => {
     const continueAfterRateLimit = vi.fn(async () => ({
       ok: true as const,
@@ -219,6 +244,178 @@ describe("provider retry scheduler", () => {
     await host.harness.dispose();
   });
 
+  it("does not promote a manual-only candidate during usage refresh", async () => {
+    const continueAfterRateLimit = vi.fn();
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        system: {
+          usageLimits: async () => ({
+            codex: {
+              status: "ok" as const,
+              accountEmail: null,
+              planLabel: "Plus",
+              windows: [
+                {
+                  label: "Current session",
+                  usedPercent: 20,
+                  resetsAt: new Date(RESET_AT_MS).toISOString(),
+                },
+              ],
+            },
+            claudeCode: { status: "unauthenticated" as const },
+            cursor: { status: "unauthenticated" as const },
+          }),
+        },
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => manualStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-manual", status: "error" }),
+      error: "Credits exhausted",
+    });
+
+    expect(
+      await host.harness.callRpc("providerRetryRefresh", {
+        threadId: "thread-manual",
+      }),
+    ).toMatchObject({
+      view: { phase: "blocked", automatic: false, dueAtMs: null },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
+  it("reschedules from blocked usage windows instead of later allowed windows", async () => {
+    const blockedResetAtMs = NOW_MS + 60 * 60 * 1_000;
+    const allowedResetAtMs = NOW_MS + 7 * 24 * 60 * 60 * 1_000;
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        system: {
+          usageLimits: async () => ({
+            codex: {
+              status: "ok" as const,
+              accountEmail: null,
+              planLabel: "Plus",
+              windows: [
+                {
+                  label: "Current session",
+                  usedPercent: 100,
+                  resetsAt: new Date(blockedResetAtMs).toISOString(),
+                },
+                {
+                  label: "Weekly",
+                  usedPercent: 20,
+                  resetsAt: new Date(allowedResetAtMs).toISOString(),
+                },
+              ],
+            },
+            claudeCode: { status: "unauthenticated" as const },
+            cursor: { status: "unauthenticated" as const },
+          }),
+        },
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-reset", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    expect(
+      await host.harness.callRpc("providerRetryRefresh", {
+        threadId: "thread-reset",
+      }),
+    ).toMatchObject({
+      view: {
+        resetsAtMs: blockedResetAtMs,
+        dueAtMs: blockedResetAtMs + RESET_BUFFER_MS,
+      },
+    });
+    await host.harness.dispose();
+  });
+
+  it("keeps release state sticky while continuation is in flight", async () => {
+    let finishContinuation: () => void = () => {
+      throw new Error("Continuation was not started");
+    };
+    const continueAfterRateLimit = vi.fn(
+      () =>
+        new Promise<{ ok: true; requestId: string }>((resolve) => {
+          finishContinuation = () =>
+            resolve({ ok: true, requestId: "continuation-request" });
+        }),
+    );
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        system: {
+          usageLimits: async () => ({
+            codex: {
+              status: "ok" as const,
+              accountEmail: null,
+              planLabel: "Plus",
+              windows: [
+                {
+                  label: "Current session",
+                  usedPercent: 20,
+                  resetsAt: new Date(RESET_AT_MS).toISOString(),
+                },
+              ],
+            },
+            claudeCode: { status: "unauthenticated" as const },
+            cursor: { status: "unauthenticated" as const },
+          }),
+        },
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-release", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    const retry = host.harness.callRpc("providerRetryNow", {
+      threadId: "thread-release",
+    });
+    await flushPromises();
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-release", status: "error" }),
+      error: "Usage limit reached",
+    });
+    await host.harness.callRpc("providerRetryRefresh", {
+      threadId: "thread-release",
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryCancel", {
+        threadId: "thread-release",
+      }),
+    ).resolves.toEqual({ cancelled: false });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-release",
+      }),
+    ).resolves.toMatchObject({ view: { phase: "releasing" } });
+
+    finishContinuation();
+    await expect(retry).resolves.toEqual({ started: true, view: null });
+    await host.harness.dispose();
+  });
+
   it("refreshes Claude usage using the canonical provider id", async () => {
     const continueAfterRateLimit = vi.fn(async () => ({
       ok: true as const,
@@ -278,18 +475,22 @@ describe("provider retry scheduler", () => {
       .fn()
       .mockRejectedValueOnce(new Error("Host is not connected"))
       .mockResolvedValueOnce({ ok: true, requestId: "continuation-request" });
-    const subscription = { hostChanged: null as (() => void) | null };
+    const subscription = {
+      hostChanged: null as
+        | ((changes: Array<"host-connected" | "host-disconnected">) => void)
+        | null,
+    };
     const host = createFakePluginHost({
       pluginId: "provider-retry",
       sdk: {
         subscribe: ({ event, callback }) => {
           if (event === "host:changed") {
-            subscription.hostChanged = () =>
+            subscription.hostChanged = (changes) =>
               callback({
                 type: "changed",
                 entity: "host",
                 id: "host-one",
-                changes: ["host-connected"],
+                changes,
               });
           }
           return () => undefined;
@@ -314,7 +515,10 @@ describe("provider retry scheduler", () => {
       }),
     ).toMatchObject({ view: { phase: "waiting-for-host" } });
     expect(subscription.hostChanged).not.toBeNull();
-    subscription.hostChanged?.();
+    subscription.hostChanged?.(["host-disconnected"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
+    subscription.hostChanged?.(["host-connected"]);
     await vi.advanceTimersByTimeAsync(0);
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(2);
 

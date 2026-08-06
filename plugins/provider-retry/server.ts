@@ -74,7 +74,12 @@ export default async function plugin(bb: BbPluginApi) {
       const unsubscribeHost = bb.sdk.subscribe({
         event: "host:changed",
         callback: (event) => {
-          if (event.id !== undefined) service.hostChanged(event.id);
+          if (
+            event.id !== undefined &&
+            event.changes.includes("host-connected")
+          ) {
+            service.hostChanged(event.id);
+          }
         },
       });
       const unsubscribeConnection = bb.sdk.subscribe({

@@ -117,7 +117,12 @@ function refreshFailureMessage(usage: ProviderUsage): string | null {
 
 function latestUsageResetAtMs(usage: ProviderUsage): number | null {
   if (usage.status !== "ok") return null;
-  const timestamps = usage.windows.flatMap((window) => {
+  const blockedWindows = usage.windows.filter(
+    (window) => window.usedPercent >= 100,
+  );
+  const relevantWindows =
+    blockedWindows.length > 0 ? blockedWindows : usage.windows;
+  const timestamps = relevantWindows.flatMap((window) => {
     if (window.resetsAt === null) return [];
     const timestamp = Date.parse(window.resetsAt);
     return Number.isFinite(timestamp) ? [timestamp] : [];
@@ -163,7 +168,10 @@ export class ProviderRetryService {
     const next = previous
       .catch(() => undefined)
       .then(() => this.reconcileDirect(threadId));
-    const lock = next.then(() => undefined);
+    const lock = next.then(
+      () => undefined,
+      () => undefined,
+    );
     this.reconcileLocks.set(threadId, lock);
     try {
       return await next;
@@ -179,6 +187,10 @@ export class ProviderRetryService {
   ): Promise<ProviderRetryView | null> {
     if (this.disposed) return null;
     const status = await this.bb.sdk.threads.rateLimitRecovery({ threadId });
+    const existing = this.entries.get(threadId);
+    if (existing?.view.phase === "releasing") {
+      return existing.view;
+    }
     const candidate = status.candidate;
     if (candidate === null) {
       if (unsafeRecovery(status)) {
@@ -198,7 +210,6 @@ export class ProviderRetryService {
       return null;
     }
 
-    const existing = this.entries.get(threadId);
     let dueAtMs: number | null = null;
     let phase: ProviderRetryPhase = "blocked";
     if (candidate.automatic && candidate.resetsAtMs !== null) {
@@ -267,6 +278,7 @@ export class ProviderRetryService {
     if (!this.entries.has(threadId)) await this.reconcile(threadId);
     const entry = this.entries.get(threadId);
     if (!entry) return null;
+    if (entry.view.phase === "releasing") return entry.view;
     if (!refreshSupported(entry.view.providerId)) {
       entry.view = {
         ...entry.view,
@@ -316,7 +328,7 @@ export class ProviderRetryService {
     if (!scope) return;
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
-      if (!entry) continue;
+      if (!entry || entry.view.phase === "releasing") continue;
       entry.view = {
         ...entry.view,
         refreshError: error,
@@ -331,10 +343,11 @@ export class ProviderRetryService {
     const now = this.sources.now();
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
-      if (!entry?.candidate) continue;
+      if (!entry?.candidate?.automatic || entry.view.phase === "releasing") {
+        continue;
+      }
       entry.view = {
         ...entry.view,
-        automatic: true,
         dueAtMs: now,
         phase: "waiting-for-reset",
       };
@@ -352,7 +365,9 @@ export class ProviderRetryService {
       Math.floor(this.sources.random() * RESET_JITTER_MS);
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
-      if (!entry?.candidate?.automatic) continue;
+      if (!entry?.candidate?.automatic || entry.view.phase === "releasing") {
+        continue;
+      }
       entry.view = { ...entry.view, dueAtMs, resetsAtMs: resetAtMs };
       this.publish(threadId);
     }
@@ -438,7 +453,8 @@ export class ProviderRetryService {
       .filter(
         (entry): entry is WaitingEntry =>
           entry !== undefined &&
-          entry.candidate !== null &&
+          entry.candidate?.automatic === true &&
+          entry.view.phase !== "releasing" &&
           entry.view.dueAtMs !== null &&
           entry.view.dueAtMs <= this.sources.now(),
       )
@@ -460,6 +476,7 @@ export class ProviderRetryService {
         const entry = this.entries.get(threadId);
         if (
           entry !== undefined &&
+          entry.view.phase !== "releasing" &&
           entry.view.dueAtMs !== null &&
           entry.view.dueAtMs <= this.sources.now()
         ) {
