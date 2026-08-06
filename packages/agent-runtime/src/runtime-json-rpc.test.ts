@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, it } from "vitest";
-import { sendJsonRpcResult } from "./runtime-json-rpc.js";
+import { describe, expect, it } from "vitest";
+import {
+  formatJsonRpcErrorMessage,
+  sendJsonRpcResult,
+} from "./runtime-json-rpc.js";
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
 
@@ -27,6 +30,55 @@ function waitForChildExit(child: ChildProcess): Promise<void> {
     child.once("exit", () => resolve());
   });
 }
+
+describe("formatJsonRpcErrorMessage", () => {
+  it("appends string details from error.data objects", () => {
+    expect(
+      formatJsonRpcErrorMessage({
+        code: -32603,
+        message: "Internal error",
+        data: { details: "ACP session not found: 019fb4b0" },
+      }),
+    ).toBe("Internal error: ACP session not found: 019fb4b0");
+  });
+
+  it("appends plain-string error.data", () => {
+    expect(
+      formatJsonRpcErrorMessage({
+        code: -32000,
+        message: "Load failed",
+        data: "missing rollout file",
+      }),
+    ).toBe("Load failed: missing rollout file");
+  });
+
+  it("does not duplicate details already present in the message", () => {
+    expect(
+      formatJsonRpcErrorMessage({
+        code: -32000,
+        message: "Load failed: missing rollout file",
+        data: { details: "missing rollout file" },
+      }),
+    ).toBe("Load failed: missing rollout file");
+  });
+
+  it("keeps the bare message when data carries no string details", () => {
+    expect(
+      formatJsonRpcErrorMessage({
+        code: -32603,
+        message: "Internal error",
+        data: { retryable: false },
+      }),
+    ).toBe("Internal error");
+    expect(
+      formatJsonRpcErrorMessage({ code: -32603, message: "Internal error" }),
+    ).toBe("Internal error");
+  });
+
+  it("stringifies non-object errors", () => {
+    expect(formatJsonRpcErrorMessage("boom")).toBe('"boom"');
+  });
+});
 
 describe("runtime JSON-RPC transport", () => {
   it("does not surface closed provider stdin errors as unhandled process errors", async () => {

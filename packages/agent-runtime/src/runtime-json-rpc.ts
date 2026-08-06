@@ -143,11 +143,28 @@ function isJsonRpcId(value: unknown): value is string | number {
   return typeof value === "string" || typeof value === "number";
 }
 
-function formatJsonRpcErrorMessage(error: unknown): string {
+export function formatJsonRpcErrorMessage(error: unknown): string {
   if (isJsonRpcObject(error) && typeof error.message === "string") {
+    const details = extractJsonRpcErrorDetails(error.data);
+    if (details !== undefined && !error.message.includes(details)) {
+      return `${error.message}: ${details}`;
+    }
     return error.message;
   }
   return JSON.stringify(error);
+}
+
+// Agents often put the actionable diagnostic in error.data (omp acp reports
+// session/load failures as {message: "Internal error", data: {details: ...}});
+// surfacing only the top-level message hides it from thread logs and the API.
+function extractJsonRpcErrorDetails(data: unknown): string | undefined {
+  if (typeof data === "string" && data.length > 0) {
+    return data;
+  }
+  if (isJsonRpcObject(data) && typeof data.details === "string" && data.details.length > 0) {
+    return data.details;
+  }
+  return undefined;
 }
 
 function isClosedJsonRpcStdinError(error: Error): boolean {
