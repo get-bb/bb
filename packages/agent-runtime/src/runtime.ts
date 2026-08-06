@@ -115,6 +115,12 @@ interface ArchiveOrUnarchiveThreadArgs {
   threadId: string;
 }
 
+interface CodexArchivedSessionRecoveryArgs {
+  providerId: string;
+  providerThreadId: string;
+  threadId: string;
+}
+
 interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   adapterFactory?: ProviderAdapterFactory;
 }
@@ -185,8 +191,6 @@ interface RequireProviderRequestPlanArgs {
   plan: ProviderCommandPlan;
   providerId: string;
 }
-
-type TurnStartRuntimeCommand = Extract<AdapterCommand, { type: "turn/start" }>;
 
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
@@ -338,20 +342,42 @@ function createAgentRuntimeInternal(
     });
   }
 
-  function sendCommand<TResult>(args: {
+  async function sendCommand<TResult>(args: {
     proc: ProviderProcess;
     message: SendJsonRpcRequestArgs<TResult>["message"];
     resultSchema: SendJsonRpcRequestArgs<TResult>["resultSchema"];
     timeoutMs?: number;
+    recovery?: CodexArchivedSessionRecoveryArgs;
   }): Promise<TResult> {
-    return sendJsonRpcRequest({
+    const request = {
       child: args.proc.child,
       getNextId: () => nextRequestId++,
       message: args.message,
       pending: args.proc.pending,
       resultSchema: args.resultSchema,
       ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
-    });
+    };
+
+    try {
+      return await sendJsonRpcRequest(request);
+    } catch (error) {
+      const recovery = args.recovery;
+      if (
+        !recovery ||
+        !isCodexArchivedSessionError(recovery.providerId, error)
+      ) {
+        throw error;
+      }
+
+      options.onStderr?.(
+        `Codex session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
+      );
+      await archiveOrUnarchiveThread({
+        commandType: "thread/unarchive",
+        ...recovery,
+      });
+      return sendJsonRpcRequest(request);
+    }
   }
 
   function resolveProviderForThread(threadId: string): string {
@@ -756,55 +782,6 @@ function createAgentRuntimeInternal(
     );
   }
 
-  async function runWithCodexArchivedSessionRecovery<TResult>(args: {
-    operation: () => Promise<TResult>;
-    providerId: string;
-    providerThreadId: string;
-    threadId: string;
-  }): Promise<TResult> {
-    try {
-      return await args.operation();
-    } catch (error) {
-      if (!isCodexArchivedSessionError(args.providerId, error)) {
-        throw error;
-      }
-
-      options.onStderr?.(
-        `Codex session "${args.providerThreadId}" is archived; unarchiving before retrying thread "${args.threadId}".`,
-      );
-      await archiveOrUnarchiveThread({
-        commandType: "thread/unarchive",
-        providerId: args.providerId,
-        providerThreadId: args.providerThreadId,
-        threadId: args.threadId,
-      });
-      return args.operation();
-    }
-  }
-
-  async function sendTurnStartCommand(args: {
-    command: TurnStartRuntimeCommand;
-    cmd: ProviderRequestCommandPlan;
-    proc: ProviderProcess;
-  }): Promise<void> {
-    const { command, proc } = args;
-    const preparedTurnStart = proc.adapter.prepareTurnStart(command);
-    pendingTurnStartThreadIds.add(command.threadId);
-    markProviderSessionNotIdle(command.threadId);
-    try {
-      await sendCommand({
-        proc,
-        message: args.cmd,
-        resultSchema: ignoredJsonRpcResultSchema,
-      });
-    } catch (error) {
-      pendingTurnStartThreadIds.delete(command.threadId);
-      markHostedProviderSessionIdle(command.threadId);
-      preparedTurnStart?.rollback();
-      throw error;
-    }
-  }
-
   async function reconfigureThreadIfNeeded(
     args: ReconfigureThreadIfNeededArgs,
   ): Promise<void> {
@@ -859,16 +836,15 @@ function createAgentRuntimeInternal(
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
     if (plan.kind === "request") {
-      const result = await runWithCodexArchivedSessionRecovery({
-        operation: () =>
-          sendCommand({
-            proc,
-            message: plan,
-            resultSchema: threadIdentityResultSchema,
-          }),
-        providerId: currentConfig.providerId,
-        providerThreadId: adapterCommand.providerThreadId,
-        threadId: args.threadId,
+      const result = await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: threadIdentityResultSchema,
+        recovery: {
+          providerId: currentConfig.providerId,
+          providerThreadId: adapterCommand.providerThreadId,
+          threadId: args.threadId,
+        },
       });
       const providerThreadId = resolveThreadIdentityResult({
         result,
@@ -1322,16 +1298,15 @@ function createAgentRuntimeInternal(
           }
           const cmd = plan;
 
-          const result = await runWithCodexArchivedSessionRecovery({
-            operation: () =>
-              sendCommand({
-                proc,
-                message: cmd,
-                resultSchema: threadIdentityResultSchema,
-              }),
-            providerId,
-            providerThreadId: adapterCommand.providerThreadId,
-            threadId,
+          const result = await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: threadIdentityResultSchema,
+            recovery: {
+              providerId,
+              providerThreadId: adapterCommand.providerThreadId,
+              threadId,
+            },
           });
           const resolvedId =
             resolveThreadIdentityResult({ result, threadId }) ??
@@ -1403,17 +1378,27 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await runWithCodexArchivedSessionRecovery({
-            operation: () =>
-              sendTurnStartCommand({
-                cmd,
-                command: adapterCommand,
-                proc,
-              }),
-            providerId: pid,
-            providerThreadId: adapterCommand.providerThreadId,
-            threadId,
-          });
+          const preparedTurnStart =
+            proc.adapter.prepareTurnStart(adapterCommand);
+          pendingTurnStartThreadIds.add(threadId);
+          markProviderSessionNotIdle(threadId);
+          try {
+            await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: ignoredJsonRpcResultSchema,
+              recovery: {
+                providerId: pid,
+                providerThreadId: adapterCommand.providerThreadId,
+                threadId,
+              },
+            });
+          } catch (error) {
+            pendingTurnStartThreadIds.delete(threadId);
+            markHostedProviderSessionIdle(threadId);
+            preparedTurnStart?.rollback();
+            throw error;
+          }
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
@@ -1484,16 +1469,15 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await runWithCodexArchivedSessionRecovery({
-            operation: () =>
-              sendCommand({
-                proc,
-                message: cmd,
-                resultSchema: ignoredJsonRpcResultSchema,
-              }),
-            providerId: pid,
-            providerThreadId: adapterCommand.providerThreadId,
-            threadId,
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+            recovery: {
+              providerId: pid,
+              providerThreadId: adapterCommand.providerThreadId,
+              threadId,
+            },
           });
           emitAcceptedCommandEvents({
             command: adapterCommand,

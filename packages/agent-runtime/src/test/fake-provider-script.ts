@@ -66,6 +66,15 @@ const defaultModelList = {
   selectedOnlyModels: [],
 };
 
+// Test-only mode used by runtime command-contract coverage.
+const simulateArchivedSession = process.argv.includes("--archived-session");
+const archivedSessionMethods = new Set([
+  "thread/resume",
+  "turn/start",
+  "turn/steer",
+]);
+const unarchivedProviderThreadIds = new Set<string>();
+
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null;
 }
@@ -82,6 +91,32 @@ function getString(value: unknown, fallback = ""): string {
 
 function getParams(message: JsonRecord): JsonRecord {
   return isJsonRecord(message.params) ? message.params : {};
+}
+
+function rejectArchivedSession(message: JsonRecord): boolean {
+  const method = getString(message.method);
+  if (!simulateArchivedSession || !archivedSessionMethods.has(method)) {
+    return false;
+  }
+
+  const params = getParams(message);
+  const providerThreadId = getString(
+    params.providerThreadId,
+    getString(params.threadId, "unknown"),
+  );
+  if (unarchivedProviderThreadIds.has(providerThreadId)) {
+    return false;
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: getJsonRpcId(message.id) ?? 0,
+    error: {
+      code: -32000,
+      message: `session ${providerThreadId} is archived. Run codex unarchive ${providerThreadId} to unarchive it first.`,
+    },
+  });
+  return true;
 }
 
 function send(message: JsonRecord): void {
@@ -523,6 +558,10 @@ function handleMessage(message: JsonRecord): void {
     return;
   }
 
+  if (rejectArchivedSession(message)) {
+    return;
+  }
+
   if (method === "thread/start") {
     startOrResumeThread(message, "start");
     return;
@@ -530,6 +569,19 @@ function handleMessage(message: JsonRecord): void {
 
   if (method === "thread/resume") {
     startOrResumeThread(message, "resume");
+    return;
+  }
+
+  if (method === "thread/unarchive") {
+    const params = getParams(message);
+    unarchivedProviderThreadIds.add(
+      getString(params.providerThreadId, getString(params.threadId, "unknown")),
+    );
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: { ok: true },
+    });
     return;
   }
 

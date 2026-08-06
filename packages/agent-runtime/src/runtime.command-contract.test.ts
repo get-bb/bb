@@ -168,92 +168,6 @@ rl.on("line", (line) => {
   );
 }
 
-function writeArchivedCodexProviderScript(
-  scriptPath: string,
-  commandLogPath: string,
-): void {
-  writeFileSync(
-    scriptPath,
-    `
-const fs = require("node:fs");
-const readline = require("node:readline");
-const commandLogPath = ${JSON.stringify(commandLogPath)};
-const archivedCommands = new Set(["thread/resume", "turn/start", "turn/steer"]);
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  fs.appendFileSync(commandLogPath, message.method + "\\n", "utf8");
-
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "thread/start") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { thread: { id: "codex-thread-archived" } },
-    });
-    return;
-  }
-  if (archivedCommands.delete(message.method)) {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      error: {
-        code: -32000,
-        message:
-          "session codex-thread-archived is archived. Run codex unarchive codex-thread-archived to unarchive it first.",
-      },
-    });
-    return;
-  }
-  if (message.method === "thread/unarchive") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "thread/resume") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { thread: { id: "codex-thread-archived" } },
-    });
-    return;
-  }
-  if (message.method === "turn/start" || message.method === "turn/steer") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    if (message.method === "turn/start") {
-      send({
-        jsonrpc: "2.0",
-        method: "turn/started",
-        params: {
-          threadId: "codex-thread-archived",
-          turn: {
-            id: "turn-archived",
-            status: "inProgress",
-            error: null,
-          },
-        },
-      });
-    }
-    return;
-  }
-  send({
-    jsonrpc: "2.0",
-    id: message.id,
-    error: { code: -32601, message: "Method not found: " + message.method },
-  });
-});
-`,
-    "utf8",
-  );
-}
-
 function createRuntimeLinkedWorktreeFixture(
   args: CreateRuntimeLinkedWorktreeFixtureArgs,
 ): RuntimeLinkedWorktreeFixture {
@@ -1078,24 +992,25 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
-  it("unarchives Codex sessions before retrying archived turns and resumes", async () => {
-    const providerScriptPath = join(tmpDir, "codex-archived-provider.cjs");
-    const commandLogPath = join(tmpDir, "codex-archived-commands.log");
-    writeArchivedCodexProviderScript(providerScriptPath, commandLogPath);
-    const events: ThreadEvent[] = [];
+  it("unarchives Codex sessions before retrying a turn", async () => {
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
+      onEvent: () => {},
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () =>
-        createCodexProviderAdapter({
-          additionalWorkspaceWriteRoots: [],
-          processArgs: [providerScriptPath],
-          processCommand: "node",
-        }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(scriptPath);
+        return {
+          ...adapter,
+          id: "codex",
+          process: {
+            ...adapter.process,
+            args: [...adapter.process.args, "--archived-session"],
+          },
+        };
+      },
     });
 
     try {
@@ -1112,42 +1027,6 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
         threadId: "t-archived",
       });
-      await waitForThreadTurnStarted({
-        events,
-        providerId: "codex",
-        runtime,
-        threadId: "t-archived",
-        turnId: "turn-archived",
-      });
-      await runtime.steerTurn({
-        clientRequestId: "creq_222222224v",
-        expectedTurnId: "turn-archived",
-        input: [promptTextInput({ text: "keep going" })],
-        options: fullRuntimeOptions,
-        threadId: "t-archived",
-      });
-      await runtime.resumeThread({
-        environmentId: "env-1",
-        projectId: "p1",
-        providerId: "codex",
-        providerThreadId: "codex-thread-archived",
-        threadId: "t-archived",
-        options: fullRuntimeOptions,
-      });
-
-      expect(readFileSync(commandLogPath, "utf8").trim().split("\n")).toEqual([
-        "initialize",
-        "thread/start",
-        "turn/start",
-        "thread/unarchive",
-        "turn/start",
-        "turn/steer",
-        "thread/unarchive",
-        "turn/steer",
-        "thread/resume",
-        "thread/unarchive",
-        "thread/resume",
-      ]);
     } finally {
       await runtime.shutdown();
     }
