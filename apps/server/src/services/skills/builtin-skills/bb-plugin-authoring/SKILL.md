@@ -301,6 +301,21 @@ parent's visibility when you omit `visibility`, and a hidden child still
 reports its turns and blockers to its parent. This is an organization contract, not a security
 boundary: plugins are full-trust server code.
 
+### bb.experimental_currentPrincipal
+
+Returns a frozen `{ id, kind, displayName }` snapshot of the server-bound
+Principal for the **currently executing** callback (HTTP/RPC under the
+request Principal, background services/schedules under a derived system
+Principal, agent callbacks under a thread agent, and so on). Use it to stamp
+durable actor identity into plugin-owned storage. The snapshot is inert data
+— not an authorization handle. Factory evaluation and leaked work after the
+callback settles fail closed. Experimental: see `docs/api_to_audit.md`.
+
+```ts
+const actor = bb.experimental_currentPrincipal();
+await bb.storage.kv.set(`last-actor:${recordId}`, actor);
+```
+
 SDK realtime observation stays separate from plugin lifecycle events:
 `bb.sdk.subscribe({ event, callback, ...selector })` returns an unsubscribe
 function. Do not use `bb.events.on` for SDK entity-change subscriptions.
@@ -1511,7 +1526,9 @@ panel list over rpc + create/open navigation assertions).
 Fidelity boundaries: HTTP auth is recorded but not enforced; services and
 schedules run only when driven (no restart timers or cron sweep); storage is
 process-local and secrets stay in memory; `bb.sdk` is always bound and
-unstubbed calls throw; cross-plugin collisions are outside one fake host. The
+unstubbed calls throw; `bb.experimental_currentPrincipal()` returns a fixed
+inert `executionPrincipal` snapshot (default stock local-owner) rather than a
+live ALS-backed identity; cross-plugin collisions are outside one fake host. The
 frontend harness validates registrations and JSON/composer behavior but does
 not reproduce BB layout/CSS, persistence, routing, crash boundaries, or
 multi-plugin arbitration. Use a live loop for those host boundaries.

@@ -12,6 +12,19 @@ import { z as z$1 } from 'zod';
 import Database from 'better-sqlite3';
 import { Context } from 'hono';
 
+declare const principalKindValues: readonly ["human", "agent", "machine", "system"];
+type PrincipalKind = (typeof principalKindValues)[number];
+
+/**
+ * Immutable snapshot of who authored a durable mutation or event.
+ * Server-derived only — never accepted from browser/plugin/daemon payloads.
+ */
+type ActorStamp = {
+    readonly principalId: string;
+    readonly principalKind: PrincipalKind;
+    readonly displayName: string;
+};
+
 /**
  * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
@@ -1508,9 +1521,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        agent: "agent";
         system: "system";
         user: "user";
-        agent: "agent";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -1529,9 +1542,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        agent: "agent";
         system: "system";
         user: "user";
-        agent: "agent";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
     systemMessageKind: z$1.ZodOptional<z$1.ZodEnum<{
@@ -1552,6 +1565,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         kind: z$1.ZodLiteral<"thread-batch">;
         count: z$1.ZodNumber;
     }, z$1.core.$strip>], "kind">>>;
+    admissionSequence: z$1.ZodOptional<z$1.ZodNumber>;
+    requestFingerprint: z$1.ZodOptional<z$1.core.$ZodBranded<z$1.ZodString, "ThreadCommandRequestFingerprint", "out">>;
     input: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         visibility: z$1.ZodOptional<z$1.ZodEnum<{
             "agent-only": "agent-only";
@@ -1771,9 +1786,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
+        agent: "agent";
         system: "system";
         user: "user";
-        agent: "agent";
     }>;
     request: z$1.ZodObject<{
         method: z$1.ZodEnum<{
@@ -2015,6 +2030,12 @@ interface ThreadEventRowBase {
     threadId: string;
     seq: number;
     createdAt: number;
+    /**
+     * Server-derived actor snapshot for this stored event. Pre-actor / older
+     * serialized servers omit this field; parsers default to the explicit legacy
+     * system stamp rather than guessing a human.
+     */
+    actor?: ActorStamp;
 }
 type ThreadEventRowFromEvent<TEvent extends ThreadEvent> = ThreadEventRowBase & {
     type: TEvent["type"];
@@ -4137,6 +4158,9 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>, z$1.ZodObject<{
             mode: z$1.ZodLiteral<"steer">;
             expectedTurnId: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            mode: z$1.ZodLiteral<"exact-steer">;
+            expectedTurnId: z$1.ZodString;
         }, z$1.core.$strip>], "mode">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         appliedAs: z$1.ZodEnum<{
@@ -4148,7 +4172,13 @@ declare const hostDaemonCommandRegistry: {
         environmentId: z$1.ZodString;
         threadId: z$1.ZodString;
         type: z$1.ZodLiteral<"thread.stop">;
-    }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
+        expectedTurnId: z$1.ZodOptional<z$1.ZodString>;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        outcome: z$1.ZodOptional<z$1.ZodEnum<{
+            applied: "applied";
+            stale: "stale";
+        }>>;
+    }, z$1.core.$strict>, "settled", false>;
     "thread.goal.clear": HostDaemonCommandDescriptor<"thread.goal.clear", z$1.ZodObject<{
         environmentId: z$1.ZodString;
         threadId: z$1.ZodString;
@@ -5689,6 +5719,7 @@ declare const hostDaemonCommandRegistry: {
                 conclusion: z$1.ZodNullable<z$1.ZodEnum<{
                     unknown: "unknown";
                     success: "success";
+                    stale: "stale";
                     cancelled: "cancelled";
                     failure: "failure";
                     skipped: "skipped";
@@ -5696,7 +5727,6 @@ declare const hostDaemonCommandRegistry: {
                     timed_out: "timed_out";
                     action_required: "action_required";
                     startup_failure: "startup_failure";
-                    stale: "stale";
                 }>>;
                 url: z$1.ZodNullable<z$1.ZodString>;
             }, z$1.core.$strict>>;
@@ -7088,6 +7118,16 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
         system: "system";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
+    actor: z$1.ZodDefault<z$1.ZodObject<{
+        principalId: z$1.ZodString;
+        principalKind: z$1.ZodEnum<{
+            agent: "agent";
+            system: "system";
+            human: "human";
+            machine: "machine";
+        }>;
+        displayName: z$1.ZodString;
+    }, z$1.core.$strict>>;
     systemMessageKind: z$1.ZodEnum<{
         "ownership-assigned": "ownership-assigned";
         "ownership-removed": "ownership-removed";
@@ -12815,6 +12855,17 @@ interface PluginStatusApi {
     needsConfiguration(message: string): void;
 }
 /**
+ * Read-only identity snapshot of the Principal bound to the currently
+ * executing plugin callback. Plain data — not an authorization capability.
+ * See `bb.experimental_currentPrincipal` and docs/api_to_audit.md.
+ */
+type PluginExecutionPrincipalKind = "human" | "agent" | "machine" | "system";
+type PluginExecutionPrincipal = {
+    readonly id: string;
+    readonly kind: PluginExecutionPrincipalKind;
+    readonly displayName: string;
+};
+/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -12861,6 +12912,14 @@ interface BbPluginApi {
      */
     readonly sdk: BbSdk;
     /**
+     * Experimental: frozen `{ id, kind, displayName }` snapshot of the
+     * server-bound Principal for the currently executing callback. Intended for
+     * durable actor stamps in plugin-owned storage — not an authorization
+     * handle. Factory evaluation and settled/leaked descendants fail closed.
+     * See docs/api_to_audit.md.
+     */
+    experimental_currentPrincipal(): PluginExecutionPrincipal;
+    /**
      * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
      * The sanctioned place to clear timers and close connections.
      */
@@ -12868,4 +12927,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginExecutionPrincipal, PluginExecutionPrincipalKind, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

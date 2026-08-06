@@ -183,6 +183,98 @@ describe("plugin SDK execution — local-owner server-backed", () => {
     );
   });
 
+  it("exposes the derived Principal from services and rejects factory access", async () => {
+    globals.__currentPrincipal = undefined;
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-current-principal",
+      serverSource: `
+        export default function plugin(bb: any) {
+          try {
+            bb.experimental_currentPrincipal();
+            (globalThis as any).__factoryPrincipal = { ok: true };
+          } catch (error) {
+            (globalThis as any).__factoryPrincipal = {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+              name: error instanceof Error ? error.name : undefined,
+            };
+          }
+          bb.background.service("probe", {
+            async start(signal: AbortSignal) {
+              try {
+                const principal = bb.experimental_currentPrincipal();
+                (globalThis as any).__currentPrincipal = {
+                  ok: true,
+                  principal,
+                  frozen: Object.isFrozen(principal),
+                };
+              } catch (error) {
+                (globalThis as any).__currentPrincipal = {
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                };
+              }
+              await new Promise<void>((resolve) => {
+                if (signal.aborted) {
+                  resolve();
+                  return;
+                }
+                signal.addEventListener("abort", () => resolve(), { once: true });
+              });
+            },
+          });
+        }
+      `,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+    expect(globals.__factoryPrincipal).toMatchObject({
+      ok: false,
+      name: "InternalPrincipalAuthorityError",
+    });
+    await waitFor(() => globals.__currentPrincipal !== undefined);
+    expect(globals.__currentPrincipal).toMatchObject({
+      ok: true,
+      frozen: true,
+      principal: {
+        id: `system:plugin-background/${entry.id}/service/probe`,
+        kind: "system",
+        displayName: "Plugin background",
+      },
+    });
+  });
+
+  it("observes the request Principal from plugin HTTP under local-owner", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-http-principal",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.http.route("GET", "/who", async (c: any) => {
+            const principal = bb.experimental_currentPrincipal();
+            return c.json({
+              principal,
+              frozen: Object.isFrozen(principal),
+            });
+          });
+        }
+      `,
+    });
+    const entry = await server.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+    const response = await fetch(
+      `${server.baseUrl}/api/v1/plugins/${entry.id}/http/who`,
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      frozen: true,
+      principal: {
+        id: "local-owner",
+        kind: "human",
+        displayName: "Local Owner",
+      },
+    });
+  });
+
   it("denies factory-time SDK calls when installation inherits a request scope", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-factory-request-deny",

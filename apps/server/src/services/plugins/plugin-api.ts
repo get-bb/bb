@@ -29,6 +29,7 @@ import type {
   PluginCliContext,
   PluginCliResult,
   PluginEvents,
+  PluginExecutionPrincipal,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -82,6 +83,8 @@ export type {
   PluginCliRegistration,
   PluginCliResult,
   PluginEvents,
+  PluginExecutionPrincipal,
+  PluginExecutionPrincipalKind,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -515,6 +518,11 @@ export function createPluginApi(options: {
   getSdk: () => BbSdk | undefined;
   /** Undefined until the server is listening (bb.server is bind-gated too). */
   getLoopbackBaseUrl: () => string | undefined;
+  /**
+   * Active-scope Principal snapshot. Must not expose authorize or other
+   * capability surfaces — only the inert identity fields.
+   */
+  currentPrincipal: () => PluginExecutionPrincipal;
   /** Broadcasts a plugin-signal WS message (hub.notifyPluginSignal). */
   publishSignal: (channel: string, payload: unknown) => void;
   /** Marks the plugin needs-configuration in the loader's status table. */
@@ -553,6 +561,7 @@ export function createPluginApi(options: {
     dataDir,
     getSdk,
     getLoopbackBaseUrl,
+    currentPrincipal: readCurrentPrincipal,
     publishSignal,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
@@ -1313,6 +1322,10 @@ export function createPluginApi(options: {
       }
       wrappedSdk ??= wrapSdkForPlugin(sdk, pluginId);
       return wrappedSdk;
+    },
+    experimental_currentPrincipal() {
+      assertLive();
+      return readCurrentPrincipal();
     },
     onDispose(hook) {
       assertLive();

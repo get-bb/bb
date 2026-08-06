@@ -37,6 +37,7 @@ export type PluginInternalExecution = {
   readonly authority: Pick<
     InternalPrincipalAuthority,
     | "bindLoopbackOrigin"
+    | "currentPrincipal"
     | "fetch"
     | "runWithDerivedSession"
     | "runWithDerivedSessionSync"

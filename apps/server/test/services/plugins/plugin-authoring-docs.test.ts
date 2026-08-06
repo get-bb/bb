@@ -66,6 +66,7 @@ const BB_PLUGIN_API_KEYS = [
   "server",
   "hosts",
   "sdk",
+  "experimental_currentPrincipal",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
 

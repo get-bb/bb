@@ -23,6 +23,7 @@ import type {
   PluginCliOutputLimitError,
   PluginCliResult,
   PluginEvents,
+  PluginExecutionPrincipal,
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
@@ -84,6 +85,10 @@ import {
  *   the host's shared file), secret settings alongside plain values (no files).
  * - `bb.sdk` is always bound (no listen gate) and every unstubbed method
  *   throws instead of hitting a server.
+ * - `bb.experimental_currentPrincipal()` returns a fixed inert test snapshot
+ *   (`executionPrincipal`, defaulting to stock local-owner) rather than an
+ *   ALS-backed live Principal. It is a deterministic test input, not a
+ *   mutable caller-selected identity on handler contexts.
  * - http auth modes are recorded but not enforced — signature checks and
  *   token handling inside handlers still run.
  * - background services/schedules never run on timers; `harness.runService`
@@ -125,6 +130,44 @@ const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
 const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
 const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
+
+const EXECUTION_PRINCIPAL_KINDS = new Set<PluginExecutionPrincipal["kind"]>([
+  "human",
+  "agent",
+  "machine",
+  "system",
+]);
+
+/** Stock single-operator Principal used when tests omit `executionPrincipal`. */
+const DEFAULT_FAKE_EXECUTION_PRINCIPAL: PluginExecutionPrincipal =
+  Object.freeze({
+    id: "local-owner",
+    kind: "human",
+    displayName: "Local Owner",
+  });
+
+function freezeExecutionPrincipal(
+  principal: PluginExecutionPrincipal,
+): PluginExecutionPrincipal {
+  if (
+    principal === null ||
+    typeof principal !== "object" ||
+    typeof principal.id !== "string" ||
+    principal.id.trim().length === 0 ||
+    typeof principal.displayName !== "string" ||
+    principal.displayName.trim().length === 0 ||
+    !EXECUTION_PRINCIPAL_KINDS.has(principal.kind)
+  ) {
+    throw new Error(
+      "executionPrincipal must be a plain { id, kind, displayName } snapshot",
+    );
+  }
+  return Object.freeze({
+    id: principal.id,
+    kind: principal.kind,
+    displayName: principal.displayName,
+  });
+}
 
 function enforcePluginCliOutputLimit(
   result: Omit<PluginCliExecutionResult, "error">,
@@ -465,6 +508,14 @@ export interface CreateFakePluginHostOptions {
    * `bb.sdk`). Defaults to "http://127.0.0.1:38886".
    */
   loopbackBaseUrl?: string;
+  /**
+   * Fixed inert Principal snapshot returned by
+   * `bb.experimental_currentPrincipal()`. Deterministic test input — not a
+   * live ALS-backed identity and not a mutable field on handler contexts.
+   * Defaults to stock local-owner `{ id: "local-owner", kind: "human",
+   * displayName: "Local Owner" }`.
+   */
+  executionPrincipal?: PluginExecutionPrincipal;
   /**
    * Pre-seeded stored settings values (as if saved before this load) —
    * including secret ones, which the fake keeps in memory instead of
@@ -1067,6 +1118,9 @@ function createFakePluginHostInternal(
       ),
     } satisfies FakePluginPersistentState);
   const pluginId = options.pluginId ?? "test-plugin";
+  const executionPrincipal = freezeExecutionPrincipal(
+    options.executionPrincipal ?? DEFAULT_FAKE_EXECUTION_PRINCIPAL,
+  );
   const agentSkillIds = [...(options.agentSkillIds ?? [])];
   if (new Set(agentSkillIds).size !== agentSkillIds.length) {
     throw new Error("agentSkillIds must not contain duplicates");
@@ -1858,6 +1912,10 @@ function createFakePluginHostInternal(
     get sdk() {
       assertLive();
       return sdk;
+    },
+    experimental_currentPrincipal() {
+      assertLive();
+      return executionPrincipal;
     },
     onDispose(hook) {
       assertLive();

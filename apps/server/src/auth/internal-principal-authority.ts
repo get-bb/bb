@@ -78,6 +78,13 @@ export type InternalPrincipalAuthority = {
     session: InternalPrincipalSession,
     fn: () => T,
   ): T;
+  /**
+   * Read-only inert snapshot of the Principal bound to the active ALS scope.
+   * Throws outside a session, under suppression, or after the owning callback
+   * settles. The returned object is data, not authority — storing it after
+   * the callback returns is allowed.
+   */
+  currentPrincipal(): Principal;
   readonly fetch: FetchImplementation;
 };
 
@@ -577,6 +584,19 @@ export function createInternalPrincipalAuthority(
     });
   }
 
+  function currentPrincipal(): Principal {
+    const scope = executionScopes.getStore();
+    if (scope === undefined || !scope.active) {
+      rejectInternalPrincipalAuthority();
+    }
+    // Fresh inert snapshot — callers may retain it after the scope settles.
+    return Object.freeze({
+      id: scope.session.principal.id,
+      kind: scope.session.principal.kind,
+      displayName: scope.session.principal.displayName,
+    });
+  }
+
   const internalFetch: FetchImplementation = async (input, init) => {
     const scope = executionScopes.getStore();
     if (scope === undefined || !scope.active) {
@@ -678,6 +698,7 @@ export function createInternalPrincipalAuthority(
     runWithoutSession,
     runWithDerivedSession,
     runWithDerivedSessionSync,
+    currentPrincipal,
     fetch: internalFetch,
   });
 }

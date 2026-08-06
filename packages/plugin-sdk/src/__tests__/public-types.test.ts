@@ -7,6 +7,7 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_currentPrincipal"
   | "hosts"
   | "http"
   | "log"
@@ -41,6 +42,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginCliRegistration",
   "PluginCliResult",
   "PluginEvents",
+  "PluginExecutionPrincipal",
+  "PluginExecutionPrincipalKind",
   "PluginHosts",
   "PluginHttp",
   "PluginHttpAuthMode",

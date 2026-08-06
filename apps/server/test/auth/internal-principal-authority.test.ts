@@ -1209,4 +1209,112 @@ describe("InternalPrincipalAuthority derived sessions", () => {
       }),
     ).rejects.toBeInstanceOf(InternalPrincipalAuthorityError);
   });
+
+  it("returns exact frozen Principal snapshots from active request and derived scopes", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    await authority.runWithSession(createSession(HUMAN_PRINCIPAL), async () => {
+      const human = authority.currentPrincipal();
+      expect(human).toEqual(HUMAN_PRINCIPAL);
+      expect(Object.isFrozen(human)).toBe(true);
+      expect(() => {
+        (human as { id: string }).id = "mutated";
+      }).toThrow();
+
+      await authority.runWithDerivedSession(
+        createSystemDerivedSession(),
+        async () => {
+          const system = authority.currentPrincipal();
+          expect(system).toEqual({
+            id: "system:plugin-background/workflows/service/worker",
+            kind: "system",
+            displayName: "Plugin background",
+          });
+          expect(Object.isFrozen(system)).toBe(true);
+        },
+      );
+
+      expect(authority.currentPrincipal()).toEqual(HUMAN_PRINCIPAL);
+    });
+
+    authority.runWithDerivedSessionSync(createAgentDerivedSession(), () => {
+      const agent = authority.currentPrincipal();
+      expect(agent).toEqual(AGENT_PRINCIPAL);
+      expect(Object.isFrozen(agent)).toBe(true);
+      return "ok";
+    });
+  });
+
+  it("rejects currentPrincipal outside session, under suppression, and after settlement", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    expect(() => authority.currentPrincipal()).toThrow(
+      InternalPrincipalAuthorityError,
+    );
+
+    await authority.runWithoutSession(async () => {
+      expect(() => authority.currentPrincipal()).toThrow(
+        InternalPrincipalAuthorityError,
+      );
+    });
+
+    let settledRequestDescendant!: Promise<Principal>;
+    await authority.runWithSession(createSession(HUMAN_PRINCIPAL), () => {
+      settledRequestDescendant = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            resolve(authority.currentPrincipal());
+          } catch (error) {
+            reject(error);
+          }
+        }, 0);
+      });
+    });
+    await expect(settledRequestDescendant).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+
+    let settledDerivedDescendant!: Promise<Principal>;
+    await authority.runWithDerivedSession(createSystemDerivedSession(), () => {
+      settledDerivedDescendant = new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            resolve(authority.currentPrincipal());
+          } catch (error) {
+            reject(error);
+          }
+        }, 0);
+      });
+      return "done";
+    });
+    await expect(settledDerivedDescendant).rejects.toBeInstanceOf(
+      InternalPrincipalAuthorityError,
+    );
+  });
+
+  it("allows retaining an inert snapshot after the owning callback settles", async () => {
+    const fallback = createFallbackSpy();
+    const authority = createInternalPrincipalAuthority({
+      fallbackPolicy: fallback.policy,
+      fetch: async () => new Response(null, { status: 204 }),
+    });
+
+    let snapshot!: Principal;
+    await authority.runWithSession(createSession(HUMAN_PRINCIPAL), async () => {
+      snapshot = authority.currentPrincipal();
+    });
+    expect(snapshot).toEqual(HUMAN_PRINCIPAL);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(() => authority.currentPrincipal()).toThrow(
+      InternalPrincipalAuthorityError,
+    );
+  });
 });

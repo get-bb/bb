@@ -39,6 +39,7 @@ import {
   type PluginThreadEventName,
   type PluginThreadEventPayloads,
 } from "./plugin-api.js";
+import { InternalPrincipalAuthorityError } from "../../auth/internal-principal-authority.js";
 import type {
   LoadedPlugin,
   PluginHandlerStats,
@@ -1050,6 +1051,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
+      currentPrincipal: () => {
+        const execution = deps.internalExecution;
+        if (execution === undefined) {
+          throw new InternalPrincipalAuthorityError();
+        }
+        return execution.authority.currentPrincipal();
+      },
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },

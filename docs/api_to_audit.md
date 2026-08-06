@@ -5,6 +5,35 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `bb.experimental_currentPrincipal()`
+
+**What it does.** Returns a frozen plain `{ id, kind, displayName }` snapshot
+of the server-bound Principal for the currently executing plugin callback
+(request-scoped HTTP/RPC, derived background/agent scopes, and similar).
+Plugins use it to stamp durable actor identity into plugin-owned storage.
+The snapshot is inert data — not an authorization closure or capability.
+Factory evaluation, suppressed scopes, and leaked descendants after the
+owning callback settles fail closed with the sanitized internal Principal
+authority error. Retaining a previously returned snapshot after settlement is
+allowed.
+
+**Audit before stabilizing.**
+
+1. **Lifetime and failure surface.** Confirm callers understand that the
+   accessor is only valid inside an active execution scope, and that the
+   generic failure message remains free of tokens, targets, and Principal
+   details.
+2. **Data minimization.** Revisit whether `{ id, kind, displayName }` is the
+   right durable stamp, or whether plugins should persist a narrower subset
+   (for example id + kind only) for long-lived records.
+3. **Plugin full-trust boundary.** Plugins already run with host-level trust;
+   confirm that exposing the current Principal snapshot does not create a
+   false authorization API and that no authorize/capability surface ever
+   rides this method.
+4. **Naming.** Decide whether `currentPrincipal` stays, or whether a more
+   explicit name (for example `currentExecutionPrincipal`) better signals
+   "inert snapshot of the active callback actor" before the prefix drops.
+
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
 Lets a plugin-lifetime content script set or clear one of its own status

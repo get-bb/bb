@@ -659,6 +659,23 @@ export interface PluginStatusApi {
 }
 
 /**
+ * Read-only identity snapshot of the Principal bound to the currently
+ * executing plugin callback. Plain data — not an authorization capability.
+ * See `bb.experimental_currentPrincipal` and docs/api_to_audit.md.
+ */
+export type PluginExecutionPrincipalKind =
+  | "human"
+  | "agent"
+  | "machine"
+  | "system";
+
+export type PluginExecutionPrincipal = {
+  readonly id: string;
+  readonly kind: PluginExecutionPrincipalKind;
+  readonly displayName: string;
+};
+
+/**
  * The API object handed to a plugin's factory (design §4). Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
@@ -704,6 +721,14 @@ export interface BbPluginApi {
    * this plugin's id so spawned threads are attributed automatically.
    */
   readonly sdk: BbSdk;
+  /**
+   * Experimental: frozen `{ id, kind, displayName }` snapshot of the
+   * server-bound Principal for the currently executing callback. Intended for
+   * durable actor stamps in plugin-owned storage — not an authorization
+   * handle. Factory evaluation and settled/leaked descendants fail closed.
+   * See docs/api_to_audit.md.
+   */
+  experimental_currentPrincipal(): PluginExecutionPrincipal;
   /**
    * Register cleanup to run on reload/disable/shutdown. Hooks run LIFO.
    * The sanctioned place to clear timers and close connections.

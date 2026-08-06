@@ -832,3 +832,54 @@ describe("realtime and status", () => {
     ]);
   });
 });
+
+describe("experimental_currentPrincipal", () => {
+  it("defaults to a frozen stock local-owner snapshot", () => {
+    const { bb } = createFakePluginHost();
+    const principal = bb.experimental_currentPrincipal();
+    expect(principal).toEqual({
+      id: "local-owner",
+      kind: "human",
+      displayName: "Local Owner",
+    });
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(() => {
+      (principal as { id: string }).id = "mutated";
+    }).toThrow();
+    expect(bb.experimental_currentPrincipal()).toBe(principal);
+  });
+
+  it("returns the explicit frozen executionPrincipal test input", () => {
+    const mutable = {
+      id: "system:plugin-background/notes/service/worker",
+      kind: "system" as const,
+      displayName: "Plugin background",
+    };
+    const { bb } = createFakePluginHost({ executionPrincipal: mutable });
+    mutable.id = "forged";
+    mutable.displayName = "Forged";
+
+    const principal = bb.experimental_currentPrincipal();
+    expect(principal).toEqual({
+      id: "system:plugin-background/notes/service/worker",
+      kind: "system",
+      displayName: "Plugin background",
+    });
+    expect(Object.isFrozen(principal)).toBe(true);
+    expect(() => {
+      (principal as { kind: string }).kind = "human";
+    }).toThrow();
+  });
+
+  it("rejects an invalid executionPrincipal option", () => {
+    expect(() =>
+      createFakePluginHost({
+        executionPrincipal: {
+          id: "",
+          kind: "human",
+          displayName: "Local Owner",
+        },
+      }),
+    ).toThrow(/executionPrincipal must be a plain/);
+  });
+});
