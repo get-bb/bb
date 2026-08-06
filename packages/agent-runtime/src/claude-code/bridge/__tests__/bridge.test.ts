@@ -1376,6 +1376,83 @@ describe("bridge", () => {
     }
   });
 
+  it("forwards a sandbox network ask with a grantable network permission", async () => {
+    // Claude suggests a "localSettings" rule for this prompt, not a "session"
+    // one. bb used to drop that suggestion, so the prompt reached the user with
+    // nothing to grant and the server rejected every allow. See issue #1041.
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-sandbox-network";
+      const toolUseID = "tool-sandbox-network";
+      await startBridgeThread({ bridge, threadId });
+
+      const resultPromise = getLastCanUseTool()(
+        "SandboxNetworkAccess",
+        { host: "registry.npmjs.org" },
+        {
+          description: "Allow network connection to registry.npmjs.org?",
+          signal: new AbortController().signal,
+          suggestions: [
+            {
+              type: "addRules",
+              rules: [
+                {
+                  toolName: "WebFetch",
+                  ruleContent: "domain:registry.npmjs.org",
+                },
+              ],
+              behavior: "allow",
+              destination: "localSettings",
+            },
+          ],
+          toolUseID,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find(
+        (message) =>
+          message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        itemId: toolUseID,
+        toolName: "SandboxNetworkAccess",
+        reason: "Allow network connection to registry.npmjs.org?",
+        permissions: { network: { enabled: true } },
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: {
+            kind: "permission_request",
+            behavior: "allow",
+            decisionClassification: "user_temporary",
+          },
+        }),
+      );
+      await expect(resultPromise).resolves.toMatchObject({
+        behavior: "allow",
+        toolUseID,
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("forwards AskUserQuestion through canUseTool and returns the answer payload", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

@@ -710,99 +710,10 @@ function AgentAutomationDefinition({
     label: formatPermissionMode(mode),
   }));
 
-  const promptBox = editing ? (
-    <form
-      className="rounded-xl border border-border bg-background shadow-lift"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!dirty || trimmedPrompt.length === 0) return;
-        void onUpdate({
-          prompt: trimmedPrompt,
-          model,
-          permissionMode,
-        });
-      }}
-    >
-      <Textarea
-        value={prompt}
-        onChange={(event) => setPrompt(event.target.value)}
-        maxLength={AUTOMATION_PROMPT_MAX_LENGTH}
-        aria-label="Automation prompt"
-        disabled={pending}
-        className="min-h-28 resize-none border-0 bg-transparent px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
-      />
-      <div
-        data-automation-prompt-action-row=""
-        className="flex min-w-0 shrink-0 items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-1">
-          <AutomationSelector
-            label="Provider and model"
-            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
-            value={model}
-            options={modelOptions}
-            disabled={pending || options === null}
-            onValueChange={setModel}
-            leading={
-              <AutomationProviderIcon providerId={execution.providerId} />
-            }
-          />
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="ml-auto shrink-0"
-          disabled={pending || dirty}
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          size="sm"
-          className="shrink-0"
-          disabled={pending || !dirty || trimmedPrompt.length === 0}
-        >
-          <Icon name="Check" className="size-3.5" aria-hidden />
-          Save Prompt
-        </Button>
-      </div>
-    </form>
-  ) : (
-    <ResourcePromptPreview
-      disabled
-      className="rounded-none border-0 bg-transparent"
-      context={[
-        {
-          label: (
-            <DisabledAutomationSelector
-              label="Provider and model"
-              value={formatAutomationModelLabel(
-                execution.model,
-                execution.providerId,
-              )}
-              accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
-              leading={
-                <AutomationProviderIcon providerId={execution.providerId} />
-              }
-              title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
-            />
-          ),
-        },
-      ]}
-    >
-      {execution.prompt}
-    </ResourcePromptPreview>
-  );
-
   const promptFooter = (
     <div
       data-automation-prompt-footer=""
-      className={cn(
-        "flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground",
-        editing ? "mt-1" : "border-t border-border/70 py-1.5",
-      )}
+      className="flex min-h-6 min-w-0 items-center justify-between gap-2 border-t border-border/70 px-3.5 py-1.5 text-xs text-muted-foreground"
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
         {!personalProject ? (
@@ -858,6 +769,93 @@ function AgentAutomationDefinition({
     </div>
   );
 
+  const promptBox = editing ? (
+    <form
+      className="overflow-hidden rounded-xl border border-border bg-background shadow-lift"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!dirty || trimmedPrompt.length === 0) return;
+        void onUpdate({
+          prompt: trimmedPrompt,
+          model,
+          permissionMode,
+        });
+      }}
+    >
+      <Textarea
+        value={prompt}
+        onChange={(event) => setPrompt(event.target.value)}
+        maxLength={AUTOMATION_PROMPT_MAX_LENGTH}
+        aria-label="Automation prompt"
+        disabled={pending}
+        className="min-h-28 resize-none border-0 bg-transparent px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
+      />
+      <div
+        data-automation-prompt-action-row=""
+        className="flex min-w-0 shrink-0 items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <AutomationSelector
+            label="Provider and model"
+            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
+            value={model}
+            options={modelOptions}
+            disabled={pending || options === null}
+            onValueChange={setModel}
+            leading={
+              <AutomationProviderIcon providerId={execution.providerId} />
+            }
+          />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0"
+          disabled={pending || dirty}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          className="shrink-0"
+          disabled={pending || !dirty || trimmedPrompt.length === 0}
+        >
+          <Icon name="Check" className="size-3.5" aria-hidden />
+          Save Prompt
+        </Button>
+      </div>
+      {promptFooter}
+    </form>
+  ) : (
+    <ResourcePromptPreview
+      disabled
+      className="rounded-none border-0 bg-transparent"
+      context={[
+        {
+          label: (
+            <DisabledAutomationSelector
+              label="Provider and model"
+              value={formatAutomationModelLabel(
+                execution.model,
+                execution.providerId,
+              )}
+              accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+              leading={
+                <AutomationProviderIcon providerId={execution.providerId} />
+              }
+              title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+            />
+          ),
+        },
+      ]}
+    >
+      {execution.prompt}
+    </ResourcePromptPreview>
+  );
+
   return (
     <div data-promptbox-shell="" className="min-w-0">
       {editing ? (
@@ -876,7 +874,6 @@ function AgentAutomationDefinition({
           Couldn&apos;t load editing options. {optionsError}
         </p>
       ) : null}
-      {editing ? promptFooter : null}
     </div>
   );
 }

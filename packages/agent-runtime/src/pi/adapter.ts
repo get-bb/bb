@@ -613,7 +613,10 @@ function buildPiConfig(
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
-type PiModelContextWindowLookup = ReadonlyMap<string, number>;
+interface PiModelContextWindowLookup {
+  byCanonicalId: ReadonlyMap<string, number>;
+  byModelId: ReadonlyMap<string, number>;
+}
 
 type PiModelContextWindowResolver = (
   lastAssistant: PiAssistantMessage | undefined,
@@ -622,25 +625,35 @@ type PiModelContextWindowResolver = (
 function buildPiModelContextWindowLookup(
   models: readonly PiContextWindowModel[],
 ): PiModelContextWindowLookup {
-  const lookup = new Map<string, number>();
+  const byCanonicalId = new Map<string, number>();
+  const byModelId = new Map<string, number>();
   for (const model of models) {
     const contextWindow = toPositiveNumber(model.contextWindow);
     if (contextWindow === undefined) {
       continue;
     }
-    const canonicalId = toCanonicalPiModelId(model.provider, model.id);
-    lookup.set(canonicalId, contextWindow);
-    if (model.id.includes("/")) {
-      lookup.set(model.id, contextWindow);
-    }
+    byCanonicalId.set(
+      toCanonicalPiModelId(model.provider, model.id),
+      contextWindow,
+    );
+    // Aggregator providers share model ids, so this map is ambiguous. It only
+    // serves messages that report no provider.
+    byModelId.set(model.id, contextWindow);
   }
-  return lookup;
+  return { byCanonicalId, byModelId };
 }
 
 function createPiModelContextWindowResolver(): PiModelContextWindowResolver {
   const models = getBuiltinProviders().flatMap((provider) =>
     getBuiltinModels(provider),
   );
+  return createPiModelContextWindowResolverFrom(models);
+}
+
+/** @internal Test seam: resolve against an explicit catalog. */
+export function createPiModelContextWindowResolverFrom(
+  models: readonly PiContextWindowModel[],
+): PiModelContextWindowResolver {
   const modelContextWindowLookup = buildPiModelContextWindowLookup(models);
   return (lastAssistant) =>
     resolvePiModelContextWindow(lastAssistant, modelContextWindowLookup);
@@ -1592,17 +1605,22 @@ function resolvePiModelContextWindow(
     return null;
   }
 
-  if (modelId.includes("/")) {
-    return modelContextWindowLookup.get(modelId) ?? null;
-  }
-
+  // Pi reports the provider and the provider-native model id separately, and an
+  // aggregator model id such as "deepseek/deepseek-v4-flash" also names a
+  // direct provider's model. A known provider therefore decides the answer on
+  // its own. Falling back to the id alone would hand a model another provider's
+  // window whenever the catalog lacks the pair, which happens for models the
+  // network refresh added and for custom models.
   const providerId = toOptionalString(lastAssistant?.provider);
-  if (!providerId) {
-    return null;
+  if (providerId) {
+    return (
+      modelContextWindowLookup.byCanonicalId.get(
+        toCanonicalPiModelId(providerId, modelId),
+      ) ?? null
+    );
   }
 
-  const canonicalId = toCanonicalPiModelId(providerId, modelId);
-  return modelContextWindowLookup.get(canonicalId) ?? null;
+  return modelContextWindowLookup.byModelId.get(modelId) ?? null;
 }
 
 function extractPiCommandExecutionOutput(content: unknown): string | undefined {

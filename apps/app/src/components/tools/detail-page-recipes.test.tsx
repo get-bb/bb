@@ -956,8 +956,13 @@ describe("Automation detail recipe", () => {
     ).not.toBeNull();
     expect(promptPanel.textContent).toContain("Opus 5");
     expect(promptPanel.textContent).toContain("Claude");
-    expect(promptPanel.textContent).not.toContain("Reasoning");
-    expect(promptPanel.textContent).not.toContain("Default");
+    // Scoped to the action row, which is where the model selector lives. The
+    // form also contains the footer's Project/Environment labels, and the
+    // compact environment label for a project-default environment is literally
+    // "Default", so asserting against the whole form would silently guard the
+    // wrong subject.
+    expect(promptActionRow.textContent).not.toContain("Reasoning");
+    expect(promptActionRow.textContent).not.toContain("Default");
     expect(
       container.querySelector('[data-automation-read-only-label=""]'),
     ).toBeNull();

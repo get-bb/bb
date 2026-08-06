@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Button } from "../button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -25,7 +26,6 @@ export function ResourceToolbar({
   searchLabel,
   onSearchChange,
   controls,
-  containedControls = false,
   controlsClassName,
   action,
 }: {
@@ -34,7 +34,6 @@ export function ResourceToolbar({
   searchLabel?: string;
   onSearchChange: (value: string) => void;
   controls?: ReactNode;
-  containedControls?: boolean;
   controlsClassName?: string;
   action?: ReactNode;
 }) {
@@ -57,9 +56,7 @@ export function ResourceToolbar({
       {controls ? (
         <div
           className={cn(
-            "flex shrink-0 items-center gap-1",
-            containedControls &&
-              "h-8 gap-0.5 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm",
+            "flex shrink-0 items-center gap-1.5",
             controlsClassName,
           )}
         >
@@ -72,11 +69,9 @@ export function ResourceToolbar({
 }
 
 export function ResourceTabDescription({ children }: { children: ReactNode }) {
-  return (
-    <p className="max-w-2xl px-1 text-sm leading-5 text-muted-foreground">
-      {children}
-    </p>
-  );
+  // No inline inset or measure cap: the description shares the collection's
+  // content width with the tabs, toolbar, and results beneath it.
+  return <p className="text-sm leading-5 text-muted-foreground">{children}</p>;
 }
 
 export interface ResourceOption {
@@ -123,15 +118,48 @@ function ResourceOptionContent({
   );
 }
 
+/**
+ * The engaged treatment shared by open and selected toolbar menu triggers.
+ *
+ * This is the app's one selection surface — the same `bg-state-active` +
+ * `text-foreground` pair used by selected sidebar rows, active tab pills, and
+ * focused split panes (see CONTEXT_SELECTION_SURFACE_CLASS in the app). Keeping
+ * toolbar filters on it means "selected" reads identically everywhere instead
+ * of this surface inventing its own language.
+ */
+const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
+  "bg-state-active text-foreground hover:bg-state-active";
+
+/**
+ * A toolbar key is a sibling of the search input beside it: same 32px box,
+ * same `--input` border, same radius, on the canvas surface. That keeps the
+ * row reading as one set of controls instead of a field plus a floating chip
+ * cluster. `--background` is `var(--canvas)`, so custom palettes get their own
+ * paper colour rather than a hardcoded white.
+ */
+const RESOURCE_MENU_TRIGGER_RESTING_CLASS =
+  "border border-input bg-background";
+
+/**
+ * Engagement is driven by React state, not `data-[state=open]`.
+ *
+ * These triggers compose `TooltipTrigger asChild > DropdownMenuTrigger asChild
+ * > Button`, and the tooltip's own `data-state` lands on the same element as
+ * the menu's — so the button reads `data-state="closed"` even while its menu is
+ * open. Any `data-[state=open]:` styling here is silently dead. Menus therefore
+ * report open state through `onOpenChange` and pass it in as `open`.
+ */
 function ResourceMenuTrigger({
   label,
   icon,
   active = false,
+  open = false,
   tooltip = label,
 }: {
   label: string;
   icon: IconName;
   active?: boolean;
+  open?: boolean;
   tooltip?: ReactNode;
 }) {
   return (
@@ -141,11 +169,12 @@ function ResourceMenuTrigger({
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="icon"
               className={cn(
-                "size-8 shrink-0 p-0 text-muted-foreground",
-                active && "bg-state-active text-foreground",
+                "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
+                RESOURCE_MENU_TRIGGER_RESTING_CLASS,
+                (open || active) && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
               )}
               aria-label={label}
             >
@@ -172,9 +201,10 @@ export function ResourceOptionMenu({
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu>
-      <ResourceMenuTrigger label={label} icon={icon} />
+    <DropdownMenu onOpenChange={setOpen}>
+      <ResourceMenuTrigger label={label} icon={icon} open={open} />
       <DropdownMenuContent align="end" mobileTitle={label} className="min-w-40">
         <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
           {label}
@@ -208,6 +238,33 @@ export function ResourceOptionMenu({
   );
 }
 
+/**
+ * The one add/remove computation behind every multi-select filter here.
+ *
+ * Two rules, shared by {@link ResourceMultiSelectMenu} and
+ * {@link ResourceFilterMenu} so the two primitives cannot drift:
+ *
+ * - A disabled option is never toggled, so a disabled value can never be added.
+ * - Values the caller already holds are never pruned. The caller owns its
+ *   selection, and a disabled option can legitimately still be selected (a
+ *   project that stopped matching the current search, say). Dropping it while
+ *   the user toggles an unrelated sibling would silently change their filter.
+ */
+function nextSelectedValues(
+  option: ResourceOption,
+  checked: boolean,
+  selectedValues: readonly string[],
+): string[] | null {
+  if (option.disabled) return null;
+  const next = new Set(selectedValues);
+  if (checked) {
+    next.add(option.id);
+  } else {
+    next.delete(option.id);
+  }
+  return [...next];
+}
+
 export function ResourceMultiSelectMenu({
   label,
   icon,
@@ -216,7 +273,6 @@ export function ResourceMultiSelectMenu({
   onChange,
   selectedLabel,
   selectedTooltip,
-  allOptionLabel,
   emptySelectionLabel = "All",
   compact = false,
 }: {
@@ -227,18 +283,16 @@ export function ResourceMultiSelectMenu({
   onChange: (values: string[]) => void;
   selectedLabel?: (options: readonly ResourceOption[]) => string;
   selectedTooltip?: (options: readonly ResourceOption[]) => ReactNode;
-  allOptionLabel?: string;
+  /** Summary shown when nothing is picked, which always means "no filter". */
   emptySelectionLabel?: string;
   compact?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const selected = new Set(selectedValues);
-  const enabledOptions = options.filter((option) => !option.disabled);
-  const activeOptions = enabledOptions.filter((option) =>
-    selected.has(option.id),
-  );
+  // Disabled options count as active when selected: they are still filtering,
+  // so the trigger, summary, and checkbox all have to say so.
+  const activeOptions = options.filter((option) => selected.has(option.id));
   const activeSelectedCount = activeOptions.length;
-  const allSelected =
-    enabledOptions.length > 0 && activeSelectedCount === enabledOptions.length;
   const selectionSummary =
     activeSelectedCount === 0
       ? emptySelectionLabel
@@ -252,25 +306,18 @@ export function ResourceMultiSelectMenu({
     selectedTooltip?.(activeOptions) ?? `${label}: ${selectionSummary}`;
 
   function updateValue(option: ResourceOption, checked: boolean) {
-    if (option.disabled) return;
-    const next = new Set(selectedValues);
-    if (checked) {
-      next.add(option.id);
-    } else {
-      next.delete(option.id);
-    }
-    const enabledOptionIds = new Set(
-      options.filter((candidate) => !candidate.disabled).map(({ id }) => id),
-    );
-    onChange([...next].filter((id) => enabledOptionIds.has(id)));
+    const next = nextSelectedValues(option, checked, selectedValues);
+    if (next === null) return;
+    onChange(next);
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={setOpen}>
       <ResourceMenuTrigger
         label={triggerLabel}
         icon={icon}
         active={activeSelectedCount > 0}
+        open={open}
         tooltip={triggerTooltip}
       />
       <DropdownMenuContent
@@ -286,20 +333,6 @@ export function ResourceMultiSelectMenu({
         >
           {label}
         </DropdownMenuLabel>
-        {allOptionLabel ? (
-          <DropdownMenuCheckboxItem
-            checked={allSelected}
-            className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(checked) =>
-              onChange(
-                checked === true ? enabledOptions.map(({ id }) => id) : [],
-              )
-            }
-          >
-            {allOptionLabel}
-          </DropdownMenuCheckboxItem>
-        ) : null}
         {options.map((option) => (
           <DropdownMenuCheckboxItem
             key={option.id}
@@ -311,6 +344,136 @@ export function ResourceMultiSelectMenu({
           >
             <ResourceOptionContent option={option} compact={compact} />
           </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * One filterable dimension inside a {@link ResourceFilterMenu}.
+ *
+ * Contract: a disabled option may still appear in `selectedValues`. The menu
+ * preserves that value — it renders as checked, counts toward the active
+ * summary, and survives toggling any sibling — rather than silently dropping it
+ * from the caller's state. The menu only refuses to *add* a disabled value.
+ */
+export interface ResourceFilterGroup {
+  id: string;
+  label: string;
+  options: readonly ResourceOption[];
+  selectedValues: readonly string[];
+  onChange: (values: string[]) => void;
+}
+
+/**
+ * Several filterable dimensions behind one trigger.
+ *
+ * Each group keeps its own selection and handler, so filtering behavior is
+ * identical to the separate menus this replaces — only the affordance is
+ * consolidated. Nothing selected in a group means that group is unfiltered.
+ */
+export function ResourceFilterMenu({
+  label = "Filters",
+  icon = "SlidersHorizontal",
+  groups,
+  compact = false,
+}: {
+  label?: string;
+  icon?: IconName;
+  groups: readonly ResourceFilterGroup[];
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  // A group with no options would render as a bare heading over an empty
+  // `role="group"` — and a separator above it. Callers legitimately pass empty
+  // groups (a facet derived from a collection that is still loading, or that
+  // has nothing in it), so drop them before anything else reads the list. The
+  // summaries below are derived from the same filtered list, so the trigger and
+  // the open menu can never disagree about which groups exist.
+  const renderedGroups = groups
+    .filter((group) => group.options.length > 0)
+    .map((group) => {
+      const selected = new Set(group.selectedValues);
+      // Disabled options still count when selected: they are filtering, so the
+      // summary has to name them.
+      const activeOptions = group.options.filter((option) =>
+        selected.has(option.id),
+      );
+      return { group, selected, activeOptions };
+    });
+  const activeSummaries = renderedGroups
+    .filter(({ activeOptions }) => activeOptions.length > 0)
+    .map(
+      ({ group, activeOptions }) =>
+        `${group.label}: ${activeOptions.map((option) => option.label).join(", ")}`,
+    );
+  const hasActiveFilter = activeSummaries.length > 0;
+  const triggerLabel = hasActiveFilter
+    ? `${label}: ${activeSummaries.join("; ")}`
+    : label;
+
+  return (
+    <DropdownMenu onOpenChange={setOpen}>
+      <ResourceMenuTrigger
+        label={triggerLabel}
+        icon={icon}
+        active={hasActiveFilter}
+        open={open}
+        tooltip={hasActiveFilter ? activeSummaries.join("; ") : `${label}: All`}
+      />
+      <DropdownMenuContent
+        align="end"
+        mobileTitle={label}
+        className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
+      >
+        {renderedGroups.map(({ group, selected }, groupIndex) => (
+          <Fragment key={group.id}>
+            {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+            {/*
+              Merging several dimensions into one menu makes the headings
+              load-bearing: without the group wrapper a screen reader reads
+              "bb Official, checkbox" with no hint of which dimension it
+              belongs to, and "Type" arrives as an unrelated preceding item.
+
+              The name is spelled out with `aria-label` rather than pointed at
+              the visible heading with `aria-labelledby`: DropdownMenuLabel does
+              not forward arbitrary props on every viewport, so an id set on it
+              can fail to reach the DOM and the reference would dangle — leaving
+              the group with no accessible name at all, which is worse than
+              naming it directly. The heading stays for sighted readers.
+            */}
+            <DropdownMenuGroup aria-label={group.label}>
+              <DropdownMenuLabel
+                className={cn(
+                  "text-xs font-normal text-subtle-foreground",
+                  compact && "md:px-1.5 md:py-1",
+                )}
+              >
+                {group.label}
+              </DropdownMenuLabel>
+              {group.options.map((option) => (
+                <DropdownMenuCheckboxItem
+                  key={option.id}
+                  checked={selected.has(option.id)}
+                  disabled={option.disabled}
+                  className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) => {
+                    const next = nextSelectedValues(
+                      option,
+                      checked === true,
+                      group.selectedValues,
+                    );
+                    if (next === null) return;
+                    group.onChange(next);
+                  }}
+                >
+                  <ResourceOptionContent option={option} compact={compact} />
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
+          </Fragment>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -330,21 +493,20 @@ export function ResourceSortMenu({
   onChange: (value: string) => void;
   compact?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
   const directionLabel = direction === "asc" ? "ascending" : "descending";
   const sortStateLabel = `Sort: ${selectedOption?.label ?? value}, ${directionLabel}`;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={setOpen}>
+      {/* One sort glyph on every collection page. Direction stays readable in
+          the accessible label and on the checked row's trailing arrow, so the
+          compact toolbar no longer swaps in a different icon. */}
       <ResourceMenuTrigger
         label={sortStateLabel}
-        icon={
-          compact
-            ? direction === "asc"
-              ? "ArrowUp"
-              : "ArrowDown"
-            : "ArrowUpDown"
-        }
+        icon="ArrowUpDown"
+        open={open}
       />
       <DropdownMenuContent
         align="end"

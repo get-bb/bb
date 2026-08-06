@@ -16,6 +16,7 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { isOfficialProvenance } from "../plugin-provenance";
 import { pluginRowSignal } from "./plugin-status";
 import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
@@ -114,7 +115,7 @@ export function InstalledPluginRow({
         }
         title={plugin.name ?? plugin.id}
         titleMeta={
-          plugin.provenance === "builtin" || plugin.provenance === "catalog" ? (
+          isOfficialProvenance(plugin.provenance) ? (
             <ProvenancePill label="BB Official" />
           ) : undefined
         }

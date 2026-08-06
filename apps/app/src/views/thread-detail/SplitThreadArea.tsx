@@ -1,4 +1,3 @@
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
@@ -24,6 +23,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   clampSplitPairFraction,
@@ -223,8 +223,8 @@ export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
 
 function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const { projectId, threadId } = useRouteState();
-  const isCompact = useIsCompactViewport();
   const threadSplitsEnabled = useThreadSplitsEnabled();
+  const splitWorkspaceActive = useSplitWorkspaceActive();
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
@@ -265,7 +265,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         ? reconcileLayoutForContent(null, currentContent)
         : null);
   const panes = layout === null ? [] : listPanes(layout.root);
-  const isSplitActive = threadSplitsEnabled && !isCompact && panes.length > 1;
+  const isSplitActive = splitWorkspaceActive && panes.length > 1;
   const maximizedPane =
     layout !== null && maximizedPaneId !== null
       ? findPane(layout.root, maximizedPaneId)
@@ -274,8 +274,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     layout !== null &&
     countPanes(layout.root) > 1 &&
     maximizedPaneId !== null &&
-    maximizedPane !== null &&
-    maximizedPane.content.kind !== "plugin-panel"
+    maximizedPane !== null
       ? maximizedPaneId
       : null;
   const {
@@ -333,8 +332,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     if (
       layout === null ||
       countPanes(layout.root) < 2 ||
-      maximizedPane === null ||
-      maximizedPane.content.kind === "plugin-panel"
+      maximizedPane === null
     ) {
       setMaximizedPaneId(null);
       return;
@@ -404,12 +402,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
     (paneId: string) => {
       const current = store.get(splitLayoutAtom);
       const pane = current === null ? null : findPane(current.root, paneId);
-      if (
-        current === null ||
-        countPanes(current.root) < 2 ||
-        pane === null ||
-        pane.content.kind === "plugin-panel"
-      ) {
+      if (current === null || countPanes(current.root) < 2 || pane === null) {
         return;
       }
       if (current.focusedPaneId !== paneId) {
@@ -577,13 +570,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
 
   // A disabled experiment and compact viewports both render the route thread as
   // single page surface (byte-identical to the pre-split page). The layout atom
-  // is preserved so the arrangement returns when the gate opens again.
-  if (
-    !threadSplitsEnabled ||
-    isCompact ||
-    layout === null ||
-    currentContent === null
-  ) {
+  // is preserved so the arrangement returns when the gate opens again. AppLayout
+  // reads the same predicate to decide whether it owns the header — see
+  // useSplitWorkspaceActive.
+  if (!splitWorkspaceActive || layout === null || currentContent === null) {
     return currentContent ? (
       <StandalonePaneContent content={currentContent} />
     ) : null;
@@ -791,22 +781,14 @@ function SplitTree(props: SplitTreeProps) {
           isFocused={isFocused}
           isSplitPane
           secondaryPanelRegistry={props.secondaryPanelRegistry}
-          reservesWindowPanelToggle={
-            node.content.kind !== "plugin-panel" &&
-            (isMaximized || (isTopRow && isRightEdge))
-          }
+          // Position alone decides this: the host pins its toggle over the
+          // workspace corner, so a plugin pane sitting there must reserve the
+          // same footprint or the toggle lands on its Close pane button.
+          reservesWindowPanelToggle={isMaximized || (isTopRow && isRightEdge)}
           onRequestClose={() => props.onClosePane(node.paneId)}
           isMaximized={isMaximized}
-          onToggleMaximize={
-            node.content.kind === "plugin-panel"
-              ? null
-              : () => props.onToggleMaximizePane(node.paneId)
-          }
-          onMoveToSide={
-            node.content.kind === "plugin-panel"
-              ? undefined
-              : (side) => props.onMovePaneToSide(node.paneId, side)
-          }
+          onToggleMaximize={() => props.onToggleMaximizePane(node.paneId)}
+          onMoveToSide={(side) => props.onMovePaneToSide(node.paneId, side)}
           isBoundedPane
           isTopRow={isMaximized || isTopRow}
           ownsWindowTopLeft={
@@ -1033,8 +1015,9 @@ function NonThreadPaneContent({
     reservesWindowPanelToggle: false,
     isFocused: true,
   };
-  const isWindowPanelOpen =
-    useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
+  const hostLayout = useContext(SecondaryPanelHostLayoutContext);
+  // The corner belongs to the pane unless the host paints its toggle there.
+  const showsWindowPanelToggle = hostLayout?.pinsCornerToggle === true;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const panel =
@@ -1070,7 +1053,7 @@ function NonThreadPaneContent({
           subPath={content.kind === "plugin-panel" ? content.subPath : ""}
         />
       ) : null}
-      {content.kind === "plugin-panel" ? null : <PaneMaximizeButton />}
+      <PaneMaximizeButton />
       {onRequestClose ? (
         <Button
           type="button"
@@ -1092,11 +1075,11 @@ function NonThreadPaneContent({
           />
         </Button>
       ) : null}
-      {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+      {reservesWindowPanelToggle && showsWindowPanelToggle ? (
         // The host's shortcut hint drops below the chrome row; reserve only
-        // its stable 28px corner button beside these pane actions. With the
-        // window panel open, the toggle overlays the panel's own chrome
-        // instead, so the pane actions sit flush at the pane edge.
+        // its stable 28px corner button beside these pane actions. Whenever
+        // the host hides that toggle, the pane actions sit flush at the pane
+        // edge instead of trailing an empty slot.
         <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}
     </>

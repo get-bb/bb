@@ -614,26 +614,57 @@ export class PiSdkSession {
   }
 }
 
+type PiModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
+
 /**
- * Resolve a model string like "anthropic/claude-sonnet-4-20250514" to a
- * Pi Model object. Returns undefined if the model can't be resolved.
+ * Resolve a model string to a Pi Model object. Returns undefined when no model
+ * is configured, and throws when a configured model does not exist.
+ *
+ * The canonical form is `<provider>/<model id>`, and the model id keeps its own
+ * slashes (`openrouter/deepseek/deepseek-v4-flash`), so the provider comes from
+ * the first segment only.
+ *
+ * The named provider is authoritative. A model reaches exactly the vendor the
+ * user picked, even when that vendor has no credentials, because substituting
+ * another vendor would send workspace content and billing somewhere the user
+ * never chose.
+ *
+ * A bare provider-native model id (`deepseek/deepseek-v4-flash-0731`) resolves
+ * only when the first segment names no provider that serves the rest. CLI and
+ * SDK callers type that form, and selections stored before bb applied the
+ * provider prefix to aggregator models still use it. Two providers can list the
+ * same id, and nothing in the string says which one was meant, so an ambiguous
+ * match is an error rather than a guess.
  */
 function resolveConfiguredModel(
   modelRuntime: ModelRuntime,
   modelStr: string | undefined,
-): ReturnType<ModelRuntime["getModel"]> | undefined {
+): PiModel | undefined {
   if (!modelStr) {
     return undefined;
   }
 
   const slashIdx = modelStr.indexOf("/");
-  if (slashIdx === -1) {
-    throw new Error(`Failed to resolve Pi model "${modelStr}"`);
+  if (slashIdx > 0) {
+    const prefixed = modelRuntime.getModel(
+      modelStr.slice(0, slashIdx),
+      modelStr.slice(slashIdx + 1),
+    );
+    if (prefixed) {
+      return prefixed;
+    }
   }
 
-  const provider = modelStr.slice(0, slashIdx);
-  const modelId = modelStr.slice(slashIdx + 1);
-  const model = modelRuntime.getModel(provider, modelId);
+  const bare = modelRuntime
+    .getModels()
+    .filter((candidate) => candidate.id === modelStr);
+  if (bare.length > 1) {
+    const providers = bare.map((candidate) => candidate.provider).join(", ");
+    throw new Error(
+      `Ambiguous Pi model "${modelStr}": served by ${providers}. Prefix it with the provider you want.`,
+    );
+  }
+  const model = bare[0];
   if (!model) {
     throw new Error(`Failed to resolve Pi model "${modelStr}"`);
   }

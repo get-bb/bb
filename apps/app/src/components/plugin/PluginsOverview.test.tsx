@@ -203,7 +203,7 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Developer tools" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
@@ -233,29 +233,28 @@ describe("PluginsOverview", () => {
 
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(screen.getByText("Docs")).toBeTruthy();
-    expect(
-      screen.queryByRole("radiogroup", {
-        name: "Filter plugins by category",
-      }),
-    ).toBeNull();
-    expect(screen.queryByText("Category")).toBeNull();
+    // Installed offers Type, not Category.
+    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
-    expect(
-      await screen.findByRole("radiogroup", {
-        name: "Filter plugins by category",
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByText("Category")).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "Context & knowledge" }));
+    // Wait for the catalog so the Category menu has options to offer.
+    await screen.findByText("GitHub");
+    const categoryTrigger = screen.getByRole("button", { name: "Category" });
+    expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
+    fireEvent.pointerDown(categoryTrigger);
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
-    expect(screen.queryByText("Automations")).toBeNull();
+    expect(screen.queryByText("GitHub")).toBeNull();
   });
 
-  it("keeps category pills visually secondary to the collection tabs", async () => {
+  it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={["/tools/plugins?view=browse"]}>
         <QueryClientWrapper>
           <PluginsOverview />
@@ -264,19 +263,19 @@ describe("PluginsOverview", () => {
     );
 
     await screen.findByText("GitHub");
-    const filters = screen.getByRole("radiogroup", {
-      name: "Filter plugins by category",
-    });
-    const all = screen.getByRole("radio", {
-      name: "Show all plugin categories",
-    });
-    expect(filters.className).toContain("py-2");
-    expect(filters.className).toContain("gap-2");
-    expect(all.className).toContain("cursor-pointer");
-    expect(all.className).toContain("hover:border-foreground/20");
-    expect(all.className).toContain("hover:shadow-xs");
-    expect(all.className).toContain("data-[state=on]:bg-secondary/70");
-    expect(all.className).not.toContain("data-[state=on]:bg-state-active");
+    // The old pill row is gone, so Browse keeps one flush content band.
+    expect(
+      screen.queryByRole("radiogroup", {
+        name: "Filter plugins by category",
+      }),
+    ).toBeNull();
+    const controls = container.querySelector(
+      "[data-resource-collection-viewport] > .shrink-0",
+    ) as HTMLElement;
+    const category = screen.getByRole("button", { name: "Category" });
+    const sort = screen.getByRole("button", { name: /^Sort:/ });
+    expect(controls.contains(category)).toBe(true);
+    expect(controls.contains(sort)).toBe(true);
     expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
       "bg-accent",
     );
@@ -592,6 +591,79 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-official",
       "plugin-row-inactive-local",
     ]);
+  });
+
+  it("filters installed plugins by type, treating builtin and catalog as BB Official", async () => {
+    installFetch([
+      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "catalog-one",
+        name: "Catalog One",
+        provenance: "catalog",
+        catalogEntryId: "catalog-one",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "direct-one",
+        name: "Direct One",
+        provenance: "direct",
+      },
+    ]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Direct One");
+    const rowIds = () =>
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      );
+
+    // Nothing selected is the default and shows every type.
+    const typeTrigger = screen.getByRole("button", { name: "Type" });
+    expect(rowIds()).toEqual([
+      "plugin-row-builtin-one",
+      "plugin-row-catalog-one",
+      "plugin-row-direct-one",
+    ]);
+    fireEvent.pointerDown(typeTrigger);
+    // There is no explicit "All" row: an empty selection means all types.
+    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    await waitFor(() => {
+      expect(rowIds()).toEqual([
+        "plugin-row-builtin-one",
+        "plugin-row-catalog-one",
+      ]);
+    });
+
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    await waitFor(() => {
+      expect(rowIds()).toEqual(["plugin-row-direct-one"]);
+    });
+
+    // Clearing the last selection returns to unfiltered, not to empty.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    await waitFor(() => {
+      expect(rowIds()).toEqual([
+        "plugin-row-builtin-one",
+        "plugin-row-catalog-one",
+        "plugin-row-direct-one",
+      ]);
+    });
+    expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });
 
   it("keeps disabled plugins installed regardless of provenance", async () => {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   createEnvironment,
   createEventId,
-  findEnvironmentByHostPath,
+  findProjectEnvironmentByHostPath,
   getEnvironment,
   getThread,
   updateThread,
@@ -18,6 +18,8 @@ import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
+import { findHostDataDir } from "../lib/entity-lookup.js";
+import { unmanagedAttachRefusal } from "./workspace-path-claims.js";
 
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
   "update_environment_directory";
@@ -33,7 +35,7 @@ const updateEnvironmentDirectoryInputSchema = z
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL: DynamicTool = {
   name: UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
   description:
-    "Move this bb thread to a different working directory for subsequent turns. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses any existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. After a successful switch, stop the current turn because the running provider cwd will not change until the next turn.",
+    "Move this bb thread to a different working directory for subsequent turns. Use this when the user asks to switch to a new checkout, worktree, or local directory. The path must be an absolute existing directory on the current host. The tool reuses this project's existing bb environment for that host/path, otherwise it creates an unmanaged environment after validating the path. Another project may hold its own environment for the same directory; that is allowed, except for a bb-managed worktree owned by another project, which this tool refuses. After a successful switch, stop the current turn because the running provider cwd will not change until the next turn.",
   inputSchema: {
     type: "object",
     properties: {
@@ -287,8 +289,22 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     );
   }
 
-  const existingEnvironment = findEnvironmentByHostPath(
+  // The claim is project-scoped, but attaching in place to another project's
+  // bb-managed worktree is unsafe: its cleanup deletes the directory.
+  const refusal = unmanagedAttachRefusal(deps.db, {
+    checksOutBranch: false,
+    dataDir: findHostDataDir(deps, args.currentEnvironment.hostId),
+    hostId: args.currentEnvironment.hostId,
+    path: normalizedPath,
+    projectId: args.thread.projectId,
+  });
+  if (refusal) {
+    return toolCallFailure(`${refusal.message}. Use a different directory.`);
+  }
+
+  const existingEnvironment = findProjectEnvironmentByHostPath(
     deps.db,
+    args.thread.projectId,
     args.currentEnvironment.hostId,
     normalizedPath,
   );
@@ -296,11 +312,6 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
   let targetEnvironment: ReadyEnvironment;
 
   if (existingEnvironment) {
-    if (existingEnvironment.projectId !== args.thread.projectId) {
-      return toolCallFailure(
-        "An environment for this host/path already exists on a different project.",
-      );
-    }
     const failure = readyEnvironmentFailure(existingEnvironment);
     if (failure) {
       return toolCallFailure(failure);

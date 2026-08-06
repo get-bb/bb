@@ -978,6 +978,70 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("allows a permission grant whose request has nothing to grant", async () => {
+    // A provider can ask about an action it cannot describe as a permission.
+    // The prompt still reaches the user, so the user must still be able to
+    // answer it. Rejecting the empty grant here wedged the thread (#1041).
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-no-grantable",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-no-grantable",
+          providerId: "codex",
+          providerThreadId: "provider-thread-no-grantable",
+          providerRequestId: "request-no-grantable",
+          payload: createPermissionGrantApprovalPayload({
+            itemId: "item-no-grantable",
+            reason: "Needs approval",
+            toolName: "SomeOpaqueTool",
+            permissions: {
+              network: null,
+              fileSystem: null,
+            },
+          }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+
+      harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: created.interaction.id,
+        resolution: createAllowOnceResolution({
+          network: null,
+          fileSystem: null,
+        }),
+      });
+
+      expect(
+        harness.deps.pendingInteractions.getThreadInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+        }).status,
+      ).not.toBe("pending");
+    });
+  });
+
   it("allows command approvals to grant explicit session permissions for session decisions", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

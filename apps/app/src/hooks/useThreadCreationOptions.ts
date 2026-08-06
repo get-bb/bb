@@ -387,25 +387,52 @@ export function useThreadCreationOptions(
     return supportByProvider;
   }, [providers]);
 
+  // Pi model ids gained a provider prefix, so a thread can hold
+  // `deepseek/deepseek-v4-flash` where the catalog now lists
+  // `openrouter/deepseek/deepseek-v4-flash`. Re-point the stored selection at
+  // that row, otherwise the recovery path below falls back to the catalog
+  // default and the next message persists it, which permanently moves the
+  // thread to another model and another vendor. Only a unique match is safe:
+  // two providers can serve one id, and the stored string does not say which
+  // one was meant.
+  const selectedModelSelection = useMemo(() => {
+    if (!rawSelectedModel) return rawSelectedModel;
+    const catalog = [
+      ...(executionOptionsQuery.data?.models ?? []),
+      ...(executionOptionsQuery.data?.selectedOnlyModels ?? []),
+    ];
+    if (catalog.some((model) => model.model === rawSelectedModel)) {
+      return rawSelectedModel;
+    }
+    const prefixed = catalog.filter((model) =>
+      model.model.endsWith(`/${rawSelectedModel}`),
+    );
+    return prefixed.length === 1 ? prefixed[0].model : rawSelectedModel;
+  }, [
+    executionOptionsQuery.data?.models,
+    executionOptionsQuery.data?.selectedOnlyModels,
+    rawSelectedModel,
+  ]);
+
   // Merge the user's currently-stored selection from the selected-only pool
   // when it isn't in the active list. This preserves a previously-selected
   // model after it has been retired so the picker can render its label and
   // the user isn't silently moved to a different model.
   const availableModels = useMemo(() => {
     const activeModels = executionOptionsQuery.data?.models ?? [];
-    if (!rawSelectedModel) return activeModels;
-    if (activeModels.some((model) => model.model === rawSelectedModel)) {
+    if (!selectedModelSelection) return activeModels;
+    if (activeModels.some((model) => model.model === selectedModelSelection)) {
       return activeModels;
     }
     const selectedOnly = executionOptionsQuery.data?.selectedOnlyModels ?? [];
     const match = selectedOnly.find(
-      (model) => model.model === rawSelectedModel,
+      (model) => model.model === selectedModelSelection,
     );
     return match ? [match, ...activeModels] : activeModels;
   }, [
     executionOptionsQuery.data?.models,
     executionOptionsQuery.data?.selectedOnlyModels,
-    rawSelectedModel,
+    selectedModelSelection,
   ]);
   const selectedModel = useMemo(() => {
     // An unverified catalog (discovery error, or preloaded placeholder rows) is
@@ -413,20 +440,26 @@ export function useThreadCreationOptions(
     // partial/provisional catalog as proof that it disappeared. Once discovery
     // succeeds, absence is definitive and the catalog default becomes a recovery
     // selection.
-    if (modelCatalogIsUnverified && rawSelectedModel) {
-      return rawSelectedModel;
+    if (modelCatalogIsUnverified && selectedModelSelection) {
+      return selectedModelSelection;
     }
     if (availableModels.length === 0) {
-      return rawSelectedModel;
+      return selectedModelSelection;
     }
-    if (availableModels.some((model) => model.model === rawSelectedModel)) {
-      return rawSelectedModel;
+    if (
+      availableModels.some((model) => model.model === selectedModelSelection)
+    ) {
+      return selectedModelSelection;
     }
     return (
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model
     );
-  }, [availableModels, modelCatalogIsUnverified, rawSelectedModel]);
+  }, [availableModels, modelCatalogIsUnverified, selectedModelSelection]);
+  // True when the stored string is not what will run: either the model is gone
+  // and the catalog default replaces it, or a prefix-free Pi id resolved to its
+  // canonical row. Both cases send the model explicitly, so the stored value
+  // catches up with what the turn actually used.
   const isUnavailableModelRecovery =
     !modelCatalogIsUnverified &&
     rawSelectedModel.length > 0 &&

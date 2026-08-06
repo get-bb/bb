@@ -1181,6 +1181,159 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("switches into a directory another project already uses", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const sharedPath = "/tmp/shared-with-another-project";
+      // Another project already holds an environment for the folder.
+      const { project: otherProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Other Project",
+        path: sharedPath,
+      });
+      const otherEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: otherProject.id,
+        path: sharedPath,
+      });
+
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/switching-project",
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/switching-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-shared-directory"),
+        data: {
+          providerThreadId: "provider-tool-call",
+        },
+      });
+
+      const responsePromise = postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-shared-directory",
+        tool: "update_environment_directory",
+        arguments: { path: sharedPath },
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.workspaceProvisionType === "unmanaged" &&
+          command.path === sharedPath,
+      );
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: sharedPath,
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+        transcript: [],
+      });
+
+      await expect(readJson(await responsePromise)).resolves.toMatchObject({
+        success: true,
+      });
+      // The switching project gets its own environment; the other project's
+      // claim on the folder is untouched.
+      const switched = getThread(harness.db, thread.id)?.environmentId;
+      expect(switched).not.toBe(otherEnvironment.id);
+      expect(getEnvironment(harness.db, switched ?? "")).toMatchObject({
+        path: sharedPath,
+        projectId: project.id,
+      });
+      expect(getEnvironment(harness.db, otherEnvironment.id)).toMatchObject({
+        path: sharedPath,
+        projectId: otherProject.id,
+      });
+    });
+  });
+
+  it("refuses to switch into another project's managed worktree", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const worktreePath = "/tmp/bb-worktrees/env_owner/repo";
+      const { project: owner } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owning Project",
+      });
+      // Cleanup of this environment deletes the directory, so no other project
+      // may attach to it in place.
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: owner.id,
+        path: worktreePath,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Aliasing Project",
+        path: "/tmp/aliasing-project",
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/aliasing-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: currentEnvironment.id,
+        providerThreadId: "provider-tool-call",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-managed-alias"),
+        data: { providerThreadId: "provider-tool-call" },
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        turnId: "turn-managed-alias",
+        tool: "update_environment_directory",
+        arguments: { path: worktreePath },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "bb-managed workspace owned by another project",
+            ),
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        currentEnvironment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
+    });
+  });
+
   it("rejects relative update_environment_directory paths without changing the thread", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

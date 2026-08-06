@@ -10,14 +10,13 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListPanel,
+  ResourceFilterMenu,
   ResourceListState,
-  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceToolbar,
-  type ResourceOption,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_OWNED_COLLECTION_LABEL } from "@/components/tools/tools-navigation";
@@ -35,19 +34,33 @@ import {
 } from "@/lib/provider-icon";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
-type ResourceSkillSourceFilter = "included" | "bb-official";
+type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
-const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
-  "bb",
-  "claude-code",
-  "codex",
-];
+// Keyed by the filter union rather than listed as an array, so adding a member
+// to `SkillProvider` is a typecheck error here instead of a silent gap. A plain
+// `readonly ResourceProviderFilter[]` permits a subset, which would leave the
+// new provider's skills unreachable under any non-empty Provider selection
+// while still compiling. The Type side gets the same guarantee from
+// `skillSourceFilterLabel`'s exhaustive switch.
+const RESOURCE_PROVIDER_FILTER_ORDER: Record<ResourceProviderFilter, number> = {
+  bb: 0,
+  "claude-code": 1,
+  codex: 2,
+};
+
+const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
+  Object.keys(RESOURCE_PROVIDER_FILTER_ORDER) as ResourceProviderFilter[]
+).sort(
+  (left, right) =>
+    RESOURCE_PROVIDER_FILTER_ORDER[left] - RESOURCE_PROVIDER_FILTER_ORDER[right],
+);
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
   "included",
   "bb-official",
+  "user",
 ];
 
 function providerLabel(provider: SkillProvider | null): string {
@@ -64,28 +77,40 @@ function providerFilterLabel(provider: ResourceProviderFilter): string {
   return provider === "bb" ? "bb" : providerLabel(provider);
 }
 
-function isResourceProviderFilter(
-  value: string,
-): value is ResourceProviderFilter {
-  return value === "bb" || value === "claude-code" || value === "codex";
-}
-
-function skillSourceFilterId(
-  skill: SkillSummary,
-): ResourceSkillSourceFilter | null {
+function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
   if (skill.scope === "bb-builtin") return "bb-official";
   if (skill.scope === "plugin") return "included";
-  return null;
+  // Every remaining scope (bb-user/-project, claude-*, codex-*) is authored by
+  // the user, so the bucket is total and the filter can never strand a skill.
+  return "user";
 }
 
 function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
-  return source === "bb-official" ? "bb official" : "Plugin";
+  switch (source) {
+    case "bb-official":
+      return "BB Official";
+    case "included":
+      return "Included in plugin";
+    case "user":
+      return "User";
+  }
 }
 
 function isResourceSkillSourceFilter(
   value: string,
 ): value is ResourceSkillSourceFilter {
-  return value === "included" || value === "bb-official";
+  return value === "included" || value === "bb-official" || value === "user";
+}
+
+// The filter menu hands back plain strings, so both selections are narrowed on
+// the way in rather than cast: this rejects any value that is not a rendered
+// provider option, where a cast would wave it through into state. What keeps
+// the option list itself complete is `RESOURCE_PROVIDER_FILTER_ORDER` being
+// keyed by the union, not this guard.
+function isResourceProviderFilter(
+  value: string,
+): value is ResourceProviderFilter {
+  return RESOURCE_PROVIDER_FILTERS.some((provider) => provider === value);
 }
 
 export function ProviderLogo({
@@ -115,36 +140,6 @@ function BbLogo({ className = "size-4" }: { className?: string }) {
       aria-hidden="true"
       className={cn(className, "object-contain dark:invert")}
     />
-  );
-}
-
-function ProviderFilterTooltip({
-  options,
-}: {
-  options: readonly ResourceOption[];
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span>Providers: </span>
-      {options.map((option) => {
-        if (!isResourceProviderFilter(option.id)) return null;
-        const provider = option.id;
-        return (
-          <span
-            key={option.id}
-            className="flex size-3.5 items-center justify-center"
-            data-provider-icon={provider}
-            aria-hidden="true"
-          >
-            {provider === "bb" ? (
-              <BbLogo className="size-3.5 brightness-0 invert" />
-            ) : (
-              <ProviderLogo providerId={provider} className="size-3.5" />
-            )}
-          </span>
-        );
-      })}
-    </span>
   );
 }
 
@@ -281,9 +276,10 @@ export function SkillsOverview({
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
   >(["bb"]);
+  // Empty means unfiltered: the menu has no explicit "All" row.
   const [sourceFilters, setSourceFilters] = useState<
     ResourceSkillSourceFilter[]
-  >(["bb-official"]);
+  >([]);
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -332,7 +328,7 @@ export function SkillsOverview({
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       const source = skillSourceFilterId(skill);
-      if (source !== null && !sourceFilters.includes(source)) {
+      if (sourceFilters.length > 0 && !sourceFilters.includes(source)) {
         return false;
       }
       if (
@@ -417,11 +413,16 @@ export function SkillsOverview({
     <ResourceListState
       state="empty"
       message={
-        normalizedQuery !== ""
-          ? `No skills match "${query}"`
-          : skills.length === 0
+        // Naming only the query would misattribute the empty result when a
+        // filter is what emptied it — clearing the search would still show
+        // nothing.
+        normalizedQuery === ""
+          ? skills.length === 0
             ? "No skills in your library."
             : "No skills match these filters."
+          : sourceFilters.length > 0 || providerFilters.length > 0
+            ? `No skills match "${query}" with these filters.`
+            : `No skills match "${query}"`
       }
     />
   ) : (
@@ -471,40 +472,35 @@ export function SkillsOverview({
               onSearchChange={onQueryChange}
               controls={
                 <>
-                  <ResourceMultiSelectMenu
-                    label="Type"
-                    icon="PackageReceive"
-                    selectedValues={sourceFilters}
-                    options={sourceOptions}
-                    allOptionLabel="All"
-                    emptySelectionLabel="None"
-                    selectedLabel={(options) =>
-                      options.map((option) => option.label).join(", ")
-                    }
-                    onChange={(values) =>
-                      setSourceFilters(
-                        values.filter(isResourceSkillSourceFilter),
-                      )
-                    }
-                  />
-                  <ResourceMultiSelectMenu
-                    label="Provider"
-                    icon="Layers"
-                    selectedValues={providerFilters}
-                    options={providerOptions}
-                    selectedLabel={(options) =>
-                      options.map((option) => option.label).join(", ")
-                    }
-                    selectedTooltip={(options) => (
-                      <ProviderFilterTooltip options={options} />
-                    )}
-                    onChange={(values) =>
-                      setProviderFilters(values as ResourceProviderFilter[])
-                    }
+                  <ResourceFilterMenu
+                    compact
+                    groups={[
+                      {
+                        id: "type",
+                        label: "Type",
+                        options: sourceOptions,
+                        selectedValues: sourceFilters,
+                        onChange: (values) =>
+                          setSourceFilters(
+                            values.filter(isResourceSkillSourceFilter),
+                          ),
+                      },
+                      {
+                        id: "provider",
+                        label: "Provider",
+                        options: providerOptions,
+                        selectedValues: providerFilters,
+                        onChange: (values) =>
+                          setProviderFilters(
+                            values.filter(isResourceProviderFilter),
+                          ),
+                      },
+                    ]}
                   />
                   <ResourceSortMenu
                     value={sortMode}
                     direction={sortDirection}
+                    compact
                     options={[
                       {
                         id: "provider",

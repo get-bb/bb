@@ -20,11 +20,13 @@ import type {
 // it can transition in lockstep with the sidebar slide instead of snapping
 // on/off while the inset animates. The two surfaces are:
 //  - the page header content row.
-//  - the split-workspace secondary panel's top chrome, while the conversation
-//    is collapsed and the panel is flush at the window top-left. (This is the
-//    only surface where the panel itself owns the top-left — inline non-split
-//    thread detail keeps a full-width header on the lights' row above the
-//    panel, and root compose keeps the panel on the right of the main content.)
+//  - the secondary panel's top chrome, while the conversation is collapsed and
+//    the panel is flush at the window top-left. That happens on both thread
+//    surfaces, not just the split-workspace host: collapsing takes the
+//    conversation column to zero width and the thread header rides inside it,
+//    so inline thread detail hands over the top-left too. Assuming otherwise is
+//    what once left its tab strip sitting under the lights. Root compose is
+//    genuinely exempt — it keeps the panel to the right of the main content.
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
 export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
 

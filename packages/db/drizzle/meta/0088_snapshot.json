@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ad0272ef-d74b-4626-985c-4e9a2602357b",
-  "prevId": "287914a2-89cc-45a3-856d-ffbdca0e7343",
+  "id": "e329eaa4-dea6-44c1-9fc4-e9c0022c16be",
+  "prevId": "ca3cd01e-7852-4e7e-8781-d0c305e3671b",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -549,13 +549,22 @@
         }
       },
       "indexes": {
-        "environments_host_path_idx": {
-          "name": "environments_host_path_idx",
+        "environments_project_host_path_idx": {
+          "name": "environments_project_host_path_idx",
           "columns": [
+            "project_id",
             "host_id",
             "path"
           ],
           "isUnique": true
+        },
+        "environments_host_path_lookup_idx": {
+          "name": "environments_host_path_lookup_idx",
+          "columns": [
+            "host_id",
+            "path"
+          ],
+          "isUnique": false
         },
         "environments_project_idx": {
           "name": "environments_project_idx",
@@ -672,6 +681,27 @@
         },
         "item_kind": {
           "name": "item_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_principal_id": {
+          "name": "actor_principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_display_name": {
+          "name": "actor_display_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1461,6 +1491,27 @@
         },
         "status_reason": {
           "name": "status_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolution_actor_principal_id": {
+          "name": "resolution_actor_principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolution_actor_kind": {
+          "name": "resolution_actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolution_actor_display_name": {
+          "name": "resolution_actor_display_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2462,6 +2513,27 @@
         },
         "sender_thread_id": {
           "name": "sender_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_principal_id": {
+          "name": "actor_principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_display_name": {
+          "name": "actor_display_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

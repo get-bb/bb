@@ -77,3 +77,19 @@ export function resolvePersonalTargetPath(
     args.environmentId,
   );
 }
+
+/**
+ * Whether a path lies inside a workspace root bb creates and destroys on a
+ * host. A managed environment stores its path only once the host reports
+ * provisioning success, so an environment row is not a reliable claim during
+ * that window. The roots are, because bb derives every managed path from them.
+ */
+export function isBbManagedWorkspacePath(args: {
+  dataDir: string;
+  path: string;
+}): boolean {
+  return [
+    path.posix.join(args.dataDir, "worktrees"),
+    path.posix.join(args.dataDir, "personal-workspaces"),
+  ].some((root) => args.path === root || args.path.startsWith(`${root}/`));
+}

@@ -43,8 +43,13 @@ export function ResourceCollectionPage<Mode extends string>({
   const activePanelId = `${id}-${activeMode}-panel`;
   return (
     <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
-      <ResourceTabDescription>{description}</ResourceTabDescription>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Every band in the collection carries the same pr-1 scrollbar gutter as
+          the results below, so description, tabs, toolbar, and rows all share
+          one content width. */}
+      <div className="pr-1">
+        <ResourceTabDescription>{description}</ResourceTabDescription>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 pr-1">
         <div className="flex items-center gap-1" role="tablist">
           {modes.map((mode) => {
             const active = mode.id === activeMode;
@@ -139,7 +144,9 @@ export function ResourceCollectionViewport({
       className={cn("flex h-full min-h-0 flex-col gap-3", className)}
       data-resource-collection-viewport
     >
-      {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
+      {/* pr-1 matches the scroll viewport's scrollbar gutter below, so the
+          toolbar, results, and footer all end on the same content edge. */}
+      {toolbar ? <div className="shrink-0 pr-1">{toolbar}</div> : null}
       <ScrollArea
         type="scroll"
         scrollHideDelay={600}
@@ -302,7 +309,6 @@ export function ResourceOverviewPage({
             searchPlaceholder={installed.searchPlaceholder}
             searchLabel={installed.searchLabel}
             onSearchChange={installed.onSearchChange}
-            containedControls
             controls={installed.controls}
             action={installed.action}
           />
@@ -551,7 +557,7 @@ export function ResourceTemplateBrowseCard({
           label={`${actionLabel}: ${title}`}
           tooltipLabel={actionLabel}
           icon="MessageCirclePlus"
-          className="size-7 bg-surface-recessed-soft-solid hover:bg-state-active focus-visible:bg-state-active"
+          className="size-7 hover:bg-state-hover focus-visible:bg-state-hover"
           onClick={onUse}
         />
       }

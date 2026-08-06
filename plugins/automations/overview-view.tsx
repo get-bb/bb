@@ -14,7 +14,7 @@ import {
   automationIconName,
   automationScheduleLabel,
 } from "./detail-view.js";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -28,8 +28,8 @@ import {
   ResourceCreateButton,
   ResourceListPanel,
   ResourceListState,
+  ResourceFilterMenu,
   ResourceMeta,
-  ResourceMultiSelectMenu,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
@@ -49,15 +49,9 @@ import { AutomationMetadataItem } from "./metadata.js";
 
 const PERSONAL_PROJECT_ID = "proj_personal";
 
-function automationMenuIcon(name: IconName) {
-  return (
-    <Icon name={name} className="size-3.5 text-muted-foreground" aria-hidden />
-  );
-}
-
 const AUTOMATION_STATUS_FILTER_OPTIONS = [
-  { id: "active", label: "Active", leading: automationMenuIcon("Play") },
-  { id: "paused", label: "Paused", leading: automationMenuIcon("Pause") },
+  { id: "active", label: "Active" },
+  { id: "paused", label: "Paused" },
 ] as const;
 
 export const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
@@ -160,6 +154,24 @@ function automationProjectFilterId(
 ): AutomationProjectFilter {
   const projectId = entry.project?.id ?? entry.automation.projectId;
   return `project:${projectId}`;
+}
+
+// The filter menu hands back plain strings, so both selections are narrowed on
+// the way in rather than cast. A cast would keep type-checking while silently
+// admitting a value the rest of the component cannot map back to a project or
+// a status.
+function isAutomationProjectFilter(
+  value: string,
+): value is AutomationProjectFilter {
+  return value.startsWith("project:");
+}
+
+function isAutomationStatusFilter(
+  value: string,
+): value is AutomationStatusFilter {
+  return AUTOMATION_STATUS_FILTER_OPTIONS.some(
+    (option) => option.id === value,
+  );
 }
 
 function applyAutomationSortDirection(
@@ -323,11 +335,7 @@ export function AutomationOverviewView({
         automationProjectLabel(entry.project),
       );
     }
-    return [...options].map(([id, label]) => ({
-      id,
-      label,
-      leading: automationMenuIcon("Folder"),
-    }));
+    return [...options].map(([id, label]) => ({ id, label }));
   }, [entries]);
   useEffect(() => {
     setProjectFilters((current) =>
@@ -497,25 +505,30 @@ export function AutomationOverviewView({
               onSearchChange={setQuery}
               controls={
                 <>
-                  <ResourceMultiSelectMenu
-                    label="Projects"
-                    icon="Layers"
+                  <ResourceFilterMenu
                     compact
-                    selectedValues={projectFilters}
-                    options={projectOptions}
-                    onChange={(values) =>
-                      setProjectFilters(values as AutomationProjectFilter[])
-                    }
-                  />
-                  <ResourceMultiSelectMenu
-                    label="Status"
-                    icon="SlidersHorizontal"
-                    compact
-                    selectedValues={statusFilters}
-                    options={AUTOMATION_STATUS_FILTER_OPTIONS}
-                    onChange={(values) =>
-                      setStatusFilters(values as AutomationStatusFilter[])
-                    }
+                    groups={[
+                      {
+                        id: "projects",
+                        label: "Projects",
+                        options: projectOptions,
+                        selectedValues: projectFilters,
+                        onChange: (values) =>
+                          setProjectFilters(
+                            values.filter(isAutomationProjectFilter),
+                          ),
+                      },
+                      {
+                        id: "status",
+                        label: "Status",
+                        options: AUTOMATION_STATUS_FILTER_OPTIONS,
+                        selectedValues: statusFilters,
+                        onChange: (values) =>
+                          setStatusFilters(
+                            values.filter(isAutomationStatusFilter),
+                          ),
+                      },
+                    ]}
                   />
                   <ResourceSortMenu
                     value={sortMode}
@@ -526,13 +539,8 @@ export function AutomationOverviewView({
                         id: "project",
                         label: "Project",
                         disabled: projectBucketCount <= 1,
-                        leading: automationMenuIcon("Folder"),
                       },
-                      {
-                        id: "alpha",
-                        label: "Automation name",
-                        leading: automationMenuIcon("Sort"),
-                      },
+                      { id: "alpha", label: "Automation name" },
                     ]}
                     onChange={handleSortChange}
                   />

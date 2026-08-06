@@ -149,13 +149,6 @@ interface CollapsedPanelTrafficLightReserveArgs {
   /** The compact drawer layout (never the window's top-left surface). */
   renderAsDrawer: boolean;
   /**
-   * True inside the split-workspace host — the only surface where the panel
-   * itself owns the window's flush top-left corner while the conversation is
-   * collapsed. Inline (non-split) thread detail keeps a full-width header on the
-   * traffic-light row above the panel, so it needs no reserve here.
-   */
-  isInSplitHost: boolean;
-  /**
    * Whether the main app sidebar is showing. `null` when the sidebar context is
    * absent (e.g. tests) — treated as showing, so no reserve is applied. The
    * sidebar hosts the traffic lights in its own top strip while open.
@@ -172,23 +165,31 @@ interface CollapsedPanelTrafficLightReserveArgs {
 /**
  * Left-padding class that clears the macOS traffic-light safe area for the
  * secondary panel's leading top-chrome toolbar, or `false` when no reserve is
- * needed. The reserve applies only when the panel is the window's flush
- * top-left surface (split host, conversation collapsed) while the main sidebar
- * is collapsed and the lights are visible — the collapsed-left / expanded-right
- * case from BB-46. See {@link MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS}
+ * needed. The reserve applies when the panel is the window's flush top-left
+ * surface — the conversation is collapsed — while the main sidebar is collapsed
+ * and the lights are visible: the collapsed-left / expanded-right case from
+ * BB-46. It lands the leading controls on the same x = 120px as
+ * AppPageHeader's own reserve. See {@link MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS}
  * for the geometry.
+ *
+ * Collapsing hands the panel the top-left on BOTH thread surfaces, so this does
+ * not test for the split host. Either way the conversation column collapses to
+ * zero width — the split host sets its layout to [0, panel], inline thread
+ * detail sizes the timeline panel to 0 — and the thread header rides inside
+ * that column, so nothing is left on the title-bar row but this toolbar. The
+ * split host reserved correctly because it satisfied the host gate; inline
+ * thread detail, identical in layout, did not, which left its tab strip
+ * sitting under the traffic lights.
  */
 export function resolveCollapsedPanelTrafficLightReserveClassName({
   isConversationCollapsed,
   renderAsDrawer,
-  isInSplitHost,
   isSidebarShowing,
   reserveMacosTrafficLights,
 }: CollapsedPanelTrafficLightReserveArgs): string | false {
   const reserves =
     isConversationCollapsed &&
     !renderAsDrawer &&
-    isInSplitHost &&
     isSidebarShowing === false &&
     reserveMacosTrafficLights;
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
@@ -513,14 +514,13 @@ export function ThreadSecondaryPanel({
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
   // The panel reserves the traffic-light safe area only when it is the window's
-  // flush top-left surface (split-workspace host, conversation collapsed) with
-  // the main sidebar collapsed and the lights visible. See
+  // flush top-left surface (conversation collapsed) with the main sidebar
+  // collapsed and the lights visible. See
   // resolveCollapsedPanelTrafficLightReserveClassName.
   const collapsedPanelTrafficLightReserveClassName =
     resolveCollapsedPanelTrafficLightReserveClassName({
       isConversationCollapsed,
       renderAsDrawer,
-      isInSplitHost: hostLayout !== null,
       isSidebarShowing,
       reserveMacosTrafficLights: shouldReserveMacosTrafficLights({
         desktopInfo,
@@ -627,8 +627,9 @@ export function ThreadSecondaryPanel({
           <div
             className={cn(
               "flex min-w-0 flex-1 items-center gap-1",
-              // When this panel owns the window's top-left (split host, sidebar
-              // collapsed, conversation collapsed), reserve the traffic-light
+              // When this panel owns the window's top-left (conversation
+              // collapsed, on either thread surface, with the sidebar
+              // collapsed), reserve the traffic-light
               // safe area so the leading controls clear the lights and the
               // pinned sidebar trigger. The padding must animate on the SAME
               // timing/easing as the panel's collapse slide

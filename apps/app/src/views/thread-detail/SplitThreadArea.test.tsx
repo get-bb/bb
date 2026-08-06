@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -52,6 +53,13 @@ const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
+const panelCallbacks = vi.hoisted(
+  () =>
+    new Map<
+      string,
+      { onCollapse?: () => void; onResize?: (size: number) => void }
+    >(),
+);
 const commandHandlers = vi.hoisted(() => new Map<string, () => boolean>());
 interface ShortcutPresentationFixture {
   ariaKeyshortcuts: string;
@@ -151,9 +159,26 @@ vi.mock("react-resizable-panels", async () => {
     return <div data-testid="workspace-panel-group">{children}</div>;
   });
   PanelGroup.displayName = "MockPanelGroup";
-  const Panel = ({ children }: { children?: ReactNode }) => (
-    <div data-testid="workspace-panel">{children}</div>
-  );
+  // Record each panel's lifecycle callbacks so a test can fire the ones the
+  // real library fires on its own, such as the initial-layout collapse.
+  const Panel = ({
+    children,
+    id,
+    onCollapse,
+    onResize,
+  }: {
+    children?: ReactNode;
+    id?: string;
+    onCollapse?: () => void;
+    onResize?: (size: number) => void;
+  }) => {
+    if (id !== undefined) panelCallbacks.set(id, { onCollapse, onResize });
+    return (
+      <div data-testid="workspace-panel" data-panel-id={id}>
+        {children}
+      </div>
+    );
+  };
   const PanelResizeHandle = ({
     className,
     id,
@@ -524,6 +549,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   threadStore.clear();
+  panelCallbacks.clear();
   resetPluginSlotStoreForTest();
   delete window.bbDesktop;
   window.localStorage.clear();
@@ -1161,7 +1187,8 @@ describe("SplitThreadArea", () => {
     expect(toggle.classList).toContain("absolute");
     expect(toggle.classList).toContain("hidden");
     expect(toggle.classList).not.toContain("relative");
-    expect(toggle.classList).toContain("right-2.5");
+    // The corner button shares the pane header's px-4 action axis.
+    expect(toggle.classList).toContain("right-4");
     expect(toggle.classList).toContain("top-2.5");
     const hint = screen.getByText("Ctrl Shift P");
     expect(hint.classList).toContain("absolute");
@@ -1260,7 +1287,7 @@ describe("SplitThreadArea", () => {
     ).toBe("true");
   });
 
-  it("omits app panel and full-screen controls from plugin panes", async () => {
+  it("shows the empty panel state while a plugin pane is focused", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({
@@ -1281,34 +1308,91 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Focusing the plugin pane hides the app panel without layering disabled
-    // app controls over the plugin's own header and right panel.
+    // The plugin pane publishes no panel, so the window panel keeps its place
+    // and states that plainly. Its toggle and pane controls all stay live.
     fireEvent.pointerDown(pluginPane);
-    await waitFor(() =>
-      expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull(),
+    const emptyState = await screen.findByTestId(
+      "split-workspace-empty-panel-state",
     );
-    expect(
-      document.getElementById("split-workspace-empty-secondary-panel"),
-    ).toBeNull();
-    expect(
-      document.getElementById("split-workspace-empty-secondary-panel-handle"),
-    ).toBeNull();
+    expect(emptyState.textContent).toContain("This pane has no right panel.");
+    const pluginToggle = screen
+      .getByTestId("split-workspace-panel-toggle")
+      .querySelector("button");
+    expect(pluginToggle?.hasAttribute("disabled")).toBe(false);
     expect(
       pluginPane.querySelector('button[aria-label*="Full Screen"]'),
-    ).toBeNull();
-    expect(
-      screen.queryByTestId("split-workspace-empty-panel-state"),
-    ).toBeNull();
+    ).not.toBeNull();
+
+    // The toggle closes and reopens the empty state on its own.
+    fireEvent.click(pluginToggle!);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByTestId("split-workspace-panel-toggle")
+          .querySelector("button")
+          ?.getAttribute("aria-expanded"),
+      ).toBe("false"),
+    );
+
     // Refocusing the thread pane restores the remembered open panel.
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
-    const restoredOpenToggle = await screen.findByRole("button", {
-      name: "Hide right panel",
-    });
-    expect(restoredOpenToggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("hosted-panel-thr-a")).toBeTruthy();
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("ignores the empty panel's initial collapse so a thread keeps its open panel", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-2";
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout,
+      routeAwareContent: true,
+    });
+
+    await screen.findByTestId("split-workspace-empty-panel-state");
+    // react-resizable-panels reports the zero-width first layout as a
+    // collapse. Honoring it would harden the "adopt the first publisher's
+    // state" sentinel into closed before any pane published.
+    act(() => {
+      panelCallbacks
+        .get("split-workspace-empty-secondary-panel")
+        ?.onCollapse?.();
+    });
+
+    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
+    expect(await screen.findByTestId("hosted-panel-thr-a")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Hide right panel" }),
+    ).toBeTruthy();
+  });
+
+  it("drops the corner reserve while the open empty panel holds the toggle", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-2";
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout,
+      routeAwareContent: true,
+    });
+
+    // pane-2 is the plugin pane at the right edge. Closed, the toggle sits on
+    // its header row, so the header keeps that corner free.
+    await screen.findByTestId("split-workspace-empty-panel-state");
+    const close = screen.getByRole("button", { name: "Close pane" });
+    expect(close.nextElementSibling?.tagName).toBe("SPAN");
+
+    // Open, the toggle moves over the panel and the header reclaims the slot.
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Close pane" }).nextElementSibling,
+      ).toBeNull(),
+    );
+    expect(
+      screen.getByTestId("split-workspace-panel-toggle").classList,
+    ).not.toContain("hidden");
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
@@ -1367,8 +1451,14 @@ describe("SplitThreadArea", () => {
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
-    expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Full Screen/ })).toBeNull();
+    // Neither plugin pane publishes a panel, so the window offers its empty
+    // state instead of dropping the control.
+    expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
+    // The app panel belongs to a publishing pane, but full screen is pane
+    // chrome: every pane in a split owns it, plugin panes included.
+    expect(screen.getAllByRole("button", { name: /Full Screen/ })).toHaveLength(
+      2,
+    );
 
     fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[0]!);
 
@@ -1376,9 +1466,7 @@ describe("SplitThreadArea", () => {
       expect(screen.queryByText("Automations content")).toBeNull(),
     );
     expect(
-      screen
-        .getByText("Docs content with notes sidebar")
-        .closest(".isolate"),
+      screen.getByText("Docs content with notes sidebar").closest(".isolate"),
     ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
@@ -1644,7 +1732,9 @@ describe("SplitThreadArea", () => {
       expect((await contentRow(path))?.className).not.toContain("pl-[104px]");
     }
 
-    expect(screen.queryByRole("button", { name: /Full Screen/ })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Full Screen/ })).toHaveLength(
+      4,
+    );
   });
 
   it("assigns exactly one top-left owner through eight-pane structural changes", async () => {
@@ -1727,6 +1817,87 @@ describe("SplitThreadArea", () => {
     expect(
       toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+  });
+
+  // The host pins its panel toggle over the workspace corner. A plugin pane in
+  // that corner used to skip the reserve, so the toggle covered Close pane.
+  it("reserves the window toggle corner for a plugin pane at the top right", async () => {
+    setPluginSlotRegistrations("docs", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [
+        {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText",
+          path: "docs",
+          component: () => <div>Docs panel</div>,
+        },
+      ],
+      threadPanelActions: [],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "col",
+          sizes: [0.5, 0.5],
+          children: [
+            { type: "pane", paneId: "pane-docs", content: docsContent },
+            { type: "pane", paneId: "pane-new", content: newThreadContent },
+          ],
+        },
+        focusedPaneId: "pane-new",
+      },
+      routeContent: newThreadContent,
+    });
+
+    await screen.findByText("Docs panel");
+    expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
+    const [pluginClose] = screen.getAllByRole("button", { name: "Close pane" });
+    const reserve = pluginClose?.nextElementSibling;
+    expect(reserve?.tagName).toBe("SPAN");
+    expect(reserve?.getAttribute("aria-hidden")).toBe("true");
+
+    // Full screen hides the host toggle, so the reserved slot must go with it.
+    fireEvent.click(screen.getAllByRole("button", { name: /Full Screen/ })[0]!);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Close pane" })[0]
+          ?.nextElementSibling,
+      ).toBeNull(),
+    );
+  });
+
+  it("drops the corner reserve once an open panel hosts the toggle", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-1";
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout,
+      routeAwareContent: true,
+    });
+
+    // pane-2 is the plugin pane at the right edge; the thread pane's panel
+    // starts open, so its own chrome carries the toggle.
+    const pluginClose = await screen.findByRole("button", {
+      name: "Close pane",
+    });
+    expect(pluginClose.nextElementSibling).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Close pane" }).nextElementSibling
+          ?.tagName,
+      ).toBe("SPAN"),
+    );
   });
 
   it("uses automation breadcrumbs in the split-owned plugin header", async () => {

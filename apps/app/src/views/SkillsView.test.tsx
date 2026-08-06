@@ -253,7 +253,7 @@ describe("SkillsOverview", () => {
     });
     expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="bb"');
+    expect(markup).toContain('aria-label="Filters: Provider: bb"');
     expect(markup).not.toContain("Provider: 1 selected");
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
@@ -300,29 +300,30 @@ describe("SkillsOverview", () => {
       />,
     );
 
+    // Nothing selected is the default and means every type is shown.
     expect(screen.getByText("official-skill")).toBeTruthy();
     expect(screen.getByText("user-skill")).toBeTruthy();
-    expect(screen.queryByText("automations")).toBeNull();
-    const typeTrigger = screen.getByRole("button", { name: "bb official" });
+    expect(screen.getByText("automations")).toBeTruthy();
+    const typeTrigger = screen.getByRole("button", { name: /^Filters/ });
     fireEvent.focus(typeTrigger);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Type: bb official",
+      "Provider: bb",
     );
     fireEvent.blur(typeTrigger);
     fireEvent.pointerDown(typeTrigger);
     expect(screen.getByText("Type")).toBeTruthy();
-    expect(screen.getByRole("menuitemcheckbox", { name: "All" })).toBeTruthy();
-    expect(
-      screen
-        .getByRole("menuitemcheckbox", { name: "bb official" })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
-    expect(
-      screen
-        .getByRole("menuitemcheckbox", { name: "Plugin" })
-        .getAttribute("aria-checked"),
-    ).toBe("false");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
+    // The explicit "All" row is gone; an empty selection carries that meaning.
+    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
+    for (const name of ["BB Official", "Included in plugin", "User"]) {
+      expect(
+        screen
+          .getByRole("menuitemcheckbox", { name })
+          .getAttribute("aria-checked"),
+      ).toBe("false");
+    }
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
 
     expect(await screen.findByText("automations")).toBeTruthy();
     expect(
@@ -330,12 +331,79 @@ describe("SkillsOverview", () => {
         "automations is included with Automations (bb plugin)",
       ).textContent,
     ).toBe("Included");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
-    expect(screen.queryByText("automations")).toBeNull();
-    expect(screen.getByText("official-skill")).toBeTruthy();
+    expect(screen.queryByText("official-skill")).toBeNull();
+    // A user-authored skill has its own bucket, so it is narrowed out here
+    // rather than being silently unreachable through the filter.
+    expect(screen.queryByText("user-skill")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    expect(await screen.findByText("user-skill")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
+    expect(await screen.findByText("official-skill")).toBeTruthy();
+    expect(screen.getByText("automations")).toBeTruthy();
   });
 
-  it("toggles BB official independently from Plugin", async () => {
+  // The "user" bucket is a fallthrough — every scope that is not bb-builtin or
+  // plugin lands in it. Exercising only a bb-user fixture would leave that
+  // claim untested for the claude-*/codex-* scopes, which is exactly where the
+  // old code returned null and let skills bypass the Type filter entirely.
+  // This also covers AND-across-groups, which no other test does.
+  it("puts every non-builtin, non-plugin scope in the User bucket", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "claude-authored",
+            provider: "claude-code",
+            scope: "claude-user",
+          }),
+          makeSkill({
+            name: "codex-authored",
+            provider: "codex",
+            scope: "codex-project",
+          }),
+          makeSkill({
+            name: "official-skill",
+            provider: null,
+            scope: "bb-builtin",
+            manageable: false,
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /^Filters/ });
+    fireEvent.pointerDown(trigger);
+    // Provider defaults to `bb`, which would hide both fixtures before the
+    // Type filter is reached — clear it so this test observes Type alone.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+
+    // Both provider-scoped skills reach the User bucket; the builtin does not.
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.getByText("codex-authored")).toBeTruthy();
+    expect(screen.queryByText("official-skill")).toBeNull();
+
+    // Groups combine as AND: narrowing Provider to Claude Code drops the
+    // codex-scoped skill while the User type selection still holds.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Claude Code" }));
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.queryByText("codex-authored")).toBeNull();
+    expect(screen.queryByText("official-skill")).toBeNull();
+
+    // Clearing Type leaves the Provider selection filtering on its own.
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    expect(await screen.findByText("claude-authored")).toBeTruthy();
+    expect(screen.queryByText("codex-authored")).toBeNull();
+  });
+
+  it("toggles BB Official independently from Included in plugin", async () => {
     renderDom(
       <SkillsOverview
         skills={[
@@ -360,14 +428,34 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "bb official" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Plugin" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb official" }),
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
 
+    // One source selected narrows to that source alone.
     expect(await screen.findByText("automations")).toBeTruthy();
     expect(screen.queryByText("official-skill")).toBeNull();
+
+    // Adding the second source widens the selection rather than replacing it.
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    expect(await screen.findByText("official-skill")).toBeTruthy();
+    expect(screen.getByText("automations")).toBeTruthy();
+
+    // Clearing both returns to the unfiltered default.
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
+    );
+    expect(await screen.findByText("official-skill")).toBeTruthy();
+    expect(screen.getByText("automations")).toBeTruthy();
+    // The open menu hides the trigger from the a11y tree, so close it first.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: /^Filters/ })).toBeTruthy();
   });
 
   it("uses filter-neutral copy when a Type selection removes every skill", async () => {
@@ -388,9 +476,9 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "bb official" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb official" }),
+      screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
 
     expect(
@@ -446,7 +534,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
 
     await waitFor(() => {
       expect(
@@ -490,18 +578,20 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    const providerTrigger = screen.getByRole("button", { name: "bb" });
+    const providerTrigger = screen.getByRole("button", { name: /^Filters/ });
     fireEvent.focus(providerTrigger);
-    const defaultTooltip = await screen.findByRole("tooltip");
-    expect(defaultTooltip.textContent?.trim()).toBe("Providers:");
-    expect(defaultTooltip.textContent).not.toContain("bb");
-    expect(
-      defaultTooltip.querySelector('[data-provider-icon="bb"] img'),
-    ).not.toBeNull();
+    // Merging Provider into the grouped Filters menu replaced the trigger's
+    // logo tooltip with the group summary; the logos moved onto the rows.
+    expect((await screen.findByRole("tooltip")).textContent?.trim()).toBe(
+      "Provider: bb",
+    );
     fireEvent.blur(providerTrigger);
 
     fireEvent.pointerDown(providerTrigger);
     expect(screen.getByText("Provider")).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "bb" }).querySelector("img"),
+    ).not.toBeNull();
   });
 
   it("keeps the default BB filter selected when only provider skills exist", async () => {
@@ -522,11 +612,11 @@ describe("SkillsOverview", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "bb" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Filters/ })).toBeTruthy();
       expect(screen.queryByText("codex-skill")).toBeNull();
     });
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
     expect(bbFilter.getAttribute("aria-checked")).toBe("true");
     expect(bbFilter.getAttribute("aria-disabled")).toBeNull();
@@ -556,7 +646,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
@@ -566,7 +656,9 @@ describe("SkillsOverview", () => {
     await waitFor(() => {
       expect(screen.getByText("claude-skill")).toBeTruthy();
       expect(screen.queryByText("bb-skill")).toBeNull();
-      expect(screen.getByRole("button", { name: "Claude Code" })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: /Provider: Claude Code/ }),
+      ).toBeTruthy();
     });
 
     view.rerender(

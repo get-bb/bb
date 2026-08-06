@@ -1036,12 +1036,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 73 adds `workspace.discover_repos` and widens the provider-usage
-  // `error` variant with locally-known plan/account fields. An older daemon has
-  // no handler for the command and sends the narrower error shape, so the bump
-  // forces an update before the server relies on either.
-  it("uses protocol version 73 for repo discovery and usage plan fallback", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(73);
+  // Version 75 makes Claude's sandbox network prompt grantable. A daemon on 74
+  // drops the "localSettings" suggestion that carries the grant, so it sends a
+  // permission_grant subject with an empty profile and the user cannot allow
+  // the prompt. The fix lives in the daemon's Claude bridge, so the bump is
+  // what moves an enrolled machine onto it.
+  it("uses protocol version 75 for grantable sandbox network prompts", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

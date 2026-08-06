@@ -205,10 +205,21 @@ export const acpInitializeResultSchema = z
   .passthrough();
 export type AcpInitializeResult = z.infer<typeof acpInitializeResultSchema>;
 
+/**
+ * Some ACP agents serialize an absent optional string as an explicit `null`
+ * instead of omitting the key — pi-acp does this for every model and
+ * config-option `description`. Accept both forms and normalize to `undefined`
+ * so downstream code sees a single shape.
+ */
+const acpOptionalString = z
+  .union([z.string(), z.null()])
+  .transform((value) => value ?? undefined)
+  .optional();
+
 export const acpConfigOptionSelectOptionSchema = z
   .object({
     value: z.string(),
-    name: z.string().optional(),
+    name: acpOptionalString,
   })
   .passthrough();
 export type AcpConfigOptionSelectOption = z.infer<
@@ -218,10 +229,10 @@ export type AcpConfigOptionSelectOption = z.infer<
 export const acpConfigOptionSchema = z
   .object({
     id: z.string(),
-    name: z.string().optional(),
-    category: z.string().optional(),
+    name: acpOptionalString,
+    category: acpOptionalString,
     type: z.string(),
-    currentValue: z.string().optional(),
+    currentValue: acpOptionalString,
     options: z.array(acpConfigOptionSelectOptionSchema).optional(),
   })
   .passthrough();
@@ -230,15 +241,15 @@ export type AcpConfigOption = z.infer<typeof acpConfigOptionSchema>;
 export const acpSessionModelSchema = z
   .object({
     modelId: z.string(),
-    name: z.string().optional(),
-    description: z.string().optional(),
+    name: acpOptionalString,
+    description: acpOptionalString,
   })
   .passthrough();
 export type AcpSessionModel = z.infer<typeof acpSessionModelSchema>;
 
 export const acpSessionModelsSchema = z
   .object({
-    currentModelId: z.string().optional(),
+    currentModelId: acpOptionalString,
     availableModels: z.array(acpSessionModelSchema).optional(),
   })
   .passthrough();
@@ -248,7 +259,7 @@ const acpLooseConfigOptionSchema = z
   .object({
     id: z.string().optional(),
     name: z.unknown().optional(),
-    category: z.string().optional(),
+    category: acpOptionalString,
     type: z.unknown().optional(),
     currentValue: z.unknown().optional(),
     options: z.unknown().optional(),

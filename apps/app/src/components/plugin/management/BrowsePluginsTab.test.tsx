@@ -138,7 +138,7 @@ describe("BrowsePluginsTab", () => {
     ]);
   });
 
-  it("renders every catalog entry once and filters the grid with category pills", async () => {
+  it("renders every catalog entry once and filters the grid by category", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
       (_, index) => ({
@@ -166,31 +166,49 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
-    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
-      wrapper,
-    });
+    const { container } = render(
+      <BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />,
+      { wrapper },
+    );
+
+    // An open Radix menu marks the grid aria-hidden, so count cards in the DOM.
+    const cardCount = () =>
+      container.querySelectorAll('[aria-label^="Open Official "]').length;
 
     expect(await screen.findByText("Official 1")).toBeTruthy();
+    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
+    // Category is a toolbar multi-select, not a pill row, so the browse page
+    // keeps one flush content band.
     expect(
-      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
-    ).toHaveLength(CATALOG_STATUS.pluginCount);
-    expect(
-      screen.getByRole("radiogroup", { name: "Filter plugins by category" }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("heading", { name: "Context & knowledge" }),
+      screen.queryByRole("radiogroup", { name: "Filter plugins by category" }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "Developer tools" }));
-    expect(
-      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
-    ).toHaveLength(6);
-    expect(screen.queryByText("Official 1")).toBeNull();
+    const categoryTrigger = screen.getByRole("button", { name: "Category" });
+    fireEvent.pointerDown(categoryTrigger);
+    // No explicit "All" row: an empty selection already means every category.
+    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
+
     fireEvent.click(
-      screen.getByRole("radio", { name: "Show all plugin categories" }),
+      screen.getByRole("menuitemcheckbox", { name: "Developer tools" }),
     );
+    expect(cardCount()).toBe(6);
     expect(
-      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
-    ).toHaveLength(CATALOG_STATUS.pluginCount);
+      container.querySelector('[aria-label="Open Official 1 details"]'),
+    ).toBeNull();
+
+    // Selections accumulate rather than replace.
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
+    );
+    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
+
+    // Clearing every category returns to unfiltered, not empty.
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Developer tools" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
+    );
+    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
     expect(screen.queryByText("BB Official plugins")).toBeNull();
   });
 
@@ -252,10 +270,7 @@ describe("BrowsePluginsTab", () => {
       );
     }
     expect(githubDescription.className).toContain("min-h-[2lh]");
-    expect(
-      screen.getByRole("radio", { name: "Context & knowledge" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "Developer tools" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
     expect(screen.getByRole("button", { name: "Install Memory" })).toBeTruthy();
     expect(screen.queryByText("BB Official plugins")).toBeNull();
@@ -364,20 +379,32 @@ describe("BrowsePluginsTab", () => {
     );
     expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
     expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
-    expect(installed.className).toContain("border-success/40");
-    expect(installed.className).toContain("bg-success/15");
-    expect(installed.className).toContain(
-      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).not.toContain("text-success-foreground");
-    expect(installed.className).toContain(
-      "hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).toContain(
-      "focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
-    );
-    expect(installed.className).not.toContain("hover:text-foreground");
-    expect(installed.className).toContain("hover:bg-success/25");
+    // The installed state reads as a plain success-tinted glyph: no outline,
+    // no fill, at rest or on hover/focus.
+    // Tokenize: `toContain` also matches inside the hover:/focus-visible:
+    // twins, which would leave the resting state unverified.
+    const installedClasses = new Set(installed.className.split(/\s+/));
+    for (const restingClass of ["border-transparent", "bg-transparent"]) {
+      expect(installedClasses.has(restingClass)).toBe(true);
+    }
+    for (const variantClass of [
+      "hover:border-transparent",
+      "hover:bg-transparent",
+      "focus-visible:border-transparent",
+      "focus-visible:bg-transparent",
+    ]) {
+      expect(installedClasses.has(variantClass)).toBe(true);
+    }
+    // Tokenized for the same reason as the border/bg checks above: the resting
+    // tint IS the feature here, and `toContain` would be satisfied by the
+    // hover:/focus-visible: twins alone, leaving it unverified.
+    const successTint =
+      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]";
+    expect(installedClasses.has(successTint)).toBe(true);
+    expect(installedClasses.has(`hover:${successTint}`)).toBe(true);
+    expect(installedClasses.has(`focus-visible:${successTint}`)).toBe(true);
+    expect(installedClasses.has("text-success-foreground")).toBe(false);
+    expect(installedClasses.has("hover:text-foreground")).toBe(false);
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     fireEvent.click(installed);
     expect(

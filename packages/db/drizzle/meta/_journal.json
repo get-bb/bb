@@ -617,6 +617,13 @@
       "when": 1786004200906,
       "tag": "0087_damp_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "6",
+      "when": 1786007229742,
+      "tag": "0088_living_starfox",
+      "breakpoints": true
     }
   ]
 }

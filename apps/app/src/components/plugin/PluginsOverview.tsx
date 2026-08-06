@@ -9,6 +9,7 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListState,
+  ResourceMultiSelectMenu,
   ResourceSortMenu,
   ResourceToolbar,
   type ResourceCollectionMode,
@@ -23,13 +24,40 @@ import {
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
-import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
+import {
+  usePluginList,
+  type PluginProvenance,
+} from "@/hooks/queries/plugin-settings-queries";
 import {
   getPluginDetailRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
 type PluginsCollectionMode = "installed" | "browse";
+
+/** Where an installed plugin came from, as the collection filter presents it. */
+type PluginTypeFilter = "bb-official" | "user";
+
+const PLUGIN_TYPE_FILTERS: readonly PluginTypeFilter[] = [
+  "bb-official",
+  "user",
+];
+
+const PLUGIN_TYPE_FILTER_OPTIONS = PLUGIN_TYPE_FILTERS.map((type) => ({
+  id: type,
+  label: type === "bb-official" ? "BB Official" : "User",
+}));
+
+function pluginTypeFilterId(provenance: PluginProvenance): PluginTypeFilter {
+  return isOfficialProvenance(provenance) ? "bb-official" : "user";
+}
+
+// Membership, not repeated literals: a new entry in PLUGIN_TYPE_FILTERS is
+// selectable the moment it renders instead of being silently dropped here.
+function isPluginTypeFilter(value: string): value is PluginTypeFilter {
+  return PLUGIN_TYPE_FILTERS.some((filter) => filter === value);
+}
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "browse") return value;
@@ -58,6 +86,8 @@ export function PluginsOverview() {
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
+  // Empty means unfiltered: the menu has no explicit "All" row.
+  const [typeFilters, setTypeFilters] = useState<PluginTypeFilter[]>([]);
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
@@ -79,6 +109,12 @@ export function PluginsOverview() {
     () =>
       plugins
         .filter((plugin) => {
+          if (
+            typeFilters.length > 0 &&
+            !typeFilters.includes(pluginTypeFilterId(plugin.provenance))
+          ) {
+            return false;
+          }
           if (normalizedInstalledQuery.length === 0) return true;
           return [
             plugin.id,
@@ -95,10 +131,8 @@ export function PluginsOverview() {
           const enabledResult = Number(!left.enabled) - Number(!right.enabled);
           if (enabledResult !== 0) return enabledResult;
           if (left.enabled) {
-            const leftOfficial =
-              left.provenance === "builtin" || left.provenance === "catalog";
-            const rightOfficial =
-              right.provenance === "builtin" || right.provenance === "catalog";
+            const leftOfficial = isOfficialProvenance(left.provenance);
+            const rightOfficial = isOfficialProvenance(right.provenance);
             const provenanceResult =
               Number(!leftOfficial) - Number(!rightOfficial);
             if (provenanceResult !== 0) return provenanceResult;
@@ -111,11 +145,15 @@ export function PluginsOverview() {
           }
           return left.id.localeCompare(right.id);
         }),
-    [installedSortDirection, normalizedInstalledQuery, plugins],
+    [installedSortDirection, normalizedInstalledQuery, plugins, typeFilters],
   );
   const installedPagination = useResourcePagination(visiblePlugins, {
     pageSize: installedPageSize,
-    resetKey: [normalizedInstalledQuery, installedSortDirection].join("\u0000"),
+    resetKey: [
+      normalizedInstalledQuery,
+      installedSortDirection,
+      [...typeFilters].sort().join(","),
+    ].join("\u0000"),
   });
   const hasInstalledPagination =
     !listQuery.isError &&
@@ -178,18 +216,30 @@ export function PluginsOverview() {
             searchValue={installedQuery}
             searchPlaceholder="Search installed plugins"
             onSearchChange={setInstalledQuery}
-            containedControls
             controls={
-              <ResourceSortMenu
-                value="alpha"
-                direction={installedSortDirection}
-                options={[{ id: "alpha", label: "Plugin name" }]}
-                onChange={() =>
-                  setInstalledSortDirection((current) =>
-                    current === "asc" ? "desc" : "asc",
-                  )
-                }
-              />
+              <>
+                <ResourceMultiSelectMenu
+                  label="Type"
+                  icon="SlidersHorizontal"
+                  compact
+                  selectedValues={typeFilters}
+                  options={PLUGIN_TYPE_FILTER_OPTIONS}
+                  onChange={(values) =>
+                    setTypeFilters(values.filter(isPluginTypeFilter))
+                  }
+                />
+                <ResourceSortMenu
+                  value="alpha"
+                  direction={installedSortDirection}
+                  compact
+                  options={[{ id: "alpha", label: "Plugin name" }]}
+                  onChange={() =>
+                    setInstalledSortDirection((current) =>
+                      current === "asc" ? "desc" : "asc",
+                    )
+                  }
+                />
+              </>
             }
           />
         }
@@ -218,7 +268,13 @@ export function PluginsOverview() {
         ) : plugins.length > 0 && visiblePlugins.length === 0 ? (
           <ResourceListState
             state="empty"
-            message={`No plugins match "${installedQuery}"`}
+            message={
+              normalizedInstalledQuery === ""
+                ? "No plugins match these filters."
+                : typeFilters.length > 0
+                  ? `No plugins match "${installedQuery}" with these filters.`
+                  : `No plugins match "${installedQuery}"`
+            }
           />
         ) : (
           <InstalledPluginsTab plugins={installedPagination.items} />

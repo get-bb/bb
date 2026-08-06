@@ -56,6 +56,8 @@ const {
     mockModelRuntime: {
       getAvailable: vi.fn(async () => []),
       getModel: vi.fn(() => undefined),
+      getModels: vi.fn(() => []),
+      hasConfiguredAuth: vi.fn(() => false),
       refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
     },
     oauthRegistrationState: { registered: false },

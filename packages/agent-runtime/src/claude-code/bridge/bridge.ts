@@ -73,14 +73,14 @@ import {
   type ClaudeInteractiveResponse,
   type ClaudePermissionMode,
   type ClaudePermissionRequestApprovalParams,
-  type ClaudePermissionUpdate,
+  type ClaudeSuggestedPermissionUpdate,
   type ClaudeUserQuestionInput,
   type ClaudeUserQuestionRequestParams,
   CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
   CLAUDE_USER_QUESTION_REQUEST_METHOD,
   CLAUDE_USER_QUESTION_TOOL_NAME,
   claudeInteractiveResponseSchema,
-  claudePermissionUpdateSchema,
+  claudeSuggestedPermissionUpdateSchema,
   claudeUserQuestionInputSchema,
   shouldRequestClaudePermissionApproval,
   toPendingInteractionPermissionProfile,
@@ -262,7 +262,7 @@ interface ClaudeCodeThreadStopResult {
 interface ClaudeCanUseToolDecisionContext {
   blockedPath: string | undefined;
   decisionReason: string | undefined;
-  suggestions: ClaudePermissionUpdate[] | undefined;
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
   toolName: string;
 }
 
@@ -273,8 +273,9 @@ interface BuildInteractiveRequestParamsArgs {
   toolUseId: string;
   input: Record<string, unknown>;
   decisionReason: string | undefined;
+  promptText: string | undefined;
   blockedPath: string | undefined;
-  suggestions: ClaudePermissionUpdate[] | undefined;
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
 }
 
 interface ForwardInteractiveRequestArgs extends BuildInteractiveRequestParamsArgs {
@@ -851,15 +852,15 @@ async function prepareSessionEnv(
   };
 }
 
-function parseClaudePermissionUpdates(
+function parseClaudeSuggestedPermissionUpdates(
   value: unknown,
-): ClaudePermissionUpdate[] | undefined {
+): ClaudeSuggestedPermissionUpdate[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
 
   const parsedUpdates = value.flatMap((entry) => {
-    const parsed = claudePermissionUpdateSchema.safeParse(entry);
+    const parsed = claudeSuggestedPermissionUpdateSchema.safeParse(entry);
     return parsed.success ? [parsed.data] : [];
   });
 
@@ -876,7 +877,11 @@ function buildInteractiveRequestParams(
     itemId: args.toolUseId,
     toolName: args.toolName,
     input: args.input,
-    reason: args.decisionReason ?? null,
+    // Claude explains some prompts through decisionReason and others only
+    // through the prompt sentence it would have rendered itself. The sandbox
+    // network prompt uses the second: without it the banner names the tool but
+    // never the host, and the user cannot judge what they are granting.
+    reason: args.decisionReason ?? args.promptText ?? null,
     permissions: toPendingInteractionPermissionProfile({
       toolName: args.toolName,
       blockedPath: args.blockedPath,
@@ -1100,7 +1105,9 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       });
     }
 
-    const suggestions = parseClaudePermissionUpdates(options.suggestions);
+    const suggestions = parseClaudeSuggestedPermissionUpdates(
+      options.suggestions,
+    );
 
     const requestContext: ClaudeCanUseToolDecisionContext = {
       toolName,
@@ -1186,6 +1193,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       toolUseId: options.toolUseID,
       input,
       decisionReason: options.decisionReason,
+      promptText: options.title ?? options.description,
       blockedPath: options.blockedPath,
       suggestions,
       signal: options.signal,

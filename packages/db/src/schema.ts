@@ -455,7 +455,16 @@ export const environments = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("environments_host_path_idx").on(table.hostId, table.path),
+    // A workspace path is claimed per project, not globally. Two projects may
+    // point at the same folder; each gets its own environment for it.
+    uniqueIndex("environments_project_host_path_idx").on(
+      table.projectId,
+      table.hostId,
+      table.path,
+    ),
+    // Host-leading lookups: every environment on a host, and every project's
+    // environment for one physical directory.
+    index("environments_host_path_lookup_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
     index("environments_status_idx").on(table.status),
   ],
