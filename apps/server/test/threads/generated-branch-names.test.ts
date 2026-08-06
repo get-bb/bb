@@ -1,4 +1,11 @@
-import { createThread, getEnvironment, getThread, listEvents } from "@bb/db";
+import {
+  createEnvironmentId,
+  createThread,
+  createThreadId,
+  getEnvironment,
+  getThread,
+  listEvents,
+} from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -142,6 +149,110 @@ describe("generated managed branch names", () => {
         `bb/improve-branch-names-${thread.id}`,
       );
       expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("uses exact internal Room resource identities and branch", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reserved-room-branch",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reserved-room-branch-project",
+      });
+      const environmentId = createEnvironmentId();
+      const threadId = createThreadId();
+
+      const thread = await createThreadFromRequest(
+        harness.deps,
+        {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "named", name: "main" },
+            },
+          },
+          input: textInput("Open the reserved Room"),
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          startedOnBehalfOf: null,
+          title: "Reserved Room",
+        },
+        {
+          resourceReservation: {
+            environmentId,
+            threadId,
+            managedBranchName: "rooms/reserved-room",
+          },
+        },
+      );
+
+      expect(thread.id).toBe(threadId);
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      const managedCommand =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managedCommand.command).toMatchObject({
+        branchName: "rooms/reserved-room",
+        environmentId,
+      });
+      expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+        branchName: "rooms/reserved-room",
+        id: environmentId,
+        projectId: project.id,
+      });
+      expect(piAiMocks.complete).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejects malformed internal Room reservations before creating a thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-invalid-room-reservation",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/invalid-room-reservation-project",
+      });
+      const threadId = createThreadId();
+
+      await expect(
+        createThreadFromRequest(
+          harness.deps,
+          {
+            environment: {
+              type: "host",
+              hostId: host.id,
+              workspace: {
+                type: "managed-worktree",
+                baseBranch: { kind: "named", name: "main" },
+              },
+            },
+            input: textInput("Do not create this Room"),
+            origin: "app",
+            projectId: project.id,
+            providerId: "codex",
+            startedOnBehalfOf: null,
+          },
+          {
+            resourceReservation: {
+              environmentId: createEnvironmentId(),
+              threadId,
+              managedBranchName: "refs/heads/main",
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+        status: 400,
+      });
+      expect(getThread(harness.db, threadId)).toBeNull();
     });
   });
 

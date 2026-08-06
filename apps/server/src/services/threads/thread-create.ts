@@ -11,7 +11,7 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import { SYSTEM_ACTOR_STAMP } from "@bb/domain";
+import { gitBranchNameSchema, SYSTEM_ACTOR_STAMP } from "@bb/domain";
 import { supportsNativeFork } from "@bb/agent-providers";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -93,6 +93,43 @@ interface CreateProvisioningThreadArgs {
   fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
+  threadId?: string;
+}
+
+export interface ThreadCreateResourceReservation {
+  /** Exact internal BB IDs allocated before resource creation. */
+  environmentId: string;
+  threadId: string;
+  /** Exact managed-worktree branch retained by the enclosing Room saga. */
+  managedBranchName: string;
+}
+
+const RESERVED_ENVIRONMENT_ID = /^env_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
+const RESERVED_THREAD_ID = /^thr_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
+
+function requireThreadCreateResourceReservation(
+  rawRequestInput: ThreadCreateServiceRequestInput,
+  reservation: ThreadCreateResourceReservation | undefined,
+): ThreadCreateResourceReservation | undefined {
+  if (reservation === undefined) {
+    return undefined;
+  }
+  if (
+    rawRequestInput.environment.type !== "host" ||
+    rawRequestInput.environment.workspace.type !== "managed-worktree" ||
+    !RESERVED_ENVIRONMENT_ID.test(reservation.environmentId) ||
+    !RESERVED_THREAD_ID.test(reservation.threadId) ||
+    Buffer.byteLength(reservation.managedBranchName, "utf8") > 255 ||
+    reservation.managedBranchName.startsWith("refs/") ||
+    !gitBranchNameSchema.safeParse(reservation.managedBranchName).success
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Reserved Room resources are invalid",
+    );
+  }
+  return reservation;
 }
 
 interface ResolveForkDescriptorArgs {
@@ -490,6 +527,7 @@ async function createProvisioningThread(
     request: args.request,
     environmentId: args.environmentId,
     status: "starting",
+    ...(args.threadId !== undefined ? { threadId: args.threadId } : {}),
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
@@ -574,8 +612,14 @@ export async function createThreadFromRequest(
     actor?: import("@bb/domain").ActorStamp;
     /** Provider-facing input when it differs from the persisted start seed. */
     providerInput?: ThreadCreateServiceRequestInput["input"];
+    /** Internal-only exact identities; never populated from an HTTP payload. */
+    resourceReservation?: ThreadCreateResourceReservation;
   } = {},
 ) {
+  const resourceReservation = requireThreadCreateResourceReservation(
+    rawRequestInput,
+    options.resourceReservation,
+  );
   const project = requirePublicProjectForThreadCreate(
     deps,
     rawRequestInput.projectId,
@@ -843,6 +887,12 @@ export async function createThreadFromRequest(
           sourcePath: managedSource.path,
         }),
         workspaceProvisionType: workspace.type,
+        ...(resourceReservation !== undefined
+          ? {
+              environmentId: resourceReservation.environmentId,
+              branchName: resourceReservation.managedBranchName,
+            }
+          : {}),
       };
       break;
     }
@@ -887,6 +937,9 @@ export async function createThreadFromRequest(
     fork,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }
+      : {}),
+    ...(resourceReservation !== undefined
+      ? { threadId: resourceReservation.threadId }
       : {}),
     request,
   });

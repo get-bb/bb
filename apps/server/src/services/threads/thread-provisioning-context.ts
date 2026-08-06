@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createThreadProvisioningId } from "@bb/db";
 import {
+  gitBranchNameSchema,
   promptInputSchema,
   resolvedThreadExecutionOptionsSchema,
   clientTurnRequestIdSchema,
@@ -35,6 +36,9 @@ const directManagedIntentSchema = z.object({
   sourcePath: z.string().min(1),
   baseBranch: baseBranchSpecSchema,
   workspaceProvisionType: z.literal("managed-worktree"),
+  /** Internal-only identities fixed by an enclosing provisioning saga. */
+  environmentId: z.string().min(1).optional(),
+  branchName: gitBranchNameSchema.optional(),
 });
 
 const directPersonalIntentSchema = z.object({
