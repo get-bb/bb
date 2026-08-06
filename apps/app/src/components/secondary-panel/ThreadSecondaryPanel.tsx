@@ -723,7 +723,11 @@ export function ThreadSecondaryPanel({
                 </TooltipContent>
               </Tooltip>
             ) : null}
-            {renderAsDrawer || inlinePanelToggle === "button" ? (
+            {/*
+              The drawer already closes with its own handle, a swipe, or a
+              backdrop tap, so it renders no hide button of its own.
+            */}
+            {!renderAsDrawer && inlinePanelToggle === "button" ? (
               <Button
                 type="button"
                 variant="ghost"
